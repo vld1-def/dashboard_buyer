@@ -999,24 +999,119 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   function renderTrend(data) {
-    const isD = document.getElementById('main-html').classList.contains('dark'); const tc = isD ? '#94a3b8' : '#475569'; const gc = isD ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-    const ctx = document.getElementById('chart-trend').getContext('2d'); if(window.chart1) window.chart1.destroy();
-    const sd = [...new Set(data.map(d => d.date))].sort(); const labels = sd.map(d => { const o = new Date(d); return o.getDate() + " (" + ["НД","ПН","ВТ","СР","ЧТ","ПТ","СБ"][o.getDay()] + ")"; });
-    let ds = [];
-    if (currentChartMode === 'daily') {
-      const m = {}; sd.forEach(d => m[d] = { s:0, r:0, d:0 }); data.forEach(d => { if(m[d.date]) { m[d.date].s += d.spend; m[d.date].r += d.regs; m[d.date].d += d.deposits; } });
-      ds = [{ label: 'Spend ($)', data: sd.map(d => m[d].s), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.4, borderWidth: 3, pointRadius: 5, datalabels: { display: true, align: 'top', color: isD ? '#fff' : '#1e293b', font: { weight: '900' }, formatter: Math.round } },
-            { label: 'CPL ($)', data: sd.map(d => m[d].r > 0 ? m[d].s/m[d].r : 0), borderColor: '#a855f7', borderDash: [5, 5], fill: false, tension: 0.4, borderWidth: 2, datalabels: { display: false } },
-            { label: 'CPA ($)', data: sd.map(d => m[d].d > 0 ? m[d].s/m[d].d : 0), borderColor: '#eab308', borderDash: [3, 3], fill: false, tension: 0.4, borderWidth: 2, datalabels: { display: false } }];
-    } else {
-      const g = [...new Set(data.map(d => d.geo))].filter(Boolean); const clr = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
-      ds = g.map((geo, i) => {
-        const stats = sd.map(date => { const dG = data.filter(x => x.date === date && x.geo === geo); return { s: dG.reduce((a, c) => a + c.spend, 0), r: dG.reduce((a, c) => a + c.regs, 0), d: dG.reduce((a, c) => a + c.deposits, 0) }; });
-        return { label: geo, data: stats.map(v => v.s), fullStats: stats, borderColor: clr[i % clr.length], backgroundColor: clr[i % clr.length] + '20', fill: false, tension: 0.4, borderWidth: 3, pointRadius: 4, datalabels: { display: false } };
-      });
+  const ctx = document.getElementById('chart-trend').getContext('2d');
+  if (window.chart1) window.chart1.destroy();
+
+  // Отримуємо унікальні дати та сортуємо їх
+  const sd = [...new Set(data.map(d => d.date))].sort();
+  
+  // Дні тижня українською
+  const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
+
+  // Формуємо лейбли: "1 (НД)"
+  const labels = sd.map(d => {
+    const dateObj = new Date(d);
+    return `${dateObj.getDate()} (${daysUA[dateObj.getDay()]})`;
+  });
+
+  // Агрегуємо дані
+  const m = {};
+  sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
+  data.forEach(d => {
+    if (m[d.date]) {
+      m[d.date].s += Number(d.spend) || 0;
+      m[d.date].r += Number(d.regs) || 0;
+      m[d.date].d += Number(d.deposits) || 0;
     }
-    window.chart1 = new Chart(ctx, { type: 'line', data: { labels, datasets: ds }, options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: true, position: 'top', labels: { color: tc, font: { weight: 'bold', size: 11 }, usePointStyle: true } }, tooltip: { enabled: true, backgroundColor: isD ? '#1e293b' : '#ffffff', titleColor: isD ? '#ffffff' : '#1e293b', bodyColor: isD ? '#cbd5e1' : '#475569', borderColor: 'rgba(59, 130, 246, 0.2)', borderWidth: 1, padding: 12, boxPadding: 6, filter: function(ti) { if (currentChartMode === 'geo') { const st = ti.dataset.fullStats[ti.dataIndex]; return st.s > 0 || st.r > 0 || st.d > 0; } return true; }, callbacks: { label: function(ctx) { const l = ctx.dataset.label || ''; const v = ctx.parsed.y; if (currentChartMode === 'geo') { const st = ctx.dataset.fullStats[ctx.dataIndex]; return [`📍 ГЕО: ${l}`, `💰 Spend: $${v.toFixed(0)}`, `📝 Reg: ${st.r}`, `🎯 Dep: ${st.d}`, `💵 CPL: $${st.r > 0 ? (st.s/st.r).toFixed(1) : 0} | CPA: $${st.d > 0 ? (st.s/st.d).toFixed(1) : 0}`]; } return `${l}: $${v.toFixed(2)}`; } } } }, scales: { x: { ticks: { color: tc, font: { size: 10 } }, grid: { color: gc } }, y: { ticks: { color: tc }, grid: { color: gc } } } } });
-  }
+  });
+
+  // Налаштування ліній як на фото
+  window.chart1 = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Spend ($)',
+          data: sd.map(d => m[d].s),
+          borderColor: '#3b82f6', // Синій
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderWidth: 4,
+          pointBackgroundColor: '#fff',
+          pointBorderColor: '#3b82f6',
+          pointBorderWidth: 2,
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          tension: 0.4,
+          fill: true,
+          datalabels: {
+            display: true,
+            align: 'top',
+            color: '#fff',
+            font: { weight: '900', size: 14 },
+            formatter: (val) => Math.round(val)
+          }
+        },
+        {
+          label: 'CPL ($)',
+          data: sd.map(d => m[d].r > 0 ? m[d].s / m[d].r : 0),
+          borderColor: '#a855f7', // Фіолетовий
+          borderDash: [5, 5], // Пунктир
+          borderWidth: 2,
+          pointRadius: 4,
+          fill: false,
+          tension: 0.4,
+          datalabels: { display: false }
+        },
+        {
+          label: 'CPA ($)',
+          data: sd.map(d => m[d].d > 0 ? m[d].s / m[d].d : 0),
+          borderColor: '#eab308', // Жовтий
+          borderDash: [2, 2], // Дрібний пунктир
+          borderWidth: 2,
+          pointRadius: 4,
+          fill: false,
+          tension: 0.4,
+          datalabels: { display: false }
+        }
+      ]
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: '#94a3b8',
+            usePointStyle: true,
+            pointStyle: 'circle',
+            font: { weight: 'bold', size: 12 }
+          }
+        },
+        tooltip: {
+          enabled: true,
+          backgroundColor: '#0f172a',
+          titleFont: { size: 14, weight: 'bold' },
+          padding: 12,
+          borderColor: 'rgba(255,255,255,0.1)',
+          borderWidth: 1
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 11, weight: 'bold' } },
+          grid: { display: false }
+        },
+        y: {
+          ticks: { color: '#64748b' },
+          grid: { color: 'rgba(255, 255, 255, 0.05)' }
+        }
+      }
+    }
+  });
+}
 
   function renderGeoList(data) {
   const m = {};
