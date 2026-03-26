@@ -493,7 +493,7 @@
   <script>
   const SUPABASE_URL = 'https://zsfumuiajrytmeycbtnn.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
-  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   // --- 2. ГЛОБАЛЬНІ ЗМІННІ ---
   let rawData = [], filteredDataCache = [], taskData = [], reportData = [], creativesRawData = [];
@@ -539,7 +539,7 @@
   // --- 5. РОБОТА З КОМАНДАМИ (SQL) ---
   async function refreshTeamsList() {
     // В SQL ми просто отримуємо унікальні імена команд з основної таблиці
-    const { data, error } = await _supabase.from('daily_stats').select('team_name');
+    const { data, error } = await _sb.from('daily_stats').select('team_name');
     let teams = ["Makeberry"];
     if (data) {
       const uniqueTeams = [...new Set(data.map(item => item.team_name))];
@@ -724,7 +724,7 @@
     const prio = document.getElementById('new-task-priority').value;
     if (!input.value.trim()) return;
 
-    const { error } = await _supabase.from('tasks').insert([
+    const { error } = await _sb.from('tasks').insert([
       { team_name: currentTeam, text: input.value, status: 'Not in progress', priority: prio }
     ]);
     if (!error) { input.value = ''; refreshTasks(); }
@@ -744,7 +744,7 @@
     const input = document.getElementById('new-report-input');
     if (!input.value.trim()) return;
 
-    const { error } = await _supabase.from('daily_reports').insert([
+    const { error } = await _sb.from('daily_reports').insert([
       { team_name: currentTeam, comment: input.value, date: new Date() }
     ]);
     if (!error) { input.value = ''; refreshReports(); }
@@ -752,7 +752,7 @@
 
   // --- 9. PAYOUTS ---
   async function refreshPayoutsFromSQL() {
-    const { data } = await _supabase.from('payouts').select('*').eq('team_name', currentTeam);
+    const { data } = await _sb.from('payouts').select('*').eq('team_name', currentTeam);
     globalPayouts = {};
     if (data) data.forEach(p => globalPayouts[p.geo.toUpperCase()] = p.value);
     renderGeoPayoutSettings();
@@ -761,7 +761,7 @@
   async function addGeoPayout() {
     const g = document.getElementById('payout-geo').value.toUpperCase();
     const v = document.getElementById('payout-value').value;
-    const { error } = await _supabase.from('payouts').upsert({ team_name: currentTeam, geo: g, value: v });
+    const { error } = await _sb.from('payouts').upsert({ team_name: currentTeam, geo: g, value: v });
     if (!error) refreshPayoutsFromSQL();
   }
 
