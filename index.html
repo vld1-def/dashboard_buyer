@@ -1521,6 +1521,161 @@ function toggleReportVisibility(id) {
     openReportRows = openReportRows.filter(x => x !== id);
   }
 }
+    // --- 1. КЕРУВАННЯ МЕНЮ ТА МОДАЛКАМИ ---
+function toggleTeamMenu() { document.getElementById('team-menu').classList.toggle('hidden'); }
+function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
+function toggleReportModal() { 
+  const m = document.getElementById('report-modal');
+  m.classList.toggle('hidden');
+  if (!m.classList.contains('hidden')) refreshReports();
+}
+function toggleTaskModal() { 
+  const m = document.getElementById('task-modal');
+  m.classList.toggle('hidden');
+  if (!m.classList.contains('hidden')) refreshTasks();
+}
+function toggleCalculator() { document.getElementById('calc-modal').classList.toggle('hidden'); }
+function toggleSettingsMenu() { document.getElementById('settings-menu').classList.toggle('hidden'); }
+
+// --- 2. ІСТОРІЯ СИНХРОНІЗАЦІЇ (SQL) ---
+async function toggleSyncModal() {
+  const m = document.getElementById('sync-modal');
+  m.classList.toggle('hidden');
+  if (m.classList.contains('hidden')) return;
+
+  const container = document.getElementById('sync-list');
+  container.innerHTML = '<p class="text-center opacity-50 animate-pulse text-[10px] uppercase font-black">Loading logs...</p>';
+
+  const { data, error } = await sb
+    .from('sync_logs')
+    .select('*')
+    .eq('team_name', currentTeam)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error || !data.length) {
+    container.innerHTML = '<p class="text-center opacity-30 italic text-xs">No logs found</p>';
+    return;
+  }
+
+  container.innerHTML = data.map(l => `
+    <div class="mb-4 border-b border-white/5 pb-4 last:border-0">
+      <div class="flex justify-between items-center mb-2">
+        <p class="text-[10px] font-black uppercase ${l.type.includes('Creative') ? 'text-purple-400' : 'text-orange-400'}">${l.type}</p>
+        <span class="text-[9px] opacity-30">${new Date(l.created_at).toLocaleString()}</span>
+      </div>
+      <div class="bg-white/5 p-3 rounded-xl border border-white/10">
+        <div class="flex justify-between items-start gap-4">
+          <span class="text-[11px] font-bold text-muted-dynamic flex-1 uppercase">${l.accounts}</span>
+          <span class="text-[10px] font-black text-white bg-white/10 px-2 py-0.5 rounded-lg whitespace-nowrap">${l.row_count} rows</span>
+        </div>
+        ${l.range_label ? `<p class="text-[9px] mt-2 opacity-40 italic">${l.range_label}</p>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+// --- 3. СКРІНШОТ КАРТКА (SUMMARY) ---
+function openScreenshotModal() {
+  const modal = document.getElementById('screenshot-modal');
+  const from = document.getElementById('filter-from').value;
+  const to = document.getElementById('filter-to').value;
+  
+  // Використовуємо вже завантажені дані з кешу
+  const act = filteredDataCache;
+  if (!act.length) { alert("No data to show"); return; }
+
+  const s = act.reduce((acc, i) => acc + i.spend, 0);
+  const r = act.reduce((acc, i) => acc + i.regs, 0);
+  const d = act.reduce((acc, i) => acc + i.deposits, 0);
+
+  const geoMap = {};
+  act.forEach(d => { 
+    const g = d.geo || "??";
+    if(!geoMap[g]) geoMap[g]={s:0, r:0, d:0}; 
+    geoMap[g].s += d.spend; geoMap[g].r += d.regs; geoMap[g].d += d.deposits; 
+  });
+  const top3 = Object.entries(geoMap).sort((a,b)=>b[1].s - a[1].s).slice(0,3);
+
+  document.getElementById('ss-date-range').innerText = `${from} — ${to}`;
+  document.getElementById('ss-total-spend').innerText = formatCurrency(s);
+  document.getElementById('ss-cpl').innerText = formatCurrency(r > 0 ? s/r : 0);
+  document.getElementById('ss-cpa').innerText = formatCurrency(d > 0 ? s/d : 0);
+  
+  const ssG = document.getElementById('ss-geo-list');
+  ssG.innerHTML = top3.map(([name, m]) => `
+    <div class="flex justify-between items-center bg-white/5 px-4 py-2.5 rounded-[1.2rem] border border-white/5">
+      <div class="flex items-center gap-2">
+        <img src="https://flagcdn.com/w40/${name.toLowerCase()}.png" class="w-5 h-3.5 object-cover rounded-sm" onerror="this.style.display='none'">
+        <span class="font-black text-white uppercase text-sm tracking-tighter">${name}</span>
+      </div>
+      <div class="flex flex-col items-end">
+        <span class="text-[11px] font-black text-blue-400 uppercase leading-none mb-1">${m.r} REG | ${m.d} DEP</span>
+        <span class="text-[10px] font-bold text-muted-dynamic">$${Math.round(m.s).toLocaleString()}</span>
+      </div>
+    </div>`).join('');
+  modal.classList.remove('hidden');
+}
+function closeScreenshotModal() { document.getElementById('screenshot-modal').classList.add('hidden'); }
+
+// --- 4. ФІЛЬТРИ ТА ГРАФІК ---
+function applyGeoFilter() {
+  const f = document.getElementById('geo-filter-from').value;
+  const t = document.getElementById('geo-filter-to').value;
+  const filtered = rawData.filter(d => (!f || d.date >= f) && (!t || d.date <= t));
+  renderGeoList(filtered);
+}
+
+function changeChartMode(mode) {
+  currentChartMode = mode;
+  // Оновлюємо вигляд кнопок
+  const btnDaily = document.getElementById('btn-daily');
+  const btnGeo = document.getElementById('btn-geo');
+  if (mode === 'daily') {
+    btnDaily.className = btnDaily.className.replace('text-muted-dynamic', 'bg-blue-600 text-white shadow-lg');
+    btnGeo.className = btnGeo.className.replace('bg-blue-600 text-white shadow-lg', 'text-muted-dynamic');
+  } else {
+    btnGeo.className = btnGeo.className.replace('text-muted-dynamic', 'bg-blue-600 text-white shadow-lg');
+    btnDaily.className = btnDaily.className.replace('bg-blue-600 text-white shadow-lg', 'text-muted-dynamic');
+  }
+  applyChartFilter();
+}
+
+function applyChartFilter() {
+  const f = document.getElementById('chart-from').value;
+  const t = document.getElementById('chart-to').value;
+  const filtered = rawData.filter(d => (!f || d.date >= f) && (!t || d.date <= t));
+  renderTrend(filtered);
+}
+
+// --- 5. КАЛЬКУЛЯТОР ТА ТАРГЕТ ---
+function runCalc() {
+  const s = parseFloat(document.getElementById('calc-spend').value) || 0;
+  const r = parseFloat(document.getElementById('calc-regs').value) || 0;
+  const d = parseFloat(document.getElementById('calc-deps').value) || 0;
+  document.getElementById('res-cpl').innerText = formatCurrency(r > 0 ? s/r : 0);
+  document.getElementById('res-cpa').innerText = formatCurrency(d > 0 ? s/d : 0);
+  document.getElementById('res-r2d').innerText = (r > 0 ? (d/r*100).toFixed(1) : '0') + '%';
+}
+
+function updateTarget() {
+  const val = document.getElementById('target-input').value;
+  if (val > 0) {
+    localStorage.setItem('monthly_spend_target', val);
+    updateMilestones(filteredDataCache);
+  }
+}
+
+// Закриття меню при кліку в іншому місці
+window.addEventListener('click', function(e) {
+  const menus = ['team-menu', 'month-menu', 'settings-menu'];
+  menus.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.contains(e.target) && !e.target.closest(`button[onclick*="${id.split('-')[0]}"]`)) {
+      el.classList.add('hidden');
+    }
+  });
+});
   </script>
 </body>
 </html>
