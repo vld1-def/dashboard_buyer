@@ -1680,6 +1680,67 @@ window.addEventListener('click', function(e) {
       });
     }
   };
+    // Функція пошуку та фільтрації креативів
+function searchCreative() {
+  const query = document.getElementById('creative-search').value.toLowerCase();
+  const geoFilter = document.getElementById('creative-geo-filter').value.toLowerCase();
+  renderCreativeSidebar(query, geoFilter);
+}
+
+// Функція відкриття деталей ГЕО (Воронки)
+function showGeoDetails(geo) {
+  const modal = document.getElementById('geo-details-modal');
+  const list = document.getElementById('geo-funnel-list');
+  const title = document.getElementById('geo-details-title');
+  
+  if (!modal || !list) return;
+
+  title.innerText = `${geo.toUpperCase()} Details`;
+  
+  // Фільтруємо дані по вибраному ГЕО з кешу (filteredDataCache) або rawData
+  const geoData = rawData.filter(d => (d.geo || "").toUpperCase() === geo.toUpperCase());
+  
+  // Групуємо по воронках (funnel)
+  const funnels = {};
+  geoData.forEach(d => {
+    const f = d.funnel || "Default";
+    if (!funnels[f]) funnels[f] = { s: 0, r: 0, d: 0 };
+    funnels[f].s += Number(d.spend) || 0;
+    funnels[f].r += Number(d.regs) || 0;
+    funnels[f].d += Number(d.deposits) || 0;
+  });
+
+  const payout = globalPayouts[geo.toUpperCase()] || 0;
+
+  list.innerHTML = Object.entries(funnels)
+    .sort((a, b) => b[1].s - a[1].s)
+    .map(([name, s]) => {
+      const r2d = s.r > 0 ? (s.d / s.r * 100).toFixed(1) : 0;
+      const profit = (s.d * payout) - s.s;
+      const cpl = s.r > 0 ? (s.s / s.r).toFixed(2) : 0;
+      const cpa = s.d > 0 ? (s.s / s.d).toFixed(2) : 0;
+
+      return `
+        <tr class="text-[11px] font-bold border-b border-white/5">
+          <td class="py-3 text-white">${name}</td>
+          <td class="py-3 text-center opacity-30">---</td>
+          <td class="py-3 text-right font-mono">$${s.s.toFixed(0)}</td>
+          <td class="py-3 text-center text-blue-400">${s.r}</td>
+          <td class="py-3 text-center text-green-500">${s.d}</td>
+          <td class="py-3 text-right text-pink-500">${r2d}%</td>
+          <td class="py-3 text-right text-purple-400">$${cpl}</td>
+          <td class="py-3 text-right text-yellow-500">$${cpa}</td>
+          <td class="py-3 text-right ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</td>
+        </tr>`;
+    }).join('');
+
+  modal.classList.remove('hidden');
+}
+
+// Функція закриття модалки ГЕО
+function closeGeoModal() {
+  document.getElementById('geo-details-modal').classList.add('hidden');
+}
   </script>
 </body>
 </html>
