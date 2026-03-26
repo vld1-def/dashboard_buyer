@@ -1076,12 +1076,33 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     }).join('');
   }
 
-  function renderTable(data) {
-    const b = document.getElementById('table-body'); if(!b) return; b.innerHTML = '';
-    data.forEach(row => {
-      b.innerHTML += `<tr class="hover:bg-blue-500/5 border-b border-gray-500/5 text-dynamic"><td class="p-5 font-mono text-xs opacity-50">${row.date}</td><td class="p-5 font-black uppercase text-sm">${row.acc}</td><td class="p-5 text-center"><span class="bg-blue-500/10 text-blue-500 border border-blue-500/20 px-3 py-1 rounded-xl font-black text-[10px] uppercase">${row.geo}</span></td><td class="p-5 text-sm opacity-80">${row.agent||'Direct'}</td><td class="p-5 text-sm font-bold">${row.funnel}</td><td class="p-5 font-black text-right text-sm">$${row.spend.toFixed(2)}</td><td class="p-5 text-center font-bold text-blue-400">${row.regs}</td><td class="p-5 font-black text-green-500 text-center text-lg">${row.deposits}</td></tr>`;
-    });
-  }
+  // --- 1. МАЛЮВАННЯ ГОЛОВНОЇ ТАБЛИЦІ (Live Data Feed) ---
+function renderTable(data) {
+  const b = document.getElementById('table-body'); 
+  if (!b) return; 
+  b.innerHTML = '';
+  
+  data.forEach(row => {
+    // Розрахунок R2D для рядка
+    const r2d = row.regs > 0 ? ((row.deposits / row.regs) * 100).toFixed(0) : 0;
+    const r2dClass = r2d >= 10 ? 'text-pink-500 font-black' : 'text-muted-dynamic opacity-50';
+
+    b.innerHTML += `
+      <tr class="hover:bg-blue-500/5 border-b border-gray-500/5 text-dynamic transition-colors">
+        <td class="p-5 font-mono text-xs opacity-50">${row.date}</td>
+        <td class="p-5 font-black uppercase text-sm">${row.account || row.acc}</td>
+        <td class="p-5 text-center">
+          <span class="bg-blue-500/10 text-blue-500 border border-blue-500/20 px-3 py-1 rounded-xl font-black text-[10px] uppercase">${row.geo}</span>
+        </td>
+        <td class="p-5 text-sm opacity-80">${row.agent || 'Direct'}</td>
+        <td class="p-5 text-sm font-bold">${row.funnel}</td>
+        <td class="p-5 font-black text-right text-sm">${formatCurrency(row.spend)}</td>
+        <td class="p-5 text-center font-bold text-blue-400">${row.regs}</td>
+        <td class="p-5 text-center font-black ${r2dClass}">${r2d}%</td>
+        <td class="p-5 font-black text-green-500 text-center text-lg">${row.deposits}</td>
+      </tr>`;
+  });
+}
 
   // --- 8. ТАСКИ ТА ЗВІТИ (SQL) ---
   async function refreshTasks() {
@@ -1403,6 +1424,19 @@ function closeTaskDetails() {
   document.getElementById('task-detail-modal').classList.add('hidden');
   currentEditingTaskId = null;
 }
+    // --- 2. ПАРСЕР СМАРТ-БЛОКІВ ДЛЯ ЗВІТІВ ---
+function parseReportBlocks(text) {
+  if (!text) return "";
+  const lines = text.split('\n');
+  return lines.map(line => {
+    let l = line.trim();
+    if (l.startsWith('+')) return `<div class="report-block rb-success">${l.substring(1).trim()}</div>`;
+    if (l.startsWith('-')) return `<div class="report-block rb-danger">${l.substring(1).trim()}</div>`;
+    if (l.startsWith('!')) return `<div class="report-block rb-warning">${l.substring(1).trim()}</div>`;
+    if (l.startsWith('>')) return `<div class="report-block rb-plan">${l.substring(1).trim()}</div>`;
+    return l ? `<div class="rb-normal">${l}</div>` : `<div class="h-2"></div>`;
+  }).join('');
+}
 
 // --- 5. ФІЛЬТР ГЕО (Випадаючий список) ---
 function populateGeoFilter(data) {
@@ -1414,6 +1448,79 @@ function populateGeoFilter(data) {
     o.value = geo; o.innerText = geo.toUpperCase();
     s.appendChild(o);
   });
+}
+    // --- 3. ЗБЕРЕЖЕННЯ РЕДАГОВАНОГО ТАСКА (SQL ВЕРСІЯ) ---
+async function saveDetailedTask() {
+  if (!currentEditingTaskId) return;
+
+  const btn = event.target;
+  const originalText = btn.innerText;
+  const newText = document.getElementById('detail-text-input').value;
+  const newPrio = document.getElementById('detail-priority-select').value;
+
+  if (!newText.trim()) return alert("Task text cannot be empty");
+
+  btn.innerText = "Saving...";
+  btn.disabled = true;
+
+  // Запит до Supabase замість google.script.run
+  const { error } = await sb
+    .from('tasks')
+    .update({ text: newText, priority: newPrio })
+    .eq('id', currentEditingTaskId);
+
+  btn.innerText = originalText;
+  btn.disabled = false;
+
+  if (error) {
+    alert("Error updating task: " + error.message);
+  } else {
+    closeTaskDetails();
+    refreshTasks();
+  }
+}
+    // --- 4. СПИСОК ВИПЛАТ У НАЛАШТУВАННЯХ ---
+function renderGeoPayoutSettings() {
+  const container = document.getElementById('geo-payouts-list');
+  if (!container) return;
+  
+  const entries = Object.entries(globalPayouts);
+  if (entries.length === 0) {
+    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center">No payouts set in SQL</p>';
+    return;
+  }
+
+  container.innerHTML = entries.map(([geo, val]) => `
+    <div class="flex justify-between items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1">
+      <span class="font-black text-blue-400 uppercase">${geo}</span>
+      <span class="font-bold text-white">$${val}</span>
+      <button onclick="deletePayoutFromSQL('${geo}')" class="text-red-500 hover:text-red-400 px-1 transition-colors">✕</button>
+    </div>
+  `).join('');
+}
+
+// Видалення виплати з SQL
+async function deletePayoutFromSQL(geo) {
+  if (!confirm(`Delete payout for ${geo}?`)) return;
+  const { error } = await sb.from('payouts').delete().eq('team_name', currentTeam).eq('geo', geo);
+  if (!error) refreshPayoutsFromSQL();
+}
+
+// --- 5. ВІДКРИТТЯ/ЗАКРИТТЯ ЗВІТІВ ---
+function toggleReportVisibility(id) {
+  const el = document.getElementById(`report-content-${id}`);
+  const arrow = document.getElementById(`report-arrow-${id}`);
+  if (!el) return;
+
+  if (el.classList.contains('hidden')) {
+    el.classList.remove('hidden');
+    if (arrow) arrow.style.transform = 'rotate(0deg)';
+    if (!openReportRows.includes(id)) openReportRows.push(id);
+  } else {
+    el.classList.add('hidden');
+    if (arrow) arrow.style.transform = 'rotate(-90deg)';
+    openReportRows = openReportRows.filter(x => x !== id);
+  }
 }
   </script>
 </body>
