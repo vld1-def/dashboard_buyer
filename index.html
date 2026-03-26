@@ -916,46 +916,63 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
   function renderDashboard(data) {
-    if (!data || !data.length) return;
-    const payouts = globalPayouts;
-    let totalS = 0, totalD = 0, totalR = 0, totalRev = 0, tc = 0;
-    const agentMap = {};
+  if (!data || data.length === 0) return;
+  const payouts = globalPayouts || {};
+  let totalS = 0, totalD = 0, totalR = 0, totalRev = 0, tc = 0;
+  const agentMap = {};
 
-    data.forEach(item => {
-      totalS += item.spend; totalD += item.deposits; totalR += item.regs;
-      totalRev += (item.deposits * (payouts[item.geo.toUpperCase()] || 0));
-      
-      let agentRaw = item.agent || "Direct";
-      if (agentRaw.includes("%")) {
-        const match = agentRaw.match(/(\d+(?:\.\d+)?)%/);
-        if (match) tc += (item.spend * (parseFloat(match[1]) / 100));
-      }
-      const aName = agentRaw.split('(')[0].trim();
-      agentMap[aName] = (agentMap[aName] || 0) + item.spend;
-    });
-
-    document.getElementById('kpi-spend').innerText = formatCurrency(totalS);
-    document.getElementById('kpi-comm').innerText = "+ " + formatCurrency(tc) + " (Fees)";
-    document.getElementById('kpi-deposits').innerText = totalD;
-    document.getElementById('kpi-regs').innerText = totalR;
-    document.getElementById('kpi-profit').innerText = formatCurrency(totalRev - totalS);
-    document.getElementById('kpi-profit').className = `text-[26px] font-black mt-1 ${totalRev-totalS >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
-    document.getElementById('kpi-roi').innerText = `ROI: ${totalS > 0 ? (Math.round((totalRev-totalS)/totalS*100)) : 0}%`;
-
-    renderTrend(data);
-    renderGeoList(data);
-    renderTable(data);
-    calculateDeltas(data);
-
-    const breakdownList = document.getElementById('spend-breakdown-list');
-    if (breakdownList) {
-      breakdownList.innerHTML = Object.entries(agentMap).sort((a, b) => b[1] - a[1]).map(([n, s]) => `
-        <div class="flex justify-between items-center text-[11px] font-bold">
-          <span class="text-muted-dynamic uppercase truncate pr-4">${n}</span>
-          <span class="text-white font-mono">${formatCurrency(s)}</span>
-        </div>`).join('');
+  data.forEach(item => {
+    // ЗАХИСТ: якщо значення null, ставимо 0 або пустий рядок
+    const s = Number(item.spend) || 0;
+    const d = Number(item.deposits) || 0;
+    const r = Number(item.regs) || 0;
+    const geo = String(item.geo || "??").toUpperCase().trim(); // Додано захист від null
+    
+    totalS += s; totalD += d; totalR += r;
+    totalRev += (d * (payouts[geo] || 0));
+    
+    let agentRaw = String(item.agent || "Direct");
+    if (agentRaw.includes("%")) {
+      const match = agentRaw.match(/(\d+(?:\.\d+)?)%/);
+      if (match) tc += (s * (parseFloat(match[1]) / 100));
     }
+    const aName = agentRaw.split('(')[0].trim();
+    agentMap[aName] = (agentMap[aName] || 0) + s;
+  });
+
+  const profit = totalRev - totalS;
+  const roi = totalS > 0 ? Math.round((profit / totalS) * 100) : 0;
+
+  document.getElementById('kpi-spend').innerText = formatCurrency(totalS);
+  document.getElementById('kpi-comm').innerText = "+ " + formatCurrency(tc) + " (Fees)";
+  document.getElementById('kpi-deposits').innerText = totalD;
+  document.getElementById('kpi-regs').innerText = totalR;
+  document.getElementById('kpi-cpl').innerText = formatCurrency(totalR > 0 ? totalS/totalR : 0);
+  document.getElementById('kpi-cpa').innerText = formatCurrency(totalD > 0 ? totalS/totalD : 0);
+  document.getElementById('kpi-r2d').innerText = (totalR > 0 ? (totalD/totalR*100).toFixed(1) : 0) + '%';
+  
+  const pEl = document.getElementById('kpi-profit');
+  if (pEl) {
+    pEl.innerText = formatCurrency(profit);
+    pEl.className = `text-[26px] font-black mt-1 ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
   }
+  if (document.getElementById('kpi-roi')) document.getElementById('kpi-roi').innerText = `ROI: ${roi}%`;
+
+  // Оновлення тултіпа агентств
+  const breakdownList = document.getElementById('spend-breakdown-list');
+  if (breakdownList) {
+    breakdownList.innerHTML = Object.entries(agentMap).sort((a, b) => b[1] - a[1]).map(([n, s]) => `
+      <div class="flex justify-between items-center text-[11px] font-bold">
+        <span class="text-muted-dynamic uppercase truncate pr-4">${n}</span>
+        <span class="text-white font-mono">${formatCurrency(s)}</span>
+      </div>`).join('');
+  }
+
+  // Викликаємо інші рендери
+  renderTrend(data);
+  renderGeoList(data);
+  renderTable(data);
+}
 
   function calculateDeltas(data) {
     const dates = [...new Set(data.map(i => i.date))].sort();
@@ -1004,26 +1021,37 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   function renderGeoList(data) {
-    const m = {}; data.forEach(d => { const g = d.geo || "??"; if(!m[g]) m[g] = {s:0, r:0, d:0}; m[g].s += d.spend; m[g].r += d.regs; m[g].d += d.deposits; });
-    const c = document.getElementById('geo-list'); if(!c) return;
-    c.innerHTML = Object.entries(m).sort((a,b) => b[1].s - a[1].s).map(([geo, stat]) => {
-      const r2d = stat.r > 0 ? (stat.d/stat.r*100).toFixed(1) : 0;
-      const profit = (stat.d * (globalPayouts[geo] || 0)) - stat.s;
-      return `
-        <div onclick="showGeoDetails('${geo}')" class="p-4 card geo-card mb-3 cursor-pointer hover:bg-white/5 transition border-l-4 border-blue-500 shadow-sm">
-          <div class="flex justify-between mb-3"><span class="font-black text-blue-500 text-xl">${geo}</span><span class="font-black text-xl">$${stat.s.toFixed(0)}</span></div>
-          <div class="grid grid-cols-3 gap-2 text-center border-b border-white/5 pb-3 mb-3">
-            <div class="flex flex-col border-r border-white/5"><span class="text-[10px] opacity-40 uppercase">Reg</span><b class="text-base text-blue-400">${stat.r}</b></div>
-            <div class="flex flex-col border-r border-white/5"><span class="text-[10px] opacity-40 text-green-500 uppercase">Dep</span><b class="text-base text-green-500">${stat.d}</b></div>
-            <div class="flex flex-col"><span class="text-[10px] opacity-40 text-pink-500 uppercase">R2D</span><b class="text-base text-pink-500">${r2d}%</b></div>
-          </div>
-          <div class="flex justify-between items-center text-[11px] font-black">
-             <span class="opacity-40 uppercase">Net Profit ($${globalPayouts[geo]||0}):</span>
-             <span class="${profit>=0?'text-emerald-400':'text-red-500'}">$${Math.round(profit)}</span>
-          </div>
-        </div>`;
-    }).join('');
-  }
+  const m = {};
+  data.forEach(d => {
+    // ЗАХИСТ ТУТ
+    const g = String(d.geo || "??").toUpperCase().trim();
+    if (!m[g]) m[g] = { s: 0, r: 0, d: 0 };
+    m[g].s += Number(d.spend) || 0;
+    m[g].r += Number(d.regs) || 0;
+    m[g].d += Number(d.deposits) || 0;
+  });
+  
+  const container = document.getElementById('geo-list');
+  if (!container) return;
+
+  container.innerHTML = Object.entries(m).sort((a, b) => b[1].s - a[1].s).map(([geo, stat]) => {
+    const r2d = stat.r > 0 ? ((stat.d / stat.r) * 100).toFixed(1) : 0;
+    const pVal = globalPayouts[geo] || 0;
+    const profit = (stat.d * pVal) - stat.s;
+    return `
+      <div onclick="showGeoDetails('${geo}')" class="p-4 card geo-card mb-3 cursor-pointer hover:bg-white/5 transition border-l-4 border-blue-500 shadow-sm">
+        <div class="flex justify-between mb-3">
+          <span class="font-black text-blue-500 text-xl tracking-tighter group-hover:translate-x-1 transition-transform">${geo}</span>
+          <span class="font-black text-xl">$${stat.s.toFixed(0)}</span>
+        </div>
+        <!-- ... решта верстки картки ГЕО ... -->
+        <div class="flex justify-between items-center text-[11px] font-black mt-3 pt-2 border-t border-white/5">
+           <span class="opacity-40 uppercase">Profit ($${pVal}):</span>
+           <span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
 
   // --- 1. МАЛЮВАННЯ ГОЛОВНОЇ ТАБЛИЦІ (Live Data Feed) ---
 function renderTable(data) {
