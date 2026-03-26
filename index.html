@@ -861,26 +861,50 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   // --- 5. КЕРУВАННЯ КОМАНДАМИ (SQL) ---
   async function refreshTeamsList() {
-    const { data } = await sb.from('daily_stats').select('team_name');
-    let teams = ["Makeberry"];
-    if (data && data.length > 0) {
-      const uniqueTeams = [...new Set(data.map(item => item.team_name))];
-      if (uniqueTeams.length > 0) teams = uniqueTeams;
+    try {
+      // Отримуємо унікальні назви команд із таблиці daily_stats
+      const { data, error } = await sb.from('daily_stats').select('team_name');
+      
+      let teams = ["Makeberry"]; 
+      if (data && data.length > 0) {
+        const uniqueTeams = [...new Set(data.map(item => item.team_name))];
+        if (uniqueTeams.length > 0) teams = uniqueTeams;
+      }
+
+      if (!teams.includes(currentTeam)) {
+        currentTeam = teams[0];
+        localStorage.setItem('selected_team', currentTeam);
+      }
+      
+      // БЕЗПЕЧНЕ заповнення списку
+      const list = document.getElementById('team-list');
+      if (list) {
+        list.innerHTML = teams.map(t => {
+          const isS = (t === currentTeam);
+          return `<button onclick="switchTeam('${t}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 ${isS ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-dynamic'}">
+            ${isS ? '● ' : ''}${t}
+          </button>`;
+        }).join('');
+      }
+      
+      // Оновлення ярлика команди
+      const label = document.getElementById('active-team-label');
+      if (label) label.innerText = "TEAM: " + currentTeam;
+
+      // Оновлення головного заголовка (Стата Джуна -> Назва Тіми)
+      const mainTitle = document.querySelector('h1.text-3xl');
+      if (mainTitle) mainTitle.innerHTML = currentTeam + ' <span class="text-blue-500 text-xl font-normal">Dashboard</span>';
+
+      // Завантажуємо основні дані
+      loadData(); 
+      refreshTasks(); 
+      refreshReports();
+
+    } catch (err) {
+      console.error("Critical error in refreshTeamsList:", err);
+      // Якщо база пуста або помилка, все одно пробуємо запустити дашборд
+      loadData();
     }
-    if (!teams.includes(currentTeam)) currentTeam = teams[0];
-    
-    const list = document.getElementById('team-list');
-    if (list) {
-      list.innerHTML = teams.map(t => `
-        <button onclick="switchTeam('${t}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 ${t === currentTeam ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-dynamic'}">
-          ${t === currentTeam ? '● ' : ''}${t}
-        </button>`).join('');
-    }
-    
-    document.getElementById('active-team-label').innerText = "TEAM: " + currentTeam;
-    document.getElementById('main-title').innerHTML = currentTeam + ' <span class="text-blue-500 text-xl font-normal">Dashboard</span>';
-    
-    loadData(); refreshTasks(); refreshReports();
   }
 
   function switchTeam(team) {
