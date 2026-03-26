@@ -113,6 +113,21 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
+        <div class="relative">
+  <button onclick="toggleTeamMenu()" class="p-2 px-4 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition flex items-center gap-2 border border-emerald-500/30">
+    <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+    <!-- ПЕРЕВІРТЕ ЦЕЙ ID -->
+    <span id="active-team-label" class="text-[10px] font-black uppercase tracking-widest">TEAM: LOADING</span>
+  </button>
+  
+  <div id="team-menu" class="hidden absolute left-0 mt-2 w-56 card rounded-2xl shadow-2xl z-[110] p-2 border border-white/10 backdrop-blur-xl">
+    <p class="text-[9px] font-black uppercase opacity-40 p-2 tracking-[0.2em]">Switch Workplace</p>
+    <div id="team-list" class="space-y-1 max-h-48 overflow-y-auto custom-scrollbar"></div>
+    <div class="mt-2 pt-2 border-t border-white/10">
+      <button onclick="promptCreateTeam()" class="w-full text-left px-3 py-2 rounded-xl text-[9px] font-black text-emerald-400 hover:bg-emerald-500/10 transition uppercase">+ New Team Profile</button>
+    </div>
+  </div>
+</div>
         <button onclick="openScreenshotModal()" class="p-2 card rounded-xl shadow-md text-green-500 hover:bg-gray-500/10 transition" title="Share Card"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></button>
         <button onclick="toggleSyncModal()" class="p-2 card rounded-xl shadow-md text-orange-400 hover:bg-gray-500/10 transition" title="Sync Logs"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>
         <button onclick="toggleReportModal()" class="p-2 card rounded-xl shadow-md text-blue-400 hover:bg-gray-500/10 transition" title="Reports"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></button>
@@ -538,28 +553,52 @@
 
   // --- 5. РОБОТА З КОМАНДАМИ (SQL) ---
   async function refreshTeamsList() {
-    // В SQL ми просто отримуємо унікальні імена команд з основної таблиці
-    const { data, error } = await sb.from('daily_stats').select('team_name');
-    let teams = ["Makeberry"];
-    if (data) {
-      const uniqueTeams = [...new Set(data.map(item => item.team_name))];
-      if (uniqueTeams.length > 0) teams = uniqueTeams;
-    }
+    try {
+      // Отримуємо унікальні імена команд з бази Supabase
+      const { data, error } = await sb.from('daily_stats').select('team_name');
+      
+      let teams = ["Makeberry"]; // Дефолт
+      if (data && data.length > 0) {
+        const uniqueTeams = [...new Set(data.map(item => item.team_name))];
+        if (uniqueTeams.length > 0) teams = uniqueTeams;
+      }
 
-    if (!teams.includes(currentTeam)) currentTeam = teams[0];
-    
-    const list = document.getElementById('team-list');
-    if (list) {
-      list.innerHTML = teams.map(t => `
-        <button onclick="switchTeam('${t}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 ${t === currentTeam ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-dynamic'}">
-          ${t === currentTeam ? '● ' : ''}${t}
-        </button>`).join('');
+      if (!teams.includes(currentTeam)) {
+        currentTeam = teams[0];
+        localStorage.setItem('selected_team', currentTeam);
+      }
+      
+      // 1. Оновлюємо список кнопок у меню
+      const list = document.getElementById('team-list');
+      if (list) {
+        list.innerHTML = teams.map(t => `
+          <button onclick="switchTeam('${t}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 ${t === currentTeam ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-dynamic'}">
+            ${t === currentTeam ? '● ' : ''}${t}
+          </button>`).join('');
+      }
+      
+      // 2. Оновлюємо текст на кнопці в хедері (Додано ЗАХИСТ)
+      const label = document.getElementById('active-team-label');
+      if (label) {
+        label.innerText = "TEAM: " + currentTeam;
+      }
+      
+      // 3. Оновлюємо головний заголовок сторінки (Додано ЗАХИСТ)
+      const title = document.getElementById('main-title');
+      if (title) {
+        title.innerHTML = currentTeam + ' <span class="text-blue-500 text-xl font-normal">Dashboard</span>';
+      }
+      
+      // Запускаємо завантаження всього іншого
+      loadData(); 
+      refreshTasks(); 
+      refreshReports();
+      
+    } catch (err) {
+      console.error("Помилка ініціалізації команд:", err);
+      // Навіть якщо сталася помилка, пробуємо вантажити дані
+      loadData();
     }
-    
-    document.getElementById('active-team-label').innerText = "TEAM: " + currentTeam;
-    document.getElementById('main-title').innerHTML = currentTeam + ' <span class="text-blue-500 text-xl font-normal">Dashboard</span>';
-    
-    loadData(); refreshTasks(); refreshReports();
   }
 
   function switchTeam(team) {
