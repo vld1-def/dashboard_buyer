@@ -1177,6 +1177,121 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
   function loadSettings() { const t = localStorage.getItem('monthly_spend_target'); if(t) document.getElementById('target-input').value = t; updateVisibility(true); }
   function updateVisibility(i) { /* Тут твій код видимості */ }
+    // --- 1. УТИЛІТИ ТА СТАТУСИ ---
+function updateSyncStatus(status) {
+  const badge = document.getElementById('last-sync-badge');
+  if (!badge) return;
+  if (status === 'loading') badge.innerHTML = `Sync: <span class="animate-pulse text-orange-400 text-[9px]">🔄 SQL...</span>`;
+  else if (status === 'done') badge.innerHTML = `Sync: <span class="text-green-500 text-[9px]">✅ ONLINE</span>`;
+  else badge.innerHTML = `Sync: <span class="text-red-500 text-[9px]">❌ OFFLINE</span>`;
+}
+
+// --- 2. РЕНДЕР ТАСКІВ (Mission Center) ---
+function renderTasks(filter) {
+  const container = document.getElementById('task-list-container'); 
+  if (!container) return;
+  container.innerHTML = ''; 
+
+  document.querySelectorAll('.task-tab').forEach(t => t.classList.remove('active'));
+  const activeTab = document.getElementById('tab-' + filter.toLowerCase().replace(/\s+/g, '-'));
+  if (activeTab) activeTab.classList.add('active');
+
+  const filtered = filter === 'All' ? taskData : taskData.filter(t => t.status === filter);
+  
+  if (!filtered.length) { 
+    container.innerHTML = `<div class="text-center py-20 opacity-20 italic">No tasks in "${filter}"</div>`; 
+    return; 
+  }
+
+  const priorityOrder = { 'High': 1, 'Medium': 2, 'Low': 3 };
+  filtered.sort((a,b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.id - a.id).forEach(t => {
+    container.innerHTML += `
+      <div class="card p-4 rounded-2xl prio-${t.priority.toLowerCase()} flex items-center justify-between group hover:bg-white/[0.03] transition-all cursor-pointer" onclick="openTaskDetails('${t.id}')">
+        <div class="flex flex-col flex-1 min-w-0 pr-4">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-[9px] font-black opacity-30">${normalizeDate(t.created_at)}</span>
+            ${t.tag === 'TeamLead' ? '<span class="bg-red-500 text-[8px] px-1.5 rounded text-white font-black animate-pulse">TL</span>' : ''}
+          </div>
+          <p class="text-sm task-text-style truncate opacity-90">${t.text}</p>
+        </div>
+        <div class="flex items-center gap-3 shrink-0" onclick="event.stopPropagation()">
+          <div class="flex gap-1.5 border-r border-white/5 pr-3">
+            <button onclick="changeStatus('${t.id}', 'Not in progress')" class="w-2.5 h-2.5 rounded-full bg-slate-500 hover:scale-150 transition-transform"></button>
+            <button onclick="changeStatus('${t.id}', 'In progress')" class="w-2.5 h-2.5 rounded-full bg-yellow-500 hover:scale-150 transition-transform"></button>
+            <button onclick="changeStatus('${t.id}', 'Completed')" class="w-2.5 h-2.5 rounded-full bg-green-500 hover:scale-150 transition-transform"></button>
+          </div>
+          <button onclick="deleteTaskRow('${t.id}')" class="text-muted-dynamic hover:text-red-500 transition opacity-0 group-hover:opacity-100 p-1">✕</button>
+        </div>
+      </div>`;
+  });
+}
+
+// Функція видалення таска (SQL)
+async function deleteTaskRow(id) {
+  if (!confirm('Видалити таск?')) return;
+  const { error } = await sb.from('tasks').delete().eq('id', id);
+  if (!error) refreshTasks();
+}
+
+// --- 3. РЕНДЕР ЗВІТІВ (Daily Reports) ---
+function renderReports() {
+  const container = document.getElementById('report-list-container');
+  if (!container) return;
+  
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  if (!filtered.length) {
+    container.innerHTML = `<div class="text-center py-20 opacity-20 italic">No reports for this period</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.sort((a,b) => new Date(b.date) - new Date(a.date)).map(r => `
+    <div class="p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
+      <div onclick="toggleReportVisibility('${r.id}')" class="flex justify-between items-center cursor-pointer hover:bg-white/5 p-1 rounded-xl transition text-muted-dynamic">
+        <div class="flex items-center gap-2">
+          <span id="report-arrow-${r.id}" class="text-[8px] text-blue-500 transition-transform duration-200" style="transform: rotate(-90deg)">▼</span>
+          <span class="text-[10px] font-black uppercase text-blue-500 tracking-widest">${normalizeDate(r.date)}</span>
+          <span id="report-status-${r.id}" class="status-icon flex items-center ml-2"></span>
+        </div>
+        <button onclick="event.stopPropagation(); deleteReport('${r.id}')" class="text-muted-dynamic hover:text-red-500 transition">✕</button>
+      </div>
+      <div id="report-content-${r.id}" class="hidden bg-transparent outline-none text-sm text-dynamic w-full min-h-[20px] px-2 pb-2 rounded-xl transition normal-case-text" 
+           contenteditable="true" data-state="view" onfocus="startEditingReport('${r.id}', this)" onblur="finishEditingReport('${r.id}', this)">
+        ${parseReportBlocks(r.comment)}
+      </div>
+    </div>`).join('');
+}
+
+// Видалення звіту (SQL)
+async function deleteReport(id) {
+  if (!confirm('Видалити звіт?')) return;
+  const { error } = await sb.from('daily_reports').delete().eq('id', id);
+  if (!error) refreshReports();
+}
+
+// --- 4. РЕДАГУВАННЯ ЗВІТІВ (SQL) ---
+async function startEditingReport(id, el) {
+  if (el.getAttribute('data-state') === 'edit') return;
+  isEditingReport = true;
+  el.setAttribute('data-state', 'edit');
+  const r = reportData.find(i => i.id === id);
+  if (r) el.innerText = r.comment; 
+}
+
+async function finishEditingReport(id, el) {
+  if (el.getAttribute('data-state') !== 'edit') return;
+  const newText = el.innerText.trim();
+  const r = reportData.find(i => i.id === id);
+
+  if (r && r.comment !== newText) {
+    r.comment = newText;
+    const { error } = await sb.from('daily_reports').update({ comment: newText }).eq('id', id);
+    if (error) console.error("Update error:", error);
+  }
+
+  el.innerHTML = parseReportBlocks(newText);
+  el.setAttribute('data-state', 'view');
+  isEditingReport = false;
+}
   </script>
 </body>
 </html>
