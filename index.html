@@ -937,7 +937,127 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   renderGeoList(data);
   renderTable(data);
 }
+function renderTrend(data) {
+  console.log("📊 Оновлення графіка: новий дизайн активовано");
+  const ctx = document.getElementById('chart-trend');
+  if (!ctx || !data.length) return;
+  
+  if (window.chart1) {
+    window.chart1.destroy();
+  }
 
+  // Сортування дат
+  const sd = [...new Set(data.map(d => d.date))].sort();
+  const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
+  
+  // Формат лейблів: "1 (НД)"
+  const labels = sd.map(d => {
+    const dt = new Date(d);
+    return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
+  });
+
+  // Агрегація даних
+  const m = {};
+  sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
+  data.forEach(d => {
+    if (m[d.date]) {
+      m[d.date].s += Number(d.spend) || 0;
+      m[d.date].r += Number(d.regs) || 0;
+      m[d.date].d += Number(d.deposits) || 0;
+    }
+  });
+
+  window.chart1 = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Spend ($)',
+          data: sd.map(d => m[d].s),
+          borderColor: '#3b82f6', // Синя лінія
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          borderWidth: 4, // Товста лінія
+          pointBackgroundColor: '#ffffff',
+          pointBorderColor: '#3b82f6',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          tension: 0.4,
+          fill: true,
+          datalabels: {
+            display: true,
+            align: 'top',
+            offset: 8,
+            color: '#ffffff',
+            font: { weight: '900', size: 12 },
+            formatter: (val) => Math.round(val) || ''
+          }
+        },
+        {
+          label: 'CPL ($)',
+          data: sd.map(d => m[d].r > 0 ? m[d].s / m[d].r : 0),
+          borderColor: '#a855f7', // Фіолетовий пунктир
+          borderDash: [6, 4],
+          borderWidth: 2,
+          pointRadius: 0, // Без точок для чистоти
+          fill: false,
+          tension: 0.4,
+          datalabels: { display: false }
+        },
+        {
+          label: 'CPA ($)',
+          data: sd.map(d => m[d].d > 0 ? m[d].s / m[d].d : 0),
+          borderColor: '#eab308', // Жовтий пунктир
+          borderDash: [3, 3],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.4,
+          datalabels: { display: false }
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: '#94a3b8',
+            padding: 20,
+            usePointStyle: true,
+            pointStyle: 'circle',
+            font: { weight: 'bold', size: 12 }
+          }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: '#1e293b',
+          titleFont: { size: 14 }
+        },
+        datalabels: {
+            anchor: 'end',
+            align: 'top'
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#64748b', font: { size: 10, weight: 'bold' } },
+          grid: { display: false }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: '#64748b', font: { size: 10 } },
+          grid: { color: 'rgba(255, 255, 255, 0.05)' }
+        }
+      }
+    }
+  });
+}
   function calculateDeltas(data) {
     const dates = [...new Set(data.map(i => i.date))].sort();
     if (dates.length < 2) return;
@@ -961,121 +1081,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     };
     up('cpl', cCPL, pCPL, true); up('cpa', cCPA, pCPA, true); up('r2d', cR2D, pR2D, false);
   }
-
-  function renderTrend(data) {
-  const ctx = document.getElementById('chart-trend').getContext('2d');
-  if (window.chart1) window.chart1.destroy();
-
-  // Отримуємо унікальні дати та сортуємо їх
-  const sd = [...new Set(data.map(d => d.date))].sort();
-  
-  // Дні тижня українською
-  const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
-
-  // Формуємо лейбли: "1 (НД)"
-  const labels = sd.map(d => {
-    const dateObj = new Date(d);
-    return `${dateObj.getDate()} (${daysUA[dateObj.getDay()]})`;
-  });
-
-  // Агрегуємо дані
-  const m = {};
-  sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
-  data.forEach(d => {
-    if (m[d.date]) {
-      m[d.date].s += Number(d.spend) || 0;
-      m[d.date].r += Number(d.regs) || 0;
-      m[d.date].d += Number(d.deposits) || 0;
-    }
-  });
-
-  // Налаштування ліній як на фото
-  window.chart1 = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Spend ($)',
-          data: sd.map(d => m[d].s),
-          borderColor: '#3b82f6', // Синій
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderWidth: 4,
-          pointBackgroundColor: '#fff',
-          pointBorderColor: '#3b82f6',
-          pointBorderWidth: 2,
-          pointRadius: 6,
-          pointHoverRadius: 8,
-          tension: 0.4,
-          fill: true,
-          datalabels: {
-            display: true,
-            align: 'top',
-            color: '#fff',
-            font: { weight: '900', size: 14 },
-            formatter: (val) => Math.round(val)
-          }
-        },
-        {
-          label: 'CPL ($)',
-          data: sd.map(d => m[d].r > 0 ? m[d].s / m[d].r : 0),
-          borderColor: '#a855f7', // Фіолетовий
-          borderDash: [5, 5], // Пунктир
-          borderWidth: 2,
-          pointRadius: 4,
-          fill: false,
-          tension: 0.4,
-          datalabels: { display: false }
-        },
-        {
-          label: 'CPA ($)',
-          data: sd.map(d => m[d].d > 0 ? m[d].s / m[d].d : 0),
-          borderColor: '#eab308', // Жовтий
-          borderDash: [2, 2], // Дрібний пунктир
-          borderWidth: 2,
-          pointRadius: 4,
-          fill: false,
-          tension: 0.4,
-          datalabels: { display: false }
-        }
-      ]
-    },
-    options: {
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          display: true,
-          position: 'top',
-          labels: {
-            color: '#94a3b8',
-            usePointStyle: true,
-            pointStyle: 'circle',
-            font: { weight: 'bold', size: 12 }
-          }
-        },
-        tooltip: {
-          enabled: true,
-          backgroundColor: '#0f172a',
-          titleFont: { size: 14, weight: 'bold' },
-          padding: 12,
-          borderColor: 'rgba(255,255,255,0.1)',
-          borderWidth: 1
-        }
-      },
-      scales: {
-        x: {
-          ticks: { color: '#64748b', font: { size: 11, weight: 'bold' } },
-          grid: { display: false }
-        },
-        y: {
-          ticks: { color: '#64748b' },
-          grid: { color: 'rgba(255, 255, 255, 0.05)' }
-        }
-      }
-    }
-  });
-}
 
   function renderGeoList(data) {
   const m = {};
@@ -1371,36 +1376,6 @@ function updateMilestones(data) {
     const left = target - monthlySpend;
     info.innerText = left > 0 ? "Target left: " + formatCurrency(left) : "GOAL REACHED! 🚀";
   }
-}
-
-// --- 2. РЕНДЕР ГОЛОВНОГО ГРАФІКА (Performance Trend) ---
-function renderTrend(data) {
-  const ctx = document.getElementById('chart-trend');
-  if (!ctx || !data.length) return;
-  if (window.chart1) window.chart1.destroy();
-  
-  const sd = [...new Set(data.map(d => d.date))].sort();
-  const days = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
-  
-  const stats = sd.map(date => {
-    const dayData = data.filter(x => x.date === date);
-    return Math.round(dayData.reduce((a, b) => a + b.spend, 0));
-  });
-
-  window.chart1 = new Chart(ctx.getContext('2d'), {
-    type: 'line',
-    data: {
-      labels: sd.map(d => {
-        const dt = new Date(d);
-        return `${dt.getDate()}.${dt.getMonth()+1} (${days[dt.getDay()]})`;
-      }),
-      datasets: [{
-        label: 'Spend', data: stats, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.4, borderWidth: 4, pointRadius: 6,
-        datalabels: { display: true, align: 'top', offset: 10, color: '#fff', font: {weight:'900', size:10}, backgroundColor: '#3b82f6', borderRadius: 4, padding: 3 }
-      }]
-    },
-    options: { interaction: { mode: 'index', intersect: false }, maintainAspectRatio: false, plugins: { legend: false }, scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,0.05)' } } } }
-  });
 }
 
 // --- 3. ГЕО PERFORMANCE (Сайдбар) ---
