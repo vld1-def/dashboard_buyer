@@ -495,916 +495,212 @@
   const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
   const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    
-    let creativeFiles = {};
-    const iconLoading = `<svg class="w-4 h-4 animate-spin-status text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+  // --- 2. ГЛОБАЛЬНІ ЗМІННІ ---
+  let rawData = [], filteredDataCache = [], taskData = [], reportData = [], creativesRawData = [];
+  let creativeFiles = {}, globalPayouts = {};
+  
+  let currentTeam = localStorage.getItem('selected_team') || "Makeberry";
+  let currentMonthFilter = localStorage.getItem('selected_dashboard_month') || "";
+  let currentTaskFilter = 'Not in progress', currentChartMode = 'daily', currentCreativeID = '';
+  
+  let activeCrAcc = null, activeCrGeo = null, isEditingReport = false;
+  let openReportRows = [], selectedCIDs = [], currentEditingTaskId = null;
+  let sortState = { col: 'date', dir: 'desc' };
+
+  const iconLoading = `<svg class="w-4 h-4 animate-spin-status text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
   const iconSuccess = `<svg class="w-4 h-4 text-green-500 animate-pop-check" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
-  let rawData = []; 
-  let taskData = []; 
-  let reportData = []; 
-  let creativesRawData = []; 
-  let openReportRows = []; 
-  let currentChartMode = 'daily'; 
-  let sortState = { col: 'date', dir: 'desc' }; 
-  let currentCreativeID = '';
-  let currentTaskFilter = 'Not in progress'; 
-  let activeCrAcc = null;  // Поточний фільтр акаунта
-  let activeCrGeo = null;  // Поточний фільтр ГЕО
-  let isEditingReport = false;
 
   Chart.register(ChartDataLabels);
 
-  window.onload = () => { 
-  loadData(); 
-  refreshTasks(); 
-  refreshReports(); 
-  // Завантажуємо налаштування ПІСЛЯ того як основні функції ініціалізовані
-  setTimeout(loadSettings, 500); 
-};
-
-  function updateSyncStatus(status) {
-  const badge = document.getElementById('last-sync-badge');
-  if (!badge) return;
-
-  switch (status) {
-    case 'loading':
-      badge.innerHTML = `Sync: <span class="animate-pulse">🔄 LOADING...</span>`;
-      badge.className = "text-[10px] font-black text-blue-500 uppercase italic";
-      break;
-    case 'done':
-      badge.innerHTML = `Sync: ✅ DONE`;
-      badge.className = "text-[10px] font-black text-green-500 uppercase italic";
-      // Через 5 секунд покажемо час останньої успішної синхронізації (за бажанням)
-      setTimeout(() => {
-        const now = new Date();
-        badge.innerText = "Last sync: " + now.getHours() + ":" + String(now.getMinutes()).padStart(2, '0');
-        badge.className = "text-[10px] font-black text-gray-500 uppercase italic";
-      }, 5000);
-      break;
-    case 'failed':
-      badge.innerHTML = `Sync: ❌ FAILED`;
-      badge.className = "text-[10px] font-black text-red-500 uppercase italic";
-      break;
+  // --- 3. ДОПОМІЖНІ ФУНКЦІЇ (Колишній Code.gs) ---
+  function normalizeDate(d) {
+    if (!d) return "";
+    let date = new Date(d);
+    return date.toISOString().split('T')[0];
   }
-}
 
-   async function loadData() {
+  function cleanNum(v) {
+    return parseFloat(String(v).replace(/[^\d.-]/g, '')) || 0;
+  }
+
+  function formatCurrency(n) { 
+    return '$' + Number(n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); 
+  }
+
+  // --- 4. ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
+  window.onload = async () => {
+    console.log("🏁 Supabase Dashboard Start");
+    await refreshTeamsList(); 
+    await refreshPayoutsFromSQL();
+    // Налаштування UI
+    setTimeout(loadSettings, 500);
+  };
+
+  // --- 5. РОБОТА З КОМАНДАМИ (SQL) ---
+  async function refreshTeamsList() {
+    // В SQL ми просто отримуємо унікальні імена команд з основної таблиці
+    const { data, error } = await _supabase.from('daily_stats').select('team_name');
+    let teams = ["Makeberry"];
+    if (data) {
+      const uniqueTeams = [...new Set(data.map(item => item.team_name))];
+      if (uniqueTeams.length > 0) teams = uniqueTeams;
+    }
+
+    if (!teams.includes(currentTeam)) currentTeam = teams[0];
+    
+    const list = document.getElementById('team-list');
+    if (list) {
+      list.innerHTML = teams.map(t => `
+        <button onclick="switchTeam('${t}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 ${t === currentTeam ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-dynamic'}">
+          ${t === currentTeam ? '● ' : ''}${t}
+        </button>`).join('');
+    }
+    
+    document.getElementById('active-team-label').innerText = "TEAM: " + currentTeam;
+    document.getElementById('main-title').innerHTML = currentTeam + ' <span class="text-blue-500 text-xl font-normal">Dashboard</span>';
+    
+    loadData(); refreshTasks(); refreshReports();
+  }
+
+  function switchTeam(team) {
+    localStorage.setItem('selected_team', team);
+    window.location.reload(); 
+  }
+
+  function promptCreateTeam() {
+    const name = prompt("Введіть назву нової команди (English):");
+    if (name) switchTeam(name.toUpperCase());
+  }
+
+  // --- 6. ЗАВАНТАЖЕННЯ ДАНИХ (SQL) ---
+  async function loadData() {
     updateSyncStatus('loading');
     
-    // Запит до Supabase (замість getDashboardData)
-    const { data, error } = await supabase
+    // Завантаження статистики кампаній
+    const { data: stats, error: err1 } = await _supabase
       .from('daily_stats')
       .select('*')
       .eq('team_name', currentTeam);
 
-    if (error) {
-      console.error("Помилка:", error);
-      updateSyncStatus('failed');
-    } else {
-      rawData = data;
-      // Далі ваша логіка обробки (місяці, рендер і т.д.)
-      renderDashboard(rawData);
+    if (!err1) {
+      rawData = stats.map(r => ({...r, spend: cleanNum(r.spend)}));
+      const months = getAvailableMonths(rawData);
+      const mList = document.getElementById('month-list');
+      if (mList) {
+        mList.innerHTML = months.map(m => `<button data-month="${m}" onclick="changeGlobalMonth('${m}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 text-muted-dynamic">${m}</button>`).join('');
+      }
+      if (!currentMonthFilter && months.length > 0) currentMonthFilter = months[0];
+      if (currentMonthFilter) changeGlobalMonth(currentMonthFilter);
+      
       document.getElementById('loader').classList.add('hidden');
       document.getElementById('dashboard-content').classList.remove('hidden');
       updateSyncStatus('done');
     }
-    
+
     // Завантаження креативів
-    const { data: crData } = await supabase
+    const { data: creatives, error: err2 } = await _supabase
       .from('creatives_stats')
       .select('*')
       .eq('team_name', currentTeam);
-    creativesRawData = crData || [];
-    renderCreativeSidebar("");
-  }
-
- google.script.run.withSuccessHandler(mapping => {
-        creativeFiles = mapping;
-        renderCreativeSidebar(currentCreativeID); // перерендер щоб з'явилися іконки
-    }).getCreativeFilesMapping();
-  // --- CREATIVE HUB LOGIC ---
-  function searchCreative() { 
-    currentCreativeID = document.getElementById('creative-search').value.trim().toLowerCase(); 
-    renderCreativeSidebar(currentCreativeID); 
-  }
-
-  function renderCreativeSidebar(query) {
-    const sidebar = document.getElementById('creative-list-sidebar'); 
-    if (!sidebar) return;
-    sidebar.innerHTML = '';
-    if (!creativesRawData || !creativesRawData.length) return;
-
-    const grouped = {};
-    creativesRawData.forEach(function(d) { 
-      const cid = String(d.cid || "No ID");
-      if (!grouped[cid]) grouped[cid] = { cid: cid, s: 0 }; 
-      grouped[cid].s += d.spend; 
-    });
-
-    const list = Object.values(grouped)
-      .filter(function(c) { return c.cid.toLowerCase().includes(query); })
-      .sort(function(a,b) { return b.s - a.s; });
-
-    if (!list.length) { 
-      sidebar.innerHTML = '<div class="opacity-30 p-4 italic text-xs">No matching creatives</div>'; 
-      return; 
-    }
-
-    list.forEach(function(c) {
-      const btn = document.createElement('button');
-      var isActive = (currentCreativeID === c.cid.toLowerCase());
-      btn.className = "w-full flex justify-between items-center p-3 rounded-2xl border border-white/5 transition-all text-left uppercase " + 
-        (isActive ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/5');
-      
-       btn.onclick = function() { 
-        currentCreativeID = c.cid.toLowerCase(); 
-        // СКИДАЄМО ФІЛЬТРИ ПРИ ВИБОРІ НОВОГО КРЕАТИВУ
-        activeCrAcc = null; 
-        activeCrGeo = null; 
-        
-        renderCreativeSidebar(query); 
-        showCreativeStats(); // Покаже Тотал
-      };
-      
-      // Використовуємо звичайні лапки та конкатенацію +
-      btn.innerHTML = '<div class="flex items-center gap-2 flex-1 min-w-0">' +
-          '<span class="text-[10px] font-black truncate">' + c.cid + '</span>' +
-          '<span onclick="copyID(event, \'' + c.cid + '\')" class="p-1 hover:bg-white/20 rounded transition-colors cursor-copy" title="Copy ID">' +
-            '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>' +
-            '</svg>' +
-          '</span>' +
-        '</div>' +
-        '<span class="text-[10px] font-bold opacity-60 ml-2">$' + Math.round(c.s).toLocaleString() + '</span>';
-      
-      sidebar.appendChild(btn);
-    });
-    document.getElementById('creative-placeholder').classList.add('hidden');
-    document.getElementById('creative-result-area').classList.remove('hidden');
-  }
-
-  // --- КАЛЬКУЛЯТОР ---
-function toggleCalculator() { document.getElementById('calc-modal').classList.toggle('hidden'); }
-function runCalc() {
-  const s = parseFloat(document.getElementById('calc-spend').value) || 0;
-  const r = parseFloat(document.getElementById('calc-regs').value) || 0;
-  const d = parseFloat(document.getElementById('calc-deps').value) || 0;
-  document.getElementById('res-cpl').innerText = '$' + (r > 0 ? (s/r).toFixed(2) : '0.00');
-  document.getElementById('res-cpa').innerText = '$' + (d > 0 ? (s/d).toFixed(2) : '0.00');
-  document.getElementById('res-r2d').innerText = (r > 0 ? (d/r*100).toFixed(1) : '0') + '%';
-}
-
-// --- ТЕСТ-ЖУРНАЛ ---
-function toggleTestingModal() { 
-  const m = document.getElementById('testing-modal');
-  m.classList.toggle('hidden'); 
-  if (!m.classList.contains('hidden')) refreshTests();
-}
-
-function refreshTests() {
-  google.script.run.withSuccessHandler(data => {
-    const body = document.getElementById('testing-list-body');
-    body.innerHTML = data.reverse().map(t => {
-      const cpl = t.regs > 0 ? (t.spend / t.regs).toFixed(1) : 0;
-      const cpa = t.deps > 0 ? (t.spend / t.deps).toFixed(1) : 0;
-      const r2d = t.regs > 0 ? (t.deps / t.regs * 100).toFixed(1) : 0;
-      
-      let sCol = "bg-slate-500";
-      if(t.status === 'Winner') sCol = "bg-green-600";
-      if(t.status === 'Scaling') sCol = "bg-blue-600";
-      if(t.status === 'Failed') sCol = "bg-red-600";
-
-      return `<tr class="hover:bg-white/5 border-b border-white/5 last:border-0">
-        <td class="py-4">
-          <div class="flex items-center gap-2">
-            <span class="bg-white/10 text-[9px] px-1.5 py-0.5 rounded text-blue-400 font-black uppercase">${t.geo}</span>
-            <div class="font-black uppercase">${t.name}</div>
-          </div>
-          <div class="text-[9px] opacity-40 mt-1">${t.start} — ${t.end}</div>
-        </td>
-        <td class="py-4"><span class="${sCol} text-[9px] font-black px-2 py-0.5 rounded-full uppercase text-white shadow-sm">${t.status}</span></td>
-        <td class="py-4 text-right font-bold text-purple-400">$${cpl}</td>
-        <td class="py-4 text-right font-black text-yellow-500">$${cpa}</td>
-        <td class="py-4 text-right font-bold text-pink-500">${r2d}%</td>
-        <td class="py-4 text-right">
-          <button onclick="deleteTest(${t.row})" class="text-red-500/30 hover:text-red-500 transition">✕</button>
-        </td>
-      </tr>`;
-    }).join('');
-  }).getTestingData();
-}
-
-function submitTest() {
-  const data = {
-    name: document.getElementById('t-name').value,
-    geo: document.getElementById('t-geo').value || "??", // Зчитуємо ГЕО
-    status: document.getElementById('t-status').value,
-    spend: document.getElementById('t-spend').value,
-    regs: document.getElementById('t-regs').value,
-    deps: document.getElementById('t-deps').value,
-    start: document.getElementById('t-start').value,
-    end: document.getElementById('t-end').value,
-    clicks: document.getElementById('t-clicks').value || 0
-  };
-  
-  if(!data.name || !data.start) return alert("Fill Name & Start Date");
-  
-  google.script.run.withSuccessHandler(() => {
-    refreshTests();
-    // Очищуємо поля
-    document.getElementById('t-name').value = '';
-    document.getElementById('t-geo').value = '';
-    document.getElementById('t-spend').value = '';
-    document.getElementById('t-regs').value = '';
-    document.getElementById('t-deps').value = '';
-    document.getElementById('t-clicks').value = '';
-  }).addTestEntry(data);
-}
-
-function deleteTest(row) {
-  if(confirm('Delete test record?')) google.script.run.withSuccessHandler(() => refreshTests()).deleteTestEntry(row);
-}
-
-// Перемикання меню
-function toggleSettingsMenu() {
-  const menu = document.getElementById('settings-menu');
-  if (menu) menu.classList.toggle('hidden');
-}
-
-// Функція перетворення символів у кольорові блоки
-function parseReportBlocks(text) {
-  if (!text) return "";
-  const lines = text.split('\n');
-  return lines.map(line => {
-    let l = line.trim();
-    if (l.startsWith('+')) return `<div class="report-block rb-success">${l.substring(1).trim()}</div>`;
-    if (l.startsWith('-')) return `<div class="report-block rb-danger">${l.substring(1).trim()}</div>`;
-    if (l.startsWith('!')) return `<div class="report-block rb-warning">${l.substring(1).trim()}</div>`;
-    if (l.startsWith('>')) return `<div class="report-block rb-plan">${l.substring(1).trim()}</div>`;
-    return l ? `<div class="rb-normal">${l}</div>` : `<div class="h-2"></div>`;
-  }).join('');
-}
-
-
-
-// Функція оновлення видимості
-function updateVisibility(isInitial = false) {
-  const settings = {
-    geo: document.getElementById('toggle-geo').checked,
-    creatives: document.getElementById('toggle-creatives').checked,
-    ai: document.getElementById('toggle-ai').checked,
-    table: document.getElementById('toggle-table').checked
-  };
-
-  if (!isInitial) localStorage.setItem('dashboard_settings', JSON.stringify(settings));
-
-  // 1. Geo Performance + Анімація графіка
-  const geoCol = document.getElementById('geo-sidebar-col');
-  const chartCol = document.getElementById('chart-main-col');
-  
-  if (geoCol && chartCol) {
-    if (settings.geo) {
-      geoCol.classList.remove('hidden');
-      geoCol.style.opacity = "1";
-      chartCol.className = chartCol.className.replace('lg:col-span-4', 'lg:col-span-3');
-    } else {
-      geoCol.classList.add('hidden');
-      geoCol.style.opacity = "0";
-      chartCol.className = chartCol.className.replace('lg:col-span-3', 'lg:col-span-4');
+    
+    if (!err2) {
+      creativesRawData = creatives;
+      populateCreativeGeoFilter();
+      renderCreativeSidebar("");
     }
   }
 
-  // 2. Інші секції
-  toggleBlock('creative-analyzer-section', settings.creatives);
-  toggleBlock('ai-intelligence-section', settings.ai);
-  toggleBlock('live-table-section', settings.table);
-  
-  // Плавне перемальовування графіка
-  if (window.chart1) {
-    let count = 0;
-    const interval = setInterval(() => {
-      window.chart1.resize();
-      if (++count > 30) clearInterval(interval);
-    }, 16);
-  }
-}
-
-function toggleBlock(id, isVisible) {
-  const el = document.getElementById(id);
-  if (el) {
-    isVisible ? el.classList.remove('hidden') : el.classList.add('hidden');
-  }
-}
-
-// Функція завантаження налаштувань
-function loadSettings() {
-  const saved = localStorage.getItem('dashboard_settings');
-  if (saved) {
-    const s = JSON.parse(saved);
-    if (document.getElementById('toggle-geo')) document.getElementById('toggle-geo').checked = s.geo;
-    if (document.getElementById('toggle-creatives')) document.getElementById('toggle-creatives').checked = s.creatives;
-    if (document.getElementById('toggle-ai')) document.getElementById('toggle-ai').checked = s.ai;
-    if (document.getElementById('toggle-table')) document.getElementById('toggle-table').checked = s.table;
-    updateVisibility(true);
-  }
-}
-
-// Додай виклик loadSettings у window.onload
-const originalOnload = window.onload;
-window.onload = () => {
-  if (originalOnload) originalOnload();
-  loadSettings();
-};
-
-// Закриття меню при кліку в іншому місці
-window.addEventListener('click', function(e) {
-  const menu = document.getElementById('settings-menu');
-  if (!menu.contains(e.target) && !e.target.closest('button[onclick="toggleSettingsMenu()"]')) {
-    menu.classList.add('hidden');
-  }
-});
-
-  // --- Замініть існуючу функцію showCreativeStats на цю версію ---
-  function showCreativeStats(accF, geoF) {
-  var q = (typeof currentCreativeID !== 'undefined' && currentCreativeID) ? currentCreativeID : null;
-  if (!q || !creativesRawData) return;
-
-  // Оновлюємо глобальний стан фільтрів
-  if (accF !== undefined) activeCrAcc = accF;
-  if (geoF !== undefined) activeCrGeo = geoF;
-
-  const statsCard = document.getElementById('creative-stats-card');
-  if (statsCard) statsCard.classList.remove('hidden');
-
-  var qStr = String(q).toLowerCase();
-  var filtered = creativesRawData.filter(d => String(d.cid || "").toLowerCase() === qStr);
-  if (filtered.length === 0) return;
-
-  // 1. ПЕРЕВІРКА НА ЄДИНЕ ГЕО (Авто-вибір)
-  let allGeosSet = new Set();
-  filtered.forEach(item => { if(item.geo && item.geo !== "??") allGeosSet.add(item.geo.toUpperCase()); });
-  
-  if (allGeosSet.size === 1 && activeCrGeo === null) {
-    activeCrGeo = Array.from(allGeosSet)[0];
+  function getAvailableMonths(data) {
+    const m = data.map(d => (d.date ? d.date.slice(0, 7) : null)).filter(Boolean);
+    return [...new Set(m)].sort().reverse();
   }
 
-  // 2. ЛОГІКА ФІЛЬТРАЦІЇ ДЛЯ ЦИФР
-  var disp = filtered;
-  if (activeCrAcc) disp = disp.filter(d => d.acc === activeCrAcc);
-  if (activeCrGeo) disp = disp.filter(d => d.geo && d.geo.toUpperCase() === activeCrGeo.toUpperCase());
+  function changeGlobalMonth(month) {
+    currentMonthFilter = month;
+    localStorage.setItem('selected_dashboard_month', month);
+    document.getElementById('current-month-label').innerText = month;
+    
+    const year = month.split('-')[0], m = month.split('-')[1];
+    const lastDay = new Date(year, m, 0).getDate();
+    const start = `${month}-01`, end = `${month}-${lastDay}`;
+    
+    ['filter-from','chart-from','geo-filter-from','ai-from'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = start; });
+    ['filter-to','chart-to','geo-filter-to','ai-to'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = end; });
 
-  // 3. РОЗРАХУНОК МЕТРИК
-  let s=0, r=0, d_total=0, cl=0;
-  let allAccsSet = new Set();
-  filtered.forEach(item => allAccsSet.add(item.acc));
-
-  disp.forEach(item => {
-    s += (Number(item.spend) || 0); 
-    r += (Number(item.regs) || 0); 
-    d_total += (Number(item.deps) || 0); 
-    cl += (Number(item.clicks) || 0);
-  });
-
-  // Вивід тексту заголовка
-  let scopeLabel = "Total Stats Analysis";
-  if (activeCrAcc && activeCrGeo) scopeLabel = `${activeCrAcc} | ${activeCrGeo}`;
-  else if (activeCrAcc) scopeLabel = `Cabinet: ${activeCrAcc}`;
-  else if (activeCrGeo) scopeLabel = `Geo: ${activeCrGeo}`;
-
-  const setT = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
-  setT('stats-scope-label', scopeLabel);
-  setT('cr-total-spend', formatCurrency(s));
-  setT('cr-total-regs', r.toLocaleString());
-  setT('cr-total-deps', d_total.toLocaleString());
-  setT('cr-total-clicks', cl.toLocaleString());
-  setT('cr-total-cpl', '$' + (r > 0 ? (s/r).toFixed(2) : '0.00'));
-  setT('cr-total-cpa', '$' + (d_total > 0 ? (s/d_total).toFixed(2) : '0.00'));
-  setT('cr-total-cpc', '$' + (cl > 0 ? (s/cl).toFixed(2) : '0.00'));
-  setT('cr-total-r2d', (r > 0 ? (d_total/r*100).toFixed(1) : 0) + '%');
-
-  // 4. РЕНДЕР ПРАПОРІВ
-  const flagsContainer = document.getElementById('cr-geo-flags');
-  if (flagsContainer) {
-    flagsContainer.innerHTML = Array.from(allGeosSet).sort().map(g => {
-      const isActive = (activeCrGeo === g);
-      return `
-      <div onclick="showCreativeStats(undefined, '${isActive ? null : g}')" 
-           class="flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer shadow-sm
-           ${isActive ? 'bg-blue-600 border-blue-400 scale-105' : 'bg-white/5 border-white/5 hover:bg-white/10'}" >
-        <img src="https://flagcdn.com/w40/${g.toLowerCase()}.png" class="w-6 h-4 object-cover rounded-sm">
-        <span class="text-xs font-black ${isActive ? 'text-white' : 'text-slate-400'} tracking-tighter">${g}</span>
-      </div>`;
-    }).join('');
+    applyGlobalFilter();
   }
 
-  // 5. РЕНДЕР КАБІНЕТІВ (З крос-фільтрацією по ГЕО)
-  const accListContainer = document.getElementById('cr-account-list');
-  if (accListContainer) {
-    // Визначаємо, які кабінети мають дані по вибраному ГЕО
-    let availableAccsForGeo = new Set();
-    if (activeCrGeo) {
-      filtered.filter(d => d.geo && d.geo.toUpperCase() === activeCrGeo.toUpperCase())
-              .forEach(d => availableAccsForGeo.add(d.acc));
-    }
-
-    accListContainer.innerHTML = Array.from(allAccsSet).sort().map(name => {
-      const isClicked = (activeCrAcc === name);
-      const isAvailable = activeCrGeo ? availableAccsForGeo.has(name) : true;
-      
-      // Класи стилів
-      let btnClass = "px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all border ";
-      
-      if (isClicked) {
-        btnClass += "bg-blue-600 text-white border-blue-400 shadow-lg";
-      } else if (isAvailable) {
-        btnClass += "bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20";
-      } else {
-        // Сірий стиль для неактивних кабінетів
-        btnClass += "bg-gray-500/5 text-gray-500 border-transparent opacity-30 grayscale";
-      }
-
-      return `
-      <button onclick="showCreativeStats('${isClicked ? null : name}', undefined)" 
-              class="${btnClass}">
-        ${name}
-      </button>`;
-    }).join('');
+  function applyGlobalFilter() {
+    filteredDataCache = rawData.filter(d => d.date && d.date.startsWith(currentMonthFilter));
+    renderDashboard(filteredDataCache);
+    updateMilestones(filteredDataCache);
   }
-}
 
-// Онови функцію скидання
-function resetCreativeScope() {
-  activeCrAcc = null;
-  activeCrGeo = null;
-  // Викликаємо без параметрів, щоб повернути до Total Stats
-  showCreativeStats();
-}
-  
-  function resetCreativeScope() { showCreativeStats(null); }
-
-  // --- DASHBOARD RENDERING ---
+  // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
   function renderDashboard(data) {
-  if (!data || !data.length) return;
+    if (!data || !data.length) return;
+    const payouts = globalPayouts;
+    let totalS = 0, totalD = 0, totalR = 0, totalRev = 0, tc = 0;
+    const agentMap = {};
 
-  // 1. ЗАГАЛЬНІ ПОКАЗНИКИ ЗА ВЕСЬ ПЕРІОД (Current)
-  const totalS = data.reduce((acc, i) => acc + i.spend, 0);
-  const totalD = data.reduce((acc, i) => acc + i.deposits, 0);
-  const totalR = data.reduce((acc, i) => acc + i.regs, 0);
-  
-  const currentCPL = totalR > 0 ? totalS / totalR : 0;
-  const currentCPA = totalD > 0 ? totalS / totalD : 0;
-  const currentR2D = totalR > 0 ? (totalD / totalR) * 100 : 0;
-
-  // 2. ОНОВЛЕННЯ ГОЛОВНИХ ЦИФР KPI
-  document.getElementById('kpi-spend').innerText = formatCurrency(totalS);
-  document.getElementById('kpi-deposits').innerText = totalD;
-  document.getElementById('kpi-regs').innerText = totalR;
-  document.getElementById('kpi-cpl').innerText = formatCurrency(currentCPL);
-  document.getElementById('kpi-cpa').innerText = formatCurrency(currentCPA);
-  document.getElementById('kpi-r2d').innerText = currentR2D.toFixed(1) + '%';
-
-  // 3. РОЗРАХУНОК ДЕЛЬТИ (Весь період VS Період без останнього дня)
-  const uniqueDates = [...new Set(data.map(i => i.date))].sort();
-  
-  if (uniqueDates.length >= 2) {
-    const maxDate = uniqueDates[uniqueDates.length - 1];
-    // Дані за період БЕЗ останнього дня
-    const prevPeriodData = data.filter(i => i.date < maxDate);
-    
-    if (prevPeriodData.length > 0) {
-      const pS = prevPeriodData.reduce((acc, i) => acc + i.spend, 0);
-      const pD = prevPeriodData.reduce((acc, i) => acc + i.deposits, 0);
-      const pR = prevPeriodData.reduce((acc, i) => acc + i.regs, 0);
-
-      const prevCPL = pR > 0 ? pS / pR : 0;
-      const prevCPA = pD > 0 ? pS / pD : 0;
-      const prevR2D = pR > 0 ? (pD / pR) * 100 : 0;
-
-      // Функція відображення стрілочки та різниці
-      const updateDeltaUI = (id, cur, prev, isPrice = true) => {
-        const el = document.getElementById('delta-' + id);
-        if (!el || prev === 0) return;
-
-        const diff = cur - prev;
-        if (Math.abs(diff) < 0.01) { el.innerText = ""; return; }
-
-        // Логіка кольорів: для ціни (CPL/CPA) менше = краще (зелений)
-        // Для конверсії (R2D) більше = краще (зелений)
-        const isBetter = isPrice ? diff < 0 : diff > 0;
-        const color = isBetter ? 'text-green-500' : 'text-red-500';
-        const arrow = diff > 0 ? '▲' : '▼';
-        const sign = diff > 0 ? '+' : '-';
-        
-        const label = isPrice 
-          ? `${arrow} ${sign}$${Math.abs(diff).toFixed(1)}` 
-          : `${arrow} ${sign}${Math.abs(diff).toFixed(1)}%`;
-
-        el.innerText = label;
-        el.className = `text-[12px] font-black ml-1.5 leading-none self-center ${color}`;
-        el.title = `Попередній середній показник: ${prev.toFixed(2)}`;
-      };
-
-      updateDeltaUI('cpl', currentCPL, prevCPL, true);
-      updateDeltaUI('cpa', currentCPA, prevCPA, true);
-      updateDeltaUI('r2d', currentR2D, prevR2D, false);
-    }
-  } else {
-    // Якщо вибрано тільки 1 день, очищуємо дельти
-    ['cpl', 'cpa', 'r2d'].forEach(id => {
-      const el = document.getElementById('delta-' + id);
-      if(el) el.innerText = "";
-    });
-  }
-
-  // 4. КОМІСІЇ ТА АГЕНТСТВА (Тултіп Total Spend)
-  let tc = 0;
-  const agentSpendMap = {};
-  data.forEach(item => { 
-    if (item.agent && item.agent.includes("5%")) tc += (item.spend * 0.05); 
-    else if (item.agent && item.agent.includes("3%")) tc += (item.spend * 0.03); 
-
-    const agentName = (item.agent || 'Direct').split('(')[0].trim();
-    if (!agentSpendMap[agentName]) agentSpendMap[agentName] = 0;
-    agentSpendMap[agentName] += item.spend;
-  });
-
-  document.getElementById('kpi-comm').innerText = "+ " + formatCurrency(tc) + " (Fees)";
-  const breakdownList = document.getElementById('spend-breakdown-list');
-  if (breakdownList) {
-    breakdownList.innerHTML = Object.entries(agentSpendMap)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, spend]) => `
-        <div class="flex justify-between items-center text-[11px] font-bold">
-          <span class="text-muted-dynamic uppercase truncate pr-4">${name}</span>
-          <span class="text-white font-mono">${formatCurrency(spend)}</span>
-        </div>`).join('');
-  }
-
-  // 5. СТАТУС ЯКОСТІ R2D
-  const statusEl = document.getElementById('r2d-status');
-  if (currentR2D < 5) { statusEl.innerText = "Low Quality ⚠️"; statusEl.className = "text-[10px] font-bold mt-1 uppercase text-red-500"; }
-  else if (currentR2D < 12) { statusEl.innerText = "Good Quality ✅"; statusEl.className = "text-[10px] font-bold mt-1 uppercase text-green-500"; }
-  else { statusEl.innerText = "High Quality 🔥"; statusEl.className = "text-[10px] font-bold mt-1 uppercase text-yellow-500"; }
-
-  // 6. ОНОВЛЕННЯ ІНШИХ БЛОКІВ
-  if (typeof updateMilestones === "function") updateMilestones(rawData); 
-  if (typeof renderTrend === "function") renderTrend(data); 
-  if (typeof renderGeoList === "function") renderGeoList(data); 
-  if (typeof renderTable === "function") renderTable(data);
-}
-
-  function updateMilestones(data) {
-    if (!data || data.length === 0) return;
-
-    // 1. Визначаємо останній місяць, який є в даних (щоб трекер працював, навіть якщо дані за 2026 рік)
-    const sortedDates = [...new Set(data.map(d => d.date))].sort();
-    const latestDate = sortedDates[sortedDates.length - 1]; 
-    if (!latestDate) return;
-    const currentDataMonth = latestDate.slice(0, 7); // Вирізає "YYYY-MM"
-
-    // 2. Рахуємо спенд саме за цей місяць
-    const monthlySpend = data
-        .filter(d => d.date && d.date.startsWith(currentDataMonth))
-        .reduce((sum, item) => sum + item.spend, 0);
-    
-    // 3. Беремо таргет з пам'яті або ставимо 40000
-    const savedTarget = localStorage.getItem('monthly_spend_target');
-    const target = savedTarget ? Number(savedTarget) : 40000;
-    
-    // Оновлюємо інпут в налаштуваннях, якщо він порожній
-    const targetInput = document.getElementById('target-input');
-    if (targetInput && !targetInput.value) {
-        targetInput.value = target;
-    }
-
-    // 4. Розрахунок прогресу
-    const progressPercent = Math.min((monthlySpend / target) * 100, 100);
-    
-    // Відображення
-    const container = document.getElementById('milestone-container');
-    if (container) container.classList.remove('hidden');
-    
-    const fill = document.getElementById('milestone-fill');
-    if (fill) fill.style.width = progressPercent + "%";
-    
-    const label = document.getElementById('monthly-spend-label');
-    if (label) label.innerText = formatCurrency(monthlySpend) + " / " + formatCurrency(target);
-    
-    const leftInfo = document.getElementById('next-rank-info');
-    const left = target - monthlySpend;
-    if (leftInfo) {
-        leftInfo.innerText = left > 0 ? "Target left: " + formatCurrency(left) : "GOAL REACHED! 🚀";
-    }
-}
-
-  function updateTarget() {
-    const val = document.getElementById('target-input').value;
-    if (val && val > 0) {
-        localStorage.setItem('monthly_spend_target', val);
-        // Викликаємо оновлення миттєво. rawData у тебе глобальна, тож це спрацює.
-        if (typeof rawData !== 'undefined' && rawData.length > 0) {
-            updateMilestones(rawData);
-        }
-    }
-}
-
-  // --- MODALS ---
-  function openScreenshotModal() {
-    const modal = document.getElementById('screenshot-modal');
-    const fI = document.getElementById('filter-from').value;
-    const tI = document.getElementById('filter-to').value;
-    const geoS = document.getElementById('filter-geo-select').value;
-    const act = rawData.filter(d => { 
-      const dm = (!fI || d.date >= fI) && (!tI || d.date <= tI);
-      const gm = (!geoS || d.geo === geoS);
-      return dm && gm;
-    });
-    if (!act.length) return;
-    let df = fI || act.map(d => d.date).sort()[0];
-    let dt = tI || act.map(d => d.date).sort().pop();
-    const s = act.reduce((acc, i) => acc + i.spend, 0);
-    const r = act.reduce((acc, i) => acc + i.regs, 0);
-    const d = act.reduce((acc, i) => acc + i.deposits, 0);
-    const geoMap = {};
-    act.forEach(d => { if(!geoMap[d.geo]) geoMap[d.geo]={s:0, r:0, d:0}; geoMap[d.geo].s += d.spend; geoMap[d.geo].r += d.regs; geoMap[d.geo].d += d.deposits; });
-    const top3 = Object.entries(geoMap).sort((a,b)=>b[1].s - a[1].s).slice(0,3);
-
-    document.getElementById('ss-date-range').innerText = df + " — " + dt;
-    document.getElementById('ss-total-spend').innerText = formatCurrency(s);
-    document.getElementById('ss-cpl').innerText = formatCurrency(r > 0 ? s/r : 0);
-    document.getElementById('ss-cpa').innerText = formatCurrency(d > 0 ? s/d : 0);
-    const ssG = document.getElementById('ss-geo-list');
-    ssG.innerHTML = top3.map(([name, m]) => `
-      <div class="flex justify-between items-center bg-white/5 px-4 py-2.5 rounded-[1.2rem] border border-white/5">
-        <div class="flex items-center gap-2">
-          <img src="https://flagcdn.com/w40/${name.toLowerCase()}.png" class="w-5 h-3.5 object-cover rounded-sm" onerror="this.style.display='none'">
-          <span class="font-black text-white uppercase text-sm tracking-tighter">${name}</span>
-        </div>
-        <div class="flex flex-col items-end">
-          <span class="text-[11px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">${m.r} REG | ${m.d} DEP</span>
-          <span class="text-[10px] font-bold text-muted-dynamic leading-none">$${Math.round(m.s).toLocaleString()}</span>
-        </div>
-      </div>`).join('');
-    modal.classList.remove('hidden');
-  }
-
-  function closeScreenshotModal() { document.getElementById('screenshot-modal').classList.add('hidden'); }
-  
-  function toggleSyncModal() {
-  const m = document.getElementById('sync-modal');
-  m.classList.toggle('hidden');
-  
-  if(!m.classList.contains('hidden')) {
-    const syncListContainer = document.getElementById('sync-list');
-    syncListContainer.innerHTML = '<p class="text-center opacity-50 animate-pulse text-[10px] uppercase font-black tracking-widest">Loading history...</p>';
-
-    google.script.run.withSuccessHandler(logs => {
-      if (!logs || logs.length === 0) {
-        syncListContainer.innerHTML = '<p class="text-center opacity-30 italic text-xs">No logs found</p>';
-        return;
-      }
-
-      const groupedByDate = {};
-
-      logs.forEach(l => {
-        if (!l.time) return;
-
-        // ПАРСИНГ ДАТИ DD-MM
-        let dateObj = new Date(l.time);
-        if (isNaN(dateObj)) {
-          let cleanTime = l.time.replace(/\./g, '-');
-          dateObj = new Date(cleanTime);
-        }
-        const day = String(dateObj.getDate()).padStart(2, '0');
-        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const dayMonth = day + "-" + month;
-
-        if (!groupedByDate[dayMonth]) {
-          groupedByDate[dayMonth] = { campaigns: [], creatives: [] };
-        }
-        
-        // Розподіляємо записи по двох масивах
-        if (l.type && l.type.includes('Campaign')) {
-          groupedByDate[dayMonth].campaigns.push(l);
-        } else if (l.type && l.type.includes('Creative')) {
-          groupedByDate[dayMonth].creatives.push(l);
-        }
-      });
-
-      let finalHtml = '';
-      const sortedDates = Object.keys(groupedByDate).sort((a, b) => {
-          const [dayA, monA] = a.split('-').map(Number);
-          const [dayB, monB] = b.split('-').map(Number);
-          return monB - monA || dayB - dayA;
-      });
-
-      sortedDates.forEach(date => {
-        let dateBlockHtml = `
-          <div class="mb-8 last:mb-0">
-            <div class="flex items-center gap-3 mb-4">
-              <span class="text-2xl font-black text-blue-500 tracking-tighter shrink-0">${date}</span>
-              <div class="h-[2px] bg-gradient-to-r from-blue-500/50 to-transparent w-full"></div>
-            </div>
-            <div class="space-y-4">`;
-
-        const dayData = groupedByDate[date];
-
-        // 1. БЛОК КАМПАНІЙ (якщо є)
-        if (dayData.campaigns.length > 0) {
-          dateBlockHtml += `
-            <div class="bg-white/5 rounded-[1.5rem] border border-white/5 overflow-hidden">
-              <div class="bg-white/5 px-4 py-2 border-b border-white/5">
-                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-orange-400">Campaign Import</p>
-              </div>
-              <div class="p-4 space-y-3">
-                ${dayData.campaigns.map(e => `
-                  <div class="flex justify-between items-start gap-4 group">
-                    <span class="text-[11px] font-bold text-muted-dynamic flex-1 uppercase">${e.accounts}</span>
-                    <span class="text-[10px] font-black text-white bg-white/10 px-2 py-0.5 rounded-lg whitespace-nowrap">${e.count} rows</span>
-                  </div>`).join('')}
-              </div>
-            </div>`;
-        }
-
-        // 2. БЛОК КРЕАТИВІВ (якщо є)
-        if (dayData.creatives.length > 0) {
-          // Беремо Range з останнього імпорту креативів за цей день
-          const lastRange = dayData.creatives[0].range || "";
-
-          dateBlockHtml += `
-            <div class="bg-white/5 rounded-[1.5rem] border border-white/5 overflow-hidden">
-              <div class="bg-white/5 px-4 py-2 border-b border-white/5 flex justify-between items-center">
-                <p class="text-[10px] font-black uppercase tracking-[0.2em] text-purple-400">Creative Import</p>
-                ${lastRange ? `<span class="text-[9px] font-black text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/10 uppercase italic">${lastRange}</span>` : ''}
-              </div>
-              <div class="p-4 space-y-3">
-                ${dayData.creatives.map(e => `
-                  <div class="flex justify-between items-start gap-4 group">
-                    <span class="text-[11px] font-bold text-muted-dynamic flex-1 uppercase">${e.accounts}</span>
-                    <span class="text-[10px] font-black text-white bg-white/10 px-2 py-0.5 rounded-lg whitespace-nowrap">${e.count} rows</span>
-                  </div>`).join('')}
-              </div>
-            </div>`;
-        }
-
-        dateBlockHtml += `</div></div>`;
-        finalHtml += dateBlockHtml;
-      });
-
-      syncListContainer.innerHTML = finalHtml;
-    }).getSyncLogs();
-  }
-}
-
-  function toggleReportModal() { const modal = document.getElementById('report-modal'); modal.classList.toggle('hidden'); if (!modal.classList.contains('hidden')) { openReportRows = []; refreshReports(); } }
-  function refreshReports() {
-  if (isEditingReport) return; // Якщо ти пишеш - не оновлюємо список
-  google.script.run.withSuccessHandler(data => {
-    if (isEditingReport) return;
-    reportData = data;
-    renderReports();
-  }).getDailyReportsList();
-}
-  function renderReports() {
-  const container = document.getElementById('report-list-container');
-  if (!container) return;
-  
-  if (!reportData || reportData.length === 0) {
-    container.innerHTML = '<div class="text-center py-10 opacity-20 italic">No reports found</div>';
-    return;
-  }
-
-  const sorted = [...reportData].sort((a,b) => b.row - a.row);
-
-  // Використовуємо .map() та .join(''), щоб рендер був миттєвим
-  const htmlRows = sorted.map(r => {
-    const isOpen = openReportRows.includes(r.row);
-    const dClass = isOpen ? "" : "hidden";
-    const arrowRotation = isOpen ? "0" : "-90";
-    
-    // Попередньо рендеримо блоки, щоб вони вже були в HTML
-    const contentHtml = parseReportBlocks(r.comment);
-
-    return `
-      <div class="p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
-        <div onclick="toggleReportVisibility(${r.row})" class="flex justify-between items-center cursor-pointer hover:bg-white/5 p-1 rounded-xl transition">
-          <div class="flex items-center gap-2">
-            <span id="report-arrow-${r.row}" class="text-[8px] text-blue-500 transition-transform duration-200" style="transform: rotate(${arrowRotation}deg)">▼</span>
-            <span class="text-[10px] font-black uppercase text-blue-500 tracking-widest">${r.date}</span>
-            <span id="report-status-${r.row}" class="status-icon flex items-center ml-2"></span>
-          </div>
-          <button onclick="event.stopPropagation(); deleteReport(${r.row})" class="text-muted-dynamic hover:text-red-500 transition">
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.586a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"></path></svg>
-          </button>
-        </div>
-
-        <div id="report-content-${r.row}" 
-             class="${dClass} bg-transparent outline-none text-sm text-dynamic w-full min-h-[20px] focus:bg-white/5 px-2 pb-2 rounded-xl transition font-medium normal-case-text"
-             contenteditable="true"
-             data-state="view"
-             onfocus="startEditingReport(${r.row}, this)"
-             onblur="finishEditingReport(${r.row}, this)">
-          ${contentHtml}
-        </div>
-      </div>`;
-  }).join('');
-
-  container.innerHTML = htmlRows;
-}
-
-function startEditingReport(row, el) {
-  // Якщо ми вже в режимі редагування (бачимо текст з маркерами), нічого не робимо
-  if (el.getAttribute('data-state') === 'edit') return;
-
-  isEditingReport = true;
-  el.setAttribute('data-state', 'edit'); // Ставимо мітку "редагую"
-
-  const r = reportData.find(item => item.row === row);
-  if (r) {
-    // Вставляємо чистий текст з Google Таблиці (з +, -, !), а не HTML блоки
-    el.innerText = r.comment; 
-  }
-}
-function finishEditingReport(row, el) {
-  if (el.getAttribute('data-state') !== 'edit') return;
-
-  const newText = el.innerText.trim();
-  const r = reportData.find(item => item.row === row);
-
-  if (r) {
-    if (r.comment !== newText) {
-      r.comment = newText;
-      editReport(row, newText); // Збереження на сервер
-    }
-  }
-
-  // Повертаємо блоки
-  el.innerHTML = parseReportBlocks(newText);
-  el.setAttribute('data-state', 'view');
-  isEditingReport = false;
-}
-  // Функція тепер працює миттєво, бо дані вже завантажені в DOM
-function toggleReportVisibility(id) {
-  const el = document.getElementById(`report-content-${id}`);
-  const arrow = document.getElementById(`report-arrow-${id}`);
-  
-  if (el.classList.contains('hidden')) {
-    el.classList.remove('hidden');
-    arrow.style.transform = 'rotate(0deg)';
-    if (!openReportRows.includes(id)) openReportRows.push(id);
-  } else {
-    el.classList.add('hidden');
-    arrow.style.transform = 'rotate(-90deg)';
-    openReportRows = openReportRows.filter(x => x !== id);
-  }
-}
-  function editReport(row, text) { 
-  const s = document.getElementById(`report-status-${row}`); 
-  if (!s) return; 
-  
-  s.innerHTML = iconLoading; 
-  s.classList.add('show'); 
-  
-  // Додаємо .trim(), щоб прибрати зайві переноси
-  const cleanedText = text.trim(); 
-
-  google.script.run.withSuccessHandler(() => { 
-      const r = reportData.find(item => item.row === row); 
-      if (r) r.comment = cleanedText; 
+    data.forEach(item => {
+      totalS += item.spend; totalD += item.deposits; totalR += item.regs;
+      totalRev += (item.deposits * (payouts[item.geo.toUpperCase()] || 0));
       
-      s.innerHTML = iconSuccess; 
-      setTimeout(() => { s.classList.remove('show'); }, 3000); 
-  }).editDailyReport(row, cleanedText); 
-}
-   // Збереження нового звіту (замість addDailyReport)
-  async function submitNewReport() {
-    const input = document.getElementById('new-report-input');
-    const val = input.value.trim();
-    if (!val) return;
+      let agentRaw = item.agent || "Direct";
+      if (agentRaw.includes("%")) {
+        const match = agentRaw.match(/(\d+(?:\.\d+)?)%/);
+        if (match) tc += (item.spend * (parseFloat(match[1]) / 100));
+      }
+      const aName = agentRaw.split('(')[0].trim();
+      agentMap[aName] = (agentMap[aName] || 0) + item.spend;
+    });
 
-    const { error } = await supabase
-      .from('daily_reports')
-      .insert([{ team_name: currentTeam, comment: val, date: new Date() }]);
+    document.getElementById('kpi-spend').innerText = formatCurrency(totalS);
+    document.getElementById('kpi-deposits').innerText = totalD;
+    document.getElementById('kpi-regs').innerText = totalR;
+    document.getElementById('kpi-profit').innerText = formatCurrency(totalRev - totalS);
+    document.getElementById('kpi-profit').className = `text-[26px] font-black mt-1 ${totalRev-totalS >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
+    
+    renderTrend(data);
+    renderGeoList(data);
+    renderTable(data);
+  }
 
-    if (!error) {
-      input.value = '';
-      refreshReports();
-    }
+  // Функція рендеру графіка (Trend)
+  function renderTrend(data) {
+    const ctx = document.getElementById('chart-trend');
+    if (!ctx || !data.length) return;
+    if (window.chart1) window.chart1.destroy();
+    
+    const sd = [...new Set(data.map(d => d.date))].sort();
+    const days = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+    
+    const stats = sd.map(date => {
+      const dayData = data.filter(x => x.date === date);
+      const s = dayData.reduce((a, b) => a + b.spend, 0);
+      return Math.round(s);
+    });
+
+    window.chart1 = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: sd.map(d => {
+          const dt = new Date(d);
+          return `${dt.getDate()}.${dt.getMonth()+1} (${days[dt.getDay()]})`;
+        }),
+        datasets: [{
+          label: 'Spend', data: stats, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.4, borderWidth: 4, pointRadius: 6,
+          datalabels: { display: true, align: 'top', color: '#fff', font: {weight:'900', size:10}, backgroundColor: '#3b82f6', borderRadius: 4, padding: 3 }
+        }]
+      },
+      options: { interaction: { mode: 'index', intersect: false }, maintainAspectRatio: false, plugins: { legend: false }, scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,0.05)' } } } }
+    });
   }
-  function deleteReport(row) { if(confirm('Delete?')) google.script.run.withSuccessHandler(() => refreshReports()).deleteDailyReport(row); }
-  
-  // Відкриття модалки
-function toggleTaskModal() { 
-  const modal = document.getElementById('task-modal'); 
-  modal.classList.toggle('hidden'); 
-  if (!modal.classList.contains('hidden')) {
-    currentTaskFilter = 'Not in progress'; // Завжди скидаємо на "в роботі" при відкритті
-    refreshTasks(); 
-  }
-}
- // Отримання тасків (замість getTasks)
+
+  // --- 8. ТАСКИ ТА ЗВІТИ (SQL) ---
   async function refreshTasks() {
-    const { data } = await supabase
+    const { data, error } = await _supabase
       .from('tasks')
       .select('*')
       .eq('team_name', currentTeam)
@@ -1412,207 +708,104 @@ function toggleTaskModal() {
     
     taskData = data || [];
     renderTasks(currentTaskFilter);
-  }
-  // Малювання списку
-function renderTasks(filter) {
-  const container = document.getElementById('task-list-container'); 
-  container.innerHTML = ''; 
-
-  // Підсвічування активної кнопки
-  const buttons = document.querySelectorAll('#task-modal button[onclick^="filterTasks"]');
-  buttons.forEach(btn => {
-    if (btn.getAttribute('onclick').includes(filter)) {
-      btn.className = btn.className.replace('border-gray-500/20', 'border-blue-500 bg-blue-500/10 text-white');
-    } else {
-      btn.className = btn.className.replace('border-blue-500 bg-blue-500/10 text-white', 'border-gray-500/20');
-    }
-  });
-
-  const filtered = filter === 'All' ? taskData : taskData.filter(t => t.status === filter);
-  
-  if (!filtered.length) { 
-    container.innerHTML = `<div class="flex flex-col items-center justify-center h-full opacity-20 italic py-20"><p>No tasks in "${filter}"</p></div>`; 
-    return; 
+    updateTaskCounters();
   }
 
-  filtered.sort((a,b) => b.row - a.row).forEach(t => {
-    const sClass = t.status.toLowerCase().replace(/\s+/g, '-');
-    container.innerHTML += `
-      <div class="p-4 bg-gray-500/5 rounded-2xl border border-gray-500/10 flex flex-col gap-3">
-        <div class="flex justify-between items-start">
-          <span class="text-[10px] font-bold opacity-40 uppercase">${t.date}</span>
-          <div class="flex gap-2">
-            <button onclick="changeStatus(${t.row}, 'Not in progress')" class="w-3 h-3 rounded-full bg-slate-500 hover:scale-125 transition"></button>
-            <button onclick="changeStatus(${t.row}, 'In progress')" class="w-3 h-3 rounded-full bg-yellow-500 hover:scale-125 transition"></button>
-            <button onclick="changeStatus(${t.row}, 'Completed')" class="w-3 h-3 rounded-full bg-green-500 hover:scale-125 transition"></button>
-            <button onclick="deleteTaskRow(${t.row})" class="ml-2 text-muted-dynamic hover:text-red-500 transition">
-              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.586a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"></path></svg>
-            </button>
-          </div>
-        </div>
-        <div class="flex items-center gap-3">
-          <span class="badge-${sClass} text-[7px] font-black text-white px-2 py-0.5 rounded-md uppercase whitespace-nowrap">${t.status}</span>
-          <input type="text" value="${t.text}" onchange="editTask(${t.row}, this.value)" class="bg-transparent border-none outline-none text-sm font-bold flex-1 text-dynamic uppercase">
-        </div>
-      </div>`;
-  });
-}
-  function submitNewTask() { const input = document.getElementById('new-task-input'); if (!input.value.trim()) return; google.script.run.withSuccessHandler(() => { input.value = ''; refreshTasks(); }).addTask(input.value); }
-  function changeStatus(row, status) { google.script.run.withSuccessHandler(() => refreshTasks()).updateTaskStatus(row, status); }
-  function editTask(row, text) { google.script.run.withSuccessHandler(() => refreshTasks()).editTaskText(row, text); }
-  function deleteTaskRow(row) { if(confirm('Delete?')) google.script.run.withSuccessHandler(() => refreshTasks()).deleteTask(row); }
-  // Клік по кнопках фільтрів
-  function filterTasks(status) { 
-    currentTaskFilter = status; // Запам'ятовуємо вибір
-    renderTasks(status); 
+  async function changeStatus(id, newStatus) {
+    const { error } = await _supabase
+      .from('tasks')
+      .update({ status: newStatus })
+      .eq('id', id);
+    if (!error) refreshTasks();
   }
 
-  function populateGeoFilter(data) { if(!data || !data.length) return; const g = [...new Set(data.map(d => d.geo))].filter(Boolean).sort(); const s = document.getElementById('filter-geo-select'); while(s.options.length > 1) s.remove(1); g.forEach(geo => { const o = document.createElement('option'); o.value = geo; o.innerText = geo.toUpperCase(); s.appendChild(o); }); }
-  function sortTable(c) { if (sortState.col === c) { sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc'; } else { sortState.col = c; sortState.dir = 'asc'; } applyFilter(); }
-  function applyFilter() { const f = document.getElementById('filter-from').value; const t = document.getElementById('filter-to').value; const g = document.getElementById('filter-geo-select').value; const fil = rawData.filter(d => { const dm = (!f || d.date >= f) && (!t || d.date <= t); const gm = (!g || d.geo === g); return dm && gm; }); renderTable(fil); }
-  function applyGeoFilter() { const f = document.getElementById('geo-filter-from').value; const t = document.getElementById('geo-filter-to').value; const fil = rawData.filter(d => (!f || d.date >= f) && (!t || d.date <= t)); renderGeoList(fil); }
-  function applyChartFilter() { const f = document.getElementById('chart-from').value; const t = document.getElementById('chart-to').value; const fil = rawData.filter(d => (!f || d.date >= f) && (!t || d.date <= t)); renderTrend(fil.length ? fil : rawData); }
-  function changeChartMode(m) { currentChartMode = m; document.getElementById('btn-daily').className = m === 'daily' ? "px-4 py-1.5 rounded-lg text-xs font-black transition-all bg-blue-600 text-white shadow-lg uppercase" : "px-4 py-1.5 rounded-lg text-xs font-black transition-all text-muted-dynamic hover:text-blue-400 uppercase"; document.getElementById('btn-geo').className = m === 'geo' ? "px-4 py-1.5 rounded-lg text-xs font-black transition-all bg-blue-600 text-white shadow-lg uppercase" : "px-4 py-1.5 rounded-lg text-xs font-black transition-all text-muted-dynamic hover:text-blue-400 uppercase"; applyChartFilter(); }
+  async function submitNewTask() {
+    const input = document.getElementById('new-task-input');
+    const prio = document.getElementById('new-task-priority').value;
+    if (!input.value.trim()) return;
 
-  function renderTable(data) {
-    const b = document.getElementById('table-body'); b.innerHTML = '';
-    data.forEach(row => { b.innerHTML += `<tr class="hover:bg-blue-500/5 group border-b border-gray-500/5 text-dynamic"><td class="p-5 font-mono text-muted-dynamic font-bold text-xs">${row.date}</td><td class="p-5 font-black uppercase text-sm">${row.acc}</td><td class="p-5 text-center"><span class="bg-blue-500/10 text-blue-500 border border-blue-500/20 px-3 py-1 rounded-xl font-black text-[10px] uppercase">${row.geo}</span></td><td class="p-5 text-sm font-black text-muted-dynamic opacity-80 uppercase">${row.agent || 'Direct'}</td><td class="p-5 text-base text-muted-dynamic font-bold uppercase">${row.funnel}</td><td class="p-5 font-black text-dynamic text-right text-sm font-bold">$${row.spend.toFixed(2)}</td><td class="p-5 text-center font-black font-bold text-dynamic">${row.regs}</td><td class="p-5 font-black text-green-500 text-center text-lg font-bold text-green-500 font-black">${row.deposits}</td></tr>`; });
+    const { error } = await _supabase.from('tasks').insert([
+      { team_name: currentTeam, text: input.value, status: 'Not in progress', priority: prio }
+    ]);
+    if (!error) { input.value = ''; refreshTasks(); }
   }
 
-function renderGeoList(data) { 
-  const m = {}; 
-  data.forEach(d => { 
-    if(!m[d.geo]) m[d.geo] = { s: 0, r: 0, d: 0 }; 
-    m[d.geo].s += d.spend; 
-    m[d.geo].r += d.regs; 
-    m[d.geo].d += d.deposits; 
-  }); 
+  async function refreshReports() {
+    const { data, error } = await _supabase
+      .from('daily_reports')
+      .select('*')
+      .eq('team_name', currentTeam);
+    
+    reportData = data || [];
+    renderReports();
+  }
 
-  const c = document.getElementById('geo-list'); 
-  c.innerHTML = ''; 
-  
-  Object.entries(m).sort((a,b) => b[1].s - a[1].s).forEach(([geo, stat]) => { 
-    const r2d = stat.r > 0 ? ((stat.d / stat.r) * 100).toFixed(1) : 0;
-    const cpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : 0;
-    const cpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : 0;
+  async function submitNewReport() {
+    const input = document.getElementById('new-report-input');
+    if (!input.value.trim()) return;
 
-    c.innerHTML += `
-      <div onclick="showGeoDetails('${geo}')" class="p-4 card rounded-2xl border-l-4 border-l-blue-500 shadow-sm text-dynamic font-black uppercase hover:bg-white/5 transition-all cursor-pointer group mb-3">
-        <!-- Заголовок: ГЕО та Спенд -->
-        <div class="flex justify-between items-center mb-3">
-          <span class="font-black text-blue-500 text-xl uppercase tracking-tighter group-hover:translate-x-1 transition-transform">${geo}</span>
-          <span class="font-black text-dynamic text-xl">$${stat.s.toFixed(0)}</span>
-        </div>
+    const { error } = await _supabase.from('daily_reports').insert([
+      { team_name: currentTeam, comment: input.value, date: new Date() }
+    ]);
+    if (!error) { input.value = ''; refreshReports(); }
+  }
 
-        <!-- Ряд 1: Кількісні показники (3 стовпчики) -->
-        <div class="grid grid-cols-3 gap-2 mb-3 text-center border-b border-gray-500/10 pb-3">
-          <div class="flex flex-col border-r border-gray-500/10">
-            <span class="text-muted-dynamic text-[10px] uppercase tracking-widest mb-1">Reg</span>
-            <b class="text-base font-black text-blue-400">${stat.r}</b>
-          </div>
-          <div class="flex flex-col border-r border-gray-500/10">
-            <span class="text-green-500/70 text-[10px] uppercase tracking-widest mb-1">Dep</span>
-            <b class="text-green-500 text-base font-black">${stat.d}</b>
-          </div>
-          <div class="flex flex-col">
-            <span class="text-pink-500/70 text-[10px] uppercase tracking-widest mb-1">R2D</span>
-            <b class="text-pink-500 text-base font-black">${r2d}%</b>
-          </div>
-        </div>
+  // --- 9. PAYOUTS ---
+  async function refreshPayoutsFromSQL() {
+    const { data } = await _supabase.from('payouts').select('*').eq('team_name', currentTeam);
+    globalPayouts = {};
+    if (data) data.forEach(p => globalPayouts[p.geo.toUpperCase()] = p.value);
+    renderGeoPayoutSettings();
+  }
 
-        <!-- Ряд 2: Вартісні показники (2 стовпчики) -->
-        <div class="grid grid-cols-2 gap-4 text-center">
-          <div class="flex flex-col">
-            <span class="text-purple-400/70 text-[10px] uppercase tracking-widest mb-0.5">CPL</span>
-            <b class="text-[16px] font-black text-purple-400 tracking-tight">$${cpl}</b>
-          </div>
-          <div class="flex flex-col">
-            <span class="text-yellow-500/70 text-[10px] uppercase tracking-widest mb-0.5">CPA</span>
-            <b class="text-[16px] font-black text-yellow-500 tracking-tight">$${cpa}</b>
-          </div>
-        </div>
-      </div>`; 
-  }); 
-}
-  
-function showGeoDetails(geoName) {
-  const modal = document.getElementById('geo-details-modal');
-  const title = document.getElementById('geo-details-title');
-  const list = document.getElementById('geo-funnel-list');
-  
-  title.innerText = `${geoName} Analysis`;
-  list.innerHTML = '';
+  async function addGeoPayout() {
+    const g = document.getElementById('payout-geo').value.toUpperCase();
+    const v = document.getElementById('payout-value').value;
+    const { error } = await _supabase.from('payouts').upsert({ team_name: currentTeam, geo: g, value: v });
+    if (!error) refreshPayoutsFromSQL();
+  }
 
-  const from = document.getElementById('filter-from').value;
-  const to = document.getElementById('filter-to').value;
-  
-  const filtered = rawData.filter(d => {
-    const isGeo = d.geo === geoName;
-    const isDate = (!from || d.date >= from) && (!to || d.date <= to);
-    return isGeo && isDate;
-  });
+  // --- 10. AI ANALYSIS (GEMINI FETCH) ---
+  async function runAI() {
+    const btn = document.getElementById('ai-btn');
+    const res = document.getElementById('ai-response');
+    const f = document.getElementById('ai-from').value;
+    const t = document.getElementById('ai-to').value;
 
-  const funnelMap = {};
-  filtered.forEach(d => {
-    if (!funnelMap[d.funnel]) funnelMap[d.funnel] = { s: 0, r: 0, d: 0 };
-    funnelMap[d.funnel].s += d.spend;
-    funnelMap[d.funnel].r += d.regs;
-    funnelMap[d.funnel].d += d.deposits;
-  });
+    btn.disabled = true;
+    res.innerHTML = "🤖 Аналізую дані через API...";
 
-  Object.entries(funnelMap).sort((a,b) => b[1].s - a[1].s).forEach(([name, s]) => {
-    const r2d = s.r > 0 ? ((s.d / s.r) * 100).toFixed(1) : 0;
-    // РОЗРАХУНОК CPL та CPA
-    const cpl = s.r > 0 ? (s.s / s.r).toFixed(1) : 0;
-    const cpa = s.d > 0 ? (s.s / s.d).toFixed(1) : 0;
+    const prompt = `Senior Buyer. Stats: ${JSON.stringify(filteredDataCache)}. Team: ${currentTeam}. Tips in Ukrainian.`;
 
-    list.innerHTML += `
-      <tr class="hover:bg-white/5 transition-colors border-b border-white/5 last:border-0">
-        <td class="py-4 text-[12px] font-bold uppercase text-slate-300">${name || 'Direct'}</td>
-        <td class="py-4 text-right font-mono text-xs">$${s.s.toFixed(2)}</td>
-        <td class="py-4 text-center font-bold text-blue-400">${s.r}</td>
-        <td class="py-4 text-center font-bold text-green-500">${s.d}</td>
-        <td class="py-4 text-right font-black text-pink-500">${r2d}%</td>
-        <!-- ВИВІД НОВИХ ДАНИХ -->
-        <td class="py-4 text-right font-black text-purple-400 text-xs">$${cpl}</td>
-        <td class="py-4 text-right font-black text-yellow-500 text-xs">$${cpa}</td>
-      </tr>
-    `;
-  });
-
-  modal.classList.remove('hidden');
-}
-
-function closeGeoModal() {
-  document.getElementById('geo-details-modal').classList.add('hidden');
-}
-
-// Також додайте закриття по кліку на оверлей
-window.addEventListener('click', (e) => {
-  const modal = document.getElementById('geo-details-modal');
-  if (e.target === modal) closeGeoModal();
-});
-  function renderTrend(data) {
-    const isD = document.getElementById('main-html').classList.contains('dark'); const tc = isD ? '#94a3b8' : '#475569'; const gc = isD ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
-    const ctx = document.getElementById('chart-trend').getContext('2d'); if(window.chart1) window.chart1.destroy();
-    const sd = [...new Set(data.map(d => d.date))].sort(); const labels = sd.map(d => { const o = new Date(d); return o.getDate() + " (" + ["НД","ПН","ВТ","СР","ЧТ","ПТ","СБ"][o.getDay()] + ")"; });
-    let ds = [];
-    if (currentChartMode === 'daily') {
-      const m = {}; sd.forEach(d => m[d] = { s:0, r:0, d:0 }); data.forEach(d => { if(m[d.date]) { m[d.date].s += d.spend; m[d.date].r += d.regs; m[d.date].d += d.deposits; } });
-      ds = [{ label: 'Spend ($)', data: sd.map(d => m[d].s), borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.4, borderWidth: 3, pointRadius: 5, datalabels: { display: true, align: 'top', color: isD ? '#fff' : '#1e293b', font: { weight: '900' }, formatter: Math.round } },
-            { label: 'CPL ($)', data: sd.map(d => m[d].r > 0 ? m[d].s/m[d].r : 0), borderColor: '#a855f7', borderDash: [5, 5], fill: false, tension: 0.4, borderWidth: 2, datalabels: { display: false } },
-            { label: 'CPA ($)', data: sd.map(d => m[d].d > 0 ? m[d].s/m[d].d : 0), borderColor: '#eab308', borderDash: [3, 3], fill: false, tension: 0.4, borderWidth: 2, datalabels: { display: false } }];
-    } else {
-      const g = [...new Set(data.map(d => d.geo))].filter(Boolean); const clr = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
-      ds = g.map((geo, i) => {
-        const stats = sd.map(date => { const dG = data.filter(x => x.date === date && x.geo === geo); return { s: dG.reduce((a, c) => a + c.spend, 0), r: dG.reduce((a, c) => a + c.regs, 0), d: dG.reduce((a, c) => a + c.deposits, 0) }; });
-        return { label: geo, data: stats.map(v => v.s), fullStats: stats, borderColor: clr[i % clr.length], backgroundColor: clr[i % clr.length] + '20', fill: false, tension: 0.4, borderWidth: 3, pointRadius: 4, datalabels: { display: false } };
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
       });
+      const json = await response.json();
+      res.innerHTML = json.candidates[0].content.parts[0].text.replace(/\n/g, '<br>');
+    } catch (e) {
+      res.innerHTML = "❌ Помилка AI: " + e.message;
+    } finally {
+      btn.disabled = false;
     }
-    window.chart1 = new Chart(ctx, { type: 'line', data: { labels, datasets: ds }, options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: true, position: 'top', labels: { color: tc, font: { weight: 'bold', size: 11 }, usePointStyle: true } }, tooltip: { enabled: true, backgroundColor: isD ? '#1e293b' : '#ffffff', titleColor: isD ? '#ffffff' : '#1e293b', bodyColor: isD ? '#cbd5e1' : '#475569', borderColor: 'rgba(59, 130, 246, 0.2)', borderWidth: 1, padding: 12, boxPadding: 6, filter: function(ti) { if (currentChartMode === 'geo') { const st = ti.dataset.fullStats[ti.dataIndex]; return st.s > 0 || st.r > 0 || st.d > 0; } return true; }, callbacks: { label: function(ctx) { const l = ctx.dataset.label || ''; const v = ctx.parsed.y; if (currentChartMode === 'geo') { const st = ctx.dataset.fullStats[ctx.dataIndex]; return [`📍 ГЕО: ${l}`, `💰 Spend: $${v.toFixed(0)}`, `📝 Reg: ${st.r}`, `🎯 Dep: ${st.d}`, `💵 CPL: $${st.r > 0 ? (st.s/st.r).toFixed(1) : 0} | CPA: $${st.d > 0 ? (st.s/st.d).toFixed(1) : 0}`]; } return `${l}: $${v.toFixed(2)}`; } } } }, scales: { x: { ticks: { color: tc, font: { size: 10 } }, grid: { color: gc } }, y: { ticks: { color: tc }, grid: { color: gc } } } } });
   }
 
-  function runAI() { const b = document.getElementById('ai-btn'); const r = document.getElementById('ai-response'); const f = document.getElementById('ai-from').value; const t = document.getElementById('ai-to').value; if (!f || !t) return alert("Select dates!"); b.disabled = true; r.innerHTML = "Analyzing..."; google.script.run.withSuccessHandler(res => { r.innerHTML = res.replace(/\n/g, '<br>'); b.disabled = false; }).getAIAnalysis(f, t); }
-</script>
+  // Функції-заглушки для відсутності помилок
+  function updateSyncStatus(s) { document.getElementById('last-sync-badge').innerText = "Sync: " + s.toUpperCase(); }
+  function toggleSettingsMenu() { document.getElementById('settings-menu').classList.toggle('hidden'); }
+  function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
+  function toggleReportModal() { document.getElementById('report-modal').classList.toggle('hidden'); if(!document.getElementById('report-modal').classList.contains('hidden')) refreshReports(); }
+  function toggleTaskModal() { document.getElementById('task-modal').classList.toggle('hidden'); if(!document.getElementById('task-modal').classList.contains('hidden')) refreshTasks(); }
+  function toggleCalculator() { document.getElementById('calc-modal').classList.toggle('hidden'); }
+  function toggleTestingModal() { document.getElementById('testing-modal').classList.toggle('hidden'); }
+  function loadSettings() { 
+    const t = localStorage.getItem('monthly_spend_target'); 
+    if(t) document.getElementById('target-input').value = t; 
+    updateVisibility(true);
+  }
+    
+  </script>
 </body>
 </html>
