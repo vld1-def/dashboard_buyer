@@ -1292,6 +1292,129 @@ async function finishEditingReport(id, el) {
   el.setAttribute('data-state', 'view');
   isEditingReport = false;
 }
+    // --- 1. ОНОВЛЕННЯ МІСЯЧНОГО ТАРГЕТУ ---
+function updateMilestones(data) {
+  const fill = document.getElementById('milestone-fill');
+  const label = document.getElementById('monthly-spend-label');
+  const info = document.getElementById('next-rank-info');
+
+  if (!data || data.length === 0) {
+    if (fill) fill.style.width = "0%";
+    if (label) label.innerText = "$0 / Target";
+    return;
+  }
+
+  const monthlySpend = data.reduce((sum, item) => sum + (Number(item.spend) || 0), 0);
+  const savedTarget = localStorage.getItem('monthly_spend_target') || 40000;
+  const target = Number(savedTarget);
+  const progressPercent = Math.min((monthlySpend / target) * 100, 100);
+
+  if (fill) fill.style.width = progressPercent + "%";
+  if (label) label.innerText = formatCurrency(monthlySpend) + " / " + formatCurrency(target);
+  
+  if (info) {
+    const left = target - monthlySpend;
+    info.innerText = left > 0 ? "Target left: " + formatCurrency(left) : "GOAL REACHED! 🚀";
+  }
+}
+
+// --- 2. РЕНДЕР ГОЛОВНОГО ГРАФІКА (Performance Trend) ---
+function renderTrend(data) {
+  const ctx = document.getElementById('chart-trend');
+  if (!ctx || !data.length) return;
+  if (window.chart1) window.chart1.destroy();
+  
+  const sd = [...new Set(data.map(d => d.date))].sort();
+  const days = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+  
+  const stats = sd.map(date => {
+    const dayData = data.filter(x => x.date === date);
+    return Math.round(dayData.reduce((a, b) => a + b.spend, 0));
+  });
+
+  window.chart1 = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: sd.map(d => {
+        const dt = new Date(d);
+        return `${dt.getDate()}.${dt.getMonth()+1} (${days[dt.getDay()]})`;
+      }),
+      datasets: [{
+        label: 'Spend', data: stats, borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)', fill: true, tension: 0.4, borderWidth: 4, pointRadius: 6,
+        datalabels: { display: true, align: 'top', offset: 10, color: '#fff', font: {weight:'900', size:10}, backgroundColor: '#3b82f6', borderRadius: 4, padding: 3 }
+      }]
+    },
+    options: { interaction: { mode: 'index', intersect: false }, maintainAspectRatio: false, plugins: { legend: false }, scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(255,255,255,0.05)' } } } }
+  });
+}
+
+// --- 3. ГЕО PERFORMANCE (Сайдбар) ---
+function renderGeoList(data) {
+  const m = {}; 
+  data.forEach(d => { 
+    const g = d.geo || "??"; 
+    if(!m[g]) m[g] = { s: 0, r: 0, d: 0 }; 
+    m[g].s += d.spend; m[g].r += d.regs; m[g].d += d.deposits; 
+  });
+  
+  const c = document.getElementById('geo-list'); if(!c) return;
+  c.innerHTML = Object.entries(m).sort((a,b) => b[1].s - a[1].s).map(([geo, stat]) => {
+    const pVal = globalPayouts[geo.toUpperCase()] || 0;
+    const profit = (stat.d * pVal) - stat.s;
+    return `
+      <div onclick="showGeoDetails('${geo}')" class="p-4 card geo-card mb-3 cursor-pointer hover:bg-white/5 transition border-l-4 border-blue-500">
+        <div class="flex justify-between mb-2"><span class="font-black text-blue-500 text-xl">${geo}</span><span class="font-black text-xl">$${stat.s.toFixed(0)}</span></div>
+        <div class="grid grid-cols-3 gap-2 text-center border-b border-white/5 pb-3 mb-3">
+          <div class="flex flex-col border-r border-white/5"><span class="text-[10px] opacity-40 uppercase">Reg</span><b class="text-base text-blue-400">${stat.r}</b></div>
+          <div class="flex flex-col border-r border-white/5"><span class="text-[10px] opacity-40 text-green-500 uppercase">Dep</span><b class="text-base text-green-500">${stat.d}</b></div>
+          <div class="flex flex-col"><span class="text-[10px] opacity-40 text-pink-500 uppercase">R2D</span><b class="text-base text-pink-500">${(stat.r > 0 ? (stat.d/stat.r*100) : 0).toFixed(1)}%</b></div>
+        </div>
+        <div class="flex justify-between items-center text-[11px] font-black">
+           <span class="opacity-40 uppercase font-black">Net Profit:</span>
+           <span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// --- 4. ФУНКЦІЇ ДЕТАЛЬНОГО ПЕРЕГЛЯДУ ТАСКІВ ---
+let currentEditingTaskId = null;
+function openTaskDetails(id) {
+  const task = taskData.find(t => t.id === id);
+  if (!task) return;
+  currentEditingTaskId = id;
+  const modal = document.getElementById('task-detail-modal');
+  document.getElementById('detail-date').innerText = normalizeDate(task.created_at);
+  document.getElementById('detail-text-input').value = task.text;
+  document.getElementById('detail-priority-select').value = task.priority;
+  updatePrioritySelectColor(document.getElementById('detail-priority-select'), task.priority);
+  modal.classList.remove('hidden');
+}
+
+function updatePrioritySelectColor(el, val) {
+  if (!el) return;
+  el.className = el.className.replace(/text-(red|yellow|slate)-500/g, "");
+  if (val === 'High') el.classList.add('text-red-500');
+  else if (val === 'Medium') el.classList.add('text-yellow-500');
+  else el.classList.add('text-slate-500');
+}
+
+function closeTaskDetails() {
+  document.getElementById('task-detail-modal').classList.add('hidden');
+  currentEditingTaskId = null;
+}
+
+// --- 5. ФІЛЬТР ГЕО (Випадаючий список) ---
+function populateGeoFilter(data) {
+  const s = document.getElementById('filter-geo-select'); if(!s || !data) return;
+  const g = [...new Set(data.map(d => d.geo))].filter(Boolean).sort();
+  while(s.options.length > 1) s.remove(1);
+  g.forEach(geo => {
+    const o = document.createElement('option');
+    o.value = geo; o.innerText = geo.toUpperCase();
+    s.appendChild(o);
+  });
+}
   </script>
 </body>
 </html>
