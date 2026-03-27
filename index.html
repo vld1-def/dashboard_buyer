@@ -1848,15 +1848,24 @@ function renderGeoPayoutSettings() {
   
   const entries = Object.entries(globalPayouts);
   if (entries.length === 0) {
-    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center">No payouts set in SQL</p>';
+    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center text-slate-500">No payouts set in SQL</p>';
     return;
   }
 
-  container.innerHTML = entries.map(([geo, val]) => `
-    <div class="flex justify-between items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1">
-      <span class="font-black text-blue-400 uppercase">${geo}</span>
-      <span class="font-bold text-white">$${val}</span>
-      <button onclick="deletePayoutFromSQL('${geo}')" class="text-red-500 hover:text-red-400 px-1 transition-colors">✕</button>
+  // 1. Сортуємо список по ціні (від більшої до меншої)
+  const sortedEntries = entries.sort((a, b) => b[1] - a[1]);
+
+  // 2. Рендеримо з вирівнюванням по лівому краю (text-left)
+  container.innerHTML = sortedEntries.map(([geo, val]) => `
+    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-3">
+      <!-- ГЕО: фіксована ширина, щоб ціни стояли в один ряд -->
+      <span class="font-black text-blue-400 uppercase w-7">${geo}</span>
+      
+      <!-- ЦІНА: text-left для вирівнювання по лівому краю + flex-1 щоб зайняти простір -->
+      <span class="font-bold text-white text-left flex-1">$${val}</span>
+      
+      <!-- Кнопка видалення -->
+      <button onclick="deletePayoutFromSQL('${geo}')" class="text-red-500 hover:text-red-400 px-1 transition-colors opacity-50 hover:opacity-100">✕</button>
     </div>
   `).join('');
 }
