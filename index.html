@@ -382,6 +382,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
           <input type="checkbox" id="toggle-creatives" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600">
         </label>
         <label class="flex items-center justify-between cursor-pointer group">
+          <span class="text-xs font-bold text-slate-300 group-hover:text-white transition">AI Intelligence</span>
+          <input type="checkbox" id="toggle-ai" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-0 focus:ring-offset-0">
+        </label>
+        <label class="flex items-center justify-between cursor-pointer group">
           <span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Live Data Feed</span>
           <input type="checkbox" id="toggle-table" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600">
         </label>
@@ -606,8 +610,26 @@ input[type="date"]::-webkit-calendar-picker-indicator {
       </div>
       
       <!-- AI Intelligence -->
-      <div id="ai-intelligence-section" class="card p-8 rounded-3xl border-2 border-purple-500/30 shadow-xl bg-gradient-to-br from-purple-500/10 to-transparent text-dynamic"><div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-6 text-dynamic"><div class="flex items-center gap-4 text-dynamic"><span class="text-3xl">🤖</span><div><h2 class="font-black text-xl uppercase tracking-tighter text-dynamic uppercase">AI Intelligence</h2><p class="text-[9px] text-purple-400 font-bold uppercase tracking-widest">Gemini Engine Analysis</p></div></div><div class="flex flex-wrap items-center gap-2 bg-black/20 p-2 rounded-2xl border border-purple-500/20"><input type="date" id="ai-from" class="bg-transparent outline-none px-2 py-1 text-xs font-bold text-dynamic"><input type="date" id="ai-to" class="bg-transparent outline-none px-2 py-1 text-xs font-bold text-dynamic"><button onclick="runAI()" id="ai-btn" class="bg-purple-600 hover:bg-purple-500 text-white px-7 py-2 rounded-xl text-xs font-black transition shadow-lg uppercase tracking-widest font-black uppercase text-white">Analyze</button></div></div><div id="ai-response" class="text-sm leading-relaxed font-medium text-muted-dynamic min-h-[60px] border-l-4 border-purple-500/30 pl-6 italic text-dynamic">Select dates for AI insights...</div></div>
-
+     <!-- AI Intelligence Section -->
+<div id="ai-intelligence-section" class="card p-8 rounded-3xl border-2 border-purple-500/30 shadow-xl bg-gradient-to-br from-purple-500/10 to-transparent text-dynamic mb-8">
+  <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-6">
+    <div class="flex items-center gap-4">
+      <span class="text-3xl">🤖</span>
+      <div>
+        <h2 class="font-black text-xl uppercase tracking-tighter text-dynamic">AI Intelligence</h2>
+        <p class="text-[9px] text-purple-400 font-bold uppercase tracking-widest">Gemini Engine Analysis</p>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 bg-black/20 p-2 rounded-2xl border border-purple-500/20">
+      <input type="date" id="ai-from" class="bg-transparent outline-none px-2 py-1 text-xs font-bold text-white">
+      <input type="date" id="ai-to" class="bg-transparent outline-none px-2 py-1 text-xs font-bold text-white">
+      <button onclick="runAI()" id="ai-btn" class="bg-purple-600 hover:bg-purple-500 text-white px-7 py-2 rounded-xl text-xs font-black transition shadow-lg uppercase tracking-widest">Analyze</button>
+    </div>
+  </div>
+  <div id="ai-response" class="text-sm leading-relaxed font-medium text-slate-300 min-h-[60px] border-l-4 border-purple-500/30 pl-6 italic">
+    Select dates for AI insights...
+  </div>
+</div>
       <!-- Live Table -->
       <div id="live-table-section" class="card rounded-3xl overflow-hidden shadow-2xl">
          <div class="p-6 border-b border-gray-500/10 flex flex-col xl:flex-row justify-between items-center gap-6 text-dynamic"><h2 class="font-black text-xl uppercase tracking-tighter text-dynamic">Live Data Feed</h2><div class="flex flex-wrap gap-3 card p-2 rounded-2xl shadow-inner border-gray-500/10 text-xs font-bold text-dynamic"><input type="date" id="filter-from" class="bg-transparent outline-none p-2 text-dynamic"><span class="mt-2 opacity-30 uppercase text-[9px]">To</span><input type="date" id="filter-to" class="bg-transparent outline-none p-2 text-dynamic"><select id="filter-geo-select" class="bg-transparent border-l border-gray-500/20 pl-3 outline-none uppercase text-[10px] min-w-[100px] font-black tracking-widest font-sans text-dynamic"><option value="">ALL GEO</option></select><button onclick="applyFilter()" class="bg-blue-600 px-6 py-2 rounded-xl text-white font-black hover:bg-blue-500 transition shadow-lg uppercase text-[10px] font-black uppercase text-white">Apply</button></div></div>
@@ -1321,8 +1343,65 @@ function renderTable(data) {
   console.log(isHidden ? "Меню приховано" : "Меню відкрито");
 }
   function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
-  function loadSettings() { const t = localStorage.getItem('monthly_spend_target'); if(t) document.getElementById('target-input').value = t; updateVisibility(true); }
-  function updateVisibility(i) { /* Тут твій код видимості */ }
+ // Функція для завантаження збережених налаштувань при старті
+function loadSettings() {
+  const saved = localStorage.getItem('dashboard_visibility');
+  if (saved) {
+    const settings = JSON.parse(saved);
+    for (const [id, isChecked] of Object.entries(settings)) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.checked = isChecked;
+      }
+    }
+    updateVisibility(); // Застосовуємо завантажене
+  }
+}
+  function updateVisibility() {
+  // Мапа: ID чекбокса -> ID секції в DOM
+  const config = {
+    'toggle-geo': 'geo-sidebar-col',
+    'toggle-creatives': 'creative-analyzer-section',
+    'toggle-ai': 'ai-intelligence-section',
+    'toggle-table': 'live-table-section'
+  };
+
+  for (const [checkId, sectionId] of Object.entries(config)) {
+    const checkbox = document.getElementById(checkId);
+    const section = document.getElementById(sectionId);
+    
+    if (checkbox && section) {
+      if (checkbox.checked) {
+        section.classList.remove('hidden');
+      } else {
+        section.classList.add('hidden');
+      }
+    }
+  }
+
+  // СПЕЦІАЛЬНА ЛОГІКА: Якщо ГЕО приховано, розтягуємо графік на всю ширину
+  const geoVisible = document.getElementById('toggle-geo').checked;
+  const chartCol = document.getElementById('chart-main-col');
+  
+  if (chartCol) {
+    if (!geoVisible) {
+      // Розтягуємо на всі 4 колонки
+      chartCol.classList.remove('lg:col-span-3');
+      chartCol.classList.add('lg:col-span-4');
+    } else {
+      // Повертаємо до 3 колонок, щоб було місце для ГЕО
+      chartCol.classList.remove('lg:col-span-4');
+      chartCol.classList.add('lg:col-span-3');
+    }
+  }
+  
+  // Зберігаємо стан налаштувань у пам'ять браузера
+  const settings = {};
+  Object.keys(config).forEach(id => {
+    settings[id] = document.getElementById(id).checked;
+  });
+  localStorage.setItem('dashboard_visibility', JSON.stringify(settings));
+}
     // --- 1. УТИЛІТИ ТА СТАТУСИ ---
 function updateSyncStatus(status) {
   const badge = document.getElementById('last-sync-badge');
