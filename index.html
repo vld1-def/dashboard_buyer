@@ -1371,6 +1371,7 @@ function renderTrend(data) {
   if (!container) return;
 
   container.innerHTML = Object.entries(m).sort((a, b) => b[1].s - a[1].s).map(([geo, stat]) => {
+    // Розрахунки
     const r2d = stat.r > 0 ? ((stat.d / stat.r) * 100).toFixed(1) : 0;
     const cpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : 0;
     const cpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : 0;
@@ -1381,46 +1382,47 @@ function renderTrend(data) {
     const profitColor = profit >= 0 ? 'text-emerald-400' : 'text-red-500';
 
     return `
-      <div onclick="showGeoDetails('${geo}')" class="p-5 card mb-4 cursor-pointer hover:bg-white/[0.03] transition-all border-l-4 border-blue-500 shadow-xl bg-slate-900/40">
-        <!-- Header: GEO and Total Spend -->
-        <div class="flex justify-between items-start mb-4">
-          <span class="font-black text-blue-500 text-3xl tracking-tighter">${geo}</span>
-          <span class="font-black text-2xl text-white">$${Math.round(stat.s)}</span>
+      <div onclick="showGeoDetails('${geo}')" class="p-4 card mb-4 cursor-pointer hover:bg-white/[0.03] transition-all border-l-4 border-blue-500 shadow-lg bg-slate-900/40">
+        
+        <!-- Заголовок: ГЕО та Спенд -->
+        <div class="flex justify-between items-center mb-4">
+          <span class="font-black text-blue-500 text-2xl tracking-tighter">${geo}</span>
+          <span class="font-black text-xl text-white">$${Math.round(stat.s).toLocaleString()}</span>
         </div>
 
-        <!-- Row 1: REG, DEP, R2D -->
-        <div class="grid grid-cols-3 gap-2 text-center mb-4 border-b border-white/5 pb-4">
+        <!-- РЯДОК 1: REG | DEP | R2D -->
+        <div class="grid grid-cols-3 gap-2 text-center mb-3 border-b border-white/5 pb-3">
           <div class="flex flex-col border-r border-white/5">
-            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">REG</span>
-            <b class="text-xl text-blue-400 leading-none">${stat.r}</b>
+            <span class="text-[9px] font-black text-slate-500 uppercase">Reg</span>
+            <b class="text-lg text-blue-400 leading-none">${stat.r}</b>
           </div>
           <div class="flex flex-col border-r border-white/5">
-            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">DEP</span>
-            <b class="text-xl text-green-500 leading-none">${stat.d}</b>
+            <span class="text-[9px] font-black text-slate-500 uppercase">Dep</span>
+            <b class="text-lg text-green-500 leading-none">${stat.d}</b>
           </div>
           <div class="flex flex-col">
-            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">R2D</span>
-            <b class="text-xl text-pink-500 leading-none">${r2d}%</b>
+            <span class="text-[9px] font-black text-slate-500 uppercase text-pink-500">R2D</span>
+            <b class="text-lg text-pink-500 leading-none">${r2d}%</b>
           </div>
         </div>
 
-        <!-- Row 2: CPL, CPA -->
-        <div class="grid grid-cols-2 gap-2 text-center mb-4 border-b border-white/5 pb-4">
-          <div class="flex flex-col">
-            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">CPL</span>
-            <b class="text-xl text-purple-400 leading-none">$${cpl}</b>
+        <!-- РЯДОК 2: CPL | CPA -->
+        <div class="grid grid-cols-2 gap-2 text-center mb-4">
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[9px] font-black text-slate-500 uppercase">CPL</span>
+            <b class="text-lg text-purple-400 leading-none">$${cpl}</b>
           </div>
           <div class="flex flex-col">
-            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">CPA</span>
-            <b class="text-xl text-yellow-500 leading-none">$${cpa}</b>
+            <span class="text-[9px] font-black text-slate-500 uppercase">CPA</span>
+            <b class="text-lg text-yellow-500 leading-none">$${cpa}</b>
           </div>
         </div>
 
-        <!-- Footer: Net Profit and ROI -->
-        <div class="flex justify-between items-center pt-1">
-          <span class="text-[10px] font-black text-slate-500 uppercase">Net Profit (Pay $${pVal}):</span>
-          <span class="font-black text-lg ${profitColor} tracking-tight">
-            $${Math.round(profit)} (${roi}%)
+        <!-- Футер: Профіт та ROI -->
+        <div class="flex justify-between items-center pt-2 border-t border-white/5">
+          <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Net Profit:</span>
+          <span class="font-black text-base ${profitColor}">
+            $${Math.round(profit).toLocaleString()} <span class="text-[10px] opacity-70">(${roi}%)</span>
           </span>
         </div>
       </div>`;
