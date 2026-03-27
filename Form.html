@@ -128,6 +128,11 @@ select {
       <div>
         <h2 class="text-4xl font-black uppercase italic tracking-tighter text-white">Data Hub <span class="text-blue-500 text-xl">v14.15</span></h2>
         <p class="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 mt-1">Intelligence Injection Center</p>
+        <div class="flex items-center gap-2 mt-2">
+    <span class="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20">
+      Target Workspace: <span id="active-team-display">LOADING...</span>
+    </span>
+  </div>
       </div>
       
       <div class="flex items-center gap-4">
@@ -305,7 +310,16 @@ const keywords = {
 
 // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
 window.onload = async () => {
+  // 1. Отримуємо команду з localStorage (ту, що вибрали на Dashboard)
+  currentTeam = localStorage.getItem('selected_team') || "Makeberry";
+  
+  // 2. Виводимо її в наш новий індикатор у хедері
+  const display = document.getElementById('active-team-display');
+  if (display) display.innerText = currentTeam.toUpperCase();
+  
   console.log("🛠 Data Hub connected to Team:", currentTeam);
+  
+  // 3. Завантажуємо мапінги та налаштовуємо Drag & Drop
   await loadMappings(); 
   setupDragAndDrop('dataset'); 
   setupDragAndDrop('creatives'); 
