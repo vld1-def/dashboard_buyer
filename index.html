@@ -764,34 +764,36 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 </div>
 <!-- Модалка для деталей ГЕО (Воронки) -->
 <div id="geo-details-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-4">
-  <div class="card w-full max-w-5xl rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/10 bg-[#0f172a]">
-    <div class="p-8 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5">
+  <div class="card w-full max-w-4xl rounded-[2rem] shadow-2xl overflow-hidden max-h-[85vh] flex flex-col border border-white/10 bg-[#0f172a]/95 backdrop-blur-xl">
+    <!-- Header -->
+    <div class="p-6 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5">
       <div>
-        <h2 id="geo-details-title" class="text-4xl font-black uppercase italic text-blue-500 tracking-tighter">UA Details</h2>
-        <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Funnel Performance & Spend Trends</p>
+        <h2 id="geo-details-title" class="text-2xl font-black uppercase italic text-blue-500 tracking-tighter">UA Details</h2>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Funnel Performance Breakdown</p>
       </div>
-      <button onclick="closeGeoModal()" class="text-slate-400 hover:text-red-500 transition-colors p-2 bg-white/5 rounded-full">
-        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      <button onclick="closeGeoModal()" class="text-slate-400 hover:text-red-500 transition-colors">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
       </button>
     </div>
     
-    <div class="p-8 overflow-y-auto custom-scrollbar">
-      <table class="w-full text-left border-collapse">
+    <!-- Table Container -->
+    <div class="p-6 overflow-y-auto custom-scrollbar">
+      <table class="w-full text-left">
         <thead>
-          <tr class="text-xs font-black uppercase text-slate-500 border-b border-white/10">
-            <th class="pb-4 text-left pl-2">Funnel Name</th>
-            <th class="pb-4 text-center w-[140px]">Trend (7d)</th>
-            <th class="pb-4 text-right px-4">Spend</th>
-            <th class="pb-4 text-center px-4">Regs</th>
-            <th class="pb-4 text-center px-4">Deps</th>
-            <th class="pb-4 text-right px-4">R2D</th>
-            <th class="pb-4 text-right px-4 text-purple-400">CPL</th>
-            <th class="pb-4 text-right px-4 text-yellow-500">CPA</th>
-            <th class="pb-4 text-right pr-2 text-emerald-400">Profit</th>
+          <tr class="text-[10px] font-black uppercase text-slate-500 border-b border-white/5">
+            <th class="pb-3 pl-1">Funnel</th>
+            <th class="pb-3 text-center w-[110px]">Trend (Spend)</th>
+            <th class="pb-3 text-right px-3">Spend</th>
+            <th class="pb-3 text-center px-2">Reg</th>
+            <th class="pb-3 text-center px-2">Dep</th>
+            <th class="pb-3 text-right px-2">R2D</th>
+            <th class="pb-3 text-right px-2 text-purple-400/80">CPL</th>
+            <th class="pb-3 text-right px-2 text-yellow-500/80">CPA</th>
+            <th class="pb-3 text-right pr-1 text-emerald-400/80">Profit</th>
           </tr>
         </thead>
         <tbody id="geo-funnel-list" class="divide-y divide-white/5">
-          <!-- Дані вставляються через JS -->
+          <!-- JS Insert -->
         </tbody>
       </table>
     </div>
@@ -2160,7 +2162,6 @@ function searchCreative() {
   renderCreativeSidebar(query, geoFilter);
 }
 
-// Функція відкриття деталей ГЕО (Воронки)
 function showGeoDetails(geo) {
   const modal = document.getElementById('geo-details-modal');
   const list = document.getElementById('geo-funnel-list');
@@ -2169,22 +2170,18 @@ function showGeoDetails(geo) {
 
   title.innerText = `${geo.toUpperCase()} Details`;
   
-  // 1. Фільтруємо дані по ГЕО
   const geoData = rawData.filter(d => (d.geo || "").toUpperCase() === geo.toUpperCase());
   const payout = globalPayouts[geo.toUpperCase()] || 0;
 
-  // 2. Групуємо по воронках
   const funnels = {};
   geoData.forEach(d => {
     const f = d.funnel || "Default";
-    if (!funnels[f]) {
-      funnels[f] = { s: 0, r: 0, d: 0, dailySpend: {} };
-    }
+    if (!funnels[f]) funnels[f] = { s: 0, r: 0, d: 0, dailySpend: {} };
     funnels[f].s += Number(d.spend) || 0;
     funnels[f].r += Number(d.regs) || 0;
     funnels[f].d += Number(d.deposits) || 0;
     
-    // Зберігаємо спенд по днях для тренду
+    // Тренд: збираємо спенд по днях
     const date = d.date;
     funnels[f].dailySpend[date] = (funnels[f].dailySpend[date] || 0) + Number(d.spend);
   });
@@ -2197,27 +2194,27 @@ function showGeoDetails(geo) {
       const cpl = data.r > 0 ? (data.s / data.r).toFixed(1) : 0;
       const cpa = data.d > 0 ? (data.s / data.d).toFixed(1) : 0;
 
-      // ГЕНЕРАЦІЯ ТРЕНДУ (Останні 7 днів)
+      // Отримуємо значення останніх 7 днів для графіка
       const sortedDates = Object.keys(data.dailySpend).sort().slice(-7);
       const trendValues = sortedDates.map(date => data.dailySpend[date]);
       const sparkline = createSparkline(trendValues);
 
       return `
-        <tr class="hover:bg-white/[0.02] transition-colors group">
-          <td class="py-6 pl-2">
-            <div class="text-lg font-black text-white group-hover:text-blue-400 transition-colors">${name}</div>
-            <div class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Active Funnel</div>
+        <tr class="hover:bg-white/[0.02] transition-colors">
+          <td class="py-4 pl-1">
+            <div class="text-sm font-black text-white leading-tight">${name}</div>
+            <div class="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Funnel Statistics</div>
           </td>
-          <td class="py-6 text-center">
-            <div class="flex justify-center">${sparkline}</div>
+          <td class="py-4 text-center">
+            <div class="flex justify-center items-center h-full">${sparkline}</div>
           </td>
-          <td class="py-6 text-right px-4 font-black text-xl text-white tracking-tight">$${Math.round(data.s)}</td>
-          <td class="py-6 text-center px-4 font-bold text-lg text-blue-400">${data.r}</td>
-          <td class="py-6 text-center px-4 font-bold text-lg text-green-500">${data.d}</td>
-          <td class="py-6 text-right px-4 font-black text-lg text-pink-500">${r2d}%</td>
-          <td class="py-6 text-right px-4 font-bold text-lg text-purple-400">$${cpl}</td>
-          <td class="py-6 text-right px-4 font-bold text-lg text-yellow-500">$${cpa}</td>
-          <td class="py-6 text-right pr-2 font-black text-xl ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
+          <td class="py-4 text-right px-3 font-black text-sm text-white tracking-tight">$${Math.round(data.s)}</td>
+          <td class="py-4 text-center px-2 font-bold text-sm text-blue-400">${data.r}</td>
+          <td class="py-4 text-center px-2 font-bold text-sm text-green-500">${data.d}</td>
+          <td class="py-4 text-right px-2 font-black text-sm text-pink-500">${r2d}%</td>
+          <td class="py-4 text-right px-2 font-bold text-[13px] text-purple-400">$${cpl}</td>
+          <td class="py-4 text-right px-2 font-bold text-[13px] text-yellow-500">$${cpa}</td>
+          <td class="py-4 text-right pr-1 font-black text-sm ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
             $${Math.round(profit)}
           </td>
         </tr>`;
@@ -2226,12 +2223,12 @@ function showGeoDetails(geo) {
   modal.classList.remove('hidden');
 }
 
-// Допоміжна функція для малювання міні-графіка (SVG Sparkline)
+// Функція для створення міні-графіка (Trend)
 function createSparkline(values) {
-  if (values.length < 2) return `<span class="text-[10px] text-slate-600 uppercase">No Data</span>`;
+  if (values.length < 2) return `<span class="text-[8px] opacity-20 uppercase font-black">Stable</span>`;
   
-  const width = 100;
-  const height = 30;
+  const width = 80;  // Трішки вужчий для середнього блоку
+  const height = 20; // Трішки нижчий
   const max = Math.max(...values, 1);
   const min = Math.min(...values);
   const range = max - min || 1;
@@ -2247,11 +2244,11 @@ function createSparkline(values) {
       <polyline
         fill="none"
         stroke="#3b82f6"
-        stroke-width="3"
+        stroke-width="2.5"
         stroke-linecap="round"
         stroke-linejoin="round"
         points="${points}"
-        class="drop-shadow-[0_0_3px_rgba(59,130,246,0.5)]"
+        style="filter: drop-shadow(0 0 2px rgba(59,130,246,0.4))"
       />
     </svg>
   `;
