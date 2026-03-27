@@ -361,9 +361,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   <button onclick="toggleTaskModal()" class="p-2 card rounded-xl shadow-md text-purple-500 hover:bg-gray-500/10 transition relative" title="Tasks"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg><span id="task-dot" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span></button>
   <button onclick="toggleCalculator()" class="p-2 card rounded-xl shadow-md text-orange-500 hover:bg-gray-500/10 transition" title="Calculator"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg></button>
   <div class="relative">
-      <button onclick="toggleSettingsMenu(event)" class="p-2 card rounded-xl shadow-md text-gray-400 hover:bg-gray-500/10 transition" title="Settings">
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-    </button>
+      <button onclick="event.stopPropagation(); toggleSettingsMenu()" class="p-2 card rounded-xl shadow-md text-gray-400 hover:bg-gray-500/10 transition" title="Settings">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+          <path stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        </svg>
+      </button>
     <div id="settings-menu" class="hidden absolute right-0 mt-2 w-64 card rounded-2xl shadow-2xl z-[100] p-4 border border-white/10 backdrop-blur-xl">
       <!-- Наповнення налаштувань (залиш як було) -->
     </div>
@@ -1262,16 +1265,20 @@ function renderTable(data) {
 
   // AI та інші UI
   async function runAI() { /* Тут твій код AI через fetch */ }
-  function toggleSettingsMenu(event) {
-  if (event) event.stopPropagation(); // Зупиняємо розповсюдження кліку
-  const menu = document.getElementById('settings-menu');
+  function toggleSettingsMenu() {
+    const menu = document.getElementById('settings-menu');
+    if (!menu) {
+      console.error("Помилка: Елемент 'settings-menu' не знайдено в HTML!");
+      return;
+    }
+    
+    // Закриваємо інші меню про всяк випадок
+    document.getElementById('month-menu')?.classList.add('hidden');
+    document.getElementById('team-menu')?.classList.add('hidden');
   
-  // Закриваємо інші відкриті меню, щоб вони не накладалися
-  document.getElementById('month-menu')?.classList.add('hidden');
-  document.getElementById('team-menu')?.classList.add('hidden');
-  
-  menu.classList.toggle('hidden');
-}
+    menu.classList.toggle('hidden');
+    console.log("Меню налаштувань переключено. Поточний стан (приховано):", menu.classList.contains('hidden'));
+  }
   function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
   function loadSettings() { const t = localStorage.getItem('monthly_spend_target'); if(t) document.getElementById('target-input').value = t; updateVisibility(true); }
   function updateVisibility(i) { /* Тут твій код видимості */ }
@@ -1745,18 +1752,15 @@ window.addEventListener('click', function(e) {
   }
     // Закриття при кліку збоку
   window.onclick = function(event) {
-  // Перелік ID меню, які треба закривати
-  const menus = ['settings-menu', 'month-menu', 'team-menu'];
+  const settingsMenu = document.getElementById('settings-menu');
   
-  menus.forEach(id => {
-    const menuEl = document.getElementById(id);
-    if (menuEl && !menuEl.classList.contains('hidden')) {
-      // Якщо клік був НЕ по самому меню і НЕ по кнопці, яка його відкриває
-      if (!menuEl.contains(event.target) && !event.target.closest(`button[onclick*="${id.split('-')[0]}"]`)) {
-        menuEl.classList.add('hidden');
-      }
+  // Якщо меню відкрите і клік був НЕ по самому меню
+  if (settingsMenu && !settingsMenu.classList.contains('hidden')) {
+    if (!settingsMenu.contains(event.target)) {
+      settingsMenu.classList.add('hidden');
+      console.log("Меню закрито, бо клік був ззовні");
     }
-  });
+  }
 };
     // Функція пошуку та фільтрації креативів
 function searchCreative() {
