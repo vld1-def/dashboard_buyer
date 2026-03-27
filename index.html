@@ -1880,21 +1880,26 @@ function parseReportBlocks(text) {
   }).join('');
 }
 
-// --- 5. ФІЛЬТР ГЕО (Випадаючий список) ---
-// 3. Наповнення фільтра ГЕО (викликати в loadData)
 function populateGeoFilter(data) {
   const select = document.getElementById('filter-geo-select');
   if (!select) return;
-  
-  // Беремо унікальні ГЕО з усіх даних
-  const geos = [...new Set(data.map(d => d.geo))].filter(Boolean).sort();
-  
-  // Очищуємо список крім першого пункту
-  select.innerHTML = '<option value="">ALL GEO</option>';
+
+  // 1. Отримуємо унікальні ГЕО, прибираємо порожні та "??"
+  const geos = [...new Set(data.map(d => (d.geo || "").toUpperCase()))]
+    .filter(g => g !== "" && g !== "??")
+    .sort();
+
+  console.log("📍 Знайдені ГЕО для фільтра:", geos);
+
+  // 2. Очищуємо селект, залишаючи тільки перший пункт
+  select.innerHTML = '<option value="" class="bg-slate-900">ALL GEO</option>';
+
+  // 3. Додаємо нові пункти
   geos.forEach(geo => {
     const opt = document.createElement('option');
     opt.value = geo;
-    opt.innerText = geo.toUpperCase();
+    opt.textContent = geo;
+    opt.className = "bg-slate-900"; // додаємо фон для темної теми
     select.appendChild(opt);
   });
 }
