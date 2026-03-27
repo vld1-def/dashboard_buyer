@@ -1150,8 +1150,8 @@ function renderTrend(data) {
 
   let datasets = [];
 
+  // --- РЕЖИМ DAILY ---
   if (currentChartMode === 'daily') {
-    // --- Режим Daily (як і було) ---
     const m = {};
     sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
     data.forEach(d => {
@@ -1162,20 +1162,60 @@ function renderTrend(data) {
       }
     });
 
+    const dailyStats = sd.map(d => m[d]);
+
+    // 1. Spend (Синя товста)
     datasets.push({
-      label: 'Total Spend',
-      data: sd.map(d => m[d].s),
-      allStats: sd.map(d => m[d]), // зберігаємо для тултіпа
+      label: 'Spend ($)',
+      data: dailyStats.map(v => v.s),
+      allStats: dailyStats, // Дані для тултіпа
       borderColor: '#3b82f6',
       backgroundColor: 'rgba(59, 130, 246, 0.1)',
-      borderWidth: 4,
-      pointRadius: 5,
+      borderWidth: 5,
+      pointBackgroundColor: '#fff',
+      pointBorderColor: '#3b82f6',
+      pointBorderWidth: 3,
+      pointRadius: 6,
       tension: 0.4,
       fill: true,
-      datalabels: { display: true, align: 'top', color: '#fff', font: { weight: '900' }, formatter: Math.round }
+      datalabels: {
+        display: true,
+        align: 'top',
+        color: '#fff',
+        font: { weight: '900', size: 12 },
+        formatter: Math.round
+      }
     });
-  } else {
-    // --- Режим GEO (з розширеними даними для тултіпа) ---
+
+    // 2. CPL (Фіолетовий пунктир)
+    datasets.push({
+      label: 'CPL ($)',
+      data: dailyStats.map(v => v.r > 0 ? v.s / v.r : 0),
+      borderColor: '#a855f7',
+      borderDash: [8, 5],
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.4,
+      fill: false,
+      datalabels: { display: false }
+    });
+
+    // 3. CPA (Жовтий пунктир)
+    datasets.push({
+      label: 'CPA ($)',
+      data: dailyStats.map(v => v.d > 0 ? v.s / v.d : 0),
+      borderColor: '#eab308',
+      borderDash: [3, 3],
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.4,
+      fill: false,
+      datalabels: { display: false }
+    });
+
+  } 
+  // --- РЕЖИМ GEO ---
+  else {
     const geos = [...new Set(data.map(d => (d.geo || "??").toUpperCase()))].filter(Boolean);
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#fb7185'];
 
@@ -1192,17 +1232,18 @@ function renderTrend(data) {
       return {
         label: geo,
         data: statsPerDay.map(v => v.s),
-        allStats: statsPerDay, // Передаємо всі дані (Reg/Dep) в об'єкт графіка
+        allStats: statsPerDay,
         borderColor: colors[index % colors.length],
-        backgroundColor: 'transparent',
         borderWidth: 3,
         pointRadius: 4,
         tension: 0.4,
+        fill: false,
         datalabels: { display: false }
       };
     });
   }
 
+  // --- НАЛАШТУВАННЯ CHART.JS ---
   window.chart1 = new Chart(ctx.getContext('2d'), {
     type: 'line',
     data: { labels, datasets },
@@ -1210,38 +1251,36 @@ function renderTrend(data) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: 40, bottom: 0, left: 5, right: 15 } },
       plugins: {
-        legend: { display: true, position: 'top', labels: { color: '#94a3b8', usePointStyle: true } },
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#94a3b8', usePointStyle: true, padding: 20, font: { weight: 'bold' } }
+        },
         tooltip: {
           backgroundColor: 'rgba(15, 23, 42, 0.95)',
-          titleColor: '#fff',
-          titleFont: { size: 14, weight: 'bold' },
-          bodyFont: { size: 13 },
           padding: 12,
-          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderColor: 'rgba(59, 130, 246, 0.3)',
           borderWidth: 1,
-          displayColors: true, // кольоровий квадратик біля ГЕО
           callbacks: {
             label: function(context) {
-              const geo = context.dataset.label;
-              const stats = context.dataset.allStats[context.dataIndex];
-              const spend = stats.s;
-              const regs = stats.r;
-              const deps = stats.d;
-              const cpl = regs > 0 ? (spend / regs).toFixed(1) : 0;
-              const cpa = deps > 0 ? (spend / deps).toFixed(1) : 0;
+              const label = context.dataset.label;
+              const stats = context.dataset.allStats ? context.dataset.allStats[context.dataIndex] : null;
+              
+              if (!stats || (stats.s === 0 && stats.r === 0 && stats.d === 0)) return null;
 
-              // Якщо по цьому ГЕО в цей день нулі - не виводимо блок
-              if (spend === 0 && regs === 0 && deps === 0) return null;
+              const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
+              const cpa = stats.d > 0 ? (stats.s / stats.d).toFixed(1) : 0;
 
-              // Повертаємо масив рядків для формування списку
+              // Виведення як на скріншоті
               return [
-                ` 📍 ГЕО: ${geo}`,
-                ` 💰 Spend: $${Math.round(spend)}`,
-                ` 📝 Reg: ${regs}`,
-                ` 🎯 Dep: ${deps}`,
+                ` 📍 ${currentChartMode === 'daily' ? 'TOTAL' : 'ГЕО: ' + label}`,
+                ` 💰 Spend: $${Math.round(stats.s)}`,
+                ` 📝 Reg: ${stats.r}`,
+                ` 🎯 Dep: ${stats.d}`,
                 ` 💵 CPL: $${cpl} | CPA: $${cpa}`,
-                `` // Порожній рядок для відступу між різними ГЕО
+                ` ` 
               ];
             }
           }
@@ -1249,7 +1288,7 @@ function renderTrend(data) {
         datalabels: { anchor: 'end', align: 'top' }
       },
       scales: {
-        x: { ticks: { color: '#64748b' }, grid: { display: false } },
+        x: { ticks: { color: '#64748b', font: { weight: 'bold' } }, grid: { display: false } },
         y: { beginAtZero: true, ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } }
       }
     }
