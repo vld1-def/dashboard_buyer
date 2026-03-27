@@ -345,7 +345,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   
   <!-- БЛОК КОМАНДИ -->
   <div class="relative">
-    <button onclick="toggleTeamMenu()" class="p-2 px-4 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition flex items-center gap-2 border border-emerald-500/30">
+    <button onclick="event.stopPropagation(); toggleTeamMenu()" class="p-2 px-4 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition flex items-center gap-2 border border-emerald-500/30">
       <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
       <span id="active-team-label" class="text-[10px] font-black uppercase tracking-widest">TEAM: LOADING</span>
     </button>
@@ -861,57 +861,76 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 
   // --- 5. КЕРУВАННЯ КОМАНДАМИ (SQL) ---
-  async function refreshTeamsList() {
-    try {
-      // Отримуємо унікальні назви команд із таблиці daily_stats
-      const { data, error } = await sb.from('daily_stats').select('team_name');
-      
-      let teams = ["Makeberry"]; 
-      if (data && data.length > 0) {
-        const uniqueTeams = [...new Set(data.map(item => item.team_name))];
-        if (uniqueTeams.length > 0) teams = uniqueTeams;
-      }
-
-      if (!teams.includes(currentTeam)) {
-        currentTeam = teams[0];
-        localStorage.setItem('selected_team', currentTeam);
-      }
-      
-      // БЕЗПЕЧНЕ заповнення списку
-      const list = document.getElementById('team-list');
-      if (list) {
-        list.innerHTML = teams.map(t => {
-          const isS = (t === currentTeam);
-          return `<button onclick="switchTeam('${t}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 ${isS ? 'text-emerald-400 bg-emerald-500/10' : 'text-muted-dynamic'}">
-            ${isS ? '● ' : ''}${t}
-          </button>`;
-        }).join('');
-      }
-      
-      // Оновлення ярлика команди
-      const label = document.getElementById('active-team-label');
-      if (label) label.innerText = "TEAM: " + currentTeam;
-
-      // Оновлення головного заголовка (Стата Джуна -> Назва Тіми)
-      const mainTitle = document.querySelector('h1.text-3xl');
-      if (mainTitle) mainTitle.innerHTML = currentTeam + ' <span class="text-blue-500 text-xl font-normal">Dashboard</span>';
-
-      // Завантажуємо основні дані
-      loadData(); 
-      refreshTasks(); 
-      refreshReports();
-
-    } catch (err) {
-      console.error("Critical error in refreshTeamsList:", err);
-      // Якщо база пуста або помилка, все одно пробуємо запустити дашборд
-      loadData();
+  // 2. Оновлення списку команд із бази даних Supabase
+async function refreshTeamsList() {
+  try {
+    // Отримуємо унікальні імена команд із таблиці daily_stats
+    const { data, error } = await sb.from('daily_stats').select('team_name');
+    
+    // Завжди маємо дефолтну команду, якщо база порожня
+    let teams = ["Makeberry"]; 
+    
+    if (data && data.length > 0) {
+      const uniqueTeams = [...new Set(data.map(item => item.team_name))];
+      if (uniqueTeams.length > 0) teams = uniqueTeams;
     }
-  }
 
-  function switchTeam(team) {
-    localStorage.setItem('selected_team', team);
-    window.location.reload(); 
+    // Якщо в localStorage збережена команда, якої немає в списку (рідкісний випадок)
+    if (!teams.includes(currentTeam)) {
+      teams.push(currentTeam);
+    }
+    
+    const listContainer = document.getElementById('team-list');
+    if (listContainer) {
+      listContainer.innerHTML = teams.map(t => {
+        const isActive = (t === currentTeam);
+        return `
+          <button onclick="switchTeam('${t}')" 
+                  class="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center justify-between
+                  ${isActive ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:bg-white/5 hover:text-white'}">
+            <span>${t}</span>
+            ${isActive ? '<span class="text-[8px]">●</span>' : ''}
+          </button>
+        `;
+      }).join('');
+    }
+    
+    // Оновлюємо ярлики в інтерфейсі
+    const label = document.getElementById('active-team-label');
+    if (label) label.innerText = "TEAM: " + currentTeam.toUpperCase();
+
+    // Оновлюємо головний заголовок (опціонально)
+    const mainTitle = document.querySelector('h1.text-3xl');
+    if (mainTitle) mainTitle.innerHTML = `${currentTeam} <span class="text-blue-500 text-xl font-normal">Dashboard</span>`;
+
+  } catch (err) {
+    console.error("Помилка при завантаженні списку команд:", err);
   }
+}
+// 3. Створення нової команди (профіль)
+function promptCreateTeam() {
+  const newTeamName = prompt("Введіть назву нової команди (латиницею):");
+  
+  if (newTeamName && newTeamName.trim().length > 2) {
+    const formattedName = newTeamName.trim();
+    // Просто перемикаємось на нову назву. 
+    // Вона з'явиться в базі, як тільки ви додасте перші дані.
+    switchTeam(formattedName);
+  } else if (newTeamName !== null) {
+    alert("Назва має бути довшою за 2 символи.");
+  }
+}
+
+// 4. Перемикання команди
+function switchTeam(teamName) {
+  localStorage.setItem('selected_team', teamName);
+  // Показуємо лоадер зверху для ефекту
+  const loader = document.getElementById('top-loader');
+  if (loader) loader.style.width = "100%";
+  
+  // Перезавантажуємо сторінку для повного оновлення контексту даних
+  window.location.reload();
+}
 
   // --- 6. ЗАВАНТАЖЕННЯ ДАНИХ (SQL) ---
   async function loadData() {
@@ -1806,7 +1825,17 @@ function toggleReportVisibility(id) {
   }
 }
     // --- 1. КЕРУВАННЯ МЕНЮ ТА МОДАЛКАМИ ---
-function toggleTeamMenu() { document.getElementById('team-menu').classList.toggle('hidden'); }
+// 1. Перемикання меню команд
+function toggleTeamMenu() {
+  const menu = document.getElementById('team-menu');
+  if (!menu) return;
+  
+  // Закриваємо інші меню
+  document.getElementById('settings-menu')?.classList.add('hidden');
+  document.getElementById('month-menu')?.classList.add('hidden');
+  
+  menu.classList.toggle('hidden');
+}
 function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
 function toggleReportModal() { 
   const m = document.getElementById('report-modal');
