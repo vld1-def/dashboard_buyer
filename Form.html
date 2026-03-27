@@ -329,8 +329,8 @@ window.onload = async () => {
 // --- РОБОТА З SUPABASE (MAPPINGS) ---
 
 async function loadMappings() {
-  const { data: accs } = await sb.from('account_mapping').select('*').eq('team_name', currentTeam);
-  const { data: funs } = await sb.from('funnel_mapping').select('*').eq('team_name', currentTeam);
+  const { data: accs } = await sb.from('accounts_mapping').select('*').eq('team_name', currentTeam);
+  const { data: funs } = await sb.from('funnels_mapping').select('*').eq('team_name', currentTeam);
   
   mappingDB.providers = {};
   accs?.forEach(r => mappingDB.providers[r.account_id] = r.agency_name);
@@ -340,13 +340,13 @@ async function loadMappings() {
 }
 
 async function refreshProvidersTable() {
-  const { data } = await sb.from('account_mapping').select('*').eq('team_name', currentTeam);
+  const { data } = await sb.from('accounts_mapping').select('*').eq('team_name', currentTeam);
   allProviders = data || [];
   renderProvidersTable(allProviders);
 }
 
 async function refreshFunnelsTable() {
-  const { data } = await sb.from('funnel_mapping').select('*').eq('team_name', currentTeam);
+  const { data } = await sb.from('funnels_mapping').select('*').eq('team_name', currentTeam);
   allFunnels = data || [];
   renderFunnelsTable(allFunnels);
 }
@@ -492,7 +492,7 @@ async function addProvider() {
   const agency = document.getElementById('prov-agency').value;
   if (!acc) return alert("Enter Acc ID!");
 
-  const { error } = await sb.from('account_mapping').upsert({
+  const { error } = await sb.from('accounts_mapping').upsert({
     account_id: acc, agency_name: agency, team_name: currentTeam
   });
 
@@ -509,7 +509,7 @@ async function addFunnelMapping() {
   const ktid = document.getElementById('fun-ktid').value;
   if (!name || !ktid) return alert("Fill fields!");
 
-  const { error } = await sb.from('funnel_mapping').upsert({
+  const { error } = await sb.from('funnels_mapping').upsert({
     ktid: ktid, funnel_name: name, team_name: currentTeam
   });
 
