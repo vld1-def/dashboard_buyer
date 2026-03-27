@@ -1358,7 +1358,10 @@ function renderTrend(data) {
   }
 
   function renderGeoList(data) {
+  console.log("📍 Оновлення списку ГЕО: додаємо CPL/CPA");
   const m = {};
+  
+  // Групуємо дані
   data.forEach(d => {
     const g = (d.geo || "??").toUpperCase();
     if (!m[g]) m[g] = { s: 0, r: 0, d: 0 };
@@ -1371,27 +1374,28 @@ function renderTrend(data) {
   if (!container) return;
 
   container.innerHTML = Object.entries(m).sort((a, b) => b[1].s - a[1].s).map(([geo, stat]) => {
-    // Розрахунки
+    // Математика
     const r2d = stat.r > 0 ? ((stat.d / stat.r) * 100).toFixed(1) : 0;
-    const cpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : 0;
-    const cpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : 0;
+    const cpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : (0).toFixed(1);
+    const cpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : (0).toFixed(1);
     
+    // Профіт та ROI
     const pVal = globalPayouts[geo] || 0;
     const profit = (stat.d * pVal) - stat.s;
     const roi = stat.s > 0 ? Math.round((profit / stat.s) * 100) : 0;
     const profitColor = profit >= 0 ? 'text-emerald-400' : 'text-red-500';
 
     return `
-      <div onclick="showGeoDetails('${geo}')" class="p-4 card mb-4 cursor-pointer hover:bg-white/[0.03] transition-all border-l-4 border-blue-500 shadow-lg bg-slate-900/40">
+      <div onclick="showGeoDetails('${geo}')" class="p-4 card mb-4 cursor-pointer hover:bg-white/[0.05] transition-all border-l-4 border-blue-500 bg-slate-900/40 relative overflow-hidden">
         
-        <!-- Заголовок: ГЕО та Спенд -->
-        <div class="flex justify-between items-center mb-4">
+        <!-- Заголовок -->
+        <div class="flex justify-between items-center mb-3">
           <span class="font-black text-blue-500 text-2xl tracking-tighter">${geo}</span>
           <span class="font-black text-xl text-white">$${Math.round(stat.s).toLocaleString()}</span>
         </div>
 
-        <!-- РЯДОК 1: REG | DEP | R2D -->
-        <div class="grid grid-cols-3 gap-2 text-center mb-3 border-b border-white/5 pb-3">
+        <!-- РЯДОК 1: REG, DEP, R2D -->
+        <div class="grid grid-cols-3 gap-1 text-center mb-3 border-b border-white/5 pb-3">
           <div class="flex flex-col border-r border-white/5">
             <span class="text-[9px] font-black text-slate-500 uppercase">Reg</span>
             <b class="text-lg text-blue-400 leading-none">${stat.r}</b>
@@ -1401,13 +1405,13 @@ function renderTrend(data) {
             <b class="text-lg text-green-500 leading-none">${stat.d}</b>
           </div>
           <div class="flex flex-col">
-            <span class="text-[9px] font-black text-slate-500 uppercase text-pink-500">R2D</span>
+            <span class="text-[9px] font-black text-pink-500 uppercase">R2D</span>
             <b class="text-lg text-pink-500 leading-none">${r2d}%</b>
           </div>
         </div>
 
-        <!-- РЯДОК 2: CPL | CPA -->
-        <div class="grid grid-cols-2 gap-2 text-center mb-4">
+        <!-- РЯДОК 2: CPL, CPA -->
+        <div class="grid grid-cols-2 gap-1 text-center mb-3">
           <div class="flex flex-col border-r border-white/5">
             <span class="text-[9px] font-black text-slate-500 uppercase">CPL</span>
             <b class="text-lg text-purple-400 leading-none">$${cpl}</b>
@@ -1418,17 +1422,17 @@ function renderTrend(data) {
           </div>
         </div>
 
-        <!-- Футер: Профіт та ROI -->
+        <!-- ФУТЕР: Profit & ROI -->
         <div class="flex justify-between items-center pt-2 border-t border-white/5">
-          <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Net Profit:</span>
-          <span class="font-black text-base ${profitColor}">
-            $${Math.round(profit).toLocaleString()} <span class="text-[10px] opacity-70">(${roi}%)</span>
+          <span class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Net Profit:</span>
+          <span class="font-black text-sm ${profitColor} tracking-tight">
+            $${Math.round(profit).toLocaleString()} 
+            <span class="text-[10px] opacity-60 font-bold">(${roi}%)</span>
           </span>
         </div>
       </div>`;
   }).join('');
 }
-
   // --- 1. МАЛЮВАННЯ ГОЛОВНОЇ ТАБЛИЦІ (Live Data Feed) ---
 // 2. Функція рендеру таблиці (БЕЗ стовпця %)
 function renderTable(data) {
