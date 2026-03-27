@@ -504,14 +504,22 @@ async function confirmCreativeImport() {
 
 async function addProvider() {
   const acc = document.getElementById('prov-acc').value;
-  const agency = document.getElementById('prov-agency').value;
-  if (!acc) return alert("Enter Acc ID!");
+  const agency = document.getElementById('prov-agency').value; // Значення з селектора
+  
+  if (!acc) return alert("Введіть ID акаунта!");
 
-  const { error } = await sb.from('accounts_mapping').upsert({
-    account_id: acc, agency_name: agency, team_name: currentTeam
-  });
+  const { error } = await sb.from('accounts_mapping').insert([
+    { 
+      account_id: acc, 
+      provider_name: agency, // ТВОЯ НАЗВА КОЛОНКИ
+      team_name: currentTeam 
+    }
+  ]);
 
-  if (!error) { 
+  if (error) {
+    console.error("Помилка:", error);
+    alert("Помилка збереження: " + error.message);
+  } else { 
     showStatus("Account Linked!"); 
     document.getElementById('prov-acc').value = ''; 
     await refreshProvidersTable(); 
