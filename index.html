@@ -841,13 +841,33 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   Chart.register(ChartDataLabels);
 
-  // --- 3. ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
-  window.onload = async () => {
-    console.log("🏁 Supabase Engine Started");
-    await refreshTeamsList(); 
+  // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
+window.onload = async () => {
+  console.log("🚀 Запуск дашборду для команди:", currentTeam);
+  
+  try {
+    // 1. Спочатку завантажуємо базові налаштування (таргет, видимість)
+    loadSettings();
+    
+    // 2. Отримуємо виплати (важливо для KPI)
     await refreshPayoutsFromSQL();
-    setTimeout(loadSettings, 500); 
-  };
+    
+    // 3. Завантажуємо список команд (щоб працювало меню)
+    await refreshTeamsList();
+    
+    // 4. ОСНОВНЕ ЗАВАНТАЖЕННЯ ДАНИХ
+    await loadData();
+    
+    // 5. Завантажуємо додаткові модулі
+    refreshTasks();
+    refreshReports();
+    
+  } catch (err) {
+    console.error("Помилка ініціалізації:", err);
+    // Якщо все впало, пробуємо хоча б прибрати лоадер
+    document.getElementById('loader')?.classList.add('hidden');
+  }
+};
 
   // --- 4. ДОПОМІЖНІ ФУНКЦІЇ (ЛОГІКА КОЛИШНЬОГО CODE.GS) ---
   function normalizeDate(d) {
@@ -934,49 +954,48 @@ function switchTeam(teamName) {
 
   // --- 6. ЗАВАНТАЖЕННЯ ДАНИХ (SQL) ---
   async function loadData() {
-    updateSyncStatus('loading');
-    
-    const { data: stats, error } = await sb.from('daily_stats').select('*').eq('team_name', currentTeam);
+  updateSyncStatus('loading');
+  console.log("📥 Завантаження статистики з Supabase...");
 
-    // Код для вставки всередину loadData після отримання stats
-    const months = getAvailableMonths(rawData); // rawData - це твої дані з бази
-    const mList = document.getElementById('month-list');
-    
-    if (mList && months.length > 0) {
-      mList.innerHTML = months.map(m => `
-        <button onclick="changeGlobalMonth('${m}')" 
-                class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 text-slate-300 hover:text-blue-400">
-          ${m}
-        </button>
-      `).join('');
-      
-      // Якщо поточний місяць не вибрано - беремо останній доступний
-      if (!currentMonthFilter) {
-        currentMonthFilter = months[0];
-        document.getElementById('current-month-label').innerText = months[0];
-      }
-    }
+  // Отримуємо дані тільки для поточної команди
+  const { data: stats, error } = await sb
+    .from('daily_stats')
+    .select('*')
+    .eq('team_name', currentTeam)
+    .order('date', { ascending: false });
 
-    if (!error) {
-      rawData = stats || [];
-      const months = getAvailableMonths(rawData);
-      const mList = document.getElementById('month-list');
-      if (mList) {
-        mList.innerHTML = months.map(m => `<button data-month="${m}" onclick="changeGlobalMonth('${m}')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 text-muted-dynamic">${m}</button>`).join('');
-      }
-      if (!currentMonthFilter && months.length > 0) currentMonthFilter = months[0];
-      if (currentMonthFilter) changeGlobalMonth(currentMonthFilter);
-      
-      document.getElementById('loader').classList.add('hidden');
-      document.getElementById('dashboard-content').classList.remove('hidden');
-      updateSyncStatus('done');
-    }
-
-    const { data: crData } = await sb.from('creatives_stats').select('*').eq('team_name', currentTeam);
-    creativesRawData = crData || [];
-    populateCreativeGeoFilter();
-    renderCreativeSidebar("");
+  if (error) {
+    console.error("Помилка Supabase:", error);
+    updateSyncStatus('error');
+    return;
   }
+
+  rawData = stats || [];
+  console.log(`✅ Отримано рядків: ${rawData.length}`);
+
+  // Визначаємо доступні місяці
+  const months = getAvailableMonths(rawData);
+  
+  // Якщо місяць не вибраний або його немає в списку - беремо останній доступний
+  if (!currentMonthFilter || !months.includes(currentMonthFilter)) {
+    currentMonthFilter = months.length > 0 ? months[0] : new Date().toISOString().slice(0, 7);
+  }
+
+  // Оновлюємо ярлики
+  document.getElementById('current-month-label').innerText = currentMonthFilter;
+  renderMonthList(months);
+
+  // ПРИБИРАЄМО ЛОАДЕР ТА ПОКАЗУЄМО КОНТЕНТ
+  document.getElementById('loader').classList.add('hidden');
+  document.getElementById('dashboard-content').classList.remove('hidden');
+
+  // ЗАПУСКАЄМО ФІЛЬТРАЦІЮ ТА РЕНДЕР
+  applyGlobalFilter();
+  updateSyncStatus('done');
+  
+  // Креативи завантажуємо окремо, щоб не гальмувати головний екран
+  loadCreatives(); 
+}
 
   function getAvailableMonths(data) {
     const m = data.map(d => (d.date ? d.date.slice(0, 7) : null)).filter(Boolean);
@@ -1012,10 +1031,29 @@ function switchTeam(teamName) {
 }
 
   function applyGlobalFilter() {
-    filteredDataCache = rawData.filter(d => d.date && d.date.startsWith(currentMonthFilter));
-    renderDashboard(filteredDataCache);
-    updateMilestones(filteredDataCache);
-  }
+  // Фільтруємо rawData по вибраному місяцю
+  filteredDataCache = rawData.filter(d => d.date && d.date.startsWith(currentMonthFilter));
+  
+  console.log(`📊 Рендеринг даних за ${currentMonthFilter} (${filteredDataCache.length} записів)`);
+
+  // Викликаємо всі функції рендеру
+  renderDashboard(filteredDataCache);
+  updateMilestones(filteredDataCache);
+  
+  // Оновлюємо дати в інпутах налаштувань (AI, Графік, Таблиця)
+  const start = `${currentMonthFilter}-01`;
+  const lastDay = new Date(currentMonthFilter.split('-')[0], currentMonthFilter.split('-')[1], 0).getDate();
+  const end = `${currentMonthFilter}-${lastDay}`;
+  
+  ['filter-from', 'chart-from', 'geo-filter-from', 'ai-from'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = start;
+  });
+  ['filter-to', 'chart-to', 'geo-filter-to', 'ai-to'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = end;
+  });
+}
 
   // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
   function renderDashboard(data) {
