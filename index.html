@@ -342,7 +342,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   <!-- БЛОК МІСЯЦЯ -->
   <div class="relative">
-    <button onclick="toggleMonthMenu()" class="p-2 px-4 card rounded-xl shadow-md text-blue-400 hover:bg-gray-500/10 transition flex items-center gap-2 border border-blue-500/10" title="Select Month">
+    <button onclick="event.stopPropagation(); toggleMonthMenu()" class="p-2 px-4 card rounded-xl shadow-md text-blue-400 hover:bg-gray-500/10 transition flex items-center gap-2 border border-blue-500/10" title="Select Month">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
       <span id="current-month-label" class="text-[10px] font-black uppercase tracking-widest hidden md:inline">Loading...</span>
     </button>
@@ -893,6 +893,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     
     const { data: stats, error } = await sb.from('daily_stats').select('*').eq('team_name', currentTeam);
 
+    // Код для вставки всередину loadData після отримання stats
+    const months = getAvailableMonths(rawData); // rawData - це твої дані з бази
+    const mList = document.getElementById('month-list');
+    
+    if (mList && months.length > 0) {
+      mList.innerHTML = months.map(m => `
+        <button onclick="changeGlobalMonth('${m}')" 
+                class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5 text-slate-300 hover:text-blue-400">
+          ${m}
+        </button>
+      `).join('');
+      
+      // Якщо поточний місяць не вибрано - беремо останній доступний
+      if (!currentMonthFilter) {
+        currentMonthFilter = months[0];
+        document.getElementById('current-month-label').innerText = months[0];
+      }
+    }
+
     if (!error) {
       rawData = stats || [];
       const months = getAvailableMonths(rawData);
@@ -1342,7 +1361,16 @@ function renderTable(data) {
   
   console.log(isHidden ? "Меню приховано" : "Меню відкрито");
 }
-  function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
+  function toggleMonthMenu() {
+  const menu = document.getElementById('month-menu');
+  if (!menu) return;
+
+  // Закриваємо інші меню
+  document.getElementById('settings-menu')?.classList.add('hidden');
+  document.getElementById('team-menu')?.classList.add('hidden');
+
+  menu.classList.toggle('hidden');
+}
  // Функція для завантаження збережених налаштувань при старті
 function loadSettings() {
   const saved = localStorage.getItem('dashboard_visibility');
@@ -1871,20 +1899,19 @@ window.addEventListener('click', function(e) {
     if (el) el.classList.toggle('hidden');
   }
     // Закриття при кліку збоку
-  window.onclick = function(event) {
-  const settingsMenu = document.getElementById('settings-menu');
-  const monthMenu = document.getElementById('month-menu');
-  const teamMenu = document.getElementById('team-menu');
-
-  // Функція для закриття, якщо клік був зовні
-  const closeIfOutside = (menuEl, btnSelector) => {
-    if (menuEl && !menuEl.classList.contains('hidden')) {
-      // Якщо клік НЕ по меню І НЕ по кнопці, яка його відкриває
-      if (!menuEl.contains(event.target)) {
-        menuEl.classList.add('hidden');
+ window.onclick = function(event) {
+  const menus = ['settings-menu', 'month-menu', 'team-menu'];
+  
+  menus.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.classList.contains('hidden')) {
+      // Якщо клік був НЕ по самому меню
+      if (!el.contains(event.target)) {
+        el.classList.add('hidden');
       }
     }
-  };
+  });
+};
 
   closeIfOutside(settingsMenu);
   closeIfOutside(monthMenu);
