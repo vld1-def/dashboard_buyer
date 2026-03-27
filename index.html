@@ -1321,31 +1321,68 @@ function renderTrend(data) {
   function renderGeoList(data) {
   const m = {};
   data.forEach(d => {
-    // ЗАХИСТ ТУТ
-    const g = String(d.geo || "??").toUpperCase().trim();
+    const g = (d.geo || "??").toUpperCase();
     if (!m[g]) m[g] = { s: 0, r: 0, d: 0 };
     m[g].s += Number(d.spend) || 0;
     m[g].r += Number(d.regs) || 0;
     m[g].d += Number(d.deposits) || 0;
   });
-  
+
   const container = document.getElementById('geo-list');
   if (!container) return;
 
   container.innerHTML = Object.entries(m).sort((a, b) => b[1].s - a[1].s).map(([geo, stat]) => {
     const r2d = stat.r > 0 ? ((stat.d / stat.r) * 100).toFixed(1) : 0;
+    const cpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : 0;
+    const cpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : 0;
+    
     const pVal = globalPayouts[geo] || 0;
     const profit = (stat.d * pVal) - stat.s;
+    const roi = stat.s > 0 ? Math.round((profit / stat.s) * 100) : 0;
+    const profitColor = profit >= 0 ? 'text-emerald-400' : 'text-red-500';
+
     return `
-      <div onclick="showGeoDetails('${geo}')" class="p-4 card geo-card mb-3 cursor-pointer hover:bg-white/5 transition border-l-4 border-blue-500 shadow-sm">
-        <div class="flex justify-between mb-3">
-          <span class="font-black text-blue-500 text-xl tracking-tighter group-hover:translate-x-1 transition-transform">${geo}</span>
-          <span class="font-black text-xl">$${stat.s.toFixed(0)}</span>
+      <div onclick="showGeoDetails('${geo}')" class="p-5 card mb-4 cursor-pointer hover:bg-white/[0.03] transition-all border-l-4 border-blue-500 shadow-xl bg-slate-900/40">
+        <!-- Header: GEO and Total Spend -->
+        <div class="flex justify-between items-start mb-4">
+          <span class="font-black text-blue-500 text-3xl tracking-tighter">${geo}</span>
+          <span class="font-black text-2xl text-white">$${Math.round(stat.s)}</span>
         </div>
-        <!-- ... решта верстки картки ГЕО ... -->
-        <div class="flex justify-between items-center text-[11px] font-black mt-3 pt-2 border-t border-white/5">
-           <span class="opacity-40 uppercase">Profit ($${pVal}):</span>
-           <span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</span>
+
+        <!-- Row 1: REG, DEP, R2D -->
+        <div class="grid grid-cols-3 gap-2 text-center mb-4 border-b border-white/5 pb-4">
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">REG</span>
+            <b class="text-xl text-blue-400 leading-none">${stat.r}</b>
+          </div>
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">DEP</span>
+            <b class="text-xl text-green-500 leading-none">${stat.d}</b>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">R2D</span>
+            <b class="text-xl text-pink-500 leading-none">${r2d}%</b>
+          </div>
+        </div>
+
+        <!-- Row 2: CPL, CPA -->
+        <div class="grid grid-cols-2 gap-2 text-center mb-4 border-b border-white/5 pb-4">
+          <div class="flex flex-col">
+            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">CPL</span>
+            <b class="text-xl text-purple-400 leading-none">$${cpl}</b>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-[10px] font-black text-slate-500 uppercase mb-1">CPA</span>
+            <b class="text-xl text-yellow-500 leading-none">$${cpa}</b>
+          </div>
+        </div>
+
+        <!-- Footer: Net Profit and ROI -->
+        <div class="flex justify-between items-center pt-1">
+          <span class="text-[10px] font-black text-slate-500 uppercase">Net Profit (Pay $${pVal}):</span>
+          <span class="font-black text-lg ${profitColor} tracking-tight">
+            $${Math.round(profit)} (${roi}%)
+          </span>
         </div>
       </div>`;
   }).join('');
