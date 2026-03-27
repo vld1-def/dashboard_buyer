@@ -1137,151 +1137,97 @@ function switchTeam(teamName) {
   renderTable(data);
 }
 function renderTrend(data) {
-  console.log("📊 Оновлення графіка: активовано розширений дизайн");
   const ctx = document.getElementById('chart-trend');
   if (!ctx || !data.length) return;
+  if (window.chart1) window.chart1.destroy();
 
-  // 1. Очищення старого графіка перед створенням нового
-  if (window.chart1) {
-    window.chart1.destroy();
-  }
-
-  // 2. Підготовка дат та днів тижня (UA)
+  // 1. Підготовка дат (X-axis)
   const sd = [...new Set(data.map(d => d.date))].sort();
   const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
-  
   const labels = sd.map(d => {
     const dt = new Date(d);
     return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
   });
 
-  // 3. Агрегація даних (Spend, Regs, Deps)
-  const m = {};
-  sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
-  data.forEach(d => {
-    if (m[d.date]) {
-      m[d.date].s += Number(d.spend) || 0;
-      m[d.date].r += Number(d.regs) || 0;
-      m[d.date].d += Number(d.deposits) || 0;
-    }
-  });
+  let datasets = [];
 
-  // 4. Створення графіка
+  // --- РЕЖИМ DAILY ---
+  if (currentChartMode === 'daily') {
+    const m = {};
+    sd.forEach(d => m[d] = 0);
+    data.forEach(d => { if (m[d.date] !== undefined) m[d.date] += Number(d.spend) || 0; });
+
+    datasets.push({
+      label: 'Total Spend ($)',
+      data: sd.map(d => m[d]),
+      borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      borderWidth: 4,
+      pointBackgroundColor: '#fff',
+      pointBorderColor: '#3b82f6',
+      pointBorderWidth: 2,
+      pointRadius: 5,
+      tension: 0.4,
+      fill: true,
+      datalabels: {
+        display: true,
+        align: 'top',
+        color: '#fff',
+        font: { weight: '900', size: 12 },
+        formatter: Math.round
+      }
+    });
+  } 
+  // --- РЕЖИМ GEO ---
+  else {
+    const geos = [...new Set(data.map(d => (d.geo || "??").toUpperCase()))].filter(Boolean);
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#fb7185', '#a3e635'];
+
+    datasets = geos.map((geo, index) => {
+      // Для кожного ГЕО рахуємо спенд по днях
+      const geoValues = sd.map(date => {
+        return data
+          .filter(d => d.date === date && (d.geo || "").toUpperCase() === geo)
+          .reduce((sum, item) => sum + (Number(item.spend) || 0), 0);
+      });
+
+      return {
+        label: geo,
+        data: geoValues,
+        borderColor: colors[index % colors.length],
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        pointRadius: 3,
+        tension: 0.4,
+        fill: false,
+        datalabels: { display: false } // Ховаємо цифри в ГЕО режимі, щоб не було каші
+      };
+    });
+  }
+
+  // 2. Рендеринг
   window.chart1 = new Chart(ctx.getContext('2d'), {
     type: 'line',
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: 'Spend ($)',
-          data: sd.map(d => m[d].s),
-          borderColor: '#3b82f6',
-          backgroundColor: 'rgba(59, 130, 246, 0.15)',
-          borderWidth: 5,           // Товста головна лінія
-          pointBackgroundColor: '#ffffff',
-          pointBorderColor: '#3b82f6',
-          pointBorderWidth: 3,
-          pointRadius: 6,           // Білі точки як на фото
-          pointHoverRadius: 9,
-          tension: 0.4,             // Плавність ліній
-          fill: true,
-          datalabels: {
-            display: true,
-            align: 'top',
-            offset: 10,
-            color: '#ffffff',
-            font: { weight: '900', size: 13 },
-            formatter: (val) => Math.round(val) || ''
-          }
-        },
-        {
-          label: 'CPL ($)',
-          data: sd.map(d => m[d].r > 0 ? m[d].s / m[d].r : 0),
-          borderColor: '#a855f7',
-          borderDash: [8, 5],       // Довгий пунктир
-          borderWidth: 2,
-          pointRadius: 0,           // Прибираємо точки для чистоти
-          fill: false,
-          tension: 0.4,
-          datalabels: { display: false }
-        },
-        {
-          label: 'CPA ($)',
-          data: sd.map(d => m[d].d > 0 ? m[d].s / m[d].d : 0),
-          borderColor: '#eab308',
-          borderDash: [3, 3],       // Короткий пунктир
-          borderWidth: 2,
-          pointRadius: 0,
-          fill: false,
-          tension: 0.4,
-          datalabels: { display: false }
-        }
-      ]
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      // МАКСИМАЛЬНЕ РОЗШИРЕННЯ ВНУТРІШНЬОЇ ОБЛАСТІ
-      layout: {
-        padding: {
-          top: 40,    // Місце для цифр над точками
-          bottom: 0,
-          left: 5,
-          right: 15
-        }
-      },
+      layout: { padding: { top: 35, bottom: 0, left: 0, right: 10 } },
       plugins: {
         legend: {
           display: true,
           position: 'top',
-          labels: {
-            color: '#94a3b8',
-            padding: 20,
-            usePointStyle: true,
-            pointStyle: 'circle',
-            font: { weight: 'bold', size: 12 }
-          }
+          labels: { color: '#94a3b8', usePointStyle: true, font: { weight: 'bold' } }
         },
         tooltip: {
           mode: 'index',
           intersect: false,
-          backgroundColor: 'rgba(15, 23, 42, 0.9)',
-          titleFont: { size: 14, weight: 'bold' },
-          bodyFont: { size: 13 },
-          padding: 12,
-          displayColors: true,
-          borderColor: 'rgba(59, 130, 246, 0.3)',
-          borderWidth: 1
-        },
-        // Налаштування плагіна цифр
-        datalabels: {
-          anchor: 'end',
-          align: 'top'
+          backgroundColor: '#1e293b'
         }
       },
       scales: {
-        x: {
-          ticks: { 
-            color: '#64748b', 
-            font: { size: 11, weight: 'bold' },
-            padding: 10 
-          },
-          grid: { display: false } // Прибираємо вертикальні лінії
-        },
-        y: {
-          beginAtZero: true,
-          ticks: { 
-            color: '#64748b', 
-            font: { size: 11 },
-            padding: 8,
-            // Додаємо символ $ до шкали
-            callback: function(value) { return '$' + value; }
-          },
-          grid: { 
-            color: 'rgba(255, 255, 255, 0.05)',
-            drawBorder: false 
-          }
-        }
+        x: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: '#64748b', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
       }
     }
   });
@@ -2009,17 +1955,25 @@ function applyGeoFilter() {
 }
 
 function changeChartMode(mode) {
-  currentChartMode = mode;
-  // Оновлюємо вигляд кнопок
+  currentChartMode = mode; // 'daily' або 'geo'
+  
+  // Оновлюємо візуал кнопок (синя підсвітка)
   const btnDaily = document.getElementById('btn-daily');
   const btnGeo = document.getElementById('btn-geo');
+  
   if (mode === 'daily') {
-    btnDaily.className = btnDaily.className.replace('text-muted-dynamic', 'bg-blue-600 text-white shadow-lg');
-    btnGeo.className = btnGeo.className.replace('bg-blue-600 text-white shadow-lg', 'text-muted-dynamic');
+    btnDaily.classList.add('bg-blue-600', 'text-white');
+    btnDaily.classList.remove('text-muted-dynamic');
+    btnGeo.classList.remove('bg-blue-600', 'text-white');
+    btnGeo.classList.add('text-muted-dynamic');
   } else {
-    btnGeo.className = btnGeo.className.replace('text-muted-dynamic', 'bg-blue-600 text-white shadow-lg');
-    btnDaily.className = btnDaily.className.replace('bg-blue-600 text-white shadow-lg', 'text-muted-dynamic');
+    btnGeo.classList.add('bg-blue-600', 'text-white');
+    btnGeo.classList.remove('text-muted-dynamic');
+    btnDaily.classList.remove('bg-blue-600', 'text-white');
+    btnDaily.classList.add('text-muted-dynamic');
   }
+
+  // Викликаємо фільтрацію, яка всередині викличе новий renderTrend
   applyChartFilter();
 }
 
