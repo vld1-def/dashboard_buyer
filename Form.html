@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html class="dark" id="main-html">
+<head>
+  <base target="_top">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { 
+      --bg-color: #020617; 
+      --glass-bg: rgba(30, 41, 59, 0.4); 
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f1f5f9; 
+    }
+
+    body { 
+      background-color: var(--bg-color); 
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.12) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main); 
+      font-family: 'Inter', sans-serif;
+      transition: all 0.3s ease; 
+    }
+
+    /* Ефект скла для карток */
+    .card { 
+      background: var(--glass-bg); 
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid var(--glass-border); 
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      border-radius: 1.5rem;
+    }
+
+    /* Стилізація інпутів */
+    input, select { 
+      background: rgba(255, 255, 255, 0.05) !important; 
+      color: #f1f5f9 !important; 
+      border: 1px solid rgba(255, 255, 255, 0.1) !important; 
+      font-size: 0.85rem !important; 
+      padding: 10px 14px !important; 
+      outline: none; 
+      border-radius: 0.75rem; 
+      width: 100%; 
+      transition: all 0.2s;
+    }
+    input:focus { border-color: #3b82f6 !important; background: rgba(255, 255, 255, 0.1) !important; }
+
+    /* Таби */
+    .tab-btn { color: #94a3b8; transition: all 0.3s; }
+    .tab-btn.active { 
+      background-color: #3b82f6; 
+      color: white; 
+      box-shadow: 0 0 15px rgba(59,130,246,0.4); 
+    }
+
+    /* Зона Drop-zone */
+    .drop-zone { 
+      border: 2px dashed rgba(59, 130, 246, 0.3); 
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+    }
+    .drop-zone:hover { 
+      border-color: #3b82f6; 
+      background: rgba(59, 130, 246, 0.05);
+      transform: translateY(-2px);
+    }
+
+    /* Редагування комірок */
+    .editable-cell { 
+      cursor: text; 
+      transition: all 0.2s; 
+      border-radius: 6px; 
+      padding: 4px 8px; 
+    }
+    .editable-cell:hover { background: rgba(59, 130, 246, 0.2); }
+
+    /* Скролбар */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.5); border-radius: 10px; }
+    
+    table tr:hover { background-color: rgba(255, 255, 255, 0.03); }
+    /* Стиль рідкого скла для інпутів та селектів */
+input, select, textarea { 
+  background: rgba(255, 255, 255, 0.03) !important; 
+  backdrop-filter: blur(12px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
+  color: #f1f5f9 !important; 
+  border: 1px solid rgba(255, 255, 255, 0.08) !important; 
+  font-size: 0.85rem !important; 
+  padding: 10px 14px !important; 
+  outline: none; 
+  border-radius: 0.75rem; 
+  width: 100%; 
+  transition: all 0.3s ease;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Ефект при фокусі */
+input:focus, select:focus { 
+  border-color: rgba(59, 130, 246, 0.5) !important; 
+  background: rgba(255, 255, 255, 0.07) !important; 
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+/* Стилізація випадаючого списку (опцій) */
+select option { 
+  background-color: #1e293b; /* Темний фон для списку, бо скло в самому списку не працює */
+  color: #f1f5f9; 
+  padding: 10px;
+}
+
+/* Кастомна стрілочка для селекта */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1em;
+  padding-right: 2.5rem !important;
+}
+  </style>
+</head>
+<body class="p-6 md:p-12 antialiased">
+
+  <div class="max-w-[1500px] mx-auto">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
+      <div>
+        <h2 class="text-4xl font-black uppercase italic tracking-tighter text-white">Data Hub <span class="text-blue-500 text-xl">v14.15</span></h2>
+        <p class="text-[10px] font-black uppercase tracking-[0.3em] opacity-40 mt-1">Intelligence Injection Center</p>
+      </div>
+      
+      <div class="flex items-center gap-4">
+        <div class="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+          <button onclick="switchMode('dataset')" id="tab-dataset" class="tab-btn active px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Campaigns</button>
+          <button onclick="switchMode('creatives')" id="tab-creatives" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Creatives</button>
+          <button onclick="switchMode('providers')" id="tab-providers" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Settings</button>
+        </div>
+        <a href="<?= getScriptUrl() ?>?page=Index" class="bg-white/5 hover:bg-white/10 text-blue-400 font-black text-[11px] uppercase border border-blue-500/20 px-6 py-3 rounded-2xl transition-all shadow-lg">
+          ← Dashboard
+        </a>
+      </div>
+    </div>
+
+    <!-- CAMPAIGN MODE -->
+    <div id="mode-dataset" class="space-y-8">
+      <div id="csv-drop-zone-dataset" class="drop-zone card p-10 rounded-[2.5rem] text-center cursor-pointer group max-w-2xl mx-auto" onclick="document.getElementById('csv-input-dataset').click()">
+        <input type="file" id="csv-input-dataset" accept=".csv" class="hidden" onchange="handleCSV(event, 'dataset')">
+        <div class="flex flex-col items-center gap-4">
+           <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+           </div>
+           <div>
+             <h3 class="font-black uppercase italic text-lg text-white">Import Campaign CSV</h3>
+             <p class="text-[10px] opacity-40 font-bold tracking-[0.2em] uppercase">Automatic aggregation by account</p>
+           </div>
+        </div>
+      </div>
+      <div id="dataset-preview" class="hidden card rounded-[2rem] overflow-hidden shadow-2xl">
+        <div class="max-h-[500px] overflow-y-auto">
+          <table class="w-full text-left border-collapse text-[11px]">
+            <thead class="bg-black/40 sticky top-0 backdrop-blur-md font-black uppercase text-slate-400">
+              <tr><th class="p-5">Date</th><th class="p-5">Account</th><th class="p-5">GEO</th><th class="p-5">Funnel</th><th class="p-5">Spend</th><th class="p-5 text-blue-400">Regs</th><th class="p-5 text-green-500">Deps</th></tr>
+            </thead>
+            <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+        <div class="p-6 bg-black/20 flex justify-end gap-4 border-t border-white/5">
+          <button onclick="resetImport('dataset')" class="bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl font-black uppercase text-[10px] text-white transition">Cancel</button>
+          <button onclick="confirmDatasetImport()" class="bg-blue-600 hover:bg-blue-500 px-12 py-3 rounded-2xl font-black uppercase text-[10px] text-white shadow-xl transition-all">Save All Records</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATIVE MODE -->
+    <div id="mode-creatives" class="hidden space-y-8">
+      <div id="csv-drop-zone-creatives" class="drop-zone card p-10 rounded-[2.5rem] text-center cursor-pointer group max-w-2xl mx-auto" onclick="document.getElementById('csv-input-creatives').click()">
+        <input type="file" id="csv-input-creatives" accept=".csv" class="hidden" onchange="handleCSV(event, 'creatives')">
+        <div class="flex flex-col items-center gap-4">
+           <div class="w-16 h-16 bg-purple-500/10 rounded-full flex items-center justify-center text-purple-500 group-hover:scale-110 transition-transform">
+             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+           </div>
+           <div>
+             <h3 class="font-black uppercase italic text-lg text-white">Import Creative CSV</h3>
+             <p class="text-[10px] opacity-40 font-bold tracking-[0.2em] uppercase">Smart mapping + Geo/Device</p>
+           </div>
+        </div>
+      </div>
+      <div id="creatives-preview" class="hidden card rounded-[2rem] overflow-hidden shadow-2xl">
+        <div class="max-h-[500px] overflow-y-auto">
+          <table class="w-full text-left border-collapse text-[11px]">
+            <thead class="bg-black/40 sticky top-0 backdrop-blur-md font-black uppercase text-slate-400">
+              <tr><th class="p-5">Start</th><th class="p-5">Account</th><th class="p-5">ID</th><th class="p-5 text-orange-400">Geo</th><th class="p-5">Spend</th><th class="p-5 text-blue-400">Clicks</th><th class="p-5">Regs</th><th class="p-5 text-green-500">Deps</th></tr>
+            </thead>
+            <tbody id="creatives-preview-body" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+        <div class="p-6 bg-black/20 flex justify-end gap-4 border-t border-white/5">
+          <button onclick="resetImport('creatives')" class="bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl font-black uppercase text-[10px] text-white transition">Cancel</button>
+          <button onclick="confirmCreativeImport()" class="bg-purple-600 hover:bg-purple-500 px-12 py-3 rounded-2xl font-black uppercase text-[10px] text-white shadow-xl transition-all">Save Intelligence</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS MODE -->
+    <!-- SETTINGS MODE (2 РЯДИ) -->
+    <div id="mode-providers" class="hidden max-w-6xl mx-auto space-y-8">
+       
+       <!-- РЯД 1: ВНЕСЕННЯ ДАНИХ -->
+       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <!-- Картка: Акаунти -->
+          <div class="card p-6 rounded-[2rem] border-t-4 border-t-blue-500">
+             <h3 class="text-lg font-black uppercase italic mb-4 text-blue-400">Link Cabinet</h3>
+             <div class="flex gap-2">
+                <input type="text" id="prov-acc" placeholder="Account ID" class="flex-grow">
+                <select id="prov-agency" class="w-1/3">
+                  <option value="BlueGlow(3%)">BlueGlow (3%)</option>
+                  <option value="AdForge(5%)">AdForge (5%)</option>
+                  <option value="2B Digital(5.5%)">2B Digital (5.5%)</option> <!-- Додано 5.5% -->
+                  <option value="Direct(0%)" selected>Direct (0%)</option>
+                </select>
+                <button onclick="addProvider()" class="bg-blue-600 px-6 rounded-xl font-black uppercase text-[10px]">Link</button>
+             </div>
+          </div>
+
+          <!-- Картка: Воронки -->
+          <div class="card p-6 rounded-[2rem] border-t-4 border-t-purple-500">
+             <h3 class="text-lg font-black uppercase italic mb-4 text-purple-400">Funnel Mapper</h3>
+             <div class="flex gap-2">
+                <input type="text" id="fun-name" placeholder="Funnel Name" class="flex-grow">
+                <input type="text" id="fun-ktid" placeholder="KTID" class="w-1/4 text-center">
+                <button onclick="addFunnelMapping()" class="bg-purple-600 px-6 rounded-xl font-black uppercase text-[10px]">Save</button>
+             </div>
+          </div>
+       </div>
+
+       <!-- РЯД 2: СПИСКИ (ТАБЛИЦІ) -->
+       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <!-- Таблиця 1: Акаунти -->
+          <div class="card p-6 rounded-[2rem] border-t-4 border-t-slate-500">
+             <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xs font-black uppercase text-slate-400">Linked Cabinets</h3>
+                <input type="text" id="acc-search" oninput="filterProviders()" placeholder="Search Acc..." class="!w-32 !py-1 !text-[9px] !rounded-lg">
+             </div>
+             <div class="max-h-[300px] overflow-y-auto custom-scrollbar">
+                <table class="w-full text-[11px] text-left">
+                  <thead class="sticky top-0 bg-[#1e293b]/90 backdrop-blur-sm text-slate-500 uppercase font-black">
+                    <tr><th class="p-2">Account</th><th class="p-2 text-right">Agency</th></tr>
+                  </thead>
+                  <tbody id="providers-list-body" class="divide-y divide-white/5"></tbody>
+                </table>
+             </div>
+          </div>
+
+          <!-- Таблиця 2: Воронки -->
+          <div class="card p-6 rounded-[2rem] border-t-4 border-t-slate-500">
+             <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xs font-black uppercase text-slate-400">KTID Mappings</h3>
+                <input type="text" id="funnel-search" oninput="filterFunnels()" placeholder="Search Funnel..." class="!w-32 !py-1 !text-[9px] !rounded-lg">
+             </div>
+             <div class="max-h-[300px] overflow-y-auto custom-scrollbar">
+                <table class="w-full text-[11px] text-left">
+                  <thead class="sticky top-0 bg-[#1e293b]/90 backdrop-blur-sm text-slate-500 uppercase font-black">
+                    <tr><th class="p-2">Funnel Name</th><th class="p-2 text-right">KTID</th></tr>
+                  </thead>
+                  <tbody id="funnels-list-body" class="divide-y divide-white/5"></tbody>
+                </table>
+             </div>
+          </div>
+       </div>
+
+    </div>
+    
+    <!-- Status Toast -->
+    <div id="status" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden p-4 px-10 rounded-2xl bg-blue-600 text-white font-black uppercase text-xs shadow-2xl animate-bounce z-[100]"></div>
+  </div>
+<script>
+  // --- НАЛАШТУВАННЯ SUPABASE ---
+const SUPABASE_URL = 'https://zsfumuiajrytmeycbtnn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// --- ГЛОБАЛЬНІ ЗМІННІ ---
+let currentTeam = localStorage.getItem('selected_team') || "Makeberry";
+let mappingDB = { providers: {}, funnels: {} };
+let datasetToImport = []; 
+let creativesToImport = [];
+let allFunnels = []; 
+let allProviders = [];
+
+// Ключові слова для розпізнавання колонок у CSV (UA/RU/EN)
+const keywords = {
+  startDate: ['reporting starts', 'дата начала', 'дата початку', 'start date', 'початок звітності'],
+  endDate: ['reporting ends', 'дата окончания', 'дата закінчення', 'end date', 'date', 'day', 'завершення звітності'],
+  acc: ['account', 'account id', 'ad account name', 'account name', 'ad account', 'акаунт', 'кабінет', 'назва акаунту', 'идентификатор аккаунта', 'ідентифікатор акаунта', 'id облікового запису'],
+  name: ['название кампании', 'campaign name', 'назва кампанії', 'кампанії', 'назва'],
+  cid: ['creative id', 'ad name', 'ad id', 'creative', 'ad', 'креатив', 'оголошення', 'назва оголошення', 'название объявления'],
+  spend: ['amount spent', 'spend', 'cost', 'витрачена сума', 'витрачена', 'сума', 'затрат'],
+  regs: ['завершенные регистрации', 'registrations completed', 'regs', 'leads', 'завершені реєстрації', 'реєстрації', 'регистрации'],
+  deps: ['покупки', 'purchases', 'deps', 'deposits', 'депозити'],
+  clicks: ['клики по ссылке', 'link clicks', 'clicks', 'кліки посилання', 'кліки'],
+  geo: ['country', 'geo', 'страна', 'країна', 'гео', 'location', 'країна/регіон'],
+  device: ['device', 'platform', 'устройство', 'пристрій', 'платформа', 'impression device']
+};
+
+// --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
+window.onload = async () => {
+  console.log("🛠 Data Hub connected to Team:", currentTeam);
+  await loadMappings(); 
+  setupDragAndDrop('dataset'); 
+  setupDragAndDrop('creatives'); 
+};
+
+// --- РОБОТА З SUPABASE (MAPPINGS) ---
+
+async function loadMappings() {
+  const { data: accs } = await sb.from('account_mapping').select('*').eq('team_name', currentTeam);
+  const { data: funs } = await sb.from('funnel_mapping').select('*').eq('team_name', currentTeam);
+  
+  mappingDB.providers = {};
+  accs?.forEach(r => mappingDB.providers[r.account_id] = r.agency_name);
+  
+  mappingDB.funnels = {};
+  funs?.forEach(r => mappingDB.funnels[r.ktid] = r.funnel_name);
+}
+
+async function refreshProvidersTable() {
+  const { data } = await sb.from('account_mapping').select('*').eq('team_name', currentTeam);
+  allProviders = data || [];
+  renderProvidersTable(allProviders);
+}
+
+async function refreshFunnelsTable() {
+  const { data } = await sb.from('funnel_mapping').select('*').eq('team_name', currentTeam);
+  allFunnels = data || [];
+  renderFunnelsTable(allFunnels);
+}
+
+// --- ОБРОБКА CSV ---
+
+function handleCSV(e, type) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    const lines = event.target.result.split('\n').map(l => l.split(',').map(c => c.replace(/"/g, '').trim()));
+    const headers = lines[0].map(h => h.toLowerCase());
+    const map = {};
+    Object.keys(keywords).forEach(key => { map[key] = headers.findIndex(h => keywords[key].some(kw => h.includes(kw))); });
+    
+    if (type === 'dataset') processCampaignData(map, lines); else processCreativeData(map, lines);
+  };
+  reader.readAsText(file);
+}
+
+function processCampaignData(map, lines) {
+  let aggregated = {};
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i][map.name] || lines[i][map.name] === "") continue;
+    const parts = lines[i][map.name].split('_');
+    const date = lines[i][map.endDate] || lines[i][map.date];
+    const accName = lines[i][map.acc];
+    const geo = (parts[1] || '??').toUpperCase();
+    const id = (parts[2] || '0').replace(/\D/g, ''); 
+    const agency = mappingDB.providers[accName] || 'Direct(0%)';
+    const key = `${date}_${accName}_${geo}_${id}_${agency}`;
+
+    if (!aggregated[key]) aggregated[key] = { date, acc: accName, geo, funnel: mappingDB.funnels[id] || 'Unknown ('+id+')', spend: 0, regs: 0, deps: 0, agent: agency };
+    aggregated[key].spend += parseFloat(String(lines[i][map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
+    aggregated[key].regs += parseInt(lines[i][map.regs]) || 0;
+    aggregated[key].deps += parseInt(lines[i][map.deps]) || 0;
+  }
+  datasetToImport = Object.values(aggregated);
+  renderPreview('dataset');
+}
+
+function processCreativeData(map, lines) {
+  creativesToImport = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i];
+    if (!row[map.cid]) continue;
+    creativesToImport.push({
+      startDate: row[map.startDate] || row[map.endDate] || '',
+      acc: row[map.acc] || 'Unknown',
+      cid: row[map.cid] || 'No ID',
+      spend: parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0,
+      clicks: parseInt(row[map.clicks]) || 0,
+      regs: parseInt(row[map.regs]) || 0,
+      deps: parseInt(row[map.deps]) || 0,
+      geo: (map.geo !== -1 && row[map.geo]) ? row[map.geo].toUpperCase() : '??'
+    });
+  }
+  renderPreview('creatives');
+}
+
+// --- ВІЗУАЛІЗАЦІЯ ТА ПРЕВ'Ю ---
+
+function renderPreview(type) {
+  const area = document.getElementById(type + '-preview');
+  const body = document.getElementById(type + '-preview-body');
+  area.classList.remove('hidden'); 
+  body.innerHTML = '';
+
+  if (type === 'dataset') {
+    body.innerHTML = datasetToImport.map((r, i) => `
+      <tr>
+        <td class="p-4 opacity-50">${r.date}</td>
+        <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+        <td class="p-4"><div class="editable-cell uppercase" contenteditable="true" onblur="datasetToImport[${i}].geo=this.innerText.trim().toUpperCase()">${r.geo}</div></td>
+        <td class="p-4 italic"><div class="editable-cell" contenteditable="true" onblur="datasetToImport[${i}].funnel=this.innerText.trim()">${r.funnel}</div></td>
+        <td class="p-4 font-black"><div class="editable-cell text-blue-400" contenteditable="true" onblur="datasetToImport[${i}].spend=parseFloat(this.innerText.replace(/[^\d.-]/g,'')) || 0">$${r.spend.toFixed(2)}</div></td>
+        <td class="p-4"><div class="editable-cell" contenteditable="true" onblur="datasetToImport[${i}].regs=parseInt(this.innerText) || 0">${r.regs}</div></td>
+        <td class="p-4 font-black text-green-500"><div class="editable-cell" contenteditable="true" onblur="datasetToImport[${i}].deps=parseInt(this.innerText) || 0">${r.deps}</div></td>
+      </tr>`).join('');
+  } else {
+    body.innerHTML = creativesToImport.map((r, i) => `
+      <tr>
+        <td class="p-4 opacity-50">${r.startDate}</td>
+        <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+        <td class="p-4 font-black">${r.cid}</td>
+        <td class="p-4"><div class="editable-cell text-orange-400 font-bold uppercase" contenteditable="true" onblur="creativesToImport[${i}].geo=this.innerText.trim().toUpperCase()">${r.geo}</div></td>
+        <td class="p-4 font-black"><div class="editable-cell text-blue-400" contenteditable="true" onblur="creativesToImport[${i}].spend=parseFloat(this.innerText.replace(/[^\d.-]/g,'')) || 0">$${r.spend.toFixed(2)}</div></td>
+        <td class="p-4 text-center">${r.clicks}</td>
+        <td class="p-4 text-center">${r.regs}</td>
+        <td class="p-4 text-green-500 font-black text-center">${r.deps}</td>
+      </tr>`).join('');
+  }
+}
+
+// --- ЗБЕРЕЖЕННЯ В БАЗУ (SUPABASE) ---
+
+async function confirmDatasetImport() {
+  if (!datasetToImport.length) return;
+  showStatus("Syncing Campaigns...");
+
+  const finalData = datasetToImport.map(row => ({
+    date: row.date,
+    account: row.acc,
+    geo: row.geo,
+    funnel: row.funnel,
+    spend: row.spend,
+    regs: row.regs,
+    deposits: row.deps,
+    agent: row.agent,
+    team_name: currentTeam
+  }));
+
+  const { error } = await sb.from('daily_stats').insert(finalData);
+  if (error) alert("Database Error: " + error.message);
+  else { showStatus("Successfully Imported " + finalData.length + " rows!"); resetImport('dataset'); }
+}
+
+async function confirmCreativeImport() {
+  if (!creativesToImport.length) return;
+  showStatus("Injecting Creative Data...");
+
+  const finalData = creativesToImport.map(row => ({
+    date: row.startDate,
+    account: row.acc,
+    cid: row.cid,
+    geo: row.geo,
+    spend: row.spend,
+    clicks: row.clicks,
+    regs: row.regs,
+    deps: row.deps,
+    team_name: currentTeam
+  }));
+
+  const { error } = await sb.from('creatives_stats').insert(finalData);
+  if (error) alert("Creative Error: " + error.message);
+  else { showStatus("Creatives Intelligence Saved!"); resetImport('creatives'); }
+}
+
+// --- НАЛАШТУВАННЯ (SETTINGS) ---
+
+async function addProvider() {
+  const acc = document.getElementById('prov-acc').value;
+  const agency = document.getElementById('prov-agency').value;
+  if (!acc) return alert("Enter Acc ID!");
+
+  const { error } = await sb.from('account_mapping').upsert({
+    account_id: acc, agency_name: agency, team_name: currentTeam
+  });
+
+  if (!error) { 
+    showStatus("Account Linked!"); 
+    document.getElementById('prov-acc').value = ''; 
+    await refreshProvidersTable(); 
+    await loadMappings(); 
+  }
+}
+
+async function addFunnelMapping() {
+  const name = document.getElementById('fun-name').value;
+  const ktid = document.getElementById('fun-ktid').value;
+  if (!name || !ktid) return alert("Fill fields!");
+
+  const { error } = await sb.from('funnel_mapping').upsert({
+    ktid: ktid, funnel_name: name, team_name: currentTeam
+  });
+
+  if (!error) { 
+    showStatus("Funnel Mapped!"); 
+    document.getElementById('fun-name').value = ''; 
+    document.getElementById('fun-ktid').value = ''; 
+    await refreshFunnelsTable(); 
+    await loadMappings(); 
+  }
+}
+
+function renderProvidersTable(data) {
+  const body = document.getElementById('providers-list-body');
+  body.innerHTML = data.map(r => `
+    <tr class="hover:bg-white/5 transition-colors">
+      <td class="p-2 font-bold text-blue-300 uppercase">${r.account_id}</td>
+      <td class="p-2 text-right text-slate-400 text-[10px]">${r.agency_name}</td>
+    </tr>`).join('');
+}
+
+function renderFunnelsTable(data) {
+  const body = document.getElementById('funnels-list-body');
+  body.innerHTML = data.map(r => `
+    <tr class="hover:bg-white/5 transition-colors">
+      <td class="p-2 font-bold text-purple-300">${r.funnel_name}</td>
+      <td class="p-2 text-right font-mono text-white font-black">${r.ktid}</td>
+    </tr>`).join('');
+}
+
+// --- UI УТИЛІТИ ---
+
+function switchMode(m) { 
+  ['dataset', 'creatives', 'providers'].forEach(x => { 
+    document.getElementById('mode-'+x).classList.toggle('hidden', m!==x); 
+    document.getElementById('tab-'+x).classList.toggle('active', m===x); 
+  }); 
+  if (m === 'providers') { refreshFunnelsTable(); refreshProvidersTable(); }
+}
+
+function resetImport(t) { 
+  document.getElementById(t + '-preview').classList.add('hidden'); 
+  document.getElementById('csv-input-' + t).value = '';
+}
+
+function setupDragAndDrop(t) { 
+  const z = document.getElementById('csv-drop-zone-'+t); 
+  z.ondragover = () => { z.style.borderColor = "#3b82f6"; return false; }; 
+  z.ondragleave = () => { z.style.borderColor = "rgba(59, 130, 246, 0.3)"; return false; }; 
+  z.ondrop = (e) => { 
+    z.style.borderColor = "rgba(59, 130, 246, 0.3)"; 
+    e.preventDefault(); 
+    handleCSV({target:{files:[e.dataTransfer.files[0]]}}, t); 
+  }; 
+}
+
+function showStatus(m) { 
+  const s = document.getElementById('status'); 
+  s.innerText = m; 
+  s.classList.remove('hidden'); 
+  s.style.display = "block";
+  setTimeout(() => { s.classList.add('hidden'); }, 4000); 
+}
+
+function filterProviders() {
+  const query = document.getElementById('acc-search').value.toLowerCase();
+  renderProvidersTable(allProviders.filter(r => r.account_id.toLowerCase().includes(query)));
+}
+
+function filterFunnels() {
+  const query = document.getElementById('funnel-search').value.toLowerCase();
+  renderFunnelsTable(allFunnels.filter(r => r.funnel_name.toLowerCase().includes(query) || r.ktid.toLowerCase().includes(query)));
+}
+</script>  
+</body>
+</html>
