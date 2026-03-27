@@ -290,6 +290,22 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1) brightness(1.5);
   margin-right: 5px;
 }
+   /* Анімація лінії завантаження зверху */
+#top-loader {
+  position: fixed;
+  top: 0; left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+  z-index: 1000;
+  transition: width 0.3s ease;
+}
+
+/* Стиль для активного місяця у списку */
+.month-item-active {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: #60a5fa !important;
+  border-left: 3px solid #3b82f6;
+}
   </style>
 </head>
 <body class="py-6 px-4 md:px-6 font-sans antialiased text-dynamic">
@@ -313,7 +329,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     }
     
   </script>
-
+<div id="top-loader" style="width: 0%;"></div>
   <div class="max-w-[1850px] mx-auto">
     <!-- Header -->
     <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -938,20 +954,33 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     return [...new Set(m)].sort().reverse();
   }
 
-  function changeGlobalMonth(month) {
-    currentMonthFilter = month;
-    localStorage.setItem('selected_dashboard_month', month);
-    document.getElementById('current-month-label').innerText = month;
-    
-    const year = month.split('-')[0], m = month.split('-')[1];
-    const lastDay = new Date(year, m, 0).getDate();
-    const start = `${month}-01`, end = `${month}-${lastDay}`;
-    
-    ['filter-from','chart-from','geo-filter-from','ai-from'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = start; });
-    ['filter-to','chart-to','geo-filter-to','ai-to'].forEach(id => { if(document.getElementById(id)) document.getElementById(id).value = end; });
+  async function changeGlobalMonth(month) {
+  // 1. Показуємо лоадер (смужка зверху)
+  const loader = document.getElementById('top-loader');
+  loader.style.width = "30%";
+  
+  // 2. Закриваємо меню та оновлюємо фільтри
+  currentMonthFilter = month;
+  localStorage.setItem('selected_dashboard_month', month);
+  document.getElementById('current-month-label').innerText = month;
+  document.getElementById('month-menu').classList.add('hidden');
 
-    applyGlobalFilter();
-  }
+  loader.style.width = "60%";
+
+  // 3. Оновлюємо дані (applyGlobalFilter має бути асинхронним або викликати рендер)
+  // Використовуємо невелику затримку, щоб користувач відчув "завантаження"
+  setTimeout(() => {
+    applyGlobalFilter(); // Твоя функція фільтрації та рендеру
+    
+    // Перерендеримо список місяців, щоб оновити підсвітку
+    const months = getAvailableMonths(rawData);
+    renderMonthList(months);
+    
+    // 4. Завершуємо лоадер
+    loader.style.width = "100%";
+    setTimeout(() => { loader.style.width = "0%"; }, 400);
+  }, 300);
+}
 
   function applyGlobalFilter() {
     filteredDataCache = rawData.filter(d => d.date && d.date.startsWith(currentMonthFilter));
@@ -1968,7 +1997,24 @@ function showGeoDetails(geo) {
 
   modal.classList.remove('hidden');
 }
+function renderMonthList(months) {
+  const mList = document.getElementById('month-list');
+  if (!mList) return;
 
+  mList.innerHTML = months.map(m => {
+    // Перевіряємо, чи цей місяць зараз вибраний
+    const isActive = (m === currentMonthFilter);
+    
+    return `
+      <button onclick="changeGlobalMonth('${m}')" 
+              class="w-full text-left px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between group 
+              ${isActive ? 'month-item-active' : 'text-slate-400 hover:bg-white/5 hover:text-white'}">
+        <span>${m}</span>
+        ${isActive ? '<span class="w-1.5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]"></span>' : ''}
+      </button>
+    `;
+  }).join('');
+}
 // Функція закриття модалки ГЕО
 function closeGeoModal() {
   document.getElementById('geo-details-modal').classList.add('hidden');
