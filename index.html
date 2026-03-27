@@ -1822,35 +1822,6 @@ function updateMilestones(data) {
   }
 }
 
-// --- 3. ГЕО PERFORMANCE (Сайдбар) ---
-function renderGeoList(data) {
-  const m = {}; 
-  data.forEach(d => { 
-    const g = d.geo || "??"; 
-    if(!m[g]) m[g] = { s: 0, r: 0, d: 0 }; 
-    m[g].s += d.spend; m[g].r += d.regs; m[g].d += d.deposits; 
-  });
-  
-  const c = document.getElementById('geo-list'); if(!c) return;
-  c.innerHTML = Object.entries(m).sort((a,b) => b[1].s - a[1].s).map(([geo, stat]) => {
-    const pVal = globalPayouts[geo.toUpperCase()] || 0;
-    const profit = (stat.d * pVal) - stat.s;
-    return `
-      <div onclick="showGeoDetails('${geo}')" class="p-4 card geo-card mb-3 cursor-pointer hover:bg-white/5 transition border-l-4 border-blue-500">
-        <div class="flex justify-between mb-2"><span class="font-black text-blue-500 text-xl">${geo}</span><span class="font-black text-xl">$${stat.s.toFixed(0)}</span></div>
-        <div class="grid grid-cols-3 gap-2 text-center border-b border-white/5 pb-3 mb-3">
-          <div class="flex flex-col border-r border-white/5"><span class="text-[10px] opacity-40 uppercase">Reg</span><b class="text-base text-blue-400">${stat.r}</b></div>
-          <div class="flex flex-col border-r border-white/5"><span class="text-[10px] opacity-40 text-green-500 uppercase">Dep</span><b class="text-base text-green-500">${stat.d}</b></div>
-          <div class="flex flex-col"><span class="text-[10px] opacity-40 text-pink-500 uppercase">R2D</span><b class="text-base text-pink-500">${(stat.r > 0 ? (stat.d/stat.r*100) : 0).toFixed(1)}%</b></div>
-        </div>
-        <div class="flex justify-between items-center text-[11px] font-black">
-           <span class="opacity-40 uppercase font-black">Net Profit:</span>
-           <span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</span>
-        </div>
-      </div>`;
-  }).join('');
-}
-
 // --- 4. ФУНКЦІЇ ДЕТАЛЬНОГО ПЕРЕГЛЯДУ ТАСКІВ ---
 function openTaskDetails(id) {
   const task = taskData.find(t => t.id === id);
