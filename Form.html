@@ -133,6 +133,10 @@ select {
     <span class="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20">
       Target Workspace: <span id="active-team-display">LOADING...</span>
     </span>
+           <!-- Кнопка для зміни або створення нової команди -->
+    <button onclick="promptNewTeam()" class="ml-2 text-[9px] bg-emerald-500/20 hover:bg-emerald-500/40 px-2 py-0.5 rounded border border-emerald-500/30 transition-all text-emerald-300">
+      EDIT / NEW
+    </button>
   </div>
       </div>
       
@@ -340,7 +344,19 @@ async function loadMappings() {
 }
 
 async function refreshProvidersTable() {
-  const { data } = await sb.from('accounts_mapping').select('*').eq('team_name', currentTeam);
+  console.log("🔄 Оновлюю таблицю акаунтів...");
+  
+  const { data, error } = await sb
+    .from('account_mapping')
+    .select('*')
+    .eq('team_name', currentTeam)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error("Помилка завантаження акаунтів:", error);
+    return;
+  }
+
   allProviders = data || [];
   renderProvidersTable(allProviders);
 }
@@ -524,13 +540,37 @@ async function addFunnelMapping() {
 
 function renderProvidersTable(data) {
   const body = document.getElementById('providers-list-body');
+  if (!body) return;
+  
+  if (!data || data.length === 0) {
+    body.innerHTML = '<tr><td colspan="2" class="p-4 text-center opacity-30">No linked cabinets found</td></tr>';
+    return;
+  }
+
   body.innerHTML = data.map(r => `
-    <tr class="hover:bg-white/5 transition-colors">
-      <td class="p-2 font-bold text-blue-300 uppercase">${r.account_id}</td>
-      <td class="p-2 text-right text-slate-400 text-[10px]">${r.agency_name}</td>
+    <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
+      <td class="p-3 font-bold text-blue-300 uppercase tracking-tight">${r.account_id}</td>
+      <!-- ПЕРЕВІР НАЗВУ КОЛОНКИ ТУТ: r.agency_name -->
+      <td class="p-3 text-right text-slate-300 font-medium">${r.agency_name || 'Direct(0%)'}</td>
+      <td class="p-3 text-right">
+        <button onclick="deleteAccountMapping('${r.id}')" class="text-red-500 opacity-30 hover:opacity-100 transition-opacity">✕</button>
+      </td>
     </tr>`).join('');
 }
+async function deleteAccountMapping(id) {
+  if (!confirm("Видалити цю прив'язку?")) return;
+  
+  const { error } = await sb
+    .from('account_mapping')
+    .delete()
+    .eq('id', id);
 
+  if (!error) {
+    showStatus("Mapping deleted");
+    await refreshProvidersTable();
+    await loadMappings(); // Оновлюємо кеш для імпорту CSV
+  }
+}
 function renderFunnelsTable(data) {
   const body = document.getElementById('funnels-list-body');
   body.innerHTML = data.map(r => `
@@ -582,6 +622,29 @@ function filterProviders() {
 function filterFunnels() {
   const query = document.getElementById('funnel-search').value.toLowerCase();
   renderFunnelsTable(allFunnels.filter(r => r.funnel_name.toLowerCase().includes(query) || r.ktid.toLowerCase().includes(query)));
+}
+  // Функція для зміни або створення нової команди прямо у формі
+function promptNewTeam() {
+  const newName = prompt("Введіть назву команди (існуючої або нової):", currentTeam);
+  
+  if (newName && newName.trim().length > 2) {
+    // 1. Оновлюємо глобальну змінну
+    currentTeam = newName.trim();
+    
+    // 2. Зберігаємо в localStorage, щоб Dashboard теж переключився на неї
+    localStorage.setItem('selected_team', currentTeam);
+    
+    // 3. Оновлюємо текст на екрані
+    document.getElementById('active-team-display').innerText = currentTeam.toUpperCase();
+    
+    // 4. Перезавантажуємо мапінги (якщо для цієї команди вже щось було налаштовано)
+    loadMappings();
+    
+    showStatus("Workspace changed to: " + currentTeam);
+    console.log("📝 Тепер дані будуть імпортовані для команди:", currentTeam);
+  } else if (newName !== null) {
+    alert("Назва має бути довшою за 2 символи!");
+  }
 }
 </script>  
 </body>
