@@ -443,7 +443,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 <div class="grid grid-cols-1 lg:grid-cols-4 gap-8 overflow-hidden">
   
   <!-- Блок графіка -->
-  <div id="chart-main-col" class="card p-6 rounded-3xl lg:col-span-3 shadow-md transition-all duration-500 ease-in-out">
+  <div id="chart-main-col" class="card p-4 rounded-3xl lg:col-span-3 shadow-md transition-all duration-500 ease-in-out">
      <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6 text-dynamic">
         <h2 id="chart-title" class="font-black text-xl uppercase tracking-tight">Performance Trend</h2>
         <div class="flex flex-wrap items-center gap-3 text-dynamic">
@@ -459,7 +459,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
            </div>
         </div>
      </div>
-     <div class="h-[445px] w-full relative"><canvas id="chart-trend"></canvas></div>
+     <div class="h-[520px] w-full relative"><canvas id="chart-trend"></canvas></div>
   </div>
 
   <!-- Блок GEO -->
@@ -938,25 +938,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   renderTable(data);
 }
 function renderTrend(data) {
-  console.log("📊 Оновлення графіка: новий дизайн активовано");
+  console.log("📊 Оновлення графіка: активовано розширений дизайн");
   const ctx = document.getElementById('chart-trend');
   if (!ctx || !data.length) return;
-  
+
+  // 1. Очищення старого графіка перед створенням нового
   if (window.chart1) {
     window.chart1.destroy();
   }
 
-  // Сортування дат
+  // 2. Підготовка дат та днів тижня (UA)
   const sd = [...new Set(data.map(d => d.date))].sort();
   const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
   
-  // Формат лейблів: "1 (НД)"
   const labels = sd.map(d => {
     const dt = new Date(d);
     return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
   });
 
-  // Агрегація даних
+  // 3. Агрегація даних (Spend, Regs, Deps)
   const m = {};
   sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
   data.forEach(d => {
@@ -967,6 +967,7 @@ function renderTrend(data) {
     }
   });
 
+  // 4. Створення графіка
   window.chart1 = new Chart(ctx.getContext('2d'), {
     type: 'line',
     data: {
@@ -975,32 +976,32 @@ function renderTrend(data) {
         {
           label: 'Spend ($)',
           data: sd.map(d => m[d].s),
-          borderColor: '#3b82f6', // Синя лінія
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderWidth: 4, // Товста лінія
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.15)',
+          borderWidth: 5,           // Товста головна лінія
           pointBackgroundColor: '#ffffff',
           pointBorderColor: '#3b82f6',
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          tension: 0.4,
+          pointBorderWidth: 3,
+          pointRadius: 6,           // Білі точки як на фото
+          pointHoverRadius: 9,
+          tension: 0.4,             // Плавність ліній
           fill: true,
           datalabels: {
             display: true,
             align: 'top',
-            offset: 8,
+            offset: 10,
             color: '#ffffff',
-            font: { weight: '900', size: 12 },
+            font: { weight: '900', size: 13 },
             formatter: (val) => Math.round(val) || ''
           }
         },
         {
           label: 'CPL ($)',
           data: sd.map(d => m[d].r > 0 ? m[d].s / m[d].r : 0),
-          borderColor: '#a855f7', // Фіолетовий пунктир
-          borderDash: [6, 4],
+          borderColor: '#a855f7',
+          borderDash: [8, 5],       // Довгий пунктир
           borderWidth: 2,
-          pointRadius: 0, // Без точок для чистоти
+          pointRadius: 0,           // Прибираємо точки для чистоти
           fill: false,
           tension: 0.4,
           datalabels: { display: false }
@@ -1008,8 +1009,8 @@ function renderTrend(data) {
         {
           label: 'CPA ($)',
           data: sd.map(d => m[d].d > 0 ? m[d].s / m[d].d : 0),
-          borderColor: '#eab308', // Жовтий пунктир
-          borderDash: [3, 3],
+          borderColor: '#eab308',
+          borderDash: [3, 3],       // Короткий пунктир
           borderWidth: 2,
           pointRadius: 0,
           fill: false,
@@ -1021,6 +1022,15 @@ function renderTrend(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      // МАКСИМАЛЬНЕ РОЗШИРЕННЯ ВНУТРІШНЬОЇ ОБЛАСТІ
+      layout: {
+        padding: {
+          top: 40,    // Місце для цифр над точками
+          bottom: 0,
+          left: 5,
+          right: 15
+        }
+      },
       plugins: {
         legend: {
           display: true,
@@ -1036,23 +1046,42 @@ function renderTrend(data) {
         tooltip: {
           mode: 'index',
           intersect: false,
-          backgroundColor: '#1e293b',
-          titleFont: { size: 14 }
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          titleFont: { size: 14, weight: 'bold' },
+          bodyFont: { size: 13 },
+          padding: 12,
+          displayColors: true,
+          borderColor: 'rgba(59, 130, 246, 0.3)',
+          borderWidth: 1
         },
+        // Налаштування плагіна цифр
         datalabels: {
-            anchor: 'end',
-            align: 'top'
+          anchor: 'end',
+          align: 'top'
         }
       },
       scales: {
         x: {
-          ticks: { color: '#64748b', font: { size: 10, weight: 'bold' } },
-          grid: { display: false }
+          ticks: { 
+            color: '#64748b', 
+            font: { size: 11, weight: 'bold' },
+            padding: 10 
+          },
+          grid: { display: false } // Прибираємо вертикальні лінії
         },
         y: {
           beginAtZero: true,
-          ticks: { color: '#64748b', font: { size: 10 } },
-          grid: { color: 'rgba(255, 255, 255, 0.05)' }
+          ticks: { 
+            color: '#64748b', 
+            font: { size: 11 },
+            padding: 8,
+            // Додаємо символ $ до шкали
+            callback: function(value) { return '$' + value; }
+          },
+          grid: { 
+            color: 'rgba(255, 255, 255, 0.05)',
+            drawBorder: false 
+          }
         }
       }
     }
