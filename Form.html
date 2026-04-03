@@ -177,7 +177,17 @@ select {
       <div class="max-h-[300px] overflow-y-auto custom-scrollbar">
         <table class="w-full text-left border-collapse text-[10px]">
           <thead class="bg-black/40 sticky top-0 backdrop-blur-md text-slate-400 uppercase font-black">
-            <tr><th class="p-4">Date</th><th class="p-4">Account</th><th class="p-4">GEO</th><th class="p-4">Offer</th><th class="p-4">Funnel</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center">Regs</th><th class="p-4 text-center">Deps</th></tr>
+            <tr>
+              <th class="p-4">Date</th>
+              <th class="p-4">Account</th>
+              <th class="p-4">GEO</th>
+              <th class="p-4 text-emerald-400">Offer</th> <!-- Нове -->
+              <th class="p-4">Funnel</th>
+              <th class="p-4 text-right">Spend</th>
+              <th class="p-4 text-center text-orange-400">Installs</th> <!-- Нове -->
+              <th class="p-4 text-center text-blue-400">Regs</th>
+              <th class="p-4 text-center text-green-500">Deps</th>
+            </tr>
           </thead>
           <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
         </table>
@@ -338,6 +348,7 @@ const keywords = {
   clicks: ['клики по ссылке', 'link clicks', 'clicks', 'кліки посилання', 'кліки'],
   geo: ['country', 'geo', 'страна', 'країна', 'гео', 'location', 'країна/регіон'],
   cid: ['ad name', 'назва оголошення', 'название объявления', 'creative id'],
+  installs: ['leads', 'лід', 'лид', 'інсталяції', 'установки', 'завершені реєстрації'],
   device: ['device', 'platform', 'устройство', 'пристрій', 'платформа', 'impression device']
 };
 
@@ -424,14 +435,14 @@ function processCampaignData(map, lines) {
     const row = lines[i];
     if (!row[map.name]) continue;
 
-    // 1. Розбір назви кампанії: Crown_AU_4CQb-23_...
     const parts = row[map.name].split('_');
-    const date = row[map.endDate] || row[map.date] || '2026-01-01';
+    const date = row[map.endDate] || row[map.date] || '';
     const accName = row[map.acc];
     
-    const offer = (parts[0] || 'DEFAULT').toUpperCase().trim();
+    // Offer тепер пустий, щоб ти заповнював сам
+    const offer = ""; 
     const geo = (parts[1] || '??').toUpperCase().trim();
-    const ktid = (parts[2] || '0').trim(); // Наприклад: 4CQb-23
+    const ktid = (parts[2] || '0').trim();
     
     const funnelName = mappingDB.funnels[ktid] || 'Unknown (' + ktid + ')';
     const agency = mappingDB.providers[accName] || 'Direct(0%)';
@@ -440,24 +451,27 @@ function processCampaignData(map, lines) {
     const spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
     const regs = parseInt(row[map.regs]) || 0;
     const deps = parseInt(row[map.deps]) || 0;
+    const installs = map.installs !== -1 ? (parseInt(row[map.installs]) || 0) : 0;
 
     // Daily Aggregation
-    const dKey = `${date}_${accName}_${geo}_${offer}_${ktid}`;
+    const dKey = `${date}_${accName}_${geo}_${ktid}`;
     if (!dailyAggregated[dKey]) {
-      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, agent: agency };
+      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency };
     }
     dailyAggregated[dKey].spend += spend;
     dailyAggregated[dKey].regs += regs;
     dailyAggregated[dKey].deps += deps;
+    dailyAggregated[dKey].installs += installs;
 
     // Creative Aggregation
     const cKey = `${date}_${accName}_${cid}`;
     if (!creativeAggregated[cKey]) {
-      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, spend: 0, regs: 0, deps: 0 };
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0 };
     }
     creativeAggregated[cKey].spend += spend;
     creativeAggregated[cKey].regs += regs;
     creativeAggregated[cKey].deps += deps;
+    creativeAggregated[cKey].installs += installs;
   }
 
   datasetToImport = Object.values(dailyAggregated);
@@ -467,30 +481,44 @@ function processCampaignData(map, lines) {
 }
 function renderDualPreview() {
   document.getElementById('dataset-preview').classList.remove('hidden');
+  document.getElementById('csv-drop-zone-dataset').classList.add('hidden');
   
-  // Рендер Кампаній
-  document.getElementById('dataset-preview-body').innerHTML = datasetToImport.map(r => `
-    <tr class="hover:bg-white/5">
-      <td class="p-3 opacity-50">${r.date}</td>
-      <td class="p-3 font-bold text-blue-400">${r.acc}</td>
-      <td class="p-3 font-black">${r.geo}</td>
-      <td class="p-3 text-slate-300">${r.offer}</td>
-      <td class="p-3 italic">${r.funnel}</td>
-      <td class="p-3 text-right font-bold">$${r.spend.toFixed(2)}</td>
-      <td class="p-3 text-center text-blue-400">${r.regs}</td>
-      <td class="p-3 text-center text-green-500 font-bold">${r.deps}</td>
+  // Рендер Кампаній (Daily Stats)
+  document.getElementById('dataset-preview-body').innerHTML = datasetToImport.map((r, i) => `
+    <tr class="hover:bg-white/5 text-[13px]">
+      <td class="p-4 opacity-50 font-mono">${r.date}</td>
+      <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+      <td class="p-4">
+        <div class="editable-cell uppercase border-b border-white/10" contenteditable="true" 
+             onblur="datasetToImport[${i}].geo=this.innerText.trim().toUpperCase()">${r.geo}</div>
+      </td>
+      <td class="p-4">
+        <div class="editable-cell text-emerald-400 font-black border-b border-emerald-500/20" contenteditable="true" 
+             placeholder="Введіть Offer" onblur="datasetToImport[${i}].offer=this.innerText.trim().toUpperCase()">${r.offer}</div>
+      </td>
+      <td class="p-4 italic">
+        <div class="editable-cell border-b border-white/10" contenteditable="true" 
+             onblur="datasetToImport[${i}].funnel=this.innerText.trim()">${r.funnel}</div>
+      </td>
+      <td class="p-4 text-right font-bold text-white">
+         <div class="editable-cell border-b border-white/10" contenteditable="true" 
+             onblur="datasetToImport[${i}].spend=parseFloat(this.innerText.replace('$','')) || 0">$${r.spend.toFixed(2)}</div>
+      </td>
+      <td class="p-4 text-center text-orange-400 font-bold">
+        <div class="editable-cell border-b border-orange-500/20" contenteditable="true" 
+             onblur="datasetToImport[${i}].installs=parseInt(this.innerText) || 0">${r.installs}</div>
+      </td>
+      <td class="p-4 text-center text-blue-400">
+        <div class="editable-cell border-b border-blue-500/20" contenteditable="true" 
+             onblur="datasetToImport[${i}].regs=parseInt(this.innerText) || 0">${r.regs}</div>
+      </td>
+      <td class="p-4 text-center text-green-500 font-black">
+        <div class="editable-cell border-b border-green-500/20" contenteditable="true" 
+             onblur="datasetToImport[${i}].deps=parseInt(this.innerText) || 0">${r.deps}</div>
+      </td>
     </tr>`).join('');
 
-  // Рендер Креативів
-  document.getElementById('creatives-preview-body-inside').innerHTML = creativesToImport.map(r => `
-    <tr class="hover:bg-white/5 text-slate-300">
-      <td class="p-3 font-mono text-purple-400">${r.cid}</td>
-      <td class="p-3 text-[9px] uppercase font-bold">${r.funnel}</td>
-      <td class="p-3 text-center">${r.geo}</td>
-      <td class="p-3 text-right">$${r.spend.toFixed(2)}</td>
-      <td class="p-3 text-center">${r.regs}</td>
-      <td class="p-3 text-center font-bold text-green-500">${r.deps}</td>
-    </tr>`).join('');
+  // Онови також заголовки в HTML (thead) додавши <th>Installs</th> та <th>Offer</th>
 }
 function processCreativeData(map, lines) {
   creativesToImport = [];
@@ -549,45 +577,43 @@ function renderPreview(type) {
 
 async function confirmDatasetImport() {
   if (!datasetToImport.length) return;
-  showStatus("Uploading all data...");
+  showStatus("Syncing Campaigns & Creatives...");
 
-  // 1. Готуємо дані для daily_stats
   const finalDaily = datasetToImport.map(row => ({
     date: row.date,
     account: row.acc,
     geo: row.geo,
-    offer: row.offer,
+    offer: row.offer || "DEFAULT", // Бере значення, яке ти ввів у прев'ю
     funnel: row.funnel,
     spend: row.spend,
+    installs: row.installs, // НОВЕ ПОЛЕ
     regs: row.regs,
     deposits: row.deps,
     agent: row.agent,
     team_name: currentTeam
   }));
 
-  // 2. Готуємо дані для creatives_stats
   const finalCreatives = creativesToImport.map(row => ({
     date: row.date,
     account: row.acc,
     cid: row.cid,
     geo: row.geo,
-    funnel: row.funnel, // Цей стовпчик має бути в таблиці creatives_stats!
+    funnel: row.funnel,
     spend: row.spend,
-    clicks: row.clicks,
+    installs: row.installs, // НОВЕ ПОЛЕ
     regs: row.regs,
     deps: row.deps,
     team_name: currentTeam
   }));
 
-  // ВІДПРАВКА В БАЗУ
   const res1 = await sb.from('daily_stats').insert(finalDaily);
   const res2 = await sb.from('creatives_stats').insert(finalCreatives);
 
   if (res1.error || res2.error) {
-    alert("Error saving some data. Check console.");
+    alert("Error! Check console.");
     console.error(res1.error, res2.error);
   } else {
-    showStatus(`Success! Saved ${finalDaily.length} daily and ${finalCreatives.length} creative records.`);
+    showStatus(`Success! Saved ${finalDaily.length} rows.`);
     resetImport('dataset');
   }
 }
