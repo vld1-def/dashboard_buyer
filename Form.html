@@ -388,24 +388,58 @@ function handleCSV(e, type) {
 }
 
 function processCampaignData(map, lines) {
-  let aggregated = {};
-  for (let i = 1; i < lines.length; i++) {
-    if (!lines[i][map.name] || lines[i][map.name] === "") continue;
-    const parts = lines[i][map.name].split('_');
-    const date = lines[i][map.endDate] || lines[i][map.date];
-    const accName = lines[i][map.acc];
-    const geo = (parts[1] || '??').toUpperCase();
-    const id = (parts[2] || '0').replace(/\D/g, ''); 
-    const agency = mappingDB.providers[accName] || 'Direct(0%)';
-    const key = `${date}_${accName}_${geo}_${id}_${agency}`;
+  let dailyAggregated = {};
+  let creativeAggregated = {};
 
-    if (!aggregated[key]) aggregated[key] = { date, acc: accName, geo, funnel: mappingDB.funnels[id] || 'Unknown ('+id+')', spend: 0, regs: 0, deps: 0, agent: agency };
-    aggregated[key].spend += parseFloat(String(lines[i][map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
-    aggregated[key].regs += parseInt(lines[i][map.regs]) || 0;
-    aggregated[key].deps += parseInt(lines[i][map.deps]) || 0;
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i];
+    if (!row[map.name] || row[map.name] === "") continue;
+
+    // 1. Витягуємо дані кампанії (Offer_GEO_KTID_...)
+    const parts = row[map.name].split('_');
+    const date = row[map.endDate] || row[map.date];
+    const accName = row[map.acc];
+    const offer = (parts[0] || 'DEFAULT').toUpperCase().trim();
+    const geo = (parts[1] || '??').toUpperCase().trim();
+    const ktid = (parts[2] || '0').replace(/\D/g, '');
+    const funnelName = mappingDB.funnels[ktid] || 'Unknown (' + ktid + ')';
+    const agency = mappingDB.providers[accName] || 'Direct(0%)';
+
+    // 2. Витягуємо дані креатива
+    const cid = row[map.cid] || 'No ID';
+    
+    // Цифри
+    const spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
+    const regs = parseInt(row[map.regs]) || 0;
+    const deps = parseInt(row[map.deps]) || 0;
+    const clicks = parseInt(row[map.clicks]) || 0;
+
+    // --- АГРЕГАЦІЯ ДЛЯ DAILY_STATS ---
+    const dailyKey = `${date}_${accName}_${geo}_${offer}_${ktid}_${agency}`;
+    if (!dailyAggregated[dailyKey]) {
+      dailyAggregated[dailyKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, agent: agency };
+    }
+    dailyAggregated[dailyKey].spend += spend;
+    dailyAggregated[dailyKey].regs += regs;
+    dailyAggregated[dailyKey].deps += deps;
+
+    // --- АГРЕГАЦІЯ ДЛЯ CREATIVES_STATS ---
+    // Додаємо funnelName, щоб бачити, на яку воронку лився креатив
+    const creativeKey = `${date}_${accName}_${cid}_${geo}_${ktid}`;
+    if (!creativeAggregated[creativeKey]) {
+      creativeAggregated[creativeKey] = { date, acc: accName, cid, geo, funnel: funnelName, spend: 0, clicks: 0, regs: 0, deps: 0 };
+    }
+    creativeAggregated[creativeKey].spend += spend;
+    creativeAggregated[creativeKey].clicks += clicks;
+    creativeAggregated[creativeKey].regs += regs;
+    creativeAggregated[creativeKey].deps += deps;
   }
-  datasetToImport = Object.values(aggregated);
-  renderPreview('dataset');
+
+  datasetToImport = Object.values(dailyAggregated);
+  creativesToImport = Object.values(creativeAggregated); // Тепер вони заповнюються автоматично
+  
+  renderPreview('dataset'); // Показуємо прев'ю тільки основної статки (для швидкості)
+  showStatus("Processed: " + datasetToImport.length + " daily rows and " + creativesToImport.length + " creative rows.");
 }
 
 function processCreativeData(map, lines) {
@@ -465,12 +499,14 @@ function renderPreview(type) {
 
 async function confirmDatasetImport() {
   if (!datasetToImport.length) return;
-  showStatus("Syncing Campaigns...");
+  showStatus("Uploading all data...");
 
-  const finalData = datasetToImport.map(row => ({
+  // 1. Готуємо дані для daily_stats
+  const finalDaily = datasetToImport.map(row => ({
     date: row.date,
     account: row.acc,
     geo: row.geo,
+    offer: row.offer,
     funnel: row.funnel,
     spend: row.spend,
     regs: row.regs,
@@ -479,9 +515,31 @@ async function confirmDatasetImport() {
     team_name: currentTeam
   }));
 
-  const { error } = await sb.from('daily_stats').insert(finalData);
-  if (error) alert("Database Error: " + error.message);
-  else { showStatus("Successfully Imported " + finalData.length + " rows!"); resetImport('dataset'); }
+  // 2. Готуємо дані для creatives_stats
+  const finalCreatives = creativesToImport.map(row => ({
+    date: row.date,
+    account: row.acc,
+    cid: row.cid,
+    geo: row.geo,
+    funnel: row.funnel, // Цей стовпчик має бути в таблиці creatives_stats!
+    spend: row.spend,
+    clicks: row.clicks,
+    regs: row.regs,
+    deps: row.deps,
+    team_name: currentTeam
+  }));
+
+  // ВІДПРАВКА В БАЗУ
+  const res1 = await sb.from('daily_stats').insert(finalDaily);
+  const res2 = await sb.from('creatives_stats').insert(finalCreatives);
+
+  if (res1.error || res2.error) {
+    alert("Error saving some data. Check console.");
+    console.error(res1.error, res2.error);
+  } else {
+    showStatus(`Success! Saved ${finalDaily.length} daily and ${finalCreatives.length} creative records.`);
+    resetImport('dataset');
+  }
 }
 
 async function confirmCreativeImport() {
