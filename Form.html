@@ -156,7 +156,7 @@ select {
     <!-- CAMPAIGN MODE -->
     <div id="dataset-preview" class="hidden space-y-6">
   <!-- Блок 1: Daily Stats (Агреговано) -->
-  <div class="card rounded-[2rem] overflow-hidden shadow-2xl border border-blue-500/20">
+  <div id="csv-drop-zone-dataset" class="drop-zone card rounded-[2rem] overflow-hidden shadow-2xl border border-blue-500/20">
     <div class="p-4 bg-blue-600/10 border-b border-white/5">
       <h3 class="text-xs font-black uppercase text-blue-400">Preview: Daily Campaign Stats</h3>
     </div>
@@ -703,13 +703,22 @@ function resetImport(t) {
 }
 
 function setupDragAndDrop(t) { 
-  const z = document.getElementById('csv-drop-zone-'+t); 
+  const z = document.getElementById('csv-drop-zone-' + t); 
+  
+  // Якщо елемент не знайдено - виходимо з функції без помилки
+  if (!z) {
+    console.warn(`⚠️ Drop zone for "${t}" not found in HTML. Skipping...`);
+    return;
+  }
+
   z.ondragover = () => { z.style.borderColor = "#3b82f6"; return false; }; 
   z.ondragleave = () => { z.style.borderColor = "rgba(59, 130, 246, 0.3)"; return false; }; 
   z.ondrop = (e) => { 
     z.style.borderColor = "rgba(59, 130, 246, 0.3)"; 
     e.preventDefault(); 
-    handleCSV({target:{files:[e.dataTransfer.files[0]]}}, t); 
+    if (e.dataTransfer.files[0]) {
+      handleCSV({target:{files:[e.dataTransfer.files[0]]}}, t); 
+    }
   }; 
 }
 
