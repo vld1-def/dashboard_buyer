@@ -1538,11 +1538,64 @@ function renderTable(data) {
   }
 
   // --- 10. PAYOUTS ---
-  async function refreshPayoutsFromSQL() {
-    const { data } = await sb.from('payouts').select('*').eq('team_name', currentTeam);
-    globalPayouts = {}; if (data) data.forEach(p => globalPayouts[p.geo.toUpperCase()] = p.value);
-    const c = document.getElementById('geo-payouts-list'); if(c) c.innerHTML = Object.entries(globalPayouts).map(([g, v]) => `<div class="flex justify-between items-center bg-white/5 p-1.5 rounded-lg text-[10px] mb-1"><span class="text-blue-400 font-black">${g}</span><span class="text-white">$${v}</span><button onclick="sb.from('payouts').delete().eq('team_name',currentTeam).eq('geo','${g}').then(refreshPayoutsFromSQL)" class="text-red-500">✕</button></div>`).join('');
+async function refreshPayoutsFromSQL() {
+  // 1. Отримуємо всі виплати для поточної команди
+  const { data, error } = await sb
+    .from('payouts')
+    .select('*')
+    .eq('team_name', currentTeam)
+    .order('geo', { ascending: true });
+
+  if (error) {
+    console.error("Помилка завантаження виплат:", error);
+    return;
   }
+
+  // 2. Оновлюємо глобальний об'єкт для розрахунків (profit)
+  // Використовуємо ключ "GEO_OFFER", щоб розрізняти виплати
+  globalPayouts = {};
+  data.forEach(p => {
+    const key = `${p.geo.toUpperCase()}_${(p.offer || "DEFAULT").toUpperCase()}`;
+    globalPayouts[key] = Number(p.value);
+  });
+
+  // 3. Рендеримо список у меню налаштувань
+  const container = document.getElementById('geo-payouts-list');
+  if (!container) return;
+
+  if (data.length === 0) {
+    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center text-slate-500">No payouts set in SQL</p>';
+    return;
+  }
+
+  container.innerHTML = data.map(p => `
+    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group">
+      <!-- ГЕО (синій) -->
+      <span class="font-black text-blue-400 uppercase w-7 shrink-0">${p.geo}</span>
+      
+      <!-- ОФФЕР (сірий, обрізається якщо довгий) -->
+      <span class="text-slate-400 font-bold truncate flex-1 opacity-70" title="${p.offer || 'Default'}">
+        ${p.offer || 'DEFAULT'}
+      </span>
+      
+      <!-- ЦІНА (білий) -->
+      <span class="font-bold text-white text-left w-10 shrink-0">$${p.value}</span>
+      
+      <!-- КНОПКА ВИДАЛЕННЯ (з'являється при наведенні) -->
+      <button onclick="deletePayoutFromSQL('${p.id}')" 
+              class="text-red-500 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        ✕
+      </button>
+    </div>
+  `).join('');
+}
+
+// Додатково функція видалення по ID (щоб не видалити випадково всі оффери одного ГЕО)
+async function deletePayoutFromSQL(id) {
+  if (!confirm("Delete this payout?")) return;
+  const { error } = await sb.from('payouts').delete().eq('id', id);
+  if (!error) refreshPayoutsFromSQL();
+}
 
   async function addGeoPayout() {
   const g = document.getElementById('payout-geo').value.toUpperCase().trim();
