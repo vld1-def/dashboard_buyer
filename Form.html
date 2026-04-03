@@ -690,11 +690,30 @@ function renderFunnelsTable(data) {
 // --- UI УТИЛІТИ ---
 
 function switchMode(m) { 
-  ['dataset', 'creatives', 'providers'].forEach(x => { 
-    document.getElementById('mode-'+x).classList.toggle('hidden', m!==x); 
-    document.getElementById('tab-'+x).classList.toggle('active', m===x); 
+  // Масив усіх можливих режимів
+  const modes = ['dataset', 'creatives', 'providers'];
+
+  modes.forEach(x => { 
+    const modeEl = document.getElementById('mode-' + x);
+    const tabEl = document.getElementById('tab-' + x);
+
+    // Перевіряємо існування блоку контенту
+    if (modeEl) {
+      modeEl.classList.toggle('hidden', m !== x); 
+    }
+
+    // Перевіряємо існування кнопки таба
+    if (tabEl) {
+      tabEl.classList.toggle('active', m === x); 
+    }
   }); 
-  if (m === 'providers') { refreshFunnelsTable(); refreshProvidersTable(); }
+
+  // Спеціальна логіка для налаштувань
+  if (m === 'providers') { 
+    if (typeof refreshFunnelsTable === 'function') refreshFunnelsTable(); 
+    if (typeof refreshProvidersTable === 'function') refreshProvidersTable(); 
+    if (typeof loadAgencies === 'function') loadAgencies();
+  }
 }
 
 function resetImport(t) { 
