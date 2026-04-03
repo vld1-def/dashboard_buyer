@@ -653,21 +653,22 @@ async function confirmDatasetImport() {
   if (!datasetToImport.length) return;
   showStatus("Syncing Campaigns & Creatives...");
 
+  // 1. Формуємо дані для daily_stats (БЕЗ кліків)
   const finalDaily = datasetToImport.map(row => ({
     date: row.date,
     account: row.acc,
     geo: row.geo,
-    offer: row.offer || "DEFAULT", // Бере значення, яке ти ввів у прев'ю
+    offer: row.offer || "DEFAULT",
     funnel: row.funnel,
     spend: row.spend,
-    clicks: row.clicks,
-    installs: row.installs, // НОВЕ ПОЛЕ
-    regs: row.regs,
-    deposits: row.deps,
+    installs: row.installs || 0,
+    regs: row.regs || 0,
+    deposits: row.deps || 0, // Тут назва стовпця в базі: deposits
     agent: row.agent,
     team_name: currentTeam
   }));
 
+  // 2. Формуємо дані для creatives_stats (З кліками)
   const finalCreatives = creativesToImport.map(row => ({
     date: row.date,
     account: row.acc,
@@ -675,20 +676,30 @@ async function confirmDatasetImport() {
     geo: row.geo,
     funnel: row.funnel,
     spend: row.spend,
-    installs: row.installs, // НОВЕ ПОЛЕ
-    regs: row.regs,
-    deps: row.deps,
+    clicks: row.clicks || 0,
+    installs: row.installs || 0,
+    regs: row.regs || 0,
+    deps: row.deps || 0,     // Тут назва стовпця в базі: deps
     team_name: currentTeam
   }));
 
+  console.log("📤 Daily Stats (No Clicks):", finalDaily[0]); // лог для перевірки першого рядка
+  console.log("📤 Creatives Stats (With Clicks):", finalCreatives[0]);
+
+  // Відправка в Supabase
   const res1 = await sb.from('daily_stats').insert(finalDaily);
   const res2 = await sb.from('creatives_stats').insert(finalCreatives);
 
   if (res1.error || res2.error) {
-    alert("Error! Check console.");
-    console.error(res1.error, res2.error);
+    console.error("Помилка Daily:", res1.error);
+    console.error("Помилка Creatives:", res2.error);
+    alert("Сталася помилка. Перегляньте консоль (F12) для деталей.");
   } else {
-    showStatus(`Success! Saved ${finalDaily.length} rows.`);
+    showStatus(`Success! Saved ${finalDaily.length} stats and ${finalCreatives.length} creative records.`);
+    
+    // Приховуємо панель кнопок і очищуємо прев'ю
+    const floating = document.getElementById('floating-actions');
+    if (floating) floating.classList.add('hidden');
     resetImport('dataset');
   }
 }
