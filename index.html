@@ -307,6 +307,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: #60a5fa !important;
   border-left: 3px solid #3b82f6;
 }
+   .cid-detail-row {
+  background: rgba(0, 0, 0, 0.15);
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
+}
+.spark-line-path {
+  fill: none;
+  stroke: #3b82f6;
+  stroke-width: 2;
+}
   </style>
 </head>
 <body class="py-6 px-4 md:px-6 font-sans antialiased text-dynamic">
@@ -1504,21 +1513,51 @@ function renderTable(data) {
     s.innerHTML = '<option value="">All Geo</option>' + g.map(x => `<option value="${x.toLowerCase()}">${x.toUpperCase()}</option>`).join('');
   }
 
-  function renderCreativeSidebar(query, geoFilter = "") {
-    const sidebar = document.getElementById('creative-list-sidebar'); if(!sidebar) return;
-    const grouped = {};
-    creativesRawData.forEach(d => {
-      if (geoFilter && (d.geo||"").toLowerCase() !== geoFilter) return;
-      if (!grouped[d.cid]) grouped[d.cid] = { cid: d.cid, s: 0 }; grouped[d.cid].s += d.spend;
-    });
-    const list = Object.values(grouped).filter(c => c.cid.toLowerCase().includes(query)).sort((a,b) => b.s - a.s);
-    sidebar.innerHTML = list.map(c => {
-      const isActive = currentCreativeID === c.cid.toLowerCase();
-      return `<button onclick="currentCreativeID='${c.cid.toLowerCase()}'; activeCrAcc=null; activeCrGeo=null; renderCreativeSidebar('${query}','${geoFilter}'); showCreativeStats();" class="w-full flex justify-between items-center p-3 rounded-2xl border border-white/5 transition-all text-left uppercase group/item ${isActive?'bg-blue-600 text-white shadow-lg':'hover:bg-white/5'}"><div class="flex items-center gap-2 flex-1 min-w-0"><span class="text-[10px] font-black truncate">${c.cid}</span><span onclick="copyID(event, '${c.cid}')" class="p-1 hover:bg-white/20 rounded transition-colors opacity-0 group-hover/item:opacity-100 ${isActive?'opacity-100':''}">📋</span></div><span class="text-[10px] font-bold opacity-60 ml-2">$${Math.round(c.s).toLocaleString()}</span></button>`;
-    }).join('');
-    document.getElementById('creative-placeholder')?.classList.add('hidden');
+// 2. Рендер бокової панелі креативів
+function renderCreativeSidebar(query = "", geoFilter = "") {
+  const sidebar = document.getElementById('creative-list-sidebar');
+  if (!sidebar) return;
+
+  // Групуємо унікальні CID та сумуємо їх спенд
+  const grouped = {};
+  creativesRawData.forEach(d => {
+    const geoMatch = !geoFilter || (d.geo || "").toLowerCase() === geoFilter;
+    const searchMatch = !query || (d.cid || "").toLowerCase().includes(query);
+
+    if (geoMatch && searchMatch) {
+      const cid = d.cid || "Unknown";
+      if (!grouped[cid]) grouped[cid] = { cid, s: 0 };
+      grouped[cid].s += Number(d.spend) || 0;
+    }
+  });
+
+  const list = Object.values(grouped).sort((a, b) => b[s] - a[s]);
+
+  if (list.length === 0) {
+    sidebar.innerHTML = '<p class="text-center py-10 opacity-30 text-[10px] uppercase">No creatives found</p>';
+    return;
   }
 
+  sidebar.innerHTML = list.map(c => {
+    const isActive = currentCreativeID === c.cid;
+    return `
+      <button onclick="selectCreative('${c.cid}')" 
+              class="w-full flex justify-between items-center p-3 rounded-xl border border-white/5 transition-all text-left group
+              ${isActive ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/5 text-slate-300'}">
+        <span class="text-[10px] font-black truncate flex-1 uppercase">${c.cid}</span>
+        <span class="text-[10px] font-bold opacity-60 ml-2">$${Math.round(c.s)}</span>
+      </button>
+    `;
+  }).join('');
+  
+  document.getElementById('creative-placeholder')?.classList.add('hidden');
+}
+// 3. Вибір креатива для детальної статки
+function selectCreative(cid) {
+  currentCreativeID = cid;
+  renderCreativeSidebar(document.getElementById('creative-search').value.toLowerCase(), document.getElementById('creative-geo-filter').value.toLowerCase());
+  showCreativeStats();
+}
   async function showCreativeStats(accF, geoF) {
     if(!currentCreativeID) return;
     if(accF !== undefined) activeCrAcc = accF; if(geoF !== undefined) activeCrGeo = geoF;
@@ -2237,7 +2276,8 @@ window.onclick = function(event) {
     }
   });
 };
-    // Функція пошуку та фільтрації креативів
+
+// 1. Пошук креативів
 function searchCreative() {
   const query = document.getElementById('creative-search').value.toLowerCase();
   const geoFilter = document.getElementById('creative-geo-filter').value.toLowerCase();
@@ -2252,14 +2292,15 @@ function showGeoDetails(geo) {
 
   title.innerText = `${geo.toUpperCase()} Details`;
   
-  // Беремо дані тільки за поточний вибраний місяць і конкретне ГЕО
+  // Фільтруємо дані по ГЕО та поточному місяцю
   const geoData = rawData.filter(d => 
-    d.date && 
-    d.date.startsWith(currentMonthFilter) && 
+    d.date && d.date.startsWith(currentMonthFilter) && 
     (d.geo || "").toUpperCase() === geo.toUpperCase()
   );
+  
   const payout = globalPayouts[geo.toUpperCase()] || 0;
 
+  // Групуємо по воронках
   const funnels = {};
   geoData.forEach(d => {
     const f = d.funnel || "Default";
@@ -2267,47 +2308,91 @@ function showGeoDetails(geo) {
     funnels[f].s += Number(d.spend) || 0;
     funnels[f].r += Number(d.regs) || 0;
     funnels[f].d += Number(d.deposits) || 0;
-    
-    // Тренд: збираємо спенд по днях
-    const date = d.date;
-    funnels[f].dailySpend[date] = (funnels[f].dailySpend[date] || 0) + Number(d.spend);
+    funnels[f].dailySpend[d.date] = (funnels[f].dailySpend[d.date] || 0) + Number(d.spend);
   });
 
   list.innerHTML = Object.entries(funnels)
     .sort((a, b) => b[1].s - a[1].s)
-    .map(([name, data]) => {
+    .map(([name, data], index) => {
       const r2d = data.r > 0 ? (data.d / data.r * 100).toFixed(1) : 0;
       const profit = (data.d * payout) - data.s;
-      const cpl = data.r > 0 ? (data.s / data.r).toFixed(1) : 0;
-      const cpa = data.d > 0 ? (data.s / data.d).toFixed(1) : 0;
-
-      // Отримуємо значення останніх 7 днів для графіка
+      
+      // Тренд (останні 7 точок)
       const sortedDates = Object.keys(data.dailySpend).sort().slice(-7);
       const trendValues = sortedDates.map(date => data.dailySpend[date]);
       const sparkline = createSparkline(trendValues);
 
+      // --- ПОШУК КРЕАТИВІВ ДЛЯ ЦІЄЇ ВОРОНКИ ---
+      // Фільтруємо creativesRawData за назвою воронки
+      const funnelCIDs = (window.creativesRawData || []).filter(c => 
+        c.funnel === name && 
+        c.date && c.date.startsWith(currentMonthFilter)
+      );
+
+      // Агрегуємо по CID всередині воронки
+      const cidStats = {};
+      funnelCIDs.forEach(c => {
+        if (!cidStats[c.cid]) cidStats[c.cid] = { s: 0, r: 0, d: 0 };
+        cidStats[c.cid].s += c.spend;
+        cidStats[c.cid].r += c.regs;
+        cidStats[c.cid].d += c.deps;
+      });
+
+      const cidRows = Object.entries(cidStats)
+        .sort((a, b) => b[1].s - a[1].s)
+        .map(([cid, stat]) => `
+          <div class="flex items-center justify-between py-2 px-6 border-b border-white/5 last:border-0 hover:bg-white/5">
+            <span class="text-[10px] font-mono text-purple-400 uppercase font-black">${cid}</span>
+            <div class="flex gap-4 text-[11px] font-bold">
+              <span class="text-white">$${Math.round(stat.s)}</span>
+              <span class="text-blue-400">R: ${stat.r}</span>
+              <span class="text-green-500">D: ${stat.d}</span>
+            </div>
+          </div>
+        `).join('');
+
       return `
-        <tr class="hover:bg-white/[0.02] transition-colors">
+        <tr onclick="toggleCIDs(${index})" class="hover:bg-white/[0.03] transition-colors cursor-pointer group">
           <td class="py-4 pl-1">
-            <div class="text-sm font-black text-white leading-tight">${name}</div>
-            <div class="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Funnel Statistics</div>
+            <div class="flex items-center gap-2">
+              <span id="arrow-${index}" class="text-[8px] text-slate-500 transition-transform">▶</span>
+              <div>
+                <div class="text-sm font-black text-white leading-tight">${name}</div>
+                <div class="text-[9px] text-slate-500 uppercase font-black tracking-tighter">Details</div>
+              </div>
+            </div>
           </td>
-          <td class="py-4 text-center">
-            <div class="flex justify-center items-center h-full">${sparkline}</div>
-          </td>
-          <td class="py-4 text-right px-3 font-black text-sm text-white tracking-tight">$${Math.round(data.s)}</td>
+          <td class="py-4 text-center">${sparkline}</td>
+          <td class="py-4 text-right px-3 font-black text-sm text-white">$${Math.round(data.s)}</td>
           <td class="py-4 text-center px-2 font-bold text-sm text-blue-400">${data.r}</td>
           <td class="py-4 text-center px-2 font-bold text-sm text-green-500">${data.d}</td>
           <td class="py-4 text-right px-2 font-black text-sm text-pink-500">${r2d}%</td>
-          <td class="py-4 text-right px-2 font-bold text-[13px] text-purple-400">$${cpl}</td>
-          <td class="py-4 text-right px-2 font-bold text-[13px] text-yellow-500">$${cpa}</td>
-          <td class="py-4 text-right pr-1 font-black text-sm ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">
-            $${Math.round(profit)}
+          <td class="py-4 text-right pr-1 font-black text-sm ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</td>
+        </tr>
+        <!-- ПРИХОВАНИЙ СПИСОК КРЕАТИВІВ -->
+        <tr id="cid-container-${index}" class="hidden cid-detail-row">
+          <td colspan="7" class="p-0">
+            <div class="max-h-48 overflow-y-auto custom-scrollbar py-1">
+              ${cidRows || '<p class="text-center py-4 text-[9px] opacity-30 uppercase italic">No CID mapping found for this period</p>'}
+            </div>
           </td>
         </tr>`;
     }).join('');
 
   modal.classList.remove('hidden');
+}
+
+// Функція для відкриття/закриття списку креативів
+function toggleCIDs(idx) {
+  const row = document.getElementById(`cid-container-${idx}`);
+  const arrow = document.getElementById(`arrow-${idx}`);
+  if (!row) return;
+
+  const isHidden = row.classList.toggle('hidden');
+  if (arrow) {
+    arrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(90deg)';
+    arrow.style.color = isHidden ? '' : '#3b82f6';
+  }
 }
 
 // Функція для створення міні-графіка (Trend)
