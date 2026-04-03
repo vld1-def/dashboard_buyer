@@ -782,12 +782,19 @@ async function addFunnelMapping() {
 // 5. Рендер таблиці (Виправлено назву на provider_name)
 function renderProvidersTable(data) {
   const body = document.getElementById('providers-list-body');
+  if (!body) return console.error("❌ Не знайдено providers-list-body");
+
+  if (!data || data.length === 0) {
+    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center opacity-40 italic">No accounts linked yet</td></tr>';
+    return;
+  }
+
   body.innerHTML = data.map(r => `
-    <tr class="hover:bg-white/5 transition-colors border-b border-white/5 text-[12px]">
-      <td class="p-3 font-bold text-blue-300 uppercase">${r.account_id}</td>
-      <td class="p-3 text-right text-slate-300">${r.provider_name}</td>
+    <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
+      <td class="p-3 font-bold text-blue-300 uppercase">${r.account_id || '—'}</td>
+      <td class="p-3 text-right text-slate-300">${r.provider_name || 'Direct'}</td>
       <td class="p-3 text-right">
-        <button onclick="deleteAccountMapping('${r.id}')" class="text-red-500 opacity-30 hover:opacity-100 transition-opacity">✕</button>
+        <button onclick="deleteAccountMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
       </td>
     </tr>`).join('');
 }
@@ -799,12 +806,19 @@ async function deleteAccountMapping(id) {
 }
 function renderFunnelsTable(data) {
   const body = document.getElementById('funnels-list-body');
+  if (!body) return console.error("❌ Не знайдено funnels-list-body");
+
+  if (!data || data.length === 0) {
+    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
+    return;
+  }
+
   body.innerHTML = data.map(r => `
-    <tr class="hover:bg-white/5 transition-colors border-b border-white/5 text-[12px]">
-      <td class="p-3 font-bold text-purple-300">${r.funnel_name}</td>
-      <td class="p-3 text-right font-mono text-white font-black">${r.ktid}</td>
+    <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
+      <td class="p-3 font-bold text-purple-300">${r.funnel_name || '—'}</td>
+      <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
       <td class="p-3 text-right">
-        <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-30 hover:opacity-100 transition-opacity">✕</button>
+        <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
       </td>
     </tr>`).join('');
 }
@@ -815,30 +829,36 @@ async function deleteFunnelMapping(id) {
 }
 // --- UI УТИЛІТИ ---
 
-function switchMode(m) { 
-  // Масив усіх можливих режимів
+function switchMode(m) {
+  console.log("🔄 Перемикання режиму на:", m);
+  
   const modes = ['dataset', 'creatives', 'providers'];
 
-  modes.forEach(x => { 
+  modes.forEach(x => {
     const modeEl = document.getElementById('mode-' + x);
     const tabEl = document.getElementById('tab-' + x);
 
-    // Перевіряємо існування блоку контенту
     if (modeEl) {
-      modeEl.classList.toggle('hidden', m !== x); 
+      if (x === m) {
+        modeEl.classList.remove('hidden');
+        console.log(`✅ Блок mode-${x} тепер видимий`);
+      } else {
+        modeEl.classList.add('hidden');
+      }
+    } else {
+      console.warn(`⚠️ Елемент mode-${x} не знайдено в HTML`);
     }
 
-    // Перевіряємо існування кнопки таба
     if (tabEl) {
-      tabEl.classList.toggle('active', m === x); 
+      tabEl.classList.toggle('active', x === m);
     }
-  }); 
+  });
 
-  // Спеціальна логіка для налаштувань
-  if (m === 'providers') { 
-    if (typeof refreshFunnelsTable === 'function') refreshFunnelsTable(); 
-    if (typeof refreshProvidersTable === 'function') refreshProvidersTable(); 
-    if (typeof loadAgencies === 'function') loadAgencies();
+  if (m === 'providers') {
+    console.log("🛰 Завантажую дані для налаштувань...");
+    refreshProvidersTable();
+    refreshFunnelsTable();
+    loadAgencies();
   }
 }
 
