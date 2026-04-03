@@ -407,27 +407,25 @@ async function loadMappings() {
   funs?.forEach(r => mappingDB.funnels[r.ktid] = r.funnel_name);
 }
 
+// --- ЛОГІКА ДЛЯ ТАБЛИЦІ АКАУНТІВ (Link Cabinet) ---
 async function refreshProvidersTable() {
-  console.log("🔄 Оновлюю таблицю акаунтів...");
-  
+  console.log("🔄 Завантаження акаунтів для:", currentTeam);
   const { data, error } = await sb
-    .from('accounts_mapping')
+    .from('accounts_mapping') // Твоя назва таблиці
     .select('*')
-    .eq('team_name', currentTeam)
+    .eq('team_name', currentTeam);
+
+  const body = document.getElementById('providers-list-body');
+  if (!body) return;
 
   if (error) {
-    console.error("Помилка завантаження акаунтів:", error);
+    console.error("Помилка акаунтів:", error);
+    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-red-400">Error loading data</td></tr>';
     return;
   }
 
-  allProviders = data || [];
+  allProviders = data || []; // Зберігаємо в глобальну змінну для пошуку
   renderProvidersTable(allProviders);
-}
-
-async function refreshFunnelsTable() {
-  const { data } = await sb.from('funnels_mapping').select('*').eq('team_name', currentTeam);
-  allFunnels = data || [];
-  renderFunnelsTable(allFunnels);
 }
 
 // --- ОБРОБКА CSV ---
@@ -784,45 +782,37 @@ async function addFunnelMapping() {
 // 5. Рендер таблиці (Виправлено назву на provider_name)
 function renderProvidersTable(data) {
   const body = document.getElementById('providers-list-body');
-  if (!body) return;
-  
-  if (!data || data.length === 0) {
-    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center opacity-30">No linked cabinets found</td></tr>';
-    return;
-  }
-
   body.innerHTML = data.map(r => `
-    <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
-      <td class="p-3 font-bold text-blue-300 uppercase tracking-tight">${r.account_id}</td>
-      <td class="p-3 text-right text-slate-300 font-medium">${r.provider_name || 'Direct(0%)'}</td>
+    <tr class="hover:bg-white/5 transition-colors border-b border-white/5 text-[12px]">
+      <td class="p-3 font-bold text-blue-300 uppercase">${r.account_id}</td>
+      <td class="p-3 text-right text-slate-300">${r.provider_name}</td>
       <td class="p-3 text-right">
         <button onclick="deleteAccountMapping('${r.id}')" class="text-red-500 opacity-30 hover:opacity-100 transition-opacity">✕</button>
       </td>
     </tr>`).join('');
 }
+// --- ФУНКЦІЇ ВИДАЛЕННЯ ---
 async function deleteAccountMapping(id) {
-  if (!confirm("Видалити цю прив'язку?")) return;
-  
-  const { error } = await sb
-    .from('accounts_mapping')
-    .delete()
-    .eq('id', id);
-
-  if (!error) {
-    showStatus("Mapping deleted");
-    await refreshProvidersTable();
-    await loadMappings(); // Оновлюємо кеш для імпорту CSV
-  }
+  if (!confirm("Видалити прив'язку акаунта?")) return;
+  const { error } = await sb.from('accounts_mapping').delete().eq('id', id);
+  if (!error) { showStatus("Account mapping removed"); refreshProvidersTable(); }
 }
 function renderFunnelsTable(data) {
   const body = document.getElementById('funnels-list-body');
   body.innerHTML = data.map(r => `
-    <tr class="hover:bg-white/5 transition-colors">
-      <td class="p-2 font-bold text-purple-300">${r.funnel_name}</td>
-      <td class="p-2 text-right font-mono text-white font-black">${r.ktid}</td>
+    <tr class="hover:bg-white/5 transition-colors border-b border-white/5 text-[12px]">
+      <td class="p-3 font-bold text-purple-300">${r.funnel_name}</td>
+      <td class="p-3 text-right font-mono text-white font-black">${r.ktid}</td>
+      <td class="p-3 text-right">
+        <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-30 hover:opacity-100 transition-opacity">✕</button>
+      </td>
     </tr>`).join('');
 }
-
+async function deleteFunnelMapping(id) {
+  if (!confirm("Видалити мапінг воронки?")) return;
+  const { error } = await sb.from('funnels_mapping').delete().eq('id', id);
+  if (!error) { showStatus("Funnel mapping removed"); refreshFunnelsTable(); }
+}
 // --- UI УТИЛІТИ ---
 
 function switchMode(m) { 
@@ -960,6 +950,25 @@ function promptNewAgency() {
     select.appendChild(opt);
     showStatus("Агента додано до списку. Тепер натисніть 'Link'");
   }
+}
+  // --- ЛОГІКА ДЛЯ ТАБЛИЦІ ВОРОНОК (Funnel Mapper) ---
+async function refreshFunnelsTable() {
+  console.log("🔄 Завантаження воронок для:", currentTeam);
+  const { data, error } = await sb
+    .from('funnels_mapping') // Твоя назва таблиці
+    .select('*')
+    .eq('team_name', currentTeam);
+
+  const body = document.getElementById('funnels-list-body');
+  if (!body) return;
+
+  if (error) {
+    console.error("Помилка воронок:", error);
+    return;
+  }
+
+  allFunnels = data || []; // Зберігаємо в глобальну змінну для пошуку
+  renderFunnelsTable(allFunnels);
 }
 </script>  
 </body>
