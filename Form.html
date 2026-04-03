@@ -653,7 +653,7 @@ async function confirmDatasetImport() {
   if (!datasetToImport.length) return;
   showStatus("Syncing Campaigns & Creatives...");
 
-  // 1. Формуємо дані для daily_stats (БЕЗ кліків)
+  // 1. Дані для daily_stats (daily_stats у тебе працює!)
   const finalDaily = datasetToImport.map(row => ({
     date: row.date,
     account: row.acc,
@@ -663,14 +663,14 @@ async function confirmDatasetImport() {
     spend: row.spend,
     installs: row.installs || 0,
     regs: row.regs || 0,
-    deposits: row.deps || 0, // Тут назва стовпця в базі: deposits
+    deposits: row.deps || 0, 
     agent: row.agent,
     team_name: currentTeam
   }));
 
-  // 2. Формуємо дані для creatives_stats (З кліками)
+  // 2. Дані для creatives_stats (тут була помилка через колонку date)
   const finalCreatives = creativesToImport.map(row => ({
-    date: row.date,
+    date: row.date,         // ТЕПЕР SQL ЗНАЄ ЦЮ КОЛОНКУ
     account: row.acc,
     cid: row.cid,
     geo: row.geo,
@@ -679,27 +679,28 @@ async function confirmDatasetImport() {
     clicks: row.clicks || 0,
     installs: row.installs || 0,
     regs: row.regs || 0,
-    deps: row.deps || 0,     // Тут назва стовпця в базі: deps
+    deps: row.deps || 0,
     team_name: currentTeam
   }));
 
-  console.log("📤 Daily Stats (No Clicks):", finalDaily[0]); // лог для перевірки першого рядка
-  console.log("📤 Creatives Stats (With Clicks):", finalCreatives[0]);
-
-  // Відправка в Supabase
+  // Відправка
   const res1 = await sb.from('daily_stats').insert(finalDaily);
   const res2 = await sb.from('creatives_stats').insert(finalCreatives);
 
   if (res1.error || res2.error) {
-    console.error("Помилка Daily:", res1.error);
-    console.error("Помилка Creatives:", res2.error);
-    alert("Сталася помилка. Перегляньте консоль (F12) для деталей.");
+    if (res1.error) console.error("Помилка Daily:", res1.error);
+    if (res2.error) {
+        console.error("Помилка Creatives:", res2.error);
+        alert("Таблиця креативів не прийняла дані: " + res2.error.message);
+    }
   } else {
-    showStatus(`Success! Saved ${finalDaily.length} stats and ${finalCreatives.length} creative records.`);
+    showStatus(`Success! Saved ${finalDaily.length} rows.`);
     
-    // Приховуємо панель кнопок і очищуємо прев'ю
+    // Ховаємо плаваючу панель
     const floating = document.getElementById('floating-actions');
     if (floating) floating.classList.add('hidden');
+    
+    // Повертаємо зону завантаження
     resetImport('dataset');
   }
 }
