@@ -827,19 +827,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     <!-- Table Container -->
     <div class="p-6 overflow-y-auto custom-scrollbar">
       <table class="w-full text-left">
-        <thead>
-          <tr class="text-[10px] font-black uppercase text-slate-500 border-b border-white/5">
-            <th class="pb-3 pl-1">Funnel</th>
-            <th class="pb-3 text-center w-[110px]">Trend (Spend)</th>
-            <th class="pb-3 text-right px-3">Spend</th>
-            <th class="pb-3 text-center px-2">Reg</th>
-            <th class="pb-3 text-center px-2">Dep</th>
-            <th class="pb-3 text-right px-2">R2D</th>
-            <th class="pb-3 text-right px-2 text-purple-400/80">CPL</th>
-            <th class="pb-3 text-right px-2 text-yellow-500/80">CPA</th>
-            <th class="pb-3 text-right pr-1 text-emerald-400/80">Profit</th>
-          </tr>
-        </thead>
+       <thead>
+        <tr class="text-[10px] font-black uppercase text-slate-500 border-b border-white/5">
+          <th class="pb-3 pl-1">Funnel / CID</th>
+          <th class="pb-3 text-center w-[100px]">Trend</th>
+          <th class="pb-3 text-right px-2">Spend</th>
+          <th class="pb-3 text-center px-2 text-orange-400">Installs</th> <!-- Новий -->
+          <th class="pb-3 text-center px-2">Reg</th>
+          <th class="pb-3 text-center px-2">Dep</th>
+          <th class="pb-3 text-right px-2">R2D</th>
+          <th class="pb-3 text-right px-2 text-purple-400">CPL</th>
+          <th class="pb-3 text-right px-2 text-yellow-500">CPA</th>
+          <th class="pb-3 text-right pr-1 text-emerald-400">Profit</th>
+        </tr>
+      </thead>
         <tbody id="geo-funnel-list" class="divide-y divide-white/5">
           <!-- JS Insert -->
         </tbody>
@@ -2295,6 +2296,7 @@ function showGeoDetails(geo) {
 
   title.innerText = `${geo.toUpperCase()} Details`;
   
+  // Фільтруємо основні дані за місяцем та ГЕО
   const geoData = rawData.filter(d => 
     d.date && d.date.startsWith(currentMonthFilter) && 
     (d.geo || "").toUpperCase() === geo.toUpperCase()
@@ -2302,20 +2304,25 @@ function showGeoDetails(geo) {
   
   const payout = globalPayouts[geo.toUpperCase()] || 0;
 
+  // ГРУПУВАННЯ ВОРОНОК
   const funnels = {};
   geoData.forEach(d => {
     const f = d.funnel || "Default";
-    if (!funnels[f]) funnels[f] = { s: 0, r: 0, d: 0, dailySpend: {} };
+    if (!funnels[f]) funnels[f] = { s: 0, r: 0, d: 0, i: 0, dailySpend: {} };
     funnels[f].s += Number(d.spend) || 0;
     funnels[f].r += Number(d.regs) || 0;
     funnels[f].d += Number(d.deposits) || 0;
+    funnels[f].i += Number(d.installs) || 0; // Інстали
     funnels[f].dailySpend[d.date] = (funnels[f].dailySpend[d.date] || 0) + Number(d.spend);
   });
 
   list.innerHTML = Object.entries(funnels)
     .sort((a, b) => b[1].s - a[1].s)
     .map(([name, data], index) => {
+      // Розрахунки для воронки
       const r2d = data.r > 0 ? (data.d / data.r * 100).toFixed(1) : 0;
+      const cpl = data.r > 0 ? (data.s / data.r).toFixed(1) : 0;
+      const cpa = data.d > 0 ? (data.s / data.d).toFixed(1) : 0;
       const profit = (data.d * payout) - data.s;
       
       const sortedDates = Object.keys(data.dailySpend).sort().slice(-7);
@@ -2328,33 +2335,40 @@ function showGeoDetails(geo) {
 
       const cidStats = {};
       funnelCIDs.forEach(c => {
-        if (!cidStats[c.cid]) cidStats[c.cid] = { s: 0, r: 0, d: 0 };
+        if (!cidStats[c.cid]) cidStats[c.cid] = { s: 0, r: 0, d: 0, i: 0 };
         cidStats[c.cid].s += Number(c.spend) || 0;
         cidStats[c.cid].r += Number(c.regs) || 0;
         cidStats[c.cid].d += Number(c.deps) || 0;
+        cidStats[c.cid].i += Number(c.installs) || 0;
       });
 
-      // Створюємо рядки для кожного креативу
+      // Рядки креативів
       const cidRowsHtml = Object.entries(cidStats)
         .sort((a, b) => b[1].s - a[1].s)
         .map(([cid, stat]) => {
           const cR2d = stat.r > 0 ? (stat.d / stat.r * 100).toFixed(1) : 0;
+          const cCpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : 0;
+          const cCpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : 0;
           const cProfit = (stat.d * payout) - stat.s;
+          
           return `
-            <tr class="cid-row-${index} hidden bg-black/40 text-[11px] border-b border-white/5">
-              <td class="py-2 pl-10 text-purple-400 font-mono uppercase">${cid}</td>
-              <td class="py-2 text-center opacity-10">—</td> <!-- Пропуск тренду -->
-              <td class="py-2 text-right px-3 text-slate-400 font-bold">$${Math.round(stat.s)}</td>
+            <tr class="cid-row-${index} hidden bg-black/40 text-[11px] border-b border-white/5 transition-all">
+              <td class="py-2 pl-8 text-purple-400 font-mono uppercase">${cid}</td>
+              <td class="py-2 text-center opacity-10 text-[9px]">CREATIVE</td>
+              <td class="py-2 text-right px-2 text-slate-400">$${Math.round(stat.s)}</td>
+              <td class="py-2 text-center px-2 text-orange-400/60">${stat.i}</td>
               <td class="py-2 text-center px-2 text-blue-400/60">${stat.r}</td>
               <td class="py-2 text-center px-2 text-green-500/60">${stat.d}</td>
               <td class="py-2 text-right px-2 text-pink-500/60">${cR2d}%</td>
+              <td class="py-2 text-right px-2 text-purple-400/60">$${cCpl}</td>
+              <td class="py-2 text-right px-2 text-yellow-500/60">$${cCpa}</td>
               <td class="py-2 text-right pr-1 ${cProfit >= 0 ? 'text-emerald-500/60' : 'text-red-500/60'}">$${Math.round(cProfit)}</td>
             </tr>
           `;
         }).join('');
 
       return `
-        <!-- Рядок воронки -->
+        <!-- Головний рядок воронки -->
         <tr onclick="toggleCIDs(${index})" class="hover:bg-white/[0.03] transition-colors cursor-pointer border-b border-white/10">
           <td class="py-4 pl-1">
             <div class="flex items-center gap-2">
@@ -2363,10 +2377,13 @@ function showGeoDetails(geo) {
             </div>
           </td>
           <td class="py-4 text-center">${sparkline}</td>
-          <td class="py-4 text-right px-3 font-black text-sm text-white">$${Math.round(data.s)}</td>
+          <td class="py-4 text-right px-2 font-black text-sm text-white">$${Math.round(data.s)}</td>
+          <td class="py-4 text-center px-2 font-bold text-sm text-orange-400">${data.i}</td>
           <td class="py-4 text-center px-2 font-bold text-sm text-blue-400">${data.r}</td>
           <td class="py-4 text-center px-2 font-bold text-sm text-green-500">${data.d}</td>
           <td class="py-4 text-right px-2 font-black text-sm text-pink-500">${r2d}%</td>
+          <td class="py-4 text-right px-2 font-bold text-sm text-purple-400">$${cpl}</td>
+          <td class="py-4 text-right px-2 font-bold text-sm text-yellow-500">$${cpa}</td>
           <td class="py-4 text-right pr-1 font-black text-sm ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</td>
         </tr>
         ${cidRowsHtml}
