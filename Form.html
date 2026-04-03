@@ -154,34 +154,43 @@ select {
     </div>
 
     <!-- CAMPAIGN MODE -->
-    <div id="mode-dataset" class="space-y-8">
-      <div id="csv-drop-zone-dataset" class="drop-zone card p-10 rounded-[2.5rem] text-center cursor-pointer group max-w-2xl mx-auto" onclick="document.getElementById('csv-input-dataset').click()">
-        <input type="file" id="csv-input-dataset" accept=".csv" class="hidden" onchange="handleCSV(event, 'dataset')">
-        <div class="flex flex-col items-center gap-4">
-           <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-           </div>
-           <div>
-             <h3 class="font-black uppercase italic text-lg text-white">Import Campaign CSV</h3>
-             <p class="text-[10px] opacity-40 font-bold tracking-[0.2em] uppercase">Automatic aggregation by account</p>
-           </div>
-        </div>
-      </div>
-      <div id="dataset-preview" class="hidden card rounded-[2rem] overflow-hidden shadow-2xl">
-        <div class="max-h-[500px] overflow-y-auto">
-          <table class="w-full text-left border-collapse text-[11px]">
-            <thead class="bg-black/40 sticky top-0 backdrop-blur-md font-black uppercase text-slate-400">
-              <tr><th class="p-5">Date</th><th class="p-5">Account</th><th class="p-5">GEO</th><th class="p-5">Funnel</th><th class="p-5">Spend</th><th class="p-5 text-blue-400">Regs</th><th class="p-5 text-green-500">Deps</th></tr>
-            </thead>
-            <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
-          </table>
-        </div>
-        <div class="p-6 bg-black/20 flex justify-end gap-4 border-t border-white/5">
-          <button onclick="resetImport('dataset')" class="bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl font-black uppercase text-[10px] text-white transition">Cancel</button>
-          <button onclick="confirmDatasetImport()" class="bg-blue-600 hover:bg-blue-500 px-12 py-3 rounded-2xl font-black uppercase text-[10px] text-white shadow-xl transition-all">Save All Records</button>
-        </div>
-      </div>
+    <div id="dataset-preview" class="hidden space-y-6">
+  <!-- Блок 1: Daily Stats (Агреговано) -->
+  <div class="card rounded-[2rem] overflow-hidden shadow-2xl border border-blue-500/20">
+    <div class="p-4 bg-blue-600/10 border-b border-white/5">
+      <h3 class="text-xs font-black uppercase text-blue-400">Preview: Daily Campaign Stats</h3>
     </div>
+    <div class="max-h-[300px] overflow-y-auto">
+      <table class="w-full text-left border-collapse text-[10px]">
+        <thead class="bg-black/40 sticky top-0 backdrop-blur-md font-black uppercase text-slate-400">
+          <tr><th class="p-4">Date</th><th class="p-4">Account</th><th class="p-4">GEO</th><th class="p-4">Offer</th><th class="p-4">Funnel</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center text-blue-400">Regs</th><th class="p-4 text-center text-green-500">Deps</th></tr>
+        </thead>
+        <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Блок 2: Creatives Stats (Детально по CID) -->
+  <div class="card rounded-[2rem] overflow-hidden shadow-2xl border border-purple-500/20">
+    <div class="p-4 bg-purple-600/10 border-b border-white/5">
+      <h3 class="text-xs font-black uppercase text-purple-400">Preview: Creative Intelligence (Ads Level)</h3>
+    </div>
+    <div class="max-h-[300px] overflow-y-auto">
+      <table class="w-full text-left border-collapse text-[10px]">
+        <thead class="bg-black/40 sticky top-0 backdrop-blur-md font-black uppercase text-slate-400">
+          <tr><th class="p-4">CID (Ad Name)</th><th class="p-4">Funnel</th><th class="p-4">GEO</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center">Regs</th><th class="p-4 text-center">Deps</th></tr>
+        </thead>
+        <tbody id="creatives-preview-body-inside" class="divide-y divide-white/5"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Кнопки керування -->
+  <div class="p-6 card bg-black/40 flex justify-end gap-4 border-t border-white/5">
+    <button onclick="resetImport('dataset')" class="bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl font-black uppercase text-[10px] text-white transition">Cancel</button>
+    <button onclick="confirmDatasetImport()" class="bg-blue-600 hover:bg-blue-500 px-12 py-3 rounded-2xl font-black uppercase text-[10px] text-white shadow-xl transition-all">Upload All Intelligence</button>
+  </div>
+</div>
 
     <!-- CREATIVE MODE -->
     <div id="mode-creatives" class="hidden space-y-8">
@@ -315,6 +324,7 @@ const keywords = {
   deps: ['покупки', 'purchases', 'deps', 'deposits', 'депозити'],
   clicks: ['клики по ссылке', 'link clicks', 'clicks', 'кліки посилання', 'кліки'],
   geo: ['country', 'geo', 'страна', 'країна', 'гео', 'location', 'країна/регіон'],
+  cid: ['ad name', 'назва оголошення', 'название объявления', 'creative id'],
   device: ['device', 'platform', 'устройство', 'пристрій', 'платформа', 'impression device']
 };
 
@@ -377,12 +387,18 @@ function handleCSV(e, type) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = function(event) {
-    const lines = event.target.result.split('\n').map(l => l.split(',').map(c => c.replace(/"/g, '').trim()));
+    // Очищаємо CSV від BOM (спецсимволів на початку) та розбиваємо
+    let content = event.target.result.replace(/\ufeff/g, ''); 
+    const lines = content.split('\n').filter(l => l.trim() !== '').map(l => l.split(',').map(c => c.replace(/"/g, '').trim()));
+    
     const headers = lines[0].map(h => h.toLowerCase());
     const map = {};
-    Object.keys(keywords).forEach(key => { map[key] = headers.findIndex(h => keywords[key].some(kw => h.includes(kw))); });
-    
-    if (type === 'dataset') processCampaignData(map, lines); else processCreativeData(map, lines);
+    Object.keys(keywords).forEach(key => { 
+      map[key] = headers.findIndex(h => keywords[key].some(kw => h === kw || h.includes(kw))); 
+    });
+
+    console.log("Mapped Columns:", map);
+    processCampaignData(map, lines);
   };
   reader.readAsText(file);
 }
@@ -393,55 +409,76 @@ function processCampaignData(map, lines) {
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
-    if (!row[map.name] || row[map.name] === "") continue;
+    if (!row[map.name]) continue;
 
-    // 1. Витягуємо дані кампанії (Offer_GEO_KTID_...)
+    // 1. Розбір назви кампанії: Crown_AU_4CQb-23_...
     const parts = row[map.name].split('_');
-    const date = row[map.endDate] || row[map.date];
+    const date = row[map.endDate] || row[map.date] || '2026-01-01';
     const accName = row[map.acc];
+    
     const offer = (parts[0] || 'DEFAULT').toUpperCase().trim();
     const geo = (parts[1] || '??').toUpperCase().trim();
-    const ktid = (parts[2] || '0').replace(/\D/g, '');
+    const ktid = (parts[2] || '0').trim(); // Наприклад: 4CQb-23
+    
     const funnelName = mappingDB.funnels[ktid] || 'Unknown (' + ktid + ')';
     const agency = mappingDB.providers[accName] || 'Direct(0%)';
+    const cid = row[map.cid] || 'No CID';
 
-    // 2. Витягуємо дані креатива
-    const cid = row[map.cid] || 'No ID';
-    
-    // Цифри
     const spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
     const regs = parseInt(row[map.regs]) || 0;
     const deps = parseInt(row[map.deps]) || 0;
-    const clicks = parseInt(row[map.clicks]) || 0;
 
-    // --- АГРЕГАЦІЯ ДЛЯ DAILY_STATS ---
-    const dailyKey = `${date}_${accName}_${geo}_${offer}_${ktid}_${agency}`;
-    if (!dailyAggregated[dailyKey]) {
-      dailyAggregated[dailyKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, agent: agency };
+    // Daily Aggregation
+    const dKey = `${date}_${accName}_${geo}_${offer}_${ktid}`;
+    if (!dailyAggregated[dKey]) {
+      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, agent: agency };
     }
-    dailyAggregated[dailyKey].spend += spend;
-    dailyAggregated[dailyKey].regs += regs;
-    dailyAggregated[dailyKey].deps += deps;
+    dailyAggregated[dKey].spend += spend;
+    dailyAggregated[dKey].regs += regs;
+    dailyAggregated[dKey].deps += deps;
 
-    // --- АГРЕГАЦІЯ ДЛЯ CREATIVES_STATS ---
-    // Додаємо funnelName, щоб бачити, на яку воронку лився креатив
-    const creativeKey = `${date}_${accName}_${cid}_${geo}_${ktid}`;
-    if (!creativeAggregated[creativeKey]) {
-      creativeAggregated[creativeKey] = { date, acc: accName, cid, geo, funnel: funnelName, spend: 0, clicks: 0, regs: 0, deps: 0 };
+    // Creative Aggregation
+    const cKey = `${date}_${accName}_${cid}`;
+    if (!creativeAggregated[cKey]) {
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, spend: 0, regs: 0, deps: 0 };
     }
-    creativeAggregated[creativeKey].spend += spend;
-    creativeAggregated[creativeKey].clicks += clicks;
-    creativeAggregated[creativeKey].regs += regs;
-    creativeAggregated[creativeKey].deps += deps;
+    creativeAggregated[cKey].spend += spend;
+    creativeAggregated[cKey].regs += regs;
+    creativeAggregated[cKey].deps += deps;
   }
 
   datasetToImport = Object.values(dailyAggregated);
-  creativesToImport = Object.values(creativeAggregated); // Тепер вони заповнюються автоматично
+  creativesToImport = Object.values(creativeAggregated);
   
-  renderPreview('dataset'); // Показуємо прев'ю тільки основної статки (для швидкості)
-  showStatus("Processed: " + datasetToImport.length + " daily rows and " + creativesToImport.length + " creative rows.");
+  renderDualPreview();
 }
+function renderDualPreview() {
+  document.getElementById('dataset-preview').classList.remove('hidden');
+  
+  // Рендер Кампаній
+  document.getElementById('dataset-preview-body').innerHTML = datasetToImport.map(r => `
+    <tr class="hover:bg-white/5">
+      <td class="p-3 opacity-50">${r.date}</td>
+      <td class="p-3 font-bold text-blue-400">${r.acc}</td>
+      <td class="p-3 font-black">${r.geo}</td>
+      <td class="p-3 text-slate-300">${r.offer}</td>
+      <td class="p-3 italic">${r.funnel}</td>
+      <td class="p-3 text-right font-bold">$${r.spend.toFixed(2)}</td>
+      <td class="p-3 text-center text-blue-400">${r.regs}</td>
+      <td class="p-3 text-center text-green-500 font-bold">${r.deps}</td>
+    </tr>`).join('');
 
+  // Рендер Креативів
+  document.getElementById('creatives-preview-body-inside').innerHTML = creativesToImport.map(r => `
+    <tr class="hover:bg-white/5 text-slate-300">
+      <td class="p-3 font-mono text-purple-400">${r.cid}</td>
+      <td class="p-3 text-[9px] uppercase font-bold">${r.funnel}</td>
+      <td class="p-3 text-center">${r.geo}</td>
+      <td class="p-3 text-right">$${r.spend.toFixed(2)}</td>
+      <td class="p-3 text-center">${r.regs}</td>
+      <td class="p-3 text-center font-bold text-green-500">${r.deps}</td>
+    </tr>`).join('');
+}
 function processCreativeData(map, lines) {
   creativesToImport = [];
   for (let i = 1; i < lines.length; i++) {
