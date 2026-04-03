@@ -154,41 +154,54 @@ select {
     </div>
 
     <!-- CAMPAIGN MODE -->
-    <div id="dataset-preview" class="hidden space-y-6">
-  <!-- Блок 1: Daily Stats (Агреговано) -->
-  <div id="csv-drop-zone-dataset" class="drop-zone card rounded-[2rem] overflow-hidden shadow-2xl border border-blue-500/20">
-    <div class="p-4 bg-blue-600/10 border-b border-white/5">
-      <h3 class="text-xs font-black uppercase text-blue-400">Preview: Daily Campaign Stats</h3>
-    </div>
-    <div class="max-h-[300px] overflow-y-auto">
-      <table class="w-full text-left border-collapse text-[10px]">
-        <thead class="bg-black/40 sticky top-0 backdrop-blur-md font-black uppercase text-slate-400">
-          <tr><th class="p-4">Date</th><th class="p-4">Account</th><th class="p-4">GEO</th><th class="p-4">Offer</th><th class="p-4">Funnel</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center text-blue-400">Regs</th><th class="p-4 text-center text-green-500">Deps</th></tr>
-        </thead>
-        <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- Блок 2: Creatives Stats (Детально по CID) -->
-  <div class="card rounded-[2rem] overflow-hidden shadow-2xl border border-purple-500/20">
-    <div class="p-4 bg-purple-600/10 border-b border-white/5">
-      <h3 class="text-xs font-black uppercase text-purple-400">Preview: Creative Intelligence (Ads Level)</h3>
-    </div>
-    <div class="max-h-[300px] overflow-y-auto">
-      <table class="w-full text-left border-collapse text-[10px]">
-        <thead class="bg-black/40 sticky top-0 backdrop-blur-md font-black uppercase text-slate-400">
-          <tr><th class="p-4">CID (Ad Name)</th><th class="p-4">Funnel</th><th class="p-4">GEO</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center">Regs</th><th class="p-4 text-center">Deps</th></tr>
-        </thead>
-        <tbody id="creatives-preview-body-inside" class="divide-y divide-white/5"></tbody>
-      </table>
+<div id="mode-dataset" class="space-y-8">
+  <!-- Поле завантаження (Drop Zone) -->
+  <div id="csv-drop-zone-dataset" class="drop-zone card p-10 rounded-[2.5rem] text-center cursor-pointer group max-w-2xl mx-auto" onclick="document.getElementById('csv-input-dataset').click()">
+    <input type="file" id="csv-input-dataset" accept=".csv" class="hidden" onchange="handleCSV(event, 'dataset')">
+    <div class="flex flex-col items-center gap-4">
+       <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+       </div>
+       <div>
+         <h3 class="font-black uppercase italic text-lg text-white">Import Ads Report CSV</h3>
+         <p class="text-[10px] opacity-40 font-bold tracking-[0.2em] uppercase">One file for Stats + Creatives Intelligence</p>
+       </div>
     </div>
   </div>
 
-  <!-- Кнопки керування -->
-  <div class="p-6 card bg-black/40 flex justify-end gap-4 border-t border-white/5">
-    <button onclick="resetImport('dataset')" class="bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl font-black uppercase text-[10px] text-white transition">Cancel</button>
-    <button onclick="confirmDatasetImport()" class="bg-blue-600 hover:bg-blue-500 px-12 py-3 rounded-2xl font-black uppercase text-[10px] text-white shadow-xl transition-all">Upload All Intelligence</button>
+  <!-- Контейнер ПОДВІЙНОГО прев'ю (Daily + Creatives) -->
+  <div id="dataset-preview" class="hidden space-y-6">
+    <!-- Таблиця 1: Daily Stats -->
+    <div class="card rounded-[2rem] overflow-hidden shadow-2xl border border-blue-500/10">
+      <div class="p-4 bg-blue-600/5 border-b border-white/5 font-black uppercase text-[10px] text-blue-400 tracking-widest">Preview: Daily Stats</div>
+      <div class="max-h-[300px] overflow-y-auto custom-scrollbar">
+        <table class="w-full text-left border-collapse text-[10px]">
+          <thead class="bg-black/40 sticky top-0 backdrop-blur-md text-slate-400 uppercase font-black">
+            <tr><th class="p-4">Date</th><th class="p-4">Account</th><th class="p-4">GEO</th><th class="p-4">Offer</th><th class="p-4">Funnel</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center">Regs</th><th class="p-4 text-center">Deps</th></tr>
+          </thead>
+          <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Таблиця 2: Creatives (з тієї ж назви файлу) -->
+    <div class="card rounded-[2rem] overflow-hidden shadow-2xl border border-purple-500/10">
+      <div class="p-4 bg-purple-600/5 border-b border-white/5 font-black uppercase text-[10px] text-purple-400 tracking-widest">Preview: Creative Intelligence</div>
+      <div class="max-h-[300px] overflow-y-auto custom-scrollbar">
+        <table class="w-full text-left border-collapse text-[10px]">
+          <thead class="bg-black/40 sticky top-0 backdrop-blur-md text-slate-400 uppercase font-black">
+            <tr><th class="p-4">CID (Ad Name)</th><th class="p-4">Funnel</th><th class="p-4">GEO</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center">Regs</th><th class="p-4 text-center">Deps</th></tr>
+          </thead>
+          <tbody id="creatives-preview-body-inside" class="divide-y divide-white/5"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Кнопки підтвердження -->
+    <div class="p-6 bg-black/40 rounded-[2rem] flex justify-end gap-4 border border-white/5">
+      <button onclick="resetImport('dataset')" class="bg-white/5 hover:bg-white/10 px-8 py-3 rounded-2xl font-black uppercase text-[10px] transition">Cancel</button>
+      <button onclick="confirmDatasetImport()" class="bg-blue-600 hover:bg-blue-500 px-12 py-3 rounded-2xl font-black uppercase text-[10px] shadow-xl transition-all">Upload Everything</button>
+    </div>
   </div>
 </div>
 
