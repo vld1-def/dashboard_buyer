@@ -200,9 +200,17 @@ select {
       <div class="max-h-[300px] overflow-y-auto custom-scrollbar">
         <table class="w-full text-left border-collapse text-[10px]">
           <thead class="bg-black/40 sticky top-0 backdrop-blur-md text-slate-400 uppercase font-black">
-            <tr><th class="p-4">CID (Ad Name)</th><th class="p-4">Funnel</th><th class="p-4">GEO</th><th class="p-4 text-right">Spend</th><th class="p-4 text-center">Regs</th><th class="p-4 text-center">Deps</th></tr>
-          </thead>
-          <tbody id="creatives-preview-body-inside" class="divide-y divide-white/5"></tbody>
+          <tr>
+            <th class="p-4">CID (Ad Name)</th>
+            <th class="p-4">Funnel</th>
+            <th class="p-4 text-center">GEO</th>
+            <th class="p-4 text-right">Spend</th>
+            <th class="p-4 text-center text-orange-400">Leads</th> <!-- Installs -->
+            <th class="p-4 text-center text-blue-400">Regs</th>
+            <th class="p-4 text-center text-green-500">Deps</th>
+          </tr>
+        </thead>
+        <tbody id="creatives-preview-body-inside" class="divide-y divide-white/5"></tbody>
         </table>
       </div>
     </div>
@@ -334,7 +342,8 @@ let datasetToImport = [];
 let creativesToImport = [];
 let allFunnels = []; 
 let allProviders = [];
-
+let globalOffersCache = []; // Кеш для офферів із налаштувань
+  
 // Ключові слова для розпізнавання колонок у CSV (UA/RU/EN)
 const keywords = {
   startDate: ['reporting starts', 'дата начала', 'дата початку', 'start date', 'початок звітності'],
@@ -353,18 +362,15 @@ const keywords = {
 };
 
 // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
+// 2. Онови window.onload, щоб вона викликала завантаження офферів
 window.onload = async () => {
-  // 1. Отримуємо команду з localStorage (ту, що вибрали на Dashboard)
   currentTeam = localStorage.getItem('selected_team') || "Makeberry";
-  
-  // 2. Виводимо її в наш новий індикатор у хедері
   const display = document.getElementById('active-team-display');
   if (display) display.innerText = currentTeam.toUpperCase();
-  
-  console.log("🛠 Data Hub connected to Team:", currentTeam);
-  
-  // 3. Завантажуємо мапінги та налаштовуємо Drag & Drop
+
+  await loadAgencies(); 
   await loadMappings(); 
+  await loadAvailableOffers(); // ТУТ ДОДАЛИ
   setupDragAndDrop('dataset'); 
   setupDragAndDrop('creatives'); 
 };
@@ -483,42 +489,72 @@ function renderDualPreview() {
   document.getElementById('dataset-preview').classList.remove('hidden');
   document.getElementById('csv-drop-zone-dataset').classList.add('hidden');
   
-  // Рендер Кампаній (Daily Stats)
-  document.getElementById('dataset-preview-body').innerHTML = datasetToImport.map((r, i) => `
-    <tr class="hover:bg-white/5 text-[13px]">
-      <td class="p-4 opacity-50 font-mono">${r.date}</td>
-      <td class="p-4 font-bold text-blue-400">${r.acc}</td>
-      <td class="p-4">
-        <div class="editable-cell uppercase border-b border-white/10" contenteditable="true" 
-             onblur="datasetToImport[${i}].geo=this.innerText.trim().toUpperCase()">${r.geo}</div>
-      </td>
-      <td class="p-4">
-        <div class="editable-cell text-emerald-400 font-black border-b border-emerald-500/20" contenteditable="true" 
-             placeholder="Введіть Offer" onblur="datasetToImport[${i}].offer=this.innerText.trim().toUpperCase()">${r.offer}</div>
-      </td>
-      <td class="p-4 italic">
-        <div class="editable-cell border-b border-white/10" contenteditable="true" 
-             onblur="datasetToImport[${i}].funnel=this.innerText.trim()">${r.funnel}</div>
-      </td>
-      <td class="p-4 text-right font-bold text-white">
-         <div class="editable-cell border-b border-white/10" contenteditable="true" 
-             onblur="datasetToImport[${i}].spend=parseFloat(this.innerText.replace('$','')) || 0">$${r.spend.toFixed(2)}</div>
-      </td>
-      <td class="p-4 text-center text-orange-400 font-bold">
-        <div class="editable-cell border-b border-orange-500/20" contenteditable="true" 
-             onblur="datasetToImport[${i}].installs=parseInt(this.innerText) || 0">${r.installs}</div>
-      </td>
-      <td class="p-4 text-center text-blue-400">
-        <div class="editable-cell border-b border-blue-500/20" contenteditable="true" 
-             onblur="datasetToImport[${i}].regs=parseInt(this.innerText) || 0">${r.regs}</div>
-      </td>
-      <td class="p-4 text-center text-green-500 font-black">
-        <div class="editable-cell border-b border-green-500/20" contenteditable="true" 
-             onblur="datasetToImport[${i}].deps=parseInt(this.innerText) || 0">${r.deps}</div>
-      </td>
-    </tr>`).join('');
+  const dailyBody = document.getElementById('dataset-preview-body');
+  
+  dailyBody.innerHTML = datasetToImport.map((r, i) => {
+    // Шукаємо оффери, які є в базі для ГЕО цього рядка
+    const rowGeo = (r.geo || "").toUpperCase();
+    const availableForThisGeo = [...new Set(globalOffersCache
+      .filter(o => o.geo.toUpperCase() === rowGeo)
+      .map(o => o.offer.toUpperCase())
+    )];
 
-  // Онови також заголовки в HTML (thead) додавши <th>Installs</th> та <th>Offer</th>
+    // Створюємо HTML випадаючого списку
+    const offerSelectHtml = `
+      <select onchange="datasetToImport[${i}].offer=this.value" 
+              class="!bg-emerald-500/10 !border-emerald-500/30 !text-emerald-400 !py-1 !px-2 !text-[11px] !w-full !rounded-lg font-black uppercase">
+        <option value="">-- SELECT --</option>
+        ${availableForThisGeo.map(off => `<option value="${off}" ${r.offer === off ? 'selected' : ''}>${off}</option>`).join('')}
+        <option value="CUSTOM">+ Ввести вручну</option>
+      </select>
+    `;
+
+    return `
+      <tr class="hover:bg-white/5 text-[13px]">
+        <td class="p-4 opacity-50 font-mono">${r.date}</td>
+        <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+        <td class="p-4">
+          <div class="editable-cell uppercase border-b border-white/10" contenteditable="true" 
+               onblur="datasetToImport[${i}].geo=this.innerText.trim().toUpperCase(); renderDualPreview();">${r.geo}</div>
+        </td>
+        <td class="p-2 w-48">
+          ${offerSelectHtml}
+        </td>
+        <td class="p-4 italic">
+          <div class="editable-cell border-b border-white/10" contenteditable="true" 
+               onblur="datasetToImport[${i}].funnel=this.innerText.trim()">${r.funnel}</div>
+        </td>
+        <td class="p-4 text-right font-bold text-white">
+           <div class="editable-cell border-b border-white/10" contenteditable="true" 
+               onblur="datasetToImport[${i}].spend=parseFloat(this.innerText.replace('$','')) || 0">$${r.spend.toFixed(2)}</div>
+        </td>
+        <td class="p-4 text-center text-orange-400 font-bold">
+          <div class="editable-cell border-b border-orange-500/20" contenteditable="true" 
+               onblur="datasetToImport[${i}].installs=parseInt(this.innerText) || 0">${r.installs}</div>
+        </td>
+        <td class="p-4 text-center text-blue-400">
+          <div class="editable-cell border-b border-blue-500/20" contenteditable="true" 
+               onblur="datasetToImport[${i}].regs=parseInt(this.innerText) || 0">${r.regs}</div>
+        </td>
+        <td class="p-4 text-center text-green-500 font-black">
+          <div class="editable-cell border-b border-green-500/20" contenteditable="true" 
+               onblur="datasetToImport[${i}].deps=parseInt(this.innerText) || 0">${r.deps}</div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  // Рендер Креативів (залиш як був)
+  const creativeBody = document.getElementById('creatives-preview-body-inside');
+  creativeBody.innerHTML = creativesToImport.map((r, i) => `
+    <tr class="hover:bg-white/5 text-[13px] text-slate-300">
+      <td class="p-4 font-mono text-purple-400 font-bold">${r.cid}</td>
+      <td class="p-4 italic opacity-70">${r.funnel}</td>
+      <td class="p-4 text-center">${r.geo}</td>
+      <td class="p-4 text-right font-bold text-white">$${r.spend.toFixed(2)}</td>
+      <td class="p-4 text-center text-orange-400/80 font-bold">${r.installs}</td>
+      <td class="p-4 text-center text-blue-400/80">${r.regs}</td>
+      <td class="p-4 text-center font-black text-green-500/80">${r.deps}</td>
+    </tr>`).join('');
 }
 function processCreativeData(map, lines) {
   creativesToImport = [];
@@ -572,7 +608,18 @@ function renderPreview(type) {
       </tr>`).join('');
   }
 }
-
+// 1. Додай функцію завантаження офферів
+async function loadAvailableOffers() {
+  const { data, error } = await sb
+    .from('payouts')
+    .select('geo, offer')
+    .eq('team_name', currentTeam);
+  
+  if (!error) {
+    globalOffersCache = data || [];
+    console.log("✅ Завантажено офферів для вибору:", globalOffersCache.length);
+  }
+}
 // --- ЗБЕРЕЖЕННЯ В БАЗУ (SUPABASE) ---
 
 async function confirmDatasetImport() {
