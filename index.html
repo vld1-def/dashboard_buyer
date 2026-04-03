@@ -1592,9 +1592,29 @@ async function refreshPayoutsFromSQL() {
 
 // Додатково функція видалення по ID (щоб не видалити випадково всі оффери одного ГЕО)
 async function deletePayoutFromSQL(id) {
-  if (!confirm("Delete this payout?")) return;
-  const { error } = await sb.from('payouts').delete().eq('id', id);
-  if (!error) refreshPayoutsFromSQL();
+  // Перевірка, чи передався ID
+  if (!id || id === 'undefined') {
+    console.error("ID не знайдено. Перевірте, чи є колонка 'id' у таблиці payouts");
+    return;
+  }
+
+  if (!confirm("Видалити цю виплату?")) return;
+
+  console.log("🗑 Видалення виплати з ID:", id);
+
+  const { error } = await sb
+    .from('payouts')
+    .delete()
+    .eq('id', id); // Переконайся, що в Supabase колонка називається саме 'id' (малими)
+
+  if (error) {
+    console.error("Помилка видалення:", error);
+    alert("Помилка: " + error.message);
+  } else {
+    console.log("✅ Видалено успішно");
+    // Одразу оновлюємо список, щоб рядок зник
+    await refreshPayoutsFromSQL();
+  }
 }
 
   async function addGeoPayout() {
