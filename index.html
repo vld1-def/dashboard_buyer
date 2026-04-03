@@ -1513,39 +1513,42 @@ function renderTable(data) {
     s.innerHTML = '<option value="">All Geo</option>' + g.map(x => `<option value="${x.toLowerCase()}">${x.toUpperCase()}</option>`).join('');
   }
 
-// 2. Рендер бокової панелі креативів
 function renderCreativeSidebar(query = "", geoFilter = "") {
   const sidebar = document.getElementById('creative-list-sidebar');
   if (!sidebar) return;
 
-  // Групуємо унікальні CID та сумуємо їх спенд
   const grouped = {};
-  creativesRawData.forEach(d => {
-    const geoMatch = !geoFilter || (d.geo || "").toLowerCase() === geoFilter;
-    const searchMatch = !query || (d.cid || "").toLowerCase().includes(query);
+  // Переконайся, що loadCreatives() вже відпрацював
+  const dataToUse = window.creativesRawData || [];
 
-    if (geoMatch && searchMatch) {
-      const cid = d.cid || "Unknown";
+  dataToUse.forEach(d => {
+    const cid = d.cid || "Unknown";
+    const geo = (d.geo || "").toLowerCase();
+    
+    const matchesGeo = !geoFilter || geo === geoFilter.toLowerCase();
+    const matchesSearch = !query || cid.toLowerCase().includes(query.toLowerCase());
+
+    if (matchesGeo && matchesSearch) {
       if (!grouped[cid]) grouped[cid] = { cid, s: 0 };
       grouped[cid].s += Number(d.spend) || 0;
     }
   });
 
-  const list = Object.values(grouped).sort((a, b) => b[s] - a[s]);
+  const list = Object.values(grouped).sort((a, b) => b.s - a.s);
 
   if (list.length === 0) {
-    sidebar.innerHTML = '<p class="text-center py-10 opacity-30 text-[10px] uppercase">No creatives found</p>';
+    sidebar.innerHTML = '<div class="text-center py-20 opacity-20 text-[10px] font-black uppercase tracking-widest">No Data in SQL</div>';
     return;
   }
 
   sidebar.innerHTML = list.map(c => {
     const isActive = currentCreativeID === c.cid;
     return `
-      <button onclick="selectCreative('${c.cid}')" 
-              class="w-full flex justify-between items-center p-3 rounded-xl border border-white/5 transition-all text-left group
-              ${isActive ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white/5 text-slate-300'}">
-        <span class="text-[10px] font-black truncate flex-1 uppercase">${c.cid}</span>
-        <span class="text-[10px] font-bold opacity-60 ml-2">$${Math.round(c.s)}</span>
+      <button onclick="currentCreativeID='${c.cid}'; showCreativeStats(); renderCreativeSidebar('${query}', '${geoFilter}');" 
+              class="w-full flex justify-between items-center p-3 rounded-xl border border-white/5 transition-all text-left uppercase group
+              ${isActive ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'hover:bg-white/5 text-slate-400'}">
+        <span class="text-[10px] font-black truncate">${c.cid}</span>
+        <span class="text-[10px] font-bold opacity-60">$${Math.round(c.s)}</span>
       </button>
     `;
   }).join('');
@@ -2292,7 +2295,6 @@ function showGeoDetails(geo) {
 
   title.innerText = `${geo.toUpperCase()} Details`;
   
-  // Фільтруємо дані по ГЕО та поточному місяцю
   const geoData = rawData.filter(d => 
     d.date && d.date.startsWith(currentMonthFilter) && 
     (d.geo || "").toUpperCase() === geo.toUpperCase()
@@ -2300,7 +2302,6 @@ function showGeoDetails(geo) {
   
   const payout = globalPayouts[geo.toUpperCase()] || 0;
 
-  // Групуємо по воронках
   const funnels = {};
   geoData.forEach(d => {
     const f = d.funnel || "Default";
@@ -2317,49 +2318,48 @@ function showGeoDetails(geo) {
       const r2d = data.r > 0 ? (data.d / data.r * 100).toFixed(1) : 0;
       const profit = (data.d * payout) - data.s;
       
-      // Тренд (останні 7 точок)
       const sortedDates = Object.keys(data.dailySpend).sort().slice(-7);
-      const trendValues = sortedDates.map(date => data.dailySpend[date]);
-      const sparkline = createSparkline(trendValues);
+      const sparkline = createSparkline(sortedDates.map(date => data.dailySpend[date]));
 
-      // --- ПОШУК КРЕАТИВІВ ДЛЯ ЦІЄЇ ВОРОНКИ ---
-      // Фільтруємо creativesRawData за назвою воронки
+      // --- ЛОГІКА КРЕАТИВІВ ---
       const funnelCIDs = (window.creativesRawData || []).filter(c => 
-        c.funnel === name && 
-        c.date && c.date.startsWith(currentMonthFilter)
+        c.funnel === name && c.date && c.date.startsWith(currentMonthFilter)
       );
 
-      // Агрегуємо по CID всередині воронки
       const cidStats = {};
       funnelCIDs.forEach(c => {
         if (!cidStats[c.cid]) cidStats[c.cid] = { s: 0, r: 0, d: 0 };
-        cidStats[c.cid].s += c.spend;
-        cidStats[c.cid].r += c.regs;
-        cidStats[c.cid].d += c.deps;
+        cidStats[c.cid].s += Number(c.spend) || 0;
+        cidStats[c.cid].r += Number(c.regs) || 0;
+        cidStats[c.cid].d += Number(c.deps) || 0;
       });
 
-      const cidRows = Object.entries(cidStats)
+      // Створюємо рядки для кожного креативу
+      const cidRowsHtml = Object.entries(cidStats)
         .sort((a, b) => b[1].s - a[1].s)
-        .map(([cid, stat]) => `
-          <div class="flex items-center justify-between py-2 px-6 border-b border-white/5 last:border-0 hover:bg-white/5">
-            <span class="text-[10px] font-mono text-purple-400 uppercase font-black">${cid}</span>
-            <div class="flex gap-4 text-[11px] font-bold">
-              <span class="text-white">$${Math.round(stat.s)}</span>
-              <span class="text-blue-400">R: ${stat.r}</span>
-              <span class="text-green-500">D: ${stat.d}</span>
-            </div>
-          </div>
-        `).join('');
+        .map(([cid, stat]) => {
+          const cR2d = stat.r > 0 ? (stat.d / stat.r * 100).toFixed(1) : 0;
+          const cProfit = (stat.d * payout) - stat.s;
+          return `
+            <tr class="cid-row-${index} hidden bg-black/40 text-[11px] border-b border-white/5">
+              <td class="py-2 pl-10 text-purple-400 font-mono uppercase">${cid}</td>
+              <td class="py-2 text-center opacity-10">—</td> <!-- Пропуск тренду -->
+              <td class="py-2 text-right px-3 text-slate-400 font-bold">$${Math.round(stat.s)}</td>
+              <td class="py-2 text-center px-2 text-blue-400/60">${stat.r}</td>
+              <td class="py-2 text-center px-2 text-green-500/60">${stat.d}</td>
+              <td class="py-2 text-right px-2 text-pink-500/60">${cR2d}%</td>
+              <td class="py-2 text-right pr-1 ${cProfit >= 0 ? 'text-emerald-500/60' : 'text-red-500/60'}">$${Math.round(cProfit)}</td>
+            </tr>
+          `;
+        }).join('');
 
       return `
-        <tr onclick="toggleCIDs(${index})" class="hover:bg-white/[0.03] transition-colors cursor-pointer group">
+        <!-- Рядок воронки -->
+        <tr onclick="toggleCIDs(${index})" class="hover:bg-white/[0.03] transition-colors cursor-pointer border-b border-white/10">
           <td class="py-4 pl-1">
             <div class="flex items-center gap-2">
               <span id="arrow-${index}" class="text-[8px] text-slate-500 transition-transform">▶</span>
-              <div>
-                <div class="text-sm font-black text-white leading-tight">${name}</div>
-                <div class="text-[9px] text-slate-500 uppercase font-black tracking-tighter">Details</div>
-              </div>
+              <div class="text-sm font-black text-white">${name}</div>
             </div>
           </td>
           <td class="py-4 text-center">${sparkline}</td>
@@ -2369,30 +2369,25 @@ function showGeoDetails(geo) {
           <td class="py-4 text-right px-2 font-black text-sm text-pink-500">${r2d}%</td>
           <td class="py-4 text-right pr-1 font-black text-sm ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</td>
         </tr>
-        <!-- ПРИХОВАНИЙ СПИСОК КРЕАТИВІВ -->
-        <tr id="cid-container-${index}" class="hidden cid-detail-row">
-          <td colspan="7" class="p-0">
-            <div class="max-h-48 overflow-y-auto custom-scrollbar py-1">
-              ${cidRows || '<p class="text-center py-4 text-[9px] opacity-30 uppercase italic">No CID mapping found for this period</p>'}
-            </div>
-          </td>
-        </tr>`;
+        ${cidRowsHtml}
+      `;
     }).join('');
 
   modal.classList.remove('hidden');
 }
 
-// Функція для відкриття/закриття списку креативів
+// Функція перемикання (оновлена)
 function toggleCIDs(idx) {
-  const row = document.getElementById(`cid-container-${idx}`);
+  const rows = document.querySelectorAll(`.cid-row-${idx}`);
   const arrow = document.getElementById(`arrow-${idx}`);
-  if (!row) return;
-
-  const isHidden = row.classList.toggle('hidden');
-  if (arrow) {
-    arrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(90deg)';
-    arrow.style.color = isHidden ? '' : '#3b82f6';
-  }
+  
+  rows.forEach(row => {
+    const isHidden = row.classList.toggle('hidden');
+    if (arrow) {
+      arrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(90deg)';
+      arrow.style.color = isHidden ? '' : '#3b82f6';
+    }
+  });
 }
 
 // Функція для створення міні-графіка (Trend)
