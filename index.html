@@ -2397,23 +2397,27 @@ function sortTable(key) {
 
   renderTable(filteredDataCache);
 }
-    async function deletePayoutFromSQL(payoutId) {
-  if (!payoutId || payoutId === 'undefined') return;
-  if (!confirm("Видалити цю виплату?")) return;
+async function deletePayoutFromSQL(payoutId) {
+  // 1. Перевірка на "привидів"
+  if (!payoutId || payoutId === 'undefined') {
+    alert("Помилка: запис не має ID в базі. Перезавантажте сторінку.");
+    return;
+  }
 
-  // ПЕРЕТВОРЮЄМО ID В ЧИСЛО перед відправкою
-  const cleanId = Number(payoutId);
+  if (!confirm("Видалити?")) return;
 
+  // 2. Спроба видалення
   const { error } = await sb
     .from('payouts')
     .delete()
-    .eq('id', cleanId); // Використовуємо число
+    .eq('id', payoutId); // <-- ПЕРЕВІР ТУТ: якщо в базі колонка зветься ID, то пиши 'ID'
 
   if (error) {
-    console.error("Помилка Supabase:", error);
-    alert("Помилка: " + error.message);
+    console.error("Supabase Error:", error);
+    alert("Помилка бази: " + error.message);
   } else {
-    console.log("✅ Видалено запис №:", cleanId);
+    console.log("✅ Видалено запис:", payoutId);
+    // 3. Примусове оновлення даних
     await refreshPayoutsFromSQL();
   }
 }
