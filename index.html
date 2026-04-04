@@ -1599,17 +1599,26 @@ function selectCreative(cid) {
 
   // --- 10. PAYOUTS ---
 async function refreshPayoutsFromSQL() {
-  const { data, error } = await sb.from('payouts').select('*').eq('team_name', currentTeam);
-  if (error) return console.error(error);
+  const { data, error } = await sb
+    .from('payouts')
+    .select('*')
+    .eq('team_name', currentTeam);
 
+  if (error) {
+    console.error("Помилка завантаження виплат:", error);
+    return;
+  }
+
+  // Оновлюємо глобальний об'єкт для розрахунків
   globalPayouts = {};
   data.forEach(p => {
-    // Створюємо ключ: ГЕО_ОФФЕР (наприклад: UA_CROWN)
     const geo = (p.geo || "").toUpperCase().trim();
     const offer = (p.offer || "DEFAULT").toUpperCase().trim();
     globalPayouts[`${geo}_${offer}`] = Number(p.value);
   });
-  renderGeoPayoutSettings(data); // функція виводу в налаштуваннях
+
+  // ПЕРЕДАЄМО data СЮДИ:
+  renderGeoPayoutSettings(data); 
 }
 
 
@@ -2002,28 +2011,29 @@ async function saveDetailedTask() {
   }
 }
     // --- 4. СПИСОК ВИПЛАТ У НАЛАШТУВАННЯХ ---
-function renderGeoPayoutSettings() {
+function renderGeoPayoutSettings(data) {
   const container = document.getElementById('geo-payouts-list');
   if (!container) return;
-  
-  const entries = Object.entries(globalPayouts);
-  if (entries.length === 0) {
+
+  if (!data || data.length === 0) {
     container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center text-slate-500">No payouts set in SQL</p>';
     return;
   }
 
-  // 1. Сортуємо список по ціні (від більшої до меншої)
-  const sortedEntries = entries.sort((a, b) => b[1] - a[1]);
+  // Сортуємо по ГЕО для зручності в налаштуваннях
+  const sortedData = [...data].sort((a, b) => a.geo.localeCompare(b.geo));
 
-  // 2. Рендеримо з вирівнюванням по лівому краю (text-left)
-  container.innerHTML = data.map(p => `
-  <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2">
-    <span class="font-black text-blue-400 uppercase w-7">${p.geo}</span>
-    <span class="text-slate-400 font-bold truncate flex-1">${p.offer || '—'}</span>
-    <span class="font-bold text-white text-left w-10">$${p.value}</span>
-    <button onclick="deletePayoutFromSQL('${p.id}')" class="text-red-500 hover:text-red-400 px-1">✕</button>
-  </div>
-`).join('');
+  container.innerHTML = sortedData.map(p => `
+    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group">
+      <span class="font-black text-blue-400 uppercase w-7 shrink-0">${p.geo}</span>
+      <span class="text-slate-400 font-bold truncate flex-1 opacity-70">${p.offer || 'DEFAULT'}</span>
+      <span class="font-bold text-white text-left w-10 shrink-0">$${p.value}</span>
+      <button onclick="deletePayoutFromSQL('${p.id}')" 
+              class="text-red-500 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        ✕
+      </button>
+    </div>
+  `).join('');
 }
 
 // Видалення виплати з SQL
