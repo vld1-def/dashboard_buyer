@@ -1398,17 +1398,22 @@ function renderTrend(data) {
   }
 
   function renderGeoList(data) {
-  const m = {};
+const m = {};
   data.forEach(d => {
     const g = (d.geo || "??").toUpperCase().trim();
     const o = (d.offer || "DEFAULT").toUpperCase().trim();
-    const payout = globalPayouts[`${g}_o`] || globalPayouts[`${g}_DEFAULT`] || 0;
+    
+    // ПРАВИЛЬНИЙ ПОШУК ВИПЛАТИ
+    const payoutKey = `${g}_${o}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
 
     if (!m[g]) m[g] = { s: 0, r: 0, d: 0, rev: 0 };
+    
     m[g].s += Number(d.spend) || 0;
     m[g].r += Number(d.regs) || 0;
     m[g].d += Number(d.deposits) || 0;
-    m[g].rev += (Number(d.deposits) * payout); // Рахуємо виручку для кожного рядка
+    // Накопичуємо виручку: депи конкретного рядка * ціну оффера цього рядка
+    m[g].rev += (Number(d.deposits) * payout);
   });
 
   const container = document.getElementById('geo-list');
@@ -2307,12 +2312,22 @@ function showGeoDetails(geo) {
   const funnels = {};
   geoData.forEach(d => {
     const f = d.funnel || "Default";
-    if (!funnels[f]) funnels[f] = { s: 0, r: 0, d: 0, i: 0, dailySpend: {} };
+    const o = (d.offer || "DEFAULT").toUpperCase().trim();
+    const g = (d.geo || "").toUpperCase().trim();
+    
+    // ПРАВИЛЬНИЙ ПОШУК ВИПЛАТИ ДЛЯ ВОРОНКИ
+    const payoutKey = `${g}_${o}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+
+    if (!funnels[f]) funnels[f] = { s: 0, r: 0, d: 0, i: 0, rev: 0, dailySpend: {} };
+    
     funnels[f].s += Number(d.spend) || 0;
     funnels[f].r += Number(d.regs) || 0;
     funnels[f].d += Number(d.deposits) || 0;
-    funnels[f].i += Number(d.installs) || 0; // Інстали
+    funnels[f].i += Number(d.installs) || 0;
+    // Рахуємо виручку для воронки
     funnels[f].rev += (Number(d.deposits) * payout);
+    
     funnels[f].dailySpend[d.date] = (funnels[f].dailySpend[d.date] || 0) + Number(d.spend);
   });
 
