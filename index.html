@@ -1130,6 +1130,19 @@ function switchTeam(teamName) {
 
   // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
   function renderDashboard(data) {
+
+    let totalRev = 0;
+data.forEach(item => {
+  const s = Number(item.spend) || 0;
+  const d = Number(item.deposits) || 0;
+  const g = (item.geo || "").toUpperCase().trim();
+  const o = (item.offer || "DEFAULT").toUpperCase().trim();
+
+  // Шукаємо виплату: спочатку конкретний оффер, якщо немає — DEFAULT
+  const payout = globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
+  
+  totalRev += (d * payout);
+  
   if (!data || data.length === 0) return;
   const payouts = globalPayouts || {};
   let totalS = 0, totalD = 0, totalR = 0, totalRev = 0, tc = 0;
@@ -1188,7 +1201,7 @@ function switchTeam(teamName) {
 
   // В САМОМУ КІНЦІ ФУНКЦІЇ ДОДАЙ ЦЕ:
   console.log("🚀 Викликаю рендер ГЕО списку...");
-  renderGeoList(data); 
+  (data); 
 }
 function renderTrend(data) {
   const ctx = document.getElementById('chart-trend');
@@ -1374,14 +1387,16 @@ function renderTrend(data) {
 
   function renderGeoList(data) {
   const m = {};
-  
-  // Групуємо дані
   data.forEach(d => {
-    const g = (d.geo || "??").toUpperCase();
-    if (!m[g]) m[g] = { s: 0, r: 0, d: 0 };
+    const g = (d.geo || "??").toUpperCase().trim();
+    const o = (d.offer || "DEFAULT").toUpperCase().trim();
+    const payout = globalPayouts[`${g}_o`] || globalPayouts[`${g}_DEFAULT`] || 0;
+
+    if (!m[g]) m[g] = { s: 0, r: 0, d: 0, rev: 0 };
     m[g].s += Number(d.spend) || 0;
     m[g].r += Number(d.regs) || 0;
     m[g].d += Number(d.deposits) || 0;
+    m[g].rev += (Number(d.deposits) * payout); // Рахуємо виручку для кожного рядка
   });
 
   const container = document.getElementById('geo-list');
@@ -1395,7 +1410,7 @@ function renderTrend(data) {
     
     // Профіт та ROI
     const pVal = globalPayouts[geo] || 0;
-    const profit = (stat.d * pVal) - stat.s;
+    const profit = stat.rev - stat.s;
     const roi = stat.s > 0 ? Math.round((profit / stat.s) * 100) : 0;
     const profitColor = profit >= 0 ? 'text-emerald-400' : 'text-red-500';
 
@@ -1582,55 +1597,17 @@ function selectCreative(cid) {
 
   // --- 10. PAYOUTS ---
 async function refreshPayoutsFromSQL() {
-  // 1. Отримуємо всі виплати для поточної команди
-  const { data, error } = await sb
-    .from('payouts')
-    .select('*')
-    .eq('team_name', currentTeam)
-    .order('geo', { ascending: true });
+  const { data, error } = await sb.from('payouts').select('*').eq('team_name', currentTeam);
+  if (error) return console.error(error);
 
-  if (error) {
-    console.error("Помилка завантаження виплат:", error);
-    return;
-  }
-
-  // 2. Оновлюємо глобальний об'єкт для розрахунків (profit)
-  // Використовуємо ключ "GEO_OFFER", щоб розрізняти виплати
   globalPayouts = {};
   data.forEach(p => {
-    const key = `${p.geo.toUpperCase()}_${(p.offer || "DEFAULT").toUpperCase()}`;
-    globalPayouts[key] = Number(p.value);
+    // Створюємо ключ: ГЕО_ОФФЕР (наприклад: UA_CROWN)
+    const geo = (p.geo || "").toUpperCase().trim();
+    const offer = (p.offer || "DEFAULT").toUpperCase().trim();
+    globalPayouts[`${geo}_${offer}`] = Number(p.value);
   });
-
-  // 3. Рендеримо список у меню налаштувань
-  const container = document.getElementById('geo-payouts-list');
-  if (!container) return;
-
-  if (data.length === 0) {
-    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center text-slate-500">No payouts set in SQL</p>';
-    return;
-  }
-
-  container.innerHTML = data.map(p => `
-    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group">
-      <!-- ГЕО (синій) -->
-      <span class="font-black text-blue-400 uppercase w-7 shrink-0">${p.geo}</span>
-      
-      <!-- ОФФЕР (сірий, обрізається якщо довгий) -->
-      <span class="text-slate-400 font-bold truncate flex-1 opacity-70" title="${p.offer || 'Default'}">
-        ${p.offer || 'DEFAULT'}
-      </span>
-      
-      <!-- ЦІНА (білий) -->
-      <span class="font-bold text-white text-left w-10 shrink-0">$${p.value}</span>
-      
-      <!-- КНОПКА ВИДАЛЕННЯ (з'являється при наведенні) -->
-    <button onclick="console.log('Натиснуто ID:', '${p.id}'); deletePayoutFromSQL('${p.id}')" 
-            class="text-red-500 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-      ✕
-    </button>
-    </div>
-  `).join('');
+  renderGeoPayoutSettings(data); // функція виводу в налаштуваннях
 }
 
 
@@ -2313,6 +2290,7 @@ function showGeoDetails(geo) {
     funnels[f].r += Number(d.regs) || 0;
     funnels[f].d += Number(d.deposits) || 0;
     funnels[f].i += Number(d.installs) || 0; // Інстали
+    funnels[f].rev += (Number(d.deposits) * payout);
     funnels[f].dailySpend[d.date] = (funnels[f].dailySpend[d.date] || 0) + Number(d.spend);
   });
 
@@ -2323,7 +2301,8 @@ function showGeoDetails(geo) {
       const r2d = data.r > 0 ? (data.d / data.r * 100).toFixed(1) : 0;
       const cpl = data.r > 0 ? (data.s / data.r).toFixed(1) : 0;
       const cpa = data.d > 0 ? (data.s / data.d).toFixed(1) : 0;
-      const profit = (data.d * payout) - data.s;
+      const profit = data.rev - data.s;
+      
       
       const sortedDates = Object.keys(data.dailySpend).sort().slice(-7);
       const sparkline = createSparkline(sortedDates.map(date => data.dailySpend[date]));
