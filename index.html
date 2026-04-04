@@ -1132,77 +1132,79 @@ function switchTeam(teamName) {
   function renderDashboard(data) {
 
     let totalRev = 0;
-data.forEach(item => {
-  const s = Number(item.spend) || 0;
-  const d = Number(item.deposits) || 0;
-  const g = (item.geo || "").toUpperCase().trim();
-  const o = (item.offer || "DEFAULT").toUpperCase().trim();
-
-  // Шукаємо виплату: спочатку конкретний оффер, якщо немає — DEFAULT
-  const payout = globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
-  
-  totalRev += (d * payout);
-  
-  if (!data || data.length === 0) return;
-  const payouts = globalPayouts || {};
-  let totalS = 0, totalD = 0, totalR = 0, totalRev = 0, tc = 0;
-  const agentMap = {};
-
-  data.forEach(item => {
-    // ЗАХИСТ: якщо значення null, ставимо 0 або пустий рядок
-    const s = Number(item.spend) || 0;
-    const d = Number(item.deposits) || 0;
-    const r = Number(item.regs) || 0;
-    const geo = String(item.geo || "??").toUpperCase().trim(); // Додано захист від null
+    data.forEach(item => {
+      const s = Number(item.spend) || 0;
+      const d = Number(item.deposits) || 0;
+      const g = (item.geo || "").toUpperCase().trim();
+      const o = (item.offer || "DEFAULT").toUpperCase().trim();
     
-    totalS += s; totalD += d; totalR += r;
-    totalRev += (d * (payouts[geo] || 0));
+      // Шукаємо виплату: спочатку конкретний оффер, якщо немає — DEFAULT
+      const payout = globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
+      
+      totalRev += (d * payout);
+      
+      if (!data || data.length === 0) return;
+      const payouts = globalPayouts || {};
+      let totalS = 0, totalD = 0, totalR = 0, totalRev = 0, tc = 0;
+      const agentMap = {};
     
-    let agentRaw = String(item.agent || "Direct");
-    if (agentRaw.includes("%")) {
-      const match = agentRaw.match(/(\d+(?:\.\d+)?)%/);
-      if (match) tc += (s * (parseFloat(match[1]) / 100));
-    }
-    const aName = agentRaw.split('(')[0].trim();
-    agentMap[aName] = (agentMap[aName] || 0) + s;
-  });
-
-  const profit = totalRev - totalS;
-  const roi = totalS > 0 ? Math.round((profit / totalS) * 100) : 0;
-
-  document.getElementById('kpi-spend').innerText = formatCurrency(totalS);
-  document.getElementById('kpi-comm').innerText = "+ " + formatCurrency(tc) + " (Fees)";
-  document.getElementById('kpi-deposits').innerText = totalD;
-  document.getElementById('kpi-regs').innerText = totalR;
-  document.getElementById('kpi-cpl').innerText = formatCurrency(totalR > 0 ? totalS/totalR : 0);
-  document.getElementById('kpi-cpa').innerText = formatCurrency(totalD > 0 ? totalS/totalD : 0);
-  document.getElementById('kpi-r2d').innerText = (totalR > 0 ? (totalD/totalR*100).toFixed(1) : 0) + '%';
-  
-  const pEl = document.getElementById('kpi-profit');
-  if (pEl) {
-    pEl.innerText = formatCurrency(profit);
-    pEl.className = `text-[26px] font-black mt-1 ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
+      data.forEach(item => {
+        // ЗАХИСТ: якщо значення null, ставимо 0 або пустий рядок
+        const s = Number(item.spend) || 0;
+        const d = Number(item.deposits) || 0;
+        const r = Number(item.regs) || 0;
+        const geo = String(item.geo || "??").toUpperCase().trim(); // Додано захист від null
+        
+        totalS += s; totalD += d; totalR += r;
+        totalRev += (d * (payouts[geo] || 0));
+        
+        let agentRaw = String(item.agent || "Direct");
+        if (agentRaw.includes("%")) {
+          const match = agentRaw.match(/(\d+(?:\.\d+)?)%/);
+          if (match) tc += (s * (parseFloat(match[1]) / 100));
+        }
+        const aName = agentRaw.split('(')[0].trim();
+        agentMap[aName] = (agentMap[aName] || 0) + s;
+      });
+    
+      const profit = totalRev - totalS;
+      const roi = totalS > 0 ? Math.round((profit / totalS) * 100) : 0;
+    
+      document.getElementById('kpi-spend').innerText = formatCurrency(totalS);
+      document.getElementById('kpi-comm').innerText = "+ " + formatCurrency(tc) + " (Fees)";
+      document.getElementById('kpi-deposits').innerText = totalD;
+      document.getElementById('kpi-regs').innerText = totalR;
+      document.getElementById('kpi-cpl').innerText = formatCurrency(totalR > 0 ? totalS/totalR : 0);
+      document.getElementById('kpi-cpa').innerText = formatCurrency(totalD > 0 ? totalS/totalD : 0);
+      document.getElementById('kpi-r2d').innerText = (totalR > 0 ? (totalD/totalR*100).toFixed(1) : 0) + '%';
+      
+      const pEl = document.getElementById('kpi-profit');
+      if (pEl) {
+        pEl.innerText = formatCurrency(profit);
+        pEl.className = `text-[26px] font-black mt-1 ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
+      }
+      if (document.getElementById('kpi-roi')) document.getElementById('kpi-roi').innerText = `ROI: ${roi}%`;
+    
+      // Оновлення тултіпа агентств
+      const breakdownList = document.getElementById('spend-breakdown-list');
+      if (breakdownList) {
+        breakdownList.innerHTML = Object.entries(agentMap).sort((a, b) => b[1] - a[1]).map(([n, s]) => `
+          <div class="flex justify-between items-center text-[11px] font-bold">
+            <span class="text-muted-dynamic uppercase truncate pr-4">${n}</span>
+            <span class="text-white font-mono">${formatCurrency(s)}</span>
+          </div>`).join('');
+      }
+    
+      // Викликаємо інші рендери
+      renderTrend(data);
+      renderTable(data);
+    
+      // В САМОМУ КІНЦІ ФУНКЦІЇ ДОДАЙ ЦЕ:
+      console.log("🚀 Викликаю рендер ГЕО списку...");
+      (data); 
+});
   }
-  if (document.getElementById('kpi-roi')) document.getElementById('kpi-roi').innerText = `ROI: ${roi}%`;
-
-  // Оновлення тултіпа агентств
-  const breakdownList = document.getElementById('spend-breakdown-list');
-  if (breakdownList) {
-    breakdownList.innerHTML = Object.entries(agentMap).sort((a, b) => b[1] - a[1]).map(([n, s]) => `
-      <div class="flex justify-between items-center text-[11px] font-bold">
-        <span class="text-muted-dynamic uppercase truncate pr-4">${n}</span>
-        <span class="text-white font-mono">${formatCurrency(s)}</span>
-      </div>`).join('');
-  }
-
-  // Викликаємо інші рендери
-  renderTrend(data);
-  renderTable(data);
-
-  // В САМОМУ КІНЦІ ФУНКЦІЇ ДОДАЙ ЦЕ:
-  console.log("🚀 Викликаю рендер ГЕО списку...");
-  (data); 
-}
+             
 function renderTrend(data) {
   const ctx = document.getElementById('chart-trend');
   if (!ctx || !data.length) return;
