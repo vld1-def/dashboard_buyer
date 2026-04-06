@@ -559,21 +559,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   </div>
 </div>
 <!-- Weekly Heatmap Analysis -->
+<!-- Weekly Heatmap Analysis -->
 <div id="weekly-analysis-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-emerald-500 mb-8 overflow-hidden">
-  <div class="flex justify-between items-center mb-6">
+  <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-6">
     <div>
       <h2 class="text-xl font-black uppercase tracking-tight text-white italic">Weekly Performance Heatmap</h2>
-      <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Day-by-day Efficiency Analysis</p>
+      <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Efficiency analysis by day of week</p>
     </div>
-    <div class="flex gap-4 items-center">
-        <div class="flex items-center gap-2">
-            <div class="w-3 h-3 bg-emerald-500/20 border border-emerald-500/50 rounded-sm"></div>
-            <span class="text-[9px] font-bold text-slate-400 uppercase">High ROI</span>
-        </div>
-        <div class="flex items-center gap-2">
-            <div class="w-3 h-3 bg-red-500/20 border border-red-500/50 rounded-sm"></div>
-            <span class="text-[9px] font-bold text-slate-400 uppercase">High CPA</span>
-        </div>
+
+    <!-- Фільтри Heatmap -->
+    <div class="flex flex-wrap items-center gap-3 bg-black/20 p-2 rounded-2xl border border-white/5">
+      <div class="flex items-center gap-2 px-2 border-r border-white/10">
+        <input type="date" id="heat-from" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
+        <span class="opacity-20 text-[9px]">/</span>
+        <input type="date" id="heat-to" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
+      </div>
+      <select id="heat-geo" onchange="applyWeeklyFilter()" class="bg-transparent outline-none text-[10px] font-black uppercase text-blue-400 min-w-[100px] cursor-pointer">
+        <option value="">ALL GEO</option>
+      </select>
+      <button onclick="applyWeeklyFilter()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-xl text-[10px] font-black transition-all uppercase">Apply</button>
     </div>
   </div>
 
@@ -584,16 +588,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
           <th class="p-3">Day of Week</th>
           <th class="p-3 text-right">Spend</th>
           <th class="p-3 text-center">Regs</th>
-          <th class="p-3 text-center">Deps</th>
+          <th class="p-3 text-center text-green-500">Deps</th>
           <th class="p-3 text-right">CPL</th>
           <th class="p-3 text-right">CPA</th>
           <th class="p-3 text-center">R2D</th>
           <th class="p-3 text-right pr-5">ROI %</th>
         </tr>
       </thead>
-      <tbody id="weekly-heatmap-body">
-        <!-- JS will inject rows here -->
-      </tbody>
+      <tbody id="weekly-heatmap-body"></tbody>
     </table>
   </div>
 </div>
@@ -2012,26 +2014,22 @@ function parseReportBlocks(text) {
 }
 
 function populateGeoFilter(data) {
-  const select = document.getElementById('filter-geo-select');
-  if (!select) return;
-
-  // 1. Отримуємо унікальні ГЕО, прибираємо порожні та "??"
+  const selects = ['filter-geo-select', 'heat-geo']; // Додали ID нового селектора
+  
   const geos = [...new Set(data.map(d => (d.geo || "").toUpperCase()))]
     .filter(g => g !== "" && g !== "??")
     .sort();
 
-  console.log("📍 Знайдені ГЕО для фільтра:", geos);
-
-  // 2. Очищуємо селект, залишаючи тільки перший пункт
-  select.innerHTML = '<option value="" class="bg-slate-900">ALL GEO</option>';
-
-  // 3. Додаємо нові пункти
-  geos.forEach(geo => {
-    const opt = document.createElement('option');
-    opt.value = geo;
-    opt.textContent = geo;
-    opt.className = "bg-slate-900"; // додаємо фон для темної теми
-    select.appendChild(opt);
+  selects.forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    select.innerHTML = '<option value="">ALL GEO</option>';
+    geos.forEach(geo => {
+      const opt = document.createElement('option');
+      opt.value = geo;
+      opt.textContent = geo;
+      select.appendChild(opt);
+    });
   });
 }
     // --- 3. ЗБЕРЕЖЕННЯ РЕДАГОВАНОГО ТАСКА (SQL ВЕРСІЯ) ---
@@ -2594,30 +2592,41 @@ async function deletePayoutFromSQL(payoutId) {
     openReportRows = openReportRows.filter(x => x !== id);
   }
 }
-    function renderWeeklyHeatmap(data) {
+    // 1. Функція фільтрації Heatmap
+function applyWeeklyFilter() {
+  const from = document.getElementById('heat-from').value;
+  const to = document.getElementById('heat-to').value;
+  const geo = document.getElementById('heat-geo').value;
+
+  const filtered = rawData.filter(d => {
+    const matchDate = (!from || d.date >= from) && (!to || d.date <= to);
+    const matchGeo = !geo || (d.geo || "").toUpperCase() === geo.toUpperCase();
+    return matchDate && matchGeo;
+  });
+
+  renderWeeklyHeatmap(filtered);
+}
+
+// 2. Рендер Heatmap (Неділя в кінці + логіка кольорів)
+function renderWeeklyHeatmap(data) {
   const body = document.getElementById('weekly-heatmap-body');
   if (!body) return;
 
   const daysUA = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "П'ятниця", "Субота"];
-  // Створюємо структуру для кожного дня (0-6)
-  const stats = Array.from({ length: 7 }, (_, i) => ({
+  let stats = Array.from({ length: 7 }, (_, i) => ({
     dayIndex: i,
     name: daysUA[i],
     s: 0, r: 0, d: 0, rev: 0
   }));
 
-  // 1. Агрегуємо дані
+  // Агрегація
   data.forEach(item => {
-    const dateObj = new Date(item.date);
-    const day = dateObj.getDay(); // 0-6
+    const day = new Date(item.date).getDay();
     const s = Number(item.spend) || 0;
     const d = Number(item.deposits) || 0;
     const r = Number(item.regs) || 0;
-    const g = (item.geo || "").toUpperCase().trim();
-    const o = (item.offer || "DEFAULT").toUpperCase().trim();
-
-    const payoutKey = `${g}_${o}`;
-    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+    const payoutKey = `${(item.geo||"").toUpperCase()}_${(item.offer||"DEFAULT").toUpperCase()}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${(item.geo||"").toUpperCase()}_DEFAULT`] || 0;
 
     stats[day].s += s;
     stats[day].r += r;
@@ -2625,7 +2634,11 @@ async function deletePayoutFromSQL(payoutId) {
     stats[day].rev += (d * payout);
   });
 
-  // 2. Розраховуємо похідні метрики
+  // ПЕРЕСТАВЛЯЄМО НЕДІЛЮ В КІНЕЦЬ (Пн-Нд)
+  // Зараз stats = [Нд, Пн, Вт, Ср, Чт, Пт, Сб]
+  const sunday = stats.shift(); // Вирізаємо Нд (індекс 0)
+  stats.push(sunday); // Додаємо Нд в кінець
+
   const processed = stats.map(day => {
     const roi = day.s > 0 ? Math.round(((day.rev - day.s) / day.s) * 100) : 0;
     const cpa = day.d > 0 ? (day.s / day.d) : 0;
@@ -2634,45 +2647,30 @@ async function deletePayoutFromSQL(payoutId) {
     return { ...day, roi, cpa, cpl, r2d };
   });
 
-  // 3. Знаходимо Min/Max для підсвітки ( Heatmap Logic )
+  // Heatmap Color Bounds
   const activeDays = processed.filter(d => d.s > 0);
-  const maxRoi = Math.max(...activeDays.map(d => d.roi), 1);
-  const minRoi = Math.min(...activeDays.map(d => d.roi), 0);
-  const maxCpa = Math.max(...activeDays.map(d => d.cpa), 1);
-  const minCpa = Math.min(...activeDays.map(d => d.cpa), 0);
+  const maxRoi = activeDays.length ? Math.max(...activeDays.map(d => d.roi)) : 0;
+  const minRoi = activeDays.length ? Math.min(...activeDays.map(d => d.roi)) : 0;
+  const maxCpa = activeDays.length ? Math.max(...activeDays.map(d => d.cpa)) : 0;
+  const minCpa = activeDays.length ? Math.min(...activeDays.map(d => d.cpa)) : 0;
 
-  // 4. Рендеримо рядки
   body.innerHTML = processed.map(d => {
-    if (d.s === 0) return ''; // не показуємо дні без спенду
-
-    // Розрахунок інтенсивності кольору (ROI - зелений, CPA - червоний)
-    const roiWeight = maxRoi !== minRoi ? (d.roi - minRoi) / (maxRoi - minRoi) : 0.5;
-    const cpaWeight = maxCpa !== minCpa ? (d.cpa - minCpa) / (maxCpa - minCpa) : 0.5;
-
-    const roiBg = `rgba(16, 185, 129, ${0.05 + roiWeight * 0.3})`; // Emerald
-    const cpaBg = `rgba(239, 68, 68, ${0.05 + cpaWeight * 0.3})`; // Red
+    if (d.s === 0) return '';
+    
+    const roiW = maxRoi !== minRoi ? (d.roi - minRoi) / (maxRoi - minRoi) : 0.5;
+    const cpaW = maxCpa !== minCpa ? (d.cpa - minCpa) / (maxCpa - minCpa) : 0.5;
 
     return `
-      <tr class="group text-[13px] font-bold text-slate-300">
-        <td class="p-3 text-white font-black border-l-4 border-emerald-500/20 bg-white/[0.02] rounded-l-xl">${d.name}</td>
-        <td class="p-3 text-right bg-white/[0.02]">$${Math.round(d.s).toLocaleString()}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-blue-400/80">${d.r}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-green-500/80">${d.d}</td>
-        <td class="p-3 text-right bg-white/[0.02] text-purple-400/80 font-mono">$${d.cpl.toFixed(1)}</td>
-        
-        <!-- CPA Heatmap -->
-        <td class="p-3 text-right font-mono transition-all" style="background-color: ${cpaBg}; color: ${d.cpa > 0 ? '#fb7185' : ''}">
-            $${d.cpa.toFixed(1)}
-        </td>
-        
-        <td class="p-3 text-center bg-white/[0.02] text-pink-500/80">${d.r2d}%</td>
-        
-        <!-- ROI Heatmap -->
-        <td class="p-3 text-right pr-5 rounded-r-xl font-black transition-all" style="background-color: ${roiBg}; color: ${d.roi >= 0 ? '#34d399' : '#f87171'}">
-            ${d.roi}%
-        </td>
-      </tr>
-    `;
+      <tr class="text-[12px] font-bold">
+        <td class="p-3 text-white bg-white/[0.02] rounded-l-xl border-l-4 ${d.dayIndex === 0 || d.dayIndex === 6 ? 'border-orange-500/40' : 'border-emerald-500/20'}">${d.name}</td>
+        <td class="p-3 text-right bg-white/[0.02] text-slate-300 font-mono">$${Math.round(d.s).toLocaleString()}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-blue-400">${d.r}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-green-500 font-black">${d.d}</td>
+        <td class="p-3 text-right bg-white/[0.02] text-purple-400">$${d.cpl.toFixed(1)}</td>
+        <td class="p-3 text-right font-mono" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${d.cpa.toFixed(1)}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-pink-500">${d.r2d}%</td>
+        <td class="p-3 text-right pr-5 rounded-r-xl font-black" style="background-color: rgba(16, 185, 129, ${0.05 + roiW * 0.3}); color: ${d.roi >= 0 ? '#34d399' : '#f87171'}">${d.roi}%</td>
+      </tr>`;
   }).join('');
 }
   </script>
