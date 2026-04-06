@@ -2660,16 +2660,17 @@ function renderWeeklyHeatmap(data) {
 
   const daysUA = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "П'ятниця", "Субота"];
   
-  // 1. Агрегуємо дані: День -> Метрики + ГЕО
+  // 1. Агрегуємо дані
   let stats = Array.from({ length: 7 }, (_, i) => ({
     dayIndex: i,
     name: daysUA[i],
     s: 0, r: 0, d: 0, rev: 0,
-    geos: {} // Тут буде статистика по ГЕО
+    geos: {}
   }));
 
   data.forEach(item => {
-    const day = new Date(item.date).getDay();
+    const dateObj = new Date(item.date);
+    const day = dateObj.getDay();
     const s = Number(item.spend) || 0;
     const d = Number(item.deposits) || 0;
     const r = Number(item.regs) || 0;
@@ -2680,13 +2681,11 @@ function renderWeeklyHeatmap(data) {
     const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
     const revenue = (d * payout);
 
-    // Загальна статка дня
     stats[day].s += s;
     stats[day].r += r;
     stats[day].d += d;
     stats[day].rev += revenue;
 
-    // Статка по ГЕО всередині дня
     if (!stats[day].geos[g]) stats[day].geos[g] = { s: 0, r: 0, d: 0, rev: 0 };
     stats[day].geos[g].s += s;
     stats[day].geos[g].r += r;
@@ -2694,30 +2693,32 @@ function renderWeeklyHeatmap(data) {
     stats[day].geos[g].rev += revenue;
   });
 
-  // ПЕРЕСТАВЛЯЄМО НЕДІЛЮ В КІНЕЦЬ
+  // Переставляємо Неділю в кінець
   const sunday = stats.shift();
   stats.push(sunday);
 
-  // Знаходимо межі для кольорів (Heatmap)
+  // Heatmap Color Logic (Екстремуми)
   const activeDays = stats.filter(d => d.s > 0);
-  const maxRoi = activeDays.length ? Math.max(...activeDays.map(d => (d.rev - d.s) / (d.s || 1) * 100)) : 0;
-  const minRoi = activeDays.length ? Math.min(...activeDays.map(d => (d.rev - d.s) / (d.s || 1) * 100)) : 0;
-  const maxCpa = activeDays.length ? Math.max(...activeDays.map(d => d.d > 0 ? d.s / d.d : 0)) : 0;
-  const minCpa = activeDays.length ? Math.min(...activeDays.map(d => d.d > 0 ? d.s / d.d : 0)) : 0;
+  const rois = activeDays.map(d => (d.rev - d.s) / (d.s || 1) * 100);
+  const cpas = activeDays.map(d => d.d > 0 ? d.s / d.d : 0);
+  
+  const maxRoi = rois.length ? Math.max(...rois) : 0;
+  const minRoi = minRoi = rois.length ? Math.min(...rois) : 0;
+  const maxCpa = cpas.length ? Math.max(...cpas) : 0;
+  const minCpa = cpas.length ? Math.min(...cpas) : 0;
 
   body.innerHTML = stats.map(day => {
     if (day.s === 0) return '';
 
-    const dayRoi = day.s > 0 ? Math.round(((day.rev - day.s) / day.s) * 100) : 0;
+    const dayRoi = Math.round(((day.rev - day.s) / (day.s || 1)) * 100);
     const dayCpa = day.d > 0 ? (day.s / day.d) : 0;
     const dayCpl = day.r > 0 ? (day.s / day.r) : 0;
     const dayR2d = day.r > 0 ? ((day.d / day.r) * 100).toFixed(1) : 0;
 
-    // Кольори для дня
     const roiW = maxRoi !== minRoi ? (dayRoi - minRoi) / (maxRoi - minRoi) : 0.5;
     const cpaW = maxCpa !== minCpa ? (dayCpa - minCpa) / (maxCpa - minCpa) : 0.5;
 
-    // ГЕНЕРУЄМО РЯДКИ ГЕО
+    // ГЕНЕРУЄМО РЯДКИ ГЕО (ВИПРАВЛЕНО toFixed)
     const geoRows = Object.entries(day.geos)
       .sort((a, b) => b[1].s - a[1].s)
       .map(([geoName, gStat]) => {
@@ -2727,13 +2728,13 @@ function renderWeeklyHeatmap(data) {
         const gR2d = gStat.r > 0 ? ((gStat.d / gStat.r) * 100).toFixed(1) : 0;
 
         return `
-          <tr class="heat-geo-details-${day.dayIndex} hidden heat-geo-row transition-all">
-            <td class="p-2 pl-10 text-blue-400 font-black uppercase">↳ ${geoName}</td>
-            <td class="p-2 text-right">$${Math.round(gStat.s).toLocaleString()}</td>
-            <td class="p-2 text-center">${gStat.r}</td>
+          <tr class="heat-geo-details-${day.dayIndex} hidden heat-geo-row">
+            <td class="p-2 pl-10 text-blue-400 font-black">↳ ${geoName}</td>
+            <td class="p-2 text-right text-slate-400">$${Math.round(gStat.s).toLocaleString()}</td>
+            <td class="p-2 text-center text-slate-400">${gStat.r}</td>
             <td class="p-2 text-center text-green-500/70">${gStat.d}</td>
-            <td class="p-2 text-right text-purple-400/70">$${gCpl.toFixed(1)}</td>
-            <td class="p-2 text-right font-mono">$${gCpa.toFixed(1)}</td>
+            <td class="p-2 text-right text-purple-400/70 font-mono">$${gCpl.toFixed(1)}</td>
+            <td class="p-2 text-right font-mono text-slate-400">$${gCpa.toFixed(1)}</td>
             <td class="p-2 text-center text-pink-500/70">${gR2d}%</td>
             <td class="p-2 text-right pr-5 font-black ${gRoi >= 0 ? 'text-emerald-500' : 'text-red-500'}">${gRoi}%</td>
           </tr>
@@ -2748,9 +2749,9 @@ function renderWeeklyHeatmap(data) {
         <td class="p-3 text-right bg-white/[0.02] text-white font-black">$${Math.round(day.s).toLocaleString()}</td>
         <td class="p-3 text-center bg-white/[0.02] text-blue-400">${day.r}</td>
         <td class="p-3 text-center bg-white/[0.02] text-green-500">${day.d}</td>
-        <td class="p-3 text-right bg-white/[0.02] text-purple-400">$${day.cpl.toFixed(1)}</td>
-        <td class="p-3 text-right font-mono" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${day.cpa.toFixed(1)}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-pink-500">${day.r2d}%</td>
+        <td class="p-3 text-right bg-white/[0.02] text-purple-400 font-mono">$${dayCpl.toFixed(1)}</td>
+        <td class="p-3 text-right font-mono" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${dayCpa.toFixed(1)}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-pink-500">${dayR2d}%</td>
         <td class="p-3 text-right pr-5 rounded-r-xl font-black" style="background-color: rgba(16, 185, 129, ${0.05 + roiW * 0.3}); color: ${dayRoi >= 0 ? '#34d399' : '#f87171'}">${dayRoi}%</td>
       </tr>
       ${geoRows}
