@@ -1043,48 +1043,62 @@ function switchTeam(teamName) {
   window.location.reload();
 }
 
-  // --- 6. ЗАВАНТАЖЕННЯ ДАНИХ (SQL) ---
   async function loadData() {
   updateSyncStatus('loading');
-  console.log("📥 Завантаження статистики з Supabase...");
+  console.log("📥 Початок завантаження даних для команди:", currentTeam);
 
-  // Отримуємо дані тільки для поточної команди
+  // 1. Отримуємо дані з Supabase
   const { data: stats, error } = await sb
     .from('daily_stats')
     .select('*')
     .eq('team_name', currentTeam)
     .order('date', { ascending: false });
 
+  // 2. Обробка помилки (замість if !error використовуємо ранній вихід)
   if (error) {
-    console.error("Помилка Supabase:", error);
+    console.error("❌ Помилка Supabase при завантаженні daily_stats:", error);
     updateSyncStatus('error');
+    alert("Помилка завантаження даних. Перевірте консоль.");
     return;
   }
 
+  // 3. Якщо помилок немає, працюємо з даними
   rawData = stats || [];
-  console.log(`✅ Отримано рядків: ${rawData.length}`);
+  console.log(`✅ Отримано записів: ${rawData.length}`);
 
-  // Визначаємо доступні місяці
+  // 4. ОНОВЛЮЄМО ФІЛЬТРИ ГЕО (Важливо для Heatmap та Live Table)
+  populateGeoFilter(rawData);
+
+  // 5. Визначаємо доступні місяці для меню
   const months = getAvailableMonths(rawData);
   
-  // Якщо місяць не вибраний або його немає в списку - беремо останній доступний
+  // Якщо місяць ще не вибраний, беремо останній доступний
   if (!currentMonthFilter || !months.includes(currentMonthFilter)) {
     currentMonthFilter = months.length > 0 ? months[0] : new Date().toISOString().slice(0, 7);
   }
 
-  // Оновлюємо ярлики
-  document.getElementById('current-month-label').innerText = currentMonthFilter;
+  // Оновлюємо ярлик місяця в шапці
+  const monthLabel = document.getElementById('current-month-label');
+  if (monthLabel) monthLabel.innerText = currentMonthFilter;
+  
+  // Малюємо список місяців у випадаючому меню
   renderMonthList(months);
 
-  // ПРИБИРАЄМО ЛОАДЕР ТА ПОКАЗУЄМО КОНТЕНТ
-  document.getElementById('loader').classList.add('hidden');
-  document.getElementById('dashboard-content').classList.remove('hidden');
+  // 6. ХОВАЄМО ЛОАДЕР ТА ПОКАЗУЄМО ДАШБОРД
+  document.getElementById('loader')?.classList.add('hidden');
+  document.getElementById('dashboard-content')?.classList.remove('hidden');
 
-  // ЗАПУСКАЄМО ФІЛЬТРАЦІЮ ТА РЕНДЕР
+  // 7. ЗАПУСКАЄМО ГОЛОВНИЙ ФІЛЬТР ТА РЕНДЕР КАРТОК
   applyGlobalFilter();
+  
+  // 8. ЗАПУСКАЄМО ПЕРШИЙ РЕНДЕР ТЕПЛОВОЇ КАРТИ (Heatmap)
+  if (typeof applyWeeklyFilter === 'function') {
+    applyWeeklyFilter(); 
+  }
+
   updateSyncStatus('done');
   
-  // Креативи завантажуємо окремо, щоб не гальмувати головний екран
+  // 9. Завантажуємо креативи у фоновому режимі
   loadCreatives(); 
 }
     async function loadCreatives() {
@@ -2014,22 +2028,39 @@ function parseReportBlocks(text) {
 }
 
 function populateGeoFilter(data) {
-  const selects = ['filter-geo-select', 'heat-geo']; // Додали ID нового селектора
+  // Список ID всіх селекторів ГЕО на сторінці
+  const targetSelects = ['filter-geo-select', 'heat-geo'];
   
+  // Отримуємо унікальні ГЕО з масиву даних
   const geos = [...new Set(data.map(d => (d.geo || "").toUpperCase()))]
     .filter(g => g !== "" && g !== "??")
     .sort();
 
-  selects.forEach(id => {
+  console.log("📍 Оновлення списків ГЕО. Знайдено:", geos.length, "країн");
+
+  targetSelects.forEach(id => {
     const select = document.getElementById(id);
-    if (!select) return;
+    if (!select) {
+      console.warn(`⚠️ Селектор #${id} не знайдено в DOM`);
+      return;
+    }
+
+    // Зберігаємо поточне вибране значення, щоб не скидалося при оновленні
+    const currentValue = select.value;
+
+    // Очищуємо і додаємо дефолтний пункт
     select.innerHTML = '<option value="">ALL GEO</option>';
+
+    // Додаємо країни
     geos.forEach(geo => {
       const opt = document.createElement('option');
       opt.value = geo;
       opt.textContent = geo;
       select.appendChild(opt);
     });
+
+    // Повертаємо вибране значення назад
+    select.value = currentValue;
   });
 }
     // --- 3. ЗБЕРЕЖЕННЯ РЕДАГОВАНОГО ТАСКА (SQL ВЕРСІЯ) ---
