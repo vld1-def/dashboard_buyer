@@ -558,7 +558,45 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     <div class="space-y-3 overflow-y-auto flex-grow max-h-[395px] pr-2 custom-scrollbar text-dynamic" id="geo-list"></div>
   </div>
 </div>
+<!-- Weekly Heatmap Analysis -->
+<div id="weekly-analysis-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-emerald-500 mb-8 overflow-hidden">
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h2 class="text-xl font-black uppercase tracking-tight text-white italic">Weekly Performance Heatmap</h2>
+      <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Day-by-day Efficiency Analysis</p>
+    </div>
+    <div class="flex gap-4 items-center">
+        <div class="flex items-center gap-2">
+            <div class="w-3 h-3 bg-emerald-500/20 border border-emerald-500/50 rounded-sm"></div>
+            <span class="text-[9px] font-bold text-slate-400 uppercase">High ROI</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="w-3 h-3 bg-red-500/20 border border-red-500/50 rounded-sm"></div>
+            <span class="text-[9px] font-bold text-slate-400 uppercase">High CPA</span>
+        </div>
+    </div>
+  </div>
 
+  <div class="overflow-x-auto">
+    <table class="w-full text-left border-separate border-spacing-y-1">
+      <thead>
+        <tr class="text-[10px] font-black uppercase text-slate-500">
+          <th class="p-3">Day of Week</th>
+          <th class="p-3 text-right">Spend</th>
+          <th class="p-3 text-center">Regs</th>
+          <th class="p-3 text-center">Deps</th>
+          <th class="p-3 text-right">CPL</th>
+          <th class="p-3 text-right">CPA</th>
+          <th class="p-3 text-center">R2D</th>
+          <th class="p-3 text-right pr-5">ROI %</th>
+        </tr>
+      </thead>
+      <tbody id="weekly-heatmap-body">
+        <!-- JS will inject rows here -->
+      </tbody>
+    </table>
+  </div>
+</div>
       <!-- Creative Analyzer -->
       <div id="creative-analyzer-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-blue-500">
         <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
@@ -1213,6 +1251,7 @@ function switchTeam(teamName) {
   renderTrend(data);
   renderGeoList(data);
   renderTable(data);
+  renderWeeklyHeatmap(data);
 }
              
 function renderTrend(data) {
@@ -2554,6 +2593,87 @@ async function deletePayoutFromSQL(payoutId) {
   } else {
     openReportRows = openReportRows.filter(x => x !== id);
   }
+}
+    function renderWeeklyHeatmap(data) {
+  const body = document.getElementById('weekly-heatmap-body');
+  if (!body) return;
+
+  const daysUA = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "П'ятниця", "Субота"];
+  // Створюємо структуру для кожного дня (0-6)
+  const stats = Array.from({ length: 7 }, (_, i) => ({
+    dayIndex: i,
+    name: daysUA[i],
+    s: 0, r: 0, d: 0, rev: 0
+  }));
+
+  // 1. Агрегуємо дані
+  data.forEach(item => {
+    const dateObj = new Date(item.date);
+    const day = dateObj.getDay(); // 0-6
+    const s = Number(item.spend) || 0;
+    const d = Number(item.deposits) || 0;
+    const r = Number(item.regs) || 0;
+    const g = (item.geo || "").toUpperCase().trim();
+    const o = (item.offer || "DEFAULT").toUpperCase().trim();
+
+    const payoutKey = `${g}_${o}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+
+    stats[day].s += s;
+    stats[day].r += r;
+    stats[day].d += d;
+    stats[day].rev += (d * payout);
+  });
+
+  // 2. Розраховуємо похідні метрики
+  const processed = stats.map(day => {
+    const roi = day.s > 0 ? Math.round(((day.rev - day.s) / day.s) * 100) : 0;
+    const cpa = day.d > 0 ? (day.s / day.d) : 0;
+    const cpl = day.r > 0 ? (day.s / day.r) : 0;
+    const r2d = day.r > 0 ? ((day.d / day.r) * 100).toFixed(1) : 0;
+    return { ...day, roi, cpa, cpl, r2d };
+  });
+
+  // 3. Знаходимо Min/Max для підсвітки ( Heatmap Logic )
+  const activeDays = processed.filter(d => d.s > 0);
+  const maxRoi = Math.max(...activeDays.map(d => d.roi), 1);
+  const minRoi = Math.min(...activeDays.map(d => d.roi), 0);
+  const maxCpa = Math.max(...activeDays.map(d => d.cpa), 1);
+  const minCpa = Math.min(...activeDays.map(d => d.cpa), 0);
+
+  // 4. Рендеримо рядки
+  body.innerHTML = processed.map(d => {
+    if (d.s === 0) return ''; // не показуємо дні без спенду
+
+    // Розрахунок інтенсивності кольору (ROI - зелений, CPA - червоний)
+    const roiWeight = maxRoi !== minRoi ? (d.roi - minRoi) / (maxRoi - minRoi) : 0.5;
+    const cpaWeight = maxCpa !== minCpa ? (d.cpa - minCpa) / (maxCpa - minCpa) : 0.5;
+
+    const roiBg = `rgba(16, 185, 129, ${0.05 + roiWeight * 0.3})`; // Emerald
+    const cpaBg = `rgba(239, 68, 68, ${0.05 + cpaWeight * 0.3})`; // Red
+
+    return `
+      <tr class="group text-[13px] font-bold text-slate-300">
+        <td class="p-3 text-white font-black border-l-4 border-emerald-500/20 bg-white/[0.02] rounded-l-xl">${d.name}</td>
+        <td class="p-3 text-right bg-white/[0.02]">$${Math.round(d.s).toLocaleString()}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-blue-400/80">${d.r}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-green-500/80">${d.d}</td>
+        <td class="p-3 text-right bg-white/[0.02] text-purple-400/80 font-mono">$${d.cpl.toFixed(1)}</td>
+        
+        <!-- CPA Heatmap -->
+        <td class="p-3 text-right font-mono transition-all" style="background-color: ${cpaBg}; color: ${d.cpa > 0 ? '#fb7185' : ''}">
+            $${d.cpa.toFixed(1)}
+        </td>
+        
+        <td class="p-3 text-center bg-white/[0.02] text-pink-500/80">${d.r2d}%</td>
+        
+        <!-- ROI Heatmap -->
+        <td class="p-3 text-right pr-5 rounded-r-xl font-black transition-all" style="background-color: ${roiBg}; color: ${d.roi >= 0 ? '#34d399' : '#f87171'}">
+            ${d.roi}%
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
   </script>
 </body>
