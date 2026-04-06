@@ -1158,28 +1158,40 @@ function switchTeam(teamName) {
 }
 
   function applyGlobalFilter() {
-  // Фільтруємо rawData по вибраному місяцю
+  // 1. Фільтруємо дані для кешу
   filteredDataCache = rawData.filter(d => d.date && d.date.startsWith(currentMonthFilter));
   
-  console.log(`📊 Рендеринг даних за ${currentMonthFilter} (${filteredDataCache.length} записів)`);
+  console.log(`📊 Глобальний фільтр: ${currentMonthFilter}`);
 
-  // Викликаємо всі функції рендеру
-  renderDashboard(filteredDataCache);
-  updateMilestones(filteredDataCache);
+  // 2. Розраховуємо дати для інпутів (Початок і Кінець місяця)
+  const [year, month] = currentMonthFilter.split('-');
+  const lastDay = new Date(year, month, 0).getDate(); // Визначаємо кількість днів у місяці
   
-  // Оновлюємо дати в інпутах налаштувань (AI, Графік, Таблиця)
   const start = `${currentMonthFilter}-01`;
-  const lastDay = new Date(currentMonthFilter.split('-')[0], currentMonthFilter.split('-')[1], 0).getDate();
-  const end = `${currentMonthFilter}-${lastDay}`;
-  
-  ['filter-from', 'chart-from', 'geo-filter-from', 'ai-from'].forEach(id => {
+  const end = `${currentMonthFilter}-${lastDay < 10 ? '0' + lastDay : lastDay}`;
+
+  // 3. Автоматично виставляємо дати в УСІ фільтри на сторінці
+  const fromInputs = ['filter-from', 'chart-from', 'geo-filter-from', 'ai-from', 'heat-from'];
+  const toInputs = ['filter-to', 'chart-to', 'geo-filter-to', 'ai-to', 'heat-to'];
+
+  fromInputs.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = start;
   });
-  ['filter-to', 'chart-to', 'geo-filter-to', 'ai-to'].forEach(id => {
+
+  toInputs.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = end;
   });
+
+  // 4. Запускаємо рендер усіх блоків
+  renderDashboard(filteredDataCache);
+  updateMilestones(filteredDataCache);
+  
+  // Окремо запускаємо теплову карту, щоб вона врахувала нові дати
+  if (typeof applyWeeklyFilter === 'function') {
+    applyWeeklyFilter();
+  }
 }
 
   // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
