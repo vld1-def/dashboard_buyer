@@ -316,6 +316,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   stroke: #3b82f6;
   stroke-width: 2;
 }
+   .heat-day-row { cursor: pointer; transition: background 0.2s; }
+.heat-day-row:hover { background: rgba(255, 255, 255, 0.05) !important; }
+.heat-geo-row { background: rgba(0, 0, 0, 0.3) !important; font-size: 11px !important; }
+.heat-geo-row td { opacity: 0.8; padding-top: 6px !important; padding-bottom: 6px !important; }
   </style>
 </head>
 <body class="py-6 px-4 md:px-6 font-sans antialiased text-dynamic">
@@ -2650,71 +2654,124 @@ function applyWeeklyFilter() {
   renderWeeklyHeatmap(filtered);
 }
 
-// 2. Рендер Heatmap (Неділя в кінці + логіка кольорів)
 function renderWeeklyHeatmap(data) {
   const body = document.getElementById('weekly-heatmap-body');
   if (!body) return;
 
   const daysUA = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "П'ятниця", "Субота"];
+  
+  // 1. Агрегуємо дані: День -> Метрики + ГЕО
   let stats = Array.from({ length: 7 }, (_, i) => ({
     dayIndex: i,
     name: daysUA[i],
-    s: 0, r: 0, d: 0, rev: 0
+    s: 0, r: 0, d: 0, rev: 0,
+    geos: {} // Тут буде статистика по ГЕО
   }));
 
-  // Агрегація
   data.forEach(item => {
     const day = new Date(item.date).getDay();
     const s = Number(item.spend) || 0;
     const d = Number(item.deposits) || 0;
     const r = Number(item.regs) || 0;
-    const payoutKey = `${(item.geo||"").toUpperCase()}_${(item.offer||"DEFAULT").toUpperCase()}`;
-    const payout = globalPayouts[payoutKey] || globalPayouts[`${(item.geo||"").toUpperCase()}_DEFAULT`] || 0;
+    const g = (item.geo || "??").toUpperCase().trim();
+    const o = (item.offer || "DEFAULT").toUpperCase().trim();
 
+    const payoutKey = `${g}_${o}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+    const revenue = (d * payout);
+
+    // Загальна статка дня
     stats[day].s += s;
     stats[day].r += r;
     stats[day].d += d;
-    stats[day].rev += (d * payout);
+    stats[day].rev += revenue;
+
+    // Статка по ГЕО всередині дня
+    if (!stats[day].geos[g]) stats[day].geos[g] = { s: 0, r: 0, d: 0, rev: 0 };
+    stats[day].geos[g].s += s;
+    stats[day].geos[g].r += r;
+    stats[day].geos[g].d += d;
+    stats[day].geos[g].rev += revenue;
   });
 
-  // ПЕРЕСТАВЛЯЄМО НЕДІЛЮ В КІНЕЦЬ (Пн-Нд)
-  // Зараз stats = [Нд, Пн, Вт, Ср, Чт, Пт, Сб]
-  const sunday = stats.shift(); // Вирізаємо Нд (індекс 0)
-  stats.push(sunday); // Додаємо Нд в кінець
+  // ПЕРЕСТАВЛЯЄМО НЕДІЛЮ В КІНЕЦЬ
+  const sunday = stats.shift();
+  stats.push(sunday);
 
-  const processed = stats.map(day => {
-    const roi = day.s > 0 ? Math.round(((day.rev - day.s) / day.s) * 100) : 0;
-    const cpa = day.d > 0 ? (day.s / day.d) : 0;
-    const cpl = day.r > 0 ? (day.s / day.r) : 0;
-    const r2d = day.r > 0 ? ((day.d / day.r) * 100).toFixed(1) : 0;
-    return { ...day, roi, cpa, cpl, r2d };
-  });
+  // Знаходимо межі для кольорів (Heatmap)
+  const activeDays = stats.filter(d => d.s > 0);
+  const maxRoi = activeDays.length ? Math.max(...activeDays.map(d => (d.rev - d.s) / (d.s || 1) * 100)) : 0;
+  const minRoi = activeDays.length ? Math.min(...activeDays.map(d => (d.rev - d.s) / (d.s || 1) * 100)) : 0;
+  const maxCpa = activeDays.length ? Math.max(...activeDays.map(d => d.d > 0 ? d.s / d.d : 0)) : 0;
+  const minCpa = activeDays.length ? Math.min(...activeDays.map(d => d.d > 0 ? d.s / d.d : 0)) : 0;
 
-  // Heatmap Color Bounds
-  const activeDays = processed.filter(d => d.s > 0);
-  const maxRoi = activeDays.length ? Math.max(...activeDays.map(d => d.roi)) : 0;
-  const minRoi = activeDays.length ? Math.min(...activeDays.map(d => d.roi)) : 0;
-  const maxCpa = activeDays.length ? Math.max(...activeDays.map(d => d.cpa)) : 0;
-  const minCpa = activeDays.length ? Math.min(...activeDays.map(d => d.cpa)) : 0;
+  body.innerHTML = stats.map(day => {
+    if (day.s === 0) return '';
 
-  body.innerHTML = processed.map(d => {
-    if (d.s === 0) return '';
-    
-    const roiW = maxRoi !== minRoi ? (d.roi - minRoi) / (maxRoi - minRoi) : 0.5;
-    const cpaW = maxCpa !== minCpa ? (d.cpa - minCpa) / (maxCpa - minCpa) : 0.5;
+    const dayRoi = day.s > 0 ? Math.round(((day.rev - day.s) / day.s) * 100) : 0;
+    const dayCpa = day.d > 0 ? (day.s / day.d) : 0;
+    const dayCpl = day.r > 0 ? (day.s / day.r) : 0;
+    const dayR2d = day.r > 0 ? ((day.d / day.r) * 100).toFixed(1) : 0;
+
+    // Кольори для дня
+    const roiW = maxRoi !== minRoi ? (dayRoi - minRoi) / (maxRoi - minRoi) : 0.5;
+    const cpaW = maxCpa !== minCpa ? (dayCpa - minCpa) / (maxCpa - minCpa) : 0.5;
+
+    // ГЕНЕРУЄМО РЯДКИ ГЕО
+    const geoRows = Object.entries(day.geos)
+      .sort((a, b) => b[1].s - a[1].s)
+      .map(([geoName, gStat]) => {
+        const gRoi = gStat.s > 0 ? Math.round(((gStat.rev - gStat.s) / gStat.s) * 100) : 0;
+        const gCpa = gStat.d > 0 ? (gStat.s / gStat.d) : 0;
+        const gCpl = gStat.r > 0 ? (gStat.s / gStat.r) : 0;
+        const gR2d = gStat.r > 0 ? ((gStat.d / gStat.r) * 100).toFixed(1) : 0;
+
+        return `
+          <tr class="heat-geo-details-${day.dayIndex} hidden heat-geo-row transition-all">
+            <td class="p-2 pl-10 text-blue-400 font-black uppercase">↳ ${geoName}</td>
+            <td class="p-2 text-right">$${Math.round(gStat.s).toLocaleString()}</td>
+            <td class="p-2 text-center">${gStat.r}</td>
+            <td class="p-2 text-center text-green-500/70">${gStat.d}</td>
+            <td class="p-2 text-right text-purple-400/70">$${gCpl.toFixed(1)}</td>
+            <td class="p-2 text-right font-mono">$${gCpa.toFixed(1)}</td>
+            <td class="p-2 text-center text-pink-500/70">${gR2d}%</td>
+            <td class="p-2 text-right pr-5 font-black ${gRoi >= 0 ? 'text-emerald-500' : 'text-red-500'}">${gRoi}%</td>
+          </tr>
+        `;
+      }).join('');
 
     return `
-      <tr class="text-[12px] font-bold">
-        <td class="p-3 text-white bg-white/[0.02] rounded-l-xl border-l-4 ${d.dayIndex === 0 || d.dayIndex === 6 ? 'border-orange-500/40' : 'border-emerald-500/20'}">${d.name}</td>
-        <td class="p-3 text-right bg-white/[0.02] text-slate-300 font-mono">$${Math.round(d.s).toLocaleString()}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-blue-400">${d.r}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-green-500 font-black">${d.d}</td>
-        <td class="p-3 text-right bg-white/[0.02] text-purple-400">$${d.cpl.toFixed(1)}</td>
-        <td class="p-3 text-right font-mono" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${d.cpa.toFixed(1)}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-pink-500">${d.r2d}%</td>
-        <td class="p-3 text-right pr-5 rounded-r-xl font-black" style="background-color: rgba(16, 185, 129, ${0.05 + roiW * 0.3}); color: ${d.roi >= 0 ? '#34d399' : '#f87171'}">${d.roi}%</td>
-      </tr>`;
+      <tr onclick="toggleDayHeatmap(${day.dayIndex})" class="heat-day-row text-[12px] font-bold border-b border-white/5">
+        <td class="p-3 text-white bg-white/[0.02] rounded-l-xl border-l-4 ${day.dayIndex === 0 || day.dayIndex === 6 ? 'border-orange-500' : 'border-emerald-500'}">
+          <span id="heat-arrow-${day.dayIndex}" class="inline-block mr-2 transition-transform">▶</span>${day.name}
+        </td>
+        <td class="p-3 text-right bg-white/[0.02] text-white font-black">$${Math.round(day.s).toLocaleString()}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-blue-400">${day.r}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-green-500">${day.d}</td>
+        <td class="p-3 text-right bg-white/[0.02] text-purple-400">$${day.cpl.toFixed(1)}</td>
+        <td class="p-3 text-right font-mono" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${day.cpa.toFixed(1)}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-pink-500">${day.r2d}%</td>
+        <td class="p-3 text-right pr-5 rounded-r-xl font-black" style="background-color: rgba(16, 185, 129, ${0.05 + roiW * 0.3}); color: ${dayRoi >= 0 ? '#34d399' : '#f87171'}">${dayRoi}%</td>
+      </tr>
+      ${geoRows}
+    `;
   }).join('');
+}
+
+// Функція перемикання ГЕО всередині дня
+function toggleDayHeatmap(dayIndex) {
+  const rows = document.querySelectorAll(`.heat-geo-details-${dayIndex}`);
+  const arrow = document.getElementById(`heat-arrow-${dayIndex}`);
+  
+  rows.forEach(row => {
+    row.classList.toggle('hidden');
+  });
+
+  if (arrow) {
+    const isHidden = rows[0].classList.contains('hidden');
+    arrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(90deg)';
+    arrow.style.color = isHidden ? '' : '#3b82f6';
+  }
 }
   </script>
 </body>
