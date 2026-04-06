@@ -2697,16 +2697,17 @@ function renderWeeklyHeatmap(data) {
   const sunday = stats.shift();
   stats.push(sunday);
 
-  // Heatmap Color Logic (Екстремуми)
+  // 2. Розрахунок лімітів для кольорів (Heatmap Logic)
   const activeDays = stats.filter(d => d.s > 0);
-  const rois = activeDays.map(d => (d.rev - d.s) / (d.s || 1) * 100);
+  const rois = activeDays.map(d => ((d.rev - d.s) / (d.s || 1)) * 100);
   const cpas = activeDays.map(d => d.d > 0 ? d.s / d.d : 0);
   
   const maxRoi = rois.length ? Math.max(...rois) : 0;
-  const minRoi = minRoi = rois.length ? Math.min(...rois) : 0;
+  const minRoi = rois.length ? Math.min(...rois) : 0; // ВИПРАВЛЕНО ТУТ
   const maxCpa = cpas.length ? Math.max(...cpas) : 0;
   const minCpa = cpas.length ? Math.min(...cpas) : 0;
 
+  // 3. Генерація HTML
   body.innerHTML = stats.map(day => {
     if (day.s === 0) return '';
 
@@ -2715,10 +2716,11 @@ function renderWeeklyHeatmap(data) {
     const dayCpl = day.r > 0 ? (day.s / day.r) : 0;
     const dayR2d = day.r > 0 ? ((day.d / day.r) * 100).toFixed(1) : 0;
 
+    // Розрахунок ваги кольору
     const roiW = maxRoi !== minRoi ? (dayRoi - minRoi) / (maxRoi - minRoi) : 0.5;
     const cpaW = maxCpa !== minCpa ? (dayCpa - minCpa) / (maxCpa - minCpa) : 0.5;
 
-    // ГЕНЕРУЄМО РЯДКИ ГЕО (ВИПРАВЛЕНО toFixed)
+    // Рядки ГЕО всередині дня
     const geoRows = Object.entries(day.geos)
       .sort((a, b) => b[1].s - a[1].s)
       .map(([geoName, gStat]) => {
@@ -2729,13 +2731,13 @@ function renderWeeklyHeatmap(data) {
 
         return `
           <tr class="heat-geo-details-${day.dayIndex} hidden heat-geo-row">
-            <td class="p-2 pl-10 text-blue-400 font-black">↳ ${geoName}</td>
-            <td class="p-2 text-right text-slate-400">$${Math.round(gStat.s).toLocaleString()}</td>
-            <td class="p-2 text-center text-slate-400">${gStat.r}</td>
-            <td class="p-2 text-center text-green-500/70">${gStat.d}</td>
-            <td class="p-2 text-right text-purple-400/70 font-mono">$${gCpl.toFixed(1)}</td>
-            <td class="p-2 text-right font-mono text-slate-400">$${gCpa.toFixed(1)}</td>
-            <td class="p-2 text-center text-pink-500/70">${gR2d}%</td>
+            <td class="p-2 pl-10 text-blue-400 font-black uppercase">↳ ${geoName}</td>
+            <td class="p-2 text-right text-slate-400 font-mono font-medium">$${Math.round(gStat.s).toLocaleString()}</td>
+            <td class="p-2 text-center text-slate-500 font-medium">${gStat.r}</td>
+            <td class="p-2 text-center text-green-500/60 font-medium">${gStat.d}</td>
+            <td class="p-2 text-right text-purple-400/60 font-mono font-medium">$${gCpl.toFixed(1)}</td>
+            <td class="p-2 text-right font-mono text-slate-500 font-medium">$${gCpa.toFixed(1)}</td>
+            <td class="p-2 text-center text-pink-500/60 font-medium">${gR2d}%</td>
             <td class="p-2 text-right pr-5 font-black ${gRoi >= 0 ? 'text-emerald-500' : 'text-red-500'}">${gRoi}%</td>
           </tr>
         `;
@@ -2746,13 +2748,13 @@ function renderWeeklyHeatmap(data) {
         <td class="p-3 text-white bg-white/[0.02] rounded-l-xl border-l-4 ${day.dayIndex === 0 || day.dayIndex === 6 ? 'border-orange-500' : 'border-emerald-500'}">
           <span id="heat-arrow-${day.dayIndex}" class="inline-block mr-2 transition-transform">▶</span>${day.name}
         </td>
-        <td class="p-3 text-right bg-white/[0.02] text-white font-black">$${Math.round(day.s).toLocaleString()}</td>
+        <td class="p-3 text-right bg-white/[0.02] text-white font-black font-mono">$${Math.round(day.s).toLocaleString()}</td>
         <td class="p-3 text-center bg-white/[0.02] text-blue-400">${day.r}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-green-500">${day.d}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-green-500 font-black">${day.d}</td>
         <td class="p-3 text-right bg-white/[0.02] text-purple-400 font-mono">$${dayCpl.toFixed(1)}</td>
-        <td class="p-3 text-right font-mono" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${dayCpa.toFixed(1)}</td>
-        <td class="p-3 text-center bg-white/[0.02] text-pink-500">${dayR2d}%</td>
-        <td class="p-3 text-right pr-5 rounded-r-xl font-black" style="background-color: rgba(16, 185, 129, ${0.05 + roiW * 0.3}); color: ${dayRoi >= 0 ? '#34d399' : '#f87171'}">${dayRoi}%</td>
+        <td class="p-3 text-right font-mono text-white" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${dayCpa.toFixed(1)}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-pink-500 font-mono">${dayR2d}%</td>
+        <td class="p-3 text-right pr-5 rounded-r-xl font-black font-mono" style="background-color: rgba(16, 185, 129, ${0.05 + roiW * 0.3}); color: ${dayRoi >= 0 ? '#34d399' : '#f87171'}">${dayRoi}%</td>
       </tr>
       ${geoRows}
     `;
