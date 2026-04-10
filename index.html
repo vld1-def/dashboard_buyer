@@ -1784,33 +1784,36 @@ async function addGeoPayout() {
   const g = document.getElementById('payout-geo').value.toUpperCase().trim();
   const v = document.getElementById('payout-value').value;
   
-  // Беремо значення як воно є (без toUpperCase)
+  // Оффер зберігаємо як ввели (без примусового uppercase)
   const oInput = document.getElementById('payout-offer').value.trim();
   const o = oInput || "DEFAULT"; 
 
   if (g && v) {
-    // Використовуємо .upsert замість .insert, щоб уникнути 409 Conflict
-    // Upsert оновить запис, якщо комбінація team_name + geo + offer вже існує
-    const { error } = await sb.from('payouts').upsert([
-      { 
+    console.log("Saving payout:", { team: currentTeam, geo: g, offer: o, val: v });
+
+    // Використовуємо upsert. 
+    // Якщо в базі вже є такий team_name + geo + offer — він оновить value.
+    const { error } = await sb.from('payouts').upsert({ 
         team_name: currentTeam, 
         geo: g, 
         offer: o, 
         value: Number(v) 
-      }
-    ], { 
-      onConflict: 'team_name, geo, offer' // Вказуємо базі, по яких полях перевіряти дублікати
-    });
+      }, { 
+        onConflict: 'team_name, geo, offer' 
+      });
 
-    if (!error) {
+    if (error) {
+      console.error("409 Conflict Fix Error:", error);
+      alert("Помилка: " + error.message);
+    } else {
+      // Очищуємо поля
       document.getElementById('payout-geo').value = '';
       document.getElementById('payout-offer').value = '';
       document.getElementById('payout-value').value = '';
-      refreshPayoutsFromSQL();
-      showStatus("Payout saved/updated");
-    } else {
-      console.error("Supabase Error 409 Fix:", error);
-      alert("Error: " + error.message);
+      
+      // Оновлюємо список
+      await refreshPayoutsFromSQL();
+      showStatus("Saved successfully");
     }
   }
 }
