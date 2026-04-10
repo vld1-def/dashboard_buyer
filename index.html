@@ -506,7 +506,7 @@ input[type="date"]::-webkit-datetime-edit-year-field {
         <p class="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-2">Payouts per GEO ($)</p>
         <div class="flex gap-1 mb-2">
           <input type="text" id="payout-geo" placeholder="UA" class="w-1/3 !px-2 uppercase text-[10px]">
-          <input type="text" id="payout-offer" placeholder="Offer" class="w-1/4 !px-2 uppercase" title="Offer Name">
+          <input type="text" id="payout-offer" placeholder="Offer" class="w-1/4 !px-2" title="Offer Name">
           <input type="number" id="payout-value" placeholder="25" class="w-1/2 !px-2 text-[10px]">
           <button onclick="addGeoPayout()" class="bg-blue-600 hover:bg-blue-500 px-2 rounded-lg text-[9px] font-black transition">ADD</button>
         </div>
@@ -1780,17 +1780,26 @@ async function refreshPayoutsFromSQL() {
 }
 
 
-  async function addGeoPayout() {
+async function addGeoPayout() {
   const g = document.getElementById('payout-geo').value.toUpperCase().trim();
-  const o = document.getElementById('payout-offer').value.toUpperCase().trim() || "DEFAULT"; // Оффер
   const v = document.getElementById('payout-value').value;
+  
+  // Беремо значення як воно є (без toUpperCase)
+  const oInput = document.getElementById('payout-offer').value.trim();
+  const o = oInput || "DEFAULT"; 
 
   if (g && v) {
-    const { error } = await sb.from('payouts').upsert({ 
-      team_name: currentTeam, 
-      geo: g, 
-      offer: o, // Твій новий стовпчик
-      value: v 
+    // Використовуємо .upsert замість .insert, щоб уникнути 409 Conflict
+    // Upsert оновить запис, якщо комбінація team_name + geo + offer вже існує
+    const { error } = await sb.from('payouts').upsert([
+      { 
+        team_name: currentTeam, 
+        geo: g, 
+        offer: o, 
+        value: Number(v) 
+      }
+    ], { 
+      onConflict: 'team_name, geo, offer' // Вказуємо базі, по яких полях перевіряти дублікати
     });
 
     if (!error) {
@@ -1798,6 +1807,10 @@ async function refreshPayoutsFromSQL() {
       document.getElementById('payout-offer').value = '';
       document.getElementById('payout-value').value = '';
       refreshPayoutsFromSQL();
+      showStatus("Payout saved/updated");
+    } else {
+      console.error("Supabase Error 409 Fix:", error);
+      alert("Error: " + error.message);
     }
   }
 }
