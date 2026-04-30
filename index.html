@@ -1,0 +1,3606 @@
+<!DOCTYPE html>
+<html class="dark" id="main-html">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="dark">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="icon" type="image/png" href="icon.png">
+ <style>
+    :root { 
+    --bg-color: #0f172a; 
+    --glass-bg: rgba(30, 41, 59, 0.7); 
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --text-main: #f1f5f9; 
+    --text-muted: #94a3b8; 
+      color-scheme: dark;
+  }
+  
+  .light { 
+    --bg-color: #f1f5f9; 
+    --glass-bg: rgba(255, 255, 255, 0.6); 
+    --glass-border: rgba(15, 23, 42, 0.08);
+    --text-main: #1e293b; 
+    --text-muted: #64748b; 
+  }
+  html.dark {
+  color-scheme: dark;
+  }
+  body { 
+    background-color: var(--bg-color); 
+    /* Додаємо легкий градієнт на фон, щоб скло "грало" */
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+    background-attachment: fixed;
+    color: var(--text-main); 
+    transition: all 0.3s ease; 
+  }
+
+  /* Ефект скла для карток */
+  .card { 
+    background: var(--glass-bg); 
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: 1px solid var(--glass-border); 
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+    border-radius: 1.5rem;
+  }
+    .text-dynamic { color: var(--text-main); }
+    .text-muted-dynamic { color: var(--text-muted); }
+    /* Стилізація скролбару під скло */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { 
+    background: rgba(59, 130, 246, 0.5); 
+    border-radius: 10px; 
+    backdrop-filter: blur(4px);
+  }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    select { background-color: transparent; color: inherit; outline: none; }
+    select option { background-color: #1e293b; color: #f1f5f9; }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+    /* АНІМАЦІЇ ДЛЯ ІКОНОК ЗБЕРЕЖЕННЯ */
+    .status-icon { transition: all 0.3s ease; opacity: 0; display: flex; align-items: center; justify-content: center; }
+    .status-icon.show { opacity: 1; }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .animate-spin-status { animation: spin 1s linear infinite; }
+    
+    @keyframes popCheck { 0% { transform: scale(0); opacity: 0; } 70% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
+    .animate-pop-check { animation: popCheck 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+     /* Milestone Progress - ефект рідини */
+  #milestone-fill { 
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); 
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+    position: relative;
+  }
+    #milestone-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(rgba(255,255,255,0.2), transparent);
+  }
+     /* Ефект скла для модалок */
+  .modal-overlay { 
+    background: rgba(0, 0, 0, 0.4); 
+    backdrop-filter: blur(8px); 
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+    /* СТИЛІ ДЛЯ СТАТУСІВ ТАСКІВ */
+    .badge-completed { background-color: #10b981 !important; color: white !important; }
+    .badge-in-progress { background-color: #f59e0b !important; color: white !important; }
+    .badge-not-in-progress { background-color: #64748b !important; color: white !important; }
+
+    /* Анімація для контейнерів графіка та гео */
+    #chart-main-col {
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #geo-sidebar-col {
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      max-width: 500px; /* Обмежуємо макс ширину для плавності */
+      opacity: 1;
+    }
+     /* Анімація для контейнерів графіка та гео */
+  #chart-main-col, #geo-sidebar-col {
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+    .creo-tag {
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 2px 8px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #60a5fa;
+}
+.creo-tag button { color: #f87171; font-size: 12px; }
+.test-card {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  transition: all 0.3s;
+}
+.test-card:hover { border-color: rgba(99, 102, 241, 0.4); background: rgba(255,255,255,0.04); }
+
+     /* Смарт-блоки у звітах - робимо їх більш "скляними" */
+  .report-block {
+    margin-top: 4px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    border-left: 3px solid transparent;
+    backdrop-filter: brightness(1.1);
+  }
+  .rb-success { background: rgba(16, 185, 129, 0.15); border-left-color: #10b981; }
+  .rb-danger { background: rgba(239, 68, 68, 0.15); border-left-color: #ef4444; }
+  .rb-warning { background: rgba(245, 158, 11, 0.15); border-left-color: #f59e0b; }
+  .rb-plan { background: rgba(59, 130, 246, 0.15); border-left-color: #3b82f6; }
+.rb-normal { padding: 4px 0; color: inherit; }
+
+    /* Стан, коли ГЕО приховано */
+  #geo-sidebar-col.collapsed {
+    max-width: 0;
+    opacity: 0;
+    margin-left: -2rem;
+    padding: 0;
+    border: none;
+    pointer-events: none;
+  }
+    #report-list-container span[id^="report-arrow-"] {
+  display: inline-block;
+  transition: transform 0.2s ease-in-out;
+}
+/* Прибираємо примусовий uppercase для тасків */
+.task-text-style {
+  text-transform: none !important;
+  font-weight: 500;
+}
+
+/* Кольори пріоритетів */
+.prio-high { border-left: 4px solid #ef4444 !important; background: rgba(239, 68, 68, 0.05); }
+.prio-medium { border-left: 4px solid #eab308 !important; background: rgba(234, 179, 8, 0.05); }
+.prio-low { border-left: 4px solid #64748b !important; background: rgba(100, 116, 139, 0.05); }
+
+/* Плавні таби */
+.task-tab {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-bottom: 2px solid transparent;
+}
+.task-tab.active {
+  border-bottom-color: #3b82f6;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+.cid-breakdown-table {
+  width: 100%;
+  margin-top: 15px;
+  border-radius: 15px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.cid-breakdown-table th {
+  padding: 8px;
+  font-size: 9px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.3);
+  text-align: left;
+  background: rgba(255,255,255,0.02);
+}
+.cid-breakdown-table td {
+  padding: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-top: 1px solid rgba(255,255,255,0.03);
+}
+ /* Inputs & Selects - стиль скла */
+  input, select, textarea {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(4px);
+  }
+   .group:hover .absolute {
+    z-index: 100 !important; /* Гарантуємо, що вікно буде над графіком */
+    pointer-events: auto;
+  }
+   /* СТИЛІЗАЦІЯ ІНПУТІВ ТА КАЛЕНДАРІВ */
+  input[type="date"], input[type="number"], input[type="text"], select, textarea {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 8px 12px;
+    color: white;
+    transition: all 0.3s ease;
+    outline: none !important;
+  }
+
+  input[type="date"]:focus, input[type="text"]:focus {
+    border-color: rgba(59, 130, 246, 0.5) !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+  }
+
+  /* Стилізація іконки календаря */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(100%) sepia(100%) saturate(1000%) hue-rotate(180deg);
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+  }
+  
+  input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
+  /* ЕФЕКТ СКЛА ДЛЯ КАРТОК (Refined) */
+  .card { 
+    background: rgba(30, 41, 59, 0.4); 
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08); 
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Додаємо легке світіння зверху для кожної картки */
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    pointer-events: none;
+  }
+
+  /* Тултіп (Спливаюче вікно агентств) */
+  #spend-breakdown-list-container {
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  /* Піднімаємо всю картку над графіком при наведенні */
+.group:hover {
+  z-index: 50 !important;
+}
+
+/* Оновлений стиль тултіпа для ефекту скла */
+#spend-breakdown-list-container {
+  background: rgba(15, 23, 42, 0.85) !important; /* Трохи темніше для читабельності */
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  pointer-events: none; /* Щоб тултіп не заважав клікам, якщо він перекриває щось */
+}
+
+/* Гарантуємо, що контейнери графіків не мають занадто високого z-index за замовчуванням */
+#chart-main-col, #geo-sidebar-col {
+  position: relative;
+  z-index: 1;
+}
+
+/* Твік для інпутів, щоб календар був чітким на склі */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.5);
+  margin-right: 5px;
+}
+   /* Анімація лінії завантаження зверху */
+#top-loader {
+  position: fixed;
+  top: 0; left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+  z-index: 1000;
+  transition: width 0.3s ease;
+}
+
+/* Стиль для активного місяця у списку */
+.month-item-active {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: #60a5fa !important;
+  border-left: 3px solid #3b82f6;
+}
+   .cid-detail-row {
+  background: rgba(0, 0, 0, 0.15);
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.1);
+}
+.spark-line-path {
+  fill: none;
+  stroke: #3b82f6;
+  stroke-width: 2;
+}
+   .heat-day-row { cursor: pointer; transition: background 0.2s; }
+.heat-day-row:hover { background: rgba(255, 255, 255, 0.05) !important; }
+.heat-geo-row { background: rgba(0, 0, 0, 0.3) !important; font-size: 11px !important; }
+.heat-geo-row td { opacity: 0.8; padding-top: 6px !important; padding-bottom: 6px !important; }
+   /* Універсальна стилізація календарів */
+input[type="date"] {
+  position: relative;
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(15px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(15px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #f1f5f9 !important;
+  border-radius: 0.75rem;
+  padding: 8px 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 0.8rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Ефект при наведенні та фокусі */
+input[type="date"]:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+input[type="date"]:focus {
+  border-color: rgba(59, 130, 246, 0.6) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+/* Стилізація іконки календаря (перетворюємо її на синю) */
+::-webkit-calendar-picker-indicator {
+  filter: invert(45%) sepia(95%) saturate(1400%) hue-rotate(195deg) brightness(100%) contrast(105%);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  margin-right: -2px;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  background: rgba(59, 130, 246, 0.15);
+  transform: scale(1.1);
+}
+
+/* Спеціальний фікс для темних браузерів: робимо текст вибору чітким */
+input[type="date"]::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+}
+
+input[type="date"]::-webkit-datetime-edit-text {
+  color: rgba(255, 255, 255, 0.3);
+  padding: 0 2px;
+}
+
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field {
+  color: #f1f5f9;
+  text-transform: uppercase;
+}
+
+/* ===== REPORT IMAGES ===== */
+.img-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #a5b4fc;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  position: relative;
+}
+.img-tag:hover {
+  background: rgba(99, 102, 241, 0.35);
+  border-color: rgba(99, 102, 241, 0.7);
+}
+
+#img-preview-tooltip {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  backdrop-filter: blur(16px);
+  max-width: 340px;
+}
+#img-preview-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+#img-preview-tooltip img {
+  max-width: 320px;
+  max-height: 240px;
+  border-radius: 8px;
+  object-fit: contain;
+  display: block;
+}
+#img-preview-tooltip .img-tip-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #a5b4fc;
+  text-align: center;
+  margin-top: 5px;
+  letter-spacing: 0.05em;
+}
+
+.report-img-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.report-img-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.25);
+  border-radius: 8px;
+  padding: 3px 10px 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a5b4fc;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.report-img-chip:hover { background: rgba(99,102,241,0.25); }
+.report-img-chip .chip-del { color: #f87171; font-size: 13px; margin-left: 2px; }
+.report-img-chip .chip-del:hover { color: #ef4444; }
+/* ===== END REPORT IMAGES ===== */
+
+/* ===== QUICK LINKS ===== */
+.ql-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-decoration: none;
+  color: var(--text-main);
+}
+.ql-item:hover { background: rgba(255,255,255,0.06); }
+.ql-item img { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; }
+.ql-item .ql-name { font-size: 12px; font-weight: 700; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ql-item .ql-del { color: #f87171; opacity: 0; font-size: 13px; transition: opacity 0.15s; }
+.ql-item:hover .ql-del { opacity: 1; }
+
+/* ===== CHANGE LOG ===== */
+.cl-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cl-budget  { background: rgba(16,185,129,0.18); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+.cl-account { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.cl-creative{ background: rgba(139,92,246,0.18); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.3); }
+.cl-funnel  { background: rgba(59,130,246,0.18); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
+.cl-other   { background: rgba(100,116,139,0.18);color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+
+.cl-day-group { border-left: 2px solid rgba(255,255,255,0.06); padding-left: 14px; margin-left: 6px; }
+.cl-entry {
+  position: relative;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.15s;
+}
+.cl-entry:hover { background: rgba(255,255,255,0.04); }
+.cl-entry::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(100,116,139,0.5);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.img-count-badge {
+  background: rgba(99,102,241,0.15);
+  border: 1px solid rgba(99,102,241,0.25);
+  color: #a5b4fc;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+.img-tag-empty {
+  opacity: 0.45;
+  border-style: dashed !important;
+  cursor: default;
+}
+/* ===== END CHANGE LOG ===== */
+
+/* ===== MOBILE ===== */
+@media (max-width: 768px) {
+  body { padding: 12px 10px !important; }
+
+  /* KPI cards — компактніші */
+  #kpi-spend, #kpi-regs, #kpi-deposits,
+  #kpi-cpl, #kpi-cpa, #kpi-r2d, #kpi-profit { font-size: 22px !important; }
+
+  /* Geo sidebar — обмежена висота щоб не займала екран */
+  #geo-sidebar-col { max-height: 360px; }
+  #geo-list { max-height: 260px !important; }
+
+  /* Creative sidebar — менша висота */
+  #creative-list-sidebar { max-height: 260px !important; }
+
+  /* Creative stats — повна ширина */
+  #creative-stats-card { border-radius: 1.5rem !important; }
+
+  /* Milestone bar — менший padding */
+  #milestone-container { padding: 0 !important; }
+
+  /* AI section textarea */
+  #ai-response { min-height: 120px; }
+
+  /* Модалки — full screen на мобільному */
+  #report-modal .card,
+  #changelog-modal .card,
+  #task-modal .card {
+    max-height: 95vh;
+    border-radius: 1.5rem !important;
+  }
+
+  /* GEO details modal — ширший */
+  #geo-details-modal .card { border-radius: 1.25rem !important; }
+
+  /* Weekly heatmap — приховуємо менш важливі колонки */
+  .heat-col-hide { display: none; }
+
+  /* Live table — зменшуємо padding клітинок */
+  #live-table-section td,
+  #live-table-section th { padding: 6px 8px !important; font-size: 10px !important; }
+
+  /* Screenshot modal */
+  #screenshot-modal .card { border-radius: 1.5rem !important; }
+
+  /* Кнопки навбару — зменшуємо трохи */
+  header button.p-2 { padding: 7px !important; }
+}
+
+@media (max-width: 480px) {
+  /* Дуже маленькі екрани — приховуємо текст у team/month кнопках */
+  #current-month-label { display: none !important; }
+  #active-team-label { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+}
+/* ===== END MOBILE ===== */
+  </style>
+</head>
+<body class="py-6 px-4 md:px-6 font-sans antialiased text-dynamic">
+
+  <script>
+    function formatCurrency(n) { return '$' + Number(n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+    
+    // Функція для копіювання ID
+    function copyID(e, text) {
+      e.stopPropagation(); // Зупиняємо вибір креатива при натисканні на кнопку копіювання
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = e.currentTarget;
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '✅';
+        btn.classList.add('text-green-500');
+        setTimeout(() => {
+          btn.innerHTML = originalHTML;
+          btn.classList.remove('text-green-500');
+        }, 1000);
+      });
+    }
+    
+  </script>
+<div id="top-loader" style="width: 0%;"></div>
+  <div class="max-w-[1850px] mx-auto">
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-black uppercase tracking-tight">Стата Джуна <span class="text-blue-500 text-lg md:text-xl">v14.12</span></h1>
+        <div class="flex items-center gap-3 mt-1 text-muted-dynamic">
+          <p id="header-month-display" class="text-xs font-medium uppercase tracking-widest font-bold text-muted-dynamic">Завантаження...</p>
+          <div class="h-1 w-1 bg-gray-500 rounded-full"></div>
+          <p id="last-sync-badge" class="text-[10px] font-black text-orange-500 uppercase tracking-tighter italic">Sync: Loading...</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+
+  <!-- БЛОК КОМАНДИ -->
+  <div class="relative">
+    <button onclick="event.stopPropagation(); toggleTeamMenu()" class="p-2 px-4 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition flex items-center gap-2 border border-emerald-500/30">
+      <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
+      <span id="active-team-label" class="text-[10px] font-black uppercase tracking-widest">TEAM: LOADING</span>
+    </button>
+    
+    <div id="team-menu" class="hidden absolute left-0 mt-2 w-56 card rounded-2xl shadow-2xl z-[110] p-2 border border-white/10 backdrop-blur-xl">
+      <p class="text-[9px] font-black uppercase opacity-40 p-2 tracking-[0.2em]">Switch Workplace</p>
+      <div id="team-list" class="space-y-1 max-h-48 overflow-y-auto custom-scrollbar"></div>
+    </div>
+  </div>
+
+  <!-- БЛОК МІСЯЦЯ -->
+  <div class="relative">
+    <button onclick="event.stopPropagation(); toggleMonthMenu()" class="p-2 px-4 card rounded-xl shadow-md text-blue-400 hover:bg-gray-500/10 transition flex items-center gap-2 border border-blue-500/10" title="Select Month">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+      <span id="current-month-label" class="text-[10px] font-black uppercase tracking-widest hidden md:inline">Loading...</span>
+    </button>
+    
+    <div id="month-menu" class="hidden absolute right-0 mt-2 w-48 card rounded-2xl shadow-2xl z-[100] p-2 border border-white/10 backdrop-blur-xl overflow-hidden">
+      <p class="text-[9px] font-black uppercase opacity-40 p-2 tracking-[0.2em]">Select Month</p>
+      <div id="month-list" class="space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+        <!-- Сюди JS вставить місяці -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ІНШІ КНОПКИ (Screenshot, Reports, Tasks...) -->
+  <button onclick="openScreenshotModal()" class="p-2 card rounded-xl shadow-md text-green-500 hover:bg-gray-500/10 transition" title="Share Card"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></button>
+  <button onclick="toggleReportModal()" class="p-2 card rounded-xl shadow-md text-blue-400 hover:bg-gray-500/10 transition" title="Reports"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></button>
+  <button onclick="toggleTaskModal()" class="p-2 card rounded-xl shadow-md text-purple-500 hover:bg-gray-500/10 transition relative" title="Tasks"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg><span id="task-dot" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span></button>
+
+  <!-- Change Log button -->
+  <button onclick="toggleChangeLogModal()" class="p-2 card rounded-xl shadow-md text-teal-400 hover:bg-gray-500/10 transition" title="Change Log">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+  </button>
+
+  <!-- Quick Links button -->
+  <div class="relative">
+    <button onclick="event.stopPropagation(); toggleLinksMenu()" class="p-2 card rounded-xl shadow-md text-amber-400 hover:bg-gray-500/10 transition" title="Quick Links">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>
+    </button>
+    <div id="links-menu" class="hidden absolute right-0 mt-2 w-72 card rounded-2xl shadow-2xl z-[100] p-3 border border-white/10 backdrop-blur-xl" onclick="event.stopPropagation()">
+      <p class="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-3 border-b border-white/5 pb-2">Quick Links</p>
+      <div id="ql-list" class="space-y-0.5 max-h-64 overflow-y-auto custom-scrollbar mb-3"></div>
+      <div class="border-t border-white/5 pt-3 flex flex-col gap-2">
+        <input type="text" id="ql-name" placeholder="Name (e.g. FB Cabinet)" class="w-full !text-xs !py-2">
+        <input type="url" id="ql-url" placeholder="https://..." class="w-full !text-xs !py-2">
+        <button onclick="addQuickLink()" class="bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-[10px] font-black uppercase tracking-wider py-2 rounded-xl transition">+ Add Link</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="relative">
+      <button onclick="event.stopPropagation(); toggleSettingsMenu()" class="p-2 card rounded-xl shadow-md text-gray-400 hover:bg-gray-500/10 transition" title="Settings">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+          <path stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        </svg>
+      </button>
+    <div id="settings-menu" class="hidden absolute right-0 mt-2 w-64 card rounded-2xl shadow-2xl z-[100] p-4 border border-white/10 backdrop-blur-xl">
+        <p class="text-[11px] font-black uppercase tracking-widest text-blue-500 mb-4 border-b border-white/5 pb-2">Налаштування віджетів</p>
+    
+    <div class="space-y-4">
+      <!-- Перемикачі видимості -->
+      <div class="space-y-2">
+        <label class="flex items-center justify-between cursor-pointer group">
+          <span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Geo Performance</span>
+          <input type="checkbox" id="toggle-geo" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600">
+        </label>
+        <label class="flex items-center justify-between cursor-pointer group">
+        <span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Weekly Analysis</span>
+        <input type="checkbox" id="toggle-heatmap" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600">
+      </label>
+        <label class="flex items-center justify-between cursor-pointer group">
+          <span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Creative Analyzer</span>
+          <input type="checkbox" id="toggle-creatives" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600">
+        </label>
+        <label class="flex items-center justify-between cursor-pointer group">
+          <span class="text-xs font-bold text-slate-300 group-hover:text-white transition">AI Intelligence</span>
+          <input type="checkbox" id="toggle-ai" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-0 focus:ring-offset-0">
+        </label>
+        <label class="flex items-center justify-between cursor-pointer group">
+          <span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Live Data Feed</span>
+          <input type="checkbox" id="toggle-table" checked onchange="updateVisibility()" class="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600">
+        </label>
+      </div>
+
+      <!-- Ціль на місяць -->
+      <div class="pt-2 border-t border-white/5">
+        <p class="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-2">Ціль на місяць ($)</p>
+        <input type="number" id="target-input" oninput="updateTarget()" 
+              class="w-full bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-blue-500 text-white" 
+              placeholder="40000">
+      </div>
+
+      <!-- Виплати -->
+      <div class="pt-2 border-t border-white/5">
+        <p class="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-2">Payouts per GEO ($)</p>
+        <div class="flex gap-1 mb-2">
+          <input type="text" id="payout-geo" placeholder="UA" class="w-1/3 !px-2 uppercase text-[10px]">
+          <input type="text" id="payout-offer" placeholder="Offer" class="w-1/4 !px-2" title="Offer Name">
+          <input type="number" id="payout-value" placeholder="25" class="w-1/2 !px-2 text-[10px]">
+          <button onclick="addGeoPayout()" class="bg-blue-600 hover:bg-blue-500 px-2 rounded-lg text-[9px] font-black transition">ADD</button>
+        </div>
+        <div id="geo-payouts-list" class="space-y-1 max-h-32 overflow-y-auto custom-scrollbar"></div>
+      </div>
+    </div>
+    </div>
+  </div>
+  
+<a href="Form.html" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl font-bold text-sm transition shadow-lg uppercase tracking-tight">+ Add Data</a>
+</div>
+    </header>
+
+    <!-- Monthly Tracker (Повна ширина, тонка смужка) -->
+<div id="milestone-container" class="mb-8 px-2 w-full">
+  <div class="flex justify-between items-end mb-2 text-dynamic">
+    <div>
+      <span class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 opacity-80">Monthly Spend Target</span>
+      <h3 id="monthly-spend-label" class="text-lg font-black tracking-tighter leading-none">$0 / $40,000</h3>
+    </div>
+    <div class="text-right">
+      <span id="next-rank-info" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">Left: $40,000</span>
+    </div>
+  </div>
+  
+  <!-- Тонка полоса h-1.5 на всю ширину контейнера -->
+  <div class="relative w-full h-1.5 bg-slate-800/60 rounded-full overflow-hidden border border-white/5">
+    <div id="milestone-fill" class="h-full w-0 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(59,130,246,0.3)]" 
+         style="background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);"></div>
+  </div>
+</div>
+
+    <div id="loader" class="flex flex-col items-center py-32 text-muted-dynamic font-bold uppercase text-[10px] tracking-[0.3em]"><div class="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>Intel Loading...</div>
+
+    <div id="dashboard-content" class="hidden space-y-8">
+      
+      <!-- KPI Row -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
+        <div class="card p-4 rounded-2xl border-l-4 border-l-blue-500 shadow-sm min-h-[100px] flex flex-col justify-center relative group cursor-help">
+          <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">Total Spend</p>
+          <p id="kpi-spend" class="text-[26px] font-black mt-1">$0.00</p>
+          <p id="kpi-comm" class="text-[12px] font-bold text-blue-400 mt-1 uppercase tracking-tighter">+$0.00 fees</p>
+          
+          <!-- Спливаюче вікно при наведенні -->
+          <div class="absolute top-full left-0 mt-2 w-64 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl p-4 z-[100] opacity-0 pointer-events-none group-hover:opacity-100 transition-all transform origin-top scale-95 group-hover:scale-100 backdrop-blur-xl">
+            <p class="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-3 border-b border-white/5 pb-2">Spend by Agency</p>
+            <div id="spend-breakdown-list" class="space-y-2">
+              <!-- Сюди JS вставить дані -->
+            </div>
+          </div>
+        </div>
+        <div class="card p-4 rounded-2xl border-l-4 border-l-blue-400 shadow-sm min-h-[100px] flex flex-col justify-center"><p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-muted-dynamic text-xs">Total Regs</p><p id="kpi-regs" class="text-[26px] font-black mt-1">0</p><div class="h-[12px]"></div></div>
+        <div class="card p-4 rounded-2xl border-l-4 border-l-green-500 shadow-sm min-h-[100px] flex flex-col justify-center"><p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-muted-dynamic text-xs">Total Deposits</p><p id="kpi-deposits" class="text-[26px] font-black mt-1">0</p><div class="h-[12px]"></div></div>
+       <div class="card p-4 rounded-2xl border-l-4 border-l-purple-500 shadow-sm min-h-[100px] flex flex-col justify-center">
+  <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">CPL (Per Reg)</p>
+  <div class="flex items-center gap-1 mt-1">
+    <p id="kpi-cpl" class="text-[26px] font-black">$0.00</p>
+    <span id="delta-cpl" class="text-[12px] font-bold whitespace-nowrap"></span>
+  </div>
+  <div class="h-[12px]"></div>
+</div>
+
+        <!-- CPA -->
+<div class="card p-4 rounded-2xl border-l-4 border-l-yellow-500 shadow-sm min-h-[100px] flex flex-col justify-center">
+  <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">CPA (Per Dep)</p>
+  <div class="flex items-center gap-1 mt-1">
+    <p id="kpi-cpa" class="text-[26px] font-black">$0.00</p>
+    <span id="delta-cpa" class="text-[12px] font-bold whitespace-nowrap"></span>
+  </div>
+  <div class="h-[12px]"></div>
+</div>
+         <!-- R2D -->
+<div class="card p-4 rounded-2xl border-l-4 border-l-pink-500 shadow-sm min-h-[100px] flex flex-col justify-center">
+  <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">Conversion (R2D)</p>
+  <div class="flex items-center gap-1 mt-1">
+    <p id="kpi-r2d" class="text-[26px] font-black">0%</p>
+    <span id="delta-r2d" class="text-[14px] font-bold whitespace-nowrap"></span>
+  </div>
+  <p id="r2d-status" class="text-[10px] font-bold mt-1 uppercase text-gray-500 tracking-tighter">No data</p>
+</div>
+ <!-- НОВА КАРТКА 7: PROFIT -->
+  <div class="card p-4 rounded-2xl border-l-4 border-l-emerald-500 shadow-sm min-h-[100px] flex flex-col justify-center">
+    <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">Net Profit</p>
+    <p id="kpi-profit" class="text-[26px] font-black mt-1 text-emerald-400">$0.00</p>
+    <div id="kpi-roi" class="text-[10px] font-bold mt-1 uppercase text-gray-500 tracking-tighter">ROI: 0%</div>
+  </div>
+      </div>
+
+      <!-- Charts area -->
+      <!-- Charts area -->
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-8 overflow-hidden">
+  
+  <!-- Блок графіка -->
+  <div id="chart-main-col" class="card p-4 rounded-3xl lg:col-span-3 shadow-md transition-all duration-500 ease-in-out">
+     <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6 text-dynamic">
+        <h2 id="chart-title" class="font-black text-xl uppercase tracking-tight">Performance Trend</h2>
+        <div class="flex flex-wrap items-center gap-3 text-dynamic">
+           <div class="flex items-center gap-2 bg-gray-500/10 p-1 rounded-xl border border-gray-500/10 text-[10px] font-bold">
+             <input type="date" id="chart-from" class="bg-transparent outline-none">
+             <span class="opacity-20 text-dynamic">/</span>
+             <input type="date" id="chart-to" class="bg-transparent outline-none">
+             <button onclick="applyChartFilter()" class="bg-blue-600/20 hover:bg-blue-600 text-blue-500 hover:text-white px-3 py-1 rounded-lg transition-all uppercase tracking-widest border border-blue-500/20 font-black">OK</button>
+           </div>
+           <div class="flex bg-gray-500/10 p-1 rounded-xl border border-gray-500/10">
+             <button id="btn-daily" onclick="changeChartMode('daily')" class="px-4 py-1.5 rounded-lg text-xs font-black transition-all bg-blue-600 text-white shadow-lg uppercase">Daily</button>
+             <button id="btn-geo" onclick="changeChartMode('geo')" class="px-4 py-1.5 rounded-lg text-xs font-black transition-all text-muted-dynamic hover:text-blue-400 uppercase">Geo</button>
+           </div>
+        </div>
+     </div>
+     <div class="h-[300px] md:h-[520px] w-full relative"><canvas id="chart-trend"></canvas></div>
+  </div>
+
+  <!-- Блок GEO -->
+  <div id="geo-sidebar-col" class="card p-6 rounded-3xl lg:col-span-1 shadow-md flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
+    <div class="mb-6 border-b border-gray-500/10 pb-4">
+      <h2 class="font-black text-lg text-blue-500 uppercase tracking-tight mb-3">Geo Performance</h2>
+      <div class="flex flex-col gap-2 text-[10px] font-bold">
+        <div class="flex items-center gap-2 bg-gray-500/5 p-2 rounded-xl border border-gray-500/10 text-dynamic">
+          <input type="date" id="geo-filter-from" class="bg-transparent outline-none w-full">
+          <input type="date" id="geo-filter-to" class="bg-transparent outline-none w-full">
+        </div>
+        <button onclick="applyGeoFilter()" class="w-full bg-blue-600 hover:bg-blue-600 text-white transition-all py-2 rounded-xl uppercase tracking-widest shadow-lg font-black">Filter Geo</button>
+      </div>
+    </div>
+    <div class="space-y-3 overflow-y-auto flex-grow max-h-[395px] pr-2 custom-scrollbar text-dynamic" id="geo-list"></div>
+  </div>
+</div>
+<!-- Weekly Heatmap Analysis -->
+<!-- Weekly Heatmap Analysis -->
+<div id="weekly-analysis-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-emerald-500 mb-8 overflow-hidden">
+  <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-6">
+    <div>
+      <h2 class="text-xl font-black uppercase tracking-tight text-white italic">Weekly Performance Heatmap</h2>
+      <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Efficiency analysis by day of week</p>
+    </div>
+
+    <!-- Фільтри Heatmap -->
+    <div class="flex flex-wrap items-center gap-3 bg-black/20 p-2 rounded-2xl border border-white/5">
+      <div class="flex items-center gap-2 px-2 border-r border-white/10">
+        <input type="date" id="heat-from" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
+        <span class="opacity-20 text-[9px]">/</span>
+        <input type="date" id="heat-to" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
+      </div>
+      <select id="heat-geo" onchange="applyWeeklyFilter()" class="bg-transparent outline-none text-[10px] font-black uppercase text-blue-400 min-w-[100px] cursor-pointer">
+        <option value="">ALL GEO</option>
+      </select>
+      <button onclick="applyWeeklyFilter()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-xl text-[10px] font-black transition-all uppercase">Apply</button>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-left border-separate border-spacing-y-1">
+      <thead>
+        <tr class="text-[10px] font-black uppercase text-slate-500">
+          <th class="p-3">Day of Week</th>
+          <th class="p-3 text-right">Spend</th>
+          <th class="p-3 text-center">Regs</th>
+          <th class="p-3 text-center text-green-500">Deps</th>
+          <th class="p-3 text-right">CPL</th>
+          <th class="p-3 text-right">CPA</th>
+          <th class="p-3 text-center">R2D</th>
+          <th class="p-3 text-right pr-5">ROI %</th>
+        </tr>
+      </thead>
+      <tbody id="weekly-heatmap-body"></tbody>
+    </table>
+  </div>
+</div>
+      <!-- Creative Analyzer -->
+      <div id="creative-analyzer-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-blue-500">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+          <div><h2 class="text-xl font-black uppercase tracking-tight text-dynamic">Creative Analyzer</h2><p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest tracking-tight font-black">Full Funnel Tracking</p></div>
+           <div class="flex items-center gap-2 w-full md:w-auto">
+            <!-- Додано фільтр ГЕО -->
+              <select id="creative-geo-filter" onchange="searchCreative()" class="bg-gray-500/10 border border-gray-500/20 rounded-2xl px-4 py-3 text-xs font-bold uppercase outline-none focus:border-blue-500 text-dynamic min-w-[120px]">
+                <option value="">All Geo</option>
+              </select>
+              <div class="relative w-full md:w-96 text-dynamic"><input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID..." class="w-full bg-gray-500/10 border border-gray-500/20 rounded-2xl px-5 py-3 text-sm outline-none focus:border-blue-500 font-bold uppercase tracking-tight text-dynamic"></div>
+          </div>
+        </div>
+        <div id="creative-result-area" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+  <!-- Колонна 1: Список креативів (col-span-3) -->
+  <div class="lg:col-span-3 bg-gray-500/5 p-4 rounded-3xl border border-gray-500/10 flex flex-col min-h-[500px]">
+     <p class="text-[9px] font-black text-muted-dynamic uppercase mb-3 opacity-50">Креативи:</p>
+     <div id="creative-list-sidebar" class="space-y-2 overflow-y-auto max-h-[450px] pr-1 custom-scrollbar"></div>
+  </div>
+
+  <!-- Колонна 2: Total Stats (col-span-9) -->
+  <!-- Колонна 2: Total Stats (col-span-9) -->
+<div id="creative-stats-card" class="lg:col-span-9 bg-blue-600/5 p-6 rounded-[2.5rem] border border-blue-500/10 hidden flex flex-col">
+  <div class="flex justify-between items-center mb-6">
+    <span id="stats-scope-label" class="text-base font-black text-blue-400 uppercase tracking-widest text-white">Total Stats Analysis</span>
+    <button onclick="resetCreativeScope()" class="text-[10px] font-black bg-white/5 px-3 py-1.5 rounded-xl uppercase hover:bg-white/10 transition border border-white/5 text-white">Reset Filter</button>
+  </div>
+  
+  <!-- ОНОВЛЕНА СІТКА МЕТРИК -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-y-8 gap-x-6 mb-8">
+    <!-- РЯД 1: Кількісні показники -->
+    <div class="border-r border-white/5 pr-4">
+      <p class="text-[10px] font-bold text-muted-dynamic uppercase tracking-widest mb-1">Spend</p>
+      <p id="cr-total-spend" class="text-3xl font-black text-white">$0.00</p>
+    </div>
+    <div>
+      <p class="text-[11px] font-bold text-muted-dynamic uppercase mb-1">Regs</p>
+      <p id="cr-total-regs" class="text-2xl font-black text-blue-400">0</p>
+    </div>
+    <div>
+      <p class="text-[11px] font-bold text-muted-dynamic uppercase mb-1">Deps</p>
+      <p id="cr-total-deps" class="text-2xl font-black text-green-500">0</p>
+    </div>
+    <!-- Clicks тепер тут (на колишньому місці R2D) -->
+    <div>
+      <p class="text-[11px] font-bold text-blue-300 uppercase mb-1">Clicks</p>
+      <p id="cr-total-clicks" class="text-2xl font-black text-blue-300">0</p>
+    </div>
+
+    <!-- РЯД 2: Розрахункові показники (Якість та Ціна) -->
+    <!-- R2D тепер тут (на колишньому місці CPL) -->
+    <div class="pt-4 border-t border-white/5">
+      <p class="text-[11px] font-bold text-pink-500 uppercase mb-1">R2D (Quality)</p>
+      <p id="cr-total-r2d" class="text-xl font-black text-pink-500">0%</p>
+    </div>
+    <!-- CPL тепер тут (на колишньому місці CPA) -->
+    <div class="pt-4 border-t border-white/5">
+      <p class="text-[11px] font-bold text-purple-400 uppercase mb-1">CPL</p>
+      <p id="cr-total-cpl" class="text-xl font-black text-purple-400">$0.0</p>
+    </div>
+    <!-- CPA тепер тут (на колишньому місці CPC) -->
+    <div class="pt-4 border-t border-white/5">
+      <p class="text-[11px] font-bold text-yellow-500 uppercase mb-1">CPA</p>
+      <p id="cr-total-cpa" class="text-xl font-black text-yellow-500">$0.0</p>
+    </div>
+    <!-- CPC тепер тут (на колишньому місці Clicks) -->
+    <div class="pt-4 border-t border-white/5">
+      <p class="text-[11px] font-bold text-orange-400 uppercase mb-1">CPC</p>
+      <p id="cr-total-cpc" class="text-xl font-black text-orange-400">$0.0</p>
+    </div>
+  </div>
+
+  <!-- ГЕО Прапори -->
+  <div class="bg-black/20 p-4 rounded-2xl border border-white/5 mb-6">
+    <p class="text-[10px] font-black text-muted-dynamic uppercase mb-3 tracking-widest opacity-60">Target Geos:</p>
+    <div id="cr-geo-flags" class="flex flex-wrap gap-2.5"></div>
+  </div>
+  
+  <!-- Список Кабінетів -->
+  <div class="mt-auto pt-6 border-t border-white/5">
+    <p class="text-[10px] font-black text-muted-dynamic uppercase mb-3 tracking-widest">Active Cabinets:</p>
+    <div id="cr-account-list" class="flex flex-wrap gap-2"></div>
+  </div>
+</div>
+</div>
+        <div id="creative-placeholder" class="py-12 text-center opacity-20 italic text-sm text-dynamic">Loading creative database...</div>
+      </div>
+      
+      <!-- AI Intelligence -->
+     <!-- AI Intelligence Section -->
+<div id="ai-intelligence-section" class="card p-8 rounded-3xl border-2 border-purple-500/30 shadow-xl bg-gradient-to-br from-purple-500/10 to-transparent text-dynamic mb-8">
+  <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-6">
+    <div class="flex items-center gap-4">
+      <span class="text-3xl">🤖</span>
+      <div>
+        <h2 class="font-black text-xl uppercase tracking-tighter text-dynamic">AI Intelligence</h2>
+        <p class="text-[9px] text-purple-400 font-bold uppercase tracking-widest">Gemini Engine Analysis</p>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 bg-black/20 p-2 rounded-2xl border border-purple-500/20">
+      <input type="date" id="ai-from" class="bg-transparent outline-none px-2 py-1 text-xs font-bold text-white">
+      <input type="date" id="ai-to" class="bg-transparent outline-none px-2 py-1 text-xs font-bold text-white">
+      <button onclick="runAI()" id="ai-btn" class="bg-purple-600 hover:bg-purple-500 text-white px-7 py-2 rounded-xl text-xs font-black transition shadow-lg uppercase tracking-widest">Analyze</button>
+    </div>
+  </div>
+  <div id="ai-response" class="text-sm leading-relaxed font-medium text-slate-300 min-h-[60px] border-l-4 border-purple-500/30 pl-6 italic">
+    Select dates for AI insights...
+  </div>
+</div>
+      <!-- Live Table -->
+     <!-- Live Table Section -->
+<div id="live-table-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5">
+    <div class="p-6 border-b border-white/5 flex flex-col xl:flex-row justify-between items-center gap-6 bg-white/[0.02]">
+        <h2 class="font-black text-xl uppercase tracking-tighter text-blue-500 italic">Live Data Feed</h2>
+        
+        <!-- Фільтри -->
+        <div class="flex flex-wrap gap-3 p-2 rounded-2xl bg-black/20 border border-white/5 text-xs font-bold">
+            <input type="date" id="filter-from" class="bg-transparent outline-none p-2 text-white">
+            <span class="mt-2 opacity-30 uppercase text-[9px]">To</span>
+            <input type="date" id="filter-to" class="bg-transparent outline-none p-2 text-white">
+            
+            <!-- Оживлений селектор ГЕО -->
+            <select id="filter-geo-select" class="bg-transparent border-l border-white/10 pl-3 outline-none uppercase text-[10px] min-w-[100px] font-black tracking-widest text-white cursor-pointer">
+                <option value="">ALL GEO</option>
+            </select>
+            
+            <button onclick="applyFilter()" class="bg-blue-600 px-6 py-2 rounded-xl text-white font-black hover:bg-blue-500 transition shadow-lg uppercase text-[10px]">Apply</button>
+        </div>
+    </div>
+
+    <div class="overflow-x-auto max-h-[600px] custom-scrollbar">
+        <table class="w-full text-left border-separate border-spacing-0">
+            <!-- Хедер з ефектом рідкого скла -->
+            <thead class="sticky top-0 z-20 backdrop-blur-3xl bg-white/[0.03] shadow-[0_4px_30px_rgba(0,0,0,0.1)] border-b border-white/10">
+                <tr class="text-[11px] font-black uppercase tracking-widest text-slate-500">
+                    <th onclick="sortTable('date')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Дата <span id="sort-date"></span></th>
+                    <th onclick="sortTable('account')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Account</th>
+                    <th onclick="sortTable('geo')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5 text-center">Geo</th>
+                    <th class="p-5 border-b border-white/5">Agent</th>
+                    <th onclick="sortTable('funnel')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Funnel</th>
+                    <th onclick="sortTable('spend')" class="p-5 text-right cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Spend</th>
+                    <th onclick="sortTable('regs')" class="p-5 text-center cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Regs</th>
+                    <th onclick="sortTable('deposits')" class="p-5 text-center cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5 text-green-500">Dep</th>
+                </tr>
+            </thead>
+            <tbody id="table-body" class="divide-y divide-white/5 bg-transparent">
+                <!-- Дані вставляються через JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+    </div>
+  </div>
+
+  <!-- MODALS -->
+  <div id="screenshot-modal" class="hidden fixed inset-0 z-[60] modal-overlay flex items-center justify-center p-4 text-dynamic">
+    <div class="relative flex flex-col items-center">
+      <button onclick="closeScreenshotModal()" class="absolute -top-10 right-0 text-white hover:text-red-500 transition font-black uppercase text-[9px] flex items-center gap-1 bg-black/20 px-2.5 py-1 rounded-full border border-white/10 backdrop-blur-md text-white">Close <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+      <div id="capture-card" class="w-[350px] bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/10 text-center relative overflow-hidden">
+        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-yellow-500"></div>
+        <p class="text-[9px] font-black uppercase tracking-[0.4em] text-blue-500 mb-1 font-sans text-dynamic">Performance Summary</p>
+        <p id="ss-date-range" class="text-[10px] text-muted-dynamic font-bold uppercase mb-6 opacity-50 text-dynamic">...</p>
+        <div class="mb-6"><p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest mb-1 opacity-40 uppercase">Total Spend</p><h2 id="ss-total-spend" class="text-5xl font-black text-white tracking-tighter text-white">$0.00</h2></div>
+        <div class="grid grid-cols-2 gap-3 mb-6 text-dynamic"><div class="p-3 bg-white/5 rounded-[1.5rem] border border-white/5"><p class="text-[8px] font-black text-muted-dynamic uppercase mb-1 opacity-40">Total CPL</p><p id="ss-cpl" class="text-xl font-black text-purple-400">$0.00</p></div><div class="p-3 bg-white/5 rounded-[1.5rem] border border-white/5"><p class="text-[8px] font-black text-muted-dynamic uppercase mb-1 opacity-40 uppercase text-green-500">Total CPA</p><p id="ss-cpa" class="text-xl font-black text-green-400">$0.00</p></div></div>
+        <div class="space-y-1.5 mb-6 text-dynamic"><p class="text-[9px] font-black text-muted-dynamic uppercase tracking-widest mb-2 opacity-40 text-center">Top 3 Geo Performance</p><div id="ss-geo-list" class="space-y-1.5 text-dynamic"></div></div>
+        <div class="pt-4 border-t border-white/5 flex justify-center items-center gap-2"><div class="w-1 h-1 bg-blue-500 rounded-full animate-pulse text-blue-500"></div><p class="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">Vladay - 193</p></div>
+      </div>
+    </div>
+  </div>
+  <!-- ОСНОВНА МОДАЛКА ТАСКІВ -->
+<div id="task-modal" class="hidden fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4">
+  <div class="card w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden h-[700px] flex flex-col">
+    <!-- Header з Табами -->
+    <div class="p-6 border-b border-gray-500/10 bg-gray-500/5">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl italic font-black text-purple-500 uppercase tracking-tighter">Mission Center</h2>
+        <button onclick="toggleTaskModal()" class="text-muted-dynamic hover:text-red-500 transition">✕</button>
+      </div>
+      
+      <!-- Форма додавання з Пріоритетом -->
+      <div class="flex gap-2 mb-6">
+        <input type="text" id="new-task-input" placeholder="Опишіть завдання..." class="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2 outline-none focus:border-purple-500 text-sm">
+        <select id="new-task-priority" class="w-28 bg-black/20 border border-white/10 rounded-xl px-2 text-[10px] font-bold">
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High" class="text-red-500">High</option>
+        </select>
+        <button onclick="submitNewTask()" class="bg-purple-600 hover:bg-purple-500 px-6 py-2 rounded-xl font-bold text-xs text-white uppercase">Add</button>
+      </div>
+
+      <!-- ТАБИ з лічильниками -->
+      <div class="flex gap-4 border-b border-white/5">
+        <button onclick="filterTasks('Not in progress')" id="tab-not-in-progress" class="task-tab pb-2 text-[11px] font-bold px-2">В роботі <span id="count-new" class="ml-1 opacity-50">0</span></button>
+        <button onclick="filterTasks('In progress')" id="tab-in-progress" class="task-tab pb-2 text-[11px] font-bold px-2">Процес <span id="count-process" class="ml-1 opacity-50">0</span></button>
+        <button onclick="filterTasks('Completed')" id="tab-completed" class="task-tab pb-2 text-[11px] font-bold px-2">Виконано <span id="count-done" class="ml-1 opacity-50">0</span></button>
+        <button onclick="filterTasks('All')" id="tab-all" class="task-tab pb-2 text-[11px] font-bold px-2">Всі <span id="count-all" class="ml-1 opacity-50">0</span></button>
+      </div>
+    </div>
+
+    <!-- Контейнер списку -->
+    <div id="task-list-container" class="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3"></div>
+  </div>
+</div>
+
+
+<!-- МОДАЛКА ДЕТАЛЕЙ ТАСКА (РЕДАГУВАННЯ) -->
+<div id="task-detail-modal" class="hidden fixed inset-0 z-[60] modal-overlay flex items-center justify-center p-4">
+  <div class="card w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl border border-white/10 relative flex flex-col">
+    <div class="flex justify-between items-center mb-6">
+      <div class="flex items-center gap-3">
+        <span id="detail-date" class="text-[10px] font-black opacity-30 uppercase tracking-widest"></span>
+        <!-- Вибір пріоритету всередині модалки -->
+        <select id="detail-priority-select" class="bg-white/5 border border-white/10 text-[9px] font-black px-2 py-1 rounded-full uppercase outline-none cursor-pointer">
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High" class="text-red-500">High</option>
+        </select>
+      </div>
+      <button onclick="closeTaskDetails()" class="text-muted-dynamic hover:text-white transition">✕</button>
+    </div>
+
+    <!-- Поле для редагування тексту -->
+    <textarea id="detail-text-input" 
+              class="w-full bg-black/20 border border-white/5 rounded-2xl p-4 text-base leading-relaxed task-text-style mb-8 h-64 outline-none focus:border-purple-500/50 transition-all resize-none custom-scrollbar"
+              placeholder="Task description..."></textarea>
+
+    <div class="flex gap-3">
+      <button onclick="closeTaskDetails()" class="flex-1 bg-white/5 hover:bg-white/10 py-3 rounded-2xl font-black uppercase text-[10px] transition">Cancel</button>
+      <button onclick="saveDetailedTask()" class="flex-1 bg-purple-600 hover:bg-purple-500 py-3 rounded-2xl font-black uppercase text-[10px] shadow-lg transition">Save Changes</button>
+    </div>
+  </div>
+</div>
+ <!-- Шукайте цей блок у самому низу вашого файлу Index.html -->
+<div id="report-modal" class="hidden fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4 text-dynamic">
+  <!-- ТУТ МИ ВИДАЛИЛИ КЛАС uppercase -->
+  <div class="card w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col text-dynamic">
+    <div class="p-6 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5 font-black uppercase">
+      <h2 class="text-xl italic tracking-tighter text-blue-500 font-black">Daily Reports</h2>
+      <div class="flex items-center gap-2">
+        <button onclick="exportReports()" title="Copy to clipboard" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-xl transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+          Copy
+        </button>
+        <button onclick="exportReportsPDF()" id="pdf-export-btn" title="Export to PDF" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-rose-400 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 rounded-xl transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          PDF
+        </button>
+        <button onclick="toggleReportModal()" class="text-muted-dynamic hover:text-red-500 transition">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+    </div>
+    <div class="p-6 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
+      <div class="flex flex-col gap-2">
+        <textarea id="new-report-input" rows="3" placeholder="Today's notes... Use + success  - problem  ! warning  > plan  @img1 for photos" class="w-full bg-gray-500/5 border border-gray-500/20 rounded-2xl px-4 py-3 outline-none focus:border-blue-500 transition text-sm font-medium text-dynamic normal-case"></textarea>
+        <!-- Chips для прикріплених фото -->
+        <div id="pending-img-chips" class="report-img-chips hidden"></div>
+        <div class="flex gap-2">
+          <label class="flex items-center gap-1.5 cursor-pointer bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/25 text-indigo-400 text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl transition select-none">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            Attach Photos
+            <input type="file" id="report-img-input" multiple accept="image/*" class="hidden" onchange="handlePendingImages(this.files)">
+          </label>
+          <button onclick="submitNewReport()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl font-bold text-sm transition uppercase">Save</button>
+        </div>
+      </div>
+      <div id="report-list-container" class="space-y-3 pt-4"></div>
+    </div>
+  </div>
+</div>
+<!-- Модалка для деталей ГЕО (Воронки) -->
+<div id="geo-details-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-4">
+  <div class="card w-full max-w-4xl rounded-[2rem] shadow-2xl overflow-hidden max-h-[85vh] flex flex-col border border-white/10 bg-[#0f172a]/95 backdrop-blur-xl">
+    <!-- Header -->
+    <div class="p-6 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5">
+      <div>
+        <h2 id="geo-details-title" class="text-2xl font-black uppercase italic text-blue-500 tracking-tighter">UA Details</h2>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Funnel Performance Breakdown</p>
+      </div>
+      <button onclick="closeGeoModal()" class="text-slate-400 hover:text-red-500 transition-colors">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+      </button>
+    </div>
+    
+    <!-- Table Container -->
+    <div class="p-6 overflow-y-auto custom-scrollbar">
+      <table class="w-full text-left">
+       <thead>
+        <tr class="text-[10px] font-black uppercase text-slate-500 border-b border-white/5">
+          <th class="pb-3 pl-1">Funnel / CID</th>
+          <th class="pb-3 text-center w-[100px]">Trend</th>
+          <th class="pb-3 text-right px-2">Spend</th>
+          <th class="pb-3 text-center px-2 text-orange-400">Installs</th> <!-- Новий -->
+          <th class="pb-3 text-center px-2">Reg</th>
+          <th class="pb-3 text-center px-2">Dep</th>
+          <th class="pb-3 text-right px-2">R2D</th>
+          <th class="pb-3 text-right px-2 text-purple-400">CPL</th>
+          <th class="pb-3 text-right px-2 text-yellow-500">CPA</th>
+          <th class="pb-3 text-right pr-1 text-emerald-400">Profit</th>
+        </tr>
+      </thead>
+        <tbody id="geo-funnel-list" class="divide-y divide-white/5">
+          <!-- JS Insert -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<!-- 1. МОДАЛКА КАЛЬКУЛЯТОРА -->
+<!-- ===== CHANGE LOG MODAL ===== -->
+<div id="changelog-modal" class="hidden fixed inset-0 z-50 modal-overlay flex items-center justify-center p-4 text-dynamic">
+  <div class="card w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col">
+    <div class="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+      <div>
+        <h2 class="text-xl font-black italic tracking-tighter text-teal-400">Change Log</h2>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Операційні зміни</p>
+      </div>
+      <button onclick="toggleChangeLogModal()" class="text-slate-400 hover:text-red-500 transition">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
+      <!-- Input -->
+      <div class="flex flex-col gap-2">
+        <div class="flex gap-2">
+          <select id="cl-category" class="!py-2 !text-xs font-bold !rounded-xl flex-shrink-0 w-32">
+            <option value="budget">💰 Budget</option>
+            <option value="account">🔴 Account</option>
+            <option value="creative">🎨 Creative</option>
+            <option value="funnel">🔵 Funnel</option>
+            <option value="other">⚪ Other</option>
+          </select>
+          <input type="text" id="cl-text" placeholder="Що змінив? (напр. підняв ставку UA +15%)" class="flex-1 !py-2 !text-xs" onkeydown="if(event.key==='Enter') submitChangeLog()">
+        </div>
+        <button onclick="submitChangeLog()" class="bg-teal-600/80 hover:bg-teal-500 text-white py-2 rounded-xl font-bold text-xs transition uppercase tracking-wider">+ Додати запис</button>
+      </div>
+      <!-- Log list -->
+      <div id="cl-list" class="space-y-4 pt-2"></div>
+    </div>
+  </div>
+</div>
+<!-- ===== END CHANGE LOG MODAL ===== -->
+
+  <script>
+    // --- 1. НАЛАШТУВАННЯ SUPABASE (ВСТАВ СВОЇ ДАНІ) ---
+  const SUPABASE_URL = 'https://zsfumuiajrytmeycbtnn.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // --- 2. ГЛОБАЛЬНІ ЗМІННІ СТАНУ ---
+  let rawData = [], filteredDataCache = [], taskData = [], reportData = [], creativesRawData = [];
+  let creativeFiles = {}, globalPayouts = {};
+  let pendingReportImages = []; // { file, tag, localUrl }
+  
+  let currentTeam = localStorage.getItem('selected_team') || "Makeberry";
+  let currentMonthFilter = localStorage.getItem('selected_dashboard_month') || ""; 
+  let currentTaskFilter = 'Not in progress', currentChartMode = 'daily', currentCreativeID = '';
+  
+  let activeCrAcc = null, activeCrGeo = null, isEditingReport = false;
+  let openReportRows = [], selectedCIDs = [], currentEditingTaskId = null;
+  let sortState = { col: 'date', dir: 'desc' };
+
+  const iconLoading = `<svg class="w-4 h-4 animate-spin-status text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+  const iconSuccess = `<svg class="w-4 h-4 text-green-500 animate-pop-check" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
+
+  Chart.register(ChartDataLabels);
+
+  // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
+window.onload = async () => {
+  console.log("🚀 Запуск дашборду для команди:", currentTeam);
+  
+  try {
+    // 1. Спочатку завантажуємо базові налаштування (таргет, видимість)
+    loadSettings();
+    
+    // 2. Отримуємо виплати (важливо для KPI)
+    await refreshPayoutsFromSQL();
+    
+    // 3. Завантажуємо список команд (щоб працювало меню)
+    await refreshTeamsList();
+    
+    // 4. ОСНОВНЕ ЗАВАНТАЖЕННЯ ДАНИХ
+    await loadData();
+    
+    // 5. Завантажуємо додаткові модулі
+    refreshTasks();
+    refreshReports();
+    loadQuickLinks();
+    
+  } catch (err) {
+    console.error("Помилка ініціалізації:", err);
+    // Якщо все впало, пробуємо хоча б прибрати лоадер
+    document.getElementById('loader')?.classList.add('hidden');
+  }
+};
+
+  // --- 4. ДОПОМІЖНІ ФУНКЦІЇ (ЛОГІКА КОЛИШНЬОГО CODE.GS) ---
+  function normalizeDate(d) {
+    if (!d) return "";
+    let date = new Date(d);
+    return date.toISOString().split('T')[0];
+  }
+
+  function cleanNum(v) {
+    return parseFloat(String(v).replace(/[^\d.-]/g, '')) || 0;
+  }
+
+  // --- 5. КЕРУВАННЯ КОМАНДАМИ (SQL) ---
+  // 2. Оновлення списку команд із бази даних Supabase
+async function refreshTeamsList() {
+  try {
+    // Отримуємо унікальні імена команд із таблиці daily_stats
+    const { data, error } = await sb.from('daily_stats').select('team_name');
+    
+    // Завжди маємо дефолтну команду, якщо база порожня
+    let teams = ["Makeberry"]; 
+    
+    if (data && data.length > 0) {
+      const uniqueTeams = [...new Set(data.map(item => item.team_name))];
+      if (uniqueTeams.length > 0) teams = uniqueTeams;
+    }
+
+    // Якщо в localStorage збережена команда, якої немає в списку (рідкісний випадок)
+    if (!teams.includes(currentTeam)) {
+      teams.push(currentTeam);
+    }
+    
+    const listContainer = document.getElementById('team-list');
+    if (listContainer) {
+      listContainer.innerHTML = teams.map(t => {
+        const isActive = (t === currentTeam);
+        return `
+          <button onclick="switchTeam('${t}')" 
+                  class="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center justify-between
+                  ${isActive ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:bg-white/5 hover:text-white'}">
+            <span>${t}</span>
+            ${isActive ? '<span class="text-[8px]">●</span>' : ''}
+          </button>
+        `;
+      }).join('');
+    }
+    
+    // Оновлюємо ярлики в інтерфейсі
+    const label = document.getElementById('active-team-label');
+    if (label) label.innerText = "TEAM: " + currentTeam.toUpperCase();
+
+    // Оновлюємо головний заголовок (опціонально)
+    const mainTitle = document.querySelector('h1.text-3xl');
+    if (mainTitle) mainTitle.innerHTML = `${currentTeam} <span class="text-blue-500 text-xl font-normal">Dashboard</span>`;
+
+  } catch (err) {
+    console.error("Помилка при завантаженні списку команд:", err);
+  }
+}
+// 3. Створення нової команди (профіль)
+function promptCreateTeam() {
+  const newTeamName = prompt("Введіть назву нової команди (латиницею):");
+  
+  if (newTeamName && newTeamName.trim().length > 2) {
+    const formattedName = newTeamName.trim();
+    // Просто перемикаємось на нову назву. 
+    // Вона з'явиться в базі, як тільки ви додасте перші дані.
+    switchTeam(formattedName);
+  } else if (newTeamName !== null) {
+    alert("Назва має бути довшою за 2 символи.");
+  }
+}
+
+// 4. Перемикання команди
+function switchTeam(teamName) {
+  localStorage.setItem('selected_team', teamName);
+  // Показуємо лоадер зверху для ефекту
+  const loader = document.getElementById('top-loader');
+  if (loader) loader.style.width = "100%";
+  
+  // Перезавантажуємо сторінку для повного оновлення контексту даних
+  window.location.reload();
+}
+
+  async function loadData() {
+  updateSyncStatus('loading');
+  console.log("📥 Початок завантаження даних для команди:", currentTeam);
+
+  // 1. Отримуємо дані з Supabase
+  const { data: stats, error } = await sb
+    .from('daily_stats')
+    .select('*')
+    .eq('team_name', currentTeam)
+    .order('date', { ascending: false });
+
+  // 2. Обробка помилки (замість if !error використовуємо ранній вихід)
+  if (error) {
+    console.error("❌ Помилка Supabase при завантаженні daily_stats:", error);
+    updateSyncStatus('error');
+    alert("Помилка завантаження даних. Перевірте консоль.");
+    return;
+  }
+
+  // 3. Якщо помилок немає, працюємо з даними
+  rawData = stats || [];
+  console.log(`✅ Отримано записів: ${rawData.length}`);
+
+  // 4. ОНОВЛЮЄМО ФІЛЬТРИ ГЕО (Важливо для Heatmap та Live Table)
+  populateGeoFilter(rawData);
+
+  // 5. Визначаємо доступні місяці для меню
+  const months = getAvailableMonths(rawData);
+  
+  // Якщо місяць ще не вибраний, беремо останній доступний
+  if (!currentMonthFilter || !months.includes(currentMonthFilter)) {
+    currentMonthFilter = months.length > 0 ? months[0] : new Date().toISOString().slice(0, 7);
+  }
+
+  // Оновлюємо ярлик місяця в шапці
+  const monthLabel = document.getElementById('current-month-label');
+  if (monthLabel) monthLabel.innerText = currentMonthFilter;
+  
+  // Малюємо список місяців у випадаючому меню
+  renderMonthList(months);
+
+  // 6. ХОВАЄМО ЛОАДЕР ТА ПОКАЗУЄМО ДАШБОРД
+  document.getElementById('loader')?.classList.add('hidden');
+  document.getElementById('dashboard-content')?.classList.remove('hidden');
+
+  // 7. ЗАПУСКАЄМО ГОЛОВНИЙ ФІЛЬТР ТА РЕНДЕР КАРТОК
+  applyGlobalFilter();
+  
+  // 8. ЗАПУСКАЄМО ПЕРШИЙ РЕНДЕР ТЕПЛОВОЇ КАРТИ (Heatmap)
+  if (typeof applyWeeklyFilter === 'function') {
+    applyWeeklyFilter(); 
+  }
+
+  updateSyncStatus('done');
+  
+  // 9. Завантажуємо креативи у фоновому режимі
+  loadCreatives(); 
+}
+    async function loadCreatives() {
+  console.log("🎨 Завантаження бази креативів...");
+  
+  const { data: crData, error } = await sb
+    .from('creatives_stats')
+    .select('*')
+    .eq('team_name', currentTeam);
+
+  if (error) {
+    console.error("Помилка завантаження креативів:", error);
+    return;
+  }
+
+  // Зберігаємо в глобальну змінну (переконайся, що let creativesRawData = []; оголошена зверху)
+  creativesRawData = crData || [];
+  window.creativesRawData = creativesRawData;
+
+  if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
+  if (typeof renderCreativeSidebar === 'function') renderCreativeSidebar("");
+  
+  document.getElementById('creative-placeholder')?.classList.add('hidden');
+}
+
+  function getAvailableMonths(data) {
+    const m = data.map(d => (d.date ? d.date.slice(0, 7) : null)).filter(Boolean);
+    return [...new Set(m)].sort().reverse();
+  }
+
+  async function changeGlobalMonth(month) {
+  // 1. Показуємо лоадер (смужка зверху)
+  const loader = document.getElementById('top-loader');
+  loader.style.width = "30%";
+  
+  // 2. Закриваємо меню та оновлюємо фільтри
+  currentMonthFilter = month;
+  localStorage.setItem('selected_dashboard_month', month);
+  document.getElementById('current-month-label').innerText = month;
+  document.getElementById('month-menu').classList.add('hidden');
+
+  loader.style.width = "60%";
+
+  // 3. Оновлюємо дані (applyGlobalFilter має бути асинхронним або викликати рендер)
+  // Використовуємо невелику затримку, щоб користувач відчув "завантаження"
+  setTimeout(() => {
+    applyGlobalFilter(); // Твоя функція фільтрації та рендеру
+    
+    // Перерендеримо список місяців, щоб оновити підсвітку
+    const months = getAvailableMonths(rawData);
+    renderMonthList(months);
+    
+    // 4. Завершуємо лоадер
+    loader.style.width = "100%";
+    setTimeout(() => { loader.style.width = "0%"; }, 400);
+  }, 300);
+}
+
+  function applyGlobalFilter() {
+  // 1. Фільтруємо дані для кешу
+  filteredDataCache = rawData.filter(d => d.date && d.date.startsWith(currentMonthFilter));
+  
+  console.log(`📊 Глобальний фільтр: ${currentMonthFilter}`);
+
+  // 2. Розраховуємо дати для інпутів (Початок і Кінець місяця)
+  const [year, month] = currentMonthFilter.split('-');
+  const lastDay = new Date(year, month, 0).getDate(); // Визначаємо кількість днів у місяці
+  
+  const start = `${currentMonthFilter}-01`;
+  const end = `${currentMonthFilter}-${lastDay < 10 ? '0' + lastDay : lastDay}`;
+
+  // 3. Автоматично виставляємо дати в УСІ фільтри на сторінці
+  const fromInputs = ['filter-from', 'chart-from', 'geo-filter-from', 'ai-from', 'heat-from'];
+  const toInputs = ['filter-to', 'chart-to', 'geo-filter-to', 'ai-to', 'heat-to'];
+
+  fromInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = start;
+  });
+
+  toInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = end;
+  });
+
+  // 4. Запускаємо рендер усіх блоків
+  renderDashboard(filteredDataCache);
+  updateMilestones(filteredDataCache);
+  
+  // Окремо запускаємо теплову карту, щоб вона врахувала нові дати
+  if (typeof applyWeeklyFilter === 'function') {
+    applyWeeklyFilter();
+  }
+}
+
+  // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
+  function renderDashboard(data) {
+  if (!data || data.length === 0) {
+    console.warn("⚠️ Немає даних для відображення в KPI");
+    return;
+  }
+
+  // 1. ІНІЦІАЛІЗАЦІЯ ЗМІННИХ (спочатку створюємо, потім використовуємо)
+  let totalS = 0;
+  let totalD = 0;
+  let totalR = 0;
+  let totalRev = 0; // Тепер вона точно ініціалізована
+  let tc = 0;
+  const agentMap = {};
+
+  // 2. ЦИКЛ РОЗРАХУНКУ
+  data.forEach(item => {
+    const s = Number(item.spend) || 0;
+    const d = Number(item.deposits) || 0;
+    const r = Number(item.regs) || 0;
+    const g = (item.geo || "").toUpperCase().trim();
+    const o = (item.offer || "DEFAULT").toUpperCase().trim();
+
+    // Підсумовуємо основні метрики
+    totalS += s;
+    totalD += d;
+    totalR += r;
+
+    // Шукаємо виплату: спочатку конкретний оффер, якщо немає — DEFAULT
+    const payoutKey = `${g}_${o}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+    
+    // Рахуємо виручку (Revenue)
+    totalRev += (d * payout);
+
+    // Розрахунок комісій агентств
+    let agentRaw = String(item.agent || "Direct");
+    if (agentRaw.includes("%")) {
+      const match = agentRaw.match(/(\d+(?:\.\d+)?)%/);
+      if (match) tc += (s * (parseFloat(match[1]) / 100));
+    }
+    const aName = agentRaw.split('(')[0].trim();
+    agentMap[aName] = (agentMap[aName] || 0) + s;
+  });
+
+  // 3. ФІНАЛЬНІ РОЗРАХУНКИ
+  const profit = totalRev - totalS;
+  const roi = totalS > 0 ? Math.round((profit / totalS) * 100) : 0;
+
+  // 4. ОНОВЛЕННЯ DOM (ВИВІД НА ЕКРАН)
+  document.getElementById('kpi-spend').innerText = formatCurrency(totalS);
+  document.getElementById('kpi-comm').innerText = "+ " + formatCurrency(tc) + " (Fees)";
+  document.getElementById('kpi-deposits').innerText = totalD;
+  document.getElementById('kpi-regs').innerText = totalR;
+  
+  document.getElementById('kpi-cpl').innerText = formatCurrency(totalR > 0 ? totalS / totalR : 0);
+  document.getElementById('kpi-cpa').innerText = formatCurrency(totalD > 0 ? totalS / totalD : 0);
+  document.getElementById('kpi-r2d').innerText = (totalR > 0 ? (totalD / totalR * 100).toFixed(1) : 0) + '%';
+  
+  const pEl = document.getElementById('kpi-profit');
+  if (pEl) {
+    pEl.innerText = formatCurrency(profit);
+    pEl.className = `text-[26px] font-black mt-1 ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
+  }
+  
+  if (document.getElementById('kpi-roi')) {
+    document.getElementById('kpi-roi').innerText = `ROI: ${roi}%`;
+  }
+
+  // Оновлення списку агентств у тултіпі
+  const breakdownList = document.getElementById('spend-breakdown-list');
+  if (breakdownList) {
+    breakdownList.innerHTML = Object.entries(agentMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([n, s]) => `
+        <div class="flex justify-between items-center text-[11px] font-bold">
+          <span class="text-slate-400 uppercase truncate pr-4">${n}</span>
+          <span class="text-white font-mono">${formatCurrency(s)}</span>
+        </div>`).join('');
+  }
+
+  // ВИКЛИКАЄМО РЕНДЕР ГРАФІКА ТА ГЕО СПИСКУ
+  renderTrend(data);
+  renderGeoList(data);
+  renderTable(data);
+  renderWeeklyHeatmap(data);
+}
+             
+function renderTrend(data) {
+  const ctx = document.getElementById('chart-trend');
+  if (!ctx || !data.length) return;
+  if (window.chart1) window.chart1.destroy();
+
+  const sd = [...new Set(data.map(d => d.date))].sort();
+  const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
+  const labels = sd.map(d => {
+    const dt = new Date(d);
+    return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
+  });
+
+  let datasets = [];
+
+  // --- РЕЖИМ DAILY ---
+  if (currentChartMode === 'daily') {
+    const m = {};
+    sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
+    data.forEach(d => {
+      if (m[d.date]) {
+        m[d.date].s += Number(d.spend) || 0;
+        m[d.date].r += Number(d.regs) || 0;
+        m[d.date].d += Number(d.deposits) || 0;
+      }
+    });
+
+    const dailyStats = sd.map(d => m[d]);
+
+    // 1. Spend (Синя товста)
+    datasets.push({
+      label: 'Spend ($)',
+      data: dailyStats.map(v => v.s),
+      allStats: dailyStats, // Дані для тултіпа
+      borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      borderWidth: 5,
+      pointBackgroundColor: '#fff',
+      pointBorderColor: '#3b82f6',
+      pointBorderWidth: 3,
+      pointRadius: 6,
+      tension: 0.4,
+      fill: true,
+      datalabels: {
+        display: true,
+        align: 'top',
+        color: '#fff',
+        font: { weight: '900', size: 12 },
+        formatter: Math.round
+      }
+    });
+
+    // 2. CPL (Фіолетовий пунктир)
+    datasets.push({
+      label: 'CPL ($)',
+      data: dailyStats.map(v => v.r > 0 ? v.s / v.r : 0),
+      borderColor: '#a855f7',
+      borderDash: [8, 5],
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.4,
+      fill: false,
+      datalabels: { display: false }
+    });
+
+    // 3. CPA (Жовтий пунктир)
+    datasets.push({
+      label: 'CPA ($)',
+      data: dailyStats.map(v => v.d > 0 ? v.s / v.d : 0),
+      borderColor: '#eab308',
+      borderDash: [3, 3],
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.4,
+      fill: false,
+      datalabels: { display: false }
+    });
+
+  } 
+  // --- РЕЖИМ GEO ---
+  else {
+    const geos = [...new Set(data.map(d => (d.geo || "??").toUpperCase()))].filter(Boolean);
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#fb7185'];
+
+    datasets = geos.map((geo, index) => {
+      const statsPerDay = sd.map(date => {
+        const dayGeoData = data.filter(d => d.date === date && (d.geo || "").toUpperCase() === geo);
+        return {
+          s: dayGeoData.reduce((sum, item) => sum + (Number(item.spend) || 0), 0),
+          r: dayGeoData.reduce((sum, item) => sum + (Number(item.regs) || 0), 0),
+          d: dayGeoData.reduce((sum, item) => sum + (Number(item.deposits) || 0), 0)
+        };
+      });
+
+      return {
+        label: geo,
+        data: statsPerDay.map(v => v.s),
+        allStats: statsPerDay,
+        borderColor: colors[index % colors.length],
+        borderWidth: 3,
+        pointRadius: 4,
+        tension: 0.4,
+        fill: false,
+        datalabels: { display: false }
+      };
+    });
+  }
+
+  // --- НАЛАШТУВАННЯ CHART.JS ---
+  window.chart1 = new Chart(ctx.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: 40, bottom: 0, left: 5, right: 15 } },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#94a3b8', usePointStyle: true, padding: 20, font: { weight: 'bold' } }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          padding: 12,
+          borderColor: 'rgba(59, 130, 246, 0.3)',
+          borderWidth: 1,
+          callbacks: {
+            label: function(context) {
+              const label = context.dataset.label;
+              const stats = context.dataset.allStats ? context.dataset.allStats[context.dataIndex] : null;
+              
+              if (!stats || (stats.s === 0 && stats.r === 0 && stats.d === 0)) return null;
+
+              const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
+              const cpa = stats.d > 0 ? (stats.s / stats.d).toFixed(1) : 0;
+
+              // Виведення як на скріншоті
+              return [
+                ` 📍 ${currentChartMode === 'daily' ? 'TOTAL' : 'ГЕО: ' + label}`,
+                ` 💰 Spend: $${Math.round(stats.s)}`,
+                ` 📝 Reg: ${stats.r}`,
+                ` 🎯 Dep: ${stats.d}`,
+                ` 💵 CPL: $${cpl} | CPA: $${cpa}`,
+                ` ` 
+              ];
+            }
+          }
+        },
+        datalabels: { anchor: 'end', align: 'top' }
+      },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { weight: 'bold' } }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: '#64748b' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+      }
+    }
+  });
+}
+  function calculateDeltas(data) {
+    const dates = [...new Set(data.map(i => i.date))].sort();
+    if (dates.length < 2) return;
+    const maxDate = dates[dates.length - 1];
+    const curS = data.reduce((a, b) => a + b.spend, 0), curR = data.reduce((a, b) => a + b.regs, 0), curD = data.reduce((a, b) => a + b.deposits, 0);
+    const prevD = data.filter(i => i.date < maxDate);
+    const pS = prevD.reduce((a, b) => a + b.spend, 0), pR = prevD.reduce((a, b) => a + b.regs, 0), pDep = prevD.reduce((a, b) => a + b.deposits, 0);
+
+    const cCPL = curR > 0 ? curS / curR : 0, pCPL = pR > 0 ? pS / pR : 0;
+    const cCPA = curD > 0 ? curS / curD : 0, pCPA = pDep > 0 ? pS / pDep : 0;
+    const cR2D = curR > 0 ? (curD / curR * 100) : 0, pR2D = pR > 0 ? (pDep / pR * 100) : 0;
+
+    const up = (id, c, p, isP) => {
+      const el = document.getElementById('delta-' + id);
+      if (!el || p === 0) return;
+      const diff = c - p;
+      if (Math.abs(diff) < 0.01) { el.innerText = ""; return; }
+      const isB = isP ? diff < 0 : diff > 0;
+      el.innerText = `(${(diff > 0 ? '▲' : '▼')} ${diff > 0 ? '+' : '-'}${isP ? '$' : ''}${Math.abs(diff).toFixed(1)}${isP ? '' : '%'})`;
+      el.className = `text-[12px] font-black ml-1.5 ${isB ? 'text-green-500' : 'text-red-500'}`;
+    };
+    up('cpl', cCPL, pCPL, true); up('cpa', cCPA, pCPA, true); up('r2d', cR2D, pR2D, false);
+  }
+
+  function renderGeoList(data) {
+const m = {};
+  data.forEach(d => {
+    const g = (d.geo || "??").toUpperCase().trim();
+    const o = (d.offer || "DEFAULT").toUpperCase().trim();
+    
+    // ПРАВИЛЬНИЙ ПОШУК ВИПЛАТИ
+    const payoutKey = `${g}_${o}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+
+    if (!m[g]) m[g] = { s: 0, r: 0, d: 0, rev: 0 };
+    
+    m[g].s += Number(d.spend) || 0;
+    m[g].r += Number(d.regs) || 0;
+    m[g].d += Number(d.deposits) || 0;
+    // Накопичуємо виручку: депи конкретного рядка * ціну оффера цього рядка
+    m[g].rev += (Number(d.deposits) * payout);
+  });
+
+  const container = document.getElementById('geo-list');
+  if (!container) return;
+
+  container.innerHTML = Object.entries(m).sort((a, b) => b[1].s - a[1].s).map(([geo, stat]) => {
+    // Математика
+    const r2d = stat.r > 0 ? ((stat.d / stat.r) * 100).toFixed(1) : 0;
+    const cpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : (0).toFixed(1);
+    const cpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : (0).toFixed(1);
+    
+    // Профіт та ROI
+    const pVal = globalPayouts[geo] || 0;
+    const profit = stat.rev - stat.s;
+    const roi = stat.s > 0 ? Math.round((profit / stat.s) * 100) : 0;
+    const profitColor = profit >= 0 ? 'text-emerald-400' : 'text-red-500';
+
+    return `
+      <div onclick="showGeoDetails('${geo}')" class="p-4 card mb-4 cursor-pointer hover:bg-white/[0.05] transition-all border-l-4 border-blue-500 bg-slate-900/40 relative overflow-hidden">
+        
+        <!-- Заголовок -->
+        <div class="flex justify-between items-center mb-3">
+          <span class="font-black text-blue-500 text-2xl tracking-tighter">${geo}</span>
+          <span class="font-black text-xl text-white">$${Math.round(stat.s).toLocaleString()}</span>
+        </div>
+
+        <!-- РЯДОК 1: REG, DEP, R2D -->
+        <div class="grid grid-cols-3 gap-1 text-center mb-3 border-b border-white/5 pb-3">
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[9px] font-black text-slate-500 uppercase">Reg</span>
+            <b class="text-lg text-blue-400 leading-none">${stat.r}</b>
+          </div>
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[9px] font-black text-slate-500 uppercase">Dep</span>
+            <b class="text-lg text-green-500 leading-none">${stat.d}</b>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-[9px] font-black text-pink-500 uppercase">R2D</span>
+            <b class="text-lg text-pink-500 leading-none">${r2d}%</b>
+          </div>
+        </div>
+
+        <!-- РЯДОК 2: CPL, CPA -->
+        <div class="grid grid-cols-2 gap-1 text-center mb-3">
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[9px] font-black text-slate-500 uppercase">CPL</span>
+            <b class="text-lg text-purple-400 leading-none">$${cpl}</b>
+          </div>
+          <div class="flex flex-col">
+            <span class="text-[9px] font-black text-slate-500 uppercase">CPA</span>
+            <b class="text-lg text-yellow-500 leading-none">$${cpa}</b>
+          </div>
+        </div>
+
+        <!-- ФУТЕР: Profit & ROI -->
+        <div class="flex justify-between items-center pt-2 border-t border-white/5">
+          <span class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Net Profit:</span>
+          <span class="font-black text-sm ${profitColor} tracking-tight">
+            $${Math.round(profit).toLocaleString()} 
+            <span class="text-[10px] opacity-60 font-bold">(${roi}%)</span>
+          </span>
+        </div>
+      </div>`;
+  }).join('');
+}
+  // --- 1. МАЛЮВАННЯ ГОЛОВНОЇ ТАБЛИЦІ (Live Data Feed) ---
+// 2. Функція рендеру таблиці (БЕЗ стовпця %)
+function renderTable(data) {
+  const body = document.getElementById('table-body');
+  if (!body) return;
+  body.innerHTML = '';
+
+  data.forEach(row => {
+    body.innerHTML += `
+      <tr class="hover:bg-white/[0.02] transition-colors text-sm font-medium">
+        <td class="p-5 text-slate-500 font-mono text-xs">${row.date}</td>
+        <td class="p-5 font-black uppercase text-white">${row.account || row.acc || 'N/A'}</td>
+        <td class="p-5 text-center">
+          <span class="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-lg font-black text-[10px] uppercase">${row.geo}</span>
+        </td>
+        <td class="p-5 text-slate-400 text-xs">${row.agent || 'Direct'}</td>
+        <td class="p-5 font-bold text-white">${row.funnel || 'Default'}</td>
+        <td class="p-5 font-black text-right text-white">$${Math.round(row.spend).toLocaleString()}</td>
+        <td class="p-5 text-center font-bold text-blue-400 text-lg">${row.regs}</td>
+        <td class="p-5 text-center font-black text-green-500 text-lg">${row.deposits}</td>
+      </tr>`;
+  });
+}
+
+  // --- 8. ТАСКИ ТА ЗВІТИ (SQL) ---
+  async function refreshTasks() {
+    const { data } = await sb.from('tasks').select('*').eq('team_name', currentTeam).order('created_at', { ascending: false });
+    taskData = data || [];
+    const counts = { new: taskData.filter(t => t.status === 'Not in progress').length, proc: taskData.filter(t => t.status === 'In progress').length, done: taskData.filter(t => t.status === 'Completed').length, all: taskData.length };
+    ['count-new','count-process','count-done','count-all'].forEach((id, i) => document.getElementById(id).innerText = Object.values(counts)[i]);
+    renderTasks(currentTaskFilter);
+  }
+
+  async function changeStatus(id, newStatus) {
+    event.stopPropagation();
+    await sb.from('tasks').update({ status: newStatus }).eq('id', id);
+    refreshTasks();
+  }
+
+  async function submitNewTask() {
+    const i = document.getElementById('new-task-input'), p = document.getElementById('new-task-priority').value;
+    if(!i.value.trim()) return;
+    await sb.from('tasks').insert([{ team_name: currentTeam, text: i.value, status: 'Not in progress', priority: p }]);
+    i.value = ''; refreshTasks();
+  }
+
+  async function refreshReports() {
+    if (isEditingReport) return;
+    const { data } = await sb.from('daily_reports').select('*').eq('team_name', currentTeam);
+    reportData = data || [];
+    renderReports();
+  }
+
+  async function submitNewReport() {
+    const i = document.getElementById('new-report-input');
+    if(!i.value.trim()) return;
+
+    let imageUrls = [];
+    if (pendingReportImages.length > 0) {
+      for (const item of pendingReportImages) {
+        const ext = item.file.name.split('.').pop();
+        const path = `${currentTeam}/${Date.now()}_${item.tag}.${ext}`;
+        const { data, error } = await sb.storage.from('report-images').upload(path, item.file, { upsert: true });
+        if (!error) {
+          const { data: pub } = sb.storage.from('report-images').getPublicUrl(path);
+          imageUrls.push(pub.publicUrl);
+        }
+      }
+    }
+
+    await sb.from('daily_reports').insert([{
+      team_name: currentTeam,
+      comment: i.value,
+      date: new Date(),
+      images: imageUrls.length ? imageUrls : null
+    }]);
+
+    i.value = '';
+    pendingReportImages = [];
+    const chips = document.getElementById('pending-img-chips');
+    chips.innerHTML = '';
+    chips.classList.add('hidden');
+    document.getElementById('report-img-input').value = '';
+    refreshReports();
+  }
+
+  // --- 9. КРЕАТИВИ (SQL) ---
+  function populateCreativeGeoFilter() {
+    const s = document.getElementById('creative-geo-filter'); if(!s) return;
+    const g = [...new Set(creativesRawData.map(c => c.geo))].filter(Boolean).sort();
+    s.innerHTML = '<option value="">All Geo</option>' + g.map(x => `<option value="${x.toLowerCase()}">${x.toUpperCase()}</option>`).join('');
+  }
+
+function renderCreativeSidebar(query = "", geoFilter = "") {
+  const sidebar = document.getElementById('creative-list-sidebar');
+  if (!sidebar) return;
+
+  const grouped = {};
+  // Переконайся, що loadCreatives() вже відпрацював
+  const dataToUse = window.creativesRawData || [];
+
+  dataToUse.forEach(d => {
+    const cid = d.cid || "Unknown";
+    const geo = (d.geo || "").toLowerCase();
+    
+    const matchesGeo = !geoFilter || geo === geoFilter.toLowerCase();
+    const matchesSearch = !query || cid.toLowerCase().includes(query.toLowerCase());
+
+    if (matchesGeo && matchesSearch) {
+      if (!grouped[cid]) grouped[cid] = { cid, s: 0 };
+      grouped[cid].s += Number(d.spend) || 0;
+    }
+  });
+
+  const list = Object.values(grouped).sort((a, b) => b.s - a.s);
+
+  if (list.length === 0) {
+    sidebar.innerHTML = '<div class="text-center py-20 opacity-20 text-[10px] font-black uppercase tracking-widest">No Data in SQL</div>';
+    return;
+  }
+
+  sidebar.innerHTML = list.map(c => {
+    const isActive = currentCreativeID === c.cid;
+    return `
+      <button onclick="currentCreativeID='${c.cid}'; showCreativeStats(); renderCreativeSidebar('${query}', '${geoFilter}');" 
+              class="w-full flex justify-between items-center p-3 rounded-xl border border-white/5 transition-all text-left uppercase group
+              ${isActive ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'hover:bg-white/5 text-slate-400'}">
+        <span class="text-[10px] font-black truncate">${c.cid}</span>
+        <span class="text-[10px] font-bold opacity-60">$${Math.round(c.s)}</span>
+      </button>
+    `;
+  }).join('');
+  
+  document.getElementById('creative-placeholder')?.classList.add('hidden');
+}
+// 3. Вибір креатива для детальної статки
+function selectCreative(cid) {
+  currentCreativeID = cid;
+  renderCreativeSidebar(document.getElementById('creative-search').value.toLowerCase(), document.getElementById('creative-geo-filter').value.toLowerCase());
+  showCreativeStats();
+}
+  async function showCreativeStats(accF, geoF) {
+    if(!currentCreativeID) return;
+    if(accF !== undefined) activeCrAcc = accF; if(geoF !== undefined) activeCrGeo = geoF;
+    const filtered = creativesRawData.filter(d => d.cid.toLowerCase() === currentCreativeID.toLowerCase());
+    let allGeos = new Set(); filtered.forEach(i => { if(i.geo && i.geo !== "??") allGeos.add(i.geo.toUpperCase()); });
+    if (allGeos.size === 1 && activeCrGeo === null) activeCrGeo = Array.from(allGeos)[0];
+    let disp = filtered; if(activeCrAcc) disp = disp.filter(d => d.account === activeCrAcc); if(activeCrGeo) disp = disp.filter(d => (d.geo||"").toUpperCase() === activeCrGeo);
+    let s=0, r=0, d=0, cl=0; disp.forEach(i => { s += i.spend; r += i.regs; d += i.deps; cl += i.clicks; });
+    document.getElementById('creative-stats-card').classList.remove('hidden');
+    document.getElementById('cr-total-spend').innerText = formatCurrency(s);
+    document.getElementById('cr-total-regs').innerText = r;
+    document.getElementById('cr-total-deps').innerText = d;
+    document.getElementById('cr-total-r2d').innerText = (r > 0 ? (d/r*100).toFixed(1) : 0) + '%';
+    document.getElementById('cr-total-cpa').innerText = '$' + (d > 0 ? (s/d).toFixed(1) : 0);
+    document.getElementById('cr-geo-flags').innerHTML = Array.from(allGeos).sort().map(g => `<div onclick="showCreativeStats(undefined, '${activeCrGeo===g?null:g}')" class="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-all ${activeCrGeo===g?'bg-blue-600 border-blue-400 scale-105':'bg-white/5 border-white/5 hover:bg-white/10'}"><img src="https://flagcdn.com/w40/${g.toLowerCase()}.png" class="w-6 h-4 object-cover rounded-sm shadow-sm"><span class="text-xs font-black ${activeCrGeo===g?'text-white':'text-slate-400'}">${g}</span></div>`).join('');
+    document.getElementById('cr-account-list').innerHTML = [...new Set(filtered.map(x=>x.account))].sort().map(name => `<button onclick="showCreativeStats('${activeCrAcc===name?null:name}', undefined)" class="px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all border ${activeCrAcc===name?'bg-blue-600 text-white border-blue-400 shadow-lg':'bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20'}">${name}</button>`).join('');
+  }
+
+  // --- 10. PAYOUTS ---
+async function refreshPayoutsFromSQL() {
+  const { data, error } = await sb
+    .from('payouts')
+    .select('*')
+    .eq('team_name', currentTeam);
+
+  if (error) {
+    console.error("Помилка завантаження виплат:", error);
+    return;
+  }
+
+  // Оновлюємо глобальний об'єкт для розрахунків
+  globalPayouts = {};
+  data.forEach(p => {
+    const geo = (p.geo || "").toUpperCase().trim();
+    const offer = (p.offer || "DEFAULT").toUpperCase().trim();
+    globalPayouts[`${geo}_${offer}`] = Number(p.value);
+  });
+
+  // ПЕРЕДАЄМО data СЮДИ:
+  renderGeoPayoutSettings(data); 
+}
+
+
+async function addGeoPayout() {
+  const g = document.getElementById('payout-geo').value.toUpperCase().trim();
+  const v = document.getElementById('payout-value').value;
+  
+  // Оффер зберігаємо як ввели (без примусового uppercase)
+  const oInput = document.getElementById('payout-offer').value.trim();
+  const o = oInput || "DEFAULT"; 
+
+  if (g && v) {
+    console.log("Saving payout:", { team: currentTeam, geo: g, offer: o, val: v });
+
+    // Використовуємо upsert. 
+    // Якщо в базі вже є такий team_name + geo + offer — він оновить value.
+    const { error } = await sb.from('payouts').upsert({ 
+        team_name: currentTeam, 
+        geo: g, 
+        offer: o, 
+        value: Number(v) 
+      }, { 
+        onConflict: 'team_name, geo, offer' 
+      });
+
+    if (error) {
+      console.error("409 Conflict Fix Error:", error);
+      alert("Помилка: " + error.message);
+    } else {
+      // Очищуємо поля
+      document.getElementById('payout-geo').value = '';
+      document.getElementById('payout-offer').value = '';
+      document.getElementById('payout-value').value = '';
+      
+      // Оновлюємо список
+      await refreshPayoutsFromSQL();
+      showStatus("Saved successfully");
+    }
+  }
+}
+
+  // AI та інші UI
+  async function runAI() { /* Тут твій код AI через fetch */ }
+ function toggleSettingsMenu() {
+  const menu = document.getElementById('settings-menu');
+  
+  // Перевіряємо чи знайшли ми меню
+  if (!menu) {
+    console.error("КРИТИЧНА ПОМИЛКА: Елемент з id='settings-menu' не знайдено!");
+    return;
+  }
+
+  // Закриваємо інші меню (Місяць, Команда), щоб не перекривали
+  document.getElementById('month-menu')?.classList.add('hidden');
+  document.getElementById('team-menu')?.classList.add('hidden');
+
+  // Перемикаємо видимість
+  const isHidden = menu.classList.toggle('hidden');
+  
+  console.log(isHidden ? "Меню приховано" : "Меню відкрито");
+}
+  function toggleMonthMenu() {
+  const menu = document.getElementById('month-menu');
+  if (!menu) return;
+
+  // Закриваємо інші меню
+  document.getElementById('settings-menu')?.classList.add('hidden');
+  document.getElementById('team-menu')?.classList.add('hidden');
+
+  menu.classList.toggle('hidden');
+}
+ // Функція для завантаження збережених налаштувань при старті
+function loadSettings() {
+  console.log("⚙️ Завантаження збережених налаштувань...");
+
+  // 1. Завантаження цілі на місяць ($)
+  const savedTarget = localStorage.getItem('monthly_spend_target');
+  const targetInput = document.getElementById('target-input');
+  
+  if (savedTarget && targetInput) {
+    targetInput.value = savedTarget;
+  } else if (targetInput) {
+    // Якщо в пам'яті порожньо, ставимо дефолт 40000
+    targetInput.value = 40000;
+    localStorage.setItem('monthly_spend_target', 40000);
+  }
+
+  // 2. Завантаження видимості віджетів (чекбокси)
+  const savedVisibility = localStorage.getItem('dashboard_visibility');
+  if (savedVisibility) {
+    try {
+      const settings = JSON.parse(savedVisibility);
+      // Проходимо по всіх збережених станах і оновлюємо чекбокси
+      for (const [id, isChecked] of Object.entries(settings)) {
+        const checkbox = document.getElementById(id);
+        if (checkbox) {
+          checkbox.checked = isChecked;
+        }
+      }
+    } catch (e) {
+      console.error("Помилка читання налаштувань видимості:", e);
+    }
+  }
+
+  // 3. Застосовуємо видимість (ховаємо секції + розтягуємо графік)
+  // Ця функція також збереже дефолтні налаштування, якщо їх не було
+  updateVisibility();
+
+  // 4. Якщо дані вже завантажені (наприклад, при зміні місяця), 
+  // оновлюємо смужку прогресу (Milestone)
+  if (window.filteredDataCache && window.filteredDataCache.length > 0) {
+    updateMilestones(window.filteredDataCache);
+  }
+}
+  function updateVisibility() {
+  // Мапа: ID чекбокса -> ID секції в DOM
+  const config = {
+    'toggle-geo': 'geo-sidebar-col',
+    'toggle-creatives': 'creative-analyzer-section',
+    'toggle-ai': 'ai-intelligence-section',
+    'toggle-table': 'live-table-section',
+    'toggle-heatmap': 'weekly-analysis-section'
+  };
+
+  for (const [checkId, sectionId] of Object.entries(config)) {
+    const checkbox = document.getElementById(checkId);
+    const section = document.getElementById(sectionId);
+    
+    if (checkbox && section) {
+      if (checkbox.checked) {
+        section.classList.remove('hidden');
+      } else {
+        section.classList.add('hidden');
+      }
+    }
+  }
+
+  // СПЕЦІАЛЬНА ЛОГІКА: Якщо ГЕО приховано, розтягуємо графік на всю ширину
+  const geoVisible = document.getElementById('toggle-geo').checked;
+  const chartCol = document.getElementById('chart-main-col');
+  
+  if (chartCol) {
+    if (!geoVisible) {
+      // Розтягуємо на всі 4 колонки
+      chartCol.classList.remove('lg:col-span-3');
+      chartCol.classList.add('lg:col-span-4');
+    } else {
+      // Повертаємо до 3 колонок, щоб було місце для ГЕО
+      chartCol.classList.remove('lg:col-span-4');
+      chartCol.classList.add('lg:col-span-3');
+    }
+  }
+  
+  // Зберігаємо стан налаштувань у пам'ять браузера
+  const settings = {};
+  Object.keys(config).forEach(id => {
+    settings[id] = document.getElementById(id).checked;
+  });
+  localStorage.setItem('dashboard_visibility', JSON.stringify(settings));
+}
+    // --- 1. УТИЛІТИ ТА СТАТУСИ ---
+function updateSyncStatus(status) {
+  const badge = document.getElementById('last-sync-badge');
+  if (!badge) return;
+  if (status === 'loading') badge.innerHTML = `Sync: <span class="animate-pulse text-orange-400 text-[9px]">🔄 SQL...</span>`;
+  else if (status === 'done') badge.innerHTML = `Sync: <span class="text-green-500 text-[9px]">✅ ONLINE</span>`;
+  else badge.innerHTML = `Sync: <span class="text-red-500 text-[9px]">❌ OFFLINE</span>`;
+}
+
+// --- 2. РЕНДЕР ТАСКІВ (Mission Center) ---
+function renderTasks(filter) {
+  const container = document.getElementById('task-list-container'); 
+  if (!container) return;
+  container.innerHTML = ''; 
+
+  document.querySelectorAll('.task-tab').forEach(t => t.classList.remove('active'));
+  const activeTab = document.getElementById('tab-' + filter.toLowerCase().replace(/\s+/g, '-'));
+  if (activeTab) activeTab.classList.add('active');
+
+  const filtered = filter === 'All' ? taskData : taskData.filter(t => t.status === filter);
+  
+  if (!filtered.length) { 
+    container.innerHTML = `<div class="text-center py-20 opacity-20 italic">No tasks in "${filter}"</div>`; 
+    return; 
+  }
+
+  const priorityOrder = { 'High': 1, 'Medium': 2, 'Low': 3 };
+  filtered.sort((a,b) => priorityOrder[a.priority] - priorityOrder[b.priority] || b.id - a.id).forEach(t => {
+    container.innerHTML += `
+      <div class="card p-4 rounded-2xl prio-${t.priority.toLowerCase()} flex items-center justify-between group hover:bg-white/[0.03] transition-all cursor-pointer" onclick="openTaskDetails('${t.id}')">
+        <div class="flex flex-col flex-1 min-w-0 pr-4">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-[9px] font-black opacity-30">${normalizeDate(t.created_at)}</span>
+            ${t.tag === 'TeamLead' ? '<span class="bg-red-500 text-[8px] px-1.5 rounded text-white font-black animate-pulse">TL</span>' : ''}
+          </div>
+          <p class="text-sm task-text-style truncate opacity-90">${t.text}</p>
+        </div>
+        <div class="flex items-center gap-3 shrink-0" onclick="event.stopPropagation()">
+          <div class="flex gap-1.5 border-r border-white/5 pr-3">
+            <button onclick="changeStatus('${t.id}', 'Not in progress')" class="w-2.5 h-2.5 rounded-full bg-slate-500 hover:scale-150 transition-transform"></button>
+            <button onclick="changeStatus('${t.id}', 'In progress')" class="w-2.5 h-2.5 rounded-full bg-yellow-500 hover:scale-150 transition-transform"></button>
+            <button onclick="changeStatus('${t.id}', 'Completed')" class="w-2.5 h-2.5 rounded-full bg-green-500 hover:scale-150 transition-transform"></button>
+          </div>
+          <button onclick="deleteTaskRow('${t.id}')" class="text-muted-dynamic hover:text-red-500 transition opacity-0 group-hover:opacity-100 p-1">✕</button>
+        </div>
+      </div>`;
+  });
+}
+
+// Функція видалення таска (SQL)
+async function deleteTaskRow(id) {
+  if (!confirm('Видалити таск?')) return;
+  const { error } = await sb.from('tasks').delete().eq('id', id);
+  if (!error) refreshTasks();
+}
+
+// --- 3. РЕНДЕР ЗВІТІВ (Daily Reports) ---
+function renderReports() {
+  const container = document.getElementById('report-list-container');
+  if (!container) return;
+  
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  if (!filtered.length) {
+    container.innerHTML = `<div class="text-center py-20 opacity-20 italic">No reports for this period</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.sort((a,b) => new Date(b.date) - new Date(a.date)).map(r => `
+    <div class="p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
+      <div onclick="toggleReportVisibility('${r.id}')" class="flex justify-between items-center cursor-pointer hover:bg-white/5 p-1 rounded-xl transition text-muted-dynamic">
+        <div class="flex items-center gap-2">
+          <span id="report-arrow-${r.id}" class="text-[8px] text-blue-500 transition-transform duration-200" style="transform: rotate(-90deg)">▼</span>
+          <span class="text-[10px] font-black uppercase text-blue-500 tracking-widest">${normalizeDate(r.date)}</span>
+          ${r.images && r.images.length ? `<span class="img-count-badge">🖼 ${r.images.length}</span>` : ''}
+          <span id="report-status-${r.id}" class="status-icon flex items-center ml-2"></span>
+        </div>
+        <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+          <button onclick="triggerAddPhotos('${r.id}')" title="Attach photos" class="text-indigo-400 hover:text-indigo-300 transition px-1.5 py-1 rounded-lg hover:bg-indigo-500/10 text-xs">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          </button>
+          <button onclick="deleteReport('${r.id}')" class="text-muted-dynamic hover:text-red-500 transition px-1">✕</button>
+        </div>
+      </div>
+      <div id="report-content-${r.id}" class="hidden bg-transparent outline-none text-sm text-dynamic w-full min-h-[20px] px-2 pb-2 rounded-xl transition normal-case-text"
+           contenteditable="true" data-state="view" onfocus="startEditingReport('${r.id}', this)" onblur="finishEditingReport('${r.id}', this)">
+        ${parseReportBlocks(r.comment, r.images)}
+      </div>
+    </div>`).join('');
+}
+
+// Видалення звіту (SQL)
+async function deleteReport(id) {
+  if (!confirm('Видалити звіт?')) return;
+  const { error } = await sb.from('daily_reports').delete().eq('id', id);
+  if (!error) refreshReports();
+}
+
+// --- 4. РЕДАГУВАННЯ ЗВІТІВ (SQL) ---
+async function startEditingReport(id, el) {
+  if (el.getAttribute('data-state') === 'edit') return;
+  isEditingReport = true;
+  el.setAttribute('data-state', 'edit');
+  const r = reportData.find(i => i.id === id);
+  if (r) el.innerText = r.comment; 
+}
+
+async function finishEditingReport(id, el) {
+  if (el.getAttribute('data-state') !== 'edit') return;
+  const newText = el.innerText.trim();
+  const r = reportData.find(i => i.id === id);
+
+  if (r && r.comment !== newText) {
+    r.comment = newText;
+    const { error } = await sb.from('daily_reports').update({ comment: newText }).eq('id', id);
+    if (error) console.error("Update error:", error);
+  }
+
+  const r2 = reportData.find(i => i.id === id);
+  el.innerHTML = parseReportBlocks(newText, r2 ? r2.images : null);
+  el.setAttribute('data-state', 'view');
+  isEditingReport = false;
+}
+    // --- 1. ОНОВЛЕННЯ МІСЯЧНОГО ТАРГЕТУ ---
+function updateMilestones(data) {
+  const fill = document.getElementById('milestone-fill');
+  const label = document.getElementById('monthly-spend-label');
+  const info = document.getElementById('next-rank-info');
+  
+  if (!fill || !label) return;
+
+  // Рахуємо загальний спенд за вибраний місяць
+  const totalSpend = data.reduce((sum, item) => sum + (Number(item.spend) || 0), 0);
+  
+  // Беремо таргет з налаштувань або ставимо 40к за дефолтом
+  const target = Number(localStorage.getItem('monthly_spend_target')) || 40000;
+  
+  // Розрахунок відсотка (не більше 100%)
+  const percent = Math.min((totalSpend / target) * 100, 100);
+  
+  // Анімація полоси
+  fill.style.width = percent + "%";
+  
+  // Оновлення тексту
+  label.innerText = `$${Math.round(totalSpend).toLocaleString()} / $${Number(target).toLocaleString()}`;
+  
+  const left = target - totalSpend;
+  if (info) {
+    info.innerText = left > 0 
+      ? `Left: $${Math.round(left).toLocaleString()}` 
+      : "GOAL REACHED! 🚀";
+    
+    // Зміна кольору, якщо ціль досягнута
+    if (left <= 0) {
+      info.classList.replace('text-blue-500', 'text-emerald-400');
+      info.classList.replace('bg-blue-500/10', 'bg-emerald-500/10');
+    } else {
+      info.classList.replace('text-emerald-400', 'text-blue-500');
+      info.classList.replace('bg-emerald-500/10', 'bg-blue-500/10');
+    }
+  }
+}
+
+// --- 4. ФУНКЦІЇ ДЕТАЛЬНОГО ПЕРЕГЛЯДУ ТАСКІВ ---
+function openTaskDetails(id) {
+  const task = taskData.find(t => t.id === id);
+  if (!task) return;
+  currentEditingTaskId = id;
+  const modal = document.getElementById('task-detail-modal');
+  document.getElementById('detail-date').innerText = normalizeDate(task.created_at);
+  document.getElementById('detail-text-input').value = task.text;
+  document.getElementById('detail-priority-select').value = task.priority;
+  updatePrioritySelectColor(document.getElementById('detail-priority-select'), task.priority);
+  modal.classList.remove('hidden');
+}
+
+function updatePrioritySelectColor(el, val) {
+  if (!el) return;
+  el.className = el.className.replace(/text-(red|yellow|slate)-500/g, "");
+  if (val === 'High') el.classList.add('text-red-500');
+  else if (val === 'Medium') el.classList.add('text-yellow-500');
+  else el.classList.add('text-slate-500');
+}
+
+function closeTaskDetails() {
+  document.getElementById('task-detail-modal').classList.add('hidden');
+  currentEditingTaskId = null;
+}
+    // --- 2. ПАРСЕР СМАРТ-БЛОКІВ ДЛЯ ЗВІТІВ ---
+function parseReportBlocks(text, images) {
+  if (!text) return "";
+  const lines = text.split('\n');
+
+  function injectImgTags(str, imgs) {
+    return escapeHtml(str).replace(/@img(\d+)/gi, (match, num) => {
+      const idx = parseInt(num) - 1;
+      const url = imgs && imgs[idx] ? imgs[idx] : null;
+      if (url) {
+        return `<span class="img-tag" onmouseenter="showImgPreview(event,'${url}','@img${num}')" onmouseleave="hideImgPreview()">🖼 @img${num}</span>`;
+      }
+      return `<span class="img-tag img-tag-empty" title="Фото не прикріплено — натисни 🖼 щоб завантажити">📎 @img${num}</span>`;
+    });
+  }
+
+  return lines.map(line => {
+    let l = line.trim();
+    if (l.startsWith('+')) return `<div class="report-block rb-success font-medium">${injectImgTags(l.substring(1).trim(), images)}</div>`;
+    if (l.startsWith('-')) return `<div class="report-block rb-danger font-medium">${injectImgTags(l.substring(1).trim(), images)}</div>`;
+    if (l.startsWith('!')) return `<div class="report-block rb-warning font-medium">${injectImgTags(l.substring(1).trim(), images)}</div>`;
+    if (l.startsWith('>')) return `<div class="report-block rb-plan font-medium">${injectImgTags(l.substring(1).trim(), images)}</div>`;
+    return l ? `<div class="rb-normal font-normal">${injectImgTags(l, images)}</div>` : `<div class="h-2"></div>`;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function populateGeoFilter(data) {
+  // Список ID всіх селекторів ГЕО на сторінці
+  const targetSelects = ['filter-geo-select', 'heat-geo'];
+  
+  // Отримуємо унікальні ГЕО з масиву даних
+  const geos = [...new Set(data.map(d => (d.geo || "").toUpperCase()))]
+    .filter(g => g !== "" && g !== "??")
+    .sort();
+
+  console.log("📍 Оновлення списків ГЕО. Знайдено:", geos.length, "країн");
+
+  targetSelects.forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) {
+      console.warn(`⚠️ Селектор #${id} не знайдено в DOM`);
+      return;
+    }
+
+    // Зберігаємо поточне вибране значення, щоб не скидалося при оновленні
+    const currentValue = select.value;
+
+    // Очищуємо і додаємо дефолтний пункт
+    select.innerHTML = '<option value="">ALL GEO</option>';
+
+    // Додаємо країни
+    geos.forEach(geo => {
+      const opt = document.createElement('option');
+      opt.value = geo;
+      opt.textContent = geo;
+      select.appendChild(opt);
+    });
+
+    // Повертаємо вибране значення назад
+    select.value = currentValue;
+  });
+}
+    // --- 3. ЗБЕРЕЖЕННЯ РЕДАГОВАНОГО ТАСКА (SQL ВЕРСІЯ) ---
+async function saveDetailedTask() {
+  if (!currentEditingTaskId) return;
+
+  const btn = event.target;
+  const originalText = btn.innerText;
+  const newText = document.getElementById('detail-text-input').value;
+  const newPrio = document.getElementById('detail-priority-select').value;
+
+  if (!newText.trim()) return alert("Task text cannot be empty");
+
+  btn.innerText = "Saving...";
+  btn.disabled = true;
+
+  // Запит до Supabase замість google.script.run
+  const { error } = await sb
+    .from('tasks')
+    .update({ text: newText, priority: newPrio })
+    .eq('id', currentEditingTaskId);
+
+  btn.innerText = originalText;
+  btn.disabled = false;
+
+  if (error) {
+    alert("Error updating task: " + error.message);
+  } else {
+    closeTaskDetails();
+    refreshTasks();
+  }
+}
+    // --- 4. СПИСОК ВИПЛАТ У НАЛАШТУВАННЯХ ---
+function renderGeoPayoutSettings(data) {
+  const container = document.getElementById('geo-payouts-list');
+  if (!container) return;
+
+  if (!data || data.length === 0) {
+    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center text-slate-500">No payouts set in SQL</p>';
+    return;
+  }
+
+  // Сортуємо по ГЕО для зручності в налаштуваннях
+  const sortedData = [...data].sort((a, b) => a.geo.localeCompare(b.geo));
+
+  container.innerHTML = sortedData.map(p => `
+    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group">
+      <span class="font-black text-blue-400 uppercase w-7 shrink-0">${p.geo}</span>
+      <span class="text-slate-400 font-bold truncate flex-1 opacity-70">${p.offer || 'DEFAULT'}</span>
+      <span class="font-bold text-white text-left w-10 shrink-0">$${p.value}</span>
+      <button onclick="deletePayoutFromSQL('${p.id}')" 
+              class="text-red-500 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        ✕
+      </button>
+    </div>
+  `).join('');
+}
+
+// Видалення виплати з SQL
+
+    // --- 1. КЕРУВАННЯ МЕНЮ ТА МОДАЛКАМИ ---
+// 1. Перемикання меню команд
+function toggleTeamMenu() {
+  const menu = document.getElementById('team-menu');
+  if (!menu) return;
+  
+  // Закриваємо інші меню
+  document.getElementById('settings-menu')?.classList.add('hidden');
+  document.getElementById('month-menu')?.classList.add('hidden');
+  
+  menu.classList.toggle('hidden');
+}
+function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
+function toggleReportModal() {
+  const m = document.getElementById('report-modal');
+  
+  if (!m) {
+    console.error("Помилка: Елемент з id='report-modal' не знайдено в HTML!");
+    return;
+  }
+
+  m.classList.toggle('hidden');
+  
+  // Оновлюємо звіти тільки якщо ми відкрили модалку
+  if (!m.classList.contains('hidden')) {
+    if (typeof refreshReports === 'function') {
+      refreshReports();
+    }
+  }
+}
+function toggleTaskModal() { 
+  const m = document.getElementById('task-modal');
+  m.classList.toggle('hidden');
+  if (!m.classList.contains('hidden')) refreshTasks();
+}
+function toggleCalculator() { document.getElementById('calc-modal').classList.toggle('hidden'); }
+
+// ===== QUICK LINKS =====
+let quickLinks = [];
+
+async function loadQuickLinks() {
+  const { data } = await sb.from('quick_links').select('*').eq('team_name', currentTeam).order('position');
+  quickLinks = data || [];
+  renderQuickLinks();
+}
+
+function toggleLinksMenu() {
+  const m = document.getElementById('links-menu');
+  m.classList.toggle('hidden');
+  if (!m.classList.contains('hidden')) renderQuickLinks();
+}
+
+function renderQuickLinks() {
+  const list = document.getElementById('ql-list');
+  if (!list) return;
+  if (!quickLinks.length) {
+    list.innerHTML = `<p class="text-[11px] text-slate-500 text-center py-3 italic">Немає посилань. Додай перше!</p>`;
+    return;
+  }
+  list.innerHTML = quickLinks.map(l => {
+    let domain = '';
+    try { domain = new URL(l.url).hostname; } catch(e) {}
+    const favicon = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '';
+    return `<a href="${l.url}" target="_blank" rel="noopener" class="ql-item" onclick="document.getElementById('links-menu').classList.add('hidden')">
+      ${favicon ? `<img src="${favicon}" alt="" onerror="this.style.display='none'">` : '<span style="width:18px;height:18px;border-radius:4px;background:rgba(255,255,255,0.1);display:inline-block;flex-shrink:0"></span>'}
+      <span class="ql-name">${l.name}</span>
+      <button class="ql-del" onclick="event.preventDefault();event.stopPropagation();removeQuickLink('${l.id}')">✕</button>
+    </a>`;
+  }).join('');
+}
+
+async function addQuickLink() {
+  const name = document.getElementById('ql-name').value.trim();
+  const url  = document.getElementById('ql-url').value.trim();
+  if (!name || !url) return;
+  let fullUrl = url;
+  if (!/^https?:\/\//i.test(fullUrl)) fullUrl = 'https://' + fullUrl;
+
+  const btn = document.querySelector('button[onclick="addQuickLink()"]');
+  if (btn) btn.textContent = '...';
+
+  const { error } = await sb.from('quick_links').insert([{
+    team_name: currentTeam,
+    name,
+    url: fullUrl,
+    position: quickLinks.length
+  }]);
+
+  if (!error) {
+    document.getElementById('ql-name').value = '';
+    document.getElementById('ql-url').value = '';
+    await loadQuickLinks();
+  }
+  if (btn) btn.textContent = '+ Add Link';
+}
+
+async function removeQuickLink(id) {
+  await sb.from('quick_links').delete().eq('id', id);
+  quickLinks = quickLinks.filter(l => l.id !== id);
+  renderQuickLinks();
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('links-menu')?.classList.add('hidden');
+});
+// ===== ADD PHOTOS TO EXISTING REPORT =====
+function triggerAddPhotos(reportId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.accept = 'image/*';
+  input.onchange = () => addPhotosToReport(reportId, input.files);
+  input.click();
+}
+
+async function addPhotosToReport(reportId, files) {
+  if (!files || !files.length) return;
+  const r = reportData.find(x => x.id === reportId);
+  if (!r) return;
+
+  // Показуємо статус
+  const statusEl = document.getElementById(`report-status-${reportId}`);
+  if (statusEl) {
+    statusEl.innerHTML = `<svg class="w-3 h-3 text-indigo-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="32" stroke-dashoffset="10"/></svg>`;
+    statusEl.classList.add('show');
+  }
+
+  const existingImages = Array.isArray(r.images) ? r.images : [];
+  const newUrls = [];
+
+  for (const file of Array.from(files)) {
+    const idx = existingImages.length + newUrls.length + 1;
+    const ext = file.name.split('.').pop();
+    const path = `${currentTeam}/${reportId}_img${idx}.${ext}`;
+    const { error } = await sb.storage.from('report-images').upload(path, file, { upsert: true });
+    if (!error) {
+      const { data: pub } = sb.storage.from('report-images').getPublicUrl(path);
+      newUrls.push(pub.publicUrl);
+    }
+  }
+
+  if (!newUrls.length) {
+    if (statusEl) statusEl.classList.remove('show');
+    return;
+  }
+
+  const updatedImages = [...existingImages, ...newUrls];
+  const { error } = await sb.from('daily_reports').update({ images: updatedImages }).eq('id', reportId);
+
+  if (!error) {
+    r.images = updatedImages;
+    renderReports();
+    // Відновлюємо відкритий стан після ре-рендеру
+    if (openReportRows.includes(reportId)) {
+      const content = document.getElementById(`report-content-${reportId}`);
+      const arrow = document.getElementById(`report-arrow-${reportId}`);
+      if (content) content.classList.remove('hidden');
+      if (arrow) arrow.style.transform = 'rotate(0deg)';
+    }
+  } else {
+    if (statusEl) statusEl.classList.remove('show');
+    alert('Помилка завантаження фото: ' + error.message);
+  }
+}
+// ===== END ADD PHOTOS TO EXISTING REPORT =====
+
+// ===== END QUICK LINKS =====
+
+// ===== CHANGE LOG =====
+let changeLogData = [];
+
+async function refreshChangeLog() {
+  const { data } = await sb.from('change_log').select('*').eq('team_name', currentTeam).order('created_at', { ascending: false });
+  changeLogData = data || [];
+  renderChangeLog();
+}
+
+async function submitChangeLog() {
+  const text = document.getElementById('cl-text').value.trim();
+  const category = document.getElementById('cl-category').value;
+  if (!text) return;
+  await sb.from('change_log').insert([{ team_name: currentTeam, category, text, created_at: new Date() }]);
+  document.getElementById('cl-text').value = '';
+  refreshChangeLog();
+}
+
+async function deleteChangeLog(id) {
+  await sb.from('change_log').delete().eq('id', id);
+  changeLogData = changeLogData.filter(e => e.id !== id);
+  renderChangeLog();
+}
+
+function renderChangeLog() {
+  const list = document.getElementById('cl-list');
+  if (!list) return;
+  if (!changeLogData.length) {
+    list.innerHTML = `<div class="text-center py-16 opacity-20 italic text-sm">Записів поки немає</div>`;
+    return;
+  }
+
+  const catLabel = { budget:'💰 Budget', account:'🔴 Account', creative:'🎨 Creative', funnel:'🔵 Funnel', other:'⚪ Other' };
+
+  // Group by date
+  const groups = {};
+  changeLogData.forEach(e => {
+    const day = (e.created_at || '').slice(0, 10);
+    if (!groups[day]) groups[day] = [];
+    groups[day].push(e);
+  });
+
+  list.innerHTML = Object.entries(groups).map(([day, entries]) => {
+    const label = new Date(day + 'T12:00:00').toLocaleDateString('uk-UA', { weekday:'long', day:'numeric', month:'long' });
+    const rows = entries.map(e => {
+      const time = new Date(e.created_at).toLocaleTimeString('uk-UA', { hour:'2-digit', minute:'2-digit' });
+      return `<div class="cl-entry flex items-start gap-2 mb-2">
+        <div class="flex-1 min-w-0">
+          <span class="cl-badge cl-${e.category}">${catLabel[e.category] || e.category}</span>
+          <span class="ml-2 text-xs font-medium">${e.text}</span>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <span class="text-[10px] text-slate-500">${time}</span>
+          <button onclick="deleteChangeLog('${e.id}')" class="text-slate-600 hover:text-red-500 transition text-xs">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+    return `<div>
+      <p class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">${label}</p>
+      <div class="cl-day-group">${rows}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleChangeLogModal() {
+  const m = document.getElementById('changelog-modal');
+  m.classList.toggle('hidden');
+  if (!m.classList.contains('hidden')) refreshChangeLog();
+}
+// ===== END CHANGE LOG =====
+function toggleSettingsMenu() { document.getElementById('settings-menu').classList.toggle('hidden'); }
+
+// --- 2. ІСТОРІЯ СИНХРОНІЗАЦІЇ (SQL) ---
+async function toggleSyncModal() {
+  const m = document.getElementById('sync-modal');
+  m.classList.toggle('hidden');
+  if (m.classList.contains('hidden')) return;
+
+  const container = document.getElementById('sync-list');
+  container.innerHTML = '<p class="text-center opacity-50 animate-pulse text-[10px] uppercase font-black">Loading logs...</p>';
+
+  const { data, error } = await sb
+    .from('sync_logs')
+    .select('*')
+    .eq('team_name', currentTeam)
+    .order('created_at', { ascending: false })
+    .limit(20);
+
+  if (error || !data.length) {
+    container.innerHTML = '<p class="text-center opacity-30 italic text-xs">No logs found</p>';
+    return;
+  }
+
+  container.innerHTML = data.map(l => `
+    <div class="mb-4 border-b border-white/5 pb-4 last:border-0">
+      <div class="flex justify-between items-center mb-2">
+        <p class="text-[10px] font-black uppercase ${l.type.includes('Creative') ? 'text-purple-400' : 'text-orange-400'}">${l.type}</p>
+        <span class="text-[9px] opacity-30">${new Date(l.created_at).toLocaleString()}</span>
+      </div>
+      <div class="bg-white/5 p-3 rounded-xl border border-white/10">
+        <div class="flex justify-between items-start gap-4">
+          <span class="text-[11px] font-bold text-muted-dynamic flex-1 uppercase">${l.accounts}</span>
+          <span class="text-[10px] font-black text-white bg-white/10 px-2 py-0.5 rounded-lg whitespace-nowrap">${l.row_count} rows</span>
+        </div>
+        ${l.range_label ? `<p class="text-[9px] mt-2 opacity-40 italic">${l.range_label}</p>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+// --- 3. СКРІНШОТ КАРТКА (SUMMARY) ---
+function openScreenshotModal() {
+  const modal = document.getElementById('screenshot-modal');
+  const from = document.getElementById('filter-from').value;
+  const to = document.getElementById('filter-to').value;
+  
+  // Використовуємо вже завантажені дані з кешу
+  const act = filteredDataCache;
+  if (!act.length) { alert("No data to show"); return; }
+
+  const s = act.reduce((acc, i) => acc + i.spend, 0);
+  const r = act.reduce((acc, i) => acc + i.regs, 0);
+  const d = act.reduce((acc, i) => acc + i.deposits, 0);
+
+  const geoMap = {};
+  act.forEach(d => { 
+    const g = d.geo || "??";
+    if(!geoMap[g]) geoMap[g]={s:0, r:0, d:0}; 
+    geoMap[g].s += d.spend; geoMap[g].r += d.regs; geoMap[g].d += d.deposits; 
+  });
+  const top3 = Object.entries(geoMap).sort((a,b)=>b[1].s - a[1].s).slice(0,3);
+
+  document.getElementById('ss-date-range').innerText = `${from} — ${to}`;
+  document.getElementById('ss-total-spend').innerText = formatCurrency(s);
+  document.getElementById('ss-cpl').innerText = formatCurrency(r > 0 ? s/r : 0);
+  document.getElementById('ss-cpa').innerText = formatCurrency(d > 0 ? s/d : 0);
+  
+  const ssG = document.getElementById('ss-geo-list');
+  ssG.innerHTML = top3.map(([name, m]) => `
+    <div class="flex justify-between items-center bg-white/5 px-4 py-2.5 rounded-[1.2rem] border border-white/5">
+      <div class="flex items-center gap-2">
+        <img src="https://flagcdn.com/w40/${name.toLowerCase()}.png" class="w-5 h-3.5 object-cover rounded-sm" onerror="this.style.display='none'">
+        <span class="font-black text-white uppercase text-sm tracking-tighter">${name}</span>
+      </div>
+      <div class="flex flex-col items-end">
+        <span class="text-[11px] font-black text-blue-400 uppercase leading-none mb-1">${m.r} REG | ${m.d} DEP</span>
+        <span class="text-[10px] font-bold text-muted-dynamic">$${Math.round(m.s).toLocaleString()}</span>
+      </div>
+    </div>`).join('');
+  modal.classList.remove('hidden');
+}
+function closeScreenshotModal() { document.getElementById('screenshot-modal').classList.add('hidden'); }
+
+// --- 4. ФІЛЬТРИ ТА ГРАФІК ---
+function applyGeoFilter() {
+  const f = document.getElementById('geo-filter-from').value;
+  const t = document.getElementById('geo-filter-to').value;
+  const filtered = rawData.filter(d => (!f || d.date >= f) && (!t || d.date <= t));
+  renderGeoList(filtered);
+}
+
+function changeChartMode(mode) {
+  currentChartMode = mode; // 'daily' або 'geo'
+  
+  // Оновлюємо візуал кнопок (синя підсвітка)
+  const btnDaily = document.getElementById('btn-daily');
+  const btnGeo = document.getElementById('btn-geo');
+  
+  if (mode === 'daily') {
+    btnDaily.classList.add('bg-blue-600', 'text-white');
+    btnDaily.classList.remove('text-muted-dynamic');
+    btnGeo.classList.remove('bg-blue-600', 'text-white');
+    btnGeo.classList.add('text-muted-dynamic');
+  } else {
+    btnGeo.classList.add('bg-blue-600', 'text-white');
+    btnGeo.classList.remove('text-muted-dynamic');
+    btnDaily.classList.remove('bg-blue-600', 'text-white');
+    btnDaily.classList.add('text-muted-dynamic');
+  }
+
+  // Викликаємо фільтрацію, яка всередині викличе новий renderTrend
+  applyChartFilter();
+}
+
+function applyChartFilter() {
+  const f = document.getElementById('chart-from').value;
+  const t = document.getElementById('chart-to').value;
+  const filtered = rawData.filter(d => (!f || d.date >= f) && (!t || d.date <= t));
+  renderTrend(filtered);
+}
+
+// --- 5. КАЛЬКУЛЯТОР ТА ТАРГЕТ ---
+function runCalc() {
+  const s = parseFloat(document.getElementById('calc-spend').value) || 0;
+  const r = parseFloat(document.getElementById('calc-regs').value) || 0;
+  const d = parseFloat(document.getElementById('calc-deps').value) || 0;
+  document.getElementById('res-cpl').innerText = formatCurrency(r > 0 ? s/r : 0);
+  document.getElementById('res-cpa').innerText = formatCurrency(d > 0 ? s/d : 0);
+  document.getElementById('res-r2d').innerText = (r > 0 ? (d/r*100).toFixed(1) : '0') + '%';
+}
+
+function updateTarget() {
+  const input = document.getElementById('target-input');
+  const val = parseFloat(input.value);
+  
+  if (val > 0) {
+    // Зберігаємо в браузері
+    localStorage.setItem('monthly_spend_target', val);
+    
+    // Оновлюємо візуал (використовуємо поточні відфільтровані дані)
+    if (typeof filteredDataCache !== 'undefined') {
+      updateMilestones(filteredDataCache);
+    }
+    console.log("Ціль оновлена до:", val);
+  }
+}
+
+// Закриття меню при кліку в іншому місці
+window.addEventListener('click', function(e) {
+  const menus = ['team-menu', 'month-menu', 'settings-menu'];
+  menus.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.contains(e.target) && !e.target.closest(`button[onclick*="${id.split('-')[0]}"]`)) {
+      el.classList.add('hidden');
+    }
+  });
+});
+     function filterTasks(status) {
+    currentTaskFilter = status;
+    renderTasks(status);
+  }
+     // --- 8. ТАБЛИЦЯ ТА ФІЛЬТРИ ---
+  function applyFilter() {
+  const from = document.getElementById('filter-from').value;
+  const to = document.getElementById('filter-to').value;
+  const geo = document.getElementById('filter-geo-select').value;
+  
+  // Фільтруємо rawData
+  filteredDataCache = rawData.filter(d => {
+    const matchDate = (!from || d.date >= from) && (!to || d.date <= to);
+    const matchGeo = !geo || d.geo === geo;
+    return matchDate && matchGeo;
+  });
+  
+  renderTable(filteredDataCache);
+}
+     // --- 10. КЕРУВАННЯ ВІДЖЕТАМИ ТА МЕНЮ ---
+  function toggleSettingsMenu() { 
+    const el = document.getElementById('settings-menu');
+    if (el) el.classList.toggle('hidden');
+  }
+    // Закриття при кліку збоку
+window.onclick = function(event) {
+  const menus = ['settings-menu', 'month-menu', 'team-menu'];
+  
+  menus.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && !el.classList.contains('hidden')) {
+      // Якщо клік був НЕ по самому меню
+      if (!el.contains(event.target)) {
+        el.classList.add('hidden');
+      }
+    }
+  });
+};
+
+// 1. Пошук креативів
+function searchCreative() {
+  const query = document.getElementById('creative-search').value.toLowerCase();
+  const geoFilter = document.getElementById('creative-geo-filter').value.toLowerCase();
+  renderCreativeSidebar(query, geoFilter);
+}
+
+function showGeoDetails(geo) {
+  const modal = document.getElementById('geo-details-modal');
+  const list = document.getElementById('geo-funnel-list');
+  const title = document.getElementById('geo-details-title');
+  if (!modal || !list) return;
+
+  title.innerText = `${geo.toUpperCase()} Details`;
+  
+  const geoData = rawData.filter(d => 
+    d.date && d.date.startsWith(currentMonthFilter) && 
+    (d.geo || "").toUpperCase() === geo.toUpperCase()
+  );
+  
+  // ГРУПУВАННЯ ВОРОНОК
+  const funnels = {};
+  geoData.forEach(d => {
+    const f = d.funnel || "Default";
+    const o = (d.offer || "DEFAULT").toUpperCase().trim();
+    const g = (d.geo || "").toUpperCase().trim();
+    
+    // Знаходимо ціну виплати для цього оффера
+    const payoutKey = `${g}_${o}`;
+    const payoutValue = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+
+    if (!funnels[f]) {
+      funnels[f] = { 
+        s: 0, r: 0, d: 0, i: 0, rev: 0, 
+        offerName: o, // Запам'ятовуємо назву оффера
+        payout: payoutValue, // Зберігаємо ціну виплати для цієї воронки
+        dailySpend: {} 
+      };
+    }
+    
+    funnels[f].s += Number(d.spend) || 0;
+    funnels[f].r += Number(d.regs) || 0;
+    funnels[f].d += Number(d.deposits) || 0;
+    funnels[f].i += Number(d.installs) || 0;
+    funnels[f].rev += (Number(d.deposits) * payoutValue);
+    funnels[f].dailySpend[d.date] = (funnels[f].dailySpend[d.date] || 0) + Number(d.spend);
+  });
+
+  list.innerHTML = Object.entries(funnels)
+    .sort((a, b) => b[1].s - a[1].s)
+    .map(([name, data], index) => {
+      const r2d = data.r > 0 ? (data.d / data.r * 100).toFixed(1) : 0;
+      const cpl = data.r > 0 ? (data.s / data.r).toFixed(1) : 0;
+      const cpa = data.d > 0 ? (data.s / data.d).toFixed(1) : 0;
+      const profit = data.rev - data.s;
+      
+      const sortedDates = Object.keys(data.dailySpend).sort().slice(-7);
+      const sparkline = createSparkline(sortedDates.map(date => data.dailySpend[date]));
+
+      // --- ЛОГІКА КРЕАТИВІВ ---
+      const funnelCIDs = (window.creativesRawData || []).filter(c => 
+        c.funnel === name && c.date && c.date.startsWith(currentMonthFilter)
+      );
+
+      const cidStats = {};
+      funnelCIDs.forEach(c => {
+        if (!cidStats[c.cid]) cidStats[c.cid] = { s: 0, r: 0, d: 0, i: 0 };
+        cidStats[c.cid].s += Number(c.spend) || 0;
+        cidStats[c.cid].r += Number(c.regs) || 0;
+        cidStats[c.cid].d += Number(c.deps) || 0;
+        cidStats[c.cid].i += Number(c.installs) || 0;
+      });
+
+      const cidRowsHtml = Object.entries(cidStats)
+        .sort((a, b) => b[1].s - a[1].s)
+        .map(([cid, stat]) => {
+          const cR2d = stat.r > 0 ? (stat.d / stat.r * 100).toFixed(1) : 0;
+          const cCpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : 0;
+          const cCpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : 0;
+          
+          // ВИКОРИСТОВУЄМО ЦІНУ ВИПЛАТИ ВІД ВОРОНКИ
+          const cProfit = (stat.d * data.payout) - stat.s;
+          
+          return `
+            <tr class="cid-row-${index} hidden bg-black/40 text-[11px] border-b border-white/5 transition-all">
+              <td class="py-2 pl-8 text-purple-400 font-mono uppercase">${cid}</td>
+              <td class="py-2 text-center opacity-10 text-[9px]">CREATIVE</td>
+              <td class="py-2 text-right px-2 text-slate-400">$${Math.round(stat.s)}</td>
+              <td class="py-2 text-center px-2 text-orange-400/60">${stat.i}</td>
+              <td class="py-2 text-center px-2 text-blue-400/60">${stat.r}</td>
+              <td class="py-2 text-center px-2 text-green-500/60">${stat.d}</td>
+              <td class="py-2 text-right px-2 text-pink-500/60">${cR2d}%</td>
+              <td class="py-2 text-right px-2 text-purple-400/60">$${cCpl}</td>
+              <td class="py-2 text-right px-2 text-yellow-500/60">$${cCpa}</td>
+              <td class="py-2 text-right pr-1 ${cProfit >= 0 ? 'text-emerald-500/60' : 'text-red-500/60'}">$${Math.round(cProfit)}</td>
+            </tr>
+          `;
+        }).join('');
+
+      return `
+        <tr onclick="toggleCIDs(${index})" class="hover:bg-white/[0.03] transition-colors cursor-pointer border-b border-white/10">
+          <td class="py-4 pl-1">
+            <div class="flex items-center gap-2">
+              <svg id="arrow-${index}" class="w-3 h-3 text-slate-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7"></path></svg>
+              <div class="text-sm font-black text-white">${name}</div>
+            </div>
+          </td>
+          <td class="py-4 text-center">${sparkline}</td>
+          <td class="py-4 text-right px-2 font-black text-sm text-white">$${Math.round(data.s)}</td>
+          <td class="py-4 text-center px-2 font-bold text-sm text-orange-400">${data.i}</td>
+          <td class="py-4 text-center px-2 font-bold text-sm text-blue-400">${data.r}</td>
+          <td class="py-4 text-center px-2 font-bold text-sm text-green-500">${data.d}</td>
+          <td class="py-4 text-right px-2 font-black text-sm text-pink-500">${r2d}%</td>
+          <td class="py-4 text-right px-2 font-bold text-sm text-purple-400">$${cpl}</td>
+          <td class="py-4 text-right px-2 font-bold text-sm text-yellow-500">$${cpa}</td>
+          <td class="py-4 text-right pr-1 font-black text-sm ${profit >= 0 ? 'text-emerald-400' : 'text-red-500'}">$${Math.round(profit)}</td>
+        </tr>
+        ${cidRowsHtml}
+      `;
+    }).join('');
+
+  modal.classList.remove('hidden');
+}
+
+// Функція перемикання (оновлена)
+function toggleCIDs(idx) {
+  const rows = document.querySelectorAll(`.cid-row-${idx}`);
+  const arrow = document.getElementById(`arrow-${idx}`);
+  
+  rows.forEach(row => {
+    const isHidden = row.classList.toggle('hidden');
+    if (arrow) {
+      arrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(90deg)';
+      arrow.style.color = isHidden ? '' : '#3b82f6';
+    }
+  });
+}
+
+// Функція для створення міні-графіка (Trend)
+function createSparkline(values) {
+  if (values.length < 2) return `<span class="text-[8px] opacity-20 uppercase font-black">Stable</span>`;
+  
+  const width = 80;  // Трішки вужчий для середнього блоку
+  const height = 20; // Трішки нижчий
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+
+  const points = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * width;
+    const y = height - ((v - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return `
+    <svg width="${width}" height="${height}" class="overflow-visible">
+      <polyline
+        fill="none"
+        stroke="#3b82f6"
+        stroke-width="2.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        points="${points}"
+        style="filter: drop-shadow(0 0 2px rgba(59,130,246,0.4))"
+      />
+    </svg>
+  `;
+}
+function renderMonthList(months) {
+  const mList = document.getElementById('month-list');
+  if (!mList) return;
+
+  mList.innerHTML = months.map(m => {
+    // Перевіряємо, чи цей місяць зараз вибраний
+    const isActive = (m === currentMonthFilter);
+    
+    return `
+      <button onclick="changeGlobalMonth('${m}')" 
+              class="w-full text-left px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-between group 
+              ${isActive ? 'month-item-active' : 'text-slate-400 hover:bg-white/5 hover:text-white'}">
+        <span>${m}</span>
+        ${isActive ? '<span class="w-1.5 h-1.5 bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6]"></span>' : ''}
+      </button>
+    `;
+  }).join('');
+}
+// Функція закриття модалки ГЕО
+function closeGeoModal() {
+  document.getElementById('geo-details-modal').classList.add('hidden');
+}
+
+    // Глобальний стан сортування
+let sortConfig = { key: 'date', direction: 'desc' };
+
+// 1. Функція сортування
+function sortTable(key) {
+  // Перемикаємо напрямок, якщо натиснули на ту саму колонку
+  if (sortConfig.key === key) {
+    sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortConfig.key = key;
+    sortConfig.direction = 'desc';
+  }
+
+  // Сортуємо відфільтровані дані
+  filteredDataCache.sort((a, b) => {
+    let valA = a[key];
+    let valB = b[key];
+
+    // Обробка чисел для Spend, Regs, Deposits
+    if (['spend', 'regs', 'deposits'].includes(key)) {
+      valA = Number(valA) || 0;
+      valB = Number(valB) || 0;
+    } else {
+      valA = String(valA).toLowerCase();
+      valB = String(valB).toLowerCase();
+    }
+
+    if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  renderTable(filteredDataCache);
+}
+async function deletePayoutFromSQL(payoutId) {
+  // 1. Перевірка на "привидів"
+  if (!payoutId || payoutId === 'undefined') {
+    alert("Помилка: запис не має ID в базі. Перезавантажте сторінку.");
+    return;
+  }
+
+  if (!confirm("Видалити?")) return;
+
+  // 2. Спроба видалення
+  const { error } = await sb
+    .from('payouts')
+    .delete()
+    .eq('id', payoutId); // <-- ПЕРЕВІР ТУТ: якщо в базі колонка зветься ID, то пиши 'ID'
+
+  if (error) {
+    console.error("Supabase Error:", error);
+    alert("Помилка бази: " + error.message);
+  } else {
+    console.log("✅ Видалено запис:", payoutId);
+    // 3. Примусове оновлення даних
+    await refreshPayoutsFromSQL();
+  }
+}
+    function toggleReportVisibility(id) {
+  const content = document.getElementById(`report-content-${id}`);
+  const arrow = document.getElementById(`report-arrow-${id}`);
+  
+  if (!content) return;
+
+  // Перемикаємо клас hidden
+  const isHidden = content.classList.toggle('hidden');
+  
+  // Повертаємо стрілочку (якщо вона є)
+  if (arrow) {
+    arrow.style.transform = isHidden ? 'rotate(-90deg)' : 'rotate(0deg)';
+  }
+
+  // Оновлюємо список відкритих рядків (опціонально, для збереження стану)
+  if (!isHidden) {
+    if (!openReportRows.includes(id)) openReportRows.push(id);
+  } else {
+    openReportRows = openReportRows.filter(x => x !== id);
+  }
+}
+// ===== REPORT IMAGES =====
+function handlePendingImages(files) {
+  const chips = document.getElementById('pending-img-chips');
+  Array.from(files).forEach(file => {
+    const idx = pendingReportImages.length + 1;
+    const tag = `img${idx}`;
+    const localUrl = URL.createObjectURL(file);
+    pendingReportImages.push({ file, tag, localUrl });
+
+    const chip = document.createElement('span');
+    chip.className = 'report-img-chip';
+    chip.dataset.tag = tag;
+    chip.innerHTML = `🖼 @${tag} <span class="chip-del" onclick="removePendingImage('${tag}',this)">✕</span>`;
+    chip.onmouseenter = (e) => showImgPreview(e, localUrl, `@${tag}`);
+    chip.onmouseleave = hideImgPreview;
+    chips.appendChild(chip);
+  });
+  chips.classList.remove('hidden');
+  document.getElementById('report-img-input').value = '';
+}
+
+function removePendingImage(tag, el) {
+  pendingReportImages = pendingReportImages.filter(i => i.tag !== tag);
+  el.closest('.report-img-chip').remove();
+  // Re-index remaining chips
+  pendingReportImages.forEach((item, i) => {
+    item.tag = `img${i + 1}`;
+  });
+  document.querySelectorAll('#pending-img-chips .report-img-chip').forEach((chip, i) => {
+    const newTag = `img${i + 1}`;
+    chip.dataset.tag = newTag;
+    chip.querySelector('span:first-of-type') && (chip.childNodes[0].textContent = `🖼 @${newTag} `);
+    chip.innerHTML = `🖼 @${newTag} <span class="chip-del" onclick="removePendingImage('${newTag}',this)">✕</span>`;
+    const item = pendingReportImages[i];
+    if (item) {
+      chip.onmouseenter = (e) => showImgPreview(e, item.localUrl, `@${newTag}`);
+      chip.onmouseleave = hideImgPreview;
+    }
+  });
+  if (!pendingReportImages.length) document.getElementById('pending-img-chips').classList.add('hidden');
+}
+
+function showImgPreview(e, url, label) {
+  const tip = document.getElementById('img-preview-tooltip');
+  tip.querySelector('img').src = url;
+  tip.querySelector('.img-tip-label').textContent = label;
+  tip.classList.add('visible');
+  positionTooltip(e, tip);
+}
+
+function hideImgPreview() {
+  document.getElementById('img-preview-tooltip').classList.remove('visible');
+}
+
+function positionTooltip(e, tip) {
+  const pad = 14;
+  const tw = 340, th = 290;
+  let x = e.clientX + pad;
+  let y = e.clientY - th / 2;
+  if (x + tw > window.innerWidth) x = e.clientX - tw - pad;
+  if (y < pad) y = pad;
+  if (y + th > window.innerHeight) y = window.innerHeight - th - pad;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
+document.addEventListener('mousemove', (e) => {
+  const tip = document.getElementById('img-preview-tooltip');
+  if (tip && tip.classList.contains('visible')) positionTooltip(e, tip);
+});
+
+// ===== EXPORT REPORTS =====
+function exportReports() {
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  if (!filtered.length) { alert('No reports for this period.'); return; }
+
+  const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const monthLabel = currentMonthFilter
+    ? new Date(currentMonthFilter + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : 'All time';
+
+  const lines = [`📋 Daily Reports — ${monthLabel}`, '━'.repeat(40), ''];
+  sorted.forEach(r => {
+    const dateStr = normalizeDate(r.date);
+    lines.push(`📅 ${dateStr}`);
+    const content = (r.comment || '').split('\n').map(l => {
+      const t = l.trim();
+      if (t.startsWith('+')) return `  ✅ ${t.substring(1).trim()}`;
+      if (t.startsWith('-')) return `  ❌ ${t.substring(1).trim()}`;
+      if (t.startsWith('!')) return `  ⚠️  ${t.substring(1).trim()}`;
+      if (t.startsWith('>')) return `  📌 ${t.substring(1).trim()}`;
+      return t ? `  ${t}` : '';
+    }).filter(l => l !== undefined);
+    lines.push(...content);
+    if (r.images && r.images.length) {
+      lines.push(`  🖼 ${r.images.length} photo(s) attached`);
+    }
+    lines.push('');
+  });
+  lines.push('━'.repeat(40));
+  lines.push(`Exported from Dashboard • ${new Date().toLocaleDateString()}`);
+
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    const btn = document.querySelector('button[onclick="exportReports()"]');
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Copied!`;
+      btn.classList.replace('text-emerald-400','text-emerald-300');
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.replace('text-emerald-300','text-emerald-400'); }, 2000);
+    }
+  });
+}
+// ===== PDF EXPORT =====
+function exportReportsPDF() {
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  if (!filtered.length) { alert('No reports for this period.'); return; }
+
+  const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
+  const monthLabel = currentMonthFilter
+    ? new Date(currentMonthFilter + '-01').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' })
+    : 'Весь час';
+
+  function lineToHtml(t) {
+    if (!t) return '';
+    if (t.startsWith('+')) return `<div class="line success"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
+    if (t.startsWith('-')) return `<div class="line danger"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
+    if (t.startsWith('!')) return `<div class="line warning"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
+    if (t.startsWith('>')) return `<div class="line plan"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
+    return `<div class="line normal">${esc(t)}</div>`;
+  }
+
+  function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  const reportsHtml = sorted.map(r => {
+    const date = normalizeDate(r.date);
+    const time = new Date(r.date).toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+    const lines = (r.comment || '').split('\n').map(l => lineToHtml(l.trim())).join('');
+    const photos = r.images && r.images.length
+      ? `<div class="photos">🖼 ${r.images.length} фото прикріплено</div>` : '';
+    return `
+      <div class="report">
+        <div class="report-header">
+          <span class="report-date">${date}</span>
+          <span class="report-time">${time}</span>
+        </div>
+        <div class="report-body">${lines}${photos}</div>
+      </div>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Daily Reports — ${monthLabel}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #1e293b; background: #fff; padding: 32px; }
+    .page-header { border-bottom: 3px solid #3b82f6; padding-bottom: 16px; margin-bottom: 28px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .page-title { font-size: 26px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; }
+    .page-sub { font-size: 11px; color: #3b82f6; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .page-meta { text-align: right; font-size: 10px; color: #94a3b8; line-height: 1.6; }
+    .report { margin-bottom: 20px; break-inside: avoid; }
+    .report-header { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .report-date { font-weight: 800; font-size: 11px; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .report-time { font-size: 10px; color: #94a3b8; }
+    .report-body { padding: 0 4px; }
+    .line { padding: 5px 10px; border-radius: 5px; margin-bottom: 3px; line-height: 1.5; position: relative; }
+    .line .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 3px 0 0 3px; }
+    .line.success { background: #f0fdf4; padding-left: 14px; }
+    .line.success .bar { background: #10b981; }
+    .line.danger  { background: #fef2f2; padding-left: 14px; }
+    .line.danger  .bar { background: #ef4444; }
+    .line.warning { background: #fffbeb; padding-left: 14px; }
+    .line.warning .bar { background: #f59e0b; }
+    .line.plan    { background: #eef2ff; padding-left: 14px; }
+    .line.plan    .bar { background: #6366f1; }
+    .line.normal  { color: #334155; }
+    .photos { font-size: 10px; color: #94a3b8; margin-top: 6px; font-style: italic; }
+    .separator { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+    .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 12px; display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; }
+    @media print {
+      body { padding: 20px; }
+      .report { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <div>
+      <div class="page-title">Daily Reports</div>
+      <div class="page-sub">${monthLabel}</div>
+    </div>
+    <div class="page-meta">
+      <div>${currentTeam || ''}</div>
+      <div>${sorted.length} звіт${sorted.length === 1 ? '' : 'и'}</div>
+    </div>
+  </div>
+  ${reportsHtml}
+  <div class="footer">
+    <span>Daily Reports — ${monthLabel}</span>
+    <span>Експортовано ${new Date().toLocaleDateString('uk-UA')}</span>
+  </div>
+  <script>window.onload = () => window.print();<\/script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+}
+// ===== END PDF EXPORT =====
+
+// ===== END REPORT IMAGES =====
+
+    // 1. Функція фільтрації Heatmap
+function applyWeeklyFilter() {
+  const from = document.getElementById('heat-from').value;
+  const to = document.getElementById('heat-to').value;
+  const geo = document.getElementById('heat-geo').value;
+
+  const filtered = rawData.filter(d => {
+    const matchDate = (!from || d.date >= from) && (!to || d.date <= to);
+    const matchGeo = !geo || (d.geo || "").toUpperCase() === geo.toUpperCase();
+    return matchDate && matchGeo;
+  });
+
+  renderWeeklyHeatmap(filtered);
+}
+
+function renderWeeklyHeatmap(data) {
+  const body = document.getElementById('weekly-heatmap-body');
+  if (!body) return;
+
+  const daysUA = ["Неділя", "Понеділок", "Вівторок", "Середа", "Четвер", "П'ятниця", "Субота"];
+  
+  // 1. Агрегуємо дані
+  let stats = Array.from({ length: 7 }, (_, i) => ({
+    dayIndex: i,
+    name: daysUA[i],
+    s: 0, r: 0, d: 0, rev: 0,
+    geos: {}
+  }));
+
+  data.forEach(item => {
+    const dateObj = new Date(item.date);
+    const day = dateObj.getDay();
+    const s = Number(item.spend) || 0;
+    const d = Number(item.deposits) || 0;
+    const r = Number(item.regs) || 0;
+    const g = (item.geo || "??").toUpperCase().trim();
+    const o = (item.offer || "DEFAULT").toUpperCase().trim();
+
+    const payoutKey = `${g}_${o}`;
+    const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
+    const revenue = (d * payout);
+
+    stats[day].s += s;
+    stats[day].r += r;
+    stats[day].d += d;
+    stats[day].rev += revenue;
+
+    if (!stats[day].geos[g]) stats[day].geos[g] = { s: 0, r: 0, d: 0, rev: 0 };
+    stats[day].geos[g].s += s;
+    stats[day].geos[g].r += r;
+    stats[day].geos[g].d += d;
+    stats[day].geos[g].rev += revenue;
+  });
+
+  // Переставляємо Неділю в кінець
+  const sunday = stats.shift();
+  stats.push(sunday);
+
+  // 2. Розрахунок лімітів для кольорів (Heatmap Logic)
+  const activeDays = stats.filter(d => d.s > 0);
+  const rois = activeDays.map(d => ((d.rev - d.s) / (d.s || 1)) * 100);
+  const cpas = activeDays.map(d => d.d > 0 ? d.s / d.d : 0);
+  
+  const maxRoi = rois.length ? Math.max(...rois) : 0;
+  const minRoi = rois.length ? Math.min(...rois) : 0; // ВИПРАВЛЕНО ТУТ
+  const maxCpa = cpas.length ? Math.max(...cpas) : 0;
+  const minCpa = cpas.length ? Math.min(...cpas) : 0;
+
+  // 3. Генерація HTML
+  body.innerHTML = stats.map(day => {
+    if (day.s === 0) return '';
+
+    const dayRoi = Math.round(((day.rev - day.s) / (day.s || 1)) * 100);
+    const dayCpa = day.d > 0 ? (day.s / day.d) : 0;
+    const dayCpl = day.r > 0 ? (day.s / day.r) : 0;
+    const dayR2d = day.r > 0 ? ((day.d / day.r) * 100).toFixed(1) : 0;
+
+    // Розрахунок ваги кольору
+    const roiW = maxRoi !== minRoi ? (dayRoi - minRoi) / (maxRoi - minRoi) : 0.5;
+    const cpaW = maxCpa !== minCpa ? (dayCpa - minCpa) / (maxCpa - minCpa) : 0.5;
+
+    // Рядки ГЕО всередині дня
+    const geoRows = Object.entries(day.geos)
+      .sort((a, b) => b[1].s - a[1].s)
+      .map(([geoName, gStat]) => {
+        const gRoi = gStat.s > 0 ? Math.round(((gStat.rev - gStat.s) / gStat.s) * 100) : 0;
+        const gCpa = gStat.d > 0 ? (gStat.s / gStat.d) : 0;
+        const gCpl = gStat.r > 0 ? (gStat.s / gStat.r) : 0;
+        const gR2d = gStat.r > 0 ? ((gStat.d / gStat.r) * 100).toFixed(1) : 0;
+
+        return `
+          <tr class="heat-geo-details-${day.dayIndex} hidden heat-geo-row">
+            <td class="p-2 pl-10 text-blue-400 font-black uppercase">↳ ${geoName}</td>
+            <td class="p-2 text-right text-slate-400 font-mono font-medium">$${Math.round(gStat.s).toLocaleString()}</td>
+            <td class="p-2 text-center text-slate-500 font-medium">${gStat.r}</td>
+            <td class="p-2 text-center text-green-500/60 font-medium">${gStat.d}</td>
+            <td class="p-2 text-right text-purple-400/60 font-mono font-medium">$${gCpl.toFixed(1)}</td>
+            <td class="p-2 text-right font-mono text-slate-500 font-medium">$${gCpa.toFixed(1)}</td>
+            <td class="p-2 text-center text-pink-500/60 font-medium">${gR2d}%</td>
+            <td class="p-2 text-right pr-5 font-black ${gRoi >= 0 ? 'text-emerald-500' : 'text-red-500'}">${gRoi}%</td>
+          </tr>
+        `;
+      }).join('');
+
+    return `
+      <tr onclick="toggleDayHeatmap(${day.dayIndex})" class="heat-day-row text-[12px] font-bold border-b border-white/5">
+        <td class="p-3 text-white bg-white/[0.02] rounded-l-xl border-l-4 ${day.dayIndex === 0 || day.dayIndex === 6 ? 'border-orange-500' : 'border-emerald-500'}">
+          <span id="heat-arrow-${day.dayIndex}" class="inline-block mr-2 transition-transform">▶</span>${day.name}
+        </td>
+        <td class="p-3 text-right bg-white/[0.02] text-white font-black font-mono">$${Math.round(day.s).toLocaleString()}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-blue-400">${day.r}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-green-500 font-black">${day.d}</td>
+        <td class="p-3 text-right bg-white/[0.02] text-purple-400 font-mono">$${dayCpl.toFixed(1)}</td>
+        <td class="p-3 text-right font-mono text-white" style="background-color: rgba(239, 68, 68, ${0.05 + cpaW * 0.3})">$${dayCpa.toFixed(1)}</td>
+        <td class="p-3 text-center bg-white/[0.02] text-pink-500 font-mono">${dayR2d}%</td>
+        <td class="p-3 text-right pr-5 rounded-r-xl font-black font-mono" style="background-color: rgba(16, 185, 129, ${0.05 + roiW * 0.3}); color: ${dayRoi >= 0 ? '#34d399' : '#f87171'}">${dayRoi}%</td>
+      </tr>
+      ${geoRows}
+    `;
+  }).join('');
+}
+
+// Функція перемикання ГЕО всередині дня
+function toggleDayHeatmap(dayIndex) {
+  const rows = document.querySelectorAll(`.heat-geo-details-${dayIndex}`);
+  const arrow = document.getElementById(`heat-arrow-${dayIndex}`);
+  
+  rows.forEach(row => {
+    row.classList.toggle('hidden');
+  });
+
+  if (arrow) {
+    const isHidden = rows[0].classList.contains('hidden');
+    arrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(90deg)';
+    arrow.style.color = isHidden ? '' : '#3b82f6';
+  }
+}
+  </script>
+
+<!-- Floating image preview tooltip -->
+<div id="img-preview-tooltip">
+  <img src="" alt="preview">
+  <div class="img-tip-label"></div>
+</div>
+</body>
+</html>
