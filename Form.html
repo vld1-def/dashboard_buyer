@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html class="dark" id="main-html">
+<head>
+  <base target="_top">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="icon" type="image/png" href="icon.png">
+  <style>
+    :root { 
+      --bg-color: #020617; 
+      --glass-bg: rgba(30, 41, 59, 0.4); 
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f1f5f9; 
+    }
+
+    body { 
+      background-color: var(--bg-color); 
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.12) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main); 
+      font-family: 'Inter', sans-serif;
+      transition: all 0.3s ease; 
+    }
+
+    /* Ефект скла для карток */
+    .card { 
+      background: var(--glass-bg); 
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid var(--glass-border); 
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      border-radius: 1.5rem;
+    }
+
+    /* Стилізація інпутів */
+    input, select { 
+      background: rgba(255, 255, 255, 0.05) !important; 
+      color: #f1f5f9 !important; 
+      border: 1px solid rgba(255, 255, 255, 0.1) !important; 
+      font-size: 0.85rem !important; 
+      padding: 10px 14px !important; 
+      outline: none; 
+      border-radius: 0.75rem; 
+      width: 100%; 
+      transition: all 0.2s;
+    }
+    input:focus { border-color: #3b82f6 !important; background: rgba(255, 255, 255, 0.1) !important; }
+
+    /* Таби */
+    .tab-btn { color: #94a3b8; transition: all 0.3s; }
+    .tab-btn.active { 
+      background-color: #3b82f6; 
+      color: white; 
+      box-shadow: 0 0 15px rgba(59,130,246,0.4); 
+    }
+
+    /* Зона Drop-zone */
+    .drop-zone { 
+      border: 2px dashed rgba(59, 130, 246, 0.3); 
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
+    }
+    .drop-zone:hover { 
+      border-color: #3b82f6; 
+      background: rgba(59, 130, 246, 0.05);
+      transform: translateY(-2px);
+    }
+
+    /* Редагування комірок */
+    .editable-cell { 
+      cursor: text; 
+      transition: all 0.2s; 
+      border-radius: 6px; 
+      padding: 4px 8px; 
+    }
+    .editable-cell:hover { background: rgba(59, 130, 246, 0.2); }
+
+    /* Скролбар */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.5); border-radius: 10px; }
+    
+    table tr:hover { background-color: rgba(255, 255, 255, 0.03); }
+    /* Стиль рідкого скла для інпутів та селектів */
+input, select, textarea { 
+  background: rgba(255, 255, 255, 0.03) !important; 
+  backdrop-filter: blur(12px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(180%) !important;
+  color: #f1f5f9 !important; 
+  border: 1px solid rgba(255, 255, 255, 0.08) !important; 
+  font-size: 0.85rem !important; 
+  padding: 10px 14px !important; 
+  outline: none; 
+  border-radius: 0.75rem; 
+  width: 100%; 
+  transition: all 0.3s ease;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Ефект при фокусі */
+input:focus, select:focus { 
+  border-color: rgba(59, 130, 246, 0.5) !important; 
+  background: rgba(255, 255, 255, 0.07) !important; 
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+}
+
+/* Стилізація випадаючого списку (опцій) */
+select option { 
+  background-color: #1e293b; /* Темний фон для списку, бо скло в самому списку не працює */
+  color: #f1f5f9; 
+  padding: 10px;
+}
+
+/* Кастомна стрілочка для селекта */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1em;
+  padding-right: 2.5rem !important;
+}
+  </style>
+</head>
+<body class="p-6 md:p-12 antialiased">
+
+  <div class="max-w-[1850px] mx-auto">
+    <!-- HEADER -->
+    <div class="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
+      <div>
+        <h2 class="text-4xl font-black uppercase italic tracking-tighter text-white">Data Hub <span class="text-blue-500 text-xl">v14.20</span></h2>
+        <div class="flex items-center gap-2 mt-2">
+          <span class="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 flex items-center gap-3">
+            Target Workspace: <span id="active-team-display" class="text-white">LOADING...</span>
+            <button onclick="promptNewTeam()" class="ml-2 text-[9px] bg-emerald-500/20 hover:bg-emerald-500/40 px-2 py-0.5 rounded border border-emerald-500/30 transition-all text-emerald-300">
+              EDIT / NEW
+            </button>
+          </span>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-4">
+        <div class="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+          <button onclick="switchMode('dataset')" id="tab-dataset" class="tab-btn active px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Campaigns</button>
+          <button onclick="switchMode('expenses')" id="tab-expenses" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Витрати</button>
+          <button onclick="switchMode('providers')" id="tab-providers" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Settings</button>
+        </div>
+        <a href="index.html" class="bg-white/5 hover:bg-white/10 text-blue-400 font-black text-[11px] uppercase border border-blue-500/20 px-6 py-3 rounded-2xl transition-all shadow-lg">
+          ← Dashboard
+        </a>
+      </div>
+    </div>
+
+    <!-- CAMPAIGN MODE (Stats + Creatives) -->
+    <div id="mode-dataset" class="space-y-8">
+      <div id="csv-drop-zone-dataset" class="drop-zone card p-16 rounded-[3rem] text-center cursor-pointer group max-w-3xl mx-auto" onclick="document.getElementById('csv-input-dataset').click()">
+        <input type="file" id="csv-input-dataset" accept=".csv" class="hidden" onchange="handleCSV(event, 'dataset')">
+        <div class="flex flex-col items-center gap-5">
+           <div class="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+             <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+           </div>
+           <div>
+             <h3 class="font-black uppercase italic text-xl text-white">Import Ads Report</h3>
+             <p class="text-[10px] opacity-40 font-bold tracking-[0.3em] uppercase mt-1">Daily Stats + Creative Intelligence</p>
+           </div>
+        </div>
+      </div>
+
+      <!-- Контейнер ПРЕВ'Ю (Без обмеження висоти) -->
+      <div id="dataset-preview" class="hidden space-y-12 pb-32">
+        <!-- Daily Stats Table -->
+        <div class="card rounded-[2.5rem] overflow-hidden shadow-2xl border border-blue-500/10">
+          <div class="p-5 bg-blue-600/5 border-b border-white/5 flex justify-between items-center text-blue-400">
+            <h3 class="font-black uppercase text-xs tracking-widest">Preview: Daily Campaign Stats</h3>
+          </div>
+          <table class="w-full text-left border-collapse text-[13px]">
+            <thead class="bg-black/40 sticky top-0 backdrop-blur-md text-slate-400 uppercase font-black">
+              <tr>
+                <th class="p-4">Date</th><th class="p-4">Account</th><th class="p-4">GEO</th>
+                <th class="p-4 text-emerald-400">Offer</th><th class="p-4">Funnel</th>
+                <th class="p-4 text-right">Spend</th><th class="p-4 text-center text-orange-400">Leads</th>
+                <th class="p-4 text-center text-blue-400">Regs</th><th class="p-4 text-center text-green-500">Deps</th>
+              </tr>
+            </thead>
+            <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+
+        <!-- Creative Stats Table -->
+        <div class="card rounded-[2.5rem] overflow-hidden shadow-2xl border border-purple-500/10">
+          <div class="p-5 bg-purple-600/5 border-b border-white/5 text-purple-400">
+            <h3 class="font-black uppercase text-xs tracking-widest">Preview: Creative Intelligence</h3>
+          </div>
+          <table class="w-full text-left border-collapse text-[13px]">
+            <thead class="bg-black/40 sticky top-0 backdrop-blur-md text-slate-400 uppercase font-black">
+              <tr>
+                <th class="p-4">CID (Ad Name)</th><th class="p-4">Funnel</th><th class="p-4 text-center">GEO</th>
+                <th class="p-4 text-center text-cyan-400">Device</th>
+                <th class="p-4 text-right">Spend</th><th class="p-4 text-center text-blue-300">Clicks</th>
+                <th class="p-4 text-center text-orange-400">Leads</th><th class="p-4 text-center text-blue-400">Regs</th>
+                <th class="p-4 text-center text-green-500">Deps</th>
+              </tr>
+            </thead>
+            <tbody id="creatives-preview-body-inside" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+
+        <!-- ЛЕВІТУЮЧА ПАНЕЛЬ -->
+        <div id="floating-actions" class="hidden fixed bottom-10 left-1/2 -translate-x-1/2 z-[100]">
+          <div class="card p-4 px-10 rounded-[3rem] border border-white/10 backdrop-blur-2xl bg-slate-900/80 shadow-[0_20px_50px_rgba(0,0,0,0.6)] flex items-center gap-8 ring-1 ring-white/10">
+            <div class="flex flex-col">
+              <span id="floating-count" class="text-[10px] font-black text-blue-400 uppercase tracking-widest">0 rows detected</span>
+              <span class="text-[11px] text-white font-bold italic">Ready for Injection</span>
+            </div>
+            <div class="h-10 w-px bg-white/10"></div>
+            <button onclick="resetImport('dataset')" class="text-slate-400 hover:text-white font-black uppercase text-[11px] transition-colors">Cancel</button>
+            <button onclick="confirmDatasetImport()" class="bg-blue-600 hover:bg-blue-500 text-white px-12 py-3.5 rounded-2xl font-black uppercase text-[11px] shadow-xl transition-all hover:scale-105 active:scale-95">
+              Save All Records
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPENSES MODE -->
+    <div id="mode-expenses" class="hidden max-w-4xl mx-auto space-y-6">
+
+      <!-- Форма додавання -->
+      <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-rose-500 bg-slate-900/40">
+        <h3 class="text-xl font-black uppercase italic mb-6 text-rose-400 tracking-tight">Додати витрату</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <input type="date" id="exp-date" class="flex-grow">
+          <select id="exp-category">
+            <option value="accounts">💳 Акаунти</option>
+            <option value="fp">🏦 ФП</option>
+            <option value="team">👥 Команда</option>
+            <option value="tools">🛠 Інструменти</option>
+            <option value="other">📦 Інше</option>
+          </select>
+          <input type="number" id="exp-amount" placeholder="Сума ($)" min="0" step="0.01">
+          <input type="text" id="exp-desc" placeholder="Опис (напр. поповнення FB)">
+        </div>
+        <button onclick="addExpense()" class="mt-4 w-full bg-rose-600 hover:bg-rose-500 text-white py-3 rounded-2xl font-black uppercase text-[11px] tracking-wider transition-all shadow-lg">+ Зберегти витрату</button>
+      </div>
+
+      <!-- Список витрат -->
+      <div class="card rounded-[2.5rem] overflow-hidden shadow-2xl border border-rose-500/10">
+        <div class="p-5 bg-rose-600/5 border-b border-white/5 flex justify-between items-center">
+          <h3 class="font-black uppercase text-xs tracking-widest text-rose-400">Витрати за місяць</h3>
+          <select id="exp-month-filter" onchange="loadExpensesList()" class="!w-40 !py-1.5 !text-[10px] !rounded-lg"></select>
+        </div>
+        <div class="p-2">
+          <table class="w-full text-left text-[13px]">
+            <thead class="bg-black/40 text-slate-400 uppercase font-black text-[10px]">
+              <tr>
+                <th class="p-3">Дата</th>
+                <th class="p-3">Категорія</th>
+                <th class="p-3">Опис</th>
+                <th class="p-3 text-right">Сума</th>
+                <th class="p-3"></th>
+              </tr>
+            </thead>
+            <tbody id="exp-list-body" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+        <div class="p-4 border-t border-white/5 flex justify-between items-center bg-white/[0.02]">
+          <span class="text-[10px] font-black uppercase text-slate-500">Разом за місяць:</span>
+          <span id="exp-total" class="text-lg font-black text-rose-400">$0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS MODE (Вкладка Providers) -->
+    <div id="mode-providers" class="hidden max-w-7xl mx-auto space-y-10">
+       
+       <!-- РЯД 1: ФОРМИ ВВОДУ -->
+       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <!-- Link Cabinet -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-blue-500 bg-slate-900/40">
+             <h3 class="text-xl font-black uppercase italic mb-6 text-blue-400 tracking-tight">Link Cabinet</h3>
+             <div class="flex gap-3">
+                <input type="text" id="prov-acc" placeholder="Account ID" class="flex-grow">
+                <div class="flex gap-1 w-1/2">
+                  <select id="prov-agency" class="flex-grow"></select>
+                  <button onclick="promptNewAgency()" class="bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black text-white transition-all">+</button>
+                </div>
+                <button onclick="addProvider()" class="bg-blue-600 hover:bg-blue-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Link</button>
+             </div>
+          </div>
+
+          <!-- Funnel Mapper -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-purple-500 bg-slate-900/40">
+             <h3 class="text-xl font-black uppercase italic mb-6 text-purple-400 tracking-tight">Funnel Mapper</h3>
+             <div class="flex gap-3">
+                <input type="text" id="fun-name" placeholder="Funnel Name" class="flex-grow">
+                <input type="text" id="fun-ktid" placeholder="KTID" class="w-1/3 text-center">
+                <button onclick="addFunnelMapping()" class="bg-purple-600 hover:bg-purple-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
+             </div>
+          </div>
+       </div>
+
+       <!-- РЯД 2: СПИСКИ (ТАБЛИЦІ) -->
+       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <!-- Linked Cabinets Table -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-slate-500 bg-slate-900/40">
+             <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">Linked Cabinets</h3>
+                <input type="text" id="acc-search" oninput="filterProviders()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
+             </div>
+             <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
+                <table class="w-full text-[13px] text-left">
+                  <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
+                    <tr><th class="p-3">Account</th><th class="p-3 text-right">Agency</th><th class="p-3"></th></tr>
+                  </thead>
+                  <tbody id="providers-list-body" class="divide-y divide-white/5">
+                    <!-- JS Rows -->
+                  </tbody>
+                </table>
+             </div>
+          </div>
+
+          <!-- KTID Mappings Table -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-slate-500 bg-slate-900/40">
+             <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">KTID Mappings</h3>
+                <input type="text" id="funnel-search" oninput="filterFunnels()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
+             </div>
+             <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
+                <table class="w-full text-[13px] text-left">
+                  <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
+                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-right">KTID</th><th class="p-3"></th></tr>
+                  </thead>
+                  <tbody id="funnels-list-body" class="divide-y divide-white/5">
+                    <!-- JS Rows -->
+                  </tbody>
+                </table>
+             </div>
+          </div>
+       </div>
+    </div>
+    
+    <!-- STATUS TOAST -->
+    <div id="status" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden p-4 px-10 rounded-2xl bg-blue-600 text-white font-black uppercase text-xs shadow-2xl z-[200]"></div>
+  </div>
+<script>
+  // --- НАЛАШТУВАННЯ SUPABASE ---
+const SUPABASE_URL = 'https://zsfumuiajrytmeycbtnn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// --- DEVICE NORMALIZE ---
+function normalizeDevice(str) {
+  const s = (str || '').toLowerCase();
+  if (s.includes('iphone') || s.includes('ios') || (s.includes('смартфон') && !s.includes('android'))) return 'ios_phone';
+  if (s.includes('ipad'))                return 'ios_tablet';
+  if (s.includes('планшет') && s.includes('android')) return 'android_tablet';
+  if (s.includes('android'))             return 'android_phone';
+  if (s.includes('комп') || s.includes('desktop') || s.includes('computer')) return 'desktop';
+  return str.trim() || '';
+}
+
+const DEVICE_LABELS = {
+  'ios_phone': 'iPhone', 'ios_tablet': 'iPad',
+  'android_phone': 'Android Phone', 'android_tablet': 'Android Tablet', 'desktop': 'Desktop'
+};
+
+// --- ГЛОБАЛЬНІ ЗМІННІ ---
+let currentTeam = localStorage.getItem('selected_team') || "Makeberry";
+let mappingDB = { providers: {}, funnels: {} };
+let datasetToImport = []; 
+let creativesToImport = [];
+let allFunnels = []; 
+let allProviders = [];
+let globalOffersCache = []; // Кеш для офферів із налаштувань
+  
+// Ключові слова для розпізнавання колонок у CSV (UA/RU/EN)
+const keywords = {
+  startDate: ['reporting starts', 'дата начала', 'дата початку', 'start date', 'початок звітності'],
+  endDate: ['reporting ends', 'дата окончания', 'дата закінчення', 'end date', 'date', 'day', 'завершення звітності'],
+  acc: ['account', 'account id', 'ad account name', 'account name', 'ad account', 'акаунт', 'кабінет', 'назва акаунту', 'идентификатор аккаунта', 'ідентифікатор акаунта', 'id облікового запису'],
+  name: ['название кампании', 'campaign name', 'назва кампанії', 'кампанії', 'назва'],
+  cid: ['creative id', 'ad name', 'ad id', 'creative', 'ad', 'креатив', 'оголошення', 'назва оголошення', 'название объявления'],
+  spend: ['amount spent', 'spend', 'cost', 'витрачена сума', 'витрачена', 'сума', 'затрат'],
+  regs: ['завершенные регистрации', 'registrations completed', 'regs', 'leads', 'завершені реєстрації', 'реєстрації', 'регистрации'],
+  deps: ['покупки', 'purchases', 'deps', 'deposits', 'депозити'],
+  clicks: ['клики по ссылке', 'link clicks', 'clicks', 'кліки посилання', 'кліки'],
+  geo: ['country', 'geo', 'страна', 'країна', 'гео', 'location', 'країна/регіон'],
+  cid: ['ad name', 'назва оголошення', 'название объявления', 'creative id'],
+  installs: ['leads', 'лід', 'лид', 'інсталяції', 'установки', 'завершені реєстрації'],
+  device: ['пристрій показів', 'impression device', 'device platform', 'пристрій', 'устройство показов', 'устройство', 'platform', 'платформа']
+};
+
+// --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
+// 2. Онови window.onload, щоб вона викликала завантаження офферів
+window.onload = async () => {
+  currentTeam = localStorage.getItem('selected_team') || "Makeberry";
+  const display = document.getElementById('active-team-display');
+  if (display) display.innerText = currentTeam.toUpperCase();
+
+  await loadAgencies(); 
+  await loadMappings(); 
+  await loadAvailableOffers(); // ТУТ ДОДАЛИ
+  setupDragAndDrop('dataset'); 
+  setupDragAndDrop('creatives'); 
+};
+
+// --- РОБОТА З SUPABASE (MAPPINGS) ---
+
+async function loadMappings() {
+  const { data: accs } = await sb.from('accounts_mapping').select('*').eq('team_name', currentTeam);
+  const { data: funs } = await sb.from('funnels_mapping').select('*').eq('team_name', currentTeam);
+  
+  mappingDB.providers = {};
+  accs?.forEach(r => mappingDB.providers[r.account_id] = r.provider_name); // ВИПРАВЛЕНО
+  
+  mappingDB.funnels = {};
+  funs?.forEach(r => mappingDB.funnels[r.ktid] = r.funnel_name);
+}
+
+// --- EXPENSES ---
+const EXP_LABELS = { accounts:'💳 Акаунти', fp:'🏦 ФП', team:'👥 Команда', tools:'🛠 Інструменти', other:'📦 Інше' };
+const EXP_COLORS = { accounts:'text-blue-400', fp:'text-yellow-400', team:'text-purple-400', tools:'text-slate-400', other:'text-rose-400' };
+
+async function initExpenses() {
+  const { data } = await sb.from('expenses').select('date').eq('team_name', currentTeam);
+  const months = [...new Set((data||[]).map(r => (r.date||'').slice(0,7)))].sort().reverse();
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const allMonths = months.includes(thisMonth) ? months : [thisMonth, ...months];
+  const sel = document.getElementById('exp-month-filter');
+  if (sel) sel.innerHTML = allMonths.map(m => `<option value="${m}">${m}</option>`).join('');
+  const d = document.getElementById('exp-date');
+  if (d && !d.value) d.value = new Date().toISOString().slice(0,10);
+  loadExpensesList();
+}
+
+async function loadExpensesList() {
+  const month = document.getElementById('exp-month-filter')?.value || new Date().toISOString().slice(0,7);
+  const { data, error } = await sb.from('expenses')
+    .select('*').eq('team_name', currentTeam)
+    .gte('date', month + '-01').lte('date', month + '-31')
+    .order('date', { ascending: false });
+
+  const body = document.getElementById('exp-list-body');
+  const totalEl = document.getElementById('exp-total');
+  if (!body) return;
+  if (error || !data) { body.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-400 text-xs">Помилка завантаження</td></tr>'; return; }
+
+  if (!data.length) {
+    body.innerHTML = '<tr><td colspan="5" class="p-6 text-center opacity-30 text-xs uppercase font-black">Немає витрат за цей місяць</td></tr>';
+    if (totalEl) totalEl.innerText = '$0.00';
+    return;
+  }
+
+  const total = data.reduce((s, r) => s + (Number(r.amount)||0), 0);
+  if (totalEl) totalEl.innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  body.innerHTML = data.map(r => `
+    <tr class="hover:bg-white/5 transition-colors">
+      <td class="p-3 font-mono text-slate-400 text-[12px]">${r.date}</td>
+      <td class="p-3"><span class="font-black text-[11px] ${EXP_COLORS[r.category]||'text-white'}">${EXP_LABELS[r.category]||r.category}</span></td>
+      <td class="p-3 text-slate-300 text-[12px]">${r.description||'—'}</td>
+      <td class="p-3 text-right font-black text-white">$${Number(r.amount||0).toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+      <td class="p-3 text-right"><button onclick="deleteExpense('${r.id}')" class="text-red-500/40 hover:text-red-500 transition text-xs">✕</button></td>
+    </tr>`).join('');
+}
+
+async function addExpense() {
+  const date = document.getElementById('exp-date').value;
+  const category = document.getElementById('exp-category').value;
+  const amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+  const description = document.getElementById('exp-desc').value.trim();
+  if (!date || !amount) { showStatus('Вкажіть дату та суму'); return; }
+  const { error } = await sb.from('expenses').insert([{ team_name: currentTeam, date, category, amount, description }]);
+  if (error) { showStatus('Помилка: ' + error.message); return; }
+  document.getElementById('exp-amount').value = '';
+  document.getElementById('exp-desc').value = '';
+  showStatus('Витрату збережено!');
+  loadExpensesList();
+}
+
+async function deleteExpense(id) {
+  if (!confirm('Видалити витрату?')) return;
+  await sb.from('expenses').delete().eq('id', id);
+  loadExpensesList();
+}
+
+// --- ЛОГІКА ДЛЯ ТАБЛИЦІ АКАУНТІВ (Link Cabinet) ---
+async function refreshProvidersTable() {
+  console.log("🔄 Завантаження акаунтів для:", currentTeam);
+  const { data, error } = await sb
+    .from('accounts_mapping') // Твоя назва таблиці
+    .select('*')
+    .eq('team_name', currentTeam);
+
+  const body = document.getElementById('providers-list-body');
+  if (!body) return;
+
+  if (error) {
+    console.error("Помилка акаунтів:", error);
+    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-red-400">Error loading data</td></tr>';
+    return;
+  }
+
+  allProviders = data || []; // Зберігаємо в глобальну змінну для пошуку
+  renderProvidersTable(allProviders);
+}
+
+// --- ОБРОБКА CSV ---
+
+function handleCSV(e, type) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    // Очищаємо CSV від BOM (спецсимволів на початку) та розбиваємо
+    let content = event.target.result.replace(/\ufeff/g, ''); 
+    const lines = content.split('\n').filter(l => l.trim() !== '').map(l => l.split(',').map(c => c.replace(/"/g, '').trim()));
+    
+    const headers = lines[0].map(h => h.toLowerCase());
+    const map = {};
+    Object.keys(keywords).forEach(key => { 
+      map[key] = headers.findIndex(h => keywords[key].some(kw => h === kw || h.includes(kw))); 
+    });
+
+    console.log("Mapped Columns:", map);
+    console.log("Headers found:", headers);
+    console.log("Device col index:", map.device, map.device !== -1 ? `→ "${headers[map.device]}"` : '→ NOT FOUND');
+    processCampaignData(map, lines);
+  };
+  reader.readAsText(file);
+}
+
+function processCampaignData(map, lines) {
+  let dailyAggregated = {};
+  let creativeAggregated = {};
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i];
+    if (!row[map.name]) continue;
+
+    const parts = row[map.name].split('_');
+    const date = row[map.endDate] || row[map.date] || '';
+    const accName = row[map.acc];
+    
+    // Offer тепер пустий, щоб ти заповнював сам
+    const offer = ""; 
+    const geo = (parts[1] || '??').toUpperCase().trim();
+    const ktid = (parts[2] || '0').trim();
+    
+    const funnelName = mappingDB.funnels[ktid] || 'Unknown (' + ktid + ')';
+    const agency = mappingDB.providers[accName] || 'Direct(0%)';
+    const cid = row[map.cid] || 'No CID';
+
+    const spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
+    const regs = parseInt(row[map.regs]) || 0;
+    const deps = parseInt(row[map.deps]) || 0;
+    const installs = map.installs !== -1 ? (parseInt(row[map.installs]) || 0) : 0;
+
+    // Daily Aggregation
+    const dKey = `${date}_${accName}_${geo}_${ktid}`;
+    
+    if (!dailyAggregated[dKey]) {
+      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency };
+    }
+    dailyAggregated[dKey].spend += spend;
+    dailyAggregated[dKey].regs += regs;
+    dailyAggregated[dKey].deps += deps;
+    dailyAggregated[dKey].installs += installs;
+
+    // Creative Aggregation (включаємо device в ключ — окремий рядок на пристрій)
+    const clicks = map.clicks !== -1 ? (parseInt(row[map.clicks]) || 0) : 0;
+    const deviceRaw = map.device !== -1 ? (row[map.device] || '') : '';
+    const device = normalizeDevice(deviceRaw);
+    const cKey = `${date}_${accName}_${cid}_${device}`;
+
+    if (!creativeAggregated[cKey]) {
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0 };
+    }
+    creativeAggregated[cKey].spend += spend;
+    creativeAggregated[cKey].regs += regs;
+    creativeAggregated[cKey].clicks += clicks;
+    creativeAggregated[cKey].deps += deps;
+    creativeAggregated[cKey].installs += installs;
+  }
+
+  datasetToImport = Object.values(dailyAggregated);
+  creativesToImport = Object.values(creativeAggregated);
+  
+  renderDualPreview();
+}
+function renderDualPreview() {
+  document.getElementById('dataset-preview').classList.remove('hidden');
+  document.getElementById('csv-drop-zone-dataset').classList.add('hidden');
+  
+  const dailyBody = document.getElementById('dataset-preview-body');
+
+  // Показуємо левітуючу панель
+  const floating = document.getElementById('floating-actions');
+  if (floating) {
+    floating.classList.remove('hidden');
+    document.getElementById('floating-count').innerText = `${datasetToImport.length} stats rows detected`;
+  }
+  
+  dailyBody.innerHTML = datasetToImport.map((r, i) => {
+    // Шукаємо оффери, які є в базі для ГЕО цього рядка
+    const rowGeo = (r.geo || "").toUpperCase();
+    const availableForThisGeo = [...new Set(globalOffersCache
+      .filter(o => o.geo.toUpperCase() === rowGeo)
+      .map(o => o.offer.toUpperCase())
+    )];
+
+    // Створюємо HTML випадаючого списку
+    const offerSelectHtml = `
+      <select onchange="datasetToImport[${i}].offer=this.value" 
+              class="!bg-emerald-500/10 !border-emerald-500/30 !text-emerald-400 !py-1 !px-2 !text-[11px] !w-full !rounded-lg font-black uppercase">
+        <option value="">-- SELECT --</option>
+        ${availableForThisGeo.map(off => `<option value="${off}" ${r.offer === off ? 'selected' : ''}>${off}</option>`).join('')}
+        <option value="CUSTOM">+ Ввести вручну</option>
+      </select>
+    `;
+
+    return `
+      <tr class="hover:bg-white/5 text-[13px]">
+        <td class="p-4 opacity-50 font-mono">${r.date}</td>
+        <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+        <td class="p-4">
+          <div class="editable-cell uppercase border-b border-white/10" contenteditable="true" 
+               onblur="datasetToImport[${i}].geo=this.innerText.trim().toUpperCase(); renderDualPreview();">${r.geo}</div>
+        </td>
+        <td class="p-2 w-48">
+          ${offerSelectHtml}
+        </td>
+        <td class="p-4 italic">
+          <div class="editable-cell border-b border-white/10" contenteditable="true" 
+               onblur="datasetToImport[${i}].funnel=this.innerText.trim()">${r.funnel}</div>
+        </td>
+        <td class="p-4 text-right font-bold text-white">
+           <div class="editable-cell border-b border-white/10" contenteditable="true" 
+               onblur="datasetToImport[${i}].spend=parseFloat(this.innerText.replace('$','')) || 0">$${r.spend.toFixed(2)}</div>
+        </td>
+        <td class="p-4 text-center text-orange-400 font-bold">
+          <div class="editable-cell border-b border-orange-500/20" contenteditable="true" 
+               onblur="datasetToImport[${i}].installs=parseInt(this.innerText) || 0">${r.installs}</div>
+        </td>
+        <td class="p-4 text-center text-blue-400">
+          <div class="editable-cell border-b border-blue-500/20" contenteditable="true" 
+               onblur="datasetToImport[${i}].regs=parseInt(this.innerText) || 0">${r.regs}</div>
+        </td>
+        <td class="p-4 text-center text-green-500 font-black">
+          <div class="editable-cell border-b border-green-500/20" contenteditable="true" 
+               onblur="datasetToImport[${i}].deps=parseInt(this.innerText) || 0">${r.deps}</div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  // Рендер Креативів (залиш як був)
+  const creativeBody = document.getElementById('creatives-preview-body-inside');
+  creativeBody.innerHTML = creativesToImport.map((r, i) => {
+    const devLabel = DEVICE_LABELS[r.device] || r.device || '—';
+    const devColor = r.device === 'ios_phone' || r.device === 'ios_tablet' ? 'text-blue-400'
+      : r.device === 'android_phone' || r.device === 'android_tablet' ? 'text-green-400'
+      : r.device === 'desktop' ? 'text-slate-400' : 'text-slate-600';
+    return `
+    <tr class="hover:bg-white/5 text-[13px] text-slate-300">
+      <td class="p-4 font-mono text-purple-400 font-bold">${r.cid}</td>
+      <td class="p-4 italic opacity-70">${r.funnel}</td>
+      <td class="p-4 text-center">${r.geo}</td>
+      <td class="p-4 text-center font-bold ${devColor}">${devLabel}</td>
+      <td class="p-4 text-right font-bold text-white">$${r.spend.toFixed(2)}</td>
+      <td class="p-4 text-center text-blue-300 font-bold">${r.clicks}</td>
+      <td class="p-4 text-center text-orange-400/80 font-bold">${r.installs}</td>
+      <td class="p-4 text-center text-blue-400/80">${r.regs}</td>
+      <td class="p-4 text-center font-black text-green-500/80">${r.deps}</td>
+    </tr>`;
+  }).join('');
+}
+function processCreativeData(map, lines) {
+  creativesToImport = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i];
+    if (!row[map.cid]) continue;
+    creativesToImport.push({
+      startDate: row[map.startDate] || row[map.endDate] || '',
+      acc: row[map.acc] || 'Unknown',
+      cid: row[map.cid] || 'No ID',
+      spend: parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0,
+      clicks: parseInt(row[map.clicks]) || 0,
+      regs: parseInt(row[map.regs]) || 0,
+      deps: parseInt(row[map.deps]) || 0,
+      geo: (map.geo !== -1 && row[map.geo]) ? row[map.geo].toUpperCase() : '??'
+    });
+  }
+  renderPreview('creatives');
+}
+
+// --- ВІЗУАЛІЗАЦІЯ ТА ПРЕВ'Ю ---
+
+function renderPreview(type) {
+  const area = document.getElementById(type + '-preview');
+  const body = document.getElementById(type + '-preview-body');
+  area.classList.remove('hidden'); 
+  body.innerHTML = '';
+
+  if (type === 'dataset') {
+    body.innerHTML = datasetToImport.map((r, i) => `
+      <tr>
+        <td class="p-4 opacity-50">${r.date}</td>
+        <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+        <td class="p-4"><div class="editable-cell uppercase" contenteditable="true" onblur="datasetToImport[${i}].geo=this.innerText.trim().toUpperCase()">${r.geo}</div></td>
+        <td class="p-4 italic"><div class="editable-cell" contenteditable="true" onblur="datasetToImport[${i}].funnel=this.innerText.trim()">${r.funnel}</div></td>
+        <td class="p-4 font-black"><div class="editable-cell text-blue-400" contenteditable="true" onblur="datasetToImport[${i}].spend=parseFloat(this.innerText.replace(/[^\d.-]/g,'')) || 0">$${r.spend.toFixed(2)}</div></td>
+        <td class="p-4"><div class="editable-cell" contenteditable="true" onblur="datasetToImport[${i}].regs=parseInt(this.innerText) || 0">${r.regs}</div></td>
+        <td class="p-4 font-black text-green-500"><div class="editable-cell" contenteditable="true" onblur="datasetToImport[${i}].deps=parseInt(this.innerText) || 0">${r.deps}</div></td>
+      </tr>`).join('');
+  } else {
+    body.innerHTML = creativesToImport.map((r, i) => `
+      <tr>
+        <td class="p-4 opacity-50">${r.startDate}</td>
+        <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+        <td class="p-4 font-black">${r.cid}</td>
+        <td class="p-4"><div class="editable-cell text-orange-400 font-bold uppercase" contenteditable="true" onblur="creativesToImport[${i}].geo=this.innerText.trim().toUpperCase()">${r.geo}</div></td>
+        <td class="p-4 font-black"><div class="editable-cell text-blue-400" contenteditable="true" onblur="creativesToImport[${i}].spend=parseFloat(this.innerText.replace(/[^\d.-]/g,'')) || 0">$${r.spend.toFixed(2)}</div></td>
+        <td class="p-4 text-center">${r.clicks}</td>
+        <td class="p-4 text-center">${r.regs}</td>
+        <td class="p-4 text-green-500 font-black text-center">${r.deps}</td>
+      </tr>`).join('');
+  }
+}
+// 1. Додай функцію завантаження офферів
+async function loadAvailableOffers() {
+  const { data, error } = await sb
+    .from('payouts')
+    .select('geo, offer')
+    .eq('team_name', currentTeam);
+  
+  if (!error) {
+    globalOffersCache = data || [];
+    console.log("✅ Завантажено офферів для вибору:", globalOffersCache.length);
+  }
+}
+// --- ЗБЕРЕЖЕННЯ В БАЗУ (SUPABASE) ---
+
+async function confirmDatasetImport() {
+  if (!datasetToImport.length) return;
+  showStatus("Syncing Campaigns & Creatives...");
+
+  // 1. Дані для daily_stats (daily_stats у тебе працює!)
+  const finalDaily = datasetToImport.map(row => ({
+    date: row.date,
+    account: row.acc,
+    geo: row.geo,
+    offer: row.offer || "DEFAULT",
+    funnel: row.funnel,
+    spend: row.spend,
+    installs: row.installs || 0,
+    regs: row.regs || 0,
+    deposits: row.deps || 0, 
+    agent: row.agent,
+    team_name: currentTeam
+  }));
+
+  // 2. Дані для creatives_stats (тут була помилка через колонку date)
+  const finalCreatives = creativesToImport.map(row => ({
+    date: row.date,
+    account: row.acc,
+    cid: row.cid,
+    geo: row.geo,
+    funnel: row.funnel,
+    device: row.device || '',
+    spend: row.spend,
+    clicks: row.clicks || 0,
+    installs: row.installs || 0,
+    regs: row.regs || 0,
+    deps: row.deps || 0,
+    team_name: currentTeam
+  }));
+
+  // Відправка
+  const res1 = await sb.from('daily_stats').insert(finalDaily);
+  const res2 = await sb.from('creatives_stats').insert(finalCreatives);
+
+  if (res1.error || res2.error) {
+    if (res1.error) console.error("Помилка Daily:", res1.error);
+    if (res2.error) {
+        console.error("Помилка Creatives:", res2.error);
+        alert("Таблиця креативів не прийняла дані: " + res2.error.message);
+    }
+  } else {
+    showStatus(`Success! Saved ${finalDaily.length} rows.`);
+    
+    // Ховаємо плаваючу панель
+    const floating = document.getElementById('floating-actions');
+    if (floating) floating.classList.add('hidden');
+    
+    // Повертаємо зону завантаження
+    resetImport('dataset');
+  }
+}
+
+async function confirmCreativeImport() {
+  if (!creativesToImport.length) return;
+  showStatus("Injecting Creative Data...");
+
+  const finalData = creativesToImport.map(row => ({
+    date: row.startDate,
+    account: row.acc,
+    cid: row.cid,
+    geo: row.geo,
+    spend: row.spend,
+    clicks: row.clicks,
+    regs: row.regs,
+    deps: row.deps,
+    team_name: currentTeam
+  }));
+
+  const { error } = await sb.from('creatives_stats').insert(finalData);
+  if (error) alert("Creative Error: " + error.message);
+  else { showStatus("Creatives Intelligence Saved!"); resetImport('creatives'); }
+
+  if (!res1.error && !res2.error) {
+    showStatus(`Success! Saved to Database.`);
+    document.getElementById('floating-actions').classList.add('hidden'); // Ховаємо панель
+    resetImport('dataset');
+  }
+}
+
+// --- НАЛАШТУВАННЯ (SETTINGS) ---
+
+async function addProvider() {
+  const acc = document.getElementById('prov-acc').value;
+  const agency = document.getElementById('prov-agency').value; // Значення з селектора
+  
+  if (!acc) return alert("Введіть ID акаунта!");
+
+  const { error } = await sb.from('accounts_mapping').insert([
+    { 
+      account_id: acc, 
+      provider_name: agency, // ТВОЯ НАЗВА КОЛОНКИ
+      team_name: currentTeam 
+    }
+  ]);
+
+  if (error) {
+    console.error("Помилка:", error);
+    alert("Помилка збереження: " + error.message);
+  } else { 
+    showStatus("Account Linked!"); 
+    document.getElementById('prov-acc').value = ''; 
+    await refreshProvidersTable(); 
+    await loadMappings(); 
+  }
+}
+
+async function addFunnelMapping() {
+  const name = document.getElementById('fun-name').value;
+  const ktid = document.getElementById('fun-ktid').value;
+  if (!name || !ktid) return alert("Fill fields!");
+
+  const { error } = await sb.from('funnels_mapping').upsert({
+    ktid: ktid, funnel_name: name, team_name: currentTeam
+  });
+
+  if (!error) { 
+    showStatus("Funnel Mapped!"); 
+    document.getElementById('fun-name').value = ''; 
+    document.getElementById('fun-ktid').value = ''; 
+    await refreshFunnelsTable(); 
+    await loadMappings(); 
+  }
+}
+
+// 5. Рендер таблиці (Виправлено назву на provider_name)
+function renderProvidersTable(data) {
+  const body = document.getElementById('providers-list-body');
+  if (!body) return console.error("❌ Не знайдено providers-list-body");
+
+  if (!data || data.length === 0) {
+    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center opacity-40 italic">No accounts linked yet</td></tr>';
+    return;
+  }
+
+  body.innerHTML = data.map(r => `
+    <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
+      <td class="p-3 font-bold text-blue-300 uppercase">${r.account_id || '—'}</td>
+      <td class="p-3 text-right text-slate-300">${r.provider_name || 'Direct'}</td>
+      <td class="p-3 text-right">
+        <button onclick="deleteAccountMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
+      </td>
+    </tr>`).join('');
+}
+// --- ФУНКЦІЇ ВИДАЛЕННЯ ---
+async function deleteAccountMapping(id) {
+  if (!confirm("Видалити прив'язку акаунта?")) return;
+  const { error } = await sb.from('accounts_mapping').delete().eq('id', id);
+  if (!error) { showStatus("Account mapping removed"); refreshProvidersTable(); }
+}
+function renderFunnelsTable(data) {
+  const body = document.getElementById('funnels-list-body');
+  if (!body) return console.error("❌ Не знайдено funnels-list-body");
+
+  if (!data || data.length === 0) {
+    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
+    return;
+  }
+
+  body.innerHTML = data.map(r => `
+    <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
+      <td class="p-3 font-bold text-purple-300">${r.funnel_name || '—'}</td>
+      <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
+      <td class="p-3 text-right">
+        <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
+      </td>
+    </tr>`).join('');
+}
+async function deleteFunnelMapping(id) {
+  if (!confirm("Видалити мапінг воронки?")) return;
+  const { error } = await sb.from('funnels_mapping').delete().eq('id', id);
+  if (!error) { showStatus("Funnel mapping removed"); refreshFunnelsTable(); }
+}
+// --- UI УТИЛІТИ ---
+
+function switchMode(m) {
+  console.log("🔄 Перемикання режиму на:", m);
+  
+  const modes = ['dataset', 'expenses', 'providers'];
+
+  modes.forEach(x => {
+    const modeEl = document.getElementById('mode-' + x);
+    const tabEl = document.getElementById('tab-' + x);
+
+    if (modeEl) {
+      if (x === m) {
+        modeEl.classList.remove('hidden');
+        console.log(`✅ Блок mode-${x} тепер видимий`);
+      } else {
+        modeEl.classList.add('hidden');
+      }
+    } else {
+      console.warn(`⚠️ Елемент mode-${x} не знайдено в HTML`);
+    }
+
+    if (tabEl) {
+      tabEl.classList.toggle('active', x === m);
+    }
+  });
+
+  if (m === 'providers') {
+    refreshProvidersTable();
+    refreshFunnelsTable();
+    loadAgencies();
+  }
+  if (m === 'expenses') {
+    initExpenses();
+  }
+}
+
+function resetImport(type) {
+  // Приховуємо прев'ю
+  const preview = document.getElementById('dataset-preview');
+  if (preview) preview.classList.add('hidden');
+
+  const floating = document.getElementById('floating-actions');
+  if (floating) floating.classList.add('hidden'); // Ховаємо панель
+  
+  // Показуємо зону завантаження назад
+  const dropZone = document.getElementById('csv-drop-zone-' + type);
+  if (dropZone) dropZone.classList.remove('hidden');
+
+  // Очищуємо інпути
+  document.getElementById('csv-input-dataset').value = '';
+  document.getElementById('csv-input-creatives').value = '';
+}
+
+function setupDragAndDrop(t) { 
+  const z = document.getElementById('csv-drop-zone-' + t); 
+  
+  // Якщо елемент не знайдено - виходимо з функції без помилки
+  if (!z) {
+    console.warn(`⚠️ Drop zone for "${t}" not found in HTML. Skipping...`);
+    return;
+  }
+
+  z.ondragover = () => { z.style.borderColor = "#3b82f6"; return false; }; 
+  z.ondragleave = () => { z.style.borderColor = "rgba(59, 130, 246, 0.3)"; return false; }; 
+  z.ondrop = (e) => { 
+    z.style.borderColor = "rgba(59, 130, 246, 0.3)"; 
+    e.preventDefault(); 
+    if (e.dataTransfer.files[0]) {
+      handleCSV({target:{files:[e.dataTransfer.files[0]]}}, t); 
+    }
+  }; 
+}
+
+function showStatus(m) { 
+  const s = document.getElementById('status'); 
+  s.innerText = m; 
+  s.classList.remove('hidden'); 
+  s.style.display = "block";
+  setTimeout(() => { s.classList.add('hidden'); }, 4000); 
+}
+
+function filterProviders() {
+  const query = document.getElementById('acc-search').value.toLowerCase();
+  renderProvidersTable(allProviders.filter(r => r.account_id.toLowerCase().includes(query)));
+}
+
+function filterFunnels() {
+  const query = document.getElementById('funnel-search').value.toLowerCase();
+  renderFunnelsTable(allFunnels.filter(r => r.funnel_name.toLowerCase().includes(query) || r.ktid.toLowerCase().includes(query)));
+}
+  // Функція для зміни або створення нової команди прямо у формі
+function promptNewTeam() {
+  const newName = prompt("Введіть назву команди (існуючої або нової):", currentTeam);
+  
+  if (newName && newName.trim().length > 2) {
+    // 1. Оновлюємо глобальну змінну
+    currentTeam = newName.trim();
+    
+    // 2. Зберігаємо в localStorage, щоб Dashboard теж переключився на неї
+    localStorage.setItem('selected_team', currentTeam);
+    
+    // 3. Оновлюємо текст на екрані
+    document.getElementById('active-team-display').innerText = currentTeam.toUpperCase();
+    
+    // 4. Перезавантажуємо мапінги (якщо для цієї команди вже щось було налаштовано)
+    loadMappings();
+    
+    showStatus("Workspace changed to: " + currentTeam);
+    console.log("📝 Тепер дані будуть імпортовані для команди:", currentTeam);
+  } else if (newName !== null) {
+    alert("Назва має бути довшою за 2 символи!");
+  }
+}
+// 3. Завантаження списку унікальних агентів для випадаючого списку
+async function loadAgencies() {
+  const { data, error } = await sb
+    .from('accounts_mapping')
+    .select('provider_name')
+    .eq('team_name', currentTeam);
+
+  if (!error) {
+    const select = document.getElementById('prov-agency');
+    // Беремо дефолтні та додаємо унікальні з бази
+    let agencies = ["BlueGlow(3%)", "AdForge(5%)", "2B Digital(5.5%)", "Direct(0%)"];
+    if (data) {
+      const fromDB = data.map(item => item.provider_name);
+      agencies = [...new Set([...agencies, ...fromDB])].filter(Boolean);
+    }
+    
+    select.innerHTML = agencies.map(a => `<option value="${a}">${a}</option>`).join('');
+  }
+}
+  // 4. Додавання нового агента в список (через Prompt)
+function promptNewAgency() {
+  const name = prompt("Введіть назву агента та % (напр: Storm(6%)):");
+  if (name && name.trim().length > 2) {
+    const select = document.getElementById('prov-agency');
+    const opt = document.createElement('option');
+    opt.value = name.trim();
+    opt.innerText = name.trim();
+    opt.selected = true;
+    select.appendChild(opt);
+    showStatus("Агента додано до списку. Тепер натисніть 'Link'");
+  }
+}
+  // --- ЛОГІКА ДЛЯ ТАБЛИЦІ ВОРОНОК (Funnel Mapper) ---
+async function refreshFunnelsTable() {
+  console.log("🔄 Завантаження воронок для:", currentTeam);
+  const { data, error } = await sb
+    .from('funnels_mapping') // Твоя назва таблиці
+    .select('*')
+    .eq('team_name', currentTeam);
+
+  const body = document.getElementById('funnels-list-body');
+  if (!body) return;
+
+  if (error) {
+    console.error("Помилка воронок:", error);
+    return;
+  }
+
+  allFunnels = data || []; // Зберігаємо в глобальну змінну для пошуку
+  renderFunnelsTable(allFunnels);
+}
+</script>  
+</body>
+</html>
