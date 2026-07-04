@@ -50,11 +50,21 @@
 
     /* Таби */
     .tab-btn { color: #94a3b8; transition: all 0.3s; }
-    .tab-btn.active { 
-      background-color: #3b82f6; 
-      color: white; 
-      box-shadow: 0 0 15px rgba(59,130,246,0.4); 
+    .tab-btn.active {
+      background-color: #3b82f6;
+      color: white;
+      box-shadow: 0 0 15px rgba(59,130,246,0.4);
     }
+    .rec-tbl-btn { color: #94a3b8; }
+    .rec-tbl-btn.active { background-color: #3b82f6; color: white; }
+    /* Клітинки редактора бази */
+    .rec-cell { cursor: text; border-radius: 6px; padding: 6px 10px; transition: background .15s; min-width: 40px; }
+    .rec-cell:hover { background: rgba(59,130,246,0.15); }
+    .rec-cell:focus { background: rgba(59,130,246,0.25); outline: 1px solid #3b82f6; }
+    .rec-cell.saved { animation: recFlash .8s ease; }
+    @keyframes recFlash { 0% { background: rgba(16,185,129,0.5); } 100% { background: transparent; } }
+    .rec-th { cursor: pointer; user-select: none; }
+    .rec-th:hover { color: #3b82f6; }
 
     /* Зона Drop-zone */
     .drop-zone { 
@@ -142,6 +152,7 @@ select {
       <div class="flex items-center gap-4">
         <div class="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
           <button onclick="switchMode('dataset')" id="tab-dataset" class="tab-btn active px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Campaigns</button>
+          <button onclick="switchMode('records')" id="tab-records" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">База</button>
           <button onclick="switchMode('expenses')" id="tab-expenses" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Витрати</button>
           <button onclick="switchMode('providers')" id="tab-providers" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Settings</button>
         </div>
@@ -220,6 +231,68 @@ select {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- RECORDS MODE (Database Browser + Inline Editor) -->
+    <div id="mode-records" class="hidden space-y-6">
+
+      <!-- Панель керування -->
+      <div class="card p-5 rounded-[2rem] flex flex-wrap items-center gap-4">
+        <!-- Вибір таблиці -->
+        <div class="flex bg-white/5 p-1 rounded-2xl border border-white/10">
+          <button onclick="recSwitchTable('daily_stats')" id="rec-tbl-daily_stats" class="rec-tbl-btn active px-5 py-2 rounded-xl text-[11px] font-black uppercase transition-all">Daily Stats</button>
+          <button onclick="recSwitchTable('creatives_stats')" id="rec-tbl-creatives_stats" class="rec-tbl-btn px-5 py-2 rounded-xl text-[11px] font-black uppercase transition-all">Creatives</button>
+        </div>
+
+        <!-- Пошук -->
+        <div class="relative flex-1 min-w-[220px]">
+          <svg class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
+          <input id="rec-search" oninput="recRender()" placeholder="Пошук: країна, креатив, воронка, оффер, акаунт..." style="padding-left:2.75rem !important;">
+        </div>
+
+        <!-- Дата -->
+        <div class="flex items-center gap-2">
+          <input type="date" id="rec-date-from" onchange="recRender()" class="!w-auto" title="Дата з">
+          <span class="text-slate-500 text-xs font-black">—</span>
+          <input type="date" id="rec-date-to" onchange="recRender()" class="!w-auto" title="Дата по">
+        </div>
+
+        <!-- Пресети дат -->
+        <div class="flex bg-white/5 p-1 rounded-xl border border-white/10 text-[10px] font-black uppercase">
+          <button onclick="recDatePreset('today')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">Сьогодні</button>
+          <button onclick="recDatePreset('7')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">7д</button>
+          <button onclick="recDatePreset('30')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">30д</button>
+          <button onclick="recDatePreset('month')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">Місяць</button>
+          <button onclick="recDatePreset('clear')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-rose-400 transition">✕</button>
+        </div>
+
+        <div class="flex items-center gap-2 ml-auto">
+          <button onclick="recAddRow()" class="bg-emerald-600/80 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-black uppercase text-[10px] transition-all">+ Запис</button>
+          <button onclick="recExportCSV()" class="bg-white/5 hover:bg-white/10 text-blue-400 border border-blue-500/20 px-4 py-2.5 rounded-xl font-black uppercase text-[10px] transition-all">Export CSV</button>
+          <button onclick="recLoad()" class="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-4 py-2.5 rounded-xl font-black uppercase text-[10px] transition-all">↻ Оновити</button>
+        </div>
+      </div>
+
+      <!-- Плитки-підсумки (live totals) -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="card p-4 rounded-2xl"><div class="text-[9px] font-black uppercase tracking-widest text-slate-400">Рядків</div><div id="rec-t-count" class="text-2xl font-black text-white mt-1">0</div></div>
+        <div class="card p-4 rounded-2xl"><div class="text-[9px] font-black uppercase tracking-widest text-blue-400">Spend</div><div id="rec-t-spend" class="text-2xl font-black text-white mt-1">$0</div></div>
+        <div class="card p-4 rounded-2xl"><div class="text-[9px] font-black uppercase tracking-widest text-orange-400">Leads</div><div id="rec-t-leads" class="text-2xl font-black text-white mt-1">0</div></div>
+        <div class="card p-4 rounded-2xl"><div class="text-[9px] font-black uppercase tracking-widest text-cyan-400">Regs</div><div id="rec-t-regs" class="text-2xl font-black text-white mt-1">0</div></div>
+        <div class="card p-4 rounded-2xl"><div class="text-[9px] font-black uppercase tracking-widest text-green-500">Deps</div><div id="rec-t-deps" class="text-2xl font-black text-white mt-1">0</div></div>
+      </div>
+
+      <!-- Таблиця записів -->
+      <div class="card rounded-[2rem] overflow-hidden shadow-2xl">
+        <div class="overflow-x-auto max-h-[65vh] overflow-y-auto">
+          <table class="w-full text-left border-collapse text-[13px] whitespace-nowrap">
+            <thead id="rec-thead" class="bg-black/50 sticky top-0 z-10 backdrop-blur-md text-slate-400 uppercase font-black text-[10px]"></thead>
+            <tbody id="rec-tbody" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+        <div id="rec-empty" class="hidden p-16 text-center text-slate-500 text-xs font-black uppercase tracking-widest">Немає записів за цими фільтрами</div>
+      </div>
+      <p class="text-[10px] text-slate-500 text-center font-bold">Клікни на будь-яку клітинку, щоб редагувати — зміни зберігаються автоматично при виході з поля. Клік на заголовок — сортування.</p>
     </div>
 
     <!-- EXPENSES MODE -->
@@ -921,7 +994,7 @@ async function deleteFunnelMapping(id) {
 function switchMode(m) {
   console.log("🔄 Перемикання режиму на:", m);
   
-  const modes = ['dataset', 'expenses', 'providers'];
+  const modes = ['dataset', 'records', 'expenses', 'providers'];
 
   modes.forEach(x => {
     const modeEl = document.getElementById('mode-' + x);
@@ -950,6 +1023,9 @@ function switchMode(m) {
   }
   if (m === 'expenses') {
     initExpenses();
+  }
+  if (m === 'records') {
+    recInit();
   }
 }
 
@@ -1081,6 +1157,248 @@ async function refreshFunnelsTable() {
   allFunnels = data || []; // Зберігаємо в глобальну змінну для пошуку
   renderFunnelsTable(allFunnels);
 }
-</script>  
+
+/* ============================================================
+   RECORDS MODE — браузер + інлайн-редактор бази (daily_stats / creatives_stats)
+   ============================================================ */
+
+const REC_SCHEMA = {
+  daily_stats: [
+    { key: 'date',     label: 'Дата',    type: 'date' },
+    { key: 'account',  label: 'Акаунт',  type: 'text' },
+    { key: 'geo',      label: 'GEO',     type: 'text', upper: true },
+    { key: 'offer',    label: 'Оффер',   type: 'text' },
+    { key: 'funnel',   label: 'Воронка', type: 'text' },
+    { key: 'agent',    label: 'Агент',   type: 'text' },
+    { key: 'spend',    label: 'Spend',   type: 'money' },
+    { key: 'installs', label: 'Leads',   type: 'int' },
+    { key: 'regs',     label: 'Regs',    type: 'int' },
+    { key: 'deposits', label: 'Deps',    type: 'int' },
+  ],
+  creatives_stats: [
+    { key: 'date',     label: 'Дата',    type: 'date' },
+    { key: 'account',  label: 'Акаунт',  type: 'text' },
+    { key: 'cid',      label: 'Креатив', type: 'text' },
+    { key: 'geo',      label: 'GEO',     type: 'text', upper: true },
+    { key: 'funnel',   label: 'Воронка', type: 'text' },
+    { key: 'device',   label: 'Пристрій',type: 'text' },
+    { key: 'spend',    label: 'Spend',   type: 'money' },
+    { key: 'clicks',   label: 'Clicks',  type: 'int' },
+    { key: 'installs', label: 'Leads',   type: 'int' },
+    { key: 'regs',     label: 'Regs',    type: 'int' },
+    { key: 'deps',     label: 'Deps',    type: 'int' },
+  ]
+};
+// Поля, за якими рахуємо підсумки (у creatives_stats deps, у daily_stats deposits)
+const REC_DEPS_KEY = { daily_stats: 'deposits', creatives_stats: 'deps' };
+
+let recCurrentTable = 'daily_stats';
+let recRows = [];                       // сирі рядки з бази
+let recSort = { key: 'date', dir: -1 }; // -1 = новіші зверху
+let recInited = false;
+
+function recInit() {
+  if (!recInited) { recInited = true; recLoad(); }
+}
+
+async function recLoad() {
+  const tbody = document.getElementById('rec-tbody');
+  if (tbody) tbody.innerHTML = `<tr><td class="p-8 text-center text-slate-500 text-xs font-black uppercase tracking-widest" colspan="20">Завантаження…</td></tr>`;
+  const { data, error } = await sb
+    .from(recCurrentTable)
+    .select('*')
+    .eq('team_name', currentTeam)
+    .order('date', { ascending: false })
+    .limit(3000);
+  if (error) {
+    console.error('❌ Records load:', error);
+    if (tbody) tbody.innerHTML = `<tr><td class="p-8 text-center text-rose-400 text-xs font-black" colspan="20">Помилка: ${error.message}</td></tr>`;
+    return;
+  }
+  recRows = data || [];
+  recRender();
+}
+
+function recSwitchTable(t) {
+  recCurrentTable = t;
+  document.querySelectorAll('.rec-tbl-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('rec-tbl-' + t)?.classList.add('active');
+  recSort = { key: 'date', dir: -1 };
+  recLoad();
+}
+
+function recDatePreset(p) {
+  const from = document.getElementById('rec-date-from');
+  const to   = document.getElementById('rec-date-to');
+  const iso  = d => d.toISOString().slice(0, 10);
+  const now  = new Date();
+  if (p === 'clear') { from.value = ''; to.value = ''; }
+  else if (p === 'today') { from.value = iso(now); to.value = iso(now); }
+  else if (p === 'month') { from.value = iso(new Date(now.getFullYear(), now.getMonth(), 1)); to.value = iso(now); }
+  else { const d = new Date(); d.setDate(d.getDate() - (parseInt(p) - 1)); from.value = iso(d); to.value = iso(now); }
+  recRender();
+}
+
+function recFiltered() {
+  const q    = (document.getElementById('rec-search')?.value || '').toLowerCase().trim();
+  const from = document.getElementById('rec-date-from')?.value || '';
+  const to   = document.getElementById('rec-date-to')?.value || '';
+  const cols = REC_SCHEMA[recCurrentTable];
+  const textKeys = cols.filter(c => c.type === 'text').map(c => c.key);
+
+  let rows = recRows.filter(r => {
+    if (from && (r.date || '') < from) return false;
+    if (to   && (r.date || '') > to)   return false;
+    if (q) {
+      const hay = textKeys.map(k => (r[k] || '')).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const { key, dir } = recSort;
+  const col = cols.find(c => c.key === key);
+  const numeric = col && (col.type === 'money' || col.type === 'int');
+  rows.sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if (numeric) { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; return (av - bv) * dir; }
+    return String(av || '').localeCompare(String(bv || '')) * dir;
+  });
+  return rows;
+}
+
+function recRender() {
+  const cols = REC_SCHEMA[recCurrentTable];
+  const rows = recFiltered();
+  const depsKey = REC_DEPS_KEY[recCurrentTable];
+
+  // Заголовок
+  const thead = document.getElementById('rec-thead');
+  thead.innerHTML = '<tr>' + cols.map(c => {
+    const arrow = recSort.key === c.key ? (recSort.dir === 1 ? ' ▲' : ' ▼') : '';
+    return `<th class="p-4 rec-th" onclick="recSortBy('${c.key}')">${c.label}${arrow}</th>`;
+  }).join('') + '<th class="p-4 text-center">×</th></tr>';
+
+  // Тіло
+  const tbody = document.getElementById('rec-tbody');
+  const empty = document.getElementById('rec-empty');
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    empty.classList.remove('hidden');
+  } else {
+    empty.classList.add('hidden');
+    tbody.innerHTML = rows.map(r => {
+      const cells = cols.map(c => {
+        let v = r[c.key];
+        if (c.type === 'money') v = (v == null || v === '') ? '' : '$' + (parseFloat(v) || 0).toFixed(2);
+        else if (v == null) v = '';
+        const align = (c.type === 'money' || c.type === 'int') ? 'text-right' : '';
+        return `<td class="p-1 ${align}"><div class="rec-cell" contenteditable="true"
+                  data-id="${r.id}" data-col="${c.key}" data-type="${c.type}"
+                  data-orig="${String(r[c.key] ?? '').replace(/"/g, '&quot;')}">${v}</div></td>`;
+      }).join('');
+      return `<tr data-id="${r.id}">${cells}
+        <td class="p-1 text-center"><button onclick="recDelete('${r.id}')" class="text-rose-500/60 hover:text-rose-400 font-black px-2 transition" title="Видалити">✕</button></td></tr>`;
+    }).join('');
+  }
+
+  // Підсумки
+  const sum = k => rows.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
+  document.getElementById('rec-t-count').textContent = rows.length;
+  document.getElementById('rec-t-spend').textContent = '$' + sum('spend').toLocaleString('en-US', { maximumFractionDigits: 0 });
+  document.getElementById('rec-t-leads').textContent = sum('installs').toLocaleString('en-US');
+  document.getElementById('rec-t-regs').textContent  = sum('regs').toLocaleString('en-US');
+  document.getElementById('rec-t-deps').textContent  = sum(depsKey).toLocaleString('en-US');
+}
+
+function recSortBy(key) {
+  if (recSort.key === key) recSort.dir *= -1;
+  else recSort = { key, dir: 1 };
+  recRender();
+}
+
+// Збереження клітинки при виході з фокусу (делегування focusout)
+document.addEventListener('focusout', async (e) => {
+  const cell = e.target.closest && e.target.closest('.rec-cell');
+  if (!cell) return;
+  const { id, col, type } = cell.dataset;
+  const orig = cell.dataset.orig ?? '';
+  let raw = cell.innerText.trim();
+
+  // нормалізація значення за типом
+  let value;
+  if (type === 'money')      value = parseFloat(raw.replace(/[^\d.-]/g, '')) || 0;
+  else if (type === 'int')   value = parseInt(raw.replace(/[^\d-]/g, '')) || 0;
+  else if (type === 'date')  value = raw;
+  else                       value = cell.dataset.type === 'text' ? raw : raw;
+  if (type === 'text' && REC_SCHEMA[recCurrentTable].find(c => c.key === col)?.upper) value = value.toUpperCase();
+
+  if (String(value) === String(orig)) return; // без змін
+
+  const { error } = await sb.from(recCurrentTable).update({ [col]: value }).eq('id', id);
+  if (error) {
+    console.error('❌ Update:', error);
+    cell.innerText = orig; // відкат
+    alert('Не вдалося зберегти: ' + error.message);
+    return;
+  }
+  // оновлюємо локальний кеш + підсвічуємо
+  const row = recRows.find(r => String(r.id) === String(id));
+  if (row) row[col] = value;
+  cell.dataset.orig = value;
+  if (type === 'money') cell.innerText = '$' + (parseFloat(value) || 0).toFixed(2);
+  else if (type === 'text' && REC_SCHEMA[recCurrentTable].find(c => c.key === col)?.upper) cell.innerText = value;
+  cell.classList.add('saved');
+  setTimeout(() => cell.classList.remove('saved'), 800);
+  // оновлюємо тільки підсумки (без перемальовування, щоб не збити фокус)
+  recRefreshTotals();
+});
+
+function recRefreshTotals() {
+  const rows = recFiltered();
+  const depsKey = REC_DEPS_KEY[recCurrentTable];
+  const sum = k => rows.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
+  document.getElementById('rec-t-count').textContent = rows.length;
+  document.getElementById('rec-t-spend').textContent = '$' + sum('spend').toLocaleString('en-US', { maximumFractionDigits: 0 });
+  document.getElementById('rec-t-leads').textContent = sum('installs').toLocaleString('en-US');
+  document.getElementById('rec-t-regs').textContent  = sum('regs').toLocaleString('en-US');
+  document.getElementById('rec-t-deps').textContent  = sum(depsKey).toLocaleString('en-US');
+}
+
+async function recDelete(id) {
+  if (!confirm('Видалити цей запис назавжди?')) return;
+  const { error } = await sb.from(recCurrentTable).delete().eq('id', id);
+  if (error) { alert('Помилка видалення: ' + error.message); return; }
+  recRows = recRows.filter(r => String(r.id) !== String(id));
+  recRender();
+}
+
+async function recAddRow() {
+  const today = new Date().toISOString().slice(0, 10);
+  const base = { team_name: currentTeam, date: today, account: '', geo: '', funnel: '', spend: 0, installs: 0, regs: 0 };
+  if (recCurrentTable === 'daily_stats') Object.assign(base, { offer: 'DEFAULT', agent: '', deposits: 0 });
+  else Object.assign(base, { cid: 'NEW', device: '', clicks: 0, deps: 0 });
+  const { data, error } = await sb.from(recCurrentTable).insert([base]).select();
+  if (error) { alert('Не вдалося додати запис: ' + error.message); return; }
+  if (data && data[0]) recRows.unshift(data[0]);
+  document.getElementById('rec-search').value = '';
+  recRender();
+}
+
+function recExportCSV() {
+  const cols = REC_SCHEMA[recCurrentTable];
+  const rows = recFiltered();
+  const head = cols.map(c => c.label).join(',');
+  const body = rows.map(r => cols.map(c => {
+    const v = r[c.key] ?? '';
+    return /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : v;
+  }).join(',')).join('\n');
+  const blob = new Blob(['﻿' + head + '\n' + body], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${recCurrentTable}_${currentTeam}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+</script>
 </body>
 </html>
