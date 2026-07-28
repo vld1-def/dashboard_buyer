@@ -767,6 +767,12 @@ input[type="date"]::-webkit-datetime-edit-year-field {
 .bonus-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:#34d399; border:2px solid #0f172a; box-shadow:0 0 0 3px rgba(52,211,153,0.25); transition:box-shadow .2s; cursor:pointer; }
 .bonus-slider::-webkit-slider-thumb:hover { box-shadow:0 0 0 6px rgba(52,211,153,0.15); }
 /* ===== END TOGGLE SWITCH ===== */
+
+/* ===== GLOBAL 90% SCALE (компактніший вигляд на десктопі) ===== */
+@media (min-width: 768px) {
+  body { zoom: 0.9; }
+}
+/* ===== END SCALE ===== */
   </style>
 </head>
 <body class="py-6 px-4 md:px-6 font-sans antialiased text-dynamic">
@@ -797,7 +803,7 @@ input[type="date"]::-webkit-datetime-edit-year-field {
       <div>
         <h1 id="main-title" class="text-2xl md:text-3xl font-black uppercase tracking-tight">Dashboard <span class="text-blue-500 text-lg md:text-xl">Loading...</span></h1>
         <div class="flex items-center gap-3 mt-1 text-muted-dynamic">
-          <p id="header-month-display" class="text-xs font-medium uppercase tracking-widest font-bold text-muted-dynamic">Завантаження...</p>
+          <p id="header-month-display" class="text-xs font-medium uppercase tracking-widest font-bold text-muted-dynamic"></p>
           <div class="h-1 w-1 bg-gray-500 rounded-full"></div>
           <p id="last-sync-badge" class="text-[10px] font-black text-orange-500 uppercase tracking-tighter italic">Sync: Loading...</p>
         </div>
@@ -895,6 +901,11 @@ input[type="date"]::-webkit-datetime-edit-year-field {
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
     </button>
 
+    <!-- Geo Compare (cross-team) -->
+    <button onclick="openGeoCompareModal()" class="p-2 card rounded-xl shadow-md text-fuchsia-400 hover:bg-gray-500/10 transition admin-only" title="Geo Compare (по командах)">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l-2 1m2-1 2 1M9 19H5a2 2 0 01-2-2V9m6 10h6m0 0h4a2 2 0 002-2V9m-6 10V6m0 0 2-1m-2 1-2-1"/></svg>
+    </button>
+
     <!-- Settings -->
     <div class="relative admin-only">
       <button onclick="openSettingsModal()" class="p-2 card rounded-xl shadow-md text-gray-400 hover:bg-gray-500/10 transition" title="Settings">
@@ -934,24 +945,17 @@ input[type="date"]::-webkit-datetime-edit-year-field {
     <div id="dashboard-content" class="hidden space-y-8">
       
       <!-- KPI Row -->
-      <div id="kpi-row" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-2">
-        <!-- КАРТКА 1: SPEND -->
+      <div id="kpi-row" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2">
+        <!-- КАРТКА 1: SPEND (+ Fees + Expenses) -->
         <div class="card p-3 rounded-2xl border-l-4 border-l-blue-500 shadow-sm min-h-[100px] flex flex-col justify-center relative group cursor-help">
           <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">Total Spend</p>
           <p id="kpi-spend" class="text-[26px] font-black mt-1">$0.00</p>
-          <p id="kpi-comm" class="text-[12px] font-bold text-blue-400 mt-1 uppercase tracking-tighter">+$0.00 fees</p>
+          <p id="kpi-comm" class="text-[11px] font-bold text-blue-400 mt-1 uppercase tracking-tighter">+$0.00 fees</p>
+          <p id="kpi-expenses-line" class="text-[11px] font-bold text-rose-400 uppercase tracking-tighter">-$0.00 (Expenses)</p>
           <div class="absolute top-full left-0 mt-2 w-64 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl p-4 z-[100] opacity-0 pointer-events-none group-hover:opacity-100 transition-all transform origin-top scale-95 group-hover:scale-100 backdrop-blur-xl">
             <p class="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-3 border-b border-white/5 pb-2">Spend by Agency</p>
             <div id="spend-breakdown-list" class="space-y-2"></div>
-          </div>
-        </div>
-        <!-- КАРТКА 2: EXPENSES -->
-        <div id="kpi-expenses-card" class="card p-3 rounded-2xl border-l-4 border-l-rose-500 shadow-sm min-h-[100px] flex flex-col justify-center relative group cursor-help">
-          <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">Expenses</p>
-          <p id="kpi-expenses" class="text-[26px] font-black mt-1 text-rose-400">$0.00</p>
-          <p id="kpi-expenses-sub" class="text-[10px] font-bold text-rose-400/60 mt-1 uppercase tracking-tighter">0 records</p>
-          <div class="absolute top-full left-0 mt-2 w-52 bg-slate-900 border border-white/10 rounded-2xl shadow-2xl p-4 z-[100] opacity-0 pointer-events-none group-hover:opacity-100 transition-all transform origin-top scale-95 group-hover:scale-100 backdrop-blur-xl">
-            <p class="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em] mb-3 border-b border-white/5 pb-2">By Category</p>
+            <p class="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em] mt-4 mb-3 border-b border-white/5 pb-2">Expenses by Category</p>
             <div id="expenses-breakdown" class="space-y-1.5"></div>
           </div>
         </div>
@@ -2786,7 +2790,7 @@ async function clearSitePassword() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','geo','creatives','heatmap','table','device-geo','expenses'];
+  const keys = ['kpi','geo','creatives','heatmap','table','device-geo'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -2854,8 +2858,7 @@ async function initTeamLeadMode() {
     'creatives':  'creative-analyzer-section',
     'heatmap':    'weekly-analysis-section',
     'table':      'live-table-section',
-    'device-geo': 'device-geo-section',
-    'expenses':   'kpi-expenses-card'
+    'device-geo': 'device-geo-section'
   };
   const toHide = new Set();
   const toShow = new Set();
@@ -4974,21 +4977,18 @@ async function loadExpenses() {
     .gte('date', start)
     .lte('date', end);
 
-  const el = document.getElementById('kpi-expenses');
-  const sub = document.getElementById('kpi-expenses-sub');
+  const el = document.getElementById('kpi-expenses-line');
   const breakdown = document.getElementById('expenses-breakdown');
   if (!el) return;
 
   if (error || !data || !data.length) {
-    el.innerText = '$0.00';
-    if (sub) sub.innerText = '0 records';
+    el.innerText = '-$0.00 (Expenses)';
     if (breakdown) breakdown.innerHTML = '<p class="text-[10px] opacity-30">Немає витрат</p>';
     return;
   }
 
   const total = data.reduce((s, r) => s + (Number(r.amount)||0), 0);
-  el.innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-  if (sub) sub.innerText = data.length + ' records';
+  el.innerText = '-$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' (Expenses)';
 
   // Breakdown by category
   const cats = {};
@@ -5265,10 +5265,6 @@ async function loadExpenses() {
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Device × Geo</span>
               <label class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
-            <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
-              <span class="text-xs font-bold text-slate-300 group-hover:text-white">Expenses Card</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-expenses" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
-            </label>
           </div>
         </div>
         <!-- Drive API Key -->
@@ -5285,6 +5281,297 @@ async function loadExpenses() {
     </div>
   </div>
 </div>
+
+<!-- ===== GEO COMPARE (cross-team) MODAL ===== -->
+<div id="geo-compare-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4">
+  <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh;max-height:900px">
+    <!-- Header -->
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
+      <div>
+        <h2 class="text-xl font-black italic tracking-tighter text-fuchsia-400">Geo Compare</h2>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Порівняння одного гео по кількох командах</p>
+      </div>
+      <button onclick="closeGeoCompareModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+    </div>
+
+    <div class="flex flex-1 min-h-0">
+      <!-- LEFT: controls -->
+      <div class="w-64 flex-shrink-0 border-r border-white/5 p-4 flex flex-col gap-4 overflow-y-auto custom-scrollbar bg-black/10">
+        <div>
+          <p class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Команди</p>
+          <div id="gc-team-list" class="space-y-1"></div>
+        </div>
+        <div>
+          <p class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Гео</p>
+          <select id="gc-geo-select" onchange="gcRun()" class="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-xs font-black text-white outline-none focus:border-fuchsia-500">
+            <option value="">— виберіть гео —</option>
+          </select>
+        </div>
+        <div>
+          <p class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Період</p>
+          <div class="flex flex-col gap-1.5 text-[10px] font-bold">
+            <input type="date" id="gc-from" onchange="gcRun()" class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-fuchsia-500 w-full">
+            <input type="date" id="gc-to" onchange="gcRun()" class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-fuchsia-500 w-full">
+          </div>
+          <button onclick="gcClearDates()" class="mt-1.5 text-[9px] font-bold text-slate-500 hover:text-white uppercase tracking-widest">Весь час</button>
+        </div>
+        <button onclick="gcRun()" class="mt-auto bg-fuchsia-600 hover:bg-fuchsia-500 text-white py-2.5 rounded-xl uppercase tracking-widest shadow-lg font-black text-xs transition">Порівняти</button>
+      </div>
+
+      <!-- RIGHT: results -->
+      <div class="flex-1 min-w-0 p-5 overflow-y-auto custom-scrollbar">
+        <div id="gc-cards" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-6"></div>
+        <div id="gc-diff"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== GEO COMPARE (cross-team) =====
+let gcCache = {};                 // team -> { stats:[], payouts:{} }
+let gcSelectedTeams = new Set();
+let gcInited = false;
+const GC_COLORS = ['#60a5fa','#34d399','#f472b6','#fbbf24','#a78bfa','#22d3ee','#fb923c','#4ade80'];
+
+function openGeoCompareModal() {
+  document.getElementById('geo-compare-modal').classList.remove('hidden');
+  if (!gcInited) {
+    gcInited = true;
+    // дефолтний період — поточний місяць дашборду
+    if (currentMonthFilter) {
+      const [y,m] = currentMonthFilter.split('-');
+      const last = new Date(y, m, 0).getDate();
+      document.getElementById('gc-from').value = `${currentMonthFilter}-01`;
+      document.getElementById('gc-to').value = `${currentMonthFilter}-${String(last).padStart(2,'0')}`;
+    }
+    gcSelectedTeams.add(currentTeam);
+    gcLoadTeamsList();
+  }
+}
+function closeGeoCompareModal() {
+  document.getElementById('geo-compare-modal').classList.add('hidden');
+}
+
+async function gcLoadTeamsList() {
+  const listEl = document.getElementById('gc-team-list');
+  listEl.innerHTML = '<p class="text-[10px] opacity-40 px-1">Завантаження...</p>';
+  let teams = [];
+  try {
+    const { data } = await sb.from('daily_stats').select('team_name');
+    teams = [...new Set((data||[]).map(x => x.team_name).filter(Boolean))].sort();
+  } catch(e) {}
+  if (!teams.includes(currentTeam)) teams.unshift(currentTeam);
+
+  listEl.innerHTML = teams.map(t => {
+    const on = gcSelectedTeams.has(t);
+    return `
+      <label class="flex items-center justify-between cursor-pointer group px-2 py-1.5 rounded-lg hover:bg-white/5 transition">
+        <span class="text-[11px] font-bold ${on ? 'text-white' : 'text-slate-400'} group-hover:text-white truncate pr-2">${t}</span>
+        <input type="checkbox" ${on ? 'checked' : ''} onchange="gcToggleTeam('${t.replace(/'/g,"\\'")}', this.checked)" class="!w-4 !h-4 !p-0 !rounded accent-fuchsia-500 flex-shrink-0">
+      </label>`;
+  }).join('');
+
+  // Підвантажуємо дані вже вибраних команд, потім рендеримо
+  await Promise.all([...gcSelectedTeams].map(gcEnsureTeamData));
+  gcPopulateGeoSelect();
+  gcRun();
+}
+
+async function gcEnsureTeamData(team) {
+  if (gcCache[team]) return;
+  const [statsRes, payRes] = await Promise.all([
+    sb.from('daily_stats').select('date,geo,offer,spend,regs,deposits').eq('team_name', team),
+    sb.from('payouts').select('geo,offer,value').eq('team_name', team)
+  ]);
+  const payouts = {};
+  (payRes.data || []).forEach(p => {
+    const g = (p.geo||'').toUpperCase().trim();
+    const o = (p.offer||'DEFAULT').toUpperCase().trim();
+    payouts[`${g}_${o}`] = Number(p.value) || 0;
+  });
+  gcCache[team] = { stats: statsRes.data || [], payouts };
+}
+
+async function gcToggleTeam(team, checked) {
+  if (checked) { gcSelectedTeams.add(team); await gcEnsureTeamData(team); }
+  else gcSelectedTeams.delete(team);
+  gcPopulateGeoSelect();
+  gcRun();
+}
+
+function gcPopulateGeoSelect() {
+  const sel = document.getElementById('gc-geo-select');
+  const prev = sel.value;
+  const geos = new Set();
+  gcSelectedTeams.forEach(t => (gcCache[t]?.stats || []).forEach(d => {
+    const g = (d.geo||'').toUpperCase().trim();
+    if (g) geos.add(g);
+  }));
+  const sorted = [...geos].sort();
+  sel.innerHTML = '<option value="">— виберіть гео —</option>' +
+    sorted.map(g => `<option value="${g}">${g}</option>`).join('');
+  if (sorted.includes(prev)) sel.value = prev;
+}
+
+function gcClearDates() {
+  document.getElementById('gc-from').value = '';
+  document.getElementById('gc-to').value = '';
+  gcRun();
+}
+
+function gcAggregate(team, geo, from, to) {
+  const cache = gcCache[team];
+  if (!cache) return null;
+  const acc = { s:0, r:0, d:0, rev:0, rows:0 };
+  cache.stats.forEach(row => {
+    const g = (row.geo||'').toUpperCase().trim();
+    if (g !== geo) return;
+    const dt = row.date || '';
+    if (from && dt < from) return;
+    if (to && dt > to) return;
+    const o = (row.offer||'DEFAULT').toUpperCase().trim();
+    const payout = cache.payouts[`${g}_${o}`] ?? cache.payouts[`${g}_DEFAULT`] ?? 0;
+    acc.s += Number(row.spend)||0;
+    acc.r += Number(row.regs)||0;
+    acc.d += Number(row.deposits)||0;
+    acc.rev += (Number(row.deposits)||0) * payout;
+    acc.rows++;
+  });
+  return acc;
+}
+
+function gcMetrics(a) {
+  const profit = a.rev - a.s;
+  return {
+    s: a.s, r: a.r, d: a.d,
+    r2d: a.r > 0 ? (a.d/a.r*100) : 0,
+    cpl: a.r > 0 ? a.s/a.r : 0,
+    cpa: a.d > 0 ? a.s/a.d : 0,
+    profit,
+    roi: a.s > 0 ? (profit/a.s*100) : 0
+  };
+}
+
+function gcRun() {
+  const geo = document.getElementById('gc-geo-select').value;
+  const from = document.getElementById('gc-from').value;
+  const to = document.getElementById('gc-to').value;
+  const cardsEl = document.getElementById('gc-cards');
+  const diffEl = document.getElementById('gc-diff');
+
+  if (!geo) {
+    cardsEl.innerHTML = '<div class="col-span-full text-center py-20 opacity-30 text-[11px] font-black uppercase tracking-widest">Виберіть гео зліва</div>';
+    diffEl.innerHTML = '';
+    return;
+  }
+
+  const teams = [...gcSelectedTeams];
+  const results = teams.map(t => ({ team: t, m: gcMetrics(gcAggregate(t, geo, from, to) || {s:0,r:0,d:0,rev:0}) }))
+                       .filter(x => x.m.s > 0 || x.m.r > 0 || x.m.d > 0);
+
+  if (!results.length) {
+    cardsEl.innerHTML = `<div class="col-span-full text-center py-20 opacity-30 text-[11px] font-black uppercase tracking-widest">Немає даних по ${geo} у вибраних командах за період</div>`;
+    diffEl.innerHTML = '';
+    return;
+  }
+
+  cardsEl.innerHTML = results.map((r, i) => gcCard(r.team, geo, r.m, GC_COLORS[i % GC_COLORS.length])).join('');
+  diffEl.innerHTML = gcDiff(geo, results);
+}
+
+function gcCard(team, geo, m, color) {
+  const money = n => '$' + Math.round(n).toLocaleString();
+  const profitColor = m.profit >= 0 ? 'text-emerald-400' : 'text-red-500';
+  return `
+    <div class="p-4 card rounded-2xl border-l-4 bg-slate-900/40 relative overflow-hidden" style="border-color:${color}">
+      <div class="flex justify-between items-start mb-3">
+        <div>
+          <div class="text-[9px] font-black uppercase tracking-widest text-slate-500 truncate max-w-[130px]">${team}</div>
+          <span class="font-black text-2xl tracking-tighter" style="color:${color}">${geo}</span>
+        </div>
+        <span class="font-black text-lg text-white">${money(m.s)}</span>
+      </div>
+      <div class="grid grid-cols-3 gap-1 text-center mb-3 border-b border-white/5 pb-3">
+        <div class="flex flex-col border-r border-white/5"><span class="text-[9px] font-black text-slate-500 uppercase">Reg</span><b class="text-base text-blue-400 leading-none">${m.r}</b></div>
+        <div class="flex flex-col border-r border-white/5"><span class="text-[9px] font-black text-slate-500 uppercase">Dep</span><b class="text-base text-green-500 leading-none">${m.d}</b></div>
+        <div class="flex flex-col"><span class="text-[9px] font-black text-pink-500 uppercase">R2D</span><b class="text-base text-pink-500 leading-none">${m.r2d.toFixed(1)}%</b></div>
+      </div>
+      <div class="grid grid-cols-2 gap-1 text-center mb-3">
+        <div class="flex flex-col border-r border-white/5"><span class="text-[9px] font-black text-slate-500 uppercase">CPL</span><b class="text-base text-purple-400 leading-none">$${m.cpl.toFixed(1)}</b></div>
+        <div class="flex flex-col"><span class="text-[9px] font-black text-slate-500 uppercase">CPA</span><b class="text-base text-yellow-500 leading-none">$${m.cpa.toFixed(1)}</b></div>
+      </div>
+      <div class="flex justify-between items-center pt-2 border-t border-white/5">
+        <span class="text-[8px] font-black text-slate-500 uppercase tracking-widest">Net Profit:</span>
+        <span class="font-black text-sm ${profitColor} tracking-tight">${money(m.profit)} <span class="text-[10px] opacity-60 font-bold">(${Math.round(m.roi)}%)</span></span>
+      </div>
+    </div>`;
+}
+
+function gcDiff(geo, results) {
+  // напрямок: 1 = більше краще, -1 = менше краще, 0 = нейтрально
+  const rows = [
+    { key:'s',      label:'Spend',      dir:0,  fmt:v=>'$'+Math.round(v).toLocaleString() },
+    { key:'r',      label:'Regs',       dir:1,  fmt:v=>Math.round(v).toLocaleString() },
+    { key:'d',      label:'Deps',       dir:1,  fmt:v=>Math.round(v).toLocaleString() },
+    { key:'r2d',    label:'R2D %',      dir:1,  fmt:v=>v.toFixed(1)+'%' },
+    { key:'cpl',    label:'CPL',        dir:-1, fmt:v=>'$'+v.toFixed(1) },
+    { key:'cpa',    label:'CPA',        dir:-1, fmt:v=>'$'+v.toFixed(1) },
+    { key:'profit', label:'Net Profit', dir:1,  fmt:v=>'$'+Math.round(v).toLocaleString() },
+    { key:'roi',    label:'ROI %',      dir:1,  fmt:v=>Math.round(v)+'%' },
+  ];
+
+  const head = `<th class="text-left p-2 text-[9px] font-black uppercase tracking-widest text-slate-500">Метрика</th>` +
+    results.map((r,i)=>`<th class="p-2 text-[10px] font-black uppercase tracking-tight text-right" style="color:${GC_COLORS[i%GC_COLORS.length]}">${r.team}</th>`).join('');
+
+  const body = rows.map(row => {
+    const vals = results.map(r => r.m[row.key]);
+    let bestIdx = -1, worstIdx = -1;
+    if (row.dir !== 0 && results.length > 1) {
+      let best = row.dir === 1 ? -Infinity : Infinity;
+      let worst = row.dir === 1 ? Infinity : -Infinity;
+      vals.forEach((v,i) => {
+        if ((row.dir===1 && v>best) || (row.dir===-1 && v<best)) { best=v; bestIdx=i; }
+        if ((row.dir===1 && v<worst) || (row.dir===-1 && v>worst)) { worst=v; worstIdx=i; }
+      });
+      // якщо всі рівні — не підсвічуємо
+      if (vals.every(v => v === vals[0])) { bestIdx = -1; worstIdx = -1; }
+    }
+    const cells = vals.map((v,i) => {
+      let cls = 'text-slate-300';
+      if (i===bestIdx) cls = 'text-emerald-400 font-black';
+      else if (i===worstIdx) cls = 'text-red-400';
+      return `<td class="p-2 text-right text-xs font-bold ${cls}">${row.fmt(v)}</td>`;
+    }).join('');
+    return `<tr class="border-t border-white/5"><td class="p-2 text-[10px] font-black uppercase tracking-widest text-slate-400">${row.label}</td>${cells}</tr>`;
+  }).join('');
+
+  // Текстовий підсумок
+  const byProfit = [...results].sort((a,b)=>b.m.profit-a.m.profit);
+  const byRoi = [...results].sort((a,b)=>b.m.roi-a.m.roi);
+  let summary = '';
+  if (results.length > 1) {
+    const pWin = byProfit[0], pLose = byProfit[byProfit.length-1];
+    const diff = pWin.m.profit - pLose.m.profit;
+    summary = `
+      <div class="flex flex-wrap gap-2 mt-4">
+        <span class="text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1.5 rounded-lg">🏆 Найкращий профіт: ${pWin.team} ($${Math.round(pWin.m.profit).toLocaleString()})</span>
+        <span class="text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1.5 rounded-lg">📈 Найкращий ROI: ${byRoi[0].team} (${Math.round(byRoi[0].m.roi)}%)</span>
+        <span class="text-[10px] font-bold bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20 px-3 py-1.5 rounded-lg">Δ Профіт vs ${pLose.team}: $${Math.round(diff).toLocaleString()}</span>
+      </div>`;
+  }
+
+  return `
+    <div class="card rounded-2xl p-4 border border-white/5 overflow-hidden">
+      <p class="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-400 mb-3 border-b border-white/5 pb-2">Порівняння · ${geo}</p>
+      <div class="overflow-x-auto">
+        <table class="w-full border-collapse min-w-[420px]"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+      </div>
+      ${summary}
+    </div>`;
+}
+// ===== END GEO COMPARE =====
+</script>
 
 <!-- Image lightbox -->
 <div id="img-lightbox" onclick="closeImgLightbox()">
