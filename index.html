@@ -917,6 +917,11 @@ input[type="date"]::-webkit-datetime-edit-year-field {
     </div>
   </div>
 
+  <!-- Logout -->
+  <button onclick="siteLogout()" class="p-2 card rounded-xl shadow-md text-slate-400 hover:text-red-400 hover:bg-gray-500/10 transition admin-only" title="Вийти">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+  </button>
+
   <a href="Form.html" class="admin-only bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl font-bold text-sm transition shadow-lg uppercase tracking-tight">+ Add Data</a>
 </div>
     </header>
@@ -2737,42 +2742,55 @@ async function setTeamSetting(key, value) {
 }
 
 // ===== SITE PASSWORD =====
+// ===== SUPABASE AUTH (спільний акаунт) =====
+// Читання даних публічне (RLS), але запис/видалення — лише залогіненим.
+// Тому вхід обов'язковий, щоб дашборд працював у повному режимі.
 async function checkSiteAuth() {
   const params = new URLSearchParams(location.search);
-  if (params.get('view') === 'teamlead') return true; // teamlead uses own auth
-  const sessionKey = `site_auth_${currentTeam}`;
-  if (sessionStorage.getItem(sessionKey) === '1') return true;
+  if (params.get('view') === 'teamlead') return true; // teamlead має власний шлях (публічне читання)
 
-  const pwd = await getTeamSetting('site_password');
-  if (!pwd) return true; // no password set → open access
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) return true; // вже залогінені
+  } catch (e) {}
 
-  // Show login overlay
+  // Показуємо екран входу і чекаємо успішної автентифікації
   return new Promise(resolve => {
     const overlay = document.getElementById('login-overlay');
-    const teamLabel = document.getElementById('login-team-label');
-    if (teamLabel) teamLabel.textContent = currentTeam;
     overlay?.classList.remove('hidden');
-
-    window._loginResolve = (success) => {
-      if (success) {
-        sessionStorage.setItem(sessionKey, '1');
-        overlay?.classList.add('hidden');
-      }
-      resolve(success);
-    };
-    window._loginPwd = pwd;
+    setTimeout(() => document.getElementById('login-pwd-input')?.focus(), 120);
+    window._siteLoginResolve = resolve;
   });
 }
 
-function submitLogin() {
-  const input = document.getElementById('login-pwd-input');
-  const err = document.getElementById('login-error');
-  if (!input || !window._loginPwd) return;
-  if (input.value === window._loginPwd) {
-    if (window._loginResolve) window._loginResolve(true);
-  } else {
-    if (err) { err.classList.remove('hidden'); input.value = ''; input.focus(); }
+async function submitSiteLogin() {
+  const emailEl = document.getElementById('login-email-input');
+  const pwdEl   = document.getElementById('login-pwd-input');
+  const err     = document.getElementById('login-error');
+  const btn     = document.getElementById('login-btn');
+  const email = (emailEl?.value || '').trim();
+  const pwd   = pwdEl?.value || '';
+  if (!email || !pwd) return;
+
+  err?.classList.add('hidden');
+  if (btn) { btn.disabled = true; btn.dataset.label = btn.innerText; btn.innerText = '...'; }
+
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+
+  if (btn) { btn.disabled = false; btn.innerText = btn.dataset.label || 'Увійти'; }
+
+  if (error || !data?.session) {
+    if (err) err.classList.remove('hidden');
+    if (pwdEl) { pwdEl.value = ''; pwdEl.focus(); }
+    return;
   }
+  document.getElementById('login-overlay')?.classList.add('hidden');
+  if (window._siteLoginResolve) window._siteLoginResolve(true);
+}
+
+async function siteLogout() {
+  try { await sb.auth.signOut(); } catch (e) {}
+  location.reload();
 }
 
 async function saveSitePassword() {
@@ -5047,17 +5065,19 @@ async function loadExpenses() {
       <div class="w-14 h-14 bg-blue-500/10 border border-blue-500/20 rounded-3xl flex items-center justify-center mx-auto mb-4">
         <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
       </div>
-      <p id="login-team-label" class="text-[10px] font-black uppercase tracking-[0.25em] text-blue-400 mb-1"></p>
+      <p id="login-team-label" class="text-[10px] font-black uppercase tracking-[0.25em] text-blue-400 mb-1">Buyer Access</p>
       <h2 class="text-2xl font-black uppercase tracking-tight text-white">Dashboard</h2>
-      <p class="text-[10px] text-slate-600 mt-1 uppercase tracking-widest font-bold">Enter password to continue</p>
+      <p class="text-[10px] text-slate-600 mt-1 uppercase tracking-widest font-bold">Увійдіть, щоб продовжити</p>
     </div>
     <div class="space-y-3">
-      <input type="password" id="login-pwd-input" placeholder="Password"
-        onkeydown="if(event.key==='Enter') submitLogin()"
+      <input type="email" id="login-email-input" placeholder="Email" value="brovladay@gmail.com" autocomplete="username"
+        class="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-4 py-3.5 text-sm font-bold text-white outline-none focus:border-blue-500 focus:bg-white/[0.06] transition text-center">
+      <input type="password" id="login-pwd-input" placeholder="Пароль" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter') submitSiteLogin()"
         class="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-4 py-3.5 text-sm font-bold text-white outline-none focus:border-blue-500 focus:bg-white/[0.06] transition text-center tracking-widest">
-      <p id="login-error" class="hidden text-[10px] text-red-400 text-center font-bold uppercase tracking-widest">Wrong password</p>
-      <button onclick="submitLogin()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest py-3.5 rounded-2xl transition text-sm">
-        Enter
+      <p id="login-error" class="hidden text-[10px] text-red-400 text-center font-bold uppercase tracking-widest">Невірний email або пароль</p>
+      <button id="login-btn" onclick="submitSiteLogin()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest py-3.5 rounded-2xl transition text-sm">
+        Увійти
       </button>
     </div>
   </div>
@@ -5302,7 +5322,7 @@ async function loadExpenses() {
           <div id="gc-team-list" class="space-y-1"></div>
         </div>
         <div>
-          <p class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Гео</p>
+          <p class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500 mb-2">Гео <span class="text-slate-600 normal-case tracking-normal">(спільні для вибраних)</span></p>
           <select id="gc-geo-select" onchange="gcRun()" class="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-xs font-black text-white outline-none focus:border-fuchsia-500">
             <option value="">— виберіть гео —</option>
           </select>
@@ -5403,15 +5423,19 @@ async function gcToggleTeam(team, checked) {
 function gcPopulateGeoSelect() {
   const sel = document.getElementById('gc-geo-select');
   const prev = sel.value;
-  const geos = new Set();
-  gcSelectedTeams.forEach(t => (gcCache[t]?.stats || []).forEach(d => {
-    const g = (d.geo||'').toUpperCase().trim();
-    if (g) geos.add(g);
-  }));
-  const sorted = [...geos].sort();
+  // Тільки гео, що є ОДНОЧАСНО в усіх вибраних командах (перетин)
+  const teams = [...gcSelectedTeams].filter(t => gcCache[t]);
+  let inter = null;
+  teams.forEach(t => {
+    const set = new Set((gcCache[t].stats || [])
+      .map(d => (d.geo||'').toUpperCase().trim())
+      .filter(Boolean));
+    inter = (inter === null) ? set : new Set([...inter].filter(g => set.has(g)));
+  });
+  const sorted = inter ? [...inter].sort() : [];
   sel.innerHTML = '<option value="">— виберіть гео —</option>' +
     sorted.map(g => `<option value="${g}">${g}</option>`).join('');
-  if (sorted.includes(prev)) sel.value = prev;
+  sel.value = sorted.includes(prev) ? prev : '';
 }
 
 function gcClearDates() {
