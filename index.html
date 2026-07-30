@@ -856,7 +856,7 @@ input[type="date"]::-webkit-datetime-edit-year-field {
   <div class="flex items-center gap-2 admin-only">
     <button onclick="toggleReportModal()" class="p-2 card rounded-xl shadow-md text-blue-400 hover:bg-gray-500/10 transition" title="Daily Reports"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></button>
     <button onclick="toggleTaskModal()" class="p-2 card rounded-xl shadow-md text-purple-500 hover:bg-gray-500/10 transition relative" title="Mission Center"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg><span id="task-dot" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span></button>
-    <button onclick="toggleChangeLogModal()" class="p-2 card rounded-xl shadow-md text-teal-400 hover:bg-gray-500/10 transition" title="Change Log">
+    <button onclick="toggleChangeLogModal()" class="hidden p-2 card rounded-xl shadow-md text-teal-400 hover:bg-gray-500/10 transition" title="Change Log">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
     </button>
   </div>
@@ -904,6 +904,11 @@ input[type="date"]::-webkit-datetime-edit-year-field {
     <!-- Geo Compare (cross-team) -->
     <button onclick="openGeoCompareModal()" class="p-2 card rounded-xl shadow-md text-fuchsia-400 hover:bg-gray-500/10 transition admin-only" title="Geo Compare (по командах)">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l-2 1m2-1 2 1M9 19H5a2 2 0 01-2-2V9m6 10h6m0 0h4a2 2 0 002-2V9m-6 10V6m0 0 2-1m-2 1-2-1"/></svg>
+    </button>
+
+    <!-- Data Check (перевірка наявності даних) -->
+    <button onclick="openDataCheckModal()" class="p-2 card rounded-xl shadow-md text-lime-400 hover:bg-gray-500/10 transition admin-only" title="Перевірка даних (Keitaro)">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7-2 2-1-1"/></svg>
     </button>
 
     <!-- Settings -->
@@ -5595,6 +5600,206 @@ function gcDiff(geo, results) {
     </div>`;
 }
 // ===== END GEO COMPARE =====
+</script>
+
+<!-- ===== DATA CHECK (Keitaro) MODAL ===== -->
+<div id="data-check-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4">
+  <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:90vh;max-height:920px">
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
+      <div>
+        <h2 class="text-xl font-black italic tracking-tighter text-lime-400">Перевірка даних</h2>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Keitaro CSV · погодинно · по таймзонах акаунтів · без збереження</p>
+      </div>
+      <button onclick="closeDataCheckModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+    </div>
+
+    <div class="p-4 border-b border-white/5 flex flex-wrap items-end gap-4 bg-black/10 flex-shrink-0">
+      <div>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Keitaro CSV</label>
+        <input type="file" id="dc-file" accept=".csv,text/csv" onchange="dcHandleFile(event)"
+          class="text-[11px] font-bold text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-lime-600 file:text-white file:font-black file:uppercase file:text-[10px] file:cursor-pointer">
+      </div>
+      <div>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">База (сьогодні, +3)</label>
+        <input type="date" id="dc-base-date" class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-lime-500">
+      </div>
+      <div>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Total Spend $</label>
+        <input type="number" id="dc-spend" placeholder="0" class="w-28 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-lime-500">
+      </div>
+      <button onclick="dcCompute()" class="bg-lime-600 hover:bg-lime-500 text-white py-2 px-6 rounded-xl uppercase tracking-widest shadow-lg font-black text-xs transition">Порахувати</button>
+    </div>
+
+    <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5">
+      <div id="dc-warn" class="hidden mb-4"></div>
+      <div id="dc-empty" class="text-center py-20 opacity-30 text-[11px] font-black uppercase tracking-widest">Завантаж CSV, вкажи дату й spend → «Порахувати»</div>
+      <div id="dc-results" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="card rounded-2xl p-4 border border-white/5">
+          <p class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-3 border-b border-white/5 pb-2">Акаунти — статка</p>
+          <div class="overflow-x-auto"><table id="dc-accounts-table" class="w-full border-collapse"></table></div>
+        </div>
+        <div class="card rounded-2xl p-4 border border-white/5">
+          <p class="text-[10px] font-black uppercase tracking-[0.2em] text-lime-400 mb-3 border-b border-white/5 pb-2">Юніткост</p>
+          <div class="overflow-x-auto"><table id="dc-unit-table" class="w-full border-collapse"></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== DATA CHECK (Keitaro CSV, погодинно по TZ акаунтів) =====
+let dcRows = [];        // {account, day, hour, installs, regs, deps}
+let dcAccountsTz = {};  // account_id -> timezone
+
+async function openDataCheckModal() {
+  document.getElementById('data-check-modal').classList.remove('hidden');
+  const d = document.getElementById('dc-base-date');
+  if (!d.value) d.value = new Date().toISOString().slice(0,10);
+  try {
+    const { data } = await sb.from('accounts_mapping').select('account_id,timezone').eq('team_name', currentTeam);
+    dcAccountsTz = {};
+    (data||[]).forEach(r => { dcAccountsTz[String(r.account_id).trim()] = r.timezone; });
+  } catch (e) { console.warn('accounts_mapping:', e.message); }
+}
+function closeDataCheckModal() { document.getElementById('data-check-modal').classList.add('hidden'); }
+
+function dcHandleFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => { dcParse(ev.target.result); };
+  reader.readAsText(file);
+}
+
+function dcParse(content) {
+  content = content.replace(/﻿/g, '');
+  const lines = content.split(/\r?\n/).filter(l => l.trim() !== '');
+  dcRows = [];
+  if (!lines.length) return;
+  const delim = (lines[0].split(';').length > lines[0].split(',').length) ? ';' : ',';
+  const split = l => l.split(delim).map(c => c.replace(/^"|"$/g, '').replace(/"/g, '').trim());
+  const headers = split(lines[0]).map(h => h.toLowerCase());
+  const idx = cands => headers.findIndex(h => cands.some(c => h === c || h.includes(c)));
+  const iAcc  = idx(['sub id 5','sub_id_5','account']);
+  const iDay  = idx(['day','date','день','дата']);
+  const iHour = idx(['hour','година','час']);
+  const iIns  = idx(['uc (campaign)','uc','installs','instal','інстал','инстал','leads']);
+  const iReg  = idx(['conv.','conv','reg','реєстр','регист']);
+  const iDep  = idx(['sales','deps','deposit','депоз']);
+
+  for (let i = 1; i < lines.length; i++) {
+    const r = split(lines[i]);
+    const acc = (r[iAcc] || '').trim();
+    if (!acc || acc.startsWith('{')) continue;          // шаблонні/плейсхолдер
+    const day = (r[iDay] || '').trim();
+    if (!day) continue;                                  // підсумковий рядок
+    dcRows.push({
+      account: acc,
+      day,
+      hour: parseInt(r[iHour], 10) || 0,
+      installs: parseInt(r[iIns], 10) || 0,
+      regs: parseInt(r[iReg], 10) || 0,
+      deps: parseInt(r[iDep], 10) || 0
+    });
+  }
+  console.log(`DataCheck: розпарсено ${dcRows.length} рядків`);
+}
+
+function dcCompute() {
+  if (!dcRows.length) { alert('Спочатку завантаж CSV з Keitaro'); return; }
+  const base = document.getElementById('dc-base-date').value;
+  if (!base) { alert('Вкажи базову дату'); return; }
+  const spend = parseFloat(document.getElementById('dc-spend').value) || 0;
+
+  // base 00:00 як +3 wall-clock (усе рахуємо в одній шкалі +3 через Date.UTC)
+  const [by, bm, bd] = base.split('-').map(Number);
+  const baseMs = Date.UTC(by, bm - 1, bd, 0, 0, 0);
+
+  const perAcc = {};
+  dcRows.forEach(r => { (perAcc[r.account] = perAcc[r.account] || []).push(r); });
+
+  const accStats = [];
+  const unlinked = [];
+  Object.keys(perAcc).forEach(acc => {
+    const tz = dcAccountsTz[acc];
+    if (tz === undefined || tz === null) { unlinked.push(acc); return; }  // немає TZ — окремо
+    const offset = 3 - Number(tz);                    // на скільки годин файл (+3) попереду акаунта
+    const startMs = baseMs - (24 - offset) * 3600000; // вчора о offset:00
+    const endMs   = baseMs + offset * 3600000;        // сьогодні о offset:00 (не включно)
+    let ins = 0, reg = 0, dep = 0;
+    perAcc[acc].forEach(r => {
+      const [ry, rm, rd] = r.day.split('-').map(Number);
+      const rowMs = Date.UTC(ry, rm - 1, rd, r.hour, 0, 0);
+      if (rowMs >= startMs && rowMs < endMs) { ins += r.installs; reg += r.regs; dep += r.deps; }
+    });
+    accStats.push({ account: acc, tz: Number(tz), installs: ins, regs: reg, deps: dep });
+  });
+
+  accStats.sort((a, b) => b.installs - a.installs);
+  document.getElementById('dc-empty').classList.add('hidden');
+  document.getElementById('dc-results').classList.remove('hidden');
+  dcRenderAccounts(accStats);
+  dcRenderUnit(accStats, spend);
+  dcRenderWarn(unlinked);
+}
+
+function dcRenderAccounts(rows) {
+  const t = document.getElementById('dc-accounts-table');
+  const th = 'p-2 text-[9px] font-black uppercase tracking-widest text-slate-500';
+  const head = `<thead><tr>
+    <th class="${th} text-left">Акаунт</th><th class="${th} text-center">TZ</th>
+    <th class="${th} text-right">Інстали</th><th class="${th} text-right">Реєстр.</th><th class="${th} text-right">Депоз.</th>
+  </tr></thead>`;
+  if (!rows.length) { t.innerHTML = head + '<tbody><tr><td colspan="5" class="p-3 text-center text-[11px] opacity-40">Немає залінкованих акаунтів у файлі</td></tr></tbody>'; return; }
+  const body = rows.map(r => `<tr class="border-t border-white/5">
+    <td class="p-2 text-[11px] font-bold text-blue-300 font-mono">${r.account}</td>
+    <td class="p-2 text-center text-[11px] font-black text-amber-300">${r.tz > 0 ? '+' : ''}${r.tz}</td>
+    <td class="p-2 text-right text-xs font-bold text-white">${r.installs}</td>
+    <td class="p-2 text-right text-xs font-bold text-blue-400">${r.regs}</td>
+    <td class="p-2 text-right text-xs font-bold text-green-500">${r.deps}</td>
+  </tr>`).join('');
+  const tot = rows.reduce((a, r) => ({ i: a.i + r.installs, r: a.r + r.regs, d: a.d + r.deps }), { i: 0, r: 0, d: 0 });
+  const totRow = `<tr class="border-t-2 border-white/10 bg-white/[0.02]">
+    <td colspan="2" class="p-2 text-[10px] font-black uppercase text-slate-400">Разом</td>
+    <td class="p-2 text-right text-xs font-black text-white">${tot.i}</td>
+    <td class="p-2 text-right text-xs font-black text-blue-400">${tot.r}</td>
+    <td class="p-2 text-right text-xs font-black text-green-500">${tot.d}</td></tr>`;
+  t.innerHTML = head + '<tbody>' + body + totRow + '</tbody>';
+}
+
+function dcRenderUnit(rows, spend) {
+  const tot = rows.reduce((a, r) => ({ i: a.i + r.installs, r: a.r + r.regs, d: a.d + r.deps }), { i: 0, r: 0, d: 0 });
+  const money = v => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const cost = c => c > 0 ? money(spend / c) : '—';
+  const ratio = (a, b) => { if (!b) return '—'; const n = a / b; const s = (Math.round(n * 10) / 10).toString(); return '1 до ' + s; };
+  const th = 'p-2 text-[9px] font-black uppercase tracking-widest text-slate-500';
+  const head = `<thead><tr>
+    <th class="${th} text-left">Метрика</th><th class="${th} text-right">Кількість</th><th class="${th} text-right">Значення</th>
+  </tr></thead>`;
+  const data = [
+    ['Інстали', tot.i, cost(tot.i)],
+    ['Реєстрації', tot.r, cost(tot.r)],
+    ['Депозити', tot.d, cost(tot.d)],
+    ['Інстал → Рег', '', ratio(tot.i, tot.r)],
+    ['Інстал → Деп', '', ratio(tot.i, tot.d)],
+    ['Рег → Деп', '', ratio(tot.r, tot.d)]
+  ];
+  const body = data.map(([m, q, v]) => `<tr class="border-t border-white/5">
+    <td class="p-2 text-[11px] font-bold text-slate-300">${m}</td>
+    <td class="p-2 text-right text-xs font-bold text-white">${q}</td>
+    <td class="p-2 text-right text-xs font-black text-lime-400">${v}</td></tr>`).join('');
+  document.getElementById('dc-unit-table').innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function dcRenderWarn(unlinked) {
+  const w = document.getElementById('dc-warn');
+  if (!unlinked.length) { w.classList.add('hidden'); w.innerHTML = ''; return; }
+  w.classList.remove('hidden');
+  w.innerHTML = `<div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-[11px] text-amber-300 font-bold">
+    ⚠️ Акаунти з файлу без прив'язаної таймзони — їх не враховано. Додай у Form (Link Cabinet) з TZ:
+    <div class="mt-1 font-mono text-amber-200/80 break-all">${unlinked.join(', ')}</div></div>`;
+}
+// ===== END DATA CHECK =====
 </script>
 
 <!-- Image lightbox -->

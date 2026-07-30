@@ -353,6 +353,7 @@ select {
              <h3 class="text-xl font-black uppercase italic mb-6 text-blue-400 tracking-tight">Link Cabinet</h3>
              <div class="flex gap-3">
                 <input type="text" id="prov-acc" placeholder="Account ID" class="flex-grow">
+                <input type="number" id="prov-tz" placeholder="TZ" title="Таймзона акаунта, напр. -8, 0, 3" class="!w-20 text-center">
                 <div class="flex gap-1 w-1/2">
                   <select id="prov-agency" class="flex-grow"></select>
                   <button onclick="promptNewAgency()" class="bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black text-white transition-all">+</button>
@@ -383,7 +384,7 @@ select {
              <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
                 <table class="w-full text-[13px] text-left">
                   <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
-                    <tr><th class="p-3">Account</th><th class="p-3 text-right">Agency</th><th class="p-3"></th></tr>
+                    <tr><th class="p-3">Account</th><th class="p-3 text-center">TZ</th><th class="p-3 text-right">Agency</th><th class="p-3"></th></tr>
                   </thead>
                   <tbody id="providers-list-body" class="divide-y divide-white/5">
                     <!-- JS Rows -->
@@ -491,7 +492,11 @@ async function loadMappings() {
   const { data: funs } = await sb.from('funnels_mapping').select('*').eq('team_name', currentTeam);
   
   mappingDB.providers = {};
-  accs?.forEach(r => mappingDB.providers[r.account_id] = r.provider_name); // ВИПРАВЛЕНО
+  mappingDB.timezones = {};
+  accs?.forEach(r => {
+    mappingDB.providers[r.account_id] = r.provider_name; // ВИПРАВЛЕНО
+    mappingDB.timezones[r.account_id] = r.timezone;
+  });
   
   mappingDB.funnels = {};
   funs?.forEach(r => mappingDB.funnels[r.ktid] = r.funnel_name);
@@ -908,26 +913,39 @@ async function confirmCreativeImport() {
 async function addProvider() {
   const acc = document.getElementById('prov-acc').value;
   const agency = document.getElementById('prov-agency').value; // Значення з селектора
-  
+  const tzRaw = document.getElementById('prov-tz').value.trim();
+  const timezone = tzRaw === '' ? null : parseInt(tzRaw, 10);
+
   if (!acc) return alert("Введіть ID акаунта!");
 
   const { error } = await sb.from('accounts_mapping').insert([
-    { 
-      account_id: acc, 
+    {
+      account_id: acc,
       provider_name: agency, // ТВОЯ НАЗВА КОЛОНКИ
-      team_name: currentTeam 
+      timezone: timezone,
+      team_name: currentTeam
     }
   ]);
 
   if (error) {
     console.error("Помилка:", error);
     alert("Помилка збереження: " + error.message);
-  } else { 
-    showStatus("Account Linked!"); 
-    document.getElementById('prov-acc').value = ''; 
-    await refreshProvidersTable(); 
-    await loadMappings(); 
+  } else {
+    showStatus("Account Linked!");
+    document.getElementById('prov-acc').value = '';
+    document.getElementById('prov-tz').value = '';
+    await refreshProvidersTable();
+    await loadMappings();
   }
+}
+
+async function updateAccountTz(id, val) {
+  const t = String(val).trim();
+  const timezone = (t === '' || t === '—') ? null : parseInt(t, 10);
+  if (t !== '' && t !== '—' && isNaN(timezone)) { alert("Таймзона має бути числом, напр. -8, 0, 3"); await refreshProvidersTable(); return; }
+  const { error } = await sb.from('accounts_mapping').update({ timezone }).eq('id', id);
+  if (error) { alert("Помилка збереження TZ: " + error.message); }
+  else { showStatus("TZ оновлено"); await loadMappings(); }
 }
 
 async function addFunnelMapping() {
@@ -954,13 +972,18 @@ function renderProvidersTable(data) {
   if (!body) return console.error("❌ Не знайдено providers-list-body");
 
   if (!data || data.length === 0) {
-    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center opacity-40 italic">No accounts linked yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="4" class="p-4 text-center opacity-40 italic">No accounts linked yet</td></tr>';
     return;
   }
 
   body.innerHTML = data.map(r => `
     <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
       <td class="p-3 font-bold text-blue-300 uppercase">${r.account_id || '—'}</td>
+      <td class="p-3 text-center">
+        <span contenteditable="true" onblur="updateAccountTz('${r.id}', this.innerText)"
+              class="inline-block min-w-[32px] px-2 py-0.5 rounded bg-white/5 text-amber-300 font-bold outline-none focus:bg-white/10 cursor-text"
+              title="Клікни, щоб змінити таймзону">${r.timezone ?? '—'}</span>
+      </td>
       <td class="p-3 text-right text-slate-300">${r.provider_name || 'Direct'}</td>
       <td class="p-3 text-right">
         <button onclick="deleteAccountMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
