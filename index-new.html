@@ -3,368 +3,448 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashboard v2 — preview</title>
+<title>Dashboard — Glass (preview)</title>
+<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  :root{
-    --bg:#0b0d13; --panel:#12151e; --panel2:#171b26; --line:rgba(255,255,255,.07);
-    --txt:#e9ebf2; --dim:#8a91a6; --faint:#5b6274;
-    --ind:#6366f1; --cyan:#22d3ee; --ok:#34d399; --warn:#fbbf24; --bad:#fb7185; --violet:#a78bfa;
-  }
-  html[data-theme="light"]{
-    --bg:#f4f6fb; --panel:#fff; --panel2:#f2f4fa; --line:rgba(14,20,40,.09);
-    --txt:#131725; --dim:#5a6178; --faint:#8b92a6;
-  }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
-  body{background:var(--bg);color:var(--txt);font:13px/1.45 'Inter',system-ui,sans-serif}
-  @media(min-width:768px){body{zoom:.9}}
-  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px}
-  .dim{color:var(--dim)} .faint{color:var(--faint)}
-  .lbl{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.13em;color:var(--dim)}
+:root{
+  --bg:#0a0711; --glass:rgba(255,255,255,.045); --glass2:rgba(255,255,255,.075);
+  --stroke:rgba(255,255,255,.10); --stroke2:rgba(255,255,255,.16);
+  --txt:#f2eef6; --dim:#a99fb8; --faint:#6f6683;
+  --pink:#f472b6; --rose:#fb7185; --mag:#e879f9; --violet:#a78bfa;
+  --cyan:#22d3ee; --ok:#34d399; --warn:#fbbf24; --bad:#fb7185;
+}
+html[data-theme="light"]{
+  --bg:#f7f2fa; --glass:rgba(255,255,255,.62); --glass2:rgba(255,255,255,.82);
+  --stroke:rgba(80,30,90,.10); --stroke2:rgba(80,30,90,.18);
+  --txt:#1c1424; --dim:#6b5f7a; --faint:#9186a0;
+}
+*{-webkit-font-smoothing:antialiased}
+body{background:var(--bg);color:var(--txt);font-family:Inter,system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+@media(min-width:768px){body{zoom:.9}}
 
-  /* top bar */
-  .topbar{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--bg) 88%,transparent);
-    backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
-  .tab{padding:7px 13px;border-radius:9px;font-size:12px;font-weight:650;color:var(--dim);cursor:pointer;transition:.14s;white-space:nowrap}
-  .tab:hover{background:var(--panel2);color:var(--txt)}
-  .tab.on{background:var(--txt);color:var(--bg)}
-  .btn{padding:6px 11px;border-radius:9px;font-size:11.5px;font-weight:650;background:var(--panel2);
-    border:1px solid var(--line);color:var(--dim);cursor:pointer;transition:.14s}
-  .btn:hover{color:var(--txt);border-color:var(--ind)}
-  .btn.on{background:var(--ind);color:#fff;border-color:var(--ind)}
+/* ——— живі кольорові плями під склом ——— */
+.aura{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.aura i{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;display:block}
+.b1{width:520px;height:520px;background:#ec4899;top:-160px;left:-100px;animation:f1 22s ease-in-out infinite}
+.b2{width:460px;height:460px;background:#a855f7;top:20%;right:-140px;animation:f2 26s ease-in-out infinite}
+.b3{width:420px;height:420px;background:#f43f5e;bottom:-160px;left:30%;animation:f3 30s ease-in-out infinite}
+.b4{width:340px;height:340px;background:#22d3ee;top:55%;left:-120px;opacity:.28;animation:f2 24s ease-in-out infinite}
+@keyframes f1{50%{transform:translate(120px,90px) scale(1.15)}}
+@keyframes f2{50%{transform:translate(-110px,70px) scale(1.1)}}
+@keyframes f3{50%{transform:translate(90px,-90px) scale(1.12)}}
+html[data-theme="light"] .aura i{opacity:.3}
 
-  /* kpi strip */
-  .kpi{padding:11px 14px;border-right:1px solid var(--line);min-width:0}
-  .kpi:last-child{border-right:0}
-  .kpi b{display:block;font-size:21px;font-weight:800;letter-spacing:-.025em;margin-top:3px}
-  .delta{font-size:10px;font-weight:750;padding:2px 6px;border-radius:6px}
-  .up{background:rgba(52,211,153,.14);color:var(--ok)} .dn{background:rgba(251,113,133,.14);color:var(--bad)}
+.wrap{position:relative;z-index:1}
 
-  /* grid table */
-  table{width:100%;border-collapse:separate;border-spacing:0}
-  thead th{position:sticky;top:0;z-index:10;background:var(--panel);font-size:9.5px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.1em;color:var(--dim);padding:9px 10px;text-align:right;
-    border-bottom:1px solid var(--line);cursor:pointer;user-select:none;white-space:nowrap}
-  thead th:first-child{text-align:left}
-  thead th:hover{color:var(--txt)}
-  tbody td{padding:0 10px;height:36px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
-  tbody td:first-child{text-align:left}
-  tr.lvl0{background:var(--panel)} tr.lvl0:hover td{background:var(--panel2)}
-  tr.lvl1 td{background:color-mix(in srgb,var(--panel2) 55%,transparent);font-size:12px}
-  tr.lvl2 td{background:color-mix(in srgb,var(--panel2) 25%,transparent);font-size:11.5px}
-  tr.lvl1:hover td,tr.lvl2:hover td{background:var(--panel2)}
-  .tw{display:flex;align-items:center;gap:7px}
-  .caret{width:14px;height:14px;flex:0 0 14px;display:grid;place-items:center;font-size:9px;color:var(--faint);
-    transition:transform .16s}
-  .caret.open{transform:rotate(90deg);color:var(--txt)}
-  .tag{font-size:9px;font-weight:700;padding:1.5px 5px;border-radius:5px;background:var(--panel2);
-    border:1px solid var(--line);color:var(--dim)}
+/* ——— скло ——— */
+.g{background:var(--glass);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);
+   border:1px solid var(--stroke);border-radius:22px;position:relative;overflow:hidden}
+.g::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+   background:linear-gradient(140deg,rgba(255,255,255,.30),transparent 42%,transparent 60%,rgba(244,114,182,.22));
+   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+   -webkit-mask-composite:xor;mask-composite:exclude}
+.g:hover{border-color:var(--stroke2)}
+.gs{background:var(--glass2);backdrop-filter:blur(14px);border:1px solid var(--stroke);border-radius:14px}
 
-  /* inline bar in cell */
-  .mb{position:relative;display:inline-block;width:100%;height:100%}
-  .mb i{position:absolute;left:0;top:50%;transform:translateY(-50%);height:16px;border-radius:4px;opacity:.16}
-  .mb span{position:relative;z-index:1}
+.lbl{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:var(--dim)}
+.dim{color:var(--dim)} .faint{color:var(--faint)}
+.num{font-variant-numeric:tabular-nums}
 
-  .roi{font-weight:750;padding:2px 7px;border-radius:6px;font-size:11.5px}
+/* ——— меню-док ——— */
+.dock{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:60;display:flex;gap:4px;padding:7px;
+  background:rgba(20,10,28,.62);backdrop-filter:blur(24px) saturate(180%);border:1px solid var(--stroke);
+  border-radius:20px;box-shadow:0 18px 50px rgba(236,72,153,.18)}
+html[data-theme="light"] .dock{background:rgba(255,255,255,.75)}
+.dk{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font-size:17px;color:var(--dim);
+  cursor:pointer;transition:.18s;position:relative}
+.dk:hover{background:var(--glass2);color:var(--txt);transform:translateY(-4px)}
+.dk.on{background:linear-gradient(140deg,var(--pink),var(--mag));color:#fff;
+  box-shadow:0 8px 22px rgba(236,72,153,.45)}
+.dk small{position:absolute;bottom:-25px;left:50%;transform:translateX(-50%);font-size:9.5px;font-weight:700;
+  white-space:nowrap;opacity:0;transition:.18s;background:rgba(20,10,28,.9);padding:3px 8px;border-radius:7px;color:#fff}
+.dk:hover small{opacity:1;bottom:-27px}
 
-  /* heatmap */
-  .hm{display:grid;grid-template-columns:repeat(24,1fr);gap:2px}
-  .hm i{aspect-ratio:1;border-radius:3px;background:var(--panel2);cursor:pointer;transition:.12s}
-  .hm i:hover{outline:1.5px solid var(--txt);outline-offset:1px}
+.pill{font-size:10px;font-weight:800;padding:3px 9px;border-radius:9px}
+.up{background:rgba(52,211,153,.16);color:var(--ok)} .dn{background:rgba(251,113,133,.16);color:var(--bad)}
+.chip{font-size:10.5px;font-weight:700;padding:6px 12px;border-radius:11px;background:var(--glass2);
+  border:1px solid var(--stroke);color:var(--dim);cursor:pointer;transition:.16s}
+.chip:hover{color:var(--txt);border-color:var(--pink)}
+.chip.on{background:linear-gradient(140deg,var(--pink),var(--mag));color:#fff;border-color:transparent}
 
-  .scroll::-webkit-scrollbar{width:8px;height:8px}
-  .scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
-  .toast{position:fixed;bottom:18px;right:18px;padding:9px 15px;border-radius:11px;background:var(--ind);
-    color:#fff;font-size:12px;font-weight:650;opacity:0;pointer-events:none;transition:.2s;z-index:99}
+.kv{font-size:27px;font-weight:900;letter-spacing:-.03em;line-height:1}
+table{width:100%;border-collapse:separate;border-spacing:0}
+th{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;color:var(--dim);
+  padding:10px 12px;text-align:right;border-bottom:1px solid var(--stroke)}
+th:first-child{text-align:left}
+td{padding:11px 12px;font-size:12px;text-align:right;border-bottom:1px solid var(--stroke)}
+td:first-child{text-align:left}
+tbody tr:hover td{background:var(--glass2)}
+.bar{height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:99px}
+.scroll::-webkit-scrollbar{width:7px;height:7px}
+.scroll::-webkit-scrollbar-thumb{background:var(--stroke2);border-radius:9px}
+.hm i{aspect-ratio:1;border-radius:5px;display:block;cursor:pointer;transition:.14s}
+.hm i:hover{outline:2px solid var(--pink);outline-offset:1px}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:9px 16px;border-radius:12px;
+  background:linear-gradient(140deg,var(--pink),var(--mag));color:#fff;font-size:12px;font-weight:700;
+  opacity:0;pointer-events:none;transition:.22s;z-index:99}
 </style>
 </head>
 <body>
 
-<!-- TOP BAR -->
-<div class="topbar">
-  <div style="max-width:1700px;margin:0 auto;padding:9px 16px" class="flex">
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:9px">
-        <div style="width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font-weight:800;
-             font-size:12px;color:#fff;background:linear-gradient(135deg,var(--ind),var(--cyan))">M</div>
-        <div>
-          <div style="font-size:13px;font-weight:750;line-height:1.15">Makeberry</div>
-          <div class="faint" style="font-size:9px;font-weight:700;letter-spacing:.1em">ЛИПЕНЬ 2026</div>
+<div class="aura"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
+
+<div class="wrap max-w-[1750px] mx-auto px-4 md:px-6 py-5 pb-28">
+
+  <!-- ═══ HEADER ═══ -->
+  <header class="g p-4 md:px-6 md:py-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3.5">
+      <div class="w-11 h-11 rounded-2xl grid place-items-center font-black text-white text-lg shrink-0"
+           style="background:linear-gradient(140deg,var(--pink),var(--mag));box-shadow:0 8px 24px rgba(236,72,153,.4)">M</div>
+      <div>
+        <h1 class="text-[19px] font-black tracking-tight leading-none">Makeberry
+          <span style="color:var(--pink)" class="font-light">CRM</span></h1>
+        <div class="flex items-center gap-2 mt-1.5">
+          <span class="lbl">Липень 2026</span>
+          <span class="w-1 h-1 rounded-full" style="background:var(--faint)"></span>
+          <span class="text-[10px] font-bold" style="color:var(--ok)">● Sync 2 хв тому</span>
         </div>
       </div>
-      <div style="display:flex;gap:3px;margin-left:6px;overflow-x:auto">
-        <div class="tab on">Огляд</div><div class="tab">Гео</div><div class="tab">Креативи</div>
-        <div class="tab">Heatmap</div><div class="tab">Порівняння</div><div class="tab">Перевірка</div>
+    </div>
+
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="gs flex items-center gap-2 px-3.5 py-2">
+        <span class="w-1.5 h-1.5 rounded-full animate-pulse" style="background:var(--ok)"></span>
+        <span class="text-[10px] font-black tracking-widest">TEAM: MAKEBERRY</span>
       </div>
-      <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <input id="q" placeholder="Пошук…" oninput="render()" style="padding:6px 11px;border-radius:9px;
-          background:var(--panel2);border:1px solid var(--line);color:var(--txt);font-size:11.5px;width:130px;outline:none">
-        <button class="btn" onclick="toggleTheme()">◐</button>
-        <button class="btn on" onclick="setAgg(this,'acc')">Акаунти</button>
-        <button class="btn" onclick="setAgg(this,'geo')">Гео</button>
-        <button class="btn" style="background:var(--ind);color:#fff;border-color:var(--ind)">+ Дані</button>
+      <button class="chip">📅 Липень</button>
+      <button class="chip" onclick="toggleTheme()">◐</button>
+      <button class="px-5 py-2.5 rounded-xl text-[11.5px] font-black text-white shrink-0"
+              style="background:linear-gradient(140deg,var(--pink),var(--mag));box-shadow:0 8px 22px rgba(236,72,153,.35)">
+        + Додати дані</button>
+    </div>
+  </header>
+
+  <!-- ═══ MONTHLY TARGET ═══ -->
+  <div class="g px-5 py-3.5 mb-4">
+    <div class="flex justify-between items-end mb-2.5">
+      <div>
+        <span class="lbl">Monthly spend target</span>
+        <div class="text-[17px] font-black tracking-tight leading-none mt-1 num">$11,065 <span class="faint font-bold">/ $40,000</span></div>
       </div>
+      <span class="pill" style="background:rgba(244,114,182,.15);color:var(--pink)">Залишилось $28,935</span>
+    </div>
+    <div class="bar" style="height:7px">
+      <i style="width:28%;background:linear-gradient(90deg,var(--pink),var(--mag),var(--violet));
+                box-shadow:0 0 18px rgba(236,72,153,.6)"></i>
     </div>
   </div>
+
+  <!-- ═══ KPI ROW ═══ -->
+  <section class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-4">
+    <div class="g p-4" style="grid-column:span 2">
+      <div class="flex justify-between items-start">
+        <span class="lbl">Total Spend</span><span class="pill up">▲ 12%</span></div>
+      <div class="kv mt-2.5 num">$11,065.48</div>
+      <div class="mt-2.5 space-y-1 text-[11px] font-bold num">
+        <div class="flex justify-between"><span class="dim">Fees</span><span style="color:var(--cyan)">+$299.87</span></div>
+        <div class="flex justify-between"><span class="dim">Expenses</span><span style="color:var(--rose)">−$1,240.00</span></div>
+      </div>
+    </div>
+    <div class="g p-4">
+      <span class="lbl">Installs</span>
+      <div class="kv mt-2.5 num" style="color:var(--cyan)">4,182</div>
+      <div class="faint text-[10.5px] font-bold mt-2 num">CPI $2.64</div></div>
+    <div class="g p-4">
+      <span class="lbl">Total Regs</span>
+      <div class="kv mt-2.5 num" style="color:var(--violet)">1,847</div>
+      <div class="faint text-[10.5px] font-bold mt-2 num">CPL $5.99</div></div>
+    <div class="g p-4">
+      <span class="lbl">Deposits</span>
+      <div class="kv mt-2.5 num" style="color:var(--ok)">312</div>
+      <div class="faint text-[10.5px] font-bold mt-2 num">CPA $35.46</div></div>
+    <div class="g p-4">
+      <span class="lbl">R2D</span>
+      <div class="kv mt-2.5 num" style="color:var(--pink)">16.9%</div>
+      <div class="faint text-[10.5px] font-bold mt-2">1 до 5.9</div></div>
+    <div class="g p-4" style="background:linear-gradient(150deg,rgba(52,211,153,.14),var(--glass))">
+      <div class="flex justify-between items-start"><span class="lbl">Net Profit</span><span class="pill up">46%</span></div>
+      <div class="kv mt-2.5 num" style="color:var(--ok)">$5,084</div>
+      <div class="bar mt-3"><i style="width:46%;background:linear-gradient(90deg,var(--ok),var(--cyan))"></i></div>
+    </div>
+  </section>
+
+  <!-- ═══ CHART + GEO ═══ -->
+  <section class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+    <div class="g p-5 lg:col-span-3">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-5">
+        <div>
+          <h2 class="text-[16px] font-black tracking-tight">Performance Trend</h2>
+          <p class="faint text-[10.5px] font-bold mt-0.5">Spend · Реєстрації · Депозити</p>
+        </div>
+        <div class="flex gap-1.5 flex-wrap">
+          <button class="chip on" onclick="pick(this)">Daily</button>
+          <button class="chip" onclick="pick(this)">Weekly</button>
+          <button class="chip" onclick="pick(this)">Geo</button>
+        </div>
+      </div>
+      <div style="height:290px"><canvas id="c1"></canvas></div>
+    </div>
+
+    <div class="g p-5 flex flex-col">
+      <h2 class="text-[16px] font-black tracking-tight" style="color:var(--pink)">Geo Performance</h2>
+      <p class="faint text-[10.5px] font-bold mt-0.5 mb-4">Топ за спендом</p>
+      <div class="space-y-2.5 scroll overflow-y-auto flex-1" style="max-height:330px" id="geo"></div>
+    </div>
+  </section>
+
+  <!-- ═══ HEATMAP ═══ -->
+  <section class="g p-5 mb-4">
+    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+      <div>
+        <h2 class="text-[16px] font-black tracking-tight">Weekly Performance Heatmap</h2>
+        <p class="faint text-[10.5px] font-bold mt-0.5">Ефективність по днях тижня · клікни клітинку</p>
+      </div>
+      <div class="flex gap-1.5">
+        <button class="chip on" onclick="pick(this)">Deps</button>
+        <button class="chip" onclick="pick(this)">Regs</button>
+        <button class="chip" onclick="pick(this)">ROI</button>
+      </div>
+    </div>
+    <div id="heat"></div>
+    <div class="flex items-center justify-between mt-3">
+      <span class="faint text-[10px] font-bold num" id="heatInfo">Наведи на клітинку</span>
+      <div class="flex items-center gap-1.5">
+        <span class="faint text-[9px] font-bold">менше</span>
+        <div class="flex gap-1">
+          <i class="w-4 h-3 rounded" style="background:rgba(244,114,182,.15)"></i>
+          <i class="w-4 h-3 rounded" style="background:rgba(244,114,182,.4)"></i>
+          <i class="w-4 h-3 rounded" style="background:rgba(244,114,182,.7)"></i>
+          <i class="w-4 h-3 rounded" style="background:var(--pink)"></i>
+        </div>
+        <span class="faint text-[9px] font-bold">більше</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CREATIVE ANALYZER ═══ -->
+  <section class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-4">
+    <div class="g p-4 lg:col-span-3 flex flex-col">
+      <h2 class="text-[15px] font-black tracking-tight mb-0.5">Creative Analyzer</h2>
+      <p class="faint text-[10px] font-bold mb-3">Full funnel tracking</p>
+      <input placeholder="Пошук креатива…" oninput="filterCre(this.value)"
+        class="gs w-full px-3 py-2 text-[11.5px] font-bold outline-none mb-2.5"
+        style="color:var(--txt);background:var(--glass2)">
+      <div class="space-y-1.5 scroll overflow-y-auto flex-1" style="max-height:300px" id="creList"></div>
+    </div>
+
+    <div class="g p-5 lg:col-span-9">
+      <div class="flex flex-wrap justify-between items-center gap-2 mb-5">
+        <div>
+          <h2 class="text-[16px] font-black tracking-tight" id="creName">KG_JS_674_1</h2>
+          <p class="faint text-[10.5px] font-bold mt-0.5">3 кабінети · 1 гео · оновлено сьогодні</p>
+        </div>
+        <div class="flex gap-1.5">
+          <button class="chip" onclick="copy(document.getElementById('creName').textContent)">⧉ Копіювати ID</button>
+          <button class="chip">Reset</button>
+        </div>
+      </div>
+
+      <!-- 5 колонок: кількість + ціна -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5" id="creStats"></div>
+
+      <div class="flex flex-wrap gap-2">
+        <span class="lbl w-full mb-1">Активні кабінети</span>
+        <button class="chip on">1007349722102888</button>
+        <button class="chip">2238167450349272</button>
+        <button class="chip">27644509731824140</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ LIVE TABLE ═══ -->
+  <section class="g overflow-hidden">
+    <div class="flex flex-wrap justify-between items-center gap-3 p-5 pb-3">
+      <div>
+        <h2 class="text-[16px] font-black tracking-tight" style="color:var(--pink)">Live Data Feed</h2>
+        <p class="faint text-[10.5px] font-bold mt-0.5">Останні записи бази</p>
+      </div>
+      <div class="flex gap-1.5 flex-wrap">
+        <button class="chip">Фільтр</button><button class="chip">Експорт CSV</button>
+      </div>
+    </div>
+    <div class="scroll overflow-x-auto">
+      <table>
+        <thead><tr>
+          <th>Дата</th><th>Акаунт</th><th class="!text-center">Гео</th><th>Воронка</th>
+          <th>Spend</th><th>Ins</th><th>Reg</th><th>Dep</th><th>ROI</th>
+        </tr></thead>
+        <tbody id="feed"></tbody>
+      </table>
+    </div>
+  </section>
 </div>
 
-<div style="max-width:1700px;margin:0 auto;padding:14px 16px 40px" class="stack">
-
-  <!-- KPI STRIP -->
-  <div class="panel" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));overflow:hidden;margin-bottom:12px">
-    <div class="kpi">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span class="lbl">Spend</span><span class="delta up">▲12%</span></div>
-      <b class="num">$11,065</b>
-      <div class="faint num" style="font-size:10.5px;font-weight:650;margin-top:3px">
-        <span style="color:var(--cyan)">+$300</span> fees · <span style="color:var(--bad)">−$1,240</span> exp</div>
-    </div>
-    <div class="kpi"><div style="display:flex;justify-content:space-between"><span class="lbl">Clicks</span><span class="delta up">▲6%</span></div>
-      <b class="num">9,340</b><div class="faint num" style="font-size:10.5px;font-weight:650;margin-top:3px">CPC $1.18</div></div>
-    <div class="kpi"><div style="display:flex;justify-content:space-between"><span class="lbl">Installs</span><span class="delta up">▲8%</span></div>
-      <b class="num" style="color:var(--cyan)">4,182</b><div class="faint num" style="font-size:10.5px;font-weight:650;margin-top:3px">CPI $2.64</div></div>
-    <div class="kpi"><div style="display:flex;justify-content:space-between"><span class="lbl">Regs</span><span class="delta up">▲5%</span></div>
-      <b class="num" style="color:var(--ind)">1,847</b><div class="faint num" style="font-size:10.5px;font-weight:650;margin-top:3px">CPL $5.99</div></div>
-    <div class="kpi"><div style="display:flex;justify-content:space-between"><span class="lbl">Deps</span><span class="delta dn">▼3%</span></div>
-      <b class="num" style="color:var(--ok)">312</b><div class="faint num" style="font-size:10.5px;font-weight:650;margin-top:3px">CPA $35.46</div></div>
-    <div class="kpi"><div style="display:flex;justify-content:space-between"><span class="lbl">Profit</span><span class="delta up">ROI 46%</span></div>
-      <b class="num" style="color:var(--ok)">$5,084</b>
-      <div style="height:4px;border-radius:9px;background:var(--panel2);margin-top:7px;overflow:hidden">
-        <i style="display:block;height:100%;width:46%;background:linear-gradient(90deg,var(--ok),var(--cyan))"></i></div></div>
-    <div class="kpi" style="min-width:150px">
-      <span class="lbl">Тренд 14д</span>
-      <div style="height:38px;margin-top:4px"><canvas id="spark"></canvas></div>
-    </div>
-  </div>
-
-  <!-- MAIN: drill-down grid -->
-  <div style="display:grid;grid-template-columns:1fr;gap:12px" id="mainGrid">
-    <div class="panel" style="overflow:hidden">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap">
-        <div>
-          <div style="font-size:13.5px;font-weight:750">Розбивка</div>
-          <div class="faint" style="font-size:10.5px;font-weight:600" id="hint">Акаунт → кампанія (воронка) → креатив · клікни рядок</div>
-        </div>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          <button class="btn" onclick="expandAll(true)">Розгорнути</button>
-          <button class="btn" onclick="expandAll(false)">Згорнути</button>
-          <button class="btn" onclick="toggleDead()" id="deadBtn">Показати мертві</button>
-        </div>
-      </div>
-      <div class="scroll" style="max-height:560px;overflow:auto">
-        <table id="grid"></table>
-      </div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px">
-      <!-- hour heatmap -->
-      <div class="panel" style="padding:13px 14px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px">
-          <div><div style="font-size:13px;font-weight:750">Депозити по годинах</div>
-            <div class="faint" style="font-size:10px;font-weight:600">локальний час акаунта</div></div>
-          <span class="faint num" style="font-size:10px" id="hmInfo">—</span>
-        </div>
-        <div class="hm" id="hm"></div>
-        <div style="display:flex;justify-content:space-between;margin-top:6px" class="faint num">
-          <span style="font-size:9px">00</span><span style="font-size:9px">06</span>
-          <span style="font-size:9px">12</span><span style="font-size:9px">18</span><span style="font-size:9px">23</span>
-        </div>
-      </div>
-
-      <!-- funnel -->
-      <div class="panel" style="padding:13px 14px">
-        <div style="font-size:13px;font-weight:750;margin-bottom:2px">Воронка</div>
-        <div class="faint" style="font-size:10px;font-weight:600;margin-bottom:11px">крок → крок, «1 до N»</div>
-        <div id="funnel" style="display:flex;flex-direction:column;gap:9px"></div>
-      </div>
-
-      <!-- alerts / insight -->
-      <div class="panel" style="padding:13px 14px">
-        <div style="font-size:13px;font-weight:750;margin-bottom:2px">Що варто глянути</div>
-        <div class="faint" style="font-size:10px;font-weight:600;margin-bottom:11px">авто-нотатки по даних</div>
-        <div id="alerts" style="display:flex;flex-direction:column;gap:7px"></div>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- ═══ DOCK MENU ═══ -->
+<nav class="dock">
+  <div class="dk on">◧<small>Огляд</small></div>
+  <div class="dk">🗺<small>Гео</small></div>
+  <div class="dk">✦<small>Креативи</small></div>
+  <div class="dk">▦<small>Heatmap</small></div>
+  <div class="dk">⇄<small>Порівняння</small></div>
+  <div class="dk">✓<small>Перевірка</small></div>
+  <div style="width:1px;background:var(--stroke);margin:6px 3px"></div>
+  <div class="dk">📸<small>Звіт</small></div>
+  <div class="dk">🖼<small>Фото</small></div>
+  <div class="dk">📋<small>Таски</small></div>
+  <div class="dk">🔗<small>Лінки</small></div>
+  <div class="dk">⚙<small>Налаштування</small></div>
+  <a href="index.html" class="dk" style="color:var(--pink);text-decoration:none">←<small>Стара версія</small></a>
+</nav>
 
 <div class="toast" id="toast">Скопійовано</div>
 
 <script>
-/* ---------- MOCK DATA (акаунт → кампанія(воронка) → креатив) ---------- */
-const DATA=[
- {id:'1007349722102888',tz:-8,geo:'KG',spend:88.46,clicks:155,ins:73,reg:29,dep:3,rev:129.0,
-  kids:[
-   {id:'Mbank_KG_10708_29/07',funnel:'Funnel-C',geo:'KG',spend:51.8,clicks:88,ins:44,reg:17,dep:2,rev:86,
-    kids:[{id:'KG_JS_674_1',geo:'KG',spend:27.27,clicks:65,ins:22,reg:8,dep:1,rev:43},
-          {id:'KG_newkreo_5',geo:'KG',spend:19.93,clicks:38,ins:24,reg:7,dep:0,rev:0},
-          {id:'KG_newkreo_2',geo:'KG',spend:15.32,clicks:23,ins:10,reg:5,dep:1,rev:43}]},
-   {id:'Mbank_KG_10708_28/07',funnel:'Funnel-B',geo:'KG',spend:36.66,clicks:67,ins:29,reg:12,dep:1,rev:43,
-    kids:[{id:'KG_newkreo_4',geo:'KG',spend:7.22,clicks:9,ins:2,reg:1,dep:0,rev:0},
-          {id:'KG_newkreo_1',geo:'KG',spend:2.7,clicks:1,ins:0,reg:0,dep:0,rev:0}]}]},
- {id:'2238167450349272',tz:-8,geo:'KG',spend:85.04,clicks:99,ins:37,reg:15,dep:1,rev:43.0,
-  kids:[
-   {id:'Mbank_KG_10708_30/07 L5',funnel:'Funnel-E',geo:'KG',spend:8.43,clicks:20,ins:10,reg:3,dep:1,rev:43,
-    kids:[{id:'KG_newkreo_4',geo:'KG',spend:7.63,clicks:18,ins:9,reg:2,dep:1,rev:43},
-          {id:'KG_JS_674_1',geo:'KG',spend:0.8,clicks:2,ins:1,reg:1,dep:0,rev:0}]},
-   {id:'Mbank_KG_10708_30/07 L3',funnel:'Funnel-D',geo:'KG',spend:8.93,clicks:11,ins:5,reg:3,dep:0,rev:0,
-    kids:[{id:'KG_JS_674_1',geo:'KG',spend:7.44,clicks:9,ins:3,reg:3,dep:0,rev:0},
-          {id:'KG_newkreo_5',geo:'KG',spend:0.87,clicks:2,ins:2,reg:0,dep:0,rev:0},
-          {id:'KG_AB_663',geo:'KG',spend:0.62,clicks:0,ins:0,reg:0,dep:0,rev:0}]},
-   {id:'Mbank_KG_10708_30/07 L8',funnel:'Funnel-E',geo:'KG',spend:10.05,clicks:12,ins:4,reg:1,dep:0,rev:0,
-    kids:[{id:'KG_JS_674_1',geo:'KG',spend:7.12,clicks:10,ins:3,reg:1,dep:0,rev:0},
-          {id:'KG_newkreo_1',geo:'KG',spend:1.7,clicks:1,ins:1,reg:0,dep:0,rev:0},
-          {id:'KG_AB_663',geo:'KG',spend:1.23,clicks:1,ins:0,reg:0,dep:0,rev:0}]}]},
- {id:'27644509731824140',tz:3,geo:'KG',spend:49.99,clicks:123,ins:34,reg:14,dep:1,rev:43.0,
-  kids:[
-   {id:'Mbank_KG_10708_30/07 005',funnel:'Funnel-A',geo:'KG',spend:9.15,clicks:32,ins:2,reg:1,dep:0,rev:0,
-    kids:[{id:'KG_VD_600',geo:'KG',spend:7.55,clicks:25,ins:2,reg:1,dep:0,rev:0},
-          {id:'KG_AB_664',geo:'KG',spend:1.6,clicks:7,ins:0,reg:0,dep:0,rev:0}]},
-   {id:'Mbank_KG_10708_30/07 001L',funnel:'Funnel-A',geo:'KG',spend:5.57,clicks:5,ins:3,reg:2,dep:1,rev:43,
-    kids:[{id:'496_DV_KG',geo:'KG',spend:5.22,clicks:5,ins:3,reg:2,dep:1,rev:43},
-          {id:'KG_VD_600',geo:'KG',spend:0.35,clicks:0,ins:0,reg:0,dep:0,rev:0}]},
-   {id:'Mbank_KG_10708_30/07 003',funnel:'Funnel-B',geo:'KG',spend:6.03,clicks:13,ins:4,reg:0,dep:0,rev:0,
-    kids:[{id:'KG_AB_625',geo:'KG',spend:6,clicks:13,ins:4,reg:0,dep:0,rev:0},
-          {id:'KG_VD_600',geo:'KG',spend:0.03,clicks:0,ins:0,reg:0,dep:0,rev:0}]}]}
-];
-
-let open=new Set(['1007349722102888'+0]), sortKey='spend', sortDir=-1, showDead=false, aggMode='acc';
 const $=id=>document.getElementById(id);
 const n=v=>Number(v||0).toLocaleString('en-US');
-const m=v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-const roiOf=r=>r.spend>0?((r.rev-r.spend)/r.spend*100):0;
-const maxSpend=Math.max(...DATA.map(d=>d.spend));
+const money=v=>'$'+Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 
-function roiCell(v){
-  const c = v>=30?'var(--ok)': v>=0?'var(--warn)':'var(--bad)';
-  const bg= v>=30?'rgba(52,211,153,.13)': v>=0?'rgba(251,191,36,.13)':'rgba(251,113,133,.13)';
-  return `<span class="roi num" style="color:${c};background:${bg}">${v>0?'+':''}${Math.round(v)}%</span>`;
+/* ——— GEO ——— */
+const GEO=[['AU',4210,142,58,68],['DE',2980,96,41,41],['BR',1640,74,22,12],['NL',1210,52,14,-8],['PT',640,28,6,-22]];
+$('geo').innerHTML=GEO.map(([g,s,r,d,roi])=>{
+  const col=roi>=30?'var(--ok)':roi>=0?'var(--warn)':'var(--bad)';
+  return `<div class="gs p-3 cursor-pointer hover:scale-[1.015] transition">
+    <div class="flex justify-between items-center mb-2">
+      <div class="flex items-center gap-2">
+        <img src="https://flagcdn.com/w40/${g.toLowerCase()}.png" class="w-5 h-3.5 rounded object-cover" onerror="this.style.display='none'">
+        <span class="text-[14px] font-black">${g}</span></div>
+      <span class="text-[12.5px] font-black num">$${n(s)}</span></div>
+    <div class="grid grid-cols-3 gap-1 text-center mb-2">
+      <div><div class="faint text-[8.5px] font-black uppercase">Reg</div><b class="text-[12px] num" style="color:var(--violet)">${r}</b></div>
+      <div><div class="faint text-[8.5px] font-black uppercase">Dep</div><b class="text-[12px] num" style="color:var(--ok)">${d}</b></div>
+      <div><div class="faint text-[8.5px] font-black uppercase">R2D</div><b class="text-[12px] num" style="color:var(--pink)">${(d/r*100).toFixed(0)}%</b></div>
+    </div>
+    <div class="bar"><i style="width:${Math.min(100,Math.abs(roi)+30)}%;background:${col}"></i></div>
+    <div class="flex justify-between mt-1.5"><span class="faint text-[9px] font-black uppercase">ROI</span>
+      <span class="text-[11px] font-black num" style="color:${col}">${roi>0?'+':''}${roi}%</span></div>
+  </div>`}).join('');
+
+/* ——— HEATMAP ——— */
+const DAYS=['Пн','Вт','Ср','Чт','Пт','Сб','Нд'], HRS=[0,3,6,9,12,15,18,21];
+let hv=DAYS.map(()=>HRS.map(()=>Math.floor(Math.random()*14)));
+$('heat').innerHTML=`<div style="display:grid;grid-template-columns:34px repeat(8,1fr);gap:4px">
+  <div></div>${HRS.map(h=>`<div class="faint text-[9px] font-black text-center">${String(h).padStart(2,'0')}</div>`).join('')}
+  ${DAYS.map((d,i)=>`<div class="faint text-[10px] font-black flex items-center">${d}</div>`+
+    HRS.map((h,j)=>{const v=hv[i][j],a=v/14;
+      return `<i class="hm" style="aspect-ratio:1;border-radius:6px;display:block;cursor:pointer;
+        background:${a<.08?'rgba(255,255,255,.05)':`rgba(244,114,182,${.16+a*.84})`}"
+        onmouseenter="document.getElementById('heatInfo').textContent='${d} ${String(h).padStart(2,'0')}:00 — ${v} депозитів'"></i>`}).join('')
+  ).join('')}</div>`;
+
+/* ——— CREATIVES ——— */
+const CRE=[['KG_JS_674_1',63.52,105,40,16,1],['KG_newkreo_5',34.14,57,29,12,0],
+           ['KG_newkreo_2',29.92,37,20,8,3],['KG_newkreo_4',24.75,37,14,6,0],
+           ['KG_VD_600',24.26,74,14,5,0],['496_DV_KG',14.73,15,11,7,1],
+           ['KG_newkreo_1',16.74,15,7,2,0],['KG_AB_625',6.00,13,4,0,0],
+           ['KG_AB_663',3.63,2,0,0,0],['KG_VD_516',2.36,11,5,2,0]];
+let активний=0;
+function drawCreList(f=''){
+  $('creList').innerHTML=CRE.map((c,i)=>({c,i}))
+    .filter(({c})=>!f||c[0].toLowerCase().includes(f.toLowerCase()))
+    .map(({c,i})=>{
+    const dead=c[3]===0;
+    return `<div onclick="pickCre(${i})" class="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl cursor-pointer transition"
+      style="${i===активний?'background:linear-gradient(140deg,var(--pink),var(--mag));color:#fff':'background:var(--glass2);border:1px solid var(--stroke)'}">
+      <span class="text-[10.5px] font-black truncate">${c[0]}</span>
+      <span class="flex items-center gap-1.5 shrink-0">
+        ${dead?`<span class="text-[8.5px] font-black px-1.5 py-0.5 rounded" style="background:rgba(251,113,133,.2);color:var(--bad)">0</span>`:''}
+        <span class="text-[10px] font-bold num ${i===активний?'':'faint'}">$${Math.round(c[1])}</span>
+        <span onclick="event.stopPropagation();copy('${c[0]}')" class="text-[11px] opacity-50 hover:opacity-100">⧉</span>
+      </span></div>`}).join('');
 }
-function barCell(val,txt,max,color){
-  const w=max>0?Math.min(100,val/max*100):0;
-  return `<span class="mb"><i style="width:${w}%;background:${color}"></i><span class="num">${txt}</span></span>`;
+function pickCre(i){ активний=i; drawCreList($('creList').dataset.f||''); drawCreStats(); }
+function filterCre(v){ $('creList').dataset.f=v; drawCreList(v); }
+function drawCreStats(){
+  const [id,s,cl,ins,reg,dep]=CRE[активний];
+  $('creName').textContent=id;
+  const cards=[
+    ['Spend',money(s),'',       'var(--txt)',  ''],
+    ['Clicks',n(cl), 'CPC',     'var(--cyan)', cl?'$'+(s/cl).toFixed(2):'—'],
+    ['Installs',n(ins),'CPI',   'var(--pink)', ins?'$'+(s/ins).toFixed(2):'—'],
+    ['Regs',n(reg),  'CPL',     'var(--violet)',reg?'$'+(s/reg).toFixed(2):'—'],
+    ['Deps',n(dep),  'CPA',     'var(--ok)',   dep?'$'+(s/dep).toFixed(2):'—']];
+  $('creStats').innerHTML=cards.map(([l,v,sl,c,sv])=>`
+    <div class="gs p-3.5">
+      <div class="lbl">${l}</div>
+      <div class="text-[22px] font-black mt-1.5 num" style="color:${c}">${v}</div>
+      ${sl?`<div class="flex justify-between mt-2.5 pt-2.5" style="border-top:1px solid var(--stroke)">
+        <span class="faint text-[9.5px] font-black uppercase">${sl}</span>
+        <span class="text-[11.5px] font-black num">${sv}</span></div>`:
+        `<div class="mt-2.5 pt-2.5" style="border-top:1px solid var(--stroke)">
+        <span class="faint text-[9.5px] font-black uppercase">ROI</span>
+        <span class="text-[11.5px] font-black num float-right" style="color:var(--ok)">+46%</span></div>`}
+    </div>`).join('');
 }
 
-function row(r,lvl,parentMax){
-  const kids=r.kids||[];
-  const isOpen=open.has(r.id+lvl);
-  const profit=r.rev-r.spend, roi=roiOf(r);
-  const cpi=r.ins?r.spend/r.ins:0, cpl=r.reg?r.spend/r.reg:0, cpa=r.dep?r.spend/r.dep:0;
-  const dead=r.ins===0&&r.spend>0;
-  if(dead&&!showDead&&lvl===2) return '';
-  const q=($('q').value||'').toLowerCase();
-  if(q&&lvl===0){
-    const hay=JSON.stringify(r).toLowerCase();
-    if(!hay.includes(q)) return '';
-  }
-  const pad=lvl*15;
-  const nameCol=`
-    <div class="tw" style="padding-left:${pad}px">
-      ${kids.length?`<span class="caret ${isOpen?'open':''}">▶</span>`:`<span style="width:14px;flex:0 0 14px"></span>`}
-      <span style="font-weight:${lvl===0?750:lvl===1?650:550};font-size:${lvl===0?12.5:lvl===1?12:11.5}px;
-        ${lvl===2?'color:var(--dim)':''};overflow:hidden;text-overflow:ellipsis">${r.id}</span>
-      ${lvl===0?`<span class="tag">TZ ${r.tz>0?'+':''}${r.tz}</span>`:''}
-      ${r.funnel?`<span class="tag" style="color:var(--violet);border-color:rgba(167,139,250,.3)">${r.funnel}</span>`:''}
-      ${dead?`<span class="tag" style="color:var(--bad);border-color:rgba(251,113,133,.3)">0 ins</span>`:''}
-      ${lvl===2?`<span class="tag" onclick="event.stopPropagation();copy('${r.id}')" style="cursor:pointer">⧉</span>`:''}
-    </div>`;
-  const tr=`<tr class="lvl${lvl}" onclick="toggle('${r.id}',${lvl})" style="cursor:${kids.length?'pointer':'default'}">
-    <td style="max-width:340px;overflow:hidden">${nameCol}</td>
-    <td>${barCell(r.spend,m(r.spend),parentMax,'var(--ind)')}</td>
-    <td class="num dim">${n(r.clicks)}</td>
-    <td class="num" style="color:var(--cyan)">${n(r.ins)}</td>
-    <td class="num dim">${r.ins?'$'+cpi.toFixed(2):'—'}</td>
-    <td class="num" style="color:var(--ind)">${n(r.reg)}</td>
-    <td class="num dim">${r.reg?'$'+cpl.toFixed(2):'—'}</td>
-    <td class="num" style="color:${r.dep?'var(--ok)':'var(--faint)'};font-weight:700">${n(r.dep)}</td>
-    <td class="num dim">${r.dep?'$'+cpa.toFixed(2):'—'}</td>
-    <td class="num" style="color:${profit>=0?'var(--ok)':'var(--bad)'};font-weight:700">${profit>=0?'':'−'}$${Math.abs(profit).toFixed(0)}</td>
-    <td>${roiCell(roi)}</td>
-  </tr>`;
-  let out=tr;
-  if(isOpen&&kids.length){
-    const km=Math.max(...kids.map(k=>k.spend));
-    const sorted=[...kids].sort((a,b)=>(b[sortKey]-a[sortKey])*(sortDir<0?1:-1));
-    out+=sorted.map(k=>row(k,lvl+1,km)).join('');
-  }
-  return out;
+/* ——— FEED ——— */
+const FEED=[['30.07','1007349722102888','KG','Funnel-C',88.46,73,29,3,46],
+            ['30.07','2238167450349272','KG','Funnel-E',85.04,37,15,1,-49],
+            ['30.07','27644509731824140','KG','Funnel-A',49.99,34,14,1,-14],
+            ['29.07','1007349722102888','KG','Funnel-C',76.20,66,25,4,72],
+            ['29.07','2238167450349272','KG','Funnel-D',61.35,29,11,2,40]];
+$('feed').innerHTML=FEED.map(([d,a,g,f,s,i,r,dep,roi])=>{
+  const c  =roi>=30?'var(--ok)':roi>=0?'var(--warn)':'var(--bad)';
+  const bgc=roi>=30?'rgba(52,211,153,.14)':roi>=0?'rgba(251,191,36,.14)':'rgba(251,113,133,.14)';
+  return `<tr>
+    <td class="faint num text-[11px]">${d}</td>
+    <td class="font-bold num text-[11.5px]">${a}</td>
+    <td class="!text-center"><span class="text-[9.5px] font-black px-2 py-1 rounded-lg"
+        style="background:rgba(244,114,182,.14);color:var(--pink)">${g}</span></td>
+    <td class="dim text-[11px]">${f}</td>
+    <td class="font-black num">${money(s)}</td>
+    <td class="num" style="color:var(--cyan)">${i}</td>
+    <td class="num" style="color:var(--violet)">${r}</td>
+    <td class="num font-black" style="color:var(--ok)">${dep}</td>
+    <td><span class="text-[11px] font-black num px-2 py-1 rounded-lg"
+        style="color:${c};background:${bgc}">${roi>0?'+':''}${roi}%</span></td>
+  </tr>`}).join('');
+
+/* ——— CHART ——— */
+let ch;
+function drawChart(){
+  ch?.destroy();
+  const cs=getComputedStyle(document.documentElement);
+  const grid=cs.getPropertyValue('--stroke'), dim=cs.getPropertyValue('--dim');
+  const ctx=$('c1').getContext('2d');
+  const g1=ctx.createLinearGradient(0,0,0,290);
+  g1.addColorStop(0,'rgba(244,114,182,.45)'); g1.addColorStop(1,'rgba(244,114,182,0)');
+  ch=new Chart(ctx,{type:'line',
+    data:{labels:['1','4','7','10','13','16','19','22','25','28','31'],
+      datasets:[
+        {label:'Spend',data:[620,780,700,910,860,1120,980,1240,1080,1350,1180],
+         borderColor:'#f472b6',backgroundColor:g1,fill:true,tension:.42,borderWidth:2.6,pointRadius:0,
+         pointHoverRadius:5,pointHoverBackgroundColor:'#f472b6'},
+        {label:'Regs',data:[110,145,128,168,152,196,178,214,190,232,208],
+         borderColor:'#a78bfa',tension:.42,borderWidth:2,pointRadius:0,yAxisID:'y2'},
+        {label:'Deps',data:[18,31,24,44,36,52,41,58,49,66,57],
+         borderColor:'#34d399',tension:.42,borderWidth:2,pointRadius:0,borderDash:[4,3],yAxisID:'y2'}]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:true,position:'bottom',labels:{color:dim,boxWidth:8,boxHeight:8,
+        usePointStyle:true,pointStyle:'circle',font:{size:10,weight:'700'},padding:14}},
+        tooltip:{backgroundColor:'rgba(20,10,28,.92)',padding:11,cornerRadius:11,titleFont:{size:11},bodyFont:{size:11}}},
+      scales:{x:{grid:{color:grid},ticks:{color:dim,font:{size:10}}},
+              y:{grid:{color:grid},ticks:{color:dim,font:{size:10}}},
+              y2:{position:'right',grid:{display:false},ticks:{color:dim,font:{size:10}}}}}});
 }
 
-function render(){
-  const rows=[...DATA].sort((a,b)=>(b[sortKey]-a[sortKey])*(sortDir<0?1:-1));
-  const cols=[['id','Акаунт / кампанія / креатив'],['spend','Spend'],['clicks','Clicks'],['ins','Ins'],
-    ['cpi','CPI'],['reg','Reg'],['cpl','CPL'],['dep','Dep'],['cpa','CPA'],['profit','Profit'],['roi','ROI']];
-  $('grid').innerHTML=
-    `<thead><tr>${cols.map(([k,l])=>`<th onclick="sortBy('${k}')">${l}${sortKey===k?(sortDir<0?' ↓':' ↑'):''}</th>`).join('')}</tr></thead>`+
-    `<tbody>${rows.map(r=>row(r,0,maxSpend)).join('')}</tbody>`;
-}
-function toggle(id,lvl){ const k=id+lvl; open.has(k)?open.delete(k):open.add(k); render(); }
-function sortBy(k){ if(['id','cpi','cpl','cpa','profit','roi'].includes(k))k='spend';
-  if(sortKey===k)sortDir*=-1; else{sortKey=k;sortDir=-1;} render(); }
-function expandAll(v){ open.clear();
-  if(v) DATA.forEach(a=>{open.add(a.id+0);(a.kids||[]).forEach(c=>open.add(c.id+1));});
-  render(); }
-function toggleDead(){ showDead=!showDead; $('deadBtn').textContent=showDead?'Сховати мертві':'Показати мертві';
-  $('deadBtn').classList.toggle('on',showDead); render(); }
-function setAgg(b,mode){ document.querySelectorAll('.btn.on').forEach(x=>{if(x!==$('deadBtn'))x.classList.remove('on')});
-  b.classList.add('on'); aggMode=mode;
-  $('hint').textContent = mode==='acc' ? 'Акаунт → кампанія (воронка) → креатив · клікни рядок'
-                                       : 'Гео → кампанія → креатив · клікни рядок'; render(); }
-function copy(t){ navigator.clipboard?.writeText(t); const el=$('toast');
-  el.style.opacity=1; setTimeout(()=>el.style.opacity=0,1100); }
-
-/* funnel */
-const F=[['Кліки',9340,'var(--ind)'],['Інстали',4182,'var(--cyan)'],['Реєстрації',1847,'var(--violet)'],['Депозити',312,'var(--ok)']];
-$('funnel').innerHTML=F.map((f,i)=>{
-  const prev=i?F[i-1][1]:null, ratio=prev?(prev/f[1]).toFixed(1):null;
-  return `<div>
-    <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:650;margin-bottom:4px">
-      <span>${f[0]}</span>
-      <span class="num">${n(f[1])}${ratio?` <span class="faint">1 до ${ratio}</span>`:''}</span></div>
-    <div style="height:6px;border-radius:9px;background:var(--panel2);overflow:hidden">
-      <i style="display:block;height:100%;width:${f[1]/F[0][1]*100}%;background:${f[2]}"></i></div></div>`;
-}).join('');
-
-/* heatmap 24h */
-const hrs=[0,0,1,0,2,1,4,3,5,2,6,4,9,7,12,10,14,11,8,13,9,5,3,1];
-const hmax=Math.max(...hrs);
-$('hm').innerHTML=hrs.map((v,i)=>{
-  const a=v/hmax;
-  return `<i title="${i}:00 — ${v} деп" style="background:${a?`color-mix(in srgb,var(--ok) ${Math.round(a*100)}%,var(--panel2))`:'var(--panel2)'}"
-     onmouseenter="document.getElementById('hmInfo').textContent='${String(i).padStart(2,'0')}:00 · ${v} деп'"></i>`;
-}).join('');
-
-/* alerts */
-const AL=[['bad','KG_AB_663','$3.63 спенду, 0 інсталів — вимкнути'],
-          ['ok','KG_newkreo_2','CPA $9.97 — найкращий, можна масштабувати'],
-          ['warn','2238167450349272','CPI $2.30 проти $1.21 — акаунт дорожчає'],
-          ['ok','496_DV_KG','CPR $2.10 — найдешевша реєстрація']];
-$('alerts').innerHTML=AL.map(([t,who,txt])=>{
-  const c=t==='ok'?'var(--ok)':t==='warn'?'var(--warn)':'var(--bad)';
-  return `<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border-radius:9px;
-      background:var(--panel2);border-left:2px solid ${c}">
-    <div style="min-width:0">
-      <div style="font-size:11px;font-weight:750;color:${c}">${who}</div>
-      <div class="dim" style="font-size:10.5px;font-weight:600">${txt}</div></div></div>`;
-}).join('');
-
-/* sparkline */
-let sp;
-function drawSpark(){
-  sp?.destroy();
-  const g=$('spark').getContext('2d').createLinearGradient(0,0,0,38);
-  g.addColorStop(0,'rgba(99,102,241,.45)'); g.addColorStop(1,'rgba(99,102,241,0)');
-  sp=new Chart($('spark'),{type:'line',
-    data:{labels:Array(14).fill(''),datasets:[{data:[620,780,700,910,860,1120,980,1240,1080,1350,1180,1490,1320,1610],
-      borderColor:'#6366f1',backgroundColor:g,fill:true,tension:.4,borderWidth:1.8,pointRadius:0}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},
-      scales:{x:{display:false},y:{display:false}}}});
-}
+function pick(b){ [...b.parentElement.children].forEach(x=>x.classList.remove('on')); b.classList.add('on'); }
+function copy(t){ navigator.clipboard?.writeText(t); const e=$('toast');
+  e.style.opacity=1; setTimeout(()=>e.style.opacity=0,1200); }
 function toggleTheme(){ const r=document.documentElement;
-  r.dataset.theme=r.dataset.theme==='light'?'dark':'light'; drawSpark(); }
+  r.dataset.theme=r.dataset.theme==='light'?'dark':'light'; drawChart(); }
 
-render(); drawSpark();
+drawCreList(); drawCreStats(); drawChart();
 </script>
 </body>
 </html>
