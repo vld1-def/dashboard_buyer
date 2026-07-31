@@ -164,17 +164,48 @@ select {
 
     <!-- CAMPAIGN MODE (Stats + Creatives) -->
     <div id="mode-dataset" class="space-y-8">
-      <div id="csv-drop-zone-dataset" class="drop-zone card p-16 rounded-[3rem] text-center cursor-pointer group max-w-3xl mx-auto" onclick="document.getElementById('csv-input-dataset').click()">
+      <!-- Тугл: уточнити конверсії з Keitaro -->
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-4 card px-6 py-4 rounded-3xl border border-white/5">
+        <div>
+          <p class="text-xs font-black uppercase tracking-widest text-emerald-400">Уточнити дані з Keitaro</p>
+          <p class="text-[10px] opacity-40 font-bold mt-0.5">FB дає spend / кліки / девайси, Keitaro — точні інстали, реги, депи (за таймзоною акаунта)</p>
+        </div>
+        <label class="relative inline-block w-12 h-6 flex-shrink-0">
+          <input type="checkbox" id="kt-toggle" onchange="toggleKeitaro()" class="opacity-0 w-0 h-0 peer">
+          <span class="absolute inset-0 bg-slate-700 rounded-full transition peer-checked:bg-emerald-500 cursor-pointer"></span>
+          <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition peer-checked:translate-x-6 pointer-events-none"></span>
+        </label>
+      </div>
+
+      <div id="dual-zones" class="grid grid-cols-1 gap-6 max-w-3xl mx-auto">
+      <div id="csv-drop-zone-dataset" class="drop-zone card p-16 rounded-[3rem] text-center cursor-pointer group" onclick="document.getElementById('csv-input-dataset').click()">
         <input type="file" id="csv-input-dataset" accept=".csv" class="hidden" onchange="handleCSV(event, 'dataset')">
         <div class="flex flex-col items-center gap-5">
            <div class="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
              <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
            </div>
            <div>
-             <h3 class="font-black uppercase italic text-xl text-white">Import Ads Report</h3>
-             <p class="text-[10px] opacity-40 font-bold tracking-[0.3em] uppercase mt-1">Daily Stats + Creative Intelligence</p>
+             <h3 class="font-black uppercase italic text-xl text-white">Import Ads Report <span class="text-blue-400">(Facebook)</span></h3>
+             <p class="text-[10px] opacity-40 font-bold tracking-[0.3em] uppercase mt-1">Spend · Clicks · Devices</p>
+             <p id="fb-file-name" class="text-[11px] text-blue-400 font-bold mt-2 hidden"></p>
            </div>
         </div>
+      </div>
+
+      <!-- Keitaro zone (прихована доки тугл вимкнено) -->
+      <div id="csv-drop-zone-keitaro" class="hidden drop-zone card p-10 rounded-[3rem] text-center cursor-pointer group border-emerald-500/20" onclick="document.getElementById('csv-input-keitaro').click()">
+        <input type="file" id="csv-input-keitaro" accept=".csv" class="hidden" onchange="handleKeitaroFile(event)">
+        <div class="flex flex-col items-center gap-4">
+           <div class="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
+             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+           </div>
+           <div>
+             <h3 class="font-black uppercase italic text-lg text-white">Keitaro Report</h3>
+             <p class="text-[10px] opacity-40 font-bold tracking-[0.3em] uppercase mt-1">Installs · Regs · Deps (погодинно, +3)</p>
+             <p id="kt-file-name" class="text-[11px] text-emerald-400 font-bold mt-2 hidden"></p>
+           </div>
+        </div>
+      </div>
       </div>
 
       <!-- Контейнер ПРЕВ'Ю (Без обмеження висоти) -->
@@ -592,6 +623,118 @@ async function refreshProvidersTable() {
 
 // --- ОБРОБКА CSV ---
 
+// ===== KEITARO MERGE (точні конверсії поверх FB) =====
+let keitaroAgg = null;   // {byCreative:{}, byCampaign:{}, days:Set, unlinked:Set}
+
+function normCamp(s) { return String(s || '').toLowerCase().replace(/[\s_]+/g, '_').trim(); }
+
+function toggleKeitaro() {
+  const on = document.getElementById('kt-toggle').checked;
+  document.getElementById('csv-drop-zone-keitaro').classList.toggle('hidden', !on);
+  if (!on) {
+    keitaroAgg = null;
+    document.getElementById('kt-file-name').classList.add('hidden');
+    document.getElementById('csv-input-keitaro').value = '';
+  }
+}
+
+function handleKeitaroFile(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    parseKeitaro(ev.target.result);
+    const el = document.getElementById('kt-file-name');
+    const days = keitaroAgg ? [...keitaroAgg.days].sort() : [];
+    el.textContent = `✓ ${file.name} — днів: ${days.join(', ') || '—'}`;
+    el.classList.remove('hidden');
+    if (keitaroAgg && keitaroAgg.unlinked.size)
+      alert('Акаунти без таймзони (не враховано): ' + [...keitaroAgg.unlinked].join(', ') + '\nДодай TZ у вкладці Settings → Link Cabinet.');
+  };
+  reader.readAsText(file);
+}
+
+function parseKeitaro(content) {
+  content = content.replace(/﻿/g, '');
+  const lines = content.split(/\r?\n/).filter(l => l.trim() !== '');
+  if (!lines.length) return;
+  const delim = (lines[0].split(';').length > lines[0].split(',').length) ? ';' : ',';
+  const sp = l => l.split(delim).map(c => c.replace(/^"|"$/g, '').replace(/"/g, '').trim());
+  const h = sp(lines[0]).map(x => x.toLowerCase());
+  const at = c => h.findIndex(x => c.some(k => x === k || x.includes(k)));
+  const iAcc = at(['sub id 5','sub_id_5']), iCamp = at(['sub id 1','sub_id_1']), iCr = at(['sub id 3','sub_id_3']);
+  const iDay = at(['day','date']), iHour = at(['hour','година']);
+  const iIns = at(['uc (campaign)','uc','installs']), iReg = at(['conv.','conv']), iDep = at(['sales','deps']);
+
+  const byCreative = {}, byCampaign = {}, days = new Set(), unlinked = new Set();
+  for (let i = 1; i < lines.length; i++) {
+    const r = sp(lines[i]);
+    const acc = (r[iAcc] || '').trim();
+    if (!acc || acc.startsWith('{')) continue;
+    const day = (r[iDay] || '').trim(); if (!day) continue;
+    const tz = mappingDB.timezones ? mappingDB.timezones[acc] : undefined;
+    if (tz === undefined || tz === null) { unlinked.add(acc); continue; }
+
+    // час рядка у +3 → локальний день акаунта
+    const [y, m, d] = day.split('-').map(Number);
+    const localMs = Date.UTC(y, m - 1, d, parseInt(r[iHour], 10) || 0, 0, 0) - (3 - Number(tz)) * 3600000;
+    const ld = new Date(localMs);
+    const localDay = `${ld.getUTCFullYear()}-${String(ld.getUTCMonth() + 1).padStart(2, '0')}-${String(ld.getUTCDate()).padStart(2, '0')}`;
+    days.add(localDay);
+
+    const camp = normCamp(r[iCamp]);
+    const cr = (r[iCr] || '').trim();
+    const ins = parseInt(r[iIns], 10) || 0, reg = parseInt(r[iReg], 10) || 0, dep = parseInt(r[iDep], 10) || 0;
+
+    const kC = `${localDay}|${acc}|${camp}|${cr}`;
+    if (!byCreative[kC]) byCreative[kC] = { installs: 0, regs: 0, deps: 0 };
+    byCreative[kC].installs += ins; byCreative[kC].regs += reg; byCreative[kC].deps += dep;
+
+    const kP = `${localDay}|${acc}|${camp}`;
+    if (!byCampaign[kP]) byCampaign[kP] = { installs: 0, regs: 0, deps: 0 };
+    byCampaign[kP].installs += ins; byCampaign[kP].regs += reg; byCampaign[kP].deps += dep;
+  }
+  keitaroAgg = { byCreative, byCampaign, days, unlinked };
+  console.log('Keitaro merge готовий:', Object.keys(byCampaign).length, 'кампаній-днів');
+}
+
+// Замінює конверсії з FB на точні з Keitaro
+function applyKeitaroMerge(dailyAgg, creativeAgg) {
+  if (!keitaroAgg) return;
+  let hitD = 0, hitC = 0;
+
+  Object.values(dailyAgg).forEach(row => {
+    const k = `${row.date}|${row.acc}|${row._camp}`;
+    const kt = keitaroAgg.byCampaign[k];
+    if (kt) { row.installs = kt.installs; row.regs = kt.regs; row.deps = kt.deps; hitD++; }
+  });
+
+  // Креативи: якщо на (день,акаунт,кампанія,креатив) кілька рядків (девайси) — ділимо пропорційно кліками
+  const groups = {};
+  Object.values(creativeAgg).forEach(row => {
+    const k = `${row.date}|${row.acc}|${row._camp}|${row.cid}`;
+    (groups[k] = groups[k] || []).push(row);
+  });
+  Object.entries(groups).forEach(([k, rows]) => {
+    const kt = keitaroAgg.byCreative[k];
+    if (!kt) return;
+    hitC++;
+    const tot = rows.reduce((a, r) => a + (r.clicks || 0), 0) || rows.reduce((a, r) => a + (r.spend || 0), 0);
+    rows.forEach((r, idx) => {
+      const w = tot > 0 ? ((r.clicks || r.spend || 0) / tot) : (1 / rows.length);
+      r.installs = Math.round(kt.installs * w);
+      r.regs = Math.round(kt.regs * w);
+      r.deps = Math.round(kt.deps * w);
+      if (idx === rows.length - 1) { // залишок на останній рядок, щоб сума збіглася
+        r.installs += kt.installs - rows.reduce((a, x) => a + x.installs, 0);
+        r.regs     += kt.regs     - rows.reduce((a, x) => a + x.regs, 0);
+        r.deps     += kt.deps     - rows.reduce((a, x) => a + x.deps, 0);
+      }
+    });
+  });
+  console.log(`Keitaro застосовано: ${hitD} daily-рядків, ${hitC} креатив-груп`);
+  showStatus(`Keitaro: уточнено ${hitD} рядків статистики`);
+}
+
 function handleCSV(e, type) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -644,7 +787,7 @@ function processCampaignData(map, lines) {
     const dKey = `${date}_${accName}_${geo}_${ktid}`;
     
     if (!dailyAggregated[dKey]) {
-      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency };
+      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency, _camp: normCamp(row[map.name]) };
     }
     dailyAggregated[dKey].spend += spend;
     dailyAggregated[dKey].regs += regs;
@@ -658,7 +801,7 @@ function processCampaignData(map, lines) {
     const cKey = `${date}_${accName}_${cid}_${device}`;
 
     if (!creativeAggregated[cKey]) {
-      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0 };
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _camp: normCamp(row[map.name]) };
     }
     creativeAggregated[cKey].spend += spend;
     creativeAggregated[cKey].regs += regs;
@@ -666,6 +809,9 @@ function processCampaignData(map, lines) {
     creativeAggregated[cKey].deps += deps;
     creativeAggregated[cKey].installs += installs;
   }
+
+  // Уточнюємо конверсії з Keitaro (якщо файл завантажено)
+  applyKeitaroMerge(dailyAggregated, creativeAggregated);
 
   datasetToImport = Object.values(dailyAggregated);
   creativesToImport = Object.values(creativeAggregated);
