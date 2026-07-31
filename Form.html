@@ -214,9 +214,6 @@ select {
       </div>
       </div>
 
-      <!-- Keitaro breakdown: акаунти → кампанії(воронки) → креативи -->
-      <div id="kt-breakdown" class="hidden max-w-3xl mx-auto space-y-3"></div>
-
       <!-- Контейнер ПРЕВ'Ю (Без обмеження висоти) -->
       <div id="dataset-preview" class="hidden space-y-12 pb-32">
         <!-- Daily Stats Table -->
@@ -543,8 +540,9 @@ window.onload = async () => {
   await loadMappings();
   await loadKeitaroMap();
   await loadAvailableOffers(); // ТУТ ДОДАЛИ
-  setupDragAndDrop('dataset'); 
-  setupDragAndDrop('creatives'); 
+  setupDragAndDrop('dataset');
+  setupDragAndDrop('creatives');
+  setupDragAndDrop('keitaro');
 };
 
 // --- РОБОТА З SUPABASE (MAPPINGS) ---
@@ -802,65 +800,6 @@ function parseKeitaro(content) {
   console.log('Keitaro:', Object.keys(byAccount).length, 'акаунт-днів,',
               Object.keys(byCampaign).length, 'кампаній(воронок),',
               Object.keys(byCreative).length, 'креативів');
-  renderKeitaroBreakdown();
-}
-
-// Наочний спліт: акаунти → кампанії (воронки) → креативи
-function renderKeitaroBreakdown() {
-  const wrap = document.getElementById('kt-breakdown');
-  if (!wrap || !keitaroAgg) return;
-  const accs = Object.values(keitaroAgg.byAccount).sort((a, b) => b.installs - a.installs);
-  if (!accs.length) { wrap.classList.add('hidden'); return; }
-  wrap.classList.remove('hidden');
-
-  const n = v => Number(v || 0).toLocaleString('en-US');
-  wrap.innerHTML = accs.map(a => {
-    const camps = Object.values(keitaroAgg.byCampaign)
-      .filter(c => c.account === a.account && c.date === a.date)
-      .sort((x, y) => y.installs - x.installs);
-    const crs = Object.values(keitaroAgg.byCreative)
-      .filter(c => c.account === a.account && c.date === a.date)
-      .sort((x, y) => y.installs - x.installs);
-    return `
-      <div class="card rounded-2xl border border-white/5 overflow-hidden">
-        <div class="flex flex-wrap justify-between items-center gap-2 p-3 bg-emerald-500/5 border-b border-white/5">
-          <div class="flex items-center gap-2">
-            <span class="text-[11px] font-black text-blue-300 font-mono">${a.account}</span>
-            <span class="text-[9px] font-black text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded">TZ ${a.tz > 0 ? '+' : ''}${a.tz}</span>
-            <span class="text-[9px] font-bold text-slate-500">${a.date}</span>
-          </div>
-          <div class="flex gap-3 text-[11px] font-black">
-            <span class="text-cyan-300">${n(a.installs)} ins</span>
-            <span class="text-blue-400">${n(a.regs)} reg</span>
-            <span class="text-green-500">${n(a.deps)} dep</span>
-          </div>
-        </div>
-        <div class="p-3 space-y-2">
-          <p class="text-[9px] font-black uppercase tracking-widest text-slate-500">Кампанії / воронки</p>
-          ${camps.map(c => `
-            <div class="flex flex-wrap justify-between items-center gap-2 pl-2 border-l-2 border-emerald-500/30 py-1">
-              <div class="min-w-0">
-                <div class="text-[10px] font-bold text-slate-300 truncate">${c.campaign || '—'}</div>
-                <div class="text-[9px] text-slate-500">воронка: <b class="text-purple-300">${c.funnel}</b> · ${c.geo}</div>
-              </div>
-              <div class="flex gap-2 text-[10px] font-bold flex-shrink-0">
-                <span class="text-cyan-300">${n(c.installs)}</span>
-                <span class="text-blue-400">${n(c.regs)}</span>
-                <span class="text-green-500">${n(c.deps)}</span>
-              </div>
-            </div>`).join('') || '<p class="text-[10px] opacity-30 pl-2">—</p>'}
-          <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 pt-2">Креативи</p>
-          <div class="flex flex-wrap gap-1.5">
-            ${crs.map(c => `<span class="text-[10px] font-bold bg-white/5 border border-white/5 rounded-lg px-2 py-1">
-                <span class="text-slate-300">${c.cid || '—'}</span>
-                <span class="text-cyan-300 ml-1.5">${n(c.installs)}</span>
-                <span class="text-blue-400 ml-1">${n(c.regs)}</span>
-                <span class="text-green-500 ml-1">${n(c.deps)}</span>
-              </span>`).join('') || '<p class="text-[10px] opacity-30">—</p>'}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
 }
 
 // Замінює конверсії з FB на точні з Keitaro
@@ -1402,15 +1341,21 @@ function setupDragAndDrop(t) {
     return;
   }
 
-  z.ondragover = () => { z.style.borderColor = "#3b82f6"; return false; }; 
-  z.ondragleave = () => { z.style.borderColor = "rgba(59, 130, 246, 0.3)"; return false; }; 
-  z.ondrop = (e) => { 
-    z.style.borderColor = "rgba(59, 130, 246, 0.3)"; 
-    e.preventDefault(); 
-    if (e.dataTransfer.files[0]) {
-      handleCSV({target:{files:[e.dataTransfer.files[0]]}}, t); 
-    }
-  }; 
+  // Keitaro-зона має власний обробник і свій колір підсвітки
+  const isKt = (t === 'keitaro');
+  const base = isKt ? "rgba(16, 185, 129, 0.3)" : "rgba(59, 130, 246, 0.3)";
+  const hot  = isKt ? "#10b981" : "#3b82f6";
+
+  z.ondragover = (e) => { e.preventDefault(); z.style.borderColor = hot; return false; };
+  z.ondragleave = () => { z.style.borderColor = base; return false; };
+  z.ondrop = (e) => {
+    z.style.borderColor = base;
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (isKt) handleKeitaroFile({ target: { files: [f] } });
+    else handleCSV({ target: { files: [f] } }, t);
+  };
 }
 
 function showStatus(m) { 
