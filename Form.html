@@ -624,7 +624,8 @@ async function refreshProvidersTable() {
 // --- ОБРОБКА CSV ---
 
 // ===== KEITARO MERGE (точні конверсії поверх FB) =====
-let keitaroAgg = null;   // {byCreative:{}, byCampaign:{}, days:Set, unlinked:Set}
+let keitaroAgg = null;   // {byCreative:{}, byDaily:{}, days:Set, unlinked:Set}
+let lastFbParse = null;  // {map, lines} — щоб перерахувати, якщо Keitaro прийшов пізніше
 
 function normCamp(s) { return String(s || '').toLowerCase().replace(/[\s_]+/g, '_').trim(); }
 
@@ -649,6 +650,12 @@ function handleKeitaroFile(e) {
     el.classList.remove('hidden');
     if (keitaroAgg && keitaroAgg.unlinked.size)
       alert('Акаунти без таймзони (не враховано): ' + [...keitaroAgg.unlinked].join(', ') + '\nДодай TZ у вкладці Settings → Link Cabinet.');
+
+    // Якщо FB-файл уже завантажений — перераховуємо його з урахуванням Keitaro
+    if (lastFbParse) {
+      console.log('Keitaro прийшов після FB → перераховую');
+      processCampaignData(lastFbParse.map, lastFbParse.lines);
+    }
   };
   reader.readAsText(file);
 }
@@ -665,7 +672,10 @@ function parseKeitaro(content) {
   const iDay = at(['day','date']), iHour = at(['hour','година']);
   const iIns = at(['uc (campaign)','uc','installs']), iReg = at(['conv.','conv']), iDep = at(['sales','deps']);
 
-  const byCreative = {}, byCampaign = {}, days = new Set(), unlinked = new Set();
+  // Ключі мають збігатися з тим, як FB реально агрегує:
+  //   daily     -> date|acc|geo|ktid   (кампанії L1..L10 зливаються в одну групу)
+  //   creatives -> date|acc|cid        (один креатив крутиться в кількох кампаніях)
+  const byCreative = {}, byDaily = {}, days = new Set(), unlinked = new Set();
   for (let i = 1; i < lines.length; i++) {
     const r = sp(lines[i]);
     const acc = (r[iAcc] || '').trim();
@@ -681,20 +691,23 @@ function parseKeitaro(content) {
     const localDay = `${ld.getUTCFullYear()}-${String(ld.getUTCMonth() + 1).padStart(2, '0')}-${String(ld.getUTCDate()).padStart(2, '0')}`;
     days.add(localDay);
 
-    const camp = normCamp(r[iCamp]);
+    // geo та ktid дістаємо з назви кампанії так само, як це робить FB-парсер
+    const parts = String(r[iCamp] || '').split('_');
+    const geo = (parts[1] || '??').toUpperCase().trim();
+    const ktid = (parts[2] || '0').trim();
     const cr = (r[iCr] || '').trim();
     const ins = parseInt(r[iIns], 10) || 0, reg = parseInt(r[iReg], 10) || 0, dep = parseInt(r[iDep], 10) || 0;
 
-    const kC = `${localDay}|${acc}|${camp}|${cr}`;
+    const kC = `${localDay}|${acc}|${cr}`;
     if (!byCreative[kC]) byCreative[kC] = { installs: 0, regs: 0, deps: 0 };
     byCreative[kC].installs += ins; byCreative[kC].regs += reg; byCreative[kC].deps += dep;
 
-    const kP = `${localDay}|${acc}|${camp}`;
-    if (!byCampaign[kP]) byCampaign[kP] = { installs: 0, regs: 0, deps: 0 };
-    byCampaign[kP].installs += ins; byCampaign[kP].regs += reg; byCampaign[kP].deps += dep;
+    const kD = `${localDay}|${acc}|${geo}|${ktid}`;
+    if (!byDaily[kD]) byDaily[kD] = { installs: 0, regs: 0, deps: 0 };
+    byDaily[kD].installs += ins; byDaily[kD].regs += reg; byDaily[kD].deps += dep;
   }
-  keitaroAgg = { byCreative, byCampaign, days, unlinked };
-  console.log('Keitaro merge готовий:', Object.keys(byCampaign).length, 'кампаній-днів');
+  keitaroAgg = { byCreative, byDaily, days, unlinked };
+  console.log('Keitaro merge готовий:', Object.keys(byDaily).length, 'daily-груп,', Object.keys(byCreative).length, 'креатив-груп');
 }
 
 // Замінює конверсії з FB на точні з Keitaro
@@ -703,15 +716,15 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   let hitD = 0, hitC = 0;
 
   Object.values(dailyAgg).forEach(row => {
-    const k = `${row.date}|${row.acc}|${row._camp}`;
-    const kt = keitaroAgg.byCampaign[k];
+    const k = `${row.date}|${row.acc}|${row.geo}|${row._ktid}`;
+    const kt = keitaroAgg.byDaily[k];
     if (kt) { row.installs = kt.installs; row.regs = kt.regs; row.deps = kt.deps; hitD++; }
   });
 
-  // Креативи: якщо на (день,акаунт,кампанія,креатив) кілька рядків (девайси) — ділимо пропорційно кліками
+  // Креативи: якщо на (день,акаунт,креатив) кілька рядків (девайси) — ділимо пропорційно кліками
   const groups = {};
   Object.values(creativeAgg).forEach(row => {
-    const k = `${row.date}|${row.acc}|${row._camp}|${row.cid}`;
+    const k = `${row.date}|${row.acc}|${row.cid}`;
     (groups[k] = groups[k] || []).push(row);
   });
   Object.entries(groups).forEach(([k, rows]) => {
@@ -752,6 +765,11 @@ function handleCSV(e, type) {
     console.log("Mapped Columns:", map);
     console.log("Headers found:", headers);
     console.log("Device col index:", map.device, map.device !== -1 ? `→ "${headers[map.device]}"` : '→ NOT FOUND');
+    if (type === 'dataset') {
+      lastFbParse = { map, lines };
+      const nameEl = document.getElementById('fb-file-name');
+      if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.classList.remove('hidden'); }
+    }
     processCampaignData(map, lines);
   };
   reader.readAsText(file);
@@ -787,7 +805,7 @@ function processCampaignData(map, lines) {
     const dKey = `${date}_${accName}_${geo}_${ktid}`;
     
     if (!dailyAggregated[dKey]) {
-      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency, _camp: normCamp(row[map.name]) };
+      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency, _ktid: ktid };
     }
     dailyAggregated[dKey].spend += spend;
     dailyAggregated[dKey].regs += regs;
@@ -801,7 +819,7 @@ function processCampaignData(map, lines) {
     const cKey = `${date}_${accName}_${cid}_${device}`;
 
     if (!creativeAggregated[cKey]) {
-      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _camp: normCamp(row[map.name]) };
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
     }
     creativeAggregated[cKey].spend += spend;
     creativeAggregated[cKey].regs += regs;
