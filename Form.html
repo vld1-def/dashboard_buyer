@@ -130,6 +130,12 @@ select {
   background-size: 1em;
   padding-right: 2.5rem !important;
 }
+
+/* ===== GLOBAL 90% SCALE (компактніший вигляд на десктопі) ===== */
+@media (min-width: 768px) {
+  body { zoom: 0.9; }
+}
+/* ===== END SCALE ===== */
   </style>
 </head>
 <body class="p-6 md:p-12 antialiased">
@@ -177,36 +183,39 @@ select {
         </label>
       </div>
 
-      <div id="dual-zones" class="grid grid-cols-1 gap-6 max-w-3xl mx-auto">
-      <div id="csv-drop-zone-dataset" class="drop-zone card p-16 rounded-[3rem] text-center cursor-pointer group" onclick="document.getElementById('csv-input-dataset').click()">
+      <div id="dual-zones" class="grid grid-cols-1 gap-4 max-w-3xl mx-auto">
+      <div id="csv-drop-zone-dataset" class="drop-zone card p-8 rounded-[2rem] text-center cursor-pointer group" onclick="document.getElementById('csv-input-dataset').click()">
         <input type="file" id="csv-input-dataset" accept=".csv" class="hidden" onchange="handleCSV(event, 'dataset')">
-        <div class="flex flex-col items-center gap-5">
-           <div class="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
-             <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+        <div class="flex flex-col items-center gap-3">
+           <div class="w-14 h-14 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
+             <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
            </div>
            <div>
-             <h3 class="font-black uppercase italic text-xl text-white">Import Ads Report <span class="text-blue-400">(Facebook)</span></h3>
-             <p class="text-[10px] opacity-40 font-bold tracking-[0.3em] uppercase mt-1">Spend · Clicks · Devices</p>
-             <p id="fb-file-name" class="text-[11px] text-blue-400 font-bold mt-2 hidden"></p>
+             <h3 class="font-black uppercase italic text-base text-white">Facebook</h3>
+             <p class="text-[9px] opacity-40 font-bold tracking-[0.2em] uppercase mt-0.5">Spend · Clicks · Devices</p>
+             <p id="fb-file-name" class="text-[10px] text-blue-400 font-bold mt-1.5 hidden break-all"></p>
            </div>
         </div>
       </div>
 
       <!-- Keitaro zone (прихована доки тугл вимкнено) -->
-      <div id="csv-drop-zone-keitaro" class="hidden drop-zone card p-10 rounded-[3rem] text-center cursor-pointer group border-emerald-500/20" onclick="document.getElementById('csv-input-keitaro').click()">
+      <div id="csv-drop-zone-keitaro" class="hidden drop-zone card p-8 rounded-[2rem] text-center cursor-pointer group border-emerald-500/20" onclick="document.getElementById('csv-input-keitaro').click()">
         <input type="file" id="csv-input-keitaro" accept=".csv" class="hidden" onchange="handleKeitaroFile(event)">
-        <div class="flex flex-col items-center gap-4">
-           <div class="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
-             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div class="flex flex-col items-center gap-3">
+           <div class="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
+             <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
            </div>
            <div>
-             <h3 class="font-black uppercase italic text-lg text-white">Keitaro Report</h3>
-             <p class="text-[10px] opacity-40 font-bold tracking-[0.3em] uppercase mt-1">Installs · Regs · Deps (погодинно, +3)</p>
-             <p id="kt-file-name" class="text-[11px] text-emerald-400 font-bold mt-2 hidden"></p>
+             <h3 class="font-black uppercase italic text-base text-white">Keitaro</h3>
+             <p class="text-[9px] opacity-40 font-bold tracking-[0.2em] uppercase mt-0.5">Installs · Regs · Deps (+3)</p>
+             <p id="kt-file-name" class="text-[10px] text-emerald-400 font-bold mt-1.5 hidden break-all"></p>
            </div>
         </div>
       </div>
       </div>
+
+      <!-- Keitaro breakdown: акаунти → кампанії(воронки) → креативи -->
+      <div id="kt-breakdown" class="hidden max-w-3xl mx-auto space-y-3"></div>
 
       <!-- Контейнер ПРЕВ'Ю (Без обмеження висоти) -->
       <div id="dataset-preview" class="hidden space-y-12 pb-32">
@@ -376,7 +385,28 @@ select {
 
     <!-- SETTINGS MODE (Вкладка Providers) -->
     <div id="mode-providers" class="hidden max-w-7xl mx-auto space-y-10">
-       
+
+       <!-- Keitaro Mapping (назви колонок різні в кожній команді) -->
+       <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-emerald-500 bg-slate-900/40">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="text-xl font-black uppercase italic text-emerald-400 tracking-tight">Keitaro Mapping</h3>
+            <button onclick="saveKeitaroMap()" class="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Зберегти</button>
+          </div>
+          <p class="text-[10px] opacity-40 font-bold mb-5">Назви колонок у твоєму Keitaro-експорті. У кожної команди можуть відрізнятись — впиши як є в шапці CSV.</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Акаунт</label><input type="text" id="km-acc" placeholder="Sub ID 5"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Кампанія</label><input type="text" id="km-camp" placeholder="Sub ID 1"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Воронка</label><input type="text" id="km-funnel" placeholder="Sub ID 2"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Креатив</label><input type="text" id="km-cr" placeholder="Sub ID 3"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">День</label><input type="text" id="km-day" placeholder="Day"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Година</label><input type="text" id="km-hour" placeholder="Hour"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-cyan-500 mb-1.5">Інстали</label><input type="text" id="km-ins" placeholder="UC (campaign)"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-blue-400 mb-1.5">Реєстрації</label><input type="text" id="km-reg" placeholder="Conv."></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-green-500 mb-1.5">Депозити</label><input type="text" id="km-dep" placeholder="Sales"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Таймзона файлу</label><input type="number" id="km-tz" placeholder="3" title="У якій TZ віддає час Keitaro"></div>
+          </div>
+       </div>
+
        <!-- РЯД 1: ФОРМИ ВВОДУ -->
        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <!-- Link Cabinet -->
@@ -509,8 +539,9 @@ window.onload = async () => {
   const display = document.getElementById('active-team-display');
   if (display) display.innerText = currentTeam.toUpperCase();
 
-  await loadAgencies(); 
-  await loadMappings(); 
+  await loadAgencies();
+  await loadMappings();
+  await loadKeitaroMap();
   await loadAvailableOffers(); // ТУТ ДОДАЛИ
   setupDragAndDrop('dataset'); 
   setupDragAndDrop('creatives'); 
@@ -624,14 +655,52 @@ async function refreshProvidersTable() {
 // --- ОБРОБКА CSV ---
 
 // ===== KEITARO MERGE (точні конверсії поверх FB) =====
-let keitaroAgg = null;   // {byCreative:{}, byDaily:{}, days:Set, unlinked:Set}
+let keitaroAgg = null;   // {byCreative:{}, byDaily:{}, byCampaign:{}, days:Set, unlinked:Set}
 let lastFbParse = null;  // {map, lines} — щоб перерахувати, якщо Keitaro прийшов пізніше
+
+// Назви колонок Keitaro (у кожної команди можуть відрізнятись) — редагується в Settings
+const KM_DEFAULT = { acc:'Sub ID 5', camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
+                     day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
+let keitaroMap = { ...KM_DEFAULT };
+
+async function loadKeitaroMap() {
+  try {
+    const { data } = await sb.from('team_settings')
+      .select('value').eq('team_name', currentTeam).eq('key', 'keitaro_map').limit(1);
+    if (data && data.length) keitaroMap = { ...KM_DEFAULT, ...JSON.parse(data[0].value) };
+  } catch (e) { console.warn('keitaro_map:', e.message); }
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  set('km-acc', keitaroMap.acc); set('km-camp', keitaroMap.camp); set('km-funnel', keitaroMap.funnel);
+  set('km-cr', keitaroMap.cr); set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
+  set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
+  set('km-tz', keitaroMap.tz);
+}
+
+async function saveKeitaroMap() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const m = { acc:g('km-acc')||KM_DEFAULT.acc, camp:g('km-camp')||KM_DEFAULT.camp,
+              funnel:g('km-funnel')||KM_DEFAULT.funnel, cr:g('km-cr')||KM_DEFAULT.cr,
+              day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
+              ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
+              dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10) };
+  if (isNaN(m.tz)) m.tz = KM_DEFAULT.tz;
+  keitaroMap = m;
+  try {
+    await sb.from('team_settings').upsert(
+      { team_name: currentTeam, key: 'keitaro_map', value: JSON.stringify(m) },
+      { onConflict: 'team_name,key' });
+    showStatus('Keitaro mapping збережено');
+    if (lastFbParse && keitaroAgg) processCampaignData(lastFbParse.map, lastFbParse.lines);
+  } catch (e) { alert('Не вдалось зберегти: ' + e.message); }
+}
 
 function normCamp(s) { return String(s || '').toLowerCase().replace(/[\s_]+/g, '_').trim(); }
 
 function toggleKeitaro() {
   const on = document.getElementById('kt-toggle').checked;
   document.getElementById('csv-drop-zone-keitaro').classList.toggle('hidden', !on);
+  // коли Keitaro вимкнено — FB-зона на всю ширину
+  document.getElementById('dual-zones').classList.toggle('md:grid-cols-2', on);
   if (!on) {
     keitaroAgg = null;
     document.getElementById('kt-file-name').classList.add('hidden');
@@ -667,15 +736,36 @@ function parseKeitaro(content) {
   const delim = (lines[0].split(';').length > lines[0].split(',').length) ? ';' : ',';
   const sp = l => l.split(delim).map(c => c.replace(/^"|"$/g, '').replace(/"/g, '').trim());
   const h = sp(lines[0]).map(x => x.toLowerCase());
-  const at = c => h.findIndex(x => c.some(k => x === k || x.includes(k)));
-  const iAcc = at(['sub id 5','sub_id_5']), iCamp = at(['sub id 1','sub_id_1']), iCr = at(['sub id 3','sub_id_3']);
-  const iDay = at(['day','date']), iHour = at(['hour','година']);
-  const iIns = at(['uc (campaign)','uc','installs']), iReg = at(['conv.','conv']), iDep = at(['sales','deps']);
+  // Колонки беремо з налаштувань команди (Settings → Keitaro Mapping)
+  const col = name => { const n = String(name || '').toLowerCase().trim(); return h.findIndex(x => x === n); };
+  const iAcc = col(keitaroMap.acc), iCamp = col(keitaroMap.camp), iCr = col(keitaroMap.cr);
+  const iFun = col(keitaroMap.funnel);
+  const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
+  const iIns = col(keitaroMap.ins), iReg = col(keitaroMap.reg), iDep = col(keitaroMap.dep);
+  const fileTz = Number(keitaroMap.tz);
+
+  const missing = [];
+  if (iAcc < 0) missing.push(keitaroMap.acc); if (iDay < 0) missing.push(keitaroMap.day);
+  if (iIns < 0) missing.push(keitaroMap.ins); if (iReg < 0) missing.push(keitaroMap.reg);
+  if (iDep < 0) missing.push(keitaroMap.dep);
+  if (missing.length) {
+    alert('У Keitaro-файлі не знайдено колонки: ' + missing.join(', ') +
+          '\n\nВ шапці файлу є: ' + sp(lines[0]).join(', ') +
+          '\n\nВипраф назви в Settings → Keitaro Mapping.');
+    keitaroAgg = null; return;
+  }
 
   // Ключі мають збігатися з тим, як FB реально агрегує:
   //   daily     -> date|acc|geo|ktid   (кампанії L1..L10 зливаються в одну групу)
   //   creatives -> date|acc|cid        (один креатив крутиться в кількох кампаніях)
-  const byCreative = {}, byDaily = {}, days = new Set(), unlinked = new Set();
+  // Три рівні сплітування: акаунт → кампанія (з воронкою) → креатив
+  const byAccount = {}, byCampaign = {}, byCreative = {}, byDaily = {};
+  const days = new Set(), unlinked = new Set();
+  const add = (obj, key, ins, reg, dep, extra) => {
+    if (!obj[key]) obj[key] = { installs: 0, regs: 0, deps: 0, ...(extra || {}) };
+    obj[key].installs += ins; obj[key].regs += reg; obj[key].deps += dep;
+  };
+
   for (let i = 1; i < lines.length; i++) {
     const r = sp(lines[i]);
     const acc = (r[iAcc] || '').trim();
@@ -684,30 +774,93 @@ function parseKeitaro(content) {
     const tz = mappingDB.timezones ? mappingDB.timezones[acc] : undefined;
     if (tz === undefined || tz === null) { unlinked.add(acc); continue; }
 
-    // час рядка у +3 → локальний день акаунта
+    // час файлу (fileTz) → локальний день акаунта
     const [y, m, d] = day.split('-').map(Number);
-    const localMs = Date.UTC(y, m - 1, d, parseInt(r[iHour], 10) || 0, 0, 0) - (3 - Number(tz)) * 3600000;
+    const localMs = Date.UTC(y, m - 1, d, (iHour >= 0 ? parseInt(r[iHour], 10) : 0) || 0, 0, 0)
+                    - (fileTz - Number(tz)) * 3600000;
     const ld = new Date(localMs);
     const localDay = `${ld.getUTCFullYear()}-${String(ld.getUTCMonth() + 1).padStart(2, '0')}-${String(ld.getUTCDate()).padStart(2, '0')}`;
     days.add(localDay);
 
     // geo та ktid дістаємо з назви кампанії так само, як це робить FB-парсер
-    const parts = String(r[iCamp] || '').split('_');
+    const campRaw = String(r[iCamp] || '');
+    const parts = campRaw.split('_');
     const geo = (parts[1] || '??').toUpperCase().trim();
     const ktid = (parts[2] || '0').trim();
     const cr = (r[iCr] || '').trim();
+    const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
+    const funnel = mappingDB.funnels[funRaw] || mappingDB.funnels[ktid] || funRaw || '—';
     const ins = parseInt(r[iIns], 10) || 0, reg = parseInt(r[iReg], 10) || 0, dep = parseInt(r[iDep], 10) || 0;
 
-    const kC = `${localDay}|${acc}|${cr}`;
-    if (!byCreative[kC]) byCreative[kC] = { installs: 0, regs: 0, deps: 0 };
-    byCreative[kC].installs += ins; byCreative[kC].regs += reg; byCreative[kC].deps += dep;
-
-    const kD = `${localDay}|${acc}|${geo}|${ktid}`;
-    if (!byDaily[kD]) byDaily[kD] = { installs: 0, regs: 0, deps: 0 };
-    byDaily[kD].installs += ins; byDaily[kD].regs += reg; byDaily[kD].deps += dep;
+    add(byAccount,  `${localDay}|${acc}`, ins, reg, dep, { account: acc, date: localDay, tz: Number(tz) });
+    add(byCampaign, `${localDay}|${acc}|${normCamp(campRaw)}|${funnel}`, ins, reg, dep,
+        { account: acc, date: localDay, campaign: campRaw, funnel, geo, ktid });
+    add(byCreative, `${localDay}|${acc}|${cr}`, ins, reg, dep, { account: acc, date: localDay, cid: cr });
+    add(byDaily,    `${localDay}|${acc}|${geo}|${ktid}`, ins, reg, dep);
   }
-  keitaroAgg = { byCreative, byDaily, days, unlinked };
-  console.log('Keitaro merge готовий:', Object.keys(byDaily).length, 'daily-груп,', Object.keys(byCreative).length, 'креатив-груп');
+  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, days, unlinked };
+  console.log('Keitaro:', Object.keys(byAccount).length, 'акаунт-днів,',
+              Object.keys(byCampaign).length, 'кампаній(воронок),',
+              Object.keys(byCreative).length, 'креативів');
+  renderKeitaroBreakdown();
+}
+
+// Наочний спліт: акаунти → кампанії (воронки) → креативи
+function renderKeitaroBreakdown() {
+  const wrap = document.getElementById('kt-breakdown');
+  if (!wrap || !keitaroAgg) return;
+  const accs = Object.values(keitaroAgg.byAccount).sort((a, b) => b.installs - a.installs);
+  if (!accs.length) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+
+  const n = v => Number(v || 0).toLocaleString('en-US');
+  wrap.innerHTML = accs.map(a => {
+    const camps = Object.values(keitaroAgg.byCampaign)
+      .filter(c => c.account === a.account && c.date === a.date)
+      .sort((x, y) => y.installs - x.installs);
+    const crs = Object.values(keitaroAgg.byCreative)
+      .filter(c => c.account === a.account && c.date === a.date)
+      .sort((x, y) => y.installs - x.installs);
+    return `
+      <div class="card rounded-2xl border border-white/5 overflow-hidden">
+        <div class="flex flex-wrap justify-between items-center gap-2 p-3 bg-emerald-500/5 border-b border-white/5">
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-black text-blue-300 font-mono">${a.account}</span>
+            <span class="text-[9px] font-black text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded">TZ ${a.tz > 0 ? '+' : ''}${a.tz}</span>
+            <span class="text-[9px] font-bold text-slate-500">${a.date}</span>
+          </div>
+          <div class="flex gap-3 text-[11px] font-black">
+            <span class="text-cyan-300">${n(a.installs)} ins</span>
+            <span class="text-blue-400">${n(a.regs)} reg</span>
+            <span class="text-green-500">${n(a.deps)} dep</span>
+          </div>
+        </div>
+        <div class="p-3 space-y-2">
+          <p class="text-[9px] font-black uppercase tracking-widest text-slate-500">Кампанії / воронки</p>
+          ${camps.map(c => `
+            <div class="flex flex-wrap justify-between items-center gap-2 pl-2 border-l-2 border-emerald-500/30 py-1">
+              <div class="min-w-0">
+                <div class="text-[10px] font-bold text-slate-300 truncate">${c.campaign || '—'}</div>
+                <div class="text-[9px] text-slate-500">воронка: <b class="text-purple-300">${c.funnel}</b> · ${c.geo}</div>
+              </div>
+              <div class="flex gap-2 text-[10px] font-bold flex-shrink-0">
+                <span class="text-cyan-300">${n(c.installs)}</span>
+                <span class="text-blue-400">${n(c.regs)}</span>
+                <span class="text-green-500">${n(c.deps)}</span>
+              </div>
+            </div>`).join('') || '<p class="text-[10px] opacity-30 pl-2">—</p>'}
+          <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 pt-2">Креативи</p>
+          <div class="flex flex-wrap gap-1.5">
+            ${crs.map(c => `<span class="text-[10px] font-bold bg-white/5 border border-white/5 rounded-lg px-2 py-1">
+                <span class="text-slate-300">${c.cid || '—'}</span>
+                <span class="text-cyan-300 ml-1.5">${n(c.installs)}</span>
+                <span class="text-blue-400 ml-1">${n(c.regs)}</span>
+                <span class="text-green-500 ml-1">${n(c.deps)}</span>
+              </span>`).join('') || '<p class="text-[10px] opacity-30">—</p>'}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // Замінює конверсії з FB на точні з Keitaro

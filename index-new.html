@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — New Design (preview)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root{
+    --bg:#0a0c12; --surface:#11141d; --surface-2:#161a25; --line:rgba(255,255,255,.06);
+    --txt:#e8eaf0; --muted:#8b91a3; --accent:#6366f1; --accent-2:#22d3ee;
+    --ok:#34d399; --warn:#fbbf24; --bad:#f43f5e;
+  }
+  html[data-theme="light"]{
+    --bg:#f6f7fb; --surface:#ffffff; --surface-2:#f1f3f9; --line:rgba(15,20,40,.08);
+    --txt:#151824; --muted:#5f6780;
+  }
+  *{ -webkit-font-smoothing:antialiased }
+  body{ background:var(--bg); color:var(--txt); font-family:'Inter',system-ui,-apple-system,sans-serif; }
+  @media (min-width:768px){ body{ zoom:.9 } }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:18px; }
+  .soft{ background:var(--surface-2); }
+  .muted{ color:var(--muted) }
+  .rail-item{ display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:12px;color:var(--muted);
+    font-size:12.5px;font-weight:600;transition:.15s;cursor:pointer }
+  .rail-item:hover{ background:var(--surface-2); color:var(--txt) }
+  .rail-item.active{ background:linear-gradient(90deg,rgba(99,102,241,.18),transparent); color:var(--txt);
+    box-shadow:inset 2px 0 0 var(--accent) }
+  .kpi-val{ font-size:26px;font-weight:800;letter-spacing:-.02em;line-height:1 }
+  .kpi-lbl{ font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--muted) }
+  .pill{ font-size:10px;font-weight:700;padding:3px 8px;border-radius:8px }
+  .up{ background:rgba(52,211,153,.12); color:var(--ok) }
+  .down{ background:rgba(244,63,94,.12); color:var(--bad) }
+  .spark{ height:34px;width:100% }
+  table{ border-collapse:collapse;width:100% }
+  th{ font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+    text-align:left;padding:10px 12px;border-bottom:1px solid var(--line) }
+  td{ font-size:12.5px;padding:11px 12px;border-bottom:1px solid var(--line) }
+  tr:hover td{ background:var(--surface-2) }
+  .bar{ height:5px;border-radius:99px;background:var(--surface-2);overflow:hidden }
+  .bar>i{ display:block;height:100%;border-radius:99px }
+  .chip{ font-size:10.5px;font-weight:700;padding:5px 10px;border-radius:10px;background:var(--surface-2);
+    border:1px solid var(--line);cursor:pointer;transition:.15s }
+  .chip:hover{ border-color:var(--accent) }
+  .chip.on{ background:var(--accent); color:#fff; border-color:var(--accent) }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex">
+  <!-- LEFT RAIL -->
+  <aside class="hidden lg:flex flex-col w-[210px] shrink-0 h-screen sticky top-0 p-4 gap-1"
+         style="background:var(--surface);border-right:1px solid var(--line)">
+    <div class="flex items-center gap-2.5 px-2 pb-4 mb-2" style="border-bottom:1px solid var(--line)">
+      <div class="w-8 h-8 rounded-xl grid place-items-center font-black text-white text-sm"
+           style="background:linear-gradient(135deg,var(--accent),var(--accent-2))">M</div>
+      <div>
+        <div class="text-[13px] font-extrabold leading-tight">Makeberry</div>
+        <div class="text-[9.5px] muted font-bold uppercase tracking-widest">Media buying</div>
+      </div>
+    </div>
+    <div class="rail-item active">◧ Огляд</div>
+    <div class="rail-item">◎ Гео</div>
+    <div class="rail-item">✦ Креативи</div>
+    <div class="rail-item">▦ Heatmap</div>
+    <div class="rail-item">⇄ Порівняння</div>
+    <div class="rail-item">✓ Перевірка даних</div>
+    <div class="mt-auto flex flex-col gap-1">
+      <div class="rail-item" onclick="toggleTheme()">◐ Тема</div>
+      <div class="rail-item">⚙ Налаштування</div>
+      <a href="index.html" class="rail-item" style="color:var(--accent)">← Стара версія</a>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="flex-1 min-w-0 p-4 md:p-6 space-y-5">
+
+    <!-- HEADER -->
+    <header class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-[22px] font-extrabold tracking-tight leading-none">Огляд</h1>
+        <p class="text-[11px] muted font-semibold mt-1.5">Липень 2026 · оновлено щойно</p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex gap-1 p-1 rounded-xl" style="background:var(--surface-2)">
+          <button class="chip on" onclick="setRange(this,7)">7д</button>
+          <button class="chip" onclick="setRange(this,30)">30д</button>
+          <button class="chip" onclick="setRange(this,90)">90д</button>
+        </div>
+        <button class="chip">📅 Липень</button>
+        <button class="px-4 py-2 rounded-xl text-[11.5px] font-bold text-white"
+                style="background:var(--accent)">+ Додати дані</button>
+      </div>
+    </header>
+
+    <!-- KPI GRID -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+      <div class="card p-4">
+        <div class="flex justify-between items-start">
+          <span class="kpi-lbl">Spend</span><span class="pill up">▲ 12%</span>
+        </div>
+        <div class="kpi-val mt-2.5">$11,065</div>
+        <div class="text-[11px] font-semibold mt-2 space-y-0.5">
+          <div style="color:var(--accent-2)">+$299.87 fees</div>
+          <div style="color:var(--bad)">−$1,240 expenses</div>
+        </div>
+      </div>
+      <div class="card p-4">
+        <div class="flex justify-between items-start"><span class="kpi-lbl">Installs</span><span class="pill up">▲ 8%</span></div>
+        <div class="kpi-val mt-2.5">4,182</div>
+        <div class="text-[11px] muted font-semibold mt-2">CPI <b style="color:var(--txt)">$2.64</b></div>
+      </div>
+      <div class="card p-4">
+        <div class="flex justify-between items-start"><span class="kpi-lbl">Regs</span><span class="pill up">▲ 5%</span></div>
+        <div class="kpi-val mt-2.5">1,847</div>
+        <div class="text-[11px] muted font-semibold mt-2">CPL <b style="color:var(--txt)">$5.99</b></div>
+      </div>
+      <div class="card p-4">
+        <div class="flex justify-between items-start"><span class="kpi-lbl">Deposits</span><span class="pill down">▼ 3%</span></div>
+        <div class="kpi-val mt-2.5">312</div>
+        <div class="text-[11px] muted font-semibold mt-2">CPA <b style="color:var(--txt)">$35.46</b></div>
+      </div>
+      <div class="card p-4 col-span-2 lg:col-span-1"
+           style="background:linear-gradient(150deg,rgba(52,211,153,.10),var(--surface))">
+        <div class="flex justify-between items-start"><span class="kpi-lbl">Net Profit</span><span class="pill up">ROI 46%</span></div>
+        <div class="kpi-val mt-2.5" style="color:var(--ok)">$5,084</div>
+        <div class="bar mt-3"><i style="width:46%;background:linear-gradient(90deg,var(--ok),var(--accent-2))"></i></div>
+      </div>
+    </section>
+
+    <!-- CHART + FUNNEL -->
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div class="card p-5 xl:col-span-2">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+          <div>
+            <h2 class="text-[15px] font-extrabold tracking-tight">Динаміка</h2>
+            <p class="text-[10.5px] muted font-semibold">Spend проти депозитів</p>
+          </div>
+          <div class="flex gap-1">
+            <button class="chip on">Spend</button><button class="chip">Regs</button><button class="chip">Deps</button>
+          </div>
+        </div>
+        <div style="height:230px"><canvas id="c1"></canvas></div>
+      </div>
+
+      <div class="card p-5">
+        <h2 class="text-[15px] font-extrabold tracking-tight">Воронка</h2>
+        <p class="text-[10.5px] muted font-semibold mb-4">Співвідношення 1 до N</p>
+        <div class="space-y-3.5">
+          <div>
+            <div class="flex justify-between text-[11.5px] font-bold mb-1.5"><span>Кліки</span><span>9,340</span></div>
+            <div class="bar"><i style="width:100%;background:var(--accent)"></i></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[11.5px] font-bold mb-1.5"><span>Інстали</span><span>4,182 <span class="muted">1 до 2.2</span></span></div>
+            <div class="bar"><i style="width:45%;background:var(--accent-2)"></i></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[11.5px] font-bold mb-1.5"><span>Реєстрації</span><span>1,847 <span class="muted">1 до 2.3</span></span></div>
+            <div class="bar"><i style="width:20%;background:#a78bfa"></i></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[11.5px] font-bold mb-1.5"><span>Депозити</span><span>312 <span class="muted">1 до 5.9</span></span></div>
+            <div class="bar"><i style="width:7%;background:var(--ok)"></i></div>
+          </div>
+        </div>
+        <div class="soft rounded-xl p-3 mt-5">
+          <div class="text-[10px] kpi-lbl mb-1">Найкраще гео</div>
+          <div class="flex justify-between items-center">
+            <span class="text-[13px] font-extrabold">🇦🇺 AU</span>
+            <span class="text-[12px] font-bold" style="color:var(--ok)">ROI 68%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GEO + TABLE -->
+    <section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <div class="card p-5">
+        <h2 class="text-[15px] font-extrabold tracking-tight mb-4">Гео</h2>
+        <div class="space-y-2.5" id="geo"></div>
+      </div>
+
+      <div class="card overflow-hidden xl:col-span-2">
+        <div class="flex justify-between items-center p-5 pb-3">
+          <div>
+            <h2 class="text-[15px] font-extrabold tracking-tight">Креативи</h2>
+            <p class="text-[10.5px] muted font-semibold">Топ за спендом</p>
+          </div>
+          <button class="chip">Експорт</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table>
+            <thead><tr><th>Креатив</th><th class="text-right">Spend</th><th class="text-right">Ins</th>
+              <th class="text-right">Reg</th><th class="text-right">Dep</th><th class="text-right">CPI</th><th></th></tr></thead>
+            <tbody id="cre"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast" class="fixed bottom-5 right-5 px-4 py-2.5 rounded-xl text-[12px] font-bold text-white opacity-0 transition"
+     style="background:var(--accent)">Скопійовано</div>
+
+<script>
+const geo=[["AU",4210,68,"#34d399"],["DE",2980,41,"#6366f1"],["BR",1640,12,"#22d3ee"],
+           ["NL",1210,-8,"#fbbf24"],["PT",640,-22,"#f43f5e"]];
+document.getElementById('geo').innerHTML=geo.map(([g,s,roi,c])=>`
+  <div class="soft rounded-xl p-3">
+    <div class="flex justify-between items-center mb-2">
+      <span class="text-[13px] font-extrabold">${g}</span>
+      <span class="text-[12px] font-bold">$${s.toLocaleString()}</span>
+    </div>
+    <div class="bar"><i style="width:${Math.min(100,Math.abs(roi)+30)}%;background:${c}"></i></div>
+    <div class="flex justify-between text-[10px] font-bold mt-2 muted">
+      <span>ROI</span><span style="color:${roi>=0?'var(--ok)':'var(--bad)'}">${roi>0?'+':''}${roi}%</span>
+    </div>
+  </div>`).join('');
+
+const cre=[["KG_JS_674_1",63.52,40,16,1],["KG_newkreo_5",34.14,29,12,0],["KG_newkreo_2",29.92,20,8,3],
+           ["KG_VD_600",24.26,14,5,0],["496_DV_KG",14.73,11,7,1]];
+document.getElementById('cre').innerHTML=cre.map(([id,s,i,r,d])=>`
+  <tr>
+    <td class="font-bold">${id}</td>
+    <td class="text-right font-bold">$${s.toFixed(2)}</td>
+    <td class="text-right" style="color:var(--accent-2)">${i}</td>
+    <td class="text-right" style="color:var(--accent)">${r}</td>
+    <td class="text-right font-bold" style="color:${d?'var(--ok)':'var(--muted)'}">${d}</td>
+    <td class="text-right muted">$${(s/i).toFixed(2)}</td>
+    <td class="text-right"><button class="chip" onclick="copy('${id}')">⧉</button></td>
+  </tr>`).join('');
+
+function copy(t){ navigator.clipboard?.writeText(t);
+  const el=document.getElementById('toast'); el.style.opacity=1; setTimeout(()=>el.style.opacity=0,1200); }
+function setRange(b){ document.querySelectorAll('.chip.on').forEach(x=>{ if(x.parentElement===b.parentElement) x.classList.remove('on') }); b.classList.add('on'); }
+function toggleTheme(){ const r=document.documentElement;
+  r.dataset.theme = r.dataset.theme==='light' ? 'dark' : 'light'; draw(); }
+
+let chart;
+function draw(){
+  const css=getComputedStyle(document.documentElement);
+  const line=css.getPropertyValue('--line'), muted=css.getPropertyValue('--muted');
+  chart?.destroy();
+  const ctx=document.getElementById('c1');
+  const g=ctx.getContext('2d').createLinearGradient(0,0,0,230);
+  g.addColorStop(0,'rgba(99,102,241,.35)'); g.addColorStop(1,'rgba(99,102,241,0)');
+  chart=new Chart(ctx,{type:'line',
+    data:{labels:['1','5','9','13','17','21','25','29'],
+      datasets:[
+        {label:'Spend',data:[820,1140,960,1480,1220,1690,1410,1880],borderColor:'#6366f1',
+         backgroundColor:g,fill:true,tension:.4,borderWidth:2.5,pointRadius:0},
+        {label:'Deps',data:[18,31,24,44,36,52,41,58],borderColor:'#34d399',
+         tension:.4,borderWidth:2,pointRadius:0,yAxisID:'y2'}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:line},ticks:{color:muted,font:{size:10}}},
+        y:{grid:{color:line},ticks:{color:muted,font:{size:10}}},
+        y2:{position:'right',grid:{display:false},ticks:{color:muted,font:{size:10}}}}}});
+}
+draw();
+</script>
+</body>
+</html>
