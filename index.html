@@ -1245,6 +1245,62 @@ input[type="date"]::-webkit-datetime-edit-year-field {
         </table>
     </div>
 </div>
+
+<!-- ═══════════ REPORT BUILDER (списки як у Keitaro) ═══════════ -->
+<div id="report-builder-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5 mt-8">
+  <div class="p-5 border-b border-white/5 bg-white/[0.02]">
+    <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+      <div>
+        <h2 class="font-black text-xl uppercase tracking-tighter text-cyan-400 italic">Report Builder</h2>
+        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Групування · фільтри · стовпчики — як у Keitaro</p>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <!-- Режим -->
+        <div class="flex bg-black/20 p-1 rounded-xl border border-white/5">
+          <button id="rb-mode-list" onclick="rbSetMode('list')" class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition bg-cyan-600 text-white">Список</button>
+          <button id="rb-mode-day" onclick="rbSetMode('day')" class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">По днях</button>
+          <button id="rb-mode-month" onclick="rbSetMode('month')" class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">По місяцях</button>
+        </div>
+        <!-- Стовпчики -->
+        <div class="relative">
+          <button onclick="event.stopPropagation(); document.getElementById('rb-cols-menu').classList.toggle('hidden')"
+            class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-white transition">☰ Стовпчики</button>
+          <div id="rb-cols-menu" class="hidden absolute right-0 mt-2 w-48 card rounded-2xl shadow-2xl z-[90] p-2 border border-white/10" onclick="event.stopPropagation()"></div>
+        </div>
+        <button onclick="rbExportCSV()" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-white transition">⇩ CSV</button>
+      </div>
+    </div>
+
+    <!-- Групування -->
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+      <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 mr-1">Групувати:</span>
+      <div id="rb-groups" class="flex flex-wrap gap-1.5"></div>
+    </div>
+
+    <!-- Фільтри -->
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="flex items-center gap-1.5 bg-black/20 px-2 py-1 rounded-xl border border-white/5 text-[10px] font-bold">
+        <input type="date" id="rb-from" onchange="rbRender()" class="bg-transparent outline-none text-white">
+        <span class="opacity-30">→</span>
+        <input type="date" id="rb-to" onchange="rbRender()" class="bg-transparent outline-none text-white">
+      </div>
+      <select id="rb-f-geo" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black uppercase text-white outline-none cursor-pointer"><option value="">Всі гео</option></select>
+      <select id="rb-f-acc" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[160px]"><option value="">Всі акаунти</option></select>
+      <select id="rb-f-fun" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">Всі воронки</option></select>
+      <input id="rb-q" oninput="rbRender()" placeholder="Пошук…" class="bg-black/20 border border-white/5 rounded-xl px-3 py-2 text-[10px] font-bold text-white outline-none w-28 focus:border-cyan-500">
+      <select id="rb-metric" onchange="rbRender()" class="hidden bg-black/20 border border-cyan-500/30 rounded-xl px-2 py-2 text-[10px] font-black uppercase text-cyan-300 outline-none cursor-pointer">
+        <option value="spend">Spend</option><option value="installs">Installs</option>
+        <option value="regs">Regs</option><option value="deposits">Deps</option>
+      </select>
+      <button onclick="rbReset()" class="text-[9px] font-bold text-slate-500 hover:text-white uppercase tracking-widest ml-1">Скинути</button>
+    </div>
+  </div>
+
+  <div class="overflow-x-auto max-h-[560px] custom-scrollbar">
+    <table class="w-full text-left border-separate border-spacing-0" id="rb-table"></table>
+  </div>
+</div>
+<!-- ═══════════ END REPORT BUILDER ═══════════ -->
     </div>
   </div>
 
@@ -1584,6 +1640,7 @@ window.onload = async () => {
     refreshReports();
     loadQuickLinks();
     loadExpenses();
+    loadDriveFolderSetting();
     
   } catch (err) {
     console.error("Помилка ініціалізації:", err);
@@ -1731,6 +1788,9 @@ function switchTeam(teamName) {
   if (typeof applyWeeklyFilter === 'function') {
     applyWeeklyFilter();
   }
+
+  // 9b. Report Builder
+  if (typeof rbRender === 'function') { rbPopulateFilters(); rbRender(); }
 
   updateSyncStatus('done');
 
@@ -2676,14 +2736,53 @@ async function deleteBonusTier(id) {
 // ===== END BONUS CALCULATOR =====
 
 // ===== GOOGLE DRIVE PREVIEW =====
-const DRIVE_FOLDER_ID = '1He656yAwfQOTOkgORZ6pBUtDI0iGfF9T';
+const DRIVE_FOLDER_ID = '1He656yAwfQOTOkgORZ6pBUtDI0iGfF9T'; // дефолт (fallback)
 const DRIVE_API_KEY = 'AIzaSyAiyUXj3HYrT7-XM2Kwht_sx-L4DsKhu_o';
+let teamDriveFolderId = null; // папка ЦІЄЇ команди (team_settings.drive_folder)
 
 function saveDriveApiKey() {
   const key = document.getElementById('drive-api-key-input').value.trim();
   if (!key) return;
   localStorage.setItem('drive_api_key', key);
   document.getElementById('drive-api-key-input').value = key;
+}
+
+// Дістає ID папки з будь-якого формату лінка Google Drive
+function parseDriveFolderId(url) {
+  const s = String(url || '').trim();
+  if (!s) return null;
+  const m = s.match(/folders\/([a-zA-Z0-9_-]{10,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  if (m) return m[1];
+  if (/^[a-zA-Z0-9_-]{10,}$/.test(s)) return s; // вставили сам ID
+  return null;
+}
+
+async function saveDriveFolder() {
+  const input = document.getElementById('drive-folder-input');
+  const status = document.getElementById('drive-folder-status');
+  const raw = input?.value.trim() || '';
+  if (!raw) { // порожнє = скинути на дефолт
+    await setTeamSetting('drive_folder', '');
+    teamDriveFolderId = null;
+    if (status) status.textContent = 'Скинуто — використовується спільна папка.';
+    return;
+  }
+  const id = parseDriveFolderId(raw);
+  if (!id) { if (status) status.textContent = '⚠ Не схоже на лінк папки Google Drive.'; return; }
+  await setTeamSetting('drive_folder', raw);
+  teamDriveFolderId = id;
+  if (status) status.textContent = `✓ Збережено для ${currentTeam} (ID: ${id.slice(0,12)}…)`;
+}
+
+async function loadDriveFolderSetting() {
+  const raw = await getTeamSetting('drive_folder');
+  teamDriveFolderId = parseDriveFolderId(raw);
+  const input = document.getElementById('drive-folder-input');
+  if (input && raw) input.value = raw;
+  const status = document.getElementById('drive-folder-status');
+  if (status) status.textContent = teamDriveFolderId
+    ? `✓ Папка команди ${currentTeam} підключена`
+    : 'Використовується спільна папка (дефолт).';
 }
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfVUGUXi3nUXlm4fAb8ItzMcZ8p-1Z6_VSfX0u7T8gdZbojZlP8x7l2QVQiEFEZCkl/exec';
@@ -2697,9 +2796,23 @@ async function loadCreativePreview(creativeName) {
   el.innerHTML = `<div class="flex items-center justify-center gap-2 py-4"><div class="w-4 h-4 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin"></div><span class="text-[10px] text-slate-500">Searching Drive...</span></div>`;
 
   try {
-    const url = `${APPS_SCRIPT_URL}?name=${encodeURIComponent(creativeName)}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
+    let data;
+    if (teamDriveFolderId) {
+      // Папка ЦІЄЇ команди: шукаємо файл напряму через Drive API
+      const apiKey = localStorage.getItem('drive_api_key') || DRIVE_API_KEY;
+      const q = encodeURIComponent(`'${teamDriveFolderId}' in parents and name contains '${creativeName.replace(/'/g, "\\'")}' and trashed=false`);
+      const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,mimeType,thumbnailLink,webViewLink)&pageSize=1&key=${apiKey}`);
+      const json = await resp.json();
+      const f = json.files && json.files[0];
+      data = f
+        ? { found: true, mimeType: f.mimeType, thumbnailUrl: f.thumbnailLink, viewUrl: f.webViewLink }
+        : { found: false };
+    } else {
+      // Спільна папка (дефолт) — через Apps Script
+      const url = `${APPS_SCRIPT_URL}?name=${encodeURIComponent(creativeName)}`;
+      const resp = await fetch(url);
+      data = await resp.json();
+    }
 
     if (!data.found) {
       el.innerHTML = `<p class="text-[10px] text-slate-600 py-3 px-4 text-center">No preview found in Drive for "${creativeName}"</p>`;
@@ -2811,18 +2924,7 @@ async function siteLogout() {
   location.reload();
 }
 
-async function saveSitePassword() {
-  const val = document.getElementById('site-pwd-input')?.value.trim();
-  if (!val) return;
-  await setTeamSetting('site_password', val);
-  document.getElementById('site-pwd-input').value = '';
-  alert('Password saved. Refresh page to activate.');
-}
-
-async function clearSitePassword() {
-  await setTeamSetting('site_password', '');
-  alert('Password removed.');
-}
+// (Site Password прибрано — вхід через Supabase Auth)
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
@@ -5040,6 +5142,239 @@ async function loadExpenses() {
   }
 }
 // ===== END EXPENSES =====
+
+// ═══════════ REPORT BUILDER ═══════════
+// Групування/фільтри/стовпчики по rawData (усі місяці команди), як у Keitaro.
+const RB_DIMS = [
+  { key:'date',    label:'День' },
+  { key:'month',   label:'Місяць' },
+  { key:'geo',     label:'Гео' },
+  { key:'account', label:'Акаунт' },
+  { key:'funnel',  label:'Воронка' },
+  { key:'offer',   label:'Оффер' },
+  { key:'agent',   label:'Агент' },
+];
+const RB_COLS = [
+  { key:'spend',    label:'Spend',    fmt:v=>'$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) },
+  { key:'installs', label:'Installs', fmt:v=>Math.round(v).toLocaleString() },
+  { key:'regs',     label:'Regs',     fmt:v=>Math.round(v).toLocaleString() },
+  { key:'deposits', label:'Deps',     fmt:v=>Math.round(v).toLocaleString() },
+  { key:'cpi',      label:'CPI',      fmt:v=>v?'$'+v.toFixed(2):'—', calc:a=>a.installs?a.spend/a.installs:0 },
+  { key:'cpl',      label:'CPL',      fmt:v=>v?'$'+v.toFixed(2):'—', calc:a=>a.regs?a.spend/a.regs:0 },
+  { key:'cpa',      label:'CPA',      fmt:v=>v?'$'+v.toFixed(2):'—', calc:a=>a.deposits?a.spend/a.deposits:0 },
+  { key:'r2d',      label:'R2D',      fmt:v=>v?v.toFixed(1)+'%':'—', calc:a=>a.regs?a.deposits/a.regs*100:0 },
+  { key:'i2r',      label:'Ins→Reg',  fmt:v=>v?'1 до '+v.toFixed(1):'—', calc:a=>a.regs?a.installs/a.regs:0 },
+  { key:'profit',   label:'Profit',   fmt:v=>(v<0?'-':'')+'$'+Math.abs(Math.round(v)).toLocaleString(), calc:a=>a.rev-a.spend },
+  { key:'roi',      label:'ROI',      fmt:v=>Math.round(v)+'%', calc:a=>a.spend?(a.rev-a.spend)/a.spend*100:0 },
+];
+let rbGroups = ['geo'];
+let rbVisibleCols = JSON.parse(localStorage.getItem('rb_cols') || 'null') || ['spend','installs','regs','deposits','cpl','cpa','r2d','profit','roi'];
+let rbMode = 'list';
+let rbSort = { key:'spend', dir:-1 };
+let rbInited = false;
+
+function rbRowMonth(r){ return (r.date||'').slice(0,7); }
+function rbPayoutOf(r){
+  const g=(r.geo||'').toUpperCase().trim(), o=(r.offer||'DEFAULT').toUpperCase().trim();
+  return globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
+}
+function rbFiltered(){
+  const from=document.getElementById('rb-from').value, to=document.getElementById('rb-to').value;
+  const g=document.getElementById('rb-f-geo').value, a=document.getElementById('rb-f-acc').value;
+  const f=document.getElementById('rb-f-fun').value, q=(document.getElementById('rb-q').value||'').toLowerCase();
+  return (rawData||[]).filter(r=>{
+    if(from && r.date < from) return false;
+    if(to && r.date > to) return false;
+    if(g && (r.geo||'').toUpperCase() !== g) return false;
+    if(a && String(r.account||'') !== a) return false;
+    if(f && String(r.funnel||'') !== f) return false;
+    if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.date}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function rbDimVal(r,dim){
+  if(dim==='month') return rbRowMonth(r);
+  if(dim==='geo') return (r.geo||'??').toUpperCase();
+  return String(r[dim] ?? '—') || '—';
+}
+function rbInitOnce(){
+  if(rbInited || !document.getElementById('rb-groups')) return;
+  rbInited = true;
+  rbRenderGroupChips(); rbRenderColsMenu();
+  document.addEventListener('click', ()=>document.getElementById('rb-cols-menu')?.classList.add('hidden'));
+}
+function rbPopulateFilters(){
+  const set=(id,vals,label)=>{
+    const el=document.getElementById(id); if(!el) return;
+    const cur=el.value;
+    el.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${v}">${v}</option>`).join('');
+    if(vals.includes(cur)) el.value=cur;
+  };
+  const d=rawData||[];
+  set('rb-f-geo',[...new Set(d.map(r=>(r.geo||'').toUpperCase()).filter(Boolean))].sort(),'Всі гео');
+  set('rb-f-acc',[...new Set(d.map(r=>String(r.account||'')).filter(Boolean))].sort(),'Всі акаунти');
+  set('rb-f-fun',[...new Set(d.map(r=>String(r.funnel||'')).filter(Boolean))].sort(),'Всі воронки');
+}
+function rbRenderGroupChips(){
+  document.getElementById('rb-groups').innerHTML = RB_DIMS.map(d=>{
+    const idx=rbGroups.indexOf(d.key);
+    const on=idx>=0;
+    return `<button onclick="rbToggleGroup('${d.key}')" class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition border
+      ${on?'bg-cyan-600 text-white border-cyan-400 shadow':'bg-black/20 text-slate-400 border-white/5 hover:text-white'}">
+      ${on?`<span class="opacity-70 mr-1">${idx+1}.</span>`:''}${d.label}</button>`;
+  }).join('');
+}
+function rbToggleGroup(k){
+  const i=rbGroups.indexOf(k);
+  if(i>=0) rbGroups.splice(i,1); else { if(rbGroups.length>=3) rbGroups.shift(); rbGroups.push(k); }
+  if(!rbGroups.length) rbGroups=['geo'];
+  rbRenderGroupChips(); rbRender();
+}
+function rbRenderColsMenu(){
+  document.getElementById('rb-cols-menu').innerHTML =
+    '<p class="text-[9px] font-black uppercase opacity-40 px-2 py-1 tracking-widest">Показувати стовпчики</p>'+
+    RB_COLS.map(c=>`<label class="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer">
+      <span class="text-[11px] font-bold text-slate-300">${c.label}</span>
+      <input type="checkbox" ${rbVisibleCols.includes(c.key)?'checked':''} onchange="rbToggleCol('${c.key}',this.checked)"
+        class="!w-3.5 !h-3.5 !p-0 accent-cyan-500"></label>`).join('');
+}
+function rbToggleCol(k,on){
+  rbVisibleCols = on ? [...new Set([...rbVisibleCols,k])] : rbVisibleCols.filter(x=>x!==k);
+  localStorage.setItem('rb_cols', JSON.stringify(rbVisibleCols));
+  rbRender();
+}
+function rbSetMode(m){
+  rbMode=m;
+  ['list','day','month'].forEach(x=>{
+    const b=document.getElementById('rb-mode-'+x);
+    b.className = x===m
+      ? 'px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition bg-cyan-600 text-white'
+      : 'px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white';
+  });
+  document.getElementById('rb-metric').classList.toggle('hidden', m==='list');
+  rbRender();
+}
+function rbSortBy(k){
+  if(rbSort.key===k) rbSort.dir*=-1; else rbSort={key:k,dir:-1};
+  rbRender();
+}
+function rbReset(){
+  ['rb-from','rb-to','rb-q'].forEach(id=>document.getElementById(id).value='');
+  ['rb-f-geo','rb-f-acc','rb-f-fun'].forEach(id=>document.getElementById(id).value='');
+  rbRender();
+}
+function rbAgg(rows){
+  const a={spend:0,installs:0,regs:0,deposits:0,rev:0};
+  rows.forEach(r=>{
+    a.spend+=Number(r.spend)||0; a.installs+=Number(r.installs)||0;
+    a.regs+=Number(r.regs)||0; a.deposits+=Number(r.deposits)||0;
+    a.rev+=(Number(r.deposits)||0)*rbPayoutOf(r);
+  });
+  return a;
+}
+function rbValOf(a,c){ return c.calc ? c.calc(a) : a[c.key]; }
+
+function rbRender(){
+  rbInitOnce();
+  const tbl=document.getElementById('rb-table'); if(!tbl) return;
+  const data=rbFiltered();
+  const th='p-3 text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-white/10 sticky top-0 bg-[#131c31]/95 backdrop-blur-xl cursor-pointer hover:text-cyan-400 whitespace-nowrap';
+  const cols=RB_COLS.filter(c=>rbVisibleCols.includes(c.key));
+
+  if(rbMode==='list'){
+    // групуємо по вибраних вимірах
+    const map={};
+    data.forEach(r=>{
+      const key=rbGroups.map(g=>rbDimVal(r,g)).join(' · ');
+      (map[key]=map[key]||[]).push(r);
+    });
+    let rows=Object.entries(map).map(([k,rs])=>({k,a:rbAgg(rs),count:rs.length}));
+    const sc=RB_COLS.find(c=>c.key===rbSort.key)||RB_COLS[0];
+    rows.sort((x,y)=>(rbValOf(y.a,sc)-rbValOf(x.a,sc))*(rbSort.dir<0?1:-1));
+    const total=rbAgg(data);
+
+    tbl.innerHTML=`<thead><tr>
+        <th class="${th} text-left" onclick="rbSortBy('${rbSort.key}')">${rbGroups.map(g=>RB_DIMS.find(d=>d.key===g).label).join(' · ')} <span class="opacity-40">(${rows.length})</span></th>
+        ${cols.map(c=>`<th class="${th} text-right" onclick="rbSortBy('${c.key}')">${c.label}${rbSort.key===c.key?(rbSort.dir<0?' ↓':' ↑'):''}</th>`).join('')}
+      </tr></thead><tbody>`+
+      rows.map(r=>`<tr class="hover:bg-white/[0.03] transition">
+        <td class="p-3 text-xs font-bold text-white border-b border-white/5 whitespace-nowrap">${r.k}</td>
+        ${cols.map(c=>{
+          const v=rbValOf(r.a,c);
+          const color=c.key==='profit'||c.key==='roi' ? (v>=0?'text-emerald-400':'text-red-400')
+            : c.key==='deposits'?'text-green-500': c.key==='regs'?'text-blue-400'
+            : c.key==='installs'?'text-cyan-300':'text-slate-200';
+          return `<td class="p-3 text-xs font-bold text-right border-b border-white/5 ${color}">${c.fmt(v)}</td>`;
+        }).join('')}
+      </tr>`).join('')+
+      `<tr class="bg-white/[0.03]">
+        <td class="p-3 text-[10px] font-black uppercase text-cyan-400 border-t-2 border-cyan-500/30">Разом</td>
+        ${cols.map(c=>`<td class="p-3 text-xs font-black text-right text-white border-t-2 border-cyan-500/30">${c.fmt(rbValOf(total,c))}</td>`).join('')}
+      </tr></tbody>`;
+    return;
+  }
+
+  // ——— Pivot: стовпчики = дні або місяці ———
+  const metric=document.getElementById('rb-metric').value;
+  const mc=RB_COLS.find(c=>c.key===metric);
+  const colKeyOf=r=> rbMode==='day' ? r.date : rbRowMonth(r);
+  const colKeys=[...new Set(data.map(colKeyOf).filter(Boolean))].sort();
+  const dims=rbGroups.filter(g=>g!=='date'&&g!=='month');
+  const useDims=dims.length?dims:['geo'];
+  const map={};
+  data.forEach(r=>{
+    const rk=useDims.map(g=>rbDimVal(r,g)).join(' · ');
+    const ck=colKeyOf(r);
+    ((map[rk]=map[rk]||{})[ck]=map[rk][ck]||[]).push(r);
+  });
+  const rowKeys=Object.keys(map).sort((a,b)=>{
+    const sa=colKeys.reduce((s,c)=>s+(map[a][c]?rbAgg(map[a][c]).spend:0),0);
+    const sb=colKeys.reduce((s,c)=>s+(map[b][c]?rbAgg(map[b][c]).spend:0),0);
+    return sb-sa;
+  });
+  const fmtCol=k=> rbMode==='day' ? k.slice(8)+'.'+k.slice(5,7) : k;
+
+  tbl.innerHTML=`<thead><tr>
+      <th class="${th} text-left">${useDims.map(g=>RB_DIMS.find(d=>d.key===g).label).join(' · ')} \\ ${rbMode==='day'?'Дні':'Місяці'} · <span class="text-cyan-400">${mc.label}</span></th>
+      ${colKeys.map(k=>`<th class="${th} text-right">${fmtCol(k)}</th>`).join('')}
+      <th class="${th} text-right text-cyan-400">Разом</th>
+    </tr></thead><tbody>`+
+    rowKeys.map(rk=>{
+      let rowTotal={spend:0,installs:0,regs:0,deposits:0,rev:0};
+      const cells=colKeys.map(ck=>{
+        const rs=map[rk][ck];
+        if(!rs) return `<td class="p-2.5 text-[11px] text-right border-b border-white/5 text-slate-700">·</td>`;
+        const a=rbAgg(rs);
+        Object.keys(rowTotal).forEach(k=>rowTotal[k]+=a[k]);
+        const v=rbValOf(a,mc);
+        return `<td class="p-2.5 text-[11px] font-bold text-right border-b border-white/5 text-slate-200">${v?mc.fmt(v):'·'}</td>`;
+      }).join('');
+      return `<tr class="hover:bg-white/[0.03] transition">
+        <td class="p-2.5 text-xs font-bold text-white border-b border-white/5 whitespace-nowrap">${rk}</td>
+        ${cells}
+        <td class="p-2.5 text-[11px] font-black text-right border-b border-white/5 text-cyan-300">${mc.fmt(rbValOf(rowTotal,mc))}</td>
+      </tr>`;
+    }).join('')+
+    `<tr class="bg-white/[0.03]">
+      <td class="p-2.5 text-[10px] font-black uppercase text-cyan-400 border-t-2 border-cyan-500/30">Разом</td>
+      ${colKeys.map(ck=>{
+        const rs=data.filter(r=>colKeyOf(r)===ck);
+        return `<td class="p-2.5 text-[11px] font-black text-right text-white border-t-2 border-cyan-500/30">${mc.fmt(rbValOf(rbAgg(rs),mc))}</td>`;
+      }).join('')}
+      <td class="p-2.5 text-[11px] font-black text-right text-cyan-300 border-t-2 border-cyan-500/30">${mc.fmt(rbValOf(rbAgg(data),mc))}</td>
+    </tr></tbody>`;
+}
+
+function rbExportCSV(){
+  const tbl=document.getElementById('rb-table');
+  const rows=[...tbl.querySelectorAll('tr')].map(tr=>
+    [...tr.children].map(td=>'"'+td.innerText.replace(/"/g,'""').trim()+'"').join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+rows],{type:'text/csv;charset=utf-8'}));
+  a.download=`report_${currentTeam}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+// ═══════════ END REPORT BUILDER ═══════════
   </script>
 
 <!-- Feature 5: DB Logs Modal -->
@@ -5258,16 +5593,6 @@ async function loadExpenses() {
       </div>
       <!-- Access Panel -->
       <div id="spanel-access" class="hidden p-4 space-y-5">
-        <!-- Site Password -->
-        <div class="bg-red-500/5 border border-red-500/20 rounded-2xl p-4">
-          <p class="text-[10px] font-black uppercase tracking-widest text-red-400 mb-1">🔒 Site Password</p>
-          <p class="text-[9px] text-slate-500 mb-3">Protect the entire dashboard with a password. Leave empty = open access.</p>
-          <div class="flex gap-2 mb-2">
-            <input type="password" id="site-pwd-input" placeholder="New password..." class="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-red-500 text-white">
-            <button onclick="saveSitePassword()" class="bg-red-600 hover:bg-red-500 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap">Save</button>
-          </div>
-          <button onclick="clearSitePassword()" class="text-[9px] text-slate-600 hover:text-red-400 transition uppercase font-bold tracking-widest">Remove password</button>
-        </div>
         <div>
           <p class="text-[10px] font-black uppercase tracking-widest text-purple-400 mb-2">Team Lead Password</p>
           <div class="flex gap-2">
@@ -5305,12 +5630,17 @@ async function loadExpenses() {
             </label>
           </div>
         </div>
-        <!-- Drive API Key -->
+        <!-- Drive Preview (per team) -->
         <div class="border-t border-white/5 pt-5">
           <p class="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">Google Drive Preview</p>
-          <p class="text-[9px] text-slate-500 mb-2">Folder is pre-configured. Only API Key needed (free).</p>
+          <p class="text-[9px] text-slate-500 mb-2">Папка з креативами ДЛЯ ЦІЄЇ КОМАНДИ — встав посилання на папку (вона має бути доступна «за посиланням»).</p>
+          <div class="flex gap-2 mb-3">
+            <input type="url" id="drive-folder-input" placeholder="https://drive.google.com/drive/folders/..." class="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-500 text-white font-mono">
+            <button onclick="saveDriveFolder()" class="bg-amber-600 hover:bg-amber-500 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap">Save</button>
+          </div>
+          <p id="drive-folder-status" class="text-[9px] text-slate-500 mb-3"></p>
           <div class="flex gap-2">
-            <input type="text" id="drive-api-key-input" placeholder="AIza..." class="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-500 text-white font-mono">
+            <input type="text" id="drive-api-key-input" placeholder="API Key: AIza..." class="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-500 text-white font-mono">
             <button onclick="saveDriveApiKey()" class="bg-amber-600 hover:bg-amber-500 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition whitespace-nowrap">Save</button>
           </div>
           <p class="text-[9px] text-slate-600 mt-1.5 leading-relaxed">console.cloud.google.com → Enable Drive API → Credentials → API Key</p>
