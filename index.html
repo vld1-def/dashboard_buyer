@@ -4,6 +4,7 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="color-scheme" content="dark">
+  <title>Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -773,6 +774,209 @@ input[type="date"]::-webkit-datetime-edit-year-field {
   body { zoom: 0.9; }
 }
 /* ===== END SCALE ===== */
+
+/* ═══════════════════════════════════════════════════════════
+   LIQUID GLASS v2 — старі кольори (синій/фіолетовий), скло «рідкіше»
+   ═══════════════════════════════════════════════════════════ */
+
+/* 1. Живі плями на фоні — щоб скло переливалось */
+body::before {
+  content:''; position:fixed; inset:-22%; z-index:-2; pointer-events:none;
+  background:
+    radial-gradient(40% 44% at 16% 20%, rgba(59,130,246,.34), transparent 70%),
+    radial-gradient(36% 40% at 84% 28%, rgba(139,92,246,.30), transparent 70%),
+    radial-gradient(38% 42% at 44% 90%, rgba(56,189,248,.22), transparent 70%),
+    radial-gradient(30% 34% at 92% 80%, rgba(99,102,241,.26), transparent 70%),
+    radial-gradient(32% 36% at 6% 66%, rgba(30,58,138,.40), transparent 72%);
+  filter: blur(34px);
+  animation: auraDrift 34s ease-in-out infinite alternate;
+}
+@keyframes auraDrift {
+  0%   { transform: translate3d(0,0,0) scale(1); }
+  50%  { transform: translate3d(-3.5%,2.5%,0) scale(1.09); }
+  100% { transform: translate3d(2.5%,-2.5%,0) scale(1.05); }
+}
+.light body::before { opacity:.5; }
+
+/* 2. Картки — РІДКІШЕ скло: прозоріші, глибший blur */
+.card {
+  background: linear-gradient(150deg, rgba(30,41,59,.42), rgba(15,23,42,.30)) !important;
+  backdrop-filter: blur(34px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(200%) !important;
+  border: 1px solid rgba(255,255,255,.11) !important;
+  box-shadow:
+    0 12px 46px rgba(2,8,23,.38),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -1px 0 rgba(0,0,0,.20) !important;
+  position: relative;
+}
+.light .card {
+  background: linear-gradient(150deg, rgba(255,255,255,.60), rgba(255,255,255,.38)) !important;
+  border-color: rgba(15,23,42,.09) !important;
+  box-shadow: 0 10px 36px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.9) !important;
+}
+/* кромка «край скла» */
+.card::after {
+  content:''; position:absolute; inset:0; border-radius:inherit; padding:1px; pointer-events:none;
+  background: linear-gradient(140deg,
+    rgba(255,255,255,.30) 0%, transparent 38%,
+    transparent 60%, rgba(59,130,246,.34) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity:.9;
+}
+
+/* 3. Hover — ЛИШЕ на великих картках-секціях (не на кнопках/меню) */
+#dashboard-content > .card:hover,
+#dashboard-content .grid > .card:hover,
+#kpi-row > .card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(59,130,246,.30) !important;
+  box-shadow:
+    0 18px 56px rgba(2,8,23,.46),
+    0 0 0 1px rgba(59,130,246,.14),
+    0 0 42px rgba(59,130,246,.10),
+    inset 0 1px 0 rgba(255,255,255,.15) !important;
+  transition: all .3s ease;
+}
+
+/* 4. Меню/тултіпи/модалки — скло */
+#team-menu, #month-menu, #links-menu,
+.card .bg-slate-900, div[class*="bg-slate-900"].rounded-2xl {
+  background: linear-gradient(150deg, rgba(30,41,59,.94), rgba(15,23,42,.90)) !important;
+  backdrop-filter: blur(30px) saturate(185%) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(185%) !important;
+  border-color: rgba(255,255,255,.13) !important;
+}
+.modal-overlay {
+  backdrop-filter: blur(12px) saturate(150%) !important;
+  background: rgba(8,14,26,.58) !important;
+}
+thead.backdrop-blur-3xl, thead[class*="backdrop-blur"] {
+  background: rgba(30,41,59,.55) !important;
+  backdrop-filter: blur(22px) saturate(185%) !important;
+}
+#milestone-container > div:last-child, .bg-slate-800\/60 {
+  background: rgba(255,255,255,.07) !important;
+  border: 1px solid rgba(255,255,255,.09) !important;
+  backdrop-filter: blur(8px);
+}
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,.35) !important; }
+::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,.55) !important; }
+
+/* ═══════════ ЦЕНТРОВАНИЙ КОМПАКТНИЙ ХЕДЕР ═══════════ */
+header {
+  justify-content: center !important;
+  margin-bottom: .4rem !important;
+}
+#milestone-container { margin-bottom: 1.1rem !important; }
+#dashboard-content { margin-top: 0 !important; }
+/* Sync-бейдж — фіксовано праворуч від екрана, скляна пігулка */
+#last-sync-badge {
+  position: fixed !important; top: 12px; right: 14px; z-index: 115;
+  background: linear-gradient(150deg, rgba(30,41,59,.85), rgba(15,23,42,.75));
+  backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.13); border-radius: 12px;
+  padding: 6px 12px !important; font-style: normal !important;
+  box-shadow: 0 8px 24px rgba(2,8,23,.4), inset 0 1px 0 rgba(255,255,255,.1);
+}
+header .h-1.w-1 { display: none; }
+header > div:first-child {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+}
+header h1 { font-size: 1.25rem !important; }
+header h1 span { font-size: .85rem !important; }
+
+/* ═══════════ ЛІТАЮЧИЙ ДОК (фікс підказок) ═══════════ */
+#app-dock {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 120;
+  display: flex; align-items: center; gap: 5px; padding: 9px 11px;
+  background: linear-gradient(150deg, rgba(30,41,59,.72), rgba(15,23,42,.60));
+  backdrop-filter: blur(28px) saturate(190%); -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255,255,255,.14); border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(2,8,23,.55), 0 0 44px rgba(59,130,246,.14),
+              inset 0 1px 0 rgba(255,255,255,.14);
+  max-width: calc(100vw - 20px);
+  overflow: visible;               /* ← нічого не обрізається */
+  flex-wrap: nowrap;
+}
+.light #app-dock { background: linear-gradient(150deg, rgba(255,255,255,.8), rgba(255,255,255,.6)); }
+#app-dock .dk {
+  width: 48px; height: 48px; flex: 0 0 48px; border-radius: 16px;
+  display: grid; place-items: center; color: #94a3b8; cursor: pointer;
+  transition: background .18s, color .18s; position: relative;
+  background: transparent; border: 1px solid transparent;
+}
+#app-dock .dk svg { width: 22px; height: 22px; stroke-width: 1.9; }
+/* hover без підйому — лише підсвітка (hover-ліфт тільки на картках) */
+#app-dock .dk:hover {
+  color: #fff;
+  background: rgba(59,130,246,.16);
+  border-color: rgba(59,130,246,.32);
+}
+#app-dock .dk.primary {
+  background: linear-gradient(140deg, #3b82f6, #6366f1); color: #fff;
+  box-shadow: 0 8px 22px rgba(59,130,246,.45);
+}
+#app-dock .dk.primary:hover { background: linear-gradient(140deg, #60a5fa, #3b82f6); }
+#app-dock .dk-sep { width: 1px; height: 26px; background: rgba(255,255,255,.14); margin: 0 4px; flex: 0 0 1px; }
+/* підказка НАД іконкою — не ховається за край екрана */
+#app-dock .dk small {
+  position: absolute; top: -36px; left: 50%; transform: translateX(-50%) translateY(4px);
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; white-space: nowrap; opacity: 0;
+  background: rgba(15,23,42,.95); color: #fff; padding: 4px 9px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.16); transition: .18s; pointer-events: none; z-index: 130;
+}
+#app-dock .dk:hover small { opacity: 1; transform: translateX(-50%) translateY(0); }
+#app-dock .dk .dot {
+  position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
+  background: #ef4444; box-shadow: 0 0 8px #ef4444;
+}
+body { padding-bottom: 100px !important; padding-top: 14px !important; }
+@media (max-width: 640px) {
+  #app-dock { bottom: 8px; gap: 2px; padding: 6px 7px; }
+  #app-dock .dk { width: 41px; height: 41px; flex: 0 0 41px; }
+}
+
+/* ═══════════ КАСТОМНИЙ КАЛЕНДАР ═══════════ */
+input[type="date"] { position: relative; }
+input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:absolute; inset:0; cursor:pointer; }
+#glass-cal {
+  position: fixed; z-index: 200; width: 252px; padding: 12px;
+  background: linear-gradient(150deg, rgba(30,41,59,.90), rgba(15,23,42,.85));
+  backdrop-filter: blur(28px) saturate(190%); -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255,255,255,.15); border-radius: 18px;
+  box-shadow: 0 22px 60px rgba(2,8,23,.6), inset 0 1px 0 rgba(255,255,255,.12);
+  opacity: 0; transform: translateY(6px) scale(.97); pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+#glass-cal.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+#glass-cal .gc-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+#glass-cal .gc-title { font-size:12px; font-weight:800; color:#f1f5f9; letter-spacing:.02em; }
+#glass-cal .gc-nav {
+  width:26px; height:26px; border-radius:9px; display:grid; place-items:center;
+  color:#94a3b8; cursor:pointer; font-size:13px; font-weight:900; transition:.15s;
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08);
+}
+#glass-cal .gc-nav:hover { color:#fff; background:rgba(59,130,246,.22); border-color:rgba(59,130,246,.4); }
+#glass-cal .gc-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+#glass-cal .gc-dow { font-size:8.5px; font-weight:900; text-transform:uppercase; color:#64748b; text-align:center; padding:4px 0 6px; }
+#glass-cal .gc-d {
+  aspect-ratio:1; display:grid; place-items:center; font-size:11px; font-weight:700;
+  color:#cbd5e1; border-radius:9px; cursor:pointer; transition:.13s; border:1px solid transparent;
+}
+#glass-cal .gc-d:hover { background:rgba(59,130,246,.20); color:#fff; border-color:rgba(59,130,246,.35); }
+#glass-cal .gc-d.other { color:#475569; }
+#glass-cal .gc-d.today { border-color:rgba(59,130,246,.5); color:#60a5fa; }
+#glass-cal .gc-d.sel {
+  background:linear-gradient(140deg,#3b82f6,#6366f1); color:#fff;
+  box-shadow:0 4px 14px rgba(59,130,246,.5);
+}
+#glass-cal .gc-foot { display:flex; justify-content:space-between; margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.08); }
+#glass-cal .gc-btn { font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#94a3b8; cursor:pointer; transition:.15s; }
+#glass-cal .gc-btn:hover { color:#60a5fa; }
+/* ═══════════ END LIQUID GLASS v2 ═══════════ */
+
   </style>
 </head>
 <body class="py-6 px-4 md:px-6 font-sans antialiased text-dynamic">
@@ -897,7 +1101,7 @@ input[type="date"]::-webkit-datetime-edit-year-field {
     </button>
 
     <!-- DB Logs (Feature 5) -->
-    <button onclick="openDbLogsModal()" class="hidden p-2 card rounded-xl shadow-md text-cyan-400 hover:bg-gray-500/10 transition admin-only" title="DB Logs">
+    <button onclick="openDbLogsModal()" class="p-2 card rounded-xl shadow-md text-cyan-400 hover:bg-gray-500/10 transition admin-only" title="DB Logs">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
     </button>
 
@@ -6177,5 +6381,197 @@ function dcRenderWarn(unlinked) {
   <img src="" alt="fullscreen preview" onclick="event.stopPropagation()">
   <div class="lb-label"></div>
 </div>
+
+<!-- ═══════════ GLASS UI: док-меню + кастомний календар ═══════════ -->
+<script>
+(function(){
+  /* ---------- Іконки (Lucide-стиль) ---------- */
+  const I = {
+    users:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m14 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+    calendar:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+    camera:'M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+    images:'M3 15V5a2 2 0 0 1 2-2h10M8 21h11a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2zm3-9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zm10 5-4.5-4.5L8 21',
+    file:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M9 13h6M9 17h6',
+    check:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-5 9 2 2 4-4',
+    clock:'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+    bookmark:'M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z',
+    coins:'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+    database:'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
+    compare:'M9 19V6l-2 1m2-1 2 1M9 19H5a2 2 0 0 1-2-2V9m6 10h6m0 0h4a2 2 0 0 0 2-2V9m-6 10V6m0 0 2-1m-2 1-2-1',
+    clipboard:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-3 7-2 2-1-1',
+    settings:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+    logout:'M17 16l4-4m0 0-4-4m4 4H7m6 4v1a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v1',
+    plus:'M12 5v14M5 12h14'
+  };
+  const ICON_BY_TITLE = [
+    [/month|місяц/i,'calendar'], [/performance summary|screenshot/i,'camera'],
+    [/фототек|gallery/i,'images'], [/daily report/i,'file'], [/mission/i,'check'],
+    [/change log/i,'clock'], [/quick link/i,'bookmark'], [/bonus/i,'coins'],
+    [/db logs/i,'database'], [/geo compare/i,'compare'], [/перевірка/i,'clipboard'],
+    [/settings/i,'settings'], [/вийти|logout/i,'logout']
+  ];
+  const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
+  const RU = {
+    'Select Month':'Місяць', 'Performance Summary':'Звіт-картинка', 'Фототека':'Фототека',
+    'Daily Reports':'Щоденні звіти', 'Mission Center':'Таски', 'Change Log':'Історія змін',
+    'Quick Links':'Швидкі лінки', 'Bonus Calculator':'Бонуси', 'DB Logs':'Логи бази',
+    'Geo Compare (по командах)':'Порівняння гео', 'Перевірка даних (Keitaro)':'Перевірка даних',
+    'Settings':'Налаштування', 'Вийти':'Вийти'
+  };
+
+  /* ---------- Літаючий док ---------- */
+  function buildDock(){
+    const header = document.querySelector('header');
+    if (!header || document.getElementById('app-dock')) return;
+    const bar = header.children[1];
+    if (!bar) return;
+
+    const dock = document.createElement('nav');
+    dock.id = 'app-dock';
+    [...bar.children].forEach(node => {
+      if (node.classList.contains('h-6') && node.classList.contains('w-px')) {
+        const s = document.createElement('div'); s.className = 'dk-sep';
+        if (node.classList.contains('admin-only')) s.classList.add('admin-only');
+        dock.appendChild(s); return;
+      }
+      dock.appendChild(node);
+    });
+    bar.remove();
+    document.body.appendChild(dock);
+
+    dock.querySelectorAll(':scope > div.flex.items-center').forEach(g => {
+      [...g.children].forEach(c => dock.insertBefore(c, g));
+      g.remove();
+    });
+
+    dock.querySelectorAll('button, a').forEach(el => {
+      const t = el.getAttribute('title') || '';
+      el.classList.remove('p-2','px-4','card','rounded-xl','shadow-md','px-5','py-2','rounded-2xl');
+      el.classList.add('dk');
+      el.style.cssText += ';background:transparent;border:1px solid transparent;';
+      const key = (ICON_BY_TITLE.find(([re]) => re.test(t)) || [])[1];
+      if (key && I[key]) {
+        const dot = el.querySelector('#task-dot');
+        el.innerHTML = svg(I[key]);
+        if (dot) { const d = document.createElement('span'); d.id='task-dot'; d.className='dot hidden'; el.appendChild(d); }
+      }
+      if (el.tagName === 'A' && /Form\.html/.test(el.getAttribute('href') || '')) {
+        el.innerHTML = svg(I.plus); el.classList.add('primary'); el.setAttribute('title','Додати дані');
+      }
+      const label = el.getAttribute('title');
+      if (label) { const s = document.createElement('small'); s.textContent = RU[label] || label; el.appendChild(s); }
+    });
+
+    const teamBtn = dock.querySelector('[onclick*="toggleTeamMenu"]');
+    if (teamBtn) {
+      teamBtn.classList.remove('p-2','px-4','card','rounded-xl','shadow-md','border','border-emerald-500/30');
+      teamBtn.classList.add('dk');
+      teamBtn.innerHTML = svg(I.users);
+      const s = document.createElement('small'); s.id='dock-team-label'; s.textContent='Команда';
+      teamBtn.appendChild(s);
+    }
+    // випадайки відкриваються вгору
+    dock.querySelectorAll('#team-menu,#month-menu,#links-menu').forEach(m => {
+      m.style.cssText += ';top:auto;bottom:calc(100% + 12px);margin-top:0;';
+    });
+  }
+  function syncDockLabels(){
+    const t=document.getElementById('active-team-label'), l=document.getElementById('dock-team-label');
+    if (t && l) l.textContent = t.innerText.replace(/^TEAM:\s*/i,'') || 'Команда';
+    const m=document.getElementById('current-month-label');
+    const mb=document.querySelector('#app-dock [onclick*="toggleMonthMenu"] small');
+    if (m && mb) mb.textContent = m.innerText || 'Місяць';
+  }
+
+  /* ---------- Кастомний скляний календар ---------- */
+  const MONTHS=['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+  const DOW=['Пн','Вт','Ср','Чт','Пт','Сб','Нд'];
+  let calEl=null, calInput=null, calView=new Date();
+
+  function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+  function buildCal(){
+    if (calEl) return;
+    calEl=document.createElement('div'); calEl.id='glass-cal';
+    calEl.addEventListener('mousedown', e=>e.preventDefault()); // не забирати фокус
+    document.body.appendChild(calEl);
+    document.addEventListener('click', e=>{
+      if (calEl.classList.contains('open') && !calEl.contains(e.target) && e.target!==calInput) closeCal();
+    });
+    window.addEventListener('scroll', closeCal, true);
+  }
+  function renderCal(){
+    const y=calView.getFullYear(), m=calView.getMonth();
+    const selVal=calInput?.value||'';
+    const todayStr=fmtDate(new Date());
+    const first=new Date(y,m,1);
+    let start=(first.getDay()+6)%7; // Пн=0
+    const dim=new Date(y,m+1,0).getDate();
+    const dimPrev=new Date(y,m,0).getDate();
+    let cells='';
+    for(let i=0;i<42;i++){
+      let d,mm=m,yy=y,other=false;
+      if(i<start){ d=dimPrev-start+1+i; mm=m-1; other=true; }
+      else if(i-start<dim){ d=i-start+1; }
+      else { d=i-start-dim+1; mm=m+1; other=true; }
+      const dt=new Date(yy,mm,d);
+      const val=fmtDate(dt);
+      const cls=['gc-d', other?'other':'', val===todayStr?'today':'', val===selVal?'sel':''].join(' ');
+      cells+=`<div class="${cls}" data-v="${val}">${d}</div>`;
+    }
+    calEl.innerHTML=`
+      <div class="gc-head">
+        <div class="gc-nav" data-nav="-1">‹</div>
+        <div class="gc-title">${MONTHS[m]} ${y}</div>
+        <div class="gc-nav" data-nav="1">›</div>
+      </div>
+      <div class="gc-grid">${DOW.map(d=>`<div class="gc-dow">${d}</div>`).join('')}${cells}</div>
+      <div class="gc-foot">
+        <span class="gc-btn" data-act="today">Сьогодні</span>
+        <span class="gc-btn" data-act="clear">Очистити</span>
+      </div>`;
+    calEl.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{ calView.setMonth(calView.getMonth()+Number(b.dataset.nav)); renderCal(); });
+    calEl.querySelectorAll('.gc-d').forEach(c=>c.onclick=()=>{ setVal(c.dataset.v); });
+    calEl.querySelector('[data-act="today"]').onclick=()=>setVal(todayStr);
+    calEl.querySelector('[data-act="clear"]').onclick=()=>setVal('');
+  }
+  function setVal(v){
+    if(!calInput) return;
+    calInput.value=v;
+    calInput.dispatchEvent(new Event('input',{bubbles:true}));
+    calInput.dispatchEvent(new Event('change',{bubbles:true}));
+    closeCal();
+  }
+  function openCal(input){
+    buildCal();
+    calInput=input;
+    calView = input.value ? new Date(input.value+'T00:00:00') : new Date();
+    renderCal();
+    const r=input.getBoundingClientRect();
+    const w=252, h=320;
+    let x=Math.min(Math.max(8, r.left), window.innerWidth-w-8);
+    let yTop=r.bottom+8;
+    if (yTop+h > window.innerHeight-8) yTop=Math.max(8, r.top-h-8);
+    calEl.style.left=x+'px'; calEl.style.top=yTop+'px';
+    calEl.classList.add('open');
+  }
+  function closeCal(){ calEl?.classList.remove('open'); }
+
+  // перехоплюємо всі date-інпути (включно з майбутніми)
+  document.addEventListener('click', e=>{
+    const inp=e.target.closest('input[type="date"]');
+    if(!inp) return;
+    e.preventDefault();
+    openCal(inp);
+  }, true);
+  document.addEventListener('focusin', e=>{
+    if(e.target.matches?.('input[type="date"]')) { e.target.blur(); openCal(e.target); }
+  });
+
+  function init(){ buildDock(); syncDockLabels(); setInterval(syncDockLabels,1500); }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
 </body>
 </html>
