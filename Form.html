@@ -136,6 +136,81 @@ select {
   body { zoom: 0.9; }
 }
 /* ===== END SCALE ===== */
+
+/* ═══════════ LIQUID GLASS (як index-new) ═══════════ */
+body::before {
+  content:''; position:fixed; inset:-22%; z-index:-2; pointer-events:none;
+  background:
+    radial-gradient(40% 44% at 16% 20%, rgba(59,130,246,.34), transparent 70%),
+    radial-gradient(36% 40% at 84% 28%, rgba(139,92,246,.30), transparent 70%),
+    radial-gradient(38% 42% at 44% 90%, rgba(56,189,248,.22), transparent 70%),
+    radial-gradient(30% 34% at 92% 80%, rgba(99,102,241,.26), transparent 70%);
+  filter: blur(34px);
+  animation: auraDrift 34s ease-in-out infinite alternate;
+}
+@keyframes auraDrift {
+  0%   { transform: translate3d(0,0,0) scale(1); }
+  50%  { transform: translate3d(-3.5%,2.5%,0) scale(1.09); }
+  100% { transform: translate3d(2.5%,-2.5%,0) scale(1.05); }
+}
+.card {
+  background: linear-gradient(150deg, rgba(30,41,59,.42), rgba(15,23,42,.30)) !important;
+  backdrop-filter: blur(34px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(200%) !important;
+  border: 1px solid rgba(255,255,255,.11) !important;
+  box-shadow:
+    0 12px 46px rgba(2,8,23,.38),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 -1px 0 rgba(0,0,0,.20) !important;
+  position: relative;
+}
+.card::after {
+  content:''; position:absolute; inset:0; border-radius:inherit; padding:1px; pointer-events:none;
+  background: linear-gradient(140deg,
+    rgba(255,255,255,.30) 0%, transparent 38%,
+    transparent 60%, rgba(59,130,246,.34) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity:.9;
+}
+
+/* Таби (Campaigns / База / Expenses / Settings) — як меню в index-new */
+.tab-btn {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px !important;
+  color: #94a3b8;
+  transition: all .18s;
+}
+.tab-btn:hover { color:#fff; background: rgba(59,130,246,.14); border-color: rgba(59,130,246,.30); }
+.tab-btn.active {
+  background: linear-gradient(140deg, #3b82f6, #6366f1) !important;
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(59,130,246,.45) !important;
+}
+/* контейнер табів — скляна пігулка */
+#main-tabs, .tabs-glass {
+  background: linear-gradient(150deg, rgba(30,41,59,.65), rgba(15,23,42,.55));
+  backdrop-filter: blur(26px) saturate(185%);
+  -webkit-backdrop-filter: blur(26px) saturate(185%);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 20px;
+  padding: 7px !important;
+  box-shadow: 0 14px 44px rgba(2,8,23,.4), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.rec-tbl-btn.active, button[class*="bg-blue-600"] {
+  background: linear-gradient(140deg, #3b82f6, #6366f1) !important;
+  box-shadow: 0 6px 18px rgba(59,130,246,.4);
+}
+.drop-zone { border: 2px dashed rgba(59,130,246,.30) !important; }
+thead[class*="sticky"], thead[class*="bg-slate-8"] {
+  background: rgba(30,41,59,.72) !important;
+  backdrop-filter: blur(22px) saturate(185%) !important;
+}
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,.35) !important; }
+::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,.55) !important; }
+/* ═══════════ END LIQUID GLASS ═══════════ */
   </style>
 </head>
 <body class="p-6 md:p-12 antialiased">
@@ -156,11 +231,11 @@ select {
       </div>
       
       <div class="flex items-center gap-4">
-        <div class="flex bg-white/5 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
-          <button onclick="switchMode('dataset')" id="tab-dataset" class="tab-btn active px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Campaigns</button>
-          <button onclick="switchMode('records')" id="tab-records" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">База</button>
-          <button onclick="switchMode('expenses')" id="tab-expenses" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Витрати</button>
-          <button onclick="switchMode('providers')" id="tab-providers" class="tab-btn px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all">Settings</button>
+        <div id="main-tabs" class="flex gap-1.5">
+          <button onclick="switchMode('dataset')" id="tab-dataset" class="tab-btn active px-6 py-2.5 text-xs font-black uppercase transition-all">Campaigns</button>
+          <button onclick="switchMode('records')" id="tab-records" class="tab-btn px-6 py-2.5 text-xs font-black uppercase transition-all">База</button>
+          <button onclick="switchMode('expenses')" id="tab-expenses" class="tab-btn px-6 py-2.5 text-xs font-black uppercase transition-all">Витрати</button>
+          <button onclick="switchMode('providers')" id="tab-providers" class="tab-btn px-6 py-2.5 text-xs font-black uppercase transition-all">Settings</button>
         </div>
         <a href="index.html" class="bg-white/5 hover:bg-white/10 text-blue-400 font-black text-[11px] uppercase border border-blue-500/20 px-6 py-3 rounded-2xl transition-all shadow-lg">
           ← Dashboard
