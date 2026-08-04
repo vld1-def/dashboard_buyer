@@ -594,7 +594,8 @@ const keywords = {
   geo: ['country', 'geo', 'страна', 'країна', 'гео', 'location', 'країна/регіон'],
   cid: ['ad name', 'назва оголошення', 'название объявления', 'creative id'],
   installs: ['leads', 'лід', 'лид', 'mobile app installs', 'app installs', 'інсталяції', 'установки мобільного', 'установки мобильного', 'встановлення мобільного', 'встановлення застосунку'],
-  device: ['пристрій показів', 'impression device', 'device platform', 'пристрій', 'устройство показов', 'устройство', 'platform', 'платформа']
+  device: ['пристрій показів', 'impression device', 'device platform', 'пристрій', 'устройство показов', 'устройство', 'platform', 'платформа'],
+  placement: ['placement', 'плейсмент', 'розміщення', 'размещение', 'ad placement', 'місце показу', 'место показа', 'publisher platform', 'платформа видавця']
 };
 
 // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
@@ -983,10 +984,11 @@ function processCampaignData(map, lines) {
     const clicks = map.clicks !== -1 ? (parseInt(row[map.clicks]) || 0) : 0;
     const deviceRaw = map.device !== -1 ? (row[map.device] || '') : '';
     const device = normalizeDevice(deviceRaw);
-    const cKey = `${date}_${accName}_${cid}_${device}`;
+    const placement = map.placement !== -1 ? String(row[map.placement] || '').trim() : '';
+    const cKey = `${date}_${accName}_${cid}_${device}_${placement}`;
 
     if (!creativeAggregated[cKey]) {
-      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, placement, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
     }
     creativeAggregated[cKey].spend += spend;
     creativeAggregated[cKey].regs += regs;
@@ -1182,6 +1184,7 @@ async function confirmDatasetImport() {
     geo: row.geo,
     funnel: row.funnel,
     device: row.device || '',
+    placement: row.placement || '',
     spend: row.spend,
     clicks: row.clicks || 0,
     installs: row.installs || 0,
