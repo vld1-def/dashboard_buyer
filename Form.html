@@ -594,8 +594,12 @@ const keywords = {
   geo: ['country', 'geo', 'страна', 'країна', 'гео', 'location', 'країна/регіон'],
   cid: ['ad name', 'назва оголошення', 'название объявления', 'creative id'],
   installs: ['leads', 'лід', 'лид', 'mobile app installs', 'app installs', 'інсталяції', 'установки мобільного', 'установки мобильного', 'встановлення мобільного', 'встановлення застосунку'],
-  device: ['пристрій показів', 'impression device', 'device platform', 'пристрій', 'устройство показов', 'устройство', 'platform', 'платформа'],
-  placement: ['placement', 'плейсмент', 'розміщення', 'размещение', 'ad placement', 'місце показу', 'место показа', 'publisher platform', 'платформа видавця']
+  // ВАЖЛИВО: 'platform' прибрано з device — інакше воно перехоплювало колонку Platform
+  device: ['пристрій показів', 'impression device', 'device platform', 'пристрій', 'устройство показов', 'устройство'],
+  // Платформа: facebook / instagram / messenger / audience network
+  platform: ['publisher platform', 'платформа видавця', 'платформа издателя', 'платформа', 'platform'],
+  // Плейсмент: feed / story / reels / ...
+  placement: ['platform position', 'позиція платформи', 'позиция платформы', 'placement', 'плейсмент', 'розміщення', 'размещение', 'ad placement', 'місце показу', 'место показа']
 };
 
 // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
@@ -727,6 +731,38 @@ async function refreshProvidersTable() {
 }
 
 // --- ОБРОБКА CSV ---
+
+// Зіставлення колонок: спершу точні збіги, потім часткові, і одна колонка — одному полю.
+// Без цього "Platform" перехоплював би "Platform position", а "Publisher platform" — обидва.
+function mapColumns(headers) {
+  const map = {};
+  const taken = new Set();
+  const keys = Object.keys(keywords);
+  keys.forEach(k => map[k] = -1);
+
+  // 1) точний збіг заголовка з ключовим словом
+  keys.forEach(key => {
+    for (const kw of keywords[key]) {
+      const i = headers.findIndex((h, idx) => !taken.has(idx) && h === kw);
+      if (i !== -1) { map[key] = i; taken.add(i); return; }
+    }
+  });
+
+  // 2) частковий збіг — довші ключові слова мають пріоритет ("platform position" > "platform")
+  const partial = keys
+    .filter(k => map[k] === -1)
+    .map(k => ({ k, kws: [...keywords[k]].sort((a, b) => b.length - a.length) }))
+    .sort((a, b) => (b.kws[0]?.length || 0) - (a.kws[0]?.length || 0));
+
+  partial.forEach(({ k, kws }) => {
+    for (const kw of kws) {
+      const i = headers.findIndex((h, idx) => !taken.has(idx) && h.includes(kw));
+      if (i !== -1) { map[k] = i; taken.add(i); return; }
+    }
+  });
+
+  return map;
+}
 
 // ===== KEITARO MERGE (точні конверсії поверх FB) =====
 let keitaroAgg = null;   // {byCreative:{}, byDaily:{}, byCampaign:{}, days:Set, unlinked:Set}
@@ -925,14 +961,13 @@ function handleCSV(e, type) {
     const lines = content.split('\n').filter(l => l.trim() !== '').map(l => l.split(',').map(c => c.replace(/"/g, '').trim()));
     
     const headers = lines[0].map(h => h.toLowerCase());
-    const map = {};
-    Object.keys(keywords).forEach(key => { 
-      map[key] = headers.findIndex(h => keywords[key].some(kw => h === kw || h.includes(kw))); 
-    });
+    const map = mapColumns(headers);
 
     console.log("Mapped Columns:", map);
     console.log("Headers found:", headers);
-    console.log("Device col index:", map.device, map.device !== -1 ? `→ "${headers[map.device]}"` : '→ NOT FOUND');
+    console.log("Device:", map.device !== -1 ? headers[map.device] : 'NOT FOUND',
+                '| Platform:', map.platform !== -1 ? headers[map.platform] : 'NOT FOUND',
+                '| Placement:', map.placement !== -1 ? headers[map.placement] : 'NOT FOUND');
     if (type === 'dataset') {
       lastFbParse = { map, lines };
       const nameEl = document.getElementById('fb-file-name');
@@ -984,11 +1019,12 @@ function processCampaignData(map, lines) {
     const clicks = map.clicks !== -1 ? (parseInt(row[map.clicks]) || 0) : 0;
     const deviceRaw = map.device !== -1 ? (row[map.device] || '') : '';
     const device = normalizeDevice(deviceRaw);
+    const platform  = map.platform  !== -1 ? String(row[map.platform]  || '').trim() : '';
     const placement = map.placement !== -1 ? String(row[map.placement] || '').trim() : '';
-    const cKey = `${date}_${accName}_${cid}_${device}_${placement}`;
+    const cKey = `${date}_${accName}_${cid}_${device}_${platform}_${placement}`;
 
     if (!creativeAggregated[cKey]) {
-      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, placement, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, platform, placement, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
     }
     creativeAggregated[cKey].spend += spend;
     creativeAggregated[cKey].regs += regs;
@@ -1184,6 +1220,7 @@ async function confirmDatasetImport() {
     geo: row.geo,
     funnel: row.funnel,
     device: row.device || '',
+    platform: row.platform || '',
     placement: row.placement || '',
     spend: row.spend,
     clicks: row.clicks || 0,

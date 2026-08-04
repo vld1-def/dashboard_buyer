@@ -1558,6 +1558,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <select id="rb-f-acc" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[160px]"><option value="">Всі акаунти</option></select>
       <select id="rb-f-fun" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">Всі воронки</option></select>
       <select id="rb-f-dev" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[140px]"><option value="">Всі девайси</option></select>
+      <select id="rb-f-plat" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">Всі платформи</option></select>
       <select id="rb-f-plc" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">Всі плейсменти</option></select>
       <input id="rb-q" oninput="rbRender()" placeholder="Пошук…" class="bg-black/20 border border-white/5 rounded-xl px-3 py-2 text-[10px] font-bold text-white outline-none w-28 focus:border-cyan-500">
       <select id="rb-metric" onchange="rbRender()" class="hidden bg-black/20 border border-cyan-500/30 rounded-xl px-2 py-2 text-[10px] font-black uppercase text-cyan-300 outline-none cursor-pointer">
@@ -5317,18 +5318,43 @@ function renderWeeklyHeatmap(data) {
   }).join('');
 }
 
+// Платформа (Facebook/Instagram) + плейсмент (Feed/Story) → один читабельний підпис.
+// FB у плейсменті пише лише "feed", тому без платформи незрозуміло, де саме крутилось.
+const PLATFORM_LABELS = {
+  facebook:'Facebook', instagram:'Instagram', messenger:'Messenger',
+  audience_network:'Audience Network', 'audience network':'Audience Network',
+  threads:'Threads', whatsapp:'WhatsApp'
+};
+function prettyPlatform(p){
+  const k = String(p||'').trim().toLowerCase();
+  if (!k) return '';
+  return PLATFORM_LABELS[k] || (k.charAt(0).toUpperCase() + k.slice(1).replace(/_/g,' '));
+}
+function prettyPlacement(v){
+  const s = String(v||'').trim();
+  if (!s) return '';
+  return s.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+// Повна мітка розміщення: "Instagram · Feed"
+function placementLabel(row){
+  const pl = prettyPlatform(row.platform);
+  const pc = prettyPlacement(row.placement);
+  if (pl && pc) return `${pl} · ${pc}`;
+  return pl || pc || '—';
+}
+
 // ===== Geo × Placement (вкладка в Geo Breakdown) =====
 function renderGeoPlacementWidget(crData, el) {
-  const has = crData.some(c => c.placement && String(c.placement).trim() !== '');
+  const has = crData.some(c => (c.placement && String(c.placement).trim()) || (c.platform && String(c.platform).trim()));
   if (!has) {
     el.innerHTML = `<div class="col-span-3 text-center py-8 opacity-30 text-xs uppercase font-black">
-      Немає даних по плейсментах — додай стовпчик Placement у FB-звіт і залий через Data Hub</div>`;
+      Немає даних — додай стовпці Platform і Placement у FB-звіт і залий через Data Hub</div>`;
     return;
   }
   const map = {};
   crData.forEach(c => {
     const g = (c.geo||'??').toUpperCase();
-    const p = String(c.placement||'').trim() || '—';
+    const p = placementLabel(c);
     if (!map[g]) map[g] = {};
     if (!map[g][p]) map[g][p] = {cl:0,i:0,r:0,d:0,s:0};
     map[g][p].cl += Number(c.clicks)||0;
@@ -5377,31 +5403,38 @@ function renderPlacementsWidget() {
   const el = document.getElementById('placements-content');
   if (!el) return;
   const crData = (window.creativesRawData||[]).filter(c => c.date && c.date.startsWith(currentMonthFilter));
-  const has = crData.some(c => c.placement && String(c.placement).trim() !== '');
+  const has = crData.some(c => (c.placement && String(c.placement).trim()) || (c.platform && String(c.platform).trim()));
   if (!has) {
     el.innerHTML = `<div class="text-center py-10 opacity-30 text-xs uppercase font-black">
-      Немає даних по плейсментах — додай стовпчик Placement у FB-звіт</div>`;
+      Немає даних — додай стовпці Platform і Placement у FB-звіт</div>`;
     return;
   }
-  const map = {};
+
+  // Групуємо по платформі, всередині — плейсменти
+  const byPlat = {};
   crData.forEach(c => {
-    const p = String(c.placement||'').trim() || '—';
-    if (!map[p]) map[p] = {cl:0,i:0,r:0,d:0,s:0,rev:0};
-    map[p].cl += Number(c.clicks)||0;
-    map[p].i  += Number(c.installs)||0;
-    map[p].r  += Number(c.regs)||0;
-    map[p].d  += Number(c.deps)||0;
-    map[p].s  += Number(c.spend)||0;
-    const g=(c.geo||'').toUpperCase().trim();
-    map[p].rev += (Number(c.deps)||0) * (globalPayouts[`${g}_DEFAULT`] || 0);
+    const plat = prettyPlatform(c.platform) || '—';
+    const plc  = prettyPlacement(c.placement) || '—';
+    if (!byPlat[plat]) byPlat[plat] = { tot:{cl:0,i:0,r:0,d:0,s:0}, kids:{} };
+    const K = byPlat[plat];
+    if (!K.kids[plc]) K.kids[plc] = {cl:0,i:0,r:0,d:0,s:0};
+    const add = (o) => {
+      o.cl += Number(c.clicks)||0; o.i += Number(c.installs)||0;
+      o.r  += Number(c.regs)||0;   o.d += Number(c.deps)||0; o.s += Number(c.spend)||0;
+    };
+    add(K.kids[plc]); add(K.tot);
   });
-  const rows = Object.entries(map).sort((a,b)=>b[1].s-a[1].s);
-  const maxS = Math.max(...rows.map(([,m])=>m.s), 1);
+
+  const plats = Object.entries(byPlat).sort((a,b)=>b[1].tot.s-a[1].tot.s);
+  const maxS = Math.max(...plats.map(([,v])=>v.tot.s), 1);
   const money = v => '$' + Math.round(v).toLocaleString();
+  const cell = (v,cls) => `<td class="p-2.5 border-b border-white/5 text-center text-[11px] ${cls} font-mono">${Number(v).toLocaleString()}</td>`;
+  const cost = (s,n) => `<td class="p-2.5 border-b border-white/5 text-right text-[11px] text-slate-400 font-mono">${n?'$'+(s/n).toFixed(2):'—'}</td>`;
+
   el.innerHTML = `
     <table class="w-full text-left border-separate border-spacing-0">
       <thead><tr class="text-[9px] font-black uppercase tracking-widest text-slate-500">
-        <th class="p-2.5 border-b border-white/10">Placement</th>
+        <th class="p-2.5 border-b border-white/10">Платформа / плейсмент</th>
         <th class="p-2.5 border-b border-white/10 text-right">Spend</th>
         <th class="p-2.5 border-b border-white/10 text-center">Clicks</th>
         <th class="p-2.5 border-b border-white/10 text-center">Inst</th>
@@ -5411,20 +5444,26 @@ function renderPlacementsWidget() {
         <th class="p-2.5 border-b border-white/10 text-center text-green-500">Deps</th>
         <th class="p-2.5 border-b border-white/10 text-right">CPA</th>
       </tr></thead><tbody>
-      ${rows.map(([p,m])=>`<tr class="hover:bg-white/[0.03]">
-        <td class="p-2.5 border-b border-white/5 relative">
-          <div class="absolute left-0 top-1/2 -translate-y-1/2 h-6 rounded bg-blue-500/10" style="width:${m.s/maxS*100}%"></div>
-          <span class="relative text-[11px] font-bold text-white">${p}</span>
-        </td>
-        <td class="p-2.5 border-b border-white/5 text-right text-[11px] font-black font-mono">${money(m.s)}</td>
-        <td class="p-2.5 border-b border-white/5 text-center text-[11px] text-slate-400 font-mono">${m.cl.toLocaleString()}</td>
-        <td class="p-2.5 border-b border-white/5 text-center text-[11px] text-cyan-300 font-mono">${m.i.toLocaleString()}</td>
-        <td class="p-2.5 border-b border-white/5 text-right text-[11px] text-slate-400 font-mono">${m.i?'$'+(m.s/m.i).toFixed(2):'—'}</td>
-        <td class="p-2.5 border-b border-white/5 text-center text-[11px] text-blue-400 font-mono">${m.r.toLocaleString()}</td>
-        <td class="p-2.5 border-b border-white/5 text-right text-[11px] text-purple-400 font-mono">${m.r?'$'+(m.s/m.r).toFixed(2):'—'}</td>
-        <td class="p-2.5 border-b border-white/5 text-center text-[11px] text-green-500 font-black font-mono">${m.d.toLocaleString()}</td>
-        <td class="p-2.5 border-b border-white/5 text-right text-[11px] text-yellow-500 font-mono">${m.d?'$'+(m.s/m.d).toFixed(2):'—'}</td>
-      </tr>`).join('')}
+      ${plats.map(([plat,v])=>{
+        const kids = Object.entries(v.kids).sort((a,b)=>b[1].s-a[1].s);
+        const head = `<tr class="bg-white/[0.03]">
+          <td class="p-2.5 border-b border-white/5 relative">
+            <div class="absolute left-0 top-1/2 -translate-y-1/2 h-7 rounded bg-indigo-500/15" style="width:${v.tot.s/maxS*100}%"></div>
+            <span class="relative text-[12px] font-black text-white">${plat}</span>
+          </td>
+          <td class="p-2.5 border-b border-white/5 text-right text-[12px] font-black font-mono text-white">${money(v.tot.s)}</td>
+          ${cell(v.tot.cl,'text-slate-300 font-black')}${cell(v.tot.i,'text-cyan-300 font-black')}
+          ${cost(v.tot.s,v.tot.i)}${cell(v.tot.r,'text-blue-400 font-black')}
+          ${cost(v.tot.s,v.tot.r)}${cell(v.tot.d,'text-green-500 font-black')}${cost(v.tot.s,v.tot.d)}
+        </tr>`;
+        const rows = kids.map(([plc,m])=>`<tr class="hover:bg-white/[0.03]">
+          <td class="p-2.5 border-b border-white/5 pl-7 text-[11px] font-bold text-slate-400">↳ ${plc}</td>
+          <td class="p-2.5 border-b border-white/5 text-right text-[11px] font-bold font-mono text-slate-200">${money(m.s)}</td>
+          ${cell(m.cl,'text-slate-500')}${cell(m.i,'text-cyan-300/80')}${cost(m.s,m.i)}
+          ${cell(m.r,'text-blue-400/80')}${cost(m.s,m.r)}${cell(m.d,'text-green-500/90 font-black')}${cost(m.s,m.d)}
+        </tr>`).join('');
+        return head + (kids.length > 1 || kids[0]?.[0] !== '—' ? rows : '');
+      }).join('')}
       </tbody></table>`;
 }
 
@@ -5721,6 +5760,7 @@ const RB_DIMS = [
   { key:'offer',   label:'Оффер' },
   { key:'agent',   label:'Агент' },
   { key:'device',    label:'Девайс' },
+  { key:'platform',  label:'Платформа' },
   { key:'placement', label:'Плейсмент' },
 ];
 const RB_COLS = [
@@ -5752,9 +5792,10 @@ function rbFiltered(){
   const g=document.getElementById('rb-f-geo').value, a=document.getElementById('rb-f-acc').value;
   const f=document.getElementById('rb-f-fun').value, q=(document.getElementById('rb-q').value||'').toLowerCase();
   const dev=document.getElementById('rb-f-dev')?.value||'', plc=document.getElementById('rb-f-plc')?.value||'';
+  const plat=document.getElementById('rb-f-plat')?.value||'';
 
-  // Девайс/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
-  const src = (dev||plc||rbNeedsCreatives())
+  // Девайс/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
+  const src = (dev||plc||plat||rbNeedsCreatives())
     ? (window.creativesRawData||[]).map(c=>({...c, deposits:c.deps, offer:c.offer||'DEFAULT', agent:c.agent||'—'}))
     : (rawData||[]);
 
@@ -5765,7 +5806,8 @@ function rbFiltered(){
     if(a && String(r.account||'') !== a) return false;
     if(f && String(r.funnel||'') !== f) return false;
     if(dev && normalizeDevice(r.device||'') !== dev) return false;
-    if(plc && String(r.placement||'').trim() !== plc) return false;
+    if(plat && prettyPlatform(r.platform) !== plat) return false;
+    if(plc && prettyPlacement(r.placement) !== plc) return false;
     if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.date}`.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -5774,12 +5816,13 @@ function rbDimVal(r,dim){
   if(dim==='month') return rbRowMonth(r);
   if(dim==='geo') return (r.geo||'??').toUpperCase();
   if(dim==='device'){ const d=normalizeDevice(r.device||''); return d ? (DEVICE_LABELS[d]||d) : '—'; }
-  if(dim==='placement') return String(r.placement||'').trim() || '—';
+  if(dim==='platform') return prettyPlatform(r.platform) || '—';
+  if(dim==='placement') return placementLabel(r);   // "Instagram · Feed"
   return String(r[dim] ?? '—') || '—';
 }
-// Групування по девайсу/плейсменту теж потребує creatives_stats
+// Групування по девайсу/платформі/плейсменту теж потребує creatives_stats
 function rbNeedsCreatives(){
-  return rbGroups.includes('device') || rbGroups.includes('placement');
+  return rbGroups.includes('device') || rbGroups.includes('placement') || rbGroups.includes('platform');
 }
 function rbInitOnce(){
   if(rbInited || !document.getElementById('rb-groups')) return;
@@ -5804,7 +5847,8 @@ function rbPopulateFilters(){
   if(el){ const cur=el.value;
     el.innerHTML='<option value="">Всі девайси</option>'+devs.map(v=>`<option value="${v}">${DEVICE_LABELS[v]||v}</option>`).join('');
     if(devs.includes(cur)) el.value=cur; }
-  set('rb-f-plc',[...new Set(cr.map(r=>String(r.placement||'').trim()).filter(Boolean))].sort(),'Всі плейсменти');
+  set('rb-f-plat',[...new Set(cr.map(r=>prettyPlatform(r.platform)).filter(Boolean))].sort(),'Всі платформи');
+  set('rb-f-plc',[...new Set(cr.map(r=>prettyPlacement(r.placement)).filter(Boolean))].sort(),'Всі плейсменти');
 }
 function rbRenderGroupChips(){
   document.getElementById('rb-groups').innerHTML = RB_DIMS.map(d=>{
@@ -6790,14 +6834,14 @@ function dcRenderSplit(kind, tableId, target) {
   rows.forEach(c => {
     const k = kind === 'device'
       ? (DEVICE_LABELS[normalizeDevice(c.device||'')] || normalizeDevice(c.device||'') || '—')
-      : (String(c.placement||'').trim() || '—');
+      : placementLabel(c);
     if (!map[k]) map[k] = { s:0, cl:0, i:0, r:0, d:0 };
     map[k].s += Number(c.spend)||0;   map[k].cl += Number(c.clicks)||0;
     map[k].i += Number(c.installs)||0; map[k].r += Number(c.regs)||0; map[k].d += Number(c.deps)||0;
   });
   const list = Object.entries(map).sort((a,b)=>b[1].s-a[1].s);
   const head = `<thead><tr>
-    <th class="${th} text-left">${kind==='device'?'Девайс':'Плейсмент'}</th>
+    <th class="${th} text-left">${kind==='device'?'Девайс':'Платформа · плейсмент'}</th>
     <th class="${th} text-right">Spend</th><th class="${th} text-right">Кліки</th>
     <th class="${th} text-right">Інстали</th><th class="${th} text-right">Реєстр.</th><th class="${th} text-right">Депоз.</th>
   </tr></thead>`;
