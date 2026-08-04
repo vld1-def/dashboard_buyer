@@ -1430,9 +1430,27 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   </div>
 
   <!-- ГЕО Прапори -->
-  <div class="bg-black/20 p-4 rounded-2xl border border-white/5 mb-6">
+  <div class="bg-black/20 p-4 rounded-2xl border border-white/5 mb-3">
     <p class="text-[10px] font-black text-muted-dynamic uppercase mb-3 tracking-widest opacity-60">Target Geos:</p>
     <div id="cr-geo-flags" class="flex flex-wrap gap-2.5"></div>
+  </div>
+
+  <!-- Розгортайки: розміщення та динаміка по днях -->
+  <div class="space-y-2 mb-6">
+    <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden">
+      <button onclick="crTogglePanel('placements')" class="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition">
+        <span class="text-[10px] font-black uppercase tracking-widest text-indigo-400">📐 Де крутився · платформи та плейсменти</span>
+        <span id="cr-arrow-placements" class="text-[10px] text-slate-500 transition-transform">▶</span>
+      </button>
+      <div id="cr-panel-placements" class="hidden px-4 pb-4"></div>
+    </div>
+    <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden">
+      <button onclick="crTogglePanel('trend')" class="w-full flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition">
+        <span class="text-[10px] font-black uppercase tracking-widest text-cyan-400">📈 Динаміка по днях · чи не вигорає</span>
+        <span id="cr-arrow-trend" class="text-[10px] text-slate-500 transition-transform">▶</span>
+      </button>
+      <div id="cr-panel-trend" class="hidden px-4 pb-4"></div>
+    </div>
   </div>
   
   <!-- Список Кабінетів -->
@@ -2782,6 +2800,131 @@ function crClearFilter() {
   if (m) m.value = ''; if (v) v.value = '';
   searchCreative();
 }
+// ===== Розгортайки в Creative Analyzer (за замовчуванням згорнуті) =====
+let crOpenPanels = new Set();
+
+function crTogglePanel(kind) {
+  const panel = document.getElementById('cr-panel-' + kind);
+  const arrow = document.getElementById('cr-arrow-' + kind);
+  const open = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  if (arrow) arrow.style.transform = open ? 'rotate(90deg)' : '';
+  open ? crOpenPanels.add(kind) : crOpenPanels.delete(kind);
+  if (open) crRenderPanels();
+}
+
+// Рядки поточного креатива з урахуванням активних фільтрів акаунта/гео/девайса
+function crCurrentRows() {
+  const dev = document.getElementById('creative-device-filter')?.value || '';
+  return (window.creativesRawData || []).filter(d =>
+    (d.cid || '').toLowerCase() === (currentCreativeID || '').toLowerCase() &&
+    (!activeCrAcc || d.account === activeCrAcc) &&
+    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo) &&
+    (!dev || normalizeDevice(d.device || '') === dev)
+  );
+}
+
+function crRenderPanels() {
+  if (crOpenPanels.has('placements')) crRenderPlacementsPanel();
+  if (crOpenPanels.has('trend'))      crRenderTrendPanel();
+}
+
+// ── Плейсмент × креатив ──
+function crRenderPlacementsPanel() {
+  const el = document.getElementById('cr-panel-placements');
+  if (!el) return;
+  const rows = crCurrentRows();
+  const has = rows.some(r => (r.platform && String(r.platform).trim()) || (r.placement && String(r.placement).trim()));
+  if (!has) {
+    el.innerHTML = `<p class="text-[11px] opacity-40 py-3">Для цього креатива немає даних по розміщеннях — залий FB-звіт зі стовпцями Platform/Placement або Keitaro з Sub ID 4.</p>`;
+    return;
+  }
+  const map = {};
+  rows.forEach(r => {
+    const k = placementLabel(r);
+    const m = map[k] || (map[k] = { s:0, cl:0, i:0, r:0, d:0 });
+    m.s += Number(r.spend)||0;  m.cl += Number(r.clicks)||0;
+    m.i += Number(r.installs)||0; m.r += Number(r.regs)||0; m.d += Number(r.deps)||0;
+  });
+  const list = Object.entries(map).sort((a,b) => b[1].s - a[1].s);
+  const maxS = Math.max(...list.map(([,m]) => m.s), 1);
+  const best = list.filter(([,m]) => m.d > 0).sort((a,b) => (a[1].s/a[1].d) - (b[1].s/b[1].d))[0];
+  const cost = (s,n) => n ? '$' + (s/n).toFixed(2) : '—';
+  el.innerHTML = `
+    <div class="grid grid-cols-6 gap-1 text-[9px] uppercase tracking-widest text-slate-600 font-black pb-1.5 border-b border-white/5 mb-1">
+      <span class="col-span-2">Розміщення</span><span class="text-right">Spend</span>
+      <span class="text-right">Inst / CPI</span><span class="text-right">Reg / CPL</span><span class="text-right">Dep / CPA</span>
+    </div>
+    ${list.map(([k,m]) => `
+      <div class="grid grid-cols-6 gap-1 text-[11px] py-1.5 items-center relative">
+        <div class="absolute inset-y-0 left-0 rounded bg-indigo-500/10" style="width:${m.s/maxS*100}%"></div>
+        <span class="col-span-2 relative font-bold text-slate-200 truncate" title="${k}">${k}</span>
+        <span class="relative text-right font-black text-white font-mono">$${Math.round(m.s).toLocaleString()}</span>
+        <span class="relative text-right font-mono"><b class="text-cyan-300">${m.i}</b> <span class="text-slate-500">${cost(m.s,m.i)}</span></span>
+        <span class="relative text-right font-mono"><b class="text-blue-400">${m.r}</b> <span class="text-slate-500">${cost(m.s,m.r)}</span></span>
+        <span class="relative text-right font-mono"><b class="${m.d?'text-green-500':'text-slate-600'}">${m.d}</b> <span class="text-slate-500">${cost(m.s,m.d)}</span></span>
+      </div>`).join('')}
+    ${best ? `<p class="text-[10px] font-bold text-emerald-400 mt-2.5 pt-2 border-t border-white/5">
+        🏆 Найдешевший деп: <b>${best[0]}</b> — CPA ${cost(best[1].s, best[1].d)}</p>` : ''}`;
+}
+
+// ── Динаміка по днях (чи вигорає) ──
+function crRenderTrendPanel() {
+  const el = document.getElementById('cr-panel-trend');
+  if (!el) return;
+  const rows = crCurrentRows();
+  if (!rows.length) { el.innerHTML = '<p class="text-[11px] opacity-40 py-3">Немає даних.</p>'; return; }
+  const byDay = {};
+  rows.forEach(r => {
+    const k = r.date || '—';
+    const m = byDay[k] || (byDay[k] = { s:0, i:0, r:0, d:0 });
+    m.s += Number(r.spend)||0; m.i += Number(r.installs)||0;
+    m.r += Number(r.regs)||0;  m.d += Number(r.deps)||0;
+  });
+  const days = Object.entries(byDay).sort((a,b) => a[0].localeCompare(b[0]));
+  const maxS = Math.max(...days.map(([,m]) => m.s), 1);
+
+  // Порівнюємо CPA першої та другої половини періоду — прямий сигнал вигорання
+  const half = Math.floor(days.length / 2);
+  const sum = arr => arr.reduce((a,[,m]) => ({s:a.s+m.s, d:a.d+m.d}), {s:0,d:0});
+  const A = sum(days.slice(0, half || 1)), B = sum(days.slice(half || 1));
+  const cpaA = A.d ? A.s/A.d : 0, cpaB = B.d ? B.s/B.d : 0;
+  let verdict = '';
+  if (days.length >= 4 && cpaA && cpaB) {
+    const chg = (cpaB - cpaA) / cpaA * 100;
+    verdict = chg > 25
+      ? `<span class="text-red-400">⚠ CPA виріс на ${Math.round(chg)}% — схоже, вигорає</span>`
+      : chg < -15
+        ? `<span class="text-emerald-400">✓ CPA впав на ${Math.round(-chg)}% — розганяється</span>`
+        : `<span class="text-slate-400">CPA стабільний (${chg>0?'+':''}${Math.round(chg)}%)</span>`;
+  } else if (days.length >= 4 && cpaA && !cpaB) {
+    verdict = `<span class="text-red-400">⚠ У другій половині періоду депів немає</span>`;
+  }
+
+  el.innerHTML = `
+    <div class="flex items-end gap-0.5 h-16 mb-3 mt-1">
+      ${days.map(([d,m]) => `<div class="flex-1 rounded-t transition-all hover:opacity-80 relative group"
+          style="height:${Math.max(4, m.s/maxS*100)}%;background:${m.d?'#34d399':'#3b82f6'};opacity:${m.d?1:.45}"
+          title="${d}: $${Math.round(m.s)} · ${m.i} ins · ${m.d} dep"></div>`).join('')}
+    </div>
+    <div class="grid grid-cols-5 gap-1 text-[9px] uppercase tracking-widest text-slate-600 font-black pb-1 border-b border-white/5">
+      <span>День</span><span class="text-right">Spend</span><span class="text-right">Inst</span>
+      <span class="text-right">Reg</span><span class="text-right">Dep / CPA</span>
+    </div>
+    <div class="max-h-40 overflow-y-auto custom-scrollbar">
+      ${days.slice().reverse().map(([d,m]) => `
+        <div class="grid grid-cols-5 gap-1 text-[11px] py-1 items-center">
+          <span class="font-mono text-slate-400">${d.slice(5)}</span>
+          <span class="text-right font-black text-white font-mono">$${Math.round(m.s)}</span>
+          <span class="text-right font-mono text-cyan-300">${m.i}</span>
+          <span class="text-right font-mono text-blue-400">${m.r}</span>
+          <span class="text-right font-mono"><b class="${m.d?'text-green-500':'text-slate-600'}">${m.d}</b>
+            <span class="text-slate-500">${m.d?'$'+(m.s/m.d).toFixed(0):'—'}</span></span>
+        </div>`).join('')}
+    </div>
+    ${verdict ? `<p class="text-[10px] font-bold mt-2.5 pt-2 border-t border-white/5">${verdict}</p>` : ''}`;
+}
+
 function crSyncStarBtn() {
   const b = document.getElementById('cr-star-toggle');
   if (!b) return;
@@ -2831,6 +2974,7 @@ function selectCreative(cid) {
       return `<button onclick="showCreativeStats(${activeCrAcc===name?'null':`'${nEsc}'`}, undefined)" class="px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all border ${activeCrAcc===name?'bg-blue-600 text-white border-blue-400 shadow-lg':'bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20'}">${name}</button>`;
     }).join('');
     crSyncStarBtn();
+    crRenderPanels();
     loadCreativePreview(currentCreativeID);
   }
 
@@ -6748,8 +6892,10 @@ function gcDiff(geo, results) {
 
 <script>
 // ===== DATA CHECK (Keitaro CSV, погодинно по TZ акаунтів) =====
-let dcRows = [];        // {account, day, hour, installs, regs, deps}
+let dcRows = [];        // {account, day, hour, installs, regs, deps, placementRaw, cid, device}
 let dcAccountsTz = {};  // account_id -> timezone
+let dcHasDevice = false;   // чи є у файлі стовпець із девайсом
+let dcSplits = { placement: {}, device: {} };   // агрегати за обраний день
 
 async function openDataCheckModal() {
   document.getElementById('data-check-modal').classList.remove('hidden');
@@ -6785,6 +6931,11 @@ function dcParse(content) {
   const iIns  = idx(['uc (campaign)','uc','installs','instal','інстал','инстал','leads']);
   const iReg  = idx(['conv.','conv','reg','реєстр','регист']);
   const iDep  = idx(['sales','deps','deposit','депоз']);
+  // Розміщення в Keitaro — один стовпець (Sub ID 4), формат "Instagram_Reels"
+  const iPlc  = idx(['sub id 4','sub_id_4']);
+  const iCr   = idx(['sub id 3','sub_id_3']);
+  const iDev  = idx(['device','пристрій','устройство','os ','operating system','платформа пристрою']);
+  dcHasDevice = iDev >= 0;
 
   const fileDates = new Set();
   for (let i = 1; i < lines.length; i++) {
@@ -6794,13 +6945,17 @@ function dcParse(content) {
     const day = (r[iDay] || '').trim();
     if (!day) continue;                                  // підсумковий рядок
     fileDates.add(day);
+    const plcRaw = iPlc >= 0 ? String(r[iPlc] || '').trim() : '';
     dcRows.push({
       account: acc,
       day,
       hour: parseInt(r[iHour], 10) || 0,
       installs: parseInt(r[iIns], 10) || 0,
       regs: parseInt(r[iReg], 10) || 0,
-      deps: parseInt(r[iDep], 10) || 0
+      deps: parseInt(r[iDep], 10) || 0,
+      placementRaw: plcRaw.startsWith('{') ? '' : plcRaw,
+      cid: iCr >= 0 ? String(r[iCr] || '').trim() : '',
+      device: iDev >= 0 ? String(r[iDev] || '').trim() : ''
     });
   }
   console.log(`DataCheck: розпарсено ${dcRows.length} рядків`);
@@ -6826,6 +6981,14 @@ function dcCompute() {
 
   const accStats = [];
   const unlinked = [];
+  // Розбивки рахуємо з ТОГО САМОГО файлу і за те саме TZ-вікно
+  dcSplits = { placement: {}, device: {} };
+  const bump = (bucket, key, r) => {
+    if (!key) key = '—';
+    const m = bucket[key] || (bucket[key] = { i: 0, r: 0, d: 0 });
+    m.i += r.installs; m.r += r.regs; m.d += r.deps;
+  };
+
   Object.keys(perAcc).forEach(acc => {
     const tz = dcAccountsTz[acc];
     if (tz === undefined || tz === null) { unlinked.push(acc); return; }  // немає TZ — окремо
@@ -6837,7 +7000,11 @@ function dcCompute() {
       const localMs = Date.UTC(ry, rm - 1, rd, r.hour, 0, 0) - offset * 3600000;
       const ld = new Date(localMs);
       const localDay = `${ld.getUTCFullYear()}-${String(ld.getUTCMonth() + 1).padStart(2, '0')}-${String(ld.getUTCDate()).padStart(2, '0')}`;
-      if (localDay === target) { ins += r.installs; reg += r.regs; dep += r.deps; }
+      if (localDay === target) {
+        ins += r.installs; reg += r.regs; dep += r.deps;
+        bump(dcSplits.placement, dcPlacementLabel(r.placementRaw), r);
+        if (dcHasDevice) bump(dcSplits.device, r.device, r);
+      }
     });
     accStats.push({ account: acc, tz: Number(tz), installs: ins, regs: reg, deps: dep });
   });
@@ -6847,8 +7014,8 @@ function dcCompute() {
   document.getElementById('dc-results').classList.remove('hidden');
   dcRenderAccounts(accStats);
   dcRenderUnit(accStats, spend);
-  dcRenderSplit('device', 'dc-device-table', target);
-  dcRenderSplit('placement', 'dc-placement-table', target);
+  dcRenderSplit('device', 'dc-device-table');
+  dcRenderSplit('placement', 'dc-placement-table');
   dcRenderWarn(unlinked);
 }
 
@@ -6900,53 +7067,61 @@ function dcRenderUnit(rows, spend) {
   document.getElementById('dc-unit-table').innerHTML = head + '<tbody>' + body + '</tbody>';
 }
 
-// Розбивка по девайсах / плейсментах (із creatives_stats за той самий день)
-function dcRenderSplit(kind, tableId, target) {
+// Розбивка по девайсах / плейсментах — З ЗАВАНТАЖЕНОГО KEITARO-ФАЙЛУ,
+// за тим самим TZ-вікном, що й основні таблиці.
+function dcPlacementLabel(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '—';
+  const norm = s.toLowerCase().replace(/[\s-]+/g, '_');
+  const PLATS = [
+    ['audience_network', 'Audience Network'], ['audiencenetwork', 'Audience Network'],
+    ['facebook', 'Facebook'], ['instagram', 'Instagram'], ['messenger', 'Messenger'],
+    ['threads', 'Threads'], ['whatsapp', 'WhatsApp'], ['fb', 'Facebook'], ['ig', 'Instagram'],
+  ];
+  const cap = x => x.replace(/_+/g, ' ').trim().replace(/(^|\s)\S/g, c => c.toUpperCase());
+  for (const [key, label] of PLATS) {
+    if (norm === key) return label;
+    if (norm.startsWith(key + '_')) return `${label} · ${cap(norm.slice(key.length + 1))}`;
+  }
+  return cap(norm);
+}
+
+function dcRenderSplit(kind, tableId) {
   const t = document.getElementById(tableId);
   if (!t) return;
   const th = 'p-2 text-[11px] font-black uppercase tracking-widest text-slate-500';
-  // Групуємо просто по ключах: спершу пробуємо цей день, якщо порожньо — беремо всі дані команди
-  const all = window.creativesRawData || [];
-  const sameDay = all.filter(c => c.date === target);
-  const rows = sameDay.length ? sameDay : all;
-  const scope = sameDay.length ? target : 'усі дані';
-  const map = {};
-  rows.forEach(c => {
-    const k = kind === 'device'
-      ? (DEVICE_LABELS[normalizeDevice(c.device||'')] || normalizeDevice(c.device||'') || '—')
-      : placementLabel(c);
-    if (!map[k]) map[k] = { s:0, cl:0, i:0, r:0, d:0 };
-    map[k].s += Number(c.spend)||0;   map[k].cl += Number(c.clicks)||0;
-    map[k].i += Number(c.installs)||0; map[k].r += Number(c.regs)||0; map[k].d += Number(c.deps)||0;
-  });
-  const list = Object.entries(map).sort((a,b)=>b[1].s-a[1].s);
+  const map = (dcSplits && dcSplits[kind]) || {};
+  const list = Object.entries(map).sort((a, b) => b[1].i - a[1].i);
   const head = `<thead><tr>
-    <th class="${th} text-left">${kind==='device'?'Девайс':'Платформа · плейсмент'}
-      <span class="normal-case tracking-normal opacity-40 font-bold">· ${scope}</span></th>
-    <th class="${th} text-right">Spend</th><th class="${th} text-right">Кліки</th>
-    <th class="${th} text-right">Інстали</th><th class="${th} text-right">Реєстр.</th><th class="${th} text-right">Депоз.</th>
+    <th class="${th} text-left">${kind === 'device' ? 'Девайс' : 'Платформа · плейсмент'}</th>
+    <th class="${th} text-right">Інстали</th>
+    <th class="${th} text-right">Реєстр.</th>
+    <th class="${th} text-right">Депоз.</th>
+    <th class="${th} text-right">Ins→Reg</th>
   </tr></thead>`;
   if (!list.length) {
-    t.innerHTML = head + `<tbody><tr><td colspan="6" class="p-3 text-center text-[13px] opacity-40">
-      ${kind==='device' ? 'Немає даних по девайсах' : 'Немає даних по плейсментах — залий FB-звіт зі стовпцями Platform/Placement або Keitaro з Sub ID 4'}</td></tr></tbody>`;
+    const msg = kind === 'device'
+      ? (dcHasDevice ? 'Немає даних за цей день'
+                     : 'У файлі немає стовпця з девайсом')
+      : 'У файлі немає Sub ID 4 (розміщення) або немає даних за цей день';
+    t.innerHTML = head + `<tbody><tr><td colspan="5" class="p-3 text-center text-[13px] opacity-40">${msg}</td></tr></tbody>`;
     return;
   }
-  const body = list.map(([k,m])=>`<tr class="border-t border-white/5">
+  const ratio = (a, b) => b ? '1 до ' + (Math.round(a / b * 10) / 10) : '—';
+  const body = list.map(([k, m]) => `<tr class="border-t border-white/5">
     <td class="p-2 text-[13px] font-bold text-slate-200 truncate" title="${k}">${k}</td>
-    <td class="p-2 text-right text-[13px] font-bold text-white">$${m.s.toFixed(2)}</td>
-    <td class="p-2 text-right text-[13px] text-slate-400">${m.cl}</td>
     <td class="p-2 text-right text-[14px] font-bold text-cyan-300">${m.i}</td>
     <td class="p-2 text-right text-[14px] font-bold text-blue-400">${m.r}</td>
     <td class="p-2 text-right text-[14px] font-bold text-green-500">${m.d}</td>
+    <td class="p-2 text-right text-[12px] text-slate-400">${ratio(m.i, m.r)}</td>
   </tr>`).join('');
-  const tot = list.reduce((a,[,m])=>({s:a.s+m.s,cl:a.cl+m.cl,i:a.i+m.i,r:a.r+m.r,d:a.d+m.d}),{s:0,cl:0,i:0,r:0,d:0});
+  const tot = list.reduce((a, [, m]) => ({ i: a.i + m.i, r: a.r + m.r, d: a.d + m.d }), { i: 0, r: 0, d: 0 });
   const totRow = `<tr class="border-t-2 border-white/10 bg-white/[0.02]">
     <td class="p-2 text-[12px] font-black uppercase text-slate-400">Разом</td>
-    <td class="p-2 text-right text-[13px] font-black text-white">$${tot.s.toFixed(2)}</td>
-    <td class="p-2 text-right text-[13px] font-black text-slate-300">${tot.cl}</td>
     <td class="p-2 text-right text-[14px] font-black text-cyan-300">${tot.i}</td>
     <td class="p-2 text-right text-[14px] font-black text-blue-400">${tot.r}</td>
-    <td class="p-2 text-right text-[14px] font-black text-green-500">${tot.d}</td></tr>`;
+    <td class="p-2 text-right text-[14px] font-black text-green-500">${tot.d}</td>
+    <td class="p-2 text-right text-[12px] text-slate-400">${ratio(tot.i, tot.r)}</td></tr>`;
   t.innerHTML = head + '<tbody>' + body + totRow + '</tbody>';
 }
 
