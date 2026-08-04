@@ -810,6 +810,34 @@ async function saveKeitaroMap() {
 
 function normCamp(s) { return String(s || '').toLowerCase().replace(/[\s_]+/g, '_').trim(); }
 
+// Keitaro віддає розміщення ОДНИМ рядком ("Instagram_Reels", "Audience_Network_Native"),
+// а FB — двома колонками. Розділяємо на платформу + плейсмент.
+const KT_PLATFORMS = [
+  ['audience_network', 'Audience Network'],
+  ['audiencenetwork',  'Audience Network'],
+  ['facebook',  'Facebook'],
+  ['instagram', 'Instagram'],
+  ['messenger', 'Messenger'],
+  ['threads',   'Threads'],
+  ['whatsapp',  'WhatsApp'],
+  ['fb',        'Facebook'],
+  ['ig',        'Instagram'],
+];
+function splitKeitaroPlacement(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return { platform: '', placement: '' };
+  const norm = s.toLowerCase().replace(/[\s-]+/g, '_');
+  for (const [key, label] of KT_PLATFORMS) {
+    if (norm === key) return { platform: label, placement: '' };
+    if (norm.startsWith(key + '_')) {
+      const rest = norm.slice(key.length + 1).replace(/_+/g, ' ').trim();
+      return { platform: label, placement: rest.replace(/\b\w/g, c => c.toUpperCase()) };
+    }
+  }
+  // платформу не впізнали — кладемо все у плейсмент
+  return { platform: '', placement: s.replace(/[_-]+/g, ' ').trim() };
+}
+
 function toggleKeitaro() {
   const on = document.getElementById('kt-toggle').checked;
   document.getElementById('csv-drop-zone-keitaro').classList.toggle('hidden', !on);
@@ -942,9 +970,15 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     (groups[k] = groups[k] || []).push(row);
   });
   Object.entries(groups).forEach(([k, rows]) => {
-    // Плейсмент із Keitaro (Sub ID 4) — якщо у FB-звіті його не було
+    // Розміщення з Keitaro (Sub ID 4, формат "Instagram_Reels") — якщо у FB-звіті його не було
     const ktPlc = keitaroAgg.ktPlacements?.[k];
-    if (ktPlc) rows.forEach(r => { if (!r.placement) r.placement = ktPlc; });
+    if (ktPlc) {
+      const { platform, placement } = splitKeitaroPlacement(ktPlc);
+      rows.forEach(r => {
+        if (!r.platform  && platform)  r.platform  = platform;
+        if (!r.placement && placement) r.placement = placement;
+      });
+    }
 
     const kt = keitaroAgg.byCreative[k];
     if (!kt) return;

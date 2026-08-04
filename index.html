@@ -3221,7 +3221,9 @@ async function driveFindCreative(cid){
   let file = null;
   try {
     const safe = String(cid).replace(/'/g, "\\'");
-    const fields = 'files(id,name,mimeType,thumbnailLink,webViewLink)';
+    // ВАЖЛИВО: саме "fields=" — без цього API не віддає thumbnailLink/webViewLink
+    // і прев'ю виходило з src="undefined".
+    const fields = 'fields=' + encodeURIComponent('files(id,name,mimeType,thumbnailLink,webViewLink)');
     const search = async (parentId) => {
       const q = encodeURIComponent(`'${parentId}' in parents and name contains '${safe}' and trashed=false`);
       return _drivePickExact(await _driveList(`q=${q}&${fields}&pageSize=100`), cid);
@@ -3266,7 +3268,10 @@ async function loadCreativePreview(creativeName) {
     if (teamDriveFolderId) {
       const f = await driveFindCreative(creativeName);
       data = f
-        ? { found: true, mimeType: f.mimeType, thumbnailUrl: f.thumbnailLink, viewUrl: f.webViewLink }
+        ? { found: true, mimeType: f.mimeType,
+            // якщо Drive не віддав посилання — будуємо їх з id файлу
+            thumbnailUrl: f.thumbnailLink || `https://drive.google.com/thumbnail?id=${f.id}&sz=w640`,
+            viewUrl: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view` }
         : { found: false };
     } else {
       // Спільна папка (дефолт) — через Apps Script
@@ -5363,7 +5368,14 @@ function prettyPlacement(v){
 // Повна мітка розміщення: "Instagram · Feed"
 function placementLabel(row){
   const pl = prettyPlatform(row.platform);
-  const pc = prettyPlacement(row.placement);
+  let pc = prettyPlacement(row.placement);
+  // Старі записи інколи містять платформу і в плейсменті ("Instagram Reels") —
+  // не дублюємо її в підписі.
+  if (pl && pc) {
+    const low = pc.toLowerCase(), p = pl.toLowerCase();
+    if (low === p) pc = '';
+    else if (low.startsWith(p + ' ')) pc = pc.slice(pl.length).trim();
+  }
   if (pl && pc) return `${pl} · ${pc}`;
   return pl || pc || '—';
 }
@@ -6893,7 +6905,11 @@ function dcRenderSplit(kind, tableId, target) {
   const t = document.getElementById(tableId);
   if (!t) return;
   const th = 'p-2 text-[11px] font-black uppercase tracking-widest text-slate-500';
-  const rows = (window.creativesRawData||[]).filter(c => c.date === target);
+  // Групуємо просто по ключах: спершу пробуємо цей день, якщо порожньо — беремо всі дані команди
+  const all = window.creativesRawData || [];
+  const sameDay = all.filter(c => c.date === target);
+  const rows = sameDay.length ? sameDay : all;
+  const scope = sameDay.length ? target : 'усі дані';
   const map = {};
   rows.forEach(c => {
     const k = kind === 'device'
@@ -6905,13 +6921,14 @@ function dcRenderSplit(kind, tableId, target) {
   });
   const list = Object.entries(map).sort((a,b)=>b[1].s-a[1].s);
   const head = `<thead><tr>
-    <th class="${th} text-left">${kind==='device'?'Девайс':'Платформа · плейсмент'}</th>
+    <th class="${th} text-left">${kind==='device'?'Девайс':'Платформа · плейсмент'}
+      <span class="normal-case tracking-normal opacity-40 font-bold">· ${scope}</span></th>
     <th class="${th} text-right">Spend</th><th class="${th} text-right">Кліки</th>
     <th class="${th} text-right">Інстали</th><th class="${th} text-right">Реєстр.</th><th class="${th} text-right">Депоз.</th>
   </tr></thead>`;
   if (!list.length) {
     t.innerHTML = head + `<tbody><tr><td colspan="6" class="p-3 text-center text-[13px] opacity-40">
-      ${kind==='device' ? 'Немає даних по девайсах за цей день' : 'Немає даних по плейсментах — додай стовпчик у FB-звіт'}</td></tr></tbody>`;
+      ${kind==='device' ? 'Немає даних по девайсах' : 'Немає даних по плейсментах — залий FB-звіт зі стовпцями Platform/Placement або Keitaro з Sub ID 4'}</td></tr></tbody>`;
     return;
   }
   const body = list.map(([k,m])=>`<tr class="border-t border-white/5">
