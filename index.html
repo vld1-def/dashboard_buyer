@@ -1320,42 +1320,39 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <option value="android_tablet">Android Tablet</option>
                 <option value="desktop">Desktop</option>
               </select>
-              <div class="relative w-full md:w-96 text-dynamic"><input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID..." class="w-full bg-gray-500/10 border border-gray-500/20 rounded-2xl px-5 py-3 text-sm outline-none focus:border-blue-500 font-bold uppercase tracking-tight text-dynamic"></div>
+              <!-- Числовий фільтр: метрика / умова / значення -->
+              <div class="flex items-center gap-1.5 bg-gray-500/10 border border-gray-500/20 rounded-2xl px-2 py-1.5">
+                <select id="cr-f-metric" onchange="searchCreative()" class="bg-transparent text-[11px] font-black uppercase outline-none cursor-pointer text-dynamic">
+                  <option value="">Метрика</option>
+                  <option value="spend">Spend</option>
+                  <option value="clicks">Clicks</option>
+                  <option value="installs">Installs</option>
+                  <option value="regs">Regs</option>
+                  <option value="deps">Deposits</option>
+                  <option value="cpi">CPI</option>
+                  <option value="cpl">CPL</option>
+                  <option value="cpa">CPA</option>
+                  <option value="cpc">CPC</option>
+                  <option value="r2d">R2D %</option>
+                </select>
+                <select id="cr-f-op" onchange="searchCreative()" class="bg-transparent text-[11px] font-black outline-none cursor-pointer text-dynamic">
+                  <option value="lt">&lt;</option>
+                  <option value="lte">≤</option>
+                  <option value="gt">&gt;</option>
+                  <option value="gte">≥</option>
+                  <option value="eq">=</option>
+                </select>
+                <input type="number" step="any" id="cr-f-val" oninput="searchCreative()" placeholder="20"
+                       class="w-16 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
+                <button onclick="crClearFilter()" title="Скинути фільтр"
+                        class="text-slate-500 hover:text-white text-[13px] leading-none px-1">✕</button>
+              </div>
+              <!-- Тільки з мітками -->
+              <button id="cr-star-only" onclick="crToggleStarOnly()" title="Показати лише креативи з міткою"
+                      class="px-3 py-3 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">★</button>
+              <div class="relative flex-1 min-w-[160px] md:max-w-sm text-dynamic"><input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID..." class="w-full bg-gray-500/10 border border-gray-500/20 rounded-2xl px-5 py-3 text-sm outline-none focus:border-blue-500 font-bold uppercase tracking-tight text-dynamic"></div>
+              <span id="cr-filter-count" class="text-[10px] font-bold text-slate-500 whitespace-nowrap"></span>
           </div>
-        </div>
-
-        <!-- Числовий фільтр + зірочки -->
-        <div class="flex flex-wrap items-center gap-2 mb-5 p-2.5 rounded-2xl bg-black/20 border border-white/5">
-          <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-1">Фільтр:</span>
-          <select id="cr-f-metric" onchange="searchCreative()" class="bg-white/5 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] font-black uppercase text-white outline-none cursor-pointer">
-            <option value="">— метрика —</option>
-            <option value="spend">Spend</option>
-            <option value="clicks">Clicks</option>
-            <option value="installs">Installs</option>
-            <option value="regs">Regs</option>
-            <option value="deps">Deposits</option>
-            <option value="cpi">CPI</option>
-            <option value="cpl">CPL</option>
-            <option value="cpa">CPA</option>
-            <option value="cpc">CPC</option>
-            <option value="r2d">R2D %</option>
-          </select>
-          <select id="cr-f-op" onchange="searchCreative()" class="bg-white/5 border border-white/10 rounded-xl px-2.5 py-2 text-[10px] font-black text-white outline-none cursor-pointer">
-            <option value="lt">менше &lt;</option>
-            <option value="lte">≤</option>
-            <option value="gt">більше &gt;</option>
-            <option value="gte">≥</option>
-            <option value="eq">= рівно</option>
-          </select>
-          <input type="number" step="any" id="cr-f-val" oninput="searchCreative()" placeholder="20"
-                 class="w-24 bg-white/5 border border-white/10 rounded-xl px-2.5 py-2 text-[11px] font-bold text-white outline-none focus:border-blue-500">
-          <button onclick="crClearFilter()" class="text-[9px] font-bold text-slate-500 hover:text-white uppercase tracking-widest">Скинути</button>
-          <div class="w-px h-5 bg-white/10 mx-1"></div>
-          <button id="cr-star-only" onclick="crToggleStarOnly()"
-                  class="px-3 py-2 rounded-xl text-[10px] font-black uppercase transition border bg-white/5 text-slate-400 border-white/10 hover:text-white">
-            ★ Тільки з мітками
-          </button>
-          <span id="cr-filter-count" class="text-[10px] font-bold text-slate-500 ml-auto mr-1"></span>
         </div>
         <div id="creative-result-area" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
   <!-- Колонна 1: Список креативів (col-span-3) -->
@@ -2797,8 +2794,8 @@ function crToggleStarOnly() {
   crStarOnly = !crStarOnly;
   const b = document.getElementById('cr-star-only');
   b.className = crStarOnly
-    ? 'px-3 py-2 rounded-xl text-[10px] font-black uppercase transition border bg-amber-500/20 text-amber-300 border-amber-500/40'
-    : 'px-3 py-2 rounded-xl text-[10px] font-black uppercase transition border bg-white/5 text-slate-400 border-white/10 hover:text-white';
+    ? 'px-3 py-3 rounded-2xl text-xs font-black uppercase transition border bg-amber-500/20 text-amber-300 border-amber-500/40'
+    : 'px-3 py-3 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white';
   searchCreative();
 }
 function crClearFilter() {
