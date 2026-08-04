@@ -941,10 +941,7 @@ header h1 span { font-size: .85rem !important; }
 }
 /* Report Builder — випадайка стовпчиків не має обрізатись карткою */
 #report-builder-section { overflow: visible !important; }
-#rb-cols-menu {
-  position: fixed !important; right: auto; margin-top: 0;
-  max-height: 60vh; overflow-y: auto;
-}
+#rb-cols-menu { max-height: 60vh; overflow-y: auto; }
 body { padding-bottom: 100px !important; padding-top: 14px !important; }
 @media (max-width: 640px) {
   #app-dock { bottom: 8px; gap: 2px; padding: 6px 7px; }
@@ -1533,7 +1530,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         </div>
         <!-- Стовпчики -->
         <div class="relative">
-          <button onclick="rbToggleColsMenu(event, this)"
+          <button onclick="rbToggleColsMenu(event)"
             class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-white transition">☰ Стовпчики</button>
           <div id="rb-cols-menu" class="hidden absolute right-0 mt-2 w-48 card rounded-2xl shadow-2xl z-[90] p-2 border border-white/10" onclick="event.stopPropagation()"></div>
         </div>
@@ -1727,6 +1724,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <button onclick="switchGeoTab('funnels')" id="geo-tab-funnels" class="geo-tab-btn active-geo-tab px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Funnels</button>
       <button onclick="switchGeoTab('offers')" id="geo-tab-offers" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Offers</button>
       <button onclick="switchGeoTab('devices')" id="geo-tab-devices" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Devices</button>
+      <button onclick="switchGeoTab('placements')" id="geo-tab-placements" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Placements</button>
       <button onclick="switchGeoTab('creatives')" id="geo-tab-creatives" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Creatives</button>
     </div>
     <!-- Tab content -->
@@ -1758,6 +1756,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <!-- Devices tab -->
       <div id="geo-panel-devices" class="hidden">
         <div id="geo-device-list"></div>
+      </div>
+      <!-- Placements tab -->
+      <div id="geo-panel-placements" class="hidden">
+        <div id="geo-placement-list"></div>
       </div>
       <!-- Creatives tab -->
       <div id="geo-panel-creatives" class="hidden">
@@ -2109,8 +2111,9 @@ function switchTeam(teamName) {
   // 1. Оновлюємо стан і закриваємо меню
   currentMonthFilter = month;
   localStorage.setItem('selected_dashboard_month', month);
-  document.getElementById('current-month-label').innerText = month;
-  document.getElementById('month-menu').classList.add('hidden');
+  const mLbl = document.getElementById('current-month-label');
+  if (mLbl) mLbl.innerText = month;
+  document.getElementById('month-menu')?.classList.add('hidden');
 
   // 2. Одразу перемальовуємо все синхронно (без штучної затримки)
   applyGlobalFilter();
@@ -3170,22 +3173,29 @@ async function _driveList(params){
   return (await r.json()).files || [];
 }
 
-// Знаходить підпапку гео всередині папки команди (KG, AU, DE…)
-async function driveGeoFolderId(geo){
-  if (!geo) return null;
-  if (_driveGeoFolders[geo] !== undefined) return _driveGeoFolders[geo];
+// Список підпапок папки команди (кешується один раз)
+let _driveSubfolders = null;
+async function driveSubfolders(){
+  if (_driveSubfolders) return _driveSubfolders;
   try {
     const q = encodeURIComponent(
       `'${teamDriveFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-    const folders = await _driveList(`q=${q}&fields=files(id,name)&pageSize=200`);
-    // точний збіг назви папки з гео (KG), або назва починається з гео (KG_...)
-    const g = geo.toUpperCase();
-    const hit = folders.find(f => f.name.trim().toUpperCase() === g)
-             || folders.find(f => f.name.trim().toUpperCase().startsWith(g + '_'))
-             || folders.find(f => f.name.trim().toUpperCase().startsWith(g));
-    _driveGeoFolders[geo] = hit ? hit.id : null;
-  } catch(e) { console.warn('Drive geo folder:', e.message); _driveGeoFolders[geo] = null; }
-  return _driveGeoFolders[geo];
+    _driveSubfolders = await _driveList(`q=${q}&fields=files(id,name)&pageSize=300`);
+  } catch(e) { console.warn('Drive subfolders:', e.message); _driveSubfolders = []; }
+  return _driveSubfolders;
+}
+
+// Підпапка гео за назвою (KG, AU, DE…)
+async function driveGeoFolderId(geo){
+  if (!geo) return null;
+  const g = String(geo).toUpperCase();
+  if (_driveGeoFolders[g] !== undefined) return _driveGeoFolders[g];
+  const folders = await driveSubfolders();
+  const hit = folders.find(f => f.name.trim().toUpperCase() === g)
+           || folders.find(f => f.name.trim().toUpperCase().startsWith(g + '_'))
+           || folders.find(f => f.name.trim().toUpperCase().startsWith(g));
+  _driveGeoFolders[g] = hit ? hit.id : null;
+  return _driveGeoFolders[g];
 }
 
 // Точний матч файлу за іменем креатива (щоб різні крео не тягли одне відео)
@@ -3211,20 +3221,32 @@ async function driveFindCreative(cid){
   let file = null;
   try {
     const safe = String(cid).replace(/'/g, "\\'");
-    const geo = (String(cid).match(/^([A-Za-z]{2})[_\-]/) || [])[1];  // перші 2 літери = гео
     const fields = 'files(id,name,mimeType,thumbnailLink,webViewLink)';
+    const search = async (parentId) => {
+      const q = encodeURIComponent(`'${parentId}' in parents and name contains '${safe}' and trashed=false`);
+      return _drivePickExact(await _driveList(`q=${q}&${fields}&pageSize=100`), cid);
+    };
 
-    // 1) шукаємо в підпапці гео
-    const geoId = geo ? await driveGeoFolderId(geo) : null;
-    if (geoId) {
-      const q = encodeURIComponent(`'${geoId}' in parents and name contains '${safe}' and trashed=false`);
-      file = _drivePickExact(await _driveList(`q=${q}&${fields}&pageSize=50`), cid);
-    }
-    // 2) фолбек — по всій папці команди (раптом без підпапок)
+    // Гео може бути будь-де в ID: KG_JS_674 або 496_DV_KG.
+    // Тому зіставляємо токени ID з реальними назвами підпапок.
+    const subs = await driveSubfolders();
+    const tokens = String(cid).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+    const matched = subs.filter(f => tokens.includes(f.name.trim().toUpperCase()));
+
+    // 1) підпапки, що збіглися з токеном (гео)
+    for (const f of matched) { file = await search(f.id); if (file) break; }
+
+    // 2) корінь папки команди
+    if (!file) file = await search(teamDriveFolderId);
+
+    // 3) решта підпапок (глобальний пошук по Drive з API-ключем не працює,
+    //    тому обходимо папки явно)
     if (!file) {
-      const q = encodeURIComponent(`name contains '${safe}' and trashed=false`);
-      const all = await _driveList(`q=${q}&${fields}&pageSize=50`);
-      file = _drivePickExact(all, cid);
+      for (const f of subs) {
+        if (matched.includes(f)) continue;
+        file = await search(f.id);
+        if (file) break;
+      }
     }
   } catch(e) { console.warn('Drive find:', e.message); }
   _driveFileCache[cid] = file;
@@ -4494,9 +4516,9 @@ function searchCreative() {
 
 // Feature 4: switchGeoTab
 function switchGeoTab(tab) {
-  ['funnels','offers','devices','creatives'].forEach(t => {
-    document.getElementById(`geo-panel-${t}`).classList.toggle('hidden', t !== tab);
-    document.getElementById(`geo-tab-${t}`).classList.toggle('active-geo-tab', t === tab);
+  ['funnels','offers','devices','placements','creatives'].forEach(t => {
+    document.getElementById(`geo-panel-${t}`)?.classList.toggle('hidden', t !== tab);
+    document.getElementById(`geo-tab-${t}`)?.classList.toggle('active-geo-tab', t === tab);
   });
 }
 
@@ -4642,6 +4664,9 @@ function showGeoDetails(geo) {
   const crDevData = (window.creativesRawData||[]).filter(c =>
     (c.geo||'').toUpperCase() === geo.toUpperCase() && c.date && c.date.startsWith(currentMonthFilter)
   );
+
+  // ===== PLACEMENTS TAB (платформа · плейсмент) =====
+  renderGeoPlacementsTab(crDevData);
   const deviceMap = {};
   crDevData.forEach(c => {
     const dev = normalizeDevice(c.device || '');
@@ -5343,6 +5368,54 @@ function placementLabel(row){
   return pl || pc || '—';
 }
 
+// Вкладка «Placements» у модалці Geo Details
+function renderGeoPlacementsTab(rows) {
+  const el = document.getElementById('geo-placement-list');
+  if (!el) return;
+  const has = rows.some(c => (c.platform && String(c.platform).trim()) || (c.placement && String(c.placement).trim()));
+  if (!has) {
+    el.innerHTML = `<div class="text-center py-10 opacity-30 text-xs uppercase font-black">
+      Немає даних — додай стовпці Platform і Placement у FB-звіт</div>`;
+    return;
+  }
+  const byPlat = {};
+  rows.forEach(c => {
+    const plat = prettyPlatform(c.platform) || '—';
+    const plc  = prettyPlacement(c.placement) || '—';
+    if (!byPlat[plat]) byPlat[plat] = { tot:{s:0,cl:0,i:0,r:0,d:0}, kids:{} };
+    const K = byPlat[plat];
+    if (!K.kids[plc]) K.kids[plc] = {s:0,cl:0,i:0,r:0,d:0};
+    [K.kids[plc], K.tot].forEach(o => {
+      o.s += Number(c.spend)||0; o.cl += Number(c.clicks)||0;
+      o.i += Number(c.installs)||0; o.r += Number(c.regs)||0; o.d += Number(c.deps)||0;
+    });
+  });
+  const plats = Object.entries(byPlat).sort((a,b)=>b[1].tot.s-a[1].tot.s);
+  const money = v => '$' + Math.round(v).toLocaleString();
+  const cost  = (s,n) => n ? '$'+(s/n).toFixed(2) : '—';
+  el.innerHTML = plats.map(([plat,v]) => `
+    <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-4 mb-3">
+      <div class="flex justify-between items-center mb-3 pb-2 border-b border-white/5">
+        <span class="text-sm font-black text-white">${plat}</span>
+        <span class="text-[11px] font-black text-indigo-400">${money(v.tot.s)}</span>
+      </div>
+      <div class="grid grid-cols-7 gap-1 text-[9px] uppercase tracking-widest text-slate-600 font-black pb-1 mb-1">
+        <span class="col-span-2">Плейсмент</span><span class="text-center">Clicks</span>
+        <span class="text-center">Inst</span><span class="text-right">CPI</span>
+        <span class="text-center">Reg</span><span class="text-center text-green-500">Dep</span>
+      </div>
+      ${Object.entries(v.kids).sort((a,b)=>b[1].s-a[1].s).map(([plc,m])=>`
+        <div class="grid grid-cols-7 gap-1 text-[10px] py-1 items-center hover:bg-white/[0.03] rounded">
+          <span class="col-span-2 font-bold text-slate-300 truncate" title="${plc}">${plc}</span>
+          <span class="text-center text-slate-400 font-mono">${m.cl.toLocaleString()}</span>
+          <span class="text-center text-cyan-300 font-mono">${m.i.toLocaleString()}</span>
+          <span class="text-right text-slate-400 font-mono">${cost(m.s,m.i)}</span>
+          <span class="text-center text-blue-400 font-mono">${m.r.toLocaleString()}</span>
+          <span class="text-center text-green-500 font-mono font-black">${m.d.toLocaleString()}</span>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
 // ===== Geo × Placement (вкладка в Geo Breakdown) =====
 function renderGeoPlacementWidget(crData, el) {
   const has = crData.some(c => (c.placement && String(c.placement).trim()) || (c.platform && String(c.platform).trim()));
@@ -5875,18 +5948,9 @@ function rbRenderColsMenu(){
       <input type="checkbox" ${rbVisibleCols.includes(c.key)?'checked':''} onchange="rbToggleCol('${c.key}',this.checked)"
         class="!w-3.5 !h-3.5 !p-0 accent-cyan-500"></label>`).join('');
 }
-function rbToggleColsMenu(ev, btn){
+function rbToggleColsMenu(ev){
   ev.stopPropagation();
-  const m=document.getElementById('rb-cols-menu');
-  const willOpen=m.classList.contains('hidden');
-  m.classList.toggle('hidden');
-  if(willOpen){
-    const r=btn.getBoundingClientRect();
-    const w=200;
-    m.style.width=w+'px';
-    m.style.left=Math.min(Math.max(8,r.right-w), window.innerWidth-w-8)+'px';
-    m.style.top=(r.bottom+8)+'px';
-  }
+  document.getElementById('rb-cols-menu').classList.toggle('hidden');
 }
 function rbToggleCol(k,on){
   rbVisibleCols = on ? [...new Set([...rbVisibleCols,k])] : rbVisibleCols.filter(x=>x!==k);
@@ -6957,7 +7021,11 @@ function dcRenderWarn(unlinked) {
       const key = (ICON_BY_TITLE.find(([re]) => re.test(t)) || [])[1];
       if (key && I[key]) {
         const dot = el.querySelector('#task-dot');
+        // Зберігаємо службові підписи (#current-month-label тощо) — інший код читає й пише в них,
+        // і без цього changeGlobalMonth падав на null.
+        const keep = [...el.querySelectorAll('[id]')].filter(n => n.id !== 'task-dot');
         el.innerHTML = svg(I[key]);
+        keep.forEach(n => { n.style.display = 'none'; el.appendChild(n); });
         if (dot) { const d = document.createElement('span'); d.id='task-dot'; d.className='dot hidden'; el.appendChild(d); }
       }
       if (el.tagName === 'A' && /Form\.html/.test(el.getAttribute('href') || '')) {
@@ -6971,7 +7039,9 @@ function dcRenderWarn(unlinked) {
     if (teamBtn) {
       teamBtn.classList.remove('p-2','px-4','card','rounded-xl','shadow-md','border','border-emerald-500/30');
       teamBtn.classList.add('dk');
+      const keepT = [...teamBtn.querySelectorAll('[id]')];
       teamBtn.innerHTML = svg(I.users);
+      keepT.forEach(n => { n.style.display = 'none'; teamBtn.appendChild(n); });
       const s = document.createElement('small'); s.id='dock-team-label'; s.textContent='Команда';
       teamBtn.appendChild(s);
     }

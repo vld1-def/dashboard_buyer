@@ -319,6 +319,7 @@ thead[class*="sticky"], thead[class*="bg-slate-8"] {
               <tr>
                 <th class="p-4">CID (Ad Name)</th><th class="p-4">Funnel</th><th class="p-4 text-center">GEO</th>
                 <th class="p-4 text-center text-cyan-400">Device</th>
+                <th class="p-4 text-center text-indigo-400">Platform · Placement</th>
                 <th class="p-4 text-right">Spend</th><th class="p-4 text-center text-blue-300">Clicks</th>
                 <th class="p-4 text-center text-orange-400">Leads</th><th class="p-4 text-center text-blue-400">Regs</th>
                 <th class="p-4 text-center text-green-500">Deps</th>
@@ -470,6 +471,7 @@ thead[class*="sticky"], thead[class*="bg-slate-8"] {
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Кампанія</label><input type="text" id="km-camp" placeholder="Sub ID 1"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Воронка</label><input type="text" id="km-funnel" placeholder="Sub ID 2"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Креатив</label><input type="text" id="km-cr" placeholder="Sub ID 3"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1.5">Платформа (плейсмент)</label><input type="text" id="km-plc" placeholder="Sub ID 4"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">День</label><input type="text" id="km-day" placeholder="Day"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Година</label><input type="text" id="km-hour" placeholder="Hour"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-cyan-500 mb-1.5">Інстали</label><input type="text" id="km-ins" placeholder="UC (campaign)"></div>
@@ -769,7 +771,7 @@ let keitaroAgg = null;   // {byCreative:{}, byDaily:{}, byCampaign:{}, days:Set,
 let lastFbParse = null;  // {map, lines} — щоб перерахувати, якщо Keitaro прийшов пізніше
 
 // Назви колонок Keitaro (у кожної команди можуть відрізнятись) — редагується в Settings
-const KM_DEFAULT = { acc:'Sub ID 5', camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
+const KM_DEFAULT = { acc:'Sub ID 5', camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3', plc:'Sub ID 4',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
 
@@ -781,7 +783,8 @@ async function loadKeitaroMap() {
   } catch (e) { console.warn('keitaro_map:', e.message); }
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
   set('km-acc', keitaroMap.acc); set('km-camp', keitaroMap.camp); set('km-funnel', keitaroMap.funnel);
-  set('km-cr', keitaroMap.cr); set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
+  set('km-cr', keitaroMap.cr); set('km-plc', keitaroMap.plc);
+  set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
   set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
   set('km-tz', keitaroMap.tz);
 }
@@ -790,6 +793,7 @@ async function saveKeitaroMap() {
   const g = id => (document.getElementById(id)?.value || '').trim();
   const m = { acc:g('km-acc')||KM_DEFAULT.acc, camp:g('km-camp')||KM_DEFAULT.camp,
               funnel:g('km-funnel')||KM_DEFAULT.funnel, cr:g('km-cr')||KM_DEFAULT.cr,
+              plc:g('km-plc')||KM_DEFAULT.plc,
               day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
               ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
               dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10) };
@@ -849,7 +853,7 @@ function parseKeitaro(content) {
   // Колонки беремо з налаштувань команди (Settings → Keitaro Mapping)
   const col = name => { const n = String(name || '').toLowerCase().trim(); return h.findIndex(x => x === n); };
   const iAcc = col(keitaroMap.acc), iCamp = col(keitaroMap.camp), iCr = col(keitaroMap.cr);
-  const iFun = col(keitaroMap.funnel);
+  const iFun = col(keitaroMap.funnel), iPlc = col(keitaroMap.plc);
   const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
   const iIns = col(keitaroMap.ins), iReg = col(keitaroMap.reg), iDep = col(keitaroMap.dep);
   const fileTz = Number(keitaroMap.tz);
@@ -870,6 +874,7 @@ function parseKeitaro(content) {
   //   creatives -> date|acc|cid        (один креатив крутиться в кількох кампаніях)
   // Три рівні сплітування: акаунт → кампанія (з воронкою) → креатив
   const byAccount = {}, byCampaign = {}, byCreative = {}, byDaily = {};
+  const ktPlacements = {};
   const days = new Set(), unlinked = new Set();
   const add = (obj, key, ins, reg, dep, extra) => {
     if (!obj[key]) obj[key] = { installs: 0, regs: 0, deps: 0, ...(extra || {}) };
@@ -906,9 +911,14 @@ function parseKeitaro(content) {
     add(byCampaign, `${localDay}|${acc}|${normCamp(campRaw)}|${funnel}`, ins, reg, dep,
         { account: acc, date: localDay, campaign: campRaw, funnel, geo, ktid });
     add(byCreative, `${localDay}|${acc}|${cr}`, ins, reg, dep, { account: acc, date: localDay, cid: cr });
+    // Плейсмент з Keitaro (Sub ID 4) — за ключем креатива, щоб підставити у FB-рядки
+    if (iPlc >= 0) {
+      const pv = String(r[iPlc] || '').trim();
+      if (pv && !pv.startsWith('{')) ktPlacements[`${localDay}|${acc}|${cr}`] = pv;
+    }
     add(byDaily,    `${localDay}|${acc}|${geo}|${ktid}`, ins, reg, dep);
   }
-  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, days, unlinked };
+  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, ktPlacements, days, unlinked };
   console.log('Keitaro:', Object.keys(byAccount).length, 'акаунт-днів,',
               Object.keys(byCampaign).length, 'кампаній(воронок),',
               Object.keys(byCreative).length, 'креативів');
@@ -932,6 +942,10 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     (groups[k] = groups[k] || []).push(row);
   });
   Object.entries(groups).forEach(([k, rows]) => {
+    // Плейсмент із Keitaro (Sub ID 4) — якщо у FB-звіті його не було
+    const ktPlc = keitaroAgg.ktPlacements?.[k];
+    if (ktPlc) rows.forEach(r => { if (!r.placement) r.placement = ktPlc; });
+
     const kt = keitaroAgg.byCreative[k];
     if (!kt) return;
     hitC++;
@@ -1113,12 +1127,16 @@ function renderDualPreview() {
     const devColor = r.device === 'ios_phone' || r.device === 'ios_tablet' ? 'text-blue-400'
       : r.device === 'android_phone' || r.device === 'android_tablet' ? 'text-green-400'
       : r.device === 'desktop' ? 'text-slate-400' : 'text-slate-600';
+    const platTxt = r.platform ? String(r.platform).replace(/_/g,' ') : '';
+    const plcTxt  = r.placement ? String(r.placement).replace(/_/g,' ') : '';
+    const plLabel = (platTxt && plcTxt) ? `${platTxt} · ${plcTxt}` : (platTxt || plcTxt || '—');
     return `
     <tr class="hover:bg-white/5 text-[13px] text-slate-300">
       <td class="p-4 font-mono text-purple-400 font-bold">${r.cid}</td>
       <td class="p-4 italic opacity-70">${r.funnel}</td>
       <td class="p-4 text-center">${r.geo}</td>
       <td class="p-4 text-center font-bold ${devColor}">${devLabel}</td>
+      <td class="p-4 text-center text-[12px] font-bold ${plLabel==='—'?'text-slate-600':'text-indigo-300'} capitalize">${plLabel}</td>
       <td class="p-4 text-right font-bold text-white">$${r.spend.toFixed(2)}</td>
       <td class="p-4 text-center text-blue-300 font-bold">${r.clicks}</td>
       <td class="p-4 text-center text-orange-400/80 font-bold">${r.installs}</td>
