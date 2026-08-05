@@ -2452,8 +2452,11 @@ function renderTrend(data) {
               const label = context.dataset.label;
               const stats = context.dataset.allStats ? context.dataset.allStats[context.dataIndex] : null;
               
+              // ВАЖЛИВО: спершу перевірка на null — у daily-режимі є лінія тренду без allStats,
+              // і звернення до stats.i до перевірки роняло весь тултіп.
+              if (!stats) return null;
               const ins = stats.i || 0;
-              if (!stats || (stats.s === 0 && stats.r === 0 && stats.d === 0 && ins === 0)) return null;
+              if (stats.s === 0 && stats.r === 0 && stats.d === 0 && ins === 0) return null;
 
               const cpi = ins > 0 ? (stats.s / ins).toFixed(1) : 0;
               const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
