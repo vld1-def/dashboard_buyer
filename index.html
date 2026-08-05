@@ -1358,8 +1358,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   <!-- Колонна 1: Список креативів (col-span-3) -->
   <div class="lg:col-span-3 bg-gray-500/5 p-4 rounded-3xl border border-gray-500/10 flex flex-col min-h-[500px]">
      <p class="text-[9px] font-black text-muted-dynamic uppercase mb-3 opacity-50">Creatives:</p>
-     <!-- flex-1 + min-h-0: список тягнеться на всю доступну висоту картки праворуч -->
-     <div id="creative-list-sidebar" class="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1 custom-scrollbar"></div>
+     <!-- Обгортка тягнеться на висоту картки праворуч, а сам список позиціонований
+          absolute — тому кількість креативів НЕ впливає на висоту блоку. -->
+     <div class="relative flex-1 min-h-0">
+       <div id="creative-list-sidebar" class="absolute inset-0 space-y-2 overflow-y-auto pr-1 custom-scrollbar"></div>
+     </div>
   </div>
 
   <!-- Колонна 2: Total Stats (col-span-9) -->
@@ -2306,12 +2309,13 @@ function renderTrend(data) {
   // --- РЕЖИМ DAILY ---
   if (currentChartMode === 'daily') {
     const m = {};
-    sd.forEach(d => m[d] = { s: 0, r: 0, d: 0 });
+    sd.forEach(d => m[d] = { s: 0, r: 0, d: 0, i: 0 });
     data.forEach(d => {
       if (m[d.date]) {
         m[d.date].s += Number(d.spend) || 0;
         m[d.date].r += Number(d.regs) || 0;
         m[d.date].d += Number(d.deposits) || 0;
+        m[d.date].i += Number(d.installs) || 0;
       }
     });
 
@@ -2404,7 +2408,8 @@ function renderTrend(data) {
         return {
           s: dayGeoData.reduce((sum, item) => sum + (Number(item.spend) || 0), 0),
           r: dayGeoData.reduce((sum, item) => sum + (Number(item.regs) || 0), 0),
-          d: dayGeoData.reduce((sum, item) => sum + (Number(item.deposits) || 0), 0)
+          d: dayGeoData.reduce((sum, item) => sum + (Number(item.deposits) || 0), 0),
+          i: dayGeoData.reduce((sum, item) => sum + (Number(item.installs) || 0), 0)
         };
       });
 
@@ -2447,19 +2452,21 @@ function renderTrend(data) {
               const label = context.dataset.label;
               const stats = context.dataset.allStats ? context.dataset.allStats[context.dataIndex] : null;
               
-              if (!stats || (stats.s === 0 && stats.r === 0 && stats.d === 0)) return null;
+              const ins = stats.i || 0;
+              if (!stats || (stats.s === 0 && stats.r === 0 && stats.d === 0 && ins === 0)) return null;
 
+              const cpi = ins > 0 ? (stats.s / ins).toFixed(1) : 0;
               const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
               const cpa = stats.d > 0 ? (stats.s / stats.d).toFixed(1) : 0;
 
-              // Виведення як на скріншоті
               return [
-                ` 📍 ${currentChartMode === 'daily' ? 'TOTAL' : 'ГЕО: ' + label}`,
+                ` 📍 ${currentChartMode === 'daily' ? 'TOTAL' : 'GEO: ' + label}`,
                 ` 💰 Spend: $${Math.round(stats.s)}`,
+                ` 📲 Inst: ${ins}`,
                 ` 📝 Reg: ${stats.r}`,
                 ` 🎯 Dep: ${stats.d}`,
-                ` 💵 CPL: $${cpl} | CPA: $${cpa}`,
-                ` ` 
+                ` 💵 CPI: $${cpi} | CPL: $${cpl} | CPA: $${cpa}`,
+                ` `
               ];
             }
           }
