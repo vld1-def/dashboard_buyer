@@ -210,37 +210,137 @@ thead[class*="sticky"], thead[class*="bg-slate-8"] {
 }
 ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.35) !important; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,.55) !important; }
+/* ═══════════ ЛІТАЮЧИЙ ДОК (фікс підказок) ═══════════ */
+#app-dock {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 120;
+  display: flex; align-items: center; gap: 5px; padding: 9px 11px;
+  background: linear-gradient(150deg, rgba(30,41,59,.72), rgba(15,23,42,.60));
+  backdrop-filter: blur(28px) saturate(190%); -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255,255,255,.14); border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(2,8,23,.55), 0 0 44px rgba(59,130,246,.14),
+              inset 0 1px 0 rgba(255,255,255,.14);
+  max-width: calc(100vw - 20px);
+  overflow: visible;               /* ← нічого не обрізається */
+  flex-wrap: nowrap;
+}
+.light #app-dock { background: linear-gradient(150deg, rgba(255,255,255,.8), rgba(255,255,255,.6)); }
+#app-dock .dk {
+  width: 48px; height: 48px; flex: 0 0 48px; border-radius: 16px;
+  display: grid; place-items: center; color: #94a3b8; cursor: pointer;
+  transition: background .18s, color .18s; position: relative;
+  background: transparent; border: 1px solid transparent;
+}
+#app-dock .dk svg { width: 22px; height: 22px; stroke-width: 1.9; }
+/* hover без підйому — лише підсвітка (hover-ліфт тільки на картках) */
+#app-dock .dk:hover {
+  color: #fff;
+  background: rgba(59,130,246,.16);
+  border-color: rgba(59,130,246,.32);
+}
+#app-dock .dk.tab-on {
+  background: rgba(59,130,246,.18); color: #fff;
+  border-color: rgba(59,130,246,.45);
+  box-shadow: inset 0 0 0 1px rgba(59,130,246,.25);
+}
+#app-dock .dk.primary {
+  background: linear-gradient(140deg, #3b82f6, #6366f1); color: #fff;
+  box-shadow: 0 8px 22px rgba(59,130,246,.45);
+}
+#app-dock .dk.primary:hover { background: linear-gradient(140deg, #60a5fa, #3b82f6); }
+#app-dock .dk-sep { width: 1px; height: 26px; background: rgba(255,255,255,.14); margin: 0 4px; flex: 0 0 1px; }
+/* підказка НАД іконкою — не ховається за край екрана */
+#app-dock .dk small {
+  position: absolute; top: -36px; left: 50%; transform: translateX(-50%) translateY(4px);
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; white-space: nowrap; opacity: 0;
+  background: rgba(15,23,42,.95); color: #fff; padding: 4px 9px; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.16); transition: .18s; pointer-events: none; z-index: 130;
+}
+#app-dock .dk:hover small { opacity: 1; transform: translateX(-50%) translateY(0); }
+#app-dock .dk .dot {
+  position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%;
+  background: #ef4444; box-shadow: 0 0 8px #ef4444;
+}
+/* .hidden має перемагати display:grid дока */
+#app-dock .dk.hidden, #app-dock .hidden { display: none !important; }
+
+/* Geo Breakdown — фіксована висота зі скролом */
+#device-geo-content {
+  max-height: 420px; overflow-y: auto; padding-right: 6px;
+}
+/* Report Builder — випадайка стовпчиків не має обрізатись карткою */
+#report-builder-section { overflow: visible !important; }
+#rb-cols-menu { max-height: 60vh; overflow-y: auto; }
+body { padding-bottom: 100px !important; padding-top: 14px !important; }
+@media (max-width: 640px) {
+  #app-dock { bottom: 8px; gap: 2px; padding: 6px 7px; }
+  #app-dock .dk { width: 41px; height: 41px; flex: 0 0 41px; }
+}
+
+/* ═══════════ КАСТОМНИЙ КАЛЕНДАР ═══════════ */
+input[type="date"] { position: relative; }
+input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:absolute; inset:0; cursor:pointer; }
+#glass-cal {
+  position: fixed; z-index: 200; width: 252px; padding: 12px;
+  background: linear-gradient(150deg, rgba(30,41,59,.90), rgba(15,23,42,.85));
+  backdrop-filter: blur(28px) saturate(190%); -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255,255,255,.15); border-radius: 18px;
+  box-shadow: 0 22px 60px rgba(2,8,23,.6), inset 0 1px 0 rgba(255,255,255,.12);
+  opacity: 0; transform: translateY(6px) scale(.97); pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+#glass-cal.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+#glass-cal .gc-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+#glass-cal .gc-title { font-size:12px; font-weight:800; color:#f1f5f9; letter-spacing:.02em; }
+#glass-cal .gc-nav {
+  width:26px; height:26px; border-radius:9px; display:grid; place-items:center;
+  color:#94a3b8; cursor:pointer; font-size:13px; font-weight:900; transition:.15s;
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08);
+}
+#glass-cal .gc-nav:hover { color:#fff; background:rgba(59,130,246,.22); border-color:rgba(59,130,246,.4); }
+#glass-cal .gc-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+#glass-cal .gc-dow { font-size:8.5px; font-weight:900; text-transform:uppercase; color:#64748b; text-align:center; padding:4px 0 6px; }
+#glass-cal .gc-d {
+  aspect-ratio:1; display:grid; place-items:center; font-size:11px; font-weight:700;
+  color:#cbd5e1; border-radius:9px; cursor:pointer; transition:.13s; border:1px solid transparent;
+}
+#glass-cal .gc-d:hover { background:rgba(59,130,246,.20); color:#fff; border-color:rgba(59,130,246,.35); }
+#glass-cal .gc-d.other { color:#475569; }
+#glass-cal .gc-d.today { border-color:rgba(59,130,246,.5); color:#60a5fa; }
+#glass-cal .gc-d.sel {
+  background:linear-gradient(140deg,#3b82f6,#6366f1); color:#fff;
+  box-shadow:0 4px 14px rgba(59,130,246,.5);
+}
+#glass-cal .gc-foot { display:flex; justify-content:space-between; margin-top:10px; padding-top:9px; border-top:1px solid rgba(255,255,255,.08); }
+#glass-cal .gc-btn { font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#94a3b8; cursor:pointer; transition:.15s; }
+#glass-cal .gc-btn:hover { color:#60a5fa; }
+
 /* ═══════════ END LIQUID GLASS ═══════════ */
   </style>
 </head>
 <body class="p-6 md:p-12 antialiased">
 
   <div class="max-w-[1850px] mx-auto">
-    <!-- HEADER -->
-    <div class="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
-      <div>
-        <h2 class="text-4xl font-black uppercase italic tracking-tighter text-white">Data Hub <span class="text-blue-500 text-xl">v14.20</span></h2>
-        <div class="flex items-center gap-2 mt-2">
-          <span class="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 flex items-center gap-3">
-            Target Workspace: <span id="active-team-display" class="text-white">LOADING...</span>
-            <button onclick="promptNewTeam()" class="ml-2 text-[9px] bg-emerald-500/20 hover:bg-emerald-500/40 px-2 py-0.5 rounded border border-emerald-500/30 transition-all text-emerald-300">
-              EDIT / NEW
-            </button>
-          </span>
-        </div>
+    <!-- HEADER — лого по центру, решта переїжджає в нижній док -->
+    <div class="flex flex-col items-center text-center mb-8">
+      <h2 class="text-2xl font-black uppercase italic tracking-tighter text-white">Data Hub <span class="text-blue-500 text-sm">v14.20</span></h2>
+      <div class="flex items-center gap-2 mt-1.5">
+        <span class="text-[9px] font-black uppercase tracking-[0.25em] text-emerald-400 flex items-center gap-2">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="active-team-display" class="text-white">LOADING...</span>
+        </span>
       </div>
-      
-      <div class="flex items-center gap-4">
-        <div id="main-tabs" class="flex gap-1.5">
-          <button onclick="switchMode('dataset')" id="tab-dataset" class="tab-btn active px-6 py-2.5 text-xs font-black uppercase transition-all">Campaigns</button>
-          <button onclick="switchMode('records')" id="tab-records" class="tab-btn px-6 py-2.5 text-xs font-black uppercase transition-all">База</button>
-          <button onclick="switchMode('expenses')" id="tab-expenses" class="tab-btn px-6 py-2.5 text-xs font-black uppercase transition-all">Витрати</button>
-          <button onclick="switchMode('providers')" id="tab-providers" class="tab-btn px-6 py-2.5 text-xs font-black uppercase transition-all">Settings</button>
-        </div>
-        <a href="index.html" class="bg-white/5 hover:bg-white/10 text-blue-400 font-black text-[11px] uppercase border border-blue-500/20 px-6 py-3 rounded-2xl transition-all shadow-lg">
-          ← Dashboard
-        </a>
-      </div>
+    </div>
+
+    <!-- Джерело для дока (переноситься в #app-dock скриптом) -->
+    <div id="form-dock-src" class="hidden">
+      <button onclick="promptNewTeam()" data-icon="users" title="Team"></button>
+      <div class="dk-sep"></div>
+      <button onclick="switchMode('dataset')" id="tab-dataset" class="tab-btn active" data-icon="upload" title="Campaigns"></button>
+      <button onclick="switchMode('records')" id="tab-records" class="tab-btn" data-icon="database" title="Records"></button>
+      <button onclick="switchMode('expenses')" id="tab-expenses" class="tab-btn" data-icon="coins" title="Expenses"></button>
+      <button onclick="switchMode('providers')" id="tab-providers" class="tab-btn" data-icon="settings" title="Settings"></button>
+      <div class="dk-sep"></div>
+      <a href="index.html" data-icon="back" title="Dashboard" class="primary"></a>
     </div>
 
     <!-- CAMPAIGN MODE (Stats + Creatives) -->
@@ -372,10 +472,9 @@ thead[class*="sticky"], thead[class*="bg-slate-8"] {
 
         <!-- Пресети дат -->
         <div class="flex bg-white/5 p-1 rounded-xl border border-white/10 text-[10px] font-black uppercase">
-          <button onclick="recDatePreset('today')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">Сьогодні</button>
-          <button onclick="recDatePreset('7')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">7д</button>
-          <button onclick="recDatePreset('30')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">30д</button>
-          <button onclick="recDatePreset('month')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">Місяць</button>
+          <button onclick="recDatePreset('today')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">Today</button>
+          <button onclick="recDatePreset('yesterday')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">Yesterday</button>
+          <button onclick="recDatePreset('month')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-slate-300 transition">Month</button>
           <button onclick="recDatePreset('clear')" class="px-3 py-1.5 rounded-lg hover:bg-white/10 text-rose-400 transition">✕</button>
         </div>
 
@@ -1693,6 +1792,10 @@ function recDatePreset(p) {
   const now  = new Date();
   if (p === 'clear') { from.value = ''; to.value = ''; }
   else if (p === 'today') { from.value = iso(now); to.value = iso(now); }
+  else if (p === 'yesterday') {
+    const y = new Date(); y.setDate(y.getDate() - 1);
+    from.value = iso(y); to.value = iso(y);
+  }
   else if (p === 'month') { from.value = iso(new Date(now.getFullYear(), now.getMonth(), 1)); to.value = iso(now); }
   else { const d = new Date(); d.setDate(d.getDate() - (parseInt(p) - 1)); from.value = iso(d); to.value = iso(now); }
   recRender();
@@ -1859,5 +1962,139 @@ function recExportCSV() {
   a.click();
 }
 </script>
+
+<!-- ═══════════ GLASS UI: док-меню + кастомний календар (як в index) ═══════════ -->
+<script>
+(function(){
+  const I = {
+    users:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m14 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+    upload:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
+    database:'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
+    coins:'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+    settings:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+    back:'M19 12H5m0 0 7 7m-7-7 7-7'
+  };
+  const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
+
+  /* ---------- Літаючий док ---------- */
+  function buildDock(){
+    const src = document.getElementById('form-dock-src');
+    if (!src || document.getElementById('app-dock')) return;
+    const dock = document.createElement('nav');
+    dock.id = 'app-dock';
+    [...src.children].forEach(node => dock.appendChild(node));
+    src.remove();
+    document.body.appendChild(dock);
+
+    dock.querySelectorAll('button, a').forEach(el => {
+      const key = el.dataset.icon;
+      el.classList.add('dk');
+      if (key && I[key]) el.innerHTML = svg(I[key]);
+      const label = el.getAttribute('title');
+      if (label) { const s = document.createElement('small'); s.textContent = label; el.appendChild(s); }
+    });
+    syncDockActive();
+  }
+  // .tab-btn.active вже перемикає switchMode — підсвічуємо активну іконку
+  function syncDockActive(){
+    document.querySelectorAll('#app-dock .tab-btn').forEach(b => {
+      b.classList.toggle('tab-on', b.classList.contains('active'));
+    });
+  }
+  const _sm = window.switchMode;
+  if (typeof _sm === 'function') {
+    window.switchMode = function(m){ _sm(m); syncDockActive(); };
+  }
+
+  /* ---------- Кастомний скляний календар ---------- */
+  const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DOW=['Mo','Tu','We','Th','Fr','Sa','Su'];
+  let calEl=null, calInput=null, calView=new Date(), calJustOpened=false;
+  const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+  function buildCal(){
+    if (calEl) return;
+    calEl=document.createElement('div'); calEl.id='glass-cal';
+    calEl.addEventListener('mousedown', e=>e.preventDefault());
+    calEl.addEventListener('click', e=>e.stopPropagation());
+    document.body.appendChild(calEl);
+    document.addEventListener('click', e=>{
+      if (calJustOpened) return;
+      if (!calEl.classList.contains('open')) return;
+      if (calEl.contains(e.target) || e.target===calInput) return;
+      closeCal();
+    });
+    window.addEventListener('scroll', e=>{ if(!calEl.contains(e.target)) closeCal(); }, true);
+  }
+  function renderCal(){
+    const y=calView.getFullYear(), m=calView.getMonth();
+    const selVal=calInput?.value||'';
+    const todayStr=fmtDate(new Date());
+    const first=new Date(y,m,1);
+    const start=(first.getDay()+6)%7;
+    const dim=new Date(y,m+1,0).getDate();
+    const dimPrev=new Date(y,m,0).getDate();
+    let cells='';
+    for(let i=0;i<42;i++){
+      let d,mm=m,yy=y,other=false;
+      if(i<start){ d=dimPrev-start+1+i; mm=m-1; other=true; }
+      else if(i-start<dim){ d=i-start+1; }
+      else { d=i-start-dim+1; mm=m+1; other=true; }
+      const val=fmtDate(new Date(yy,mm,d));
+      const cls=['gc-d', other?'other':'', val===todayStr?'today':'', val===selVal?'sel':''].join(' ');
+      cells+=`<div class="${cls}" data-v="${val}">${d}</div>`;
+    }
+    calEl.innerHTML=`
+      <div class="gc-head">
+        <div class="gc-nav" data-nav="-1">‹</div>
+        <div class="gc-title">${MONTHS[m]} ${y}</div>
+        <div class="gc-nav" data-nav="1">›</div>
+      </div>
+      <div class="gc-grid">${DOW.map(d=>`<div class="gc-dow">${d}</div>`).join('')}${cells}</div>
+      <div class="gc-foot">
+        <span class="gc-btn" data-act="today">Today</span>
+        <span class="gc-btn" data-act="clear">Clear</span>
+      </div>`;
+    calEl.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{ calView.setMonth(calView.getMonth()+Number(b.dataset.nav)); renderCal(); });
+    calEl.querySelectorAll('.gc-d').forEach(c=>c.onclick=()=>setVal(c.dataset.v));
+    calEl.querySelector('[data-act="today"]').onclick=()=>setVal(todayStr);
+    calEl.querySelector('[data-act="clear"]').onclick=()=>setVal('');
+  }
+  function setVal(v){
+    if(!calInput) return;
+    calInput.value=v;
+    calInput.dispatchEvent(new Event('input',{bubbles:true}));
+    calInput.dispatchEvent(new Event('change',{bubbles:true}));
+    closeCal();
+  }
+  function openCal(input){
+    buildCal();
+    calInput=input;
+    calView = input.value ? new Date(input.value+'T00:00:00') : new Date();
+    renderCal();
+    const r=input.getBoundingClientRect(), w=252, h=320;
+    let x=Math.min(Math.max(8, r.left), window.innerWidth-w-8);
+    let yTop=r.bottom+8;
+    if (yTop+h > window.innerHeight-8) yTop=Math.max(8, r.top-h-8);
+    calEl.style.left=x+'px'; calEl.style.top=yTop+'px';
+    calEl.classList.add('open');
+    calJustOpened=true; setTimeout(()=>{ calJustOpened=false; }, 0);
+  }
+  function closeCal(){ calEl?.classList.remove('open'); }
+
+  document.addEventListener('click', e=>{
+    const inp=e.target.closest?.('input[type="date"]');
+    if(!inp) return;
+    e.preventDefault();
+    if (calEl?.classList.contains('open') && calInput===inp) { closeCal(); return; }
+    openCal(inp);
+  }, true);
+
+  function init(){ buildDock(); }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+
 </body>
 </html>
