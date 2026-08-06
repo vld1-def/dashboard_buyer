@@ -1446,14 +1446,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-2 mb-6 items-start">
     <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden">
       <button onclick="crTogglePanel('placements')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
-        <span class="text-[10px] font-black uppercase tracking-widest text-indigo-400 text-left">Placements · where it ran</span>
+        <span class="text-[10px] font-black uppercase tracking-widest text-indigo-400 text-left">Placement</span>
         <span id="cr-arrow-placements" class="text-[10px] text-slate-500 transition-transform shrink-0">▶</span>
       </button>
       <div id="cr-panel-placements" class="hidden px-4 pb-4"></div>
     </div>
     <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden">
       <button onclick="crTogglePanel('trend')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
-        <span class="text-[10px] font-black uppercase tracking-widest text-cyan-400 text-left">Daily trend · burnout check</span>
+        <span class="text-[10px] font-black uppercase tracking-widest text-cyan-400 text-left">Daily trend</span>
         <span id="cr-arrow-trend" class="text-[10px] text-slate-500 transition-transform shrink-0">▶</span>
       </button>
       <div id="cr-panel-trend" class="hidden px-4 pb-4"></div>
@@ -2929,7 +2929,46 @@ function crRenderTrendPanel() {
             <span class="text-slate-500">${m.d?'$'+(m.s/m.d).toFixed(0):'—'}</span></span>
         </div>`).join('')}
     </div>
-    ${verdict ? `<p class="text-[10px] font-bold mt-2.5 pt-2 border-t border-white/5">${verdict}</p>` : ''}`;
+    ${verdict ? `<p class="text-[10px] font-bold mt-2.5 pt-2 border-t border-white/5">${verdict}</p>` : ''}
+    ${crSpendSparkline(days)}`;
+}
+
+// Компактний графік спенду по днях (інлайновий SVG — без зайвих інстансів Chart.js)
+function crSpendSparkline(days) {
+  if (days.length < 2) return '';
+  const W = 100, H = 30;                       // viewBox; розтягується по ширині блоку
+  const vals = days.map(([, m]) => m.s);
+  const max = Math.max(...vals), min = Math.min(...vals);
+  const span = (max - min) || 1;
+  const x = i => (i / (days.length - 1)) * W;
+  const y = v => H - ((v - min) / span) * (H - 4) - 2;
+  const pts = vals.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(' ');
+  const area = `0,${H} ${pts} ${W},${H}`;
+  // точки з депами підсвічуємо зеленим
+  const dots = days.map(([, m], i) =>
+    `<circle cx="${x(i).toFixed(2)}" cy="${y(m.s).toFixed(2)}" r="${m.d ? 1.6 : 1}"
+             fill="${m.d ? '#34d399' : '#60a5fa'}" />`).join('');
+  const first = days[0][0].slice(5), last = days[days.length - 1][0].slice(5);
+  return `
+    <div class="mt-3 pt-3 border-t border-white/5">
+      <div class="flex justify-between items-baseline mb-1">
+        <span class="text-[9px] font-black uppercase tracking-widest text-slate-600">Spend by day</span>
+        <span class="text-[9px] font-mono text-slate-500">$${Math.round(min)}–$${Math.round(max)}</span>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="w-full h-[42px] block">
+        <defs><linearGradient id="crSpendGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+        </linearGradient></defs>
+        <polygon points="${area}" fill="url(#crSpendGrad)"/>
+        <polyline points="${pts}" fill="none" stroke="#60a5fa" stroke-width="1.2"
+                  stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        ${dots}
+      </svg>
+      <div class="flex justify-between text-[9px] font-mono text-slate-600 mt-0.5">
+        <span>${first}</span><span>${last}</span>
+      </div>
+    </div>`;
 }
 
 function crSyncStarBtn() {
@@ -6333,14 +6372,14 @@ function rbExportCSV(){
       <p class="text-[10px] text-slate-600 mt-1 uppercase tracking-widest font-bold">Sign in to continue</p>
     </div>
     <div class="space-y-3">
-      <input type="email" id="login-email-input" placeholder="Email" value="brovladay@gmail.com" autocomplete="username"
+      <input type="email" id="login-email-input" placeholder="Email" autocomplete="username"
         class="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-4 py-3.5 text-sm font-bold text-white outline-none focus:border-blue-500 focus:bg-white/[0.06] transition text-center">
       <input type="password" id="login-pwd-input" placeholder="Password" autocomplete="current-password"
         onkeydown="if(event.key==='Enter') submitSiteLogin()"
         class="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-4 py-3.5 text-sm font-bold text-white outline-none focus:border-blue-500 focus:bg-white/[0.06] transition text-center tracking-widest">
       <p id="login-error" class="hidden text-[10px] text-red-400 text-center font-bold uppercase tracking-widest">Wrong email or password</p>
       <button id="login-btn" onclick="submitSiteLogin()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-widest py-3.5 rounded-2xl transition text-sm">
-        Увійти
+        Sign in
       </button>
     </div>
   </div>
