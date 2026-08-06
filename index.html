@@ -3065,11 +3065,19 @@ function openSettingsModal() {
   document.getElementById('tl-password-input').value = pwd;
   if (pwd) document.getElementById('tl-link-hint').textContent =
     `🔗 ${location.origin}${location.pathname}?view=teamlead&key=${pwd}&team=${encodeURIComponent(currentTeam)}`;
-  // Load TL access toggles
-  const acc = JSON.parse(localStorage.getItem('tl_access') || '{}');
-  ['kpi','geo','creatives','heatmap','table','device-geo','expenses'].forEach(k => {
+  // Load TL access toggles — джерелом правди є Supabase, localStorage лише як миттєвий fallback
+  loadTeamLeadToggles();
+}
+
+async function loadTeamLeadToggles() {
+  let acc = {};
+  try { acc = JSON.parse(localStorage.getItem('tl_access') || '{}'); } catch (e) {}
+  const fresh = await getTeamSetting('tl_access');
+  if (fresh) { try { acc = JSON.parse(fresh); } catch (e) {} }
+  // Дозволено лише те, що явно === true (нові блоки не вмикаються самі)
+  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements'].forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
-    if (el) el.checked = acc[k] !== false;
+    if (el) el.checked = acc[k] === true;
   });
 }
 
@@ -3562,7 +3570,7 @@ async function siteLogout() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','geo','creatives','heatmap','table','device-geo','report','placements'];
+  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -3626,6 +3634,7 @@ async function initTeamLeadMode() {
 
   const map = {
     'kpi':        'kpi-row',
+    'chart':      'chart-main-col',
     'geo':        'geo-sidebar-col',
     'creatives':  'creative-analyzer-section',
     'heatmap':    'weekly-analysis-section',
@@ -3634,11 +3643,13 @@ async function initTeamLeadMode() {
     'report':     'report-builder-section',
     'placements': 'placements-section'
   };
+  // ЗАБОРОНЕНО ЗА ЗАМОВЧУВАННЯМ: показуємо лише те, що явно дозволено (=== true).
+  // Інакше кожен новий блок автоматично ставав би видимим для тімліда.
   const toHide = new Set();
   const toShow = new Set();
   Object.entries(map).forEach(([k, id]) => {
-    if (acc[k] === false) toHide.add(id);
-    else toShow.add(id);
+    if (acc[k] === true) toShow.add(id);
+    else toHide.add(id);
   });
   window.tlActiveSections = toHide;
   window.tlVisibleSections = toShow;
@@ -6513,35 +6524,39 @@ function rbExportCSV(){
           <div class="space-y-1">
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">KPI Cards</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-kpi" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-kpi" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+            </label>
+            <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
+              <span class="text-xs font-bold text-slate-300 group-hover:text-white">Performance Trend</span>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-chart" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Geo Performance</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-geo" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Creative Analyzer</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-creatives" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Weekly Analysis</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-heatmap" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-heatmap" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Live Data Feed</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-table" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-table" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Device × Geo</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Report Builder</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-report" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-report" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
             <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
               <span class="text-xs font-bold text-slate-300 group-hover:text-white">Placements</span>
-              <label class="toggle-switch"><input type="checkbox" id="tl-show-placements" checked onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
+              <label class="toggle-switch"><input type="checkbox" id="tl-show-placements" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></label>
             </label>
           </div>
         </div>
