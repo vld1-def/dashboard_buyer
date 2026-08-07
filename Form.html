@@ -428,7 +428,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <th class="p-4">CID (Ad Name)</th><th class="p-4">Funnel</th><th class="p-4 text-center">GEO</th>
                 <th class="p-4 text-center text-cyan-400">Device</th>
                 <th class="p-4 text-center text-indigo-400">Platform · Placement</th>
-                <th class="p-4 text-center text-amber-400">Offer</th>
                 <th class="p-4 text-right">Spend</th><th class="p-4 text-center text-blue-300">Clicks</th>
                 <th class="p-4 text-center text-orange-400">Leads</th><th class="p-4 text-center text-blue-400">Regs</th>
                 <th class="p-4 text-center text-green-500">Deps</th>
@@ -1030,9 +1029,18 @@ function parseKeitaro(content) {
   const sp = l => l.split(delim).map(c => c.replace(/^"|"$/g, '').replace(/"/g, '').trim());
   const h = sp(lines[0]).map(x => x.toLowerCase());
   // Колонки беремо з налаштувань команди (Settings → Keitaro Mapping)
-  const col = name => { const n = String(name || '').toLowerCase().trim(); return h.findIndex(x => x === n); };
+  // Спершу точний збіг, потім частковий — назви колонок у експортах трохи різняться
+  const col = name => {
+    const n = String(name || '').toLowerCase().trim();
+    if (!n) return -1;
+    let i = h.findIndex(x => x === n);
+    if (i === -1) i = h.findIndex(x => x.includes(n));
+    return i;
+  };
   const iAcc = col(keitaroMap.acc), iCamp = col(keitaroMap.camp), iCr = col(keitaroMap.cr);
   const iFun = col(keitaroMap.funnel), iPlc = col(keitaroMap.plc), iOff = col(keitaroMap.offer);
+  console.log('Keitaro offer column:', iOff >= 0 ? `"${sp(lines[0])[iOff]}"` : `НЕ ЗНАЙДЕНО (шукали "${keitaroMap.offer}")`,
+              '| відомі оффери команди:', knownOffers);
   const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
   const iIns = col(keitaroMap.ins), iReg = col(keitaroMap.reg), iDep = col(keitaroMap.dep);
   const fileTz = Number(keitaroMap.tz);
@@ -1054,7 +1062,8 @@ function parseKeitaro(content) {
   // Три рівні сплітування: акаунт → кампанія (з воронкою) → креатив
   const byAccount = {}, byCampaign = {}, byCreative = {}, byDaily = {};
   // Розбивка по офферах — потрібна, щоб рознести спенд FB між офферами у спліті
-  const byDailyOffer = {}, byCreativeOffer = {};
+  const byDailyOffer = {};
+  const offerHits = new Set(), offerMisses = new Set();
   const ktPlacements = {};
   const days = new Set(), unlinked = new Set();
   const add = (obj, key, ins, reg, dep, extra) => {
@@ -1101,6 +1110,10 @@ function parseKeitaro(content) {
 
     // офер із рядка Keitaro (напр. "[Riddick's Partners] Zazino KG | Reg | Anna")
     const offer = iOff >= 0 ? matchOffer(r[iOff]) : '';
+    if (iOff >= 0) {
+      const raw = String(r[iOff] || '').trim();
+      if (raw) (offer ? offerHits : offerMisses).add(offer || raw);
+    }
     if (offer) {
       const dk = `${localDay}|${acc}|${geo}|${ktid}`;
       ((byDailyOffer[dk] = byDailyOffer[dk] || {})[offer] =
@@ -1109,18 +1122,21 @@ function parseKeitaro(content) {
       byDailyOffer[dk][offer].regs += reg;
       byDailyOffer[dk][offer].deps += dep;
 
-      const ck = `${localDay}|${acc}|${cr}`;
-      ((byCreativeOffer[ck] = byCreativeOffer[ck] || {})[offer] =
-        byCreativeOffer[ck][offer] || { installs: 0, regs: 0, deps: 0 });
-      byCreativeOffer[ck][offer].installs += ins;
-      byCreativeOffer[ck][offer].regs += reg;
-      byCreativeOffer[ck][offer].deps += dep;
     }
   }
-  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyOffer, byCreativeOffer, ktPlacements, days, unlinked };
-  console.log('Keitaro:', Object.keys(byAccount).length, 'акаунт-днів,',
-              Object.keys(byCampaign).length, 'кампаній(воронок),',
-              Object.keys(byCreative).length, 'креативів');
+  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyOffer, ktPlacements, days, unlinked };
+
+  if (iOff >= 0) {
+    console.log('Оффери: розпізнано', [...offerHits], '| не розпізнано', [...offerMisses]);
+    if (!offerHits.size && offerMisses.size) {
+      alert([
+        'У файлі є стовпець з оффером, але жодна назва не збіглася з офферами команди.',
+        '',
+        'У файлі: ' + [...offerMisses].slice(0, 3).join(' | '),
+        'В базі: ' + (knownOffers.join(', ') || '(порожньо — додай оффери в Settings → Offers)')
+      ].join(String.fromCharCode(10)));
+    }
+  }
 }
 
 // Замінює конверсії з FB на точні з Keitaro
@@ -1204,16 +1220,10 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     k => keitaroAgg.byDailyOffer?.[k],
     r => `${r.date}|${r.acc}|${r.geo}|${r._ktid}`);
 
-  // Креативи НЕ ділимо: один CID має кілька рядків (девайс × плейсмент), і розбивка
-  // по офферах дублювала б конверсії в кожному з них. Просто підставляємо оффер —
-  // той, на який пішло найбільше інсталів цього креатива.
+  // Креативи по офферах НЕ розбиваємо і оффер їм не проставляємо:
+  // один CID має кілька рядків (девайс × плейсмент), і будь-який розподіл там
+  // або дублює конверсії, або приписує креативу лише один з кількох офферів.
   const creativesOut = Object.values(creativeAgg);
-  creativesOut.forEach(row => {
-    const offers = keitaroAgg.byCreativeOffer?.[`${row.date}|${row.acc}|${row.cid}`];
-    if (!offers) return;
-    const top = Object.entries(offers).sort((a, b) => b[1].installs - a[1].installs)[0];
-    if (top) row.offer = top[0];
-  });
 
   console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по офферах: ${dRes.splits} daily`);
   showStatus(dRes.splits
@@ -1295,7 +1305,7 @@ function processCampaignData(map, lines) {
     const cKey = `${date}_${accName}_${cid}_${device}_${platform}_${placement}`;
 
     if (!creativeAggregated[cKey]) {
-      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, platform, placement, offer: '', spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, platform, placement, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
     }
     creativeAggregated[cKey].spend += spend;
     creativeAggregated[cKey].regs += regs;
@@ -1394,7 +1404,6 @@ function renderDualPreview() {
       <td class="p-4 text-center">${r.geo}</td>
       <td class="p-4 text-center font-bold ${devColor}">${devLabel}</td>
       <td class="p-4 text-center text-[12px] font-bold ${plLabel==='—'?'text-slate-600':'text-indigo-300'} capitalize">${plLabel}</td>
-      <td class="p-4 text-center text-[12px] font-bold ${r.offer?'text-amber-300':'text-slate-600'}">${r.offer||'—'}</td>
       <td class="p-4 text-right font-bold text-white">$${r.spend.toFixed(2)}</td>
       <td class="p-4 text-center text-blue-300 font-bold">${r.clicks}</td>
       <td class="p-4 text-center text-orange-400/80 font-bold">${r.installs}</td>
@@ -1498,7 +1507,6 @@ async function confirmDatasetImport() {
     device: row.device || '',
     platform: row.platform || '',
     placement: row.placement || '',
-    offer: row.offer || '',
     spend: row.spend,
     clicks: row.clicks || 0,
     installs: row.installs || 0,
@@ -1868,7 +1876,6 @@ const REC_SCHEMA = {
     { key: 'device',   label: 'Пристрій',type: 'text' },
     { key: 'platform', label: 'Платформа', type: 'text' },
     { key: 'placement',label: 'Плейсмент', type: 'text' },
-    { key: 'offer',    label: 'Оффер',     type: 'text' },
     { key: 'spend',    label: 'Spend',   type: 'money' },
     { key: 'clicks',   label: 'Clicks',  type: 'int' },
     { key: 'installs', label: 'Leads',   type: 'int' },
@@ -2179,7 +2186,7 @@ async function recAddRow() {
   const today = new Date().toISOString().slice(0, 10);
   const base = { team_name: currentTeam, date: today, account: '', geo: '', funnel: '', spend: 0, installs: 0, regs: 0 };
   if (recCurrentTable === 'daily_stats') Object.assign(base, { offer: 'DEFAULT', agent: '', deposits: 0 });
-  else Object.assign(base, { cid: 'NEW', device: '', platform: '', placement: '', offer: '', clicks: 0, deps: 0 });
+  else Object.assign(base, { cid: 'NEW', device: '', platform: '', placement: '', clicks: 0, deps: 0 });
   const { data, error } = await sb.from(recCurrentTable).insert([base]).select();
   if (error) { alert('Не вдалося додати запис: ' + error.message); return; }
   if (data && data[0]) recRows.unshift(data[0]);
