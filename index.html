@@ -1219,7 +1219,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <p class="text-[10px] font-black text-muted-dynamic uppercase tracking-widest text-xs">Net Profit</p>
           <p id="kpi-profit" class="text-[26px] font-black mt-1 text-emerald-400">$0.00</p>
           <div id="kpi-roi" class="text-[10px] font-bold mt-1 uppercase text-gray-500 tracking-tighter">ROI: 0%</div>
-          <div id="kpi-profit-total" class="text-[10px] font-bold uppercase tracking-tighter text-gray-500" title="Net Profit мінус комісії та витрати">Total: $0.00</div>
+          <div id="kpi-profit-total" class="text-[10px] font-bold uppercase tracking-tighter text-gray-500" title="Загальна виручка">Revenue: $0.00</div>
         </div>
       </div>
 
@@ -2275,8 +2275,7 @@ function switchTeam(teamName) {
   }
 
   // Net Profit = виручка − спенд. Підсумковий профіт ще й без комісій та витрат.
-  _kpiProfit = profit;
-  _kpiFees = tc;
+  _kpiRevenue = totalRev;
   updateTotalProfit();
 
   // Оновлення списку агентств у тултіпі
@@ -6016,19 +6015,16 @@ async function deleteDbAll(tab) {
 }
 // ===== END Feature 5 =====
 
-// ===== ПІДСУМКОВИЙ ПРОФІТ (Net Profit − комісії − витрати) =====
-// Три доданки приходять з різних місць і в різний час (витрати вантажаться окремим
-// запитом), тому тримаємо їх у змінних і перемальовуємо рядок з будь-якого боку.
-let _kpiProfit = 0, _kpiFees = 0, _kpiExpenses = 0;
+// ===== ВИРУЧКА під Net Profit =====
+// Net Profit = виручка − спенд, тому саму виручку окремо не видно. Показуємо її дрібним рядком.
+let _kpiRevenue = 0, _kpiExpenses = 0;
 
 function updateTotalProfit() {
   const el = document.getElementById('kpi-profit-total');
   if (!el) return;
-  const total = _kpiProfit - _kpiFees - _kpiExpenses;
-  el.innerText = 'Total: ' + formatCurrency(total);
-  el.className = 'text-[10px] font-bold uppercase tracking-tighter ' +
-    (total >= 0 ? 'text-emerald-400/70' : 'text-red-400/80');
-  el.title = `Net Profit ${formatCurrency(_kpiProfit)} − fees ${formatCurrency(_kpiFees)} − expenses ${formatCurrency(_kpiExpenses)}`;
+  el.innerText = 'Revenue: ' + formatCurrency(_kpiRevenue);
+  el.className = 'text-[10px] font-bold uppercase tracking-tighter text-sky-400/70';
+  el.title = 'Загальна виручка (депозити × виплата), без вирахування спенду та витрат';
 }
 
 // ===== EXPENSES =====
