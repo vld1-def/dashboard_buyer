@@ -353,6 +353,18 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 
     <!-- CAMPAIGN MODE (Stats + Creatives) -->
     <div id="mode-dataset" class="space-y-8">
+      <!-- Тип трафіку: у PWA і APP різні формати назви кампанії -->
+      <div class="max-w-3xl mx-auto flex items-center justify-between gap-4 card px-6 py-4 rounded-3xl border border-white/5">
+        <div>
+          <p class="text-xs font-black uppercase tracking-widest text-orange-400">Тип трафіку</p>
+          <p id="traffic-mode-hint" class="text-[10px] opacity-40 font-bold mt-0.5"></p>
+        </div>
+        <div class="flex bg-black/20 p-1 rounded-xl border border-white/5">
+          <button id="tm-pwa" onclick="setTrafficMode('pwa')" class="px-5 py-2 rounded-lg text-[11px] font-black uppercase transition">PWA</button>
+          <button id="tm-app" onclick="setTrafficMode('app')" class="px-5 py-2 rounded-lg text-[11px] font-black uppercase transition">APP</button>
+        </div>
+      </div>
+
       <!-- Тугл: уточнити конверсії з Keitaro -->
       <div class="max-w-3xl mx-auto flex items-center justify-between gap-4 card px-6 py-4 rounded-3xl border border-white/5">
         <div>
@@ -608,6 +620,43 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           </div>
        </div>
 
+       <!-- APP: розбір назви кампанії по позиціях -->
+       <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-orange-500 bg-slate-900/40">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="text-xl font-black uppercase italic text-orange-400 tracking-tight">APP · розбір кампанії</h3>
+            <button onclick="saveAppParse()" class="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Зберегти</button>
+          </div>
+          <p class="text-[10px] opacity-40 font-bold mb-1">У APP-трафіку назва кампанії — це просто токени через «_»:</p>
+          <p class="text-[10px] font-mono text-orange-300/70 mb-5">cy638t_8wxg7hf7_YVbHTgzY_<b class="text-orange-300">назва_апки</b>_<b class="text-orange-300">акаунт</b>_<b class="text-orange-300">крео</b>_sub7_sub8…</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Позиція: назва апки</label><input type="number" min="1" id="ap-app" placeholder="4"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Позиція: акаунт</label><input type="number" min="1" id="ap-acc" placeholder="5"></div>
+            <div>
+              <label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Креатив</label>
+              <select id="ap-cid-src">
+                <option value="adname">Зі стовпця Ad name</option>
+                <option value="camp">З назви кампанії</option>
+              </select>
+            </div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Позиція: креатив</label><input type="number" min="1" id="ap-cid-pos" placeholder="6"></div>
+            <div>
+              <label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Гео</label>
+              <select id="ap-geo-src">
+                <option value="country">Зі стовпця Country</option>
+                <option value="camp">З назви кампанії</option>
+              </select>
+            </div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Позиція: гео</label><input type="number" min="1" id="ap-geo-pos" placeholder="—"></div>
+            <div class="col-span-2 flex items-end">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="ap-dash" class="!w-4 !h-4 !p-0 accent-orange-500">
+                <span class="text-[10px] font-bold text-slate-400">У кроі «-» замість «_» (повертати назад)</span>
+              </label>
+            </div>
+          </div>
+          <p id="ap-preview" class="text-[10px] font-mono text-slate-500 mt-4"></p>
+       </div>
+
        <!-- РЯД 1: ФОРМИ ВВОДУ -->
        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <!-- Link Cabinet -->
@@ -629,7 +678,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
              <h3 class="text-xl font-black uppercase italic mb-6 text-purple-400 tracking-tight">Funnel Mapper</h3>
              <div class="flex gap-3">
                 <input type="text" id="fun-name" placeholder="Funnel Name" class="flex-grow">
-                <input type="text" id="fun-ktid" placeholder="KTID" class="w-1/3 text-center">
+                <input type="text" id="fun-ktid" placeholder="KTID / назва апки" class="w-1/3 text-center">
+                <label class="flex items-center gap-1.5 cursor-pointer shrink-0 px-2" title="Позначити як APP — тоді в KTID пишеться назва апки">
+                  <input type="checkbox" id="fun-is-app" class="!w-4 !h-4 !p-0 accent-orange-500">
+                  <span class="text-[10px] font-black uppercase text-orange-400">APP</span>
+                </label>
                 <button onclick="addFunnelMapping()" class="bg-purple-600 hover:bg-purple-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
              </div>
           </div>
@@ -749,6 +802,8 @@ window.onload = async () => {
   await loadMappings();
   await loadKeitaroMap();
   await loadKnownOffers();
+  await loadAppParse();
+  setTrafficMode(trafficMode);
   await loadAvailableOffers(); // ТУТ ДОДАЛИ
   setupDragAndDrop('dataset');
   setupDragAndDrop('creatives');
@@ -938,6 +993,135 @@ async function saveKeitaroMap() {
 
 function normCamp(s) { return String(s || '').toLowerCase().replace(/[\s_]+/g, '_').trim(); }
 
+
+
+
+// FB у стовпці Country дає повну назву ("Kyrgyzstan"), а гео в базі — код (KG).
+// Обрізати до двох літер не можна: Kyrgyzstan → KY, що не те саме.
+const COUNTRY_TO_ISO = {
+  'kyrgyzstan':'KG','kazakhstan':'KZ','uzbekistan':'UZ','tajikistan':'TJ','turkmenistan':'TM',
+  'azerbaijan':'AZ','armenia':'AM','georgia':'GE','moldova':'MD','ukraine':'UA','belarus':'BY',
+  'russia':'RU','russian federation':'RU','poland':'PL','czechia':'CZ','czech republic':'CZ',
+  'slovakia':'SK','slovenia':'SI','croatia':'HR','serbia':'RS','bosnia and herzegovina':'BA',
+  'north macedonia':'MK','macedonia':'MK','albania':'AL','montenegro':'ME','bulgaria':'BG',
+  'romania':'RO','hungary':'HU','greece':'GR','turkey':'TR','türkiye':'TR','cyprus':'CY',
+  'germany':'DE','austria':'AT','switzerland':'CH','france':'FR','belgium':'BE','netherlands':'NL',
+  'luxembourg':'LU','spain':'ES','portugal':'PT','italy':'IT','malta':'MT','ireland':'IE',
+  'united kingdom':'GB','great britain':'GB','england':'GB','denmark':'DK','sweden':'SE',
+  'norway':'NO','finland':'FI','iceland':'IS','estonia':'EE','latvia':'LV','lithuania':'LT',
+  'united states':'US','united states of america':'US','usa':'US','canada':'CA','mexico':'MX',
+  'brazil':'BR','argentina':'AR','chile':'CL','colombia':'CO','peru':'PE','ecuador':'EC',
+  'uruguay':'UY','paraguay':'PY','bolivia':'BO','venezuela':'VE','panama':'PA','costa rica':'CR',
+  'guatemala':'GT','honduras':'HN','el salvador':'SV','nicaragua':'NI','dominican republic':'DO',
+  'india':'IN','pakistan':'PK','bangladesh':'BD','sri lanka':'LK','nepal':'NP','indonesia':'ID',
+  'malaysia':'MY','singapore':'SG','thailand':'TH','vietnam':'VN','viet nam':'VN','philippines':'PH',
+  'japan':'JP','south korea':'KR','korea, republic of':'KR','china':'CN','taiwan':'TW',
+  'hong kong':'HK','australia':'AU','new zealand':'NZ','mongolia':'MN',
+  'egypt':'EG','morocco':'MA','algeria':'DZ','tunisia':'TN','libya':'LY','sudan':'SD',
+  'nigeria':'NG','ghana':'GH','kenya':'KE','uganda':'UG','tanzania':'TZ','zambia':'ZM',
+  'zimbabwe':'ZW','south africa':'ZA','cameroon':'CM','senegal':'SN','ivory coast':'CI',
+  "cote d'ivoire":'CI','ethiopia':'ET','angola':'AO','mozambique':'MZ',
+  'saudi arabia':'SA','united arab emirates':'AE','uae':'AE','qatar':'QA','kuwait':'KW',
+  'bahrain':'BH','oman':'OM','jordan':'JO','lebanon':'LB','iraq':'IQ','iran':'IR','israel':'IL',
+  'afghanistan':'AF','yemen':'YE','syria':'SY'
+};
+
+function toGeoCode(v) {
+  const raw = String(v || '').trim();
+  if (!raw) return '';
+  if (/^[A-Za-z]{2}$/.test(raw)) return raw.toUpperCase();   // вже код
+  const hit = COUNTRY_TO_ISO[raw.toLowerCase()];
+  if (hit) return hit;
+  console.warn('Невідома країна у звіті:', raw, '— гео доведеться вписати вручну');
+  return raw.slice(0, 2).toUpperCase();
+}
+
+// ═══════════ APP-трафік: інший формат назви кампанії ═══════════
+// PWA:  Mbank_KG_10708-4d07_30/07_L5   → гео і ktid на фіксованих місцях
+// APP:  cy638t_8wxg7hf7_YVbHTgzY_app_acc_cid_...  → просто токени через "_",
+//       тому позиції задаються в налаштуваннях.
+const AP_DEFAULT = { appPos: 4, accPos: 5, cidSrc: 'adname', cidPos: 6,
+                     geoSrc: 'country', geoPos: 0, dash: false };
+let appParse = { ...AP_DEFAULT };
+let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
+
+async function loadAppParse() {
+  try {
+    const { data } = await sb.from('team_settings')
+      .select('value').eq('team_name', currentTeam).eq('key', 'app_parse').limit(1);
+    if (data && data.length) appParse = { ...AP_DEFAULT, ...JSON.parse(data[0].value) };
+  } catch (e) { console.warn('app_parse:', e.message); }
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  set('ap-app', appParse.appPos); set('ap-acc', appParse.accPos);
+  set('ap-cid-src', appParse.cidSrc); set('ap-cid-pos', appParse.cidPos);
+  set('ap-geo-src', appParse.geoSrc); set('ap-geo-pos', appParse.geoPos || '');
+  const d = document.getElementById('ap-dash'); if (d) d.checked = !!appParse.dash;
+  renderApPreview();
+}
+
+async function saveAppParse() {
+  const num = id => parseInt(document.getElementById(id)?.value, 10);
+  appParse = {
+    appPos: num('ap-app') || AP_DEFAULT.appPos,
+    accPos: num('ap-acc') || AP_DEFAULT.accPos,
+    cidSrc: document.getElementById('ap-cid-src')?.value || 'adname',
+    cidPos: num('ap-cid-pos') || AP_DEFAULT.cidPos,
+    geoSrc: document.getElementById('ap-geo-src')?.value || 'country',
+    geoPos: num('ap-geo-pos') || 0,
+    dash: !!document.getElementById('ap-dash')?.checked
+  };
+  try {
+    await sb.from('team_settings').upsert(
+      { team_name: currentTeam, key: 'app_parse', value: JSON.stringify(appParse) },
+      { onConflict: 'team_name,key' });
+    showStatus('APP-парсинг збережено');
+    renderApPreview();
+    if (lastFbParse) processCampaignData(lastFbParse.map, lastFbParse.lines);
+  } catch (e) { alert('Не вдалось зберегти: ' + e.message); }
+}
+
+// Показуємо на зразку, що саме буде витягнуто — щоб не гадати
+function renderApPreview() {
+  const el = document.getElementById('ap-preview');
+  if (!el) return;
+  const sample = 'cy638t_8wxg7hf7_YVbHTgzY_Mostbet_1007349722102888_KG-JS-674-1_sub7_sub8';
+  const r = parseAppCampaign(sample, '', '');
+  el.innerHTML = `Зразок: <span class="text-slate-400">${sample}</span><br>` +
+    `→ апка: <b class="text-orange-300">${r.app || '—'}</b> · ` +
+    `акаунт: <b class="text-orange-300">${r.acc || '—'}</b> · ` +
+    `крео: <b class="text-orange-300">${r.cid || '(зі стовпця Ad name)'}</b> · ` +
+    `гео: <b class="text-orange-300">${r.geo || '(зі стовпця Country)'}</b>`;
+}
+
+// Розбір назви APP-кампанії за позиціями (1-based, як рахує користувач)
+function parseAppCampaign(campName, adName, country) {
+  const parts = String(campName || '').split('_');
+  const at = pos => (pos > 0 && parts[pos - 1] !== undefined) ? String(parts[pos - 1]).trim() : '';
+  const app = at(appParse.appPos);
+  const acc = at(appParse.accPos);
+  let cid = appParse.cidSrc === 'camp' ? at(appParse.cidPos) : String(adName || '').trim();
+  // Крео не може містити "_" (воно ж роздільник), тому в назві кампанії пишеться
+  // через "-" — повертаємо назад, щоб збігалося з базою і папкою Drive.
+  if (appParse.dash && appParse.cidSrc === 'camp') cid = cid.replace(/-/g, '_');
+  const geo = appParse.geoSrc === 'camp' ? at(appParse.geoPos) : String(country || '').trim();
+  return { app, acc, cid, geo };
+}
+
+function setTrafficMode(m) {
+  trafficMode = m;
+  localStorage.setItem('traffic_mode', m);
+  ['pwa', 'app'].forEach(x => {
+    const b = document.getElementById('tm-' + x);
+    if (b) b.className = x === m
+      ? 'px-5 py-2 rounded-lg text-[11px] font-black uppercase transition bg-orange-600 text-white'
+      : 'px-5 py-2 rounded-lg text-[11px] font-black uppercase transition text-slate-400 hover:text-white';
+  });
+  const hint = document.getElementById('traffic-mode-hint');
+  if (hint) hint.textContent = m === 'pwa'
+    ? 'PWA: гео і воронка беруться з назви кампанії (Mbank_KG_10708…)'
+    : 'APP: назва кампанії розбирається по позиціях — налаштування у вкладці Settings';
+  if (lastFbParse) processCampaignData(lastFbParse.map, lastFbParse.lines);
+}
 
 // ── Розпізнавання оффера у рядку Keitaro ──
 // Приклад: "[Riddick's Partners] Zazino KG | Reg | Anna" → "Zazino".
@@ -1302,18 +1486,32 @@ function processCampaignData(map, lines) {
     const row = lines[i];
     if (!row[map.name]) continue;
 
-    const parts = row[map.name].split('_');
+    const campName = row[map.name];
     const date = row[map.endDate] || row[map.date] || '';
-    const accName = row[map.acc];
-    
-    // Offer тепер пустий, щоб ти заповнював сам
-    const offer = ""; 
-    const geo = (parts[1] || '??').toUpperCase().trim();
-    const ktid = (parts[2] || '0').trim();
-    
+    const country = map.geo !== -1 ? row[map.geo] : '';
+
+    // Offer тепер пустий, щоб ти заповнював сам (або підставиться з Keitaro)
+    const offer = "";
+
+    let geo, ktid, accName, cid;
+    if (trafficMode === 'app') {
+      // APP: назва кампанії — токени через "_", позиції задані в налаштуваннях
+      const a = parseAppCampaign(campName, row[map.cid], country);
+      ktid = a.app || '0';                          // назва апки грає роль KTID
+      accName = a.acc || row[map.acc] || 'Unknown'; // якщо позиції немає — з колонки
+      cid = a.cid || 'No CID';
+      geo = toGeoCode(a.geo) || '??';
+    } else {
+      // PWA: Mbank_KG_10708-4d07_30/07_L5
+      const parts = String(campName).split('_');
+      geo = (parts[1] || '??').toUpperCase().trim();
+      ktid = (parts[2] || '0').trim();
+      accName = row[map.acc];
+      cid = row[map.cid] || 'No CID';
+    }
+
     const funnelName = mappingDB.funnels[ktid] || 'Unknown (' + ktid + ')';
     const agency = mappingDB.providers[accName] || 'Direct(0%)';
-    const cid = row[map.cid] || 'No CID';
 
     const spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
     const regs = parseInt(row[map.regs]) || 0;
@@ -1651,14 +1849,17 @@ async function addFunnelMapping() {
   const ktid = document.getElementById('fun-ktid').value;
   if (!name || !ktid) return alert("Fill fields!");
 
+  const isApp = !!document.getElementById('fun-is-app')?.checked;
   const { error } = await sb.from('funnels_mapping').upsert({
-    ktid: ktid, funnel_name: name, team_name: currentTeam
+    ktid: ktid, funnel_name: name, team_name: currentTeam, is_app: isApp
   });
 
-  if (!error) { 
-    showStatus("Funnel Mapped!"); 
-    document.getElementById('fun-name').value = ''; 
-    document.getElementById('fun-ktid').value = ''; 
+  if (error) { alert('Не вдалось зберегти воронку: ' + error.message); return; }
+  if (!error) {
+    showStatus("Funnel Mapped!");
+    document.getElementById('fun-name').value = '';
+    document.getElementById('fun-ktid').value = '';
+    const ap = document.getElementById('fun-is-app'); if (ap) ap.checked = false;
     await refreshFunnelsTable(); 
     await loadMappings(); 
   }
@@ -1705,7 +1906,8 @@ function renderFunnelsTable(data) {
 
   body.innerHTML = data.map(r => `
     <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
-      <td class="p-3 font-bold text-purple-300">${r.funnel_name || '—'}</td>
+      <td class="p-3 font-bold text-purple-300">${r.funnel_name || '—'}
+        ${r.is_app ? '<span class="ml-1.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">APP</span>' : ''}</td>
       <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
       <td class="p-3 text-right">
         <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
