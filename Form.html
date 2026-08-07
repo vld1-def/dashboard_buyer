@@ -368,15 +368,15 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 
       <div id="dual-zones" class="grid grid-cols-1 gap-4 max-w-3xl mx-auto">
       <div id="csv-drop-zone-dataset" class="drop-zone card p-8 rounded-[2rem] text-center cursor-pointer group" onclick="document.getElementById('csv-input-dataset').click()">
-        <input type="file" id="csv-input-dataset" accept=".csv" class="hidden" onchange="handleCSV(event, 'dataset')">
+        <input type="file" id="csv-input-dataset" accept=".csv" multiple class="hidden" onchange="handleCSV(event, 'dataset')">
         <div class="flex flex-col items-center gap-3">
            <div class="w-14 h-14 bg-blue-500/10 rounded-full flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform">
              <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M9 17v-2m3 2v-4m3 2v-6m-8-4h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
            </div>
            <div>
              <h3 class="font-black uppercase italic text-base text-white">Facebook</h3>
-             <p class="text-[9px] opacity-40 font-bold tracking-[0.2em] uppercase mt-0.5">Spend · Clicks · Devices</p>
-             <p id="fb-file-name" class="text-[10px] text-blue-400 font-bold mt-1.5 hidden break-all"></p>
+             <p class="text-[9px] opacity-40 font-bold tracking-[0.2em] uppercase mt-0.5">Spend · Clicks · Devices · кілька файлів</p>
+             <p id="fb-file-name" class="text-[10px] text-blue-400 font-bold mt-1.5 hidden break-all leading-relaxed"></p>
            </div>
         </div>
       </div>
@@ -1233,30 +1233,65 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   return { daily: dRes.out, creatives: creativesOut };
 }
 
-function handleCSV(e, type) {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(event) {
-    // Очищаємо CSV від BOM (спецсимволів на початку) та розбиваємо
-    let content = event.target.result.replace(/\ufeff/g, ''); 
-    const lines = content.split('\n').filter(l => l.trim() !== '').map(l => l.split(',').map(c => c.replace(/"/g, '').trim()));
-    
-    const headers = lines[0].map(h => h.toLowerCase());
-    const map = mapColumns(headers);
-
-    console.log("Mapped Columns:", map);
-    console.log("Headers found:", headers);
-    console.log("Device:", map.device !== -1 ? headers[map.device] : 'NOT FOUND',
-                '| Platform:', map.platform !== -1 ? headers[map.platform] : 'NOT FOUND',
-                '| Placement:', map.placement !== -1 ? headers[map.placement] : 'NOT FOUND');
-    if (type === 'dataset') {
-      lastFbParse = { map, lines };
-      const nameEl = document.getElementById('fb-file-name');
-      if (nameEl) { nameEl.textContent = '✓ ' + file.name; nameEl.classList.remove('hidden'); }
+// Розбір CSV з урахуванням лапок: назви кампаній FB часто містять коми
+function parseCsvLines(content) {
+  return content.replace(/^\ufeff/, '').split(/\r?\n/).filter(l => l.trim() !== '').map(line => {
+    const cells = []; let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+      else if (ch === ',' && !inQ) { cells.push(cur); cur = ''; }
+      else cur += ch;
     }
-    processCampaignData(map, lines);
-  };
-  reader.readAsText(file);
+    cells.push(cur);
+    return cells.map(c => c.trim());
+  });
+}
+
+// Кілька FB-файлів (по акаунту на файл) зводимо в один набір рядків.
+// У файлів можуть відрізнятись порядок і назви колонок, тому кожен розбираємо
+// власним map і переписуємо в спільний канонічний порядок полів.
+function handleCSV(e, type) {
+  const files = [...(e.target.files || [])];
+  if (!files.length) return;
+
+  Promise.all(files.map(f => new Promise(res => {
+    const rd = new FileReader();
+    rd.onload = ev => res({ name: f.name, text: ev.target.result });
+    rd.readAsText(f);
+  }))).then(loaded => {
+    const keys = Object.keys(keywords);
+    const synthMap = {}; keys.forEach((k, i) => synthMap[k] = i);
+    const combined = [keys.slice()];          // службовий перший рядок
+    const okNames = [], badNames = [];
+
+    loaded.forEach(({ name, text }) => {
+      const lines = parseCsvLines(text);
+      if (lines.length < 2) { badNames.push(name + ' (порожній)'); return; }
+      const headers = lines[0].map(h => h.toLowerCase());
+      const map = mapColumns(headers);
+      if (map.spend === -1 && map.name === -1) { badNames.push(name + ' (не схоже на FB-звіт)'); return; }
+      for (let i = 1; i < lines.length; i++) {
+        combined.push(keys.map(k => map[k] >= 0 ? (lines[i][map[k]] ?? '') : ''));
+      }
+      okNames.push(name);
+      console.log(`FB «${name}»: рядків ${lines.length - 1} | device=${map.device !== -1 ? headers[map.device] : '—'} | platform=${map.platform !== -1 ? headers[map.platform] : '—'} | placement=${map.placement !== -1 ? headers[map.placement] : '—'}`);
+    });
+
+    if (!okNames.length) { alert('Жоден файл не вдалося прочитати як FB-звіт.'); return; }
+
+    if (type === 'dataset') {
+      lastFbParse = { map: synthMap, lines: combined };
+      const nameEl = document.getElementById('fb-file-name');
+      if (nameEl) {
+        nameEl.innerHTML = okNames.map(n => '✓ ' + n).join('<br>') +
+          (badNames.length ? '<br><span class="text-rose-400">✕ ' + badNames.join('<br>✕ ') + '</span>' : '');
+        nameEl.classList.remove('hidden');
+      }
+      showStatus(`Файлів: ${okNames.length}, рядків: ${combined.length - 1}`);
+    }
+    processCampaignData(synthMap, combined);
+  });
 }
 
 function processCampaignData(map, lines) {
@@ -1758,10 +1793,10 @@ function setupDragAndDrop(t) {
   z.ondrop = (e) => {
     z.style.borderColor = base;
     e.preventDefault();
-    const f = e.dataTransfer.files[0];
-    if (!f) return;
-    if (isKt) handleKeitaroFile({ target: { files: [f] } });
-    else handleCSV({ target: { files: [f] } }, t);
+    const fs = [...(e.dataTransfer.files || [])];
+    if (!fs.length) return;
+    if (isKt) handleKeitaroFile({ target: { files: [fs[0]] } });   // Keitaro — один файл
+    else handleCSV({ target: { files: fs } }, t);                  // FB — можна кілька
   };
 }
 
