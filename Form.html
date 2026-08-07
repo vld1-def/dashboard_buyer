@@ -1199,19 +1199,28 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     return { out, splits };
   };
 
+  // Кампанії (daily) ділимо по офферах — там спенд справді треба рознести.
   const dRes = splitByOffer(Object.values(dailyAgg),
     k => keitaroAgg.byDailyOffer?.[k],
     r => `${r.date}|${r.acc}|${r.geo}|${r._ktid}`);
-  const cRes = splitByOffer(Object.values(creativeAgg),
-    k => keitaroAgg.byCreativeOffer?.[k],
-    r => `${r.date}|${r.acc}|${r.cid}`);
 
-  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по офферах: ${dRes.splits} daily / ${cRes.splits} креативів`);
+  // Креативи НЕ ділимо: один CID має кілька рядків (девайс × плейсмент), і розбивка
+  // по офферах дублювала б конверсії в кожному з них. Просто підставляємо оффер —
+  // той, на який пішло найбільше інсталів цього креатива.
+  const creativesOut = Object.values(creativeAgg);
+  creativesOut.forEach(row => {
+    const offers = keitaroAgg.byCreativeOffer?.[`${row.date}|${row.acc}|${row.cid}`];
+    if (!offers) return;
+    const top = Object.entries(offers).sort((a, b) => b[1].installs - a[1].installs)[0];
+    if (top) row.offer = top[0];
+  });
+
+  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по офферах: ${dRes.splits} daily`);
   showStatus(dRes.splits
     ? `Keitaro: уточнено ${hitD} рядків, розділено по офферах ${dRes.splits}`
     : `Keitaro: уточнено ${hitD} рядків статистики`);
 
-  return { daily: dRes.out, creatives: cRes.out };
+  return { daily: dRes.out, creatives: creativesOut };
 }
 
 function handleCSV(e, type) {
