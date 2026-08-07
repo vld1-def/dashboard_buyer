@@ -1342,13 +1342,20 @@ function renderDualPreview() {
       .filter(o => o.geo.toUpperCase() === rowGeo)
       .map(o => o.offer.toUpperCase())
     )];
+    // Оффер, підставлений з Keitaro, може бути в іншому регістрі або взагалі
+    // не мати виплати саме для цього гео — все одно показуємо його в списку,
+    // інакше значення є в даних, але у випадайці порожньо.
+    const rowOffer = String(r.offer || '').trim();
+    if (rowOffer && !availableForThisGeo.includes(rowOffer.toUpperCase())) {
+      availableForThisGeo.unshift(rowOffer.toUpperCase());
+    }
 
     // Створюємо HTML випадаючого списку
     const offerSelectHtml = `
       <select onchange="datasetToImport[${i}].offer=this.value" 
               class="!bg-emerald-500/10 !border-emerald-500/30 !text-emerald-400 !py-1 !px-2 !text-[11px] !w-full !rounded-lg font-black uppercase">
         <option value="">-- SELECT --</option>
-        ${availableForThisGeo.map(off => `<option value="${off}" ${r.offer === off ? 'selected' : ''}>${off}</option>`).join('')}
+        ${availableForThisGeo.map(off => `<option value="${off}" ${rowOffer.toUpperCase() === off ? 'selected' : ''}>${off}</option>`).join('')}
         <option value="CUSTOM">+ Ввести вручну</option>
       </select>
     `;
