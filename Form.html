@@ -457,10 +457,28 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <button onclick="recSwitchTable('creatives_stats')" id="rec-tbl-creatives_stats" class="rec-tbl-btn px-5 py-2 rounded-xl text-[11px] font-black uppercase transition-all">Creatives</button>
         </div>
 
-        <!-- Пошук -->
-        <div class="relative flex-1 min-w-[220px]">
-          <svg class="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" stroke-linecap="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"/></svg>
-          <input id="rec-search" oninput="recRender()" placeholder="Пошук: країна, креатив, воронка, оффер, акаунт..." style="padding-left:2.75rem !important;">
+        <!-- Фільтр по стовпчиках (як у Keitaro) -->
+        <div class="relative flex-1 min-w-[220px] flex items-center gap-2 flex-wrap">
+          <button onclick="recToggleFilterMenu(event)" id="rec-filter-btn"
+                  class="flex items-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl px-4 py-2.5 text-[11px] font-black uppercase text-slate-300 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M3 4h18M6 12h12M10 20h4"/></svg>
+            Filter <span id="rec-filter-count" class="text-blue-400"></span>
+          </button>
+          <div id="rec-filter-chips" class="flex items-center gap-1.5 flex-wrap"></div>
+
+          <!-- Попап вибору -->
+          <div id="rec-filter-menu" class="hidden absolute left-0 top-full mt-2 w-[320px] z-[120] card rounded-2xl border border-white/10 p-3 shadow-2xl"
+               onclick="event.stopPropagation()">
+            <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Add filter</p>
+            <div class="flex gap-2 mb-2">
+              <select id="rec-filter-col" onchange="recFillFilterValues()"
+                      class="flex-1 !text-[11px] !py-2"></select>
+            </div>
+            <input id="rec-filter-search" oninput="recFillFilterValues()" placeholder="Search value..."
+                   class="w-full !text-[11px] !py-2 mb-2">
+            <div id="rec-filter-values" class="max-h-52 overflow-y-auto custom-scrollbar space-y-0.5"></div>
+            <button onclick="recClearFilters()" class="mt-2 w-full text-[9px] font-bold text-slate-500 hover:text-rose-400 uppercase tracking-widest py-1.5 transition">Clear all</button>
+          </div>
         </div>
 
         <!-- Дата -->
@@ -1784,6 +1802,9 @@ function recSwitchTable(t) {
   document.querySelectorAll('.rec-tbl-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('rec-tbl-' + t)?.classList.add('active');
   recSort = { key: 'date', dir: -1 };
+  recFilters = {};                 // у таблиць різні колонки
+  recRenderFilterChips();
+  document.getElementById('rec-filter-menu')?.classList.add('hidden');
   recLoad();
 }
 
@@ -1803,22 +1824,130 @@ function recDatePreset(p) {
   recRender();
 }
 
-function recFiltered() {
-  const q    = (document.getElementById('rec-search')?.value || '').toLowerCase().trim();
+// ===== ФІЛЬТРИ ПО СТОВПЧИКАХ (як у Keitaro) =====
+// { колонка: Set(значення) } — усередині колонки АБО, між колонками І
+let recFilters = {};
+
+function recFilterableCols() {
+  return REC_SCHEMA[recCurrentTable].filter(c => c.type === 'text');
+}
+
+document.addEventListener('click', () => document.getElementById('rec-filter-menu')?.classList.add('hidden'));
+
+function recToggleFilterMenu(ev) {
+  ev.stopPropagation();
+  const menu = document.getElementById('rec-filter-menu');
+  const willOpen = menu.classList.contains('hidden');
+  menu.classList.toggle('hidden');
+  if (!willOpen) return;
+  const sel = document.getElementById('rec-filter-col');
+  const cur = sel.value;
+  sel.innerHTML = recFilterableCols().map(c => `<option value="${c.key}">${c.label}</option>`).join('');
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  document.getElementById('rec-filter-search').value = '';
+  recFillFilterValues();
+}
+
+function recFillFilterValues() {
+  const col = document.getElementById('rec-filter-col').value;
+  const q = (document.getElementById('rec-filter-search').value || '').toLowerCase().trim();
+  const box = document.getElementById('rec-filter-values');
+  if (!col) { box.innerHTML = ''; return; }
+
+  // рахуємо значення по рядках, що вже пройшли ІНШІ фільтри — як у Keitaro
+  const base = recRowsAfterFilters(col);
+  // Дані приходять з різних джерел, тому регістр буває різний ("facebook" і "Facebook").
+  // Групуємо без урахування регістру, показуємо найчастіший варіант написання.
+  const groups = {};
+  base.forEach(r => {
+    const raw = String(r[col] ?? '').trim() || '—';
+    const k = raw.toLowerCase();
+    const g = groups[k] || (groups[k] = { n: 0, forms: {} });
+    g.n++; g.forms[raw] = (g.forms[raw] || 0) + 1;
+  });
+  const list = Object.entries(groups)
+    .filter(([k]) => !q || k.includes(q))
+    .sort((a, b) => b[1].n - a[1].n)
+    .map(([k, g]) => [k, g.n, Object.entries(g.forms).sort((x, y) => y[1] - x[1])[0][0]]);
+
+  if (!list.length) { box.innerHTML = '<p class="text-[10px] opacity-40 px-2 py-3 text-center">Nothing found</p>'; return; }
+  const active = recFilters[col] || new Set();
+  box.innerHTML = list.map(([key, n, label]) => {
+    const v = label, on = active.has(key);
+    const esc = key.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `<label class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer">
+      <span class="flex items-center gap-2 min-w-0">
+        <input type="checkbox" ${on ? 'checked' : ''} onchange="recToggleFilterValue('${col}','${esc}',this.checked)"
+               class="!w-3.5 !h-3.5 !p-0 accent-blue-500 flex-shrink-0">
+        <span class="text-[11px] font-bold text-slate-300 truncate">${v}</span>
+      </span>
+      <span class="text-[10px] text-slate-600 font-mono flex-shrink-0">${n}</span>
+    </label>`;
+  }).join('');
+}
+
+function recToggleFilterValue(col, val, on) {
+  if (!recFilters[col]) recFilters[col] = new Set();
+  on ? recFilters[col].add(val) : recFilters[col].delete(val);
+  if (!recFilters[col].size) delete recFilters[col];
+  recRenderFilterChips();
+  recFillFilterValues();
+  recRender();
+}
+
+function recRemoveFilter(col, val) {
+  if (!recFilters[col]) return;
+  recFilters[col].delete(val);
+  if (!recFilters[col].size) delete recFilters[col];
+  recRenderFilterChips();
+  recRender();
+}
+
+function recClearFilters() {
+  recFilters = {};
+  recRenderFilterChips();
+  recFillFilterValues();
+  recRender();
+}
+
+function recRenderFilterChips() {
+  const wrap = document.getElementById('rec-filter-chips');
+  const cnt = document.getElementById('rec-filter-count');
+  if (!wrap) return;
+  const cols = REC_SCHEMA[recCurrentTable];
+  const chips = [];
+  Object.entries(recFilters).forEach(([col, set]) => {
+    const label = cols.find(c => c.key === col)?.label || col;
+    set.forEach(v => chips.push(
+      `<span class="flex items-center gap-1.5 bg-blue-500/15 border border-blue-500/30 rounded-lg px-2 py-1">
+        <span class="text-[10px] font-bold text-blue-300"><span class="opacity-60">${label}:</span> ${v}</span>
+        <button onclick="recRemoveFilter('${col}','${String(v).replace(/'/g,"\\'")}')"
+                class="text-blue-400/60 hover:text-rose-400 text-[11px] leading-none">✕</button>
+      </span>`));
+  });
+  wrap.innerHTML = chips.join('');
+  if (cnt) cnt.textContent = chips.length ? `(${chips.length})` : '';
+}
+
+// Рядки після дат + усіх фільтрів, КРІМ вказаної колонки (для підрахунку значень)
+function recRowsAfterFilters(skipCol) {
   const from = document.getElementById('rec-date-from')?.value || '';
   const to   = document.getElementById('rec-date-to')?.value || '';
-  const cols = REC_SCHEMA[recCurrentTable];
-  const textKeys = cols.filter(c => c.type === 'text').map(c => c.key);
-
-  let rows = recRows.filter(r => {
+  return recRows.filter(r => {
     if (from && (r.date || '') < from) return false;
     if (to   && (r.date || '') > to)   return false;
-    if (q) {
-      const hay = textKeys.map(k => (r[k] || '')).join(' ').toLowerCase();
-      if (!hay.includes(q)) return false;
+    for (const [col, set] of Object.entries(recFilters)) {
+      if (col === skipCol) continue;
+      const v = (String(r[col] ?? '').trim() || '—').toLowerCase();
+      if (!set.has(v)) return false;
     }
     return true;
   });
+}
+
+function recFiltered() {
+  const cols = REC_SCHEMA[recCurrentTable];
+  let rows = recRowsAfterFilters(null);
 
   const { key, dir } = recSort;
   const col = cols.find(c => c.key === key);
@@ -1945,7 +2074,7 @@ async function recAddRow() {
   const { data, error } = await sb.from(recCurrentTable).insert([base]).select();
   if (error) { alert('Не вдалося додати запис: ' + error.message); return; }
   if (data && data[0]) recRows.unshift(data[0]);
-  document.getElementById('rec-search').value = '';
+  recClearFilters();
   recRender();
 }
 
