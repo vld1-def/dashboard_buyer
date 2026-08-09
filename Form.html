@@ -137,6 +137,49 @@ select {
 }
 /* ===== END SCALE ===== */
 
+
+/* Чекбокси у попапі фільтра — власний вигляд замість системного */
+#rec-filter-values input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 16px !important; height: 16px !important; flex: 0 0 16px;
+  border-radius: 5px; border: 1.5px solid rgba(255,255,255,.22) !important;
+  background: rgba(255,255,255,.05) !important; cursor: pointer;
+  position: relative; transition: all .15s; padding: 0 !important;
+}
+#rec-filter-values input[type="checkbox"]:hover { border-color: rgba(59,130,246,.6) !important; }
+#rec-filter-values input[type="checkbox"]:checked {
+  background: linear-gradient(140deg,#3b82f6,#6366f1) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 8px rgba(59,130,246,.45);
+}
+#rec-filter-values input[type="checkbox"]:checked::after {
+  content: ''; position: absolute; left: 4.5px; top: 1px;
+  width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+#rec-filter-values label:has(input:checked) { background: rgba(59,130,246,.10); }
+
+/* Клітинки-списки в таблиці «База» */
+.rec-select {
+  width: 100%; background: transparent !important; border: 0 !important;
+  color: #e2e8f0 !important; font-size: .8rem !important; padding: 5px 8px !important;
+  border-radius: 6px; cursor: pointer; outline: none;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.28)'%3E%3Cpath stroke-linecap='round' stroke-width='3' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important; background-position: right 4px center !important;
+  background-size: .7em !important; padding-right: 20px !important;
+}
+.rec-select:hover { background-color: rgba(59,130,246,.15) !important; }
+.rec-select:focus { background-color: rgba(59,130,246,.25) !important; outline: 1px solid #3b82f6; }
+.rec-select.saved { animation: recFlash .8s ease; }
+/* Мітка таймзони біля акаунта */
+.tz-badge {
+  font-size: 8.5px; font-weight: 900; padding: 1px 5px; border-radius: 5px;
+  background: rgba(251,191,36,.14); color: #fbbf24; border: 1px solid rgba(251,191,36,.25);
+  margin-left: 6px; white-space: nowrap;
+}
+.tz-badge.none { background: rgba(148,163,184,.12); color: #94a3b8; border-color: rgba(148,163,184,.2); }
+
 /* ═══════════ LIQUID GLASS (як index-new) ═══════════ */
 body::before {
   content:''; position:fixed; inset:-22%; z-index:-2; pointer-events:none;
@@ -2057,7 +2100,7 @@ async function loadAgencies() {
       const fromDB = data.map(item => item.provider_name);
       agencies = [...new Set([...agencies, ...fromDB])].filter(Boolean);
     }
-    
+    window.agenciesList = agencies;          // використовується у списках «Бази»
     select.innerHTML = agencies.map(a => `<option value="${a}">${a}</option>`).join('');
   }
 }
@@ -2103,9 +2146,9 @@ const REC_SCHEMA = {
     { key: 'date',     label: 'Дата',    type: 'date' },
     { key: 'account',  label: 'Акаунт',  type: 'text' },
     { key: 'geo',      label: 'GEO',     type: 'text', upper: true },
-    { key: 'offer',    label: 'Оффер',   type: 'text' },
-    { key: 'funnel',   label: 'Воронка', type: 'text' },
-    { key: 'agent',    label: 'Агент',   type: 'text' },
+    { key: 'offer',    label: 'Оффер',   type: 'text', list: 'offers' },
+    { key: 'funnel',   label: 'Воронка', type: 'text', list: 'funnels' },
+    { key: 'agent',    label: 'Агент',   type: 'text', list: 'agents' },
     { key: 'spend',    label: 'Spend',   type: 'money' },
     { key: 'installs', label: 'Leads',   type: 'int' },
     { key: 'regs',     label: 'Regs',    type: 'int' },
@@ -2116,7 +2159,7 @@ const REC_SCHEMA = {
     { key: 'account',  label: 'Акаунт',  type: 'text' },
     { key: 'cid',      label: 'Креатив', type: 'text' },
     { key: 'geo',      label: 'GEO',     type: 'text', upper: true },
-    { key: 'funnel',   label: 'Воронка', type: 'text' },
+    { key: 'funnel',   label: 'Воронка', type: 'text', list: 'funnels' },
     { key: 'device',   label: 'Пристрій',type: 'text' },
     { key: 'platform', label: 'Платформа', type: 'text' },
     { key: 'placement',label: 'Плейсмент', type: 'text' },
@@ -2320,6 +2363,27 @@ function recFiltered() {
   return rows;
 }
 
+
+// Значення для випадаючих списків у таблиці «База».
+// Беремо з довідників (мапінги, агенції, виплати) + те, що вже трапляється в даних,
+// щоб наявні записи не втратили своє значення, навіть якщо його немає в довіднику.
+function recListValues(kind, colKey) {
+  const fromRows = [...new Set(recRows.map(r => String(r[colKey] ?? '').trim()).filter(Boolean))];
+  let base = [];
+  if (kind === 'funnels')      base = Object.values(mappingDB.funnels || {});
+  else if (kind === 'agents')  base = (window.agenciesList || []);
+  else if (kind === 'offers')  base = (globalOffersCache || []).map(o => o.offer);
+  const all = [...new Set([...base, ...fromRows].map(v => String(v).trim()).filter(Boolean))];
+  return all.sort((a, b) => a.localeCompare(b, 'uk'));
+}
+
+// Мітка таймзони поряд з акаунтом — видно, за яким днем рахується рядок
+function recTzBadge(acc) {
+  const tz = (mappingDB.timezones || {})[String(acc || '').trim()];
+  if (tz === undefined || tz === null) return '<span class="tz-badge none" title="Таймзона не задана — додай у Settings">TZ ?</span>';
+  return `<span class="tz-badge" title="Таймзона акаунта">TZ ${tz > 0 ? '+' : ''}${tz}</span>`;
+}
+
 function recRender() {
   const cols = REC_SCHEMA[recCurrentTable];
   const rows = recFiltered();
@@ -2346,6 +2410,27 @@ function recRender() {
         if (c.type === 'money') v = (v == null || v === '') ? '' : '$' + (parseFloat(v) || 0).toFixed(2);
         else if (v == null) v = '';
         const align = (c.type === 'money' || c.type === 'int') ? 'text-right' : '';
+
+        // Воронка / агент / оффер — випадаючі списки з відомих значень
+        if (c.list) {
+          const cur = String(r[c.key] ?? '').trim();
+          const opts = recListValues(c.list, c.key);
+          return `<td class="p-1"><select class="rec-select" data-id="${r.id}" data-col="${c.key}">
+            <option value=""${cur ? '' : ' selected'}>—</option>
+            ${opts.map(o => `<option value="${String(o).replace(/"/g, '&quot;')}"${o === cur ? ' selected' : ''}>${o}</option>`).join('')}
+          </select></td>`;
+        }
+
+        // Акаунт — поруч показуємо таймзону
+        if (c.key === 'account') {
+          return `<td class="p-1"><div class="flex items-center">
+            <div class="rec-cell flex-1" contenteditable="true"
+                 data-id="${r.id}" data-col="${c.key}" data-type="${c.type}"
+                 data-orig="${String(r[c.key] ?? '').replace(/"/g, '&quot;')}">${v}</div>
+            ${recTzBadge(r[c.key])}
+          </div></td>`;
+        }
+
         return `<td class="p-1 ${align}"><div class="rec-cell" contenteditable="true"
                   data-id="${r.id}" data-col="${c.key}" data-type="${c.type}"
                   data-orig="${String(r[c.key] ?? '').replace(/"/g, '&quot;')}">${v}</div></td>`;
@@ -2369,6 +2454,22 @@ function recSortBy(key) {
   else recSort = { key, dir: 1 };
   recRender();
 }
+
+
+// Збереження вибору у випадаючих клітинках «Бази»
+document.addEventListener('change', async (e) => {
+  const sel = e.target.closest && e.target.closest('.rec-select');
+  if (!sel) return;
+  const { id, col } = sel.dataset;
+  const value = sel.value;
+  const { error } = await sb.from(recCurrentTable).update({ [col]: value }).eq('id', id);
+  if (error) { alert('Не вдалося зберегти: ' + error.message); return; }
+  const row = recRows.find(r => String(r.id) === String(id));
+  if (row) row[col] = value;
+  sel.classList.add('saved');
+  setTimeout(() => sel.classList.remove('saved'), 800);
+  recRefreshTotals();
+});
 
 // Збереження клітинки при виході з фокусу (делегування focusout)
 document.addEventListener('focusout', async (e) => {
@@ -2427,14 +2528,36 @@ async function recDelete(id) {
 }
 
 async function recAddRow() {
-  const today = new Date().toISOString().slice(0, 10);
-  const base = { team_name: currentTeam, date: today, account: '', geo: '', funnel: '', spend: 0, installs: 0, regs: 0 };
+  // Новий запис успадковує контекст: дату з фільтра «від» і всі однозначні фільтри.
+  // Так не доводиться заповнювати наново те, що щойно вибрано у Filter.
+  const fromDate = document.getElementById('rec-date-from')?.value;
+  const date = fromDate || new Date().toISOString().slice(0, 10);
+
+  const base = { team_name: currentTeam, date, account: '', geo: '', funnel: '', spend: 0, installs: 0, regs: 0 };
   if (recCurrentTable === 'daily_stats') Object.assign(base, { offer: 'DEFAULT', agent: '', deposits: 0 });
   else Object.assign(base, { cid: 'NEW', device: '', platform: '', placement: '', clicks: 0, deps: 0 });
+
+  // Якщо у фільтрі по колонці вибрано РІВНО одне значення — підставляємо його.
+  // Кілька значень означають «або/або», тож вгадувати не можна.
+  const applied = [];
+  const cols = REC_SCHEMA[recCurrentTable];
+  Object.entries(recFilters).forEach(([col, set]) => {
+    if (set.size !== 1) return;
+    const key = [...set][0];
+    if (key === '—') return;
+    // у фільтрі зберігається нижній регістр — беремо оригінальне написання з даних
+    const orig = recRows.map(r => String(r[col] ?? '').trim())
+                        .find(v => v && v.toLowerCase() === key) || key;
+    base[col] = cols.find(c => c.key === col)?.upper ? orig.toUpperCase() : orig;
+    applied.push(`${cols.find(c => c.key === col)?.label || col}: ${base[col]}`);
+  });
+
   const { data, error } = await sb.from(recCurrentTable).insert([base]).select();
   if (error) { alert('Не вдалося додати запис: ' + error.message); return; }
   if (data && data[0]) recRows.unshift(data[0]);
-  recClearFilters();
+  showStatus(applied.length
+    ? `Запис створено — ${date}, ${applied.join(', ')}`
+    : `Запис створено — ${date}`);
   recRender();
 }
 
