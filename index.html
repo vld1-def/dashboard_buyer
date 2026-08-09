@@ -2432,6 +2432,29 @@ function renderTrend(data) {
     });
   }
 
+  // --- ФІКС НАВЕДЕННЯ ПІД body{zoom:0.9} ---
+  // Chart.js бере позицію курсора з offsetX, а той під CSS zoom рахується в іншому
+  // масштабі, ніж розміри канваса. Через це тултіп зʼїжджав уліво тим сильніше, чим
+  // правіше курсор (на 8 числі показувало 7). Рахуємо позицію самі — з clientX і
+  // getBoundingClientRect(), тож масштаб уже не має значення.
+  if (!window._chartZoomFix) {
+    window._chartZoomFix = true;
+    Chart.register({
+      id: 'zoomFix',
+      beforeEvent(chart, args) {
+        const ev = args.event, ne = ev && ev.native;
+        if (!ne) return;
+        const src = (ne.touches && ne.touches[0]) || ne;
+        if (src.clientX == null) return;
+        const r = chart.canvas.getBoundingClientRect();
+        if (!r.width || !r.height) return;
+        ev.x = Math.round((src.clientX - r.left) / r.width  * chart.width);
+        ev.y = Math.round((src.clientY - r.top)  / r.height * chart.height);
+        args.inChartArea = chart.isPointInArea(ev);
+      }
+    });
+  }
+
   // --- НАЛАШТУВАННЯ CHART.JS ---
   window.chart1 = new Chart(ctx.getContext('2d'), {
     type: 'line',
