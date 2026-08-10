@@ -665,12 +665,21 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 
        <!-- APP: розбір назви кампанії по позиціях -->
        <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-orange-500 bg-slate-900/40">
-          <div class="flex justify-between items-center mb-2">
+          <div class="flex justify-between items-center mb-2 gap-3 flex-wrap">
             <h3 class="text-xl font-black uppercase italic text-orange-400 tracking-tight">APP · розбір кампанії</h3>
-            <button onclick="saveAppParse()" class="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Зберегти</button>
+            <div class="flex gap-2 items-center">
+              <select id="ap-profile" onchange="apSelectProfile()" class="!w-auto !py-2 !text-[11px] !font-black"></select>
+              <button onclick="apAddProfile()" title="Додати постачальника апок зі своїм розкладом сабів" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-xl font-black uppercase text-[11px] transition-all">+ Апка</button>
+              <button onclick="apDeleteProfile()" title="Видалити вибраного постачальника" class="bg-red-600/80 hover:bg-red-500 px-3 py-2 rounded-xl font-black text-[11px] transition-all">✕</button>
+              <button onclick="saveAppParse()" class="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Зберегти</button>
+            </div>
           </div>
           <p class="text-[10px] opacity-40 font-bold mb-1">У APP-трафіку назва кампанії — це просто токени через «_»:</p>
-          <p class="text-[10px] font-mono text-orange-300/70 mb-5">cy638t_8wxg7hf7_YVbHTgzY_<b class="text-orange-300">апка</b>_<b class="text-orange-300">акаунт</b>_<b class="text-orange-300">крео</b>_<b class="text-orange-300">гео</b>_sub8…</p>
+          <p class="text-[10px] font-mono text-orange-300/70 mb-2">cy638t_8wxg7hf7_YVbHTgzY_<b class="text-orange-300">апка</b>_<b class="text-orange-300">акаунт</b>_<b class="text-orange-300">крео</b>_<b class="text-orange-300">гео</b>_sub8…</p>
+          <p class="text-[10px] font-bold text-slate-500 mb-5 leading-relaxed">У кожного постачальника саби стоять по-своєму, тому налаштовується окремий профіль.
+            Щоб знати, чий це розклад, у <b class="text-purple-300">KTID Mappings</b> у назві воронки постав постачальника у квадратних дужках —
+            напр. <span class="font-mono text-purple-300">Mostbet [AppCloud]</span>. Апка з такої воронки розбирається за профілем
+            <span class="font-mono text-orange-300">AppCloud</span>; якщо дужок немає — працює профіль за замовчуванням.</p>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Позиція: назва апки</label><input type="number" min="1" id="ap-app" placeholder="4"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Позиція: акаунт</label><input type="number" min="1" id="ap-acc" placeholder="5"></div>
@@ -698,6 +707,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
             </div>
           </div>
           <p id="ap-preview" class="text-[10px] font-mono text-slate-500 mt-4"></p>
+
+          <!-- Готові профілі: хто як розкладає саби і які апки на них зав'язані -->
+          <div id="ap-profiles-list" class="mt-5"></div>
        </div>
 
        <!-- РЯД 1: ФОРМИ ВВОДУ -->
@@ -720,7 +732,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-purple-500 bg-slate-900/40">
              <h3 class="text-xl font-black uppercase italic mb-6 text-purple-400 tracking-tight">Funnel Mapper</h3>
              <div class="flex gap-3">
-                <input type="text" id="fun-name" placeholder="Funnel Name" class="flex-grow">
+                <input type="text" id="fun-name" placeholder="Funnel Name — напр. Mostbet [AppCloud]" title="Для APP: постачальника апок пиши у квадратних дужках — за ним підбереться профіль розбору сабів" class="flex-grow">
                 <input type="text" id="fun-ktid" placeholder="KTID / назва апки" class="w-1/3 text-center">
                 <label class="flex items-center gap-1.5 cursor-pointer shrink-0 px-2" title="Позначити як APP — тоді в KTID пишеться назва апки">
                   <input type="checkbox" id="fun-is-app" class="!w-4 !h-4 !p-0 accent-orange-500">
@@ -868,6 +880,9 @@ async function loadMappings() {
   
   mappingDB.funnels = {};
   funs?.forEach(r => mappingDB.funnels[r.ktid] = r.funnel_name);
+
+  // список постачальників показує, які апки на них зав'язані через [] у назві воронки
+  if (typeof apRenderProfilesList === 'function') apRenderProfilesList();
 }
 
 // --- EXPENSES ---
@@ -1086,25 +1101,43 @@ function toGeoCode(v) {
 const AP_DEFAULT = { appPos: 4, accPos: 5, cidSrc: 'adname', cidPos: 6,
                      geoSrc: 'camp', geoPos: 7, dash: false };
 let appParse = { ...AP_DEFAULT };
+// Профілі постачальників апок: у кожного свій розклад сабів.
+// { 'AppCloud': {appPos, accPos, cidSrc, cidPos, geoSrc, geoPos, dash}, ... }
+let appProfiles = {};
+let apCurrent = '';            // '' = профіль за замовчуванням (appParse)
 let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
 
 async function loadAppParse() {
   try {
     const { data } = await sb.from('team_settings')
-      .select('value').eq('team_name', currentTeam).eq('key', 'app_parse').limit(1);
-    if (data && data.length) appParse = { ...AP_DEFAULT, ...JSON.parse(data[0].value) };
+      .select('key, value').eq('team_name', currentTeam).in('key', ['app_parse', 'app_profiles']);
+    (data || []).forEach(r => {
+      if (r.key === 'app_parse')    appParse    = { ...AP_DEFAULT, ...JSON.parse(r.value) };
+      if (r.key === 'app_profiles') appProfiles = JSON.parse(r.value) || {};
+    });
   } catch (e) { console.warn('app_parse:', e.message); }
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
-  set('ap-app', appParse.appPos); set('ap-acc', appParse.accPos);
-  set('ap-cid-src', appParse.cidSrc); set('ap-cid-pos', appParse.cidPos);
-  set('ap-geo-src', appParse.geoSrc); set('ap-geo-pos', appParse.geoPos || '');
-  const d = document.getElementById('ap-dash'); if (d) d.checked = !!appParse.dash;
+  apRenderProfileSelect();
+  apFillForm(apCfgOf(apCurrent));
   renderApPreview();
+  apRenderProfilesList();
 }
 
-async function saveAppParse() {
+// Конфіг за назвою профілю ('' → за замовчуванням)
+function apCfgOf(name) {
+  return name && appProfiles[name] ? { ...AP_DEFAULT, ...appProfiles[name] } : { ...appParse };
+}
+
+function apFillForm(cfg) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+  set('ap-app', cfg.appPos); set('ap-acc', cfg.accPos);
+  set('ap-cid-src', cfg.cidSrc); set('ap-cid-pos', cfg.cidPos);
+  set('ap-geo-src', cfg.geoSrc); set('ap-geo-pos', cfg.geoPos || '');
+  const d = document.getElementById('ap-dash'); if (d) d.checked = !!cfg.dash;
+}
+
+function apCfgFromForm() {
   const num = id => parseInt(document.getElementById(id)?.value, 10);
-  appParse = {
+  return {
     appPos: num('ap-app') || AP_DEFAULT.appPos,
     accPos: num('ap-acc') || AP_DEFAULT.accPos,
     cidSrc: document.getElementById('ap-cid-src')?.value || 'adname',
@@ -1113,12 +1146,74 @@ async function saveAppParse() {
     geoPos: num('ap-geo-pos') || 0,
     dash: !!document.getElementById('ap-dash')?.checked
   };
+}
+
+function apRenderProfileSelect() {
+  const sel = document.getElementById('ap-profile');
+  if (!sel) return;
+  const names = Object.keys(appProfiles).sort((a, b) => a.localeCompare(b, 'uk'));
+  sel.innerHTML = '<option value="">За замовчуванням</option>' +
+    names.map(n => `<option value="${n}">${n}</option>`).join('');
+  if (!names.includes(apCurrent)) apCurrent = '';
+  sel.value = apCurrent;
+}
+
+function apSelectProfile() {
+  apCurrent = document.getElementById('ap-profile').value;
+  apFillForm(apCfgOf(apCurrent));
+  renderApPreview();
+}
+
+async function apAddProfile() {
+  const name = prompt('Назва постачальника апок (так само, як пишеш у [] у назві воронки):');
+  const n = (name || '').trim().replace(/[\[\]]/g, '');
+  if (!n) return;
+  if (appProfiles[n]) { apCurrent = n; apRenderProfileSelect(); apSelectProfile(); return; }
+  appProfiles[n] = apCfgFromForm();      // стартує з того, що зараз у формі
+  apCurrent = n;
+  await apSaveProfiles();
+  apRenderProfileSelect();
+  apFillForm(apCfgOf(n));
+  renderApPreview();
+  apRenderProfilesList();
+  showStatus(`Постачальника «${n}» додано — тепер налаштуй його саби`);
+}
+
+async function apDeleteProfile() {
+  if (!apCurrent) return alert('Профіль за замовчуванням видалити не можна — виберіть постачальника.');
+  if (!confirm(`Видалити профіль «${apCurrent}»?`)) return;
+  delete appProfiles[apCurrent];
+  apCurrent = '';
+  await apSaveProfiles();
+  apRenderProfileSelect();
+  apFillForm(apCfgOf(''));
+  renderApPreview();
+  apRenderProfilesList();
+  showStatus('Профіль видалено');
+}
+
+async function apSaveProfiles() {
+  await sb.from('team_settings').upsert(
+    { team_name: currentTeam, key: 'app_profiles', value: JSON.stringify(appProfiles) },
+    { onConflict: 'team_name,key' });
+}
+
+async function saveAppParse() {
+  const cfg = apCfgFromForm();
   try {
-    await sb.from('team_settings').upsert(
-      { team_name: currentTeam, key: 'app_parse', value: JSON.stringify(appParse) },
-      { onConflict: 'team_name,key' });
-    showStatus('APP-парсинг збережено');
+    if (apCurrent) {
+      appProfiles[apCurrent] = cfg;
+      await apSaveProfiles();
+      showStatus(`Саби «${apCurrent}» збережено`);
+    } else {
+      appParse = cfg;
+      await sb.from('team_settings').upsert(
+        { team_name: currentTeam, key: 'app_parse', value: JSON.stringify(appParse) },
+        { onConflict: 'team_name,key' });
+      showStatus('APP-парсинг збережено');
+    }
     renderApPreview();
+    apRenderProfilesList();
     if (lastFbParse) processCampaignData(lastFbParse.map, lastFbParse.lines);
   } catch (e) { alert('Не вдалось зберегти: ' + e.message); }
 }
@@ -1128,26 +1223,93 @@ function renderApPreview() {
   const el = document.getElementById('ap-preview');
   if (!el) return;
   const sample = 'cy638t_8wxg7hf7_YVbHTgzY_Mostbet_1007349722102888_KG-JS-674-1_KG_sub8';
-  const r = parseAppCampaign(sample, '', '');
-  el.innerHTML = `Зразок: <span class="text-slate-400">${sample}</span><br>` +
+  const r = apParseWith(apCfgFromForm(), sample.split('_'), '', '');
+  el.innerHTML = `Зразок (<b class="text-orange-300">${apCurrent || 'за замовчуванням'}</b>): ` +
+    `<span class="text-slate-400">${sample}</span><br>` +
     `→ апка: <b class="text-orange-300">${r.app || '—'}</b> · ` +
     `акаунт: <b class="text-orange-300">${r.acc || '—'}</b> · ` +
     `крео: <b class="text-orange-300">${r.cid || '(зі стовпця Ad name)'}</b> · ` +
     `гео: <b class="text-orange-300">${r.geo || '(зі стовпця Country)'}</b>`;
 }
 
+// Список готових постачальників: як розкладені саби і які апки на них зав'язані
+function apRenderProfilesList() {
+  const el = document.getElementById('ap-profiles-list');
+  if (!el) return;
+  const names = Object.keys(appProfiles).sort((a, b) => a.localeCompare(b, 'uk'));
+  if (!names.length) {
+    el.innerHTML = '<p class="text-[10px] font-bold text-slate-600 italic">Постачальників ще немає — усі APP-кампанії розбираються профілем за замовчуванням.</p>';
+    return;
+  }
+  const rows = names.map(n => {
+    const c = { ...AP_DEFAULT, ...appProfiles[n] };
+    const apps = Object.entries(mappingDB.funnels || {})
+      .filter(([, fn]) => (apProviderOf(fn) || '').toLowerCase() === n.toLowerCase())
+      .map(([ktid]) => ktid);
+    const chip = (label, val) => `<span class="text-slate-500">${label}</span> <b class="text-orange-300">${val}</b>`;
+    return `<tr class="border-b border-white/5 ${n === apCurrent ? 'bg-orange-500/5' : ''}">
+      <td class="p-2 font-black text-orange-400 whitespace-nowrap">${n}</td>
+      <td class="p-2 text-[10px] whitespace-nowrap">
+        ${chip('апка', c.appPos)} · ${chip('акаунт', c.accPos)} ·
+        ${chip('крео', c.cidSrc === 'camp' ? c.cidPos : 'Ad name')} ·
+        ${chip('гео', c.geoSrc === 'camp' ? c.geoPos : 'Country')}
+        ${c.dash && c.cidSrc === 'camp' ? '<span class="text-slate-600"> · крео через «-»</span>' : ''}
+      </td>
+      <td class="p-2 text-[10px] text-right">${apps.length
+        ? apps.map(a => `<span class="inline-block px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 font-bold ml-1">${a}</span>`).join('')
+        : '<span class="text-slate-600 italic">жодної апки — постав [' + n + '] у назві воронки</span>'}</td>
+      <td class="p-2 text-right"><button onclick="apCurrent='${n.replace(/'/g, "\\'")}';apRenderProfileSelect();apSelectProfile();apRenderProfilesList();" class="text-[10px] font-black uppercase text-slate-500 hover:text-orange-400">Змінити</button></td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Готові постачальники</p>
+    <table class="w-full text-[11px] text-left"><tbody>${rows}</tbody></table>`;
+}
+
+// «Mostbet [AppCloud]» → «AppCloud»
+function apProviderOf(funnelName) {
+  const m = String(funnelName || '').match(/\[([^\]]+)\]/);
+  return m ? m[1].trim() : '';
+}
+
+// «Mostbet [AppCloud]» → «Mostbet» (мітка постачальника не потрапляє в дані)
+function apFunnelClean(funnelName) {
+  return String(funnelName || '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Який профіль застосувати до цієї кампанії.
+// Перебираємо профілі: читаємо назву апки на ЙОГО позиції, дивимось воронку цієї апки
+// в KTID Mappings і перевіряємо, чи стоїть там [назва профілю]. Так позиція апки може
+// відрізнятись у різних постачальників і збіг усе одно лишається однозначним.
+function apMatchProfile(parts) {
+  const at = pos => (pos > 0 && parts[pos - 1] !== undefined) ? String(parts[pos - 1]).trim() : '';
+  for (const [name, p] of Object.entries(appProfiles)) {
+    const app = at(p.appPos || AP_DEFAULT.appPos);
+    if (!app) continue;
+    const prov = apProviderOf((mappingDB.funnels || {})[app]);
+    if (prov && prov.toLowerCase() === name.toLowerCase()) return { name, cfg: { ...AP_DEFAULT, ...p } };
+  }
+  return null;
+}
+
+function apParseWith(cfg, parts, adName, country) {
+  const at = pos => (pos > 0 && parts[pos - 1] !== undefined) ? String(parts[pos - 1]).trim() : '';
+  const app = at(cfg.appPos);
+  const acc = at(cfg.accPos);
+  let cid = cfg.cidSrc === 'camp' ? at(cfg.cidPos) : String(adName || '').trim();
+  // Крео не може містити "_" (воно ж роздільник), тому в назві кампанії пишеться
+  // через "-" — повертаємо назад, щоб збігалося з базою і папкою Drive.
+  if (cfg.dash && cfg.cidSrc === 'camp') cid = cid.replace(/-/g, '_');
+  const geo = cfg.geoSrc === 'camp' ? at(cfg.geoPos) : String(country || '').trim();
+  return { app, acc, cid, geo };
+}
+
 // Розбір назви APP-кампанії за позиціями (1-based, як рахує користувач)
 function parseAppCampaign(campName, adName, country) {
   const parts = String(campName || '').split('_');
-  const at = pos => (pos > 0 && parts[pos - 1] !== undefined) ? String(parts[pos - 1]).trim() : '';
-  const app = at(appParse.appPos);
-  const acc = at(appParse.accPos);
-  let cid = appParse.cidSrc === 'camp' ? at(appParse.cidPos) : String(adName || '').trim();
-  // Крео не може містити "_" (воно ж роздільник), тому в назві кампанії пишеться
-  // через "-" — повертаємо назад, щоб збігалося з базою і папкою Drive.
-  if (appParse.dash && appParse.cidSrc === 'camp') cid = cid.replace(/-/g, '_');
-  const geo = appParse.geoSrc === 'camp' ? at(appParse.geoPos) : String(country || '').trim();
-  return { app, acc, cid, geo };
+  const hit = apMatchProfile(parts);
+  const r = apParseWith(hit ? hit.cfg : appParse, parts, adName, country);
+  r.profile = hit ? hit.name : '';
+  return r;
 }
 
 function setTrafficMode(m) {
@@ -1321,7 +1483,7 @@ function parseKeitaro(content) {
     const ktid = (parts[2] || '0').trim();
     const cr = (r[iCr] || '').trim();
     const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
-    const funnel = mappingDB.funnels[funRaw] || mappingDB.funnels[ktid] || funRaw || '—';
+    const funnel = apFunnelClean(mappingDB.funnels[funRaw] || mappingDB.funnels[ktid]) || funRaw || '—';
     const ins = parseInt(r[iIns], 10) || 0, reg = parseInt(r[iReg], 10) || 0, dep = parseInt(r[iDep], 10) || 0;
 
     add(byAccount,  `${localDay}|${acc}`, ins, reg, dep, { account: acc, date: localDay, tz: Number(tz) });
@@ -1553,7 +1715,9 @@ function processCampaignData(map, lines) {
       cid = row[map.cid] || 'No CID';
     }
 
-    const funnelName = mappingDB.funnels[ktid] || 'Unknown (' + ktid + ')';
+    // [Постачальник] у назві воронки — це лише мітка для вибору профілю сабів,
+    // у дані вона не йде, щоб воронка збігалася зі старими записами.
+    const funnelName = apFunnelClean(mappingDB.funnels[ktid]) || 'Unknown (' + ktid + ')';
     const agency = mappingDB.providers[accName] || 'Direct(0%)';
 
     const spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
@@ -2370,7 +2534,7 @@ function recFiltered() {
 function recListValues(kind, colKey) {
   const fromRows = [...new Set(recRows.map(r => String(r[colKey] ?? '').trim()).filter(Boolean))];
   let base = [];
-  if (kind === 'funnels')      base = Object.values(mappingDB.funnels || {});
+  if (kind === 'funnels')      base = Object.values(mappingDB.funnels || {}).map(apFunnelClean);
   else if (kind === 'agents')  base = (window.agenciesList || []);
   else if (kind === 'offers')  base = (globalOffersCache || []).map(o => o.offer);
   const all = [...new Set([...base, ...fromRows].map(v => String(v).trim()).filter(Boolean))];
