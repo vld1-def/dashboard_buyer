@@ -946,6 +946,9 @@ header h1 span { font-size: .85rem !important; }
    Коли вимкнено більшість стовпців, вона лишається компактною (зручно для скріна),
    а коли стовпців багато — просто прокручується по горизонталі. */
 #rb-table { width: max-content; min-width: min(100%, 460px); }
+/* Коли увімкнено всі стовпці — розтягуємо на всю картку (100% для таблиці
+   означає «не менше», тож при потребі вона все одно розсунеться і прокрутиться). */
+#rb-table.rb-wide { width: 100%; }
 #rb-table th:not(:first-child), #rb-table td:not(:first-child) { min-width: 88px; }
 #rb-table th:first-child, #rb-table td:first-child { max-width: 340px; }
 body { padding-bottom: 100px !important; padding-top: 14px !important; }
@@ -6272,6 +6275,10 @@ function rbRender(){
   const data=rbFiltered();
   const th='p-3 text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-white/10 sticky top-0 bg-[#131c31]/95 backdrop-blur-xl cursor-pointer hover:text-cyan-400 whitespace-nowrap';
   const cols=RB_COLS.filter(c=>rbVisibleCols.includes(c.key));
+
+  // всі стовпці ввімкнено — на всю ширину; частина вимкнена — компактно по вмісту.
+  // Півот (дні/місяці) завжди широкий: там стовпців багато і вони самі розсувають таблицю.
+  tbl.classList.toggle('rb-wide', rbMode!=='list' || cols.length===RB_COLS.length);
 
   if(rbMode==='list'){
     // групуємо по вибраних вимірах
