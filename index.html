@@ -1238,7 +1238,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   
   <!-- Блок графіка -->
   <div id="chart-main-col" class="card p-4 rounded-3xl lg:col-span-3 shadow-md transition-all duration-500 ease-in-out">
-     <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6 text-dynamic">
+     <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 mb-2 text-dynamic">
         <h2 id="chart-title" class="font-black text-xl uppercase tracking-tight">Performance Trend</h2>
         <div class="flex flex-wrap items-center gap-3 text-dynamic">
            <div class="flex items-center gap-2 bg-gray-500/10 p-1 rounded-xl border border-gray-500/10 text-[10px] font-bold">
@@ -2405,32 +2405,6 @@ function renderTrend(data) {
       datalabels: { display: false }
     });
 
-    // 5. Trend line (лінійна регресія по Spend)
-    const spendVals = dailyStats.map(v => v.s);
-    if (spendVals.length >= 2) {
-      const n = spendVals.length;
-      const sumX = spendVals.reduce((s, _, i) => s + i, 0);
-      const sumY = spendVals.reduce((s, v) => s + v, 0);
-      const sumXY = spendVals.reduce((s, v, i) => s + i * v, 0);
-      const sumX2 = spendVals.reduce((s, _, i) => s + i * i, 0);
-      const denom = n * sumX2 - sumX * sumX;
-      if (denom !== 0) {
-        const slope = (n * sumXY - sumX * sumY) / denom;
-        const intercept = (sumY - slope * sumX) / n;
-        datasets.push({
-          label: 'Trend',
-          data: spendVals.map((_, i) => Math.round(intercept + slope * i)),
-          borderColor: slope >= 0 ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)',
-          borderDash: [6, 4],
-          borderWidth: 2,
-          pointRadius: 0,
-          tension: 0,
-          fill: false,
-          datalabels: { display: false }
-        });
-      }
-    }
-
   }
   // --- РЕЖИМ GEO ---
   else {
@@ -2493,12 +2467,14 @@ function renderTrend(data) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 40, bottom: 0, left: 5, right: 15 } },
+      // top лишаємо рівно під підпис значення над точкою (12px bold + запас),
+      // а не 40 — інакше вгорі графіка зяяла порожня смуга
+      layout: { padding: { top: 18, bottom: 0, left: 5, right: 15 } },
       plugins: {
         legend: {
           display: true,
           position: 'top',
-          labels: { color: '#94a3b8', usePointStyle: true, padding: 20, font: { weight: 'bold' } }
+          labels: { color: '#94a3b8', usePointStyle: true, padding: 12, boxHeight: 7, font: { weight: 'bold', size: 11 } }
         },
         tooltip: {
           backgroundColor: 'rgba(15, 23, 42, 0.95)',
