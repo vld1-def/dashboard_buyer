@@ -2323,13 +2323,18 @@ function renderTrend(data) {
   // --- РЕЖИМ DAILY ---
   if (currentChartMode === 'daily') {
     const m = {};
-    sd.forEach(d => m[d] = { s: 0, r: 0, d: 0, i: 0 });
+    sd.forEach(d => m[d] = { s: 0, r: 0, d: 0, i: 0, rev: 0 });
     data.forEach(d => {
       if (m[d.date]) {
         m[d.date].s += Number(d.spend) || 0;
         m[d.date].r += Number(d.regs) || 0;
         m[d.date].d += Number(d.deposits) || 0;
         m[d.date].i += Number(d.installs) || 0;
+        // Виручка — тією ж формулою, що й у KPI: депозити × виплата для гео+оффера
+        const g = (d.geo || '').toUpperCase().trim();
+        const o = (d.offer || 'DEFAULT').toUpperCase().trim();
+        const payout = globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
+        m[d.date].rev += (Number(d.deposits) || 0) * payout;
       }
     });
 
@@ -2358,7 +2363,23 @@ function renderTrend(data) {
       }
     });
 
-    // 2. CPL (Фіолетовий пунктир)
+    // 2. Profit (Зелена суцільна) — виручка мінус спенд за день
+    datasets.push({
+      label: 'Profit ($)',
+      data: dailyStats.map(v => Math.round(v.rev - v.s)),
+      borderColor: '#10b981',
+      backgroundColor: 'rgba(16, 185, 129, 0.08)',
+      borderWidth: 3,
+      pointBackgroundColor: '#0f172a',
+      pointBorderColor: '#10b981',
+      pointBorderWidth: 2,
+      pointRadius: 4,
+      tension: 0.4,
+      fill: false,
+      datalabels: { display: false }
+    });
+
+    // 3. CPL (Фіолетовий пунктир)
     datasets.push({
       label: 'CPL ($)',
       data: dailyStats.map(v => v.r > 0 ? v.s / v.r : 0),
@@ -2371,7 +2392,7 @@ function renderTrend(data) {
       datalabels: { display: false }
     });
 
-    // 3. CPA (Жовтий пунктир)
+    // 4. CPA (Жовтий пунктир)
     datasets.push({
       label: 'CPA ($)',
       data: dailyStats.map(v => v.d > 0 ? v.s / v.d : 0),
@@ -2384,7 +2405,7 @@ function renderTrend(data) {
       datalabels: { display: false }
     });
 
-    // 4. Trend line (лінійна регресія по Spend)
+    // 5. Trend line (лінійна регресія по Spend)
     const spendVals = dailyStats.map(v => v.s);
     if (spendVals.length >= 2) {
       const n = spendVals.length;
@@ -2499,9 +2520,15 @@ function renderTrend(data) {
               const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
               const cpa = stats.d > 0 ? (stats.s / stats.d).toFixed(1) : 0;
 
+              const profitLine = stats.rev !== undefined
+                ? [` 📈 Profit: ${stats.rev - stats.s >= 0 ? '' : '−'}$${Math.abs(Math.round(stats.rev - stats.s))}` +
+                   `  (Rev $${Math.round(stats.rev)})`]
+                : [];
+
               return [
                 ` 📍 ${currentChartMode === 'daily' ? 'TOTAL' : 'GEO: ' + label}`,
                 ` 💰 Spend: $${Math.round(stats.s)}`,
+                ...profitLine,
                 ` 📲 Inst: ${ins}`,
                 ` 📝 Reg: ${stats.r}`,
                 ` 🎯 Dep: ${stats.d}`,
