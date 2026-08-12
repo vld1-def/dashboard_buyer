@@ -6988,11 +6988,15 @@ function gcDiff(geo, results) {
       </div>
       <div>
         <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Day (account TZ)</label>
-        <input type="date" id="dc-base-date" onchange="dcCompute()" class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-lime-500">
+        <input type="date" id="dc-base-date" onchange="dcUnitOverride={};dcCompute()" class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-lime-500">
       </div>
       <div>
         <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Total Spend $</label>
         <input type="number" id="dc-spend" placeholder="0" oninput="dcCompute()" class="w-28 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-lime-500">
+      </div>
+      <div>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Revenue $</label>
+        <input type="number" id="dc-revenue" placeholder="0" oninput="dcCompute()" class="w-28 bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-emerald-500">
       </div>
       <button onclick="dcCompute()" class="bg-lime-600 hover:bg-lime-500 text-white py-2 px-6 rounded-xl uppercase tracking-widest shadow-lg font-black text-xs transition">Calculate</button>
       <span id="dc-filedates" class="text-[10px] font-bold text-slate-500 self-center"></span>
@@ -7034,6 +7038,7 @@ let dcAccountsTz = {};  // account_id -> timezone
 let dcHasDevice = false;   // чи є у файлі стовпець із девайсом
 let dcHasCreative = false; // чи є у файлі Sub ID 3 (креатив)
 let dcSplits = { placement: {}, device: {}, creative: {} };   // агрегати за обраний день
+let dcUnitOverride = {};   // {i,r,d} — count, виправлений вручну в Unit cost
 
 async function openDataCheckModal() {
   document.getElementById('data-check-modal').classList.remove('hidden');
@@ -7058,6 +7063,7 @@ function dcParse(content) {
   content = content.replace(/﻿/g, '');
   const lines = content.split(/\r?\n/).filter(l => l.trim() !== '');
   dcRows = [];
+  dcUnitOverride = {};   // новий файл — ручні правки count більше не актуальні
   if (!lines.length) return;
   const delim = (lines[0].split(';').length > lines[0].split(',').length) ? ';' : ',';
   const split = l => l.split(delim).map(c => c.replace(/^"|"$/g, '').replace(/"/g, '').trim());
@@ -7114,6 +7120,7 @@ function dcCompute() {
   const target = document.getElementById('dc-base-date').value;   // локальний день акаунта
   if (!target) return;
   const spend = parseFloat(document.getElementById('dc-spend').value) || 0;
+  const revenue = parseFloat(document.getElementById('dc-revenue').value) || 0;
 
   const perAcc = {};
   dcRows.forEach(r => { (perAcc[r.account] = perAcc[r.account] || []).push(r); });
@@ -7153,7 +7160,7 @@ function dcCompute() {
   document.getElementById('dc-empty').classList.add('hidden');
   document.getElementById('dc-results').classList.remove('hidden');
   dcRenderAccounts(accStats);
-  dcRenderUnit(accStats, spend);
+  dcRenderUnit(accStats, spend, revenue);
   dcRenderSplit('device', 'dc-device-table');
   dcRenderSplit('placement', 'dc-placement-table');
   dcRenderSplit('creative', 'dc-creative-table');
@@ -7184,8 +7191,23 @@ function dcRenderAccounts(rows) {
   t.innerHTML = head + '<tbody>' + body + totRow + '</tbody>';
 }
 
-function dcRenderUnit(rows, spend) {
+// Count у Unit cost можна правити руками — інколи треба перерахувати юніт
+// на свої числа, не чіпаючи файл. Порожнє поле повертає значення з файлу.
+function dcSetUnit(key, text) {
+  const s = String(text).replace(/[^\d.-]/g, '').trim();
+  if (s === '') delete dcUnitOverride[key];
+  else dcUnitOverride[key] = Math.max(0, Math.round(Number(s) || 0));
+  dcCompute();
+}
+
+function dcRenderUnit(rows, spend, revenue) {
   const tot = rows.reduce((a, r) => ({ i: a.i + r.installs, r: a.r + r.regs, d: a.d + r.deps }), { i: 0, r: 0, d: 0 });
+  // Ручне значення має пріоритет над порахованим з файлу
+  const eff = {
+    i: dcUnitOverride.i != null ? dcUnitOverride.i : tot.i,
+    r: dcUnitOverride.r != null ? dcUnitOverride.r : tot.r,
+    d: dcUnitOverride.d != null ? dcUnitOverride.d : tot.d
+  };
   const money = v => '$' + (v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const cost = c => c > 0 ? money(spend / c) : '—';
   const ratio = (a, b) => { if (!b) return '—'; const n = a / b; const s = (Math.round(n * 10) / 10).toString(); return '1 to ' + s; };
@@ -7193,18 +7215,36 @@ function dcRenderUnit(rows, spend) {
   const head = `<thead><tr>
     <th class="${th} text-left">Metric</th><th class="${th} text-right">Count</th><th class="${th} text-right">Value</th>
   </tr></thead>`;
+
+  const profit = revenue - spend;
+  const roiCell = spend > 0
+    ? `<span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}">${(profit / spend * 100).toFixed(1)}%</span>` +
+      `<span class="ml-2 text-[12px] font-bold ${profit >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}">${profit >= 0 ? '+' : '−'}${money(Math.abs(profit))}</span>`
+    : '<span class="text-slate-600">впиши Spend і Revenue</span>';
+
+  // [метрика, count, value, ключ для ручного вводу, свій клас для value]
   const data = [
-    ['Installs', tot.i, cost(tot.i)],
-    ['Regs', tot.r, cost(tot.r)],
-    ['Deposits', tot.d, cost(tot.d)],
-    ['Install → Reg', '', ratio(tot.i, tot.r)],
-    ['Install → Dep', '', ratio(tot.i, tot.d)],
-    ['Reg → Dep', '', ratio(tot.r, tot.d)]
+    ['Installs', eff.i, cost(eff.i), 'i'],
+    ['Regs', eff.r, cost(eff.r), 'r'],
+    ['Deposits', eff.d, cost(eff.d), 'd'],
+    ['ROI', '', roiCell, null, ''],
+    ['Install → Reg', '', ratio(eff.i, eff.r)],
+    ['Install → Dep', '', ratio(eff.i, eff.d)],
+    ['Reg → Dep', '', ratio(eff.r, eff.d)]
   ];
-  const body = data.map(([m, q, v]) => `<tr class="border-t border-white/5">
-    <td class="p-2 text-[13px] font-bold text-slate-300">${m}</td>
-    <td class="p-2 text-right text-[14px] font-bold text-white">${q}</td>
-    <td class="p-2 text-right text-[14px] font-black text-lime-400">${v}</td></tr>`).join('');
+  const body = data.map(([m, q, v, key, vCls]) => {
+    const edited = key && dcUnitOverride[key] != null;
+    const countCell = key
+      ? `<span contenteditable="true" onblur="dcSetUnit('${key}', this.innerText)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+              title="Можна виправити вручну — порожнє поле поверне значення з файлу"
+              class="outline-none px-1.5 rounded border-b border-dashed cursor-text ${edited ? 'border-amber-400 text-amber-300' : 'border-white/20 focus:border-lime-500'}">${q}</span>`
+      : q;
+    return `<tr class="border-t border-white/5">
+      <td class="p-2 text-[13px] font-bold text-slate-300">${m}</td>
+      <td class="p-2 text-right text-[14px] font-bold text-white">${countCell}</td>
+      <td class="p-2 text-right text-[14px] font-black ${vCls === undefined ? 'text-lime-400' : vCls}">${v}</td></tr>`;
+  }).join('');
   document.getElementById('dc-unit-table').innerHTML = head + '<tbody>' + body + '</tbody>';
 }
 
