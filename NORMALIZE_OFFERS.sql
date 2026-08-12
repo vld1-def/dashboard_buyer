@@ -1,49 +1,47 @@
 -- ══════════════════════════════════════════════════════════════════
---  Зведення регістру оффера в daily_stats до канонічного з payouts
+--  BOOSTWIN → Boostwin  (команда IMPROVE, таблиця daily_stats)
 -- ══════════════════════════════════════════════════════════════════
 --  Причина: у прев'ю імпорту випадайка оферів віддавала значення в
 --  капсі, і при виборі зі списку в базу писалось «BOOSTWIN» замість
---  «Boostwin». Той самий оффер став двома різними значеннями.
+--  «Boostwin». Той самий оффер став двома значеннями і двоївся у звітах.
 --
---  Виплати від цього НЕ постраждали — ключ payout будується з
---  toUpperCase() з обох боків. Постраждало групування у звітах.
---
---  creatives_stats.offer скрізь NULL — там нічого міняти.
+--  Виплати не постраждали — ключ payout будується з toUpperCase()
+--  з обох боків. creatives_stats.offer скрізь NULL, там нічого міняти.
 --  Запускати в Supabase → SQL Editor.
 -- ══════════════════════════════════════════════════════════════════
 
--- КРОК 1. Подивитись, що саме зміниться (нічого не пише).
-SELECT d.team_name,
-       d.offer AS було,
-       p.offer AS стане,
-       count(*) AS рядків
-FROM daily_stats d
-JOIN (SELECT DISTINCT team_name, offer FROM payouts) p
-  ON p.team_name = d.team_name
- AND upper(p.offer) = upper(d.offer)
-WHERE d.offer IS NOT NULL
-  AND d.offer <> p.offer
-GROUP BY 1, 2, 3
-ORDER BY 1, 2;
-
--- КРОК 2. Якщо список влаштовує — оновити.
-UPDATE daily_stats d
-SET offer = p.offer
-FROM (SELECT DISTINCT team_name, offer FROM payouts) p
-WHERE p.team_name = d.team_name
-  AND upper(p.offer) = upper(d.offer)
-  AND d.offer IS NOT NULL
-  AND d.offer <> p.offer;
-
--- Щоб зачепити лише IMPROVE (тобто тільки Boostwin), додай у КРОК 2:
---   AND d.team_name = 'IMPROVE'
-
--- КРОК 3. Перевірка: дублів по регістру більше бути не повинно.
-SELECT team_name, upper(offer) AS ключ,
-       count(DISTINCT offer) AS варіантів,
-       string_agg(DISTINCT offer, ' | ') AS значення
+-- КРОК 1. Що саме зміниться (нічого не пише). Очікується: BOOSTWIN → 23 рядки.
+SELECT offer, count(*) AS рядків
 FROM daily_stats
-WHERE offer IS NOT NULL
-GROUP BY 1, 2
-HAVING count(DISTINCT offer) > 1
-ORDER BY 1;
+WHERE team_name = 'IMPROVE'
+  AND upper(offer) = 'BOOSTWIN'
+GROUP BY offer
+ORDER BY offer;
+
+-- КРОК 2. Оновити.
+UPDATE daily_stats
+SET offer = 'Boostwin'
+WHERE team_name = 'IMPROVE'
+  AND upper(offer) = 'BOOSTWIN'
+  AND offer <> 'Boostwin';
+
+-- КРОК 3. Перевірка: має лишитись один рядок — Boostwin 51.
+SELECT offer, count(*) AS рядків
+FROM daily_stats
+WHERE team_name = 'IMPROVE'
+  AND upper(offer) = 'BOOSTWIN'
+GROUP BY offer;
+
+
+-- ── Решта команд (AdWave, OLD_TEAM) — НЕ виконується, лишено на потім ──
+-- Там ті самі дублі по регістру: GOLDENBET/GoldenBet, JETTON/Jetton,
+-- 1XBET, MELBET та інші — разом ще 136 рядків. Канонічний варіант
+-- береться з payouts, тому назви вручну виписувати не треба:
+--
+-- UPDATE daily_stats d
+-- SET offer = p.offer
+-- FROM (SELECT DISTINCT team_name, offer FROM payouts) p
+-- WHERE p.team_name = d.team_name
+--   AND upper(p.offer) = upper(d.offer)
+--   AND d.offer IS NOT NULL
+--   AND d.offer <> p.offer;
