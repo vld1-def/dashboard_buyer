@@ -452,6 +452,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       </div>
       </div>
 
+      <!-- Звіт про злиття FB × Keitaro — щоб було видно, що зійшлось, а що ні -->
+      <div id="kt-merge-report" class="hidden card p-5 rounded-[2rem] border-l-4 border-l-emerald-500 bg-slate-900/40 mb-8 text-[11px] leading-relaxed"></div>
+
       <!-- Контейнер ПРЕВ'Ю (Без обмеження висоти) -->
       <div id="dataset-preview" class="hidden space-y-12 pb-32">
         <!-- Daily Stats Table -->
@@ -1489,11 +1492,14 @@ function parseKeitaro(content) {
     add(byAccount,  `${localDay}|${acc}`, ins, reg, dep, { account: acc, date: localDay, tz: Number(tz) });
     add(byCampaign, `${localDay}|${acc}|${normCamp(campRaw)}|${funnel}`, ins, reg, dep,
         { account: acc, date: localDay, campaign: campRaw, funnel, geo, ktid });
-    add(byCreative, `${localDay}|${acc}|${cr}`, ins, reg, dep, { account: acc, date: localDay, cid: cr });
+    // Ключ креатива — у нижньому регістрі: FB і Keitaro часто віддають ту саму
+    // назву по-різному (KG_cr1 / kg_cr1), і через це крео просто не зіставлялись.
+    const crKey = `${localDay}|${acc}|${cr.toLowerCase()}`;
+    add(byCreative, crKey, ins, reg, dep, { account: acc, date: localDay, cid: cr });
     // Плейсмент з Keitaro (Sub ID 4) — за ключем креатива, щоб підставити у FB-рядки
     if (iPlc >= 0) {
       const pv = String(r[iPlc] || '').trim();
-      if (pv && !pv.startsWith('{')) ktPlacements[`${localDay}|${acc}|${cr}`] = pv;
+      if (pv && !pv.startsWith('{')) ktPlacements[crKey] = pv;
     }
     add(byDaily,    `${localDay}|${acc}|${geo}|${ktid}`, ins, reg, dep);
 
@@ -1530,7 +1536,10 @@ function parseKeitaro(content) {
 
 // Замінює конверсії з FB на точні з Keitaro
 function applyKeitaroMerge(dailyAgg, creativeAgg) {
-  if (!keitaroAgg) return { daily: Object.values(dailyAgg), creatives: Object.values(creativeAgg) };
+  if (!keitaroAgg) {
+    document.getElementById('kt-merge-report')?.classList.add('hidden');
+    return { daily: Object.values(dailyAgg), creatives: Object.values(creativeAgg) };
+  }
   let hitD = 0, hitC = 0;
 
   Object.values(dailyAgg).forEach(row => {
@@ -1542,9 +1551,11 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   // Креативи: якщо на (день,акаунт,креатив) кілька рядків (девайси) — ділимо пропорційно кліками
   const groups = {};
   Object.values(creativeAgg).forEach(row => {
-    const k = `${row.date}|${row.acc}|${row.cid}`;
+    const k = `${row.date}|${row.acc}|${String(row.cid || '').toLowerCase()}`;
     (groups[k] = groups[k] || []).push(row);
   });
+  const usedKt = new Set();      // які ключі Keitaro справді зійшлися з FB
+  const missFb = [];             // крео є у FB, але немає в Keitaro
   Object.entries(groups).forEach(([k, rows]) => {
     // Розміщення з Keitaro (Sub ID 4, формат "Instagram_Reels") — якщо у FB-звіті його не було
     const ktPlc = keitaroAgg.ktPlacements?.[k];
@@ -1557,7 +1568,14 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     }
 
     const kt = keitaroAgg.byCreative[k];
-    if (!kt) return;
+    if (!kt) {
+      // Конверсії лишаються ФБ-івські — це не дані Keitaro, тому виносимо в звіт
+      missFb.push({ cid: rows[0].cid, date: rows[0].date, acc: rows[0].acc,
+                    regs: rows.reduce((a, r) => a + (r.regs || 0), 0),
+                    deps: rows.reduce((a, r) => a + (r.deps || 0), 0) });
+      return;
+    }
+    usedKt.add(k);
     hitC++;
     const tot = rows.reduce((a, r) => a + (r.clicks || 0), 0) || rows.reduce((a, r) => a + (r.spend || 0), 0);
     rows.forEach((r, idx) => {
@@ -1614,12 +1632,56 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   // або дублює конверсії, або приписує креативу лише один з кількох офферів.
   const creativesOut = Object.values(creativeAgg);
 
+  // Крео, які є в Keitaro, але у FB-звіті рядка не знайшлось — вони просто зникають,
+  // бо злиття йде по рядках FB. Депозити з них у підсумок не потрапляють.
+  const missKt = Object.entries(keitaroAgg.byCreative)
+    .filter(([k, v]) => !usedKt.has(k) && (v.installs || v.regs || v.deps))
+    .map(([, v]) => v);
+
   console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по офферах: ${dRes.splits} daily`);
+  renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives: creativesOut });
   showStatus(dRes.splits
     ? `Keitaro: уточнено ${hitD} рядків, розділено по офферах ${dRes.splits}`
     : `Keitaro: уточнено ${hitD} рядків статистики`);
 
   return { daily: dRes.out, creatives: creativesOut };
+}
+
+// Звіт про злиття: скільки зійшлось і — головне — що НЕ зійшлось.
+// Мовчазне розходження тут найдорожче: рядок з ФБ-івськими конверсіями виглядає
+// так само, як уточнений з Keitaro, і помилку помічаєш уже в звітах.
+function renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives }) {
+  const el = document.getElementById('kt-merge-report');
+  if (!el) return;
+  const sum = (arr, f) => arr.reduce((a, x) => a + (f(x) || 0), 0);
+  const ktDeps = sum(Object.values(keitaroAgg.byCreative), v => v.deps);
+  const crDeps = sum(creatives, r => r.deps);
+  const line = (icon, cls, html) => `<div class="flex gap-2 items-start ${cls}"><span>${icon}</span><div>${html}</div></div>`;
+  const list = arr => arr.slice(0, 12).map(v =>
+      `<span class="inline-block px-1.5 py-0.5 rounded bg-black/30 font-mono text-[10px] ml-1">${v.cid || '—'}<span class="opacity-40"> ${v.date}</span></span>`
+    ).join('') + (arr.length > 12 ? `<span class="opacity-50"> …ще ${arr.length - 12}</span>` : '');
+
+  const parts = [line('✅', 'text-slate-400',
+    `Уточнено з Keitaro: <b class="text-emerald-400">${hitD}</b> рядків статистики, <b class="text-emerald-400">${hitC}</b> груп креативів.`)];
+
+  if (missFb.length) {
+    const fbDeps = sum(missFb, v => v.deps);
+    parts.push(line('⚠️', 'text-amber-300 mt-2',
+      `<b>${missFb.length}</b> крео не знайдено в Keitaro — у них лишились конверсії з самого FB` +
+      (fbDeps ? ` (<b>${fbDeps}</b> деп.)` : '') + `, а не з Keitaro:<br>${list(missFb)}`));
+  }
+  if (missKt.length) {
+    const lostDeps = sum(missKt, v => v.deps);
+    parts.push(line('⛔', 'text-rose-300 mt-2',
+      `<b>${missKt.length}</b> крео є в Keitaro, але немає рядка у FB-звіті — вони не потраплять в імпорт` +
+      (lostDeps ? `, губиться <b>${lostDeps}</b> деп.` : '') + `:<br>${list(missKt)}`));
+  }
+  if (crDeps !== ktDeps) {
+    parts.push(line('🔎', 'text-slate-500 mt-2',
+      `Депозити по креативах: <b>${crDeps}</b> в імпорті проти <b>${ktDeps}</b> у Keitaro (різниця ${crDeps - ktDeps > 0 ? '+' : ''}${crDeps - ktDeps}).`));
+  }
+  el.innerHTML = parts.join('');
+  el.classList.remove('hidden');
 }
 
 // Розбір CSV з урахуванням лапок: назви кампаній FB часто містять коми
