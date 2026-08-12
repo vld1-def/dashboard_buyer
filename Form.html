@@ -1824,6 +1824,19 @@ function processCampaignData(map, lines) {
   
   renderDualPreview();
 }
+// Вибір оффера в прев'ю. Раніше onchange писав this.value напряму, тому опція
+// «+ Ввести вручну» клала в дані літерал «CUSTOM».
+function dsPickOffer(i, sel) {
+  if (sel.value === 'CUSTOM') {
+    const v = prompt('Назва оффера:', datasetToImport[i].offer || '');
+    if (v === null) { sel.value = datasetToImport[i].offer || ''; return; }
+    datasetToImport[i].offer = v.trim();
+    renderDualPreview();
+    return;
+  }
+  datasetToImport[i].offer = sel.value;
+}
+
 function renderDualPreview() {
   document.getElementById('dataset-preview').classList.remove('hidden');
   document.getElementById('csv-drop-zone-dataset').classList.add('hidden');
@@ -1840,24 +1853,31 @@ function renderDualPreview() {
   dailyBody.innerHTML = datasetToImport.map((r, i) => {
     // Шукаємо оффери, які є в базі для ГЕО цього рядка
     const rowGeo = (r.geo || "").toUpperCase();
-    const availableForThisGeo = [...new Set(globalOffersCache
-      .filter(o => o.geo.toUpperCase() === rowGeo)
-      .map(o => o.offer.toUpperCase())
-    )];
-    // Оффер, підставлений з Keitaro, може бути в іншому регістрі або взагалі
-    // не мати виплати саме для цього гео — все одно показуємо його в списку,
-    // інакше значення є в даних, але у випадайці порожньо.
+    // Значення лишаємо в оригінальному регістрі, як в базі оферів: список і так
+    // показується капсом через CSS-клас, а от у дані має піти «Boostwin», а не
+    // «BOOSTWIN» — інакше один і той самий оффер двоїться у звітах.
+    const seenOffers = new Set();
+    const availableForThisGeo = [];
+    globalOffersCache.filter(o => o.geo.toUpperCase() === rowGeo).forEach(o => {
+      const name = String(o.offer || '').trim();
+      const key = name.toUpperCase();
+      if (name && !seenOffers.has(key)) { seenOffers.add(key); availableForThisGeo.push(name); }
+    });
+    // Оффер, підставлений з Keitaro, може взагалі не мати виплати саме для цього
+    // гео — все одно показуємо його в списку, інакше значення є в даних,
+    // а у випадайці порожньо.
     const rowOffer = String(r.offer || '').trim();
-    if (rowOffer && !availableForThisGeo.includes(rowOffer.toUpperCase())) {
-      availableForThisGeo.unshift(rowOffer.toUpperCase());
+    if (rowOffer && !seenOffers.has(rowOffer.toUpperCase())) {
+      seenOffers.add(rowOffer.toUpperCase());
+      availableForThisGeo.unshift(rowOffer);
     }
 
     // Створюємо HTML випадаючого списку
     const offerSelectHtml = `
-      <select onchange="datasetToImport[${i}].offer=this.value" 
+      <select onchange="dsPickOffer(${i}, this)"
               class="!bg-emerald-500/10 !border-emerald-500/30 !text-emerald-400 !py-1 !px-2 !text-[11px] !w-full !rounded-lg font-black uppercase">
         <option value="">-- SELECT --</option>
-        ${availableForThisGeo.map(off => `<option value="${off}" ${rowOffer.toUpperCase() === off ? 'selected' : ''}>${off}</option>`).join('')}
+        ${availableForThisGeo.map(off => `<option value="${off}" ${rowOffer.toUpperCase() === off.toUpperCase() ? 'selected' : ''}>${off}</option>`).join('')}
         <option value="CUSTOM">+ Ввести вручну</option>
       </select>
     `;
