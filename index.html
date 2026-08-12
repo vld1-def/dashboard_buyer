@@ -7018,6 +7018,10 @@ function gcDiff(geo, results) {
           <p class="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-400 mb-3 border-b border-white/5 pb-2">Placements</p>
           <div class="overflow-x-auto"><table id="dc-placement-table" class="w-full border-collapse"></table></div>
         </div>
+        <div class="card rounded-2xl p-4 border border-white/5 lg:col-span-2">
+          <p class="text-[11px] font-black uppercase tracking-[0.2em] text-orange-400 mb-3 border-b border-white/5 pb-2">Creatives</p>
+          <div class="overflow-x-auto max-h-[340px] overflow-y-auto custom-scrollbar"><table id="dc-creative-table" class="w-full border-collapse"></table></div>
+        </div>
       </div>
     </div>
   </div>
@@ -7028,7 +7032,8 @@ function gcDiff(geo, results) {
 let dcRows = [];        // {account, day, hour, installs, regs, deps, placementRaw, cid, device}
 let dcAccountsTz = {};  // account_id -> timezone
 let dcHasDevice = false;   // чи є у файлі стовпець із девайсом
-let dcSplits = { placement: {}, device: {} };   // агрегати за обраний день
+let dcHasCreative = false; // чи є у файлі Sub ID 3 (креатив)
+let dcSplits = { placement: {}, device: {}, creative: {} };   // агрегати за обраний день
 
 async function openDataCheckModal() {
   document.getElementById('data-check-modal').classList.remove('hidden');
@@ -7069,6 +7074,7 @@ function dcParse(content) {
   const iCr   = idx(['sub id 3','sub_id_3']);
   const iDev  = idx(['device','пристрій','устройство','os ','operating system','платформа пристрою']);
   dcHasDevice = iDev >= 0;
+  dcHasCreative = iCr >= 0;
 
   const fileDates = new Set();
   for (let i = 1; i < lines.length; i++) {
@@ -7115,7 +7121,7 @@ function dcCompute() {
   const accStats = [];
   const unlinked = [];
   // Розбивки рахуємо з ТОГО САМОГО файлу і за те саме TZ-вікно
-  dcSplits = { placement: {}, device: {} };
+  dcSplits = { placement: {}, device: {}, creative: {} };
   const bump = (bucket, key, r) => {
     if (!key) key = '—';
     const m = bucket[key] || (bucket[key] = { i: 0, r: 0, d: 0 });
@@ -7137,6 +7143,7 @@ function dcCompute() {
         ins += r.installs; reg += r.regs; dep += r.deps;
         bump(dcSplits.placement, dcPlacementLabel(r.placementRaw), r);
         if (dcHasDevice) bump(dcSplits.device, r.device, r);
+        if (dcHasCreative) bump(dcSplits.creative, r.cid, r);
       }
     });
     accStats.push({ account: acc, tz: Number(tz), installs: ins, regs: reg, deps: dep });
@@ -7149,6 +7156,7 @@ function dcCompute() {
   dcRenderUnit(accStats, spend);
   dcRenderSplit('device', 'dc-device-table');
   dcRenderSplit('placement', 'dc-placement-table');
+  dcRenderSplit('creative', 'dc-creative-table');
   dcRenderWarn(unlinked);
 }
 
@@ -7222,11 +7230,16 @@ function dcPlacementLabel(raw) {
 function dcRenderSplit(kind, tableId) {
   const t = document.getElementById(tableId);
   if (!t) return;
-  const th = 'p-2 text-[11px] font-black uppercase tracking-widest text-slate-500';
+  // Креативів у файлі десятки, тому їхня таблиця скролиться — шапку робимо липкою
+  const th = 'p-2 text-[11px] font-black uppercase tracking-widest text-slate-500'
+    + (kind === 'creative' ? ' sticky top-0 bg-[#131c31] z-10' : '');
   const map = (dcSplits && dcSplits[kind]) || {};
   const list = Object.entries(map).sort((a, b) => b[1].i - a[1].i);
+  const firstCol = kind === 'device' ? 'Девайс'
+                 : kind === 'creative' ? 'Креатив'
+                 : 'Платформа · плейсмент';
   const head = `<thead><tr>
-    <th class="${th} text-left">${kind === 'device' ? 'Девайс' : 'Платформа · плейсмент'}</th>
+    <th class="${th} text-left">${firstCol}</th>
     <th class="${th} text-right">Інстали</th>
     <th class="${th} text-right">Реєстр.</th>
     <th class="${th} text-right">Депоз.</th>
@@ -7236,6 +7249,9 @@ function dcRenderSplit(kind, tableId) {
     const msg = kind === 'device'
       ? (dcHasDevice ? 'Немає даних за цей день'
                      : 'У файлі немає стовпця з девайсом')
+      : kind === 'creative'
+      ? (dcHasCreative ? 'Немає даних за цей день'
+                       : 'У файлі немає Sub ID 3 (креатив)')
       : 'У файлі немає Sub ID 4 (розміщення) або немає даних за цей день';
     t.innerHTML = head + `<tbody><tr><td colspan="5" class="p-3 text-center text-[13px] opacity-40">${msg}</td></tr></tbody>`;
     return;
