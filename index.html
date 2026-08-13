@@ -7016,6 +7016,7 @@ function gcDiff(geo, results) {
         <div class="card rounded-2xl p-4 border border-white/5 w-full max-w-[470px]">
           <p class="text-[10px] font-black uppercase tracking-[0.2em] text-lime-400 mb-3 border-b border-white/5 pb-2">Unit cost</p>
           <div class="overflow-x-auto"><table id="dc-unit-table" class="w-full border-collapse"></table></div>
+          <div id="dc-unit-extra"></div>
         </div>
         <div class="card rounded-2xl p-4 border border-white/5">
           <p class="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-400 mb-3 border-b border-white/5 pb-2">Devices</p>
@@ -7219,42 +7220,55 @@ function dcRenderUnit(rows, spend, revenue) {
     <th class="${th} text-left">Metric</th><th class="${th} text-right">Count</th><th class="${th} text-right">Value</th>
   </tr></thead>`;
 
-  const profit = revenue - spend;
-  const roiCell = spend > 0
-    ? `<span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}">${(profit / spend * 100).toFixed(1)}%</span>` +
-      `<span class="ml-2 text-[12px] font-bold ${profit >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}">${profit >= 0 ? '+' : '−'}${money(Math.abs(profit))}</span>`
-    : '<span class="text-slate-600">впиши Spend і Revenue</span>';
-  // Показуємо, з чого порахований ROI — щоб на скріні було видно вхідні числа
-  const spendRevCell = (spend || revenue)
-    ? `<span class="text-[12px] font-bold text-slate-400">${money(spend)}</span>`
-      + `<span class="mx-1 text-slate-600">→</span>`
-      + `<span class="text-[12px] font-bold text-sky-400">${money(revenue)}</span>`
-    : '<span class="text-slate-700">—</span>';
-
-  // [метрика, count, value, ключ для ручного вводу, свій клас для value]
+  // Таблиця лишає тільки те, де є Count і юніт-кост
   const data = [
     ['Installs', eff.i, cost(eff.i), 'i'],
     ['Regs', eff.r, cost(eff.r), 'r'],
-    ['Deposits', eff.d, cost(eff.d), 'd'],
-    ['ROI', spendRevCell, roiCell, null, ''],
-    ['Install → Reg', '', ratio(eff.i, eff.r)],
-    ['Install → Dep', '', ratio(eff.i, eff.d)],
-    ['Reg → Dep', '', ratio(eff.r, eff.d)]
+    ['Deposits', eff.d, cost(eff.d), 'd']
   ];
-  const body = data.map(([m, q, v, key, vCls]) => {
-    const edited = key && dcUnitOverride[key] != null;
-    const countCell = key
-      ? `<span contenteditable="true" onblur="dcSetUnit('${key}', this.innerText)"
+  const body = data.map(([m, q, v, key]) => {
+    const edited = dcUnitOverride[key] != null;
+    const countCell = `<span contenteditable="true" onblur="dcSetUnit('${key}', this.innerText)"
               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
               title="Можна виправити вручну — порожнє поле поверне значення з файлу"
-              class="outline-none px-1.5 rounded border-b border-dashed cursor-text ${edited ? 'border-amber-400 text-amber-300' : 'border-white/20 focus:border-lime-500'}">${q}</span>`
-      : q;
+              class="outline-none px-1.5 rounded border-b border-dashed cursor-text ${edited ? 'border-amber-400 text-amber-300' : 'border-white/20 focus:border-lime-500'}">${q}</span>`;
     return `<tr class="border-t border-white/5">
       <td class="p-2 text-[13px] font-bold text-slate-300">${m}</td>
       <td class="p-2 text-right text-[14px] font-bold text-white">${countCell}</td>
-      <td class="p-2 text-right text-[14px] font-black ${vCls === undefined ? 'text-lime-400' : vCls}">${v}</td></tr>`;
+      <td class="p-2 text-right text-[14px] font-black text-lime-400">${v}</td></tr>`;
   }).join('');
   document.getElementById('dc-unit-table').innerHTML = head + '<tbody>' + body + '</tbody>';
+
+  // Співвідношення і гроші — двома компактними блоками «підпис / значення»,
+  // по три колонки: так вони займають два рядки замість шести і зручні для скріна.
+  const profit = revenue - spend;
+  const hasMoney = spend > 0 || revenue > 0;
+  const cellCls = 'text-[9px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap';
+  const grid = items => `<div class="grid grid-cols-3 gap-x-2 gap-y-1 text-center">
+      ${items.map(([l]) => `<div class="${cellCls}">${l}</div>`).join('')}
+      ${items.map(([, v]) => `<div class="text-[14px] font-black leading-tight">${v}</div>`).join('')}
+    </div>`;
+
+  const ratios = grid([
+    ['Install → Reg', `<span class="text-slate-200">${ratio(eff.i, eff.r)}</span>`],
+    ['Install → Dep', `<span class="text-slate-200">${ratio(eff.i, eff.d)}</span>`],
+    ['Reg → Dep',     `<span class="text-slate-200">${ratio(eff.r, eff.d)}</span>`]
+  ]);
+
+  const roiVal = spend > 0
+    ? `<span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}">${(profit / spend * 100).toFixed(1)}%</span>` +
+      `<div class="text-[11px] font-bold ${profit >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}">${profit >= 0 ? '+' : '−'}${money(Math.abs(profit))}</div>`
+    : '<span class="text-slate-700">—</span>';
+  const moneyGrid = grid([
+    ['Spend',   `<span class="text-slate-300">${hasMoney ? money(spend) : '—'}</span>`],
+    ['Revenue', `<span class="text-sky-400">${hasMoney ? money(revenue) : '—'}</span>`],
+    ['ROI',     roiVal]
+  ]);
+
+  document.getElementById('dc-unit-extra').innerHTML =
+    `<div class="mt-3 pt-3 border-t border-white/5">${ratios}</div>` +
+    `<div class="mt-3 pt-3 border-t border-white/5">${moneyGrid}</div>` +
+    (hasMoney ? '' : '<p class="mt-2 text-center text-[10px] font-bold text-slate-600">впиши Spend і Revenue у шапці</p>');
 }
 
 // Розбивка по девайсах / плейсментах — З ЗАВАНТАЖЕНОГО KEITARO-ФАЙЛУ,
