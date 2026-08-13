@@ -955,6 +955,19 @@ header h1 span { font-size: .85rem !important; }
 .dc-shot:hover { color: #a3e635; border-color: rgba(163,230,53,.4); }
 .dc-shot:disabled { opacity: .5; cursor: progress; }
 
+/* Сцена для знімка: офскрін-копія картки без скла.
+   Градієнти html2canvas малює через createPattern на окремому полотні, і варто
+   якомусь елементу мати нульовий розмір — рендер падає. У PNG прозоре скло все
+   одно не переноситься, тому копію робимо плоскою: жодних background-image. */
+#dc-shot-stage { position: fixed; left: -20000px; top: 0; z-index: -1; padding: 0; background: #0f172a; }
+#dc-shot-stage *, #dc-shot-stage *::before, #dc-shot-stage *::after { background-image: none !important; }
+#dc-shot-stage .card { background: #131c31 !important; backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important; box-shadow: none !important;
+  border: 1px solid rgba(255,255,255,.10) !important; }
+#dc-shot-stage .card::after { display: none !important; }
+#dc-shot-stage .dc-shot { display: none !important; }
+#dc-shot-stage [class*="max-h-"] { max-height: none !important; overflow: visible !important; }
+
 #rb-table { width: max-content; min-width: min(100%, 460px); }
 /* Коли увімкнено всі стовпці — розтягуємо на всю картку (100% для таблиці
    означає «не менше», тож при потребі вона все одно розсунеться і прокрутиться). */
@@ -7387,24 +7400,33 @@ function dcLoadShotLib() {
 async function dcShot(cardId, name, btn) {
   const card = document.getElementById(cardId);
   if (!card) return;
-  const scroller = card.querySelector('#dc-creative-scroll');
   const prevZoom = document.body.style.zoom;
-  const prevMax = scroller ? scroller.style.maxHeight : null;
-  const prevOv = scroller ? scroller.style.overflowY : null;
+  let stage = null;
   btn.disabled = true; btn.textContent = '…';
   try {
     await dcLoadShotLib();
     // html2canvas не розуміє CSS zoom — на час зйомки повертаємо 100%,
     // тоді ж кадр знімається в натуральному розмірі, без втрати різкості
     document.body.style.zoom = '1';
-    // список креативів скролиться — розгортаємо, щоб у кадр пішов увесь
-    if (scroller) { scroller.style.maxHeight = 'none'; scroller.style.overflowY = 'visible'; }
-    btn.style.visibility = 'hidden';          // саму кнопку в кадр не тягнемо
-    const canvas = await html2canvas(card, {
-      scale: 3,                                // 3× — щоб текст був різкий, а не мильний
-      backgroundColor: '#0f172a',              // скло не рендериться, підкладаємо фон дашборда
-      logging: false,
-      windowWidth: document.documentElement.scrollWidth
+
+    // Знімаємо не саму картку, а її копію на офскрін-сцені: там немає скла
+    // й градієнтів (вони й ламали рендер), скрол розгорнуто на весь список,
+    // і жодні зміни не блимають на екрані в користувача.
+    stage = document.createElement('div');
+    stage.id = 'dc-shot-stage';
+    const clone = card.cloneNode(true);
+    clone.style.width = card.offsetWidth + 'px';
+    clone.style.margin = '0';
+    stage.appendChild(clone);
+    document.body.appendChild(stage);
+
+    // ignoreElements тут ставити НЕ можна: html2canvas викликає його вже на своїй
+    // копії документа, де розміри ще нульові, і під фільтр підпадає майже все —
+    // виходить порожній кадр. Від падіння рятує саме плоска сцена без градієнтів.
+    const canvas = await html2canvas(clone, {
+      scale: 3,                 // 3× — щоб текст був різкий, а не мильний
+      backgroundColor: '#131c31',
+      logging: false
     });
     const day = document.getElementById('dc-base-date').value || 'data';
     const a = document.createElement('a');
@@ -7415,8 +7437,7 @@ async function dcShot(cardId, name, btn) {
     alert('Не вдалось зробити знімок: ' + e.message);
   } finally {
     document.body.style.zoom = prevZoom;
-    if (scroller) { scroller.style.maxHeight = prevMax; scroller.style.overflowY = prevOv; }
-    btn.style.visibility = '';
+    if (stage) stage.remove();
     btn.disabled = false; btn.textContent = 'PNG';
   }
 }
