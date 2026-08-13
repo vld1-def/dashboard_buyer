@@ -945,6 +945,16 @@ header h1 span { font-size: .85rem !important; }
 /* Report Builder — таблиця по ширині вмісту, а не на всю картку.
    Коли вимкнено більшість стовпців, вона лишається компактною (зручно для скріна),
    а коли стовпців багато — просто прокручується по горизонталі. */
+/* Data Check — кнопка «зняти блок у PNG» у шапці кожної картки */
+.dc-shot {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: #64748b; padding: 2px 7px; border-radius: 7px;
+  border: 1px solid rgba(255,255,255,.10); background: rgba(0,0,0,.20);
+  transition: color .15s, border-color .15s;
+}
+.dc-shot:hover { color: #a3e635; border-color: rgba(163,230,53,.4); }
+.dc-shot:disabled { opacity: .5; cursor: progress; }
+
 #rb-table { width: max-content; min-width: min(100%, 460px); }
 /* Коли увімкнено всі стовпці — розтягуємо на всю картку (100% для таблиці
    означає «не менше», тож при потребі вона все одно розсунеться і прокрутиться). */
@@ -7012,26 +7022,41 @@ function gcDiff(geo, results) {
            Unit cost і Placements. 450 — це мінімум, за яким у Placements
            з'являється горизонтальний скрол (заміряно). -->
       <div id="dc-results" class="hidden grid grid-cols-1 lg:grid-cols-[1fr_450px] gap-5">
-        <div class="card rounded-2xl p-4 border border-white/5">
-          <p class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-3 border-b border-white/5 pb-2">Accounts</p>
+        <div id="dc-card-accounts" class="card rounded-2xl p-4 border border-white/5">
+          <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Accounts</p>
+            <button class="dc-shot" onclick="dcShot('dc-card-accounts','accounts',this)" title="Зберегти блок як PNG">PNG</button>
+          </div>
           <div class="overflow-x-auto"><table id="dc-accounts-table" class="w-full border-collapse"></table></div>
         </div>
-        <div class="card rounded-2xl p-4 border border-white/5">
-          <p class="text-[10px] font-black uppercase tracking-[0.2em] text-lime-400 mb-3 border-b border-white/5 pb-2">Unit cost</p>
+        <div id="dc-card-unit" class="card rounded-2xl p-4 border border-white/5">
+          <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
+            <p class="text-[10px] font-black uppercase tracking-[0.2em] text-lime-400">Unit cost</p>
+            <button class="dc-shot" onclick="dcShot('dc-card-unit','unit-cost',this)" title="Зберегти блок як PNG">PNG</button>
+          </div>
           <div class="overflow-x-auto"><table id="dc-unit-table" class="w-full border-collapse"></table></div>
           <div id="dc-unit-extra"></div>
         </div>
-        <div class="card rounded-2xl p-4 border border-white/5">
-          <p class="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-400 mb-3 border-b border-white/5 pb-2">Devices</p>
+        <div id="dc-card-devices" class="card rounded-2xl p-4 border border-white/5">
+          <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
+            <p class="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-400">Devices</p>
+            <button class="dc-shot" onclick="dcShot('dc-card-devices','devices',this)" title="Зберегти блок як PNG">PNG</button>
+          </div>
           <div class="overflow-x-auto"><table id="dc-device-table" class="w-full border-collapse"></table></div>
         </div>
-        <div class="card rounded-2xl p-4 border border-white/5">
-          <p class="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-400 mb-3 border-b border-white/5 pb-2">Placements</p>
+        <div id="dc-card-placements" class="card rounded-2xl p-4 border border-white/5">
+          <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
+            <p class="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-400">Placements</p>
+            <button class="dc-shot" onclick="dcShot('dc-card-placements','placements',this)" title="Зберегти блок як PNG">PNG</button>
+          </div>
           <div class="overflow-x-auto"><table id="dc-placement-table" class="w-full border-collapse"></table></div>
         </div>
-        <div class="card rounded-2xl p-4 border border-white/5 lg:col-span-2">
-          <p class="text-[11px] font-black uppercase tracking-[0.2em] text-orange-400 mb-3 border-b border-white/5 pb-2">Creatives</p>
-          <div class="overflow-x-auto max-h-[340px] overflow-y-auto custom-scrollbar"><table id="dc-creative-table" class="w-full border-collapse"></table></div>
+        <div id="dc-card-creatives" class="card rounded-2xl p-4 border border-white/5 lg:col-span-2">
+          <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
+            <p class="text-[11px] font-black uppercase tracking-[0.2em] text-orange-400">Creatives</p>
+            <button class="dc-shot" onclick="dcShot('dc-card-creatives','creatives',this)" title="Зберегти блок як PNG — у кадр іде весь список, а не лише видима частина">PNG</button>
+          </div>
+          <div id="dc-creative-scroll" class="overflow-x-auto max-h-[340px] overflow-y-auto custom-scrollbar"><table id="dc-creative-table" class="w-full border-collapse"></table></div>
         </div>
       </div>
     </div>
@@ -7340,6 +7365,60 @@ function dcRenderSplit(kind, tableId) {
     <td class="p-2 text-right text-[14px] font-black text-green-500">${tot.d}</td>
     <td class="p-2 text-right text-[12px] text-slate-400">${ratio(tot.i, tot.r)}</td></tr>`;
   t.innerHTML = head + '<tbody>' + body + totRow + '</tbody>';
+}
+
+// ── Знімок картки в PNG ─────────────────────────────────────────────
+// Бібліотеку тягнемо ліниво, при першому кліку — щоб вона не висіла
+// на кожному відкритті дашборда заради кнопки, якою користуються зрідка.
+let _h2c = null;
+function dcLoadShotLib() {
+  if (window.html2canvas) return Promise.resolve();
+  if (_h2c) return _h2c;
+  _h2c = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload = resolve;
+    s.onerror = () => { _h2c = null; reject(new Error('не вдалось завантажити бібліотеку знімків')); };
+    document.head.appendChild(s);
+  });
+  return _h2c;
+}
+
+async function dcShot(cardId, name, btn) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  const scroller = card.querySelector('#dc-creative-scroll');
+  const prevZoom = document.body.style.zoom;
+  const prevMax = scroller ? scroller.style.maxHeight : null;
+  const prevOv = scroller ? scroller.style.overflowY : null;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    await dcLoadShotLib();
+    // html2canvas не розуміє CSS zoom — на час зйомки повертаємо 100%,
+    // тоді ж кадр знімається в натуральному розмірі, без втрати різкості
+    document.body.style.zoom = '1';
+    // список креативів скролиться — розгортаємо, щоб у кадр пішов увесь
+    if (scroller) { scroller.style.maxHeight = 'none'; scroller.style.overflowY = 'visible'; }
+    btn.style.visibility = 'hidden';          // саму кнопку в кадр не тягнемо
+    const canvas = await html2canvas(card, {
+      scale: 3,                                // 3× — щоб текст був різкий, а не мильний
+      backgroundColor: '#0f172a',              // скло не рендериться, підкладаємо фон дашборда
+      logging: false,
+      windowWidth: document.documentElement.scrollWidth
+    });
+    const day = document.getElementById('dc-base-date').value || 'data';
+    const a = document.createElement('a');
+    a.download = `${name}_${day}.png`;
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  } catch (e) {
+    alert('Не вдалось зробити знімок: ' + e.message);
+  } finally {
+    document.body.style.zoom = prevZoom;
+    if (scroller) { scroller.style.maxHeight = prevMax; scroller.style.overflowY = prevOv; }
+    btn.style.visibility = '';
+    btn.disabled = false; btn.textContent = 'PNG';
+  }
 }
 
 function dcRenderWarn(unlinked) {
