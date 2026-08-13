@@ -7008,7 +7008,10 @@ function gcDiff(geo, results) {
     <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5">
       <div id="dc-warn" class="hidden mb-4"></div>
       <div id="dc-empty" class="text-center py-20 opacity-30 text-[11px] font-black uppercase tracking-widest">Upload CSV, pick a day and spend → “Calculate”</div>
-      <div id="dc-results" class="hidden grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <!-- Ліва колонка ширша (Accounts, Devices), права — фіксовані 450px під
+           Unit cost і Placements. 450 — це мінімум, за яким у Placements
+           з'являється горизонтальний скрол (заміряно). -->
+      <div id="dc-results" class="hidden grid grid-cols-1 lg:grid-cols-[1fr_450px] gap-5">
         <div class="card rounded-2xl p-4 border border-white/5">
           <p class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-3 border-b border-white/5 pb-2">Accounts</p>
           <div class="overflow-x-auto"><table id="dc-accounts-table" class="w-full border-collapse"></table></div>
@@ -7298,9 +7301,11 @@ function dcRenderSplit(kind, tableId) {
     + (kind === 'creative' ? ' sticky top-0 bg-[#131c31] z-10' : '');
   const map = (dcSplits && dcSplits[kind]) || {};
   const list = Object.entries(map).sort((a, b) => b[1].i - a[1].i);
+  // Заголовок навмисно короткий: «Платформа · плейсмент» розсував колонку на 68px,
+  // а що це саме плейсменти — і так написано в шапці картки
   const firstCol = kind === 'device' ? 'Девайс'
                  : kind === 'creative' ? 'Креатив'
-                 : 'Платформа · плейсмент';
+                 : 'Плейсмент';
   const head = `<thead><tr>
     <th class="${th} text-left">${firstCol}</th>
     <th class="${th} text-right">Інстали</th>
