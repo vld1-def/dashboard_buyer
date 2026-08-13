@@ -7013,7 +7013,7 @@ function gcDiff(geo, results) {
           <p class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 mb-3 border-b border-white/5 pb-2">Accounts</p>
           <div class="overflow-x-auto"><table id="dc-accounts-table" class="w-full border-collapse"></table></div>
         </div>
-        <div class="card rounded-2xl p-4 border border-white/5">
+        <div class="card rounded-2xl p-4 border border-white/5 w-full max-w-[470px]">
           <p class="text-[10px] font-black uppercase tracking-[0.2em] text-lime-400 mb-3 border-b border-white/5 pb-2">Unit cost</p>
           <div class="overflow-x-auto"><table id="dc-unit-table" class="w-full border-collapse"></table></div>
         </div>
@@ -7224,13 +7224,19 @@ function dcRenderUnit(rows, spend, revenue) {
     ? `<span class="${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}">${(profit / spend * 100).toFixed(1)}%</span>` +
       `<span class="ml-2 text-[12px] font-bold ${profit >= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}">${profit >= 0 ? '+' : '−'}${money(Math.abs(profit))}</span>`
     : '<span class="text-slate-600">впиши Spend і Revenue</span>';
+  // Показуємо, з чого порахований ROI — щоб на скріні було видно вхідні числа
+  const spendRevCell = (spend || revenue)
+    ? `<span class="text-[12px] font-bold text-slate-400">${money(spend)}</span>`
+      + `<span class="mx-1 text-slate-600">→</span>`
+      + `<span class="text-[12px] font-bold text-sky-400">${money(revenue)}</span>`
+    : '<span class="text-slate-700">—</span>';
 
   // [метрика, count, value, ключ для ручного вводу, свій клас для value]
   const data = [
     ['Installs', eff.i, cost(eff.i), 'i'],
     ['Regs', eff.r, cost(eff.r), 'r'],
     ['Deposits', eff.d, cost(eff.d), 'd'],
-    ['ROI', '', roiCell, null, ''],
+    ['ROI', spendRevCell, roiCell, null, ''],
     ['Install → Reg', '', ratio(eff.i, eff.r)],
     ['Install → Dep', '', ratio(eff.i, eff.d)],
     ['Reg → Dep', '', ratio(eff.r, eff.d)]
