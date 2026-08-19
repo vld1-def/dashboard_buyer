@@ -3231,6 +3231,9 @@ async function refreshPayoutsFromSQL() {
   // Оновлюємо глобальний об'єкт для розрахунків
   globalPayouts = {};
   data.forEach(p => {
+    // Вимкнений оффер не дає ставку: інакше при двох рядках з однаковою назвою
+    // виграє випадковий, і виручка рахується то за однією ставкою, то за іншою
+    if (p.active === false) return;
     const geo = (p.geo || "").toUpperCase().trim();
     const offer = (p.offer || "DEFAULT").toUpperCase().trim();
     globalPayouts[`${geo}_${offer}`] = Number(p.value);
@@ -4327,17 +4330,38 @@ function renderGeoPayoutSettings(data) {
   // Сортуємо по ГЕО для зручності в налаштуваннях
   const sortedData = [...data].sort((a, b) => a.geo.localeCompare(b.geo));
 
-  container.innerHTML = sortedData.map(p => `
-    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group">
+  container.innerHTML = sortedData.map(p => {
+    const on = p.active !== false;      // колонки може ще не бути — тоді вважаємо активним
+    return `
+    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group ${on ? '' : 'opacity-45'}">
+      <button onclick="togglePayoutActive('${p.id}', ${!on})"
+              title="${on ? 'Вимкнути оффер — не підтягуватиметься при імпорті' : 'Увімкнути оффер назад'}"
+              class="w-7 h-4 rounded-full shrink-0 relative transition-colors ${on ? 'bg-emerald-500/70' : 'bg-slate-600/60'}">
+        <span class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-3.5' : 'left-0.5'}"></span>
+      </button>
       <span class="font-black text-blue-400 uppercase w-7 shrink-0">${p.geo}</span>
-      <span class="text-slate-400 font-bold truncate flex-1 opacity-70">${p.offer || 'DEFAULT'}</span>
+      <span class="text-slate-400 font-bold truncate flex-1 opacity-70 ${on ? '' : 'line-through'}">${p.offer || 'DEFAULT'}</span>
       <span class="font-bold text-white text-left w-10 shrink-0">$${p.value}</span>
-      <button onclick="deletePayoutFromSQL('${p.id}')" 
+      <button onclick="deletePayoutFromSQL('${p.id}')"
               class="text-red-500 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
         ✕
       </button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+}
+
+// Вимкнений оффер лишається в базі (історичні рядки з ним нікуди не діваються),
+// але перестає підтягуватись при імпорті й не дає ставку для розрахунку виручки.
+async function togglePayoutActive(id, next) {
+  const { error } = await sb.from('payouts').update({ active: next }).eq('id', id);
+  if (error) {
+    alert(error.message.includes('active')
+      ? 'Спершу виконай у Supabase:\n\nALTER TABLE public.payouts ADD COLUMN IF NOT EXISTS active boolean DEFAULT true;'
+      : 'Не вдалось змінити оффер: ' + error.message);
+    return;
+  }
+  await refreshPayoutsFromSQL();
+  applyGlobalFilter();
 }
 
 // Видалення виплати з SQL
@@ -6929,10 +6953,11 @@ async function gcEnsureTeamData(team) {
   if (gcCache[team]) return;
   const [statsRes, payRes] = await Promise.all([
     sb.from('daily_stats').select('date,geo,offer,spend,regs,deposits').eq('team_name', team),
-    sb.from('payouts').select('geo,offer,value').eq('team_name', team)
+    sb.from('payouts').select('*').eq('team_name', team)
   ]);
   const payouts = {};
   (payRes.data || []).forEach(p => {
+    if (p.active === false) return;   // вимкнені оффери ставку не дають
     const g = (p.geo||'').toUpperCase().trim();
     const o = (p.offer||'DEFAULT').toUpperCase().trim();
     payouts[`${g}_${o}`] = Number(p.value) || 0;

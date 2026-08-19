@@ -1338,8 +1338,11 @@ let knownOffers = [];
 
 async function loadKnownOffers() {
   try {
-    const { data } = await sb.from('payouts').select('offer').eq('team_name', currentTeam);
-    knownOffers = [...new Set((data || []).map(r => String(r.offer || '').trim()).filter(Boolean))]
+    // active === false — оффер вимкнено в налаштуваннях, у розпізнавання не бере участі.
+    // undefined теж вважаємо активним: якщо колонки ще немає, поведінка як була.
+    const { data } = await sb.from('payouts').select('*').eq('team_name', currentTeam);
+    knownOffers = [...new Set((data || []).filter(r => r.active !== false)
+                                          .map(r => String(r.offer || '').trim()).filter(Boolean))]
       .filter(o => o.toUpperCase() !== 'DEFAULT')
       .sort((a, b) => b.length - a.length);   // довші перевіряємо першими: "22bet[crash]" > "22bet"
   } catch (e) { console.warn('offers:', e.message); knownOffers = []; }
@@ -1997,12 +2000,15 @@ function renderPreview(type) {
 async function loadAvailableOffers() {
   const { data, error } = await sb
     .from('payouts')
-    .select('geo, offer')
+    .select('*')
     .eq('team_name', currentTeam);
-  
+
   if (!error) {
-    globalOffersCache = data || [];
-    console.log("✅ Завантажено офферів для вибору:", globalOffersCache.length);
+    // вимкнені оффери не пропонуємо у випадайці прев'ю та у вкладці «База»
+    const all = data || [];
+    globalOffersCache = all.filter(o => o.active !== false);
+    const off = all.length - globalOffersCache.length;
+    console.log(`✅ Завантажено офферів для вибору: ${globalOffersCache.length}` + (off ? ` (вимкнено: ${off})` : ''));
   }
 }
 // --- ЗБЕРЕЖЕННЯ В БАЗУ (SUPABASE) ---
