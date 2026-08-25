@@ -795,6 +795,21 @@ const SUPABASE_URL = 'https://zsfumuiajrytmeycbtnn.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Supabase віддає щонайбільше 1000 рядків на запит — мовчки, без помилки, і
+// .limit() цього не обходить, бо обмеження серверне. Читаємо сторінками.
+async function sbFetchAll(table, build) {
+  const PAGE = 1000;
+  let all = [], from = 0;
+  for (;;) {
+    const { data, error } = await build(sb.from(table).select('*'))
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) return all;
+    from += PAGE;
+  }
+}
+
 // --- DEVICE NORMALIZE ---
 function normalizeDevice(str) {
   const s = (str || '').toLowerCase();
@@ -2437,13 +2452,15 @@ function recInit() {
 async function recLoad() {
   const tbody = document.getElementById('rec-tbody');
   if (tbody) tbody.innerHTML = `<tr><td class="p-8 text-center text-slate-500 text-xs font-black uppercase tracking-widest" colspan="20">Завантаження…</td></tr>`;
-  const { data, error } = await sb
-    .from(recCurrentTable)
-    .select('*')
-    .eq('team_name', currentTeam)
-    .order('date', { ascending: false })
-    .limit(3000);
-  if (error) {
+  // .limit(3000) тут не працював: сервер ріже видачу на 1000 рядків незалежно
+  // від запиту, тому все, що далі першої тисячі, у таблицю просто не потрапляло.
+  let data;
+  try {
+    data = await sbFetchAll(recCurrentTable, q => q
+      .eq('team_name', currentTeam)
+      .order('date', { ascending: false })
+      .order('id', { ascending: true }));   // другий ключ — щоб сторінки не «пливли»
+  } catch (error) {
     console.error('❌ Records load:', error);
     if (tbody) tbody.innerHTML = `<tr><td class="p-8 text-center text-rose-400 text-xs font-black" colspan="20">Помилка: ${error.message}</td></tr>`;
     return;

@@ -1592,6 +1592,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
             class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-white transition">☰ Columns</button>
           <div id="rb-cols-menu" class="hidden absolute right-0 mt-2 w-48 card rounded-2xl shadow-2xl z-[90] p-2 border border-white/10" onclick="event.stopPropagation()"></div>
         </div>
+        <button onclick="rbShot(this)" title="Зберегти таблицю як PNG — рівно ті рядки і стовпці, що зараз видно"
+          class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40 transition">PNG</button>
         <button onclick="rbExportCSV()" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-white transition">⇩ CSV</button>
       </div>
     </div>
@@ -1624,7 +1626,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     </div>
   </div>
 
-  <div class="overflow-x-auto max-h-[560px] custom-scrollbar">
+  <div id="rb-table-wrap" class="overflow-x-auto max-h-[560px] custom-scrollbar">
     <table class="text-left border-separate border-spacing-0" id="rb-table"></table>
   </div>
 </div>
@@ -2130,18 +2132,36 @@ function switchTeam(teamName) {
   // 10. Завантажуємо креативи у фоновому режимі
   loadCreatives(); 
 }
+// Supabase віддає щонайбільше 1000 рядків на запит — мовчки, без помилки,
+// і .limit(3000) цього не обходить (обмеження серверне). У IMPROVE креативів
+// 1465, тобто 465 не доїжджали: депозити виглядали заниженими, а правки в
+// базі не з'являлись, якщо рядок був за межею першої тисячі. Читаємо сторінками.
+async function sbFetchAll(table, build) {
+  const PAGE = 1000;
+  let all = [], from = 0;
+  for (;;) {
+    const { data, error } = await build(sb.from(table).select('*'))
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) return all;
+    from += PAGE;
+  }
+}
+
     async function loadCreatives() {
   console.log("🎨 Завантаження бази креативів...");
-  
-  const { data: crData, error } = await sb
-    .from('creatives_stats')
-    .select('*')
-    .eq('team_name', currentTeam);
 
-  if (error) {
+  let crData;
+  try {
+    // порядок обов'язковий: без нього сторінки можуть перекритись або загубитись
+    crData = await sbFetchAll('creatives_stats',
+      q => q.eq('team_name', currentTeam).order('id', { ascending: true }));
+  } catch (error) {
     console.error("Помилка завантаження креативів:", error);
     return;
   }
+  console.log(`🎨 Креативів завантажено: ${crData.length}`);
 
   // Зберігаємо в глобальну змінну (переконайся, що let creativesRawData = []; оголошена зверху)
   creativesRawData = crData || [];
@@ -5065,8 +5085,9 @@ function showGeoDetails(geo) {
     const o = (d.offer || 'DEFAULT').toUpperCase().trim();
     const payoutKey = `${geo.toUpperCase()}_${o}`;
     const payout = globalPayouts[payoutKey] || globalPayouts[`${geo.toUpperCase()}_DEFAULT`] || 0;
-    if (!offerMap[o]) offerMap[o] = { s:0, r:0, d:0, rev:0 };
+    if (!offerMap[o]) offerMap[o] = { s:0, i:0, r:0, d:0, rev:0 };
     offerMap[o].s += Number(d.spend)||0;
+    offerMap[o].i += Number(d.installs)||0;
     offerMap[o].r += Number(d.regs)||0;
     offerMap[o].d += Number(d.deposits)||0;
     offerMap[o].rev += (Number(d.deposits)||0) * payout;
@@ -5088,6 +5109,7 @@ function showGeoDetails(geo) {
           </div>
           <div class="flex gap-6 text-center">
             <div><p class="text-[9px] text-slate-500 uppercase font-black">Spend</p><p class="text-sm font-black text-white">$${Math.round(om.s).toLocaleString()}</p></div>
+            <div><p class="text-[9px] text-slate-500 uppercase font-black">Inst</p><p class="text-sm font-black text-orange-400">${om.i}</p></div>
             <div><p class="text-[9px] text-slate-500 uppercase font-black">Regs</p><p class="text-sm font-black text-blue-400">${om.r}</p></div>
             <div><p class="text-[9px] text-slate-500 uppercase font-black">Deps</p><p class="text-sm font-black text-green-500">${om.d}</p></div>
             <div><p class="text-[9px] text-slate-500 uppercase font-black">R2D</p><p class="text-sm font-black text-pink-500">${r2d}%</p></div>
@@ -7566,12 +7588,18 @@ function dcLoadShotLib() {
   return _h2c;
 }
 
-async function dcShot(cardId, name, btn) {
-  const card = document.getElementById(cardId);
-  if (!card) return;
+function dcShot(cardId, name, btn) {
+  const day = document.getElementById('dc-base-date')?.value || 'data';
+  return shotNode(document.getElementById(cardId), `${name}_${day}.png`, btn);
+}
+
+// Знімок довільного вузла в PNG. Спільний для Data Check і Report Builder.
+async function shotNode(node, filename, btn) {
+  if (!node) return;
   const prevZoom = document.body.style.zoom;
+  const label = btn ? btn.textContent : '';
   let stage = null;
-  btn.disabled = true; btn.textContent = '…';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
     await dcLoadShotLib();
     // html2canvas не розуміє CSS zoom — на час зйомки повертаємо 100%,
@@ -7583,8 +7611,10 @@ async function dcShot(cardId, name, btn) {
     // і жодні зміни не блимають на екрані в користувача.
     stage = document.createElement('div');
     stage.id = 'dc-shot-stage';
-    const clone = card.cloneNode(true);
-    clone.style.width = card.offsetWidth + 'px';
+    const clone = node.cloneNode(true);
+    // scrollWidth, а не offsetWidth: таблиця Report Builder буває ширша за видиму
+    // частину, і по offsetWidth у кадр не влізли б праві стовпці
+    clone.style.width = Math.max(node.offsetWidth, node.scrollWidth) + 'px';
     clone.style.margin = '0';
     stage.appendChild(clone);
     document.body.appendChild(stage);
@@ -7597,9 +7627,8 @@ async function dcShot(cardId, name, btn) {
       backgroundColor: '#131c31',
       logging: false
     });
-    const day = document.getElementById('dc-base-date').value || 'data';
     const a = document.createElement('a');
-    a.download = `${name}_${day}.png`;
+    a.download = filename;
     a.href = canvas.toDataURL('image/png');
     a.click();
   } catch (e) {
@@ -7607,8 +7636,16 @@ async function dcShot(cardId, name, btn) {
   } finally {
     document.body.style.zoom = prevZoom;
     if (stage) stage.remove();
-    btn.disabled = false; btn.textContent = 'PNG';
+    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
+}
+
+// Знімок таблиці Report Builder — рівно з тими рядками і стовпцями, що зараз видно
+function rbShot(btn) {
+  const from = document.getElementById('rb-from')?.value;
+  const to = document.getElementById('rb-to')?.value;
+  const period = (from || to) ? `${from || '...'}_${to || '...'}` : new Date().toISOString().slice(0, 10);
+  return shotNode(document.getElementById('rb-table-wrap'), `report_${period}.png`, btn);
 }
 
 function dcRenderWarn(unlinked) {
