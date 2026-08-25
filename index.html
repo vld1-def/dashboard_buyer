@@ -5098,26 +5098,36 @@ function showGeoDetails(geo) {
     if (!offerEntries.length) {
       offerEl.innerHTML = '<div class="text-center py-8 opacity-30 text-xs uppercase font-black">No offer data</div>';
     } else {
-      offerEl.innerHTML = offerEntries.map(([oName, om]) => {
-        const profit = om.rev - om.s;
-        const cpa = om.d > 0 ? (om.s/om.d).toFixed(1) : 0;
-        const r2d = om.r > 0 ? (om.d/om.r*100).toFixed(1) : 0;
-        const profitColor = profit >= 0 ? 'text-emerald-400' : 'text-red-500';
-        return `<div class="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex flex-wrap gap-4 items-center justify-between">
-          <div>
-            <span class="text-sm font-black text-white uppercase">${oName}</span>
-          </div>
-          <div class="flex gap-6 text-center">
-            <div><p class="text-[9px] text-slate-500 uppercase font-black">Spend</p><p class="text-sm font-black text-white">$${Math.round(om.s).toLocaleString()}</p></div>
-            <div><p class="text-[9px] text-slate-500 uppercase font-black">Inst</p><p class="text-sm font-black text-orange-400">${om.i}</p></div>
-            <div><p class="text-[9px] text-slate-500 uppercase font-black">Regs</p><p class="text-sm font-black text-blue-400">${om.r}</p></div>
-            <div><p class="text-[9px] text-slate-500 uppercase font-black">Deps</p><p class="text-sm font-black text-green-500">${om.d}</p></div>
-            <div><p class="text-[9px] text-slate-500 uppercase font-black">R2D</p><p class="text-sm font-black text-pink-500">${r2d}%</p></div>
-            <div><p class="text-[9px] text-slate-500 uppercase font-black">CPA</p><p class="text-sm font-black text-yellow-500">$${cpa}</p></div>
-            <div><p class="text-[9px] text-slate-500 uppercase font-black">Profit</p><p class="text-sm font-black ${profitColor}">$${Math.round(profit).toLocaleString()}</p></div>
-          </div>
+      // Одна сітка на всі рядки: підписи стоять раз у шапці, а числа
+      // потрапляють у спільні колонки — інакше вони «стрибали» від рядка
+      // до рядка залежно від довжини значень.
+      const GRID = 'grid gap-x-3 items-center';
+      const COLS = 'grid-template-columns: minmax(110px,1.6fr) repeat(7, minmax(0,1fr));';
+      const num = 'text-sm font-black font-mono text-right';
+      offerEl.innerHTML = `
+        <div class="${GRID} px-4 pb-2" style="${COLS}">
+          <span class="text-[9px] text-slate-500 uppercase font-black tracking-widest">Offer</span>
+          ${['Spend','Inst','Regs','Deps','R2D','CPA','Profit'].map(h =>
+            `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest text-right">${h}</span>`).join('')}
+        </div>
+        <div class="space-y-1.5">
+        ${offerEntries.map(([oName, om]) => {
+          const profit = om.rev - om.s;
+          const cpa = om.d > 0 ? '$' + (om.s/om.d).toFixed(1) : '—';
+          const r2d = om.r > 0 ? (om.d/om.r*100).toFixed(1) + '%' : '—';
+          const profitColor = profit >= 0 ? 'text-emerald-400' : 'text-red-500';
+          return `<div class="bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-3 ${GRID}" style="${COLS}">
+            <span class="text-sm font-black text-white uppercase truncate" title="${oName}">${oName}</span>
+            <span class="${num} text-white">$${Math.round(om.s).toLocaleString()}</span>
+            <span class="${num} text-orange-400">${om.i}</span>
+            <span class="${num} text-blue-400">${om.r}</span>
+            <span class="${num} ${om.d ? 'text-green-500' : 'text-slate-600'}">${om.d}</span>
+            <span class="${num} ${om.r ? 'text-pink-500' : 'text-slate-600'}">${r2d}</span>
+            <span class="${num} ${om.d ? 'text-yellow-500' : 'text-slate-600'}">${cpa}</span>
+            <span class="${num} ${profitColor}">$${Math.round(profit).toLocaleString()}</span>
+          </div>`;
+        }).join('')}
         </div>`;
-      }).join('');
     }
   }
 
