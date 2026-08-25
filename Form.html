@@ -173,6 +173,10 @@ select {
 .rec-select:focus { background-color: rgba(59,130,246,.25) !important; outline: 1px solid #3b82f6; }
 .rec-select.saved { animation: recFlash .8s ease; }
 /* Мітка таймзони біля акаунта */
+.st-tab { color: #64748b; }
+.st-tab:hover { color: #cbd5e1; }
+.st-tab.active { background: linear-gradient(135deg, rgba(59,130,246,.35), rgba(139,92,246,.28));
+  color: #fff; box-shadow: 0 4px 18px rgba(59,130,246,.25); }
 .tz-badge {
   font-size: 8.5px; font-weight: 900; padding: 1px 5px; border-radius: 5px;
   background: rgba(251,191,36,.14); color: #fbbf24; border: 1px solid rgba(251,191,36,.25);
@@ -641,8 +645,89 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     </div>
 
     <!-- SETTINGS MODE (Вкладка Providers) -->
-    <div id="mode-providers" class="hidden max-w-7xl mx-auto space-y-10">
+    <div id="mode-providers" class="hidden max-w-7xl mx-auto">
 
+      <!-- Таби налаштувань: форма і її таблиця лежать в одній вкладці -->
+      <div class="flex flex-wrap gap-2 mb-8 p-1.5 bg-black/20 rounded-2xl border border-white/5">
+        <button onclick="stSwitch('cabinets')" id="st-tab-cabinets"
+          class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">🏦 Кабінети</button>
+        <button onclick="stSwitch('funnels')" id="st-tab-funnels"
+          class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">🎯 Воронки</button>
+        <button onclick="stSwitch('keitaro')" id="st-tab-keitaro"
+          class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">📊 Keitaro</button>
+        <button onclick="stSwitch('app')" id="st-tab-app"
+          class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">📱 APP</button>
+      </div>
+
+      <div id="st-panel-cabinets" class="st-panel hidden space-y-8">
+          <!-- Link Cabinet -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-blue-500 bg-slate-900/40">
+             <h3 class="text-xl font-black uppercase italic mb-6 text-blue-400 tracking-tight">Link Cabinet</h3>
+             <div class="flex gap-3">
+                <input type="text" id="prov-acc" placeholder="Account ID" class="flex-grow">
+                <input type="number" id="prov-tz" placeholder="TZ" title="Таймзона акаунта, напр. -8, 0, 3" class="!w-20 text-center">
+                <div class="flex gap-1 w-1/2">
+                  <select id="prov-agency" class="flex-grow"></select>
+                  <button onclick="promptNewAgency()" class="bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black text-white transition-all">+</button>
+                </div>
+                <button onclick="addProvider()" class="bg-blue-600 hover:bg-blue-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Link</button>
+             </div>
+          </div>
+
+          <!-- Linked Cabinets Table -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-slate-500 bg-slate-900/40">
+             <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">Linked Cabinets</h3>
+                <input type="text" id="acc-search" oninput="filterProviders()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
+             </div>
+             <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
+                <table class="w-full text-[13px] text-left">
+                  <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
+                    <tr><th class="p-3">Account</th><th class="p-3 text-center">TZ</th><th class="p-3 text-right">Agency</th><th class="p-3"></th></tr>
+                  </thead>
+                  <tbody id="providers-list-body" class="divide-y divide-white/5">
+                    <!-- JS Rows -->
+                  </tbody>
+                </table>
+             </div>
+          </div>
+      </div>
+
+      <div id="st-panel-funnels" class="st-panel hidden space-y-8">
+          <!-- Funnel Mapper -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-purple-500 bg-slate-900/40">
+             <h3 class="text-xl font-black uppercase italic mb-6 text-purple-400 tracking-tight">Funnel Mapper</h3>
+             <div class="flex gap-3">
+                <input type="text" id="fun-name" placeholder="Funnel Name — напр. Mostbet [AppCloud]" title="Для APP: постачальника апок пиши у квадратних дужках — за ним підбереться профіль розбору сабів" class="flex-grow">
+                <input type="text" id="fun-ktid" placeholder="KTID / назва апки" class="w-1/3 text-center">
+                <label class="flex items-center gap-1.5 cursor-pointer shrink-0 px-2" title="Позначити як APP — тоді в KTID пишеться назва апки">
+                  <input type="checkbox" id="fun-is-app" class="!w-4 !h-4 !p-0 accent-orange-500">
+                  <span class="text-[10px] font-black uppercase text-orange-400">APP</span>
+                </label>
+                <button onclick="addFunnelMapping()" class="bg-purple-600 hover:bg-purple-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
+             </div>
+          </div>
+
+          <!-- KTID Mappings Table -->
+          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-slate-500 bg-slate-900/40">
+             <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">KTID Mappings</h3>
+                <input type="text" id="funnel-search" oninput="filterFunnels()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
+             </div>
+             <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
+                <table class="w-full text-[13px] text-left">
+                  <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
+                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-right">KTID</th><th class="p-3"></th></tr>
+                  </thead>
+                  <tbody id="funnels-list-body" class="divide-y divide-white/5">
+                    <!-- JS Rows -->
+                  </tbody>
+                </table>
+             </div>
+          </div>
+      </div>
+
+      <div id="st-panel-keitaro" class="st-panel hidden space-y-8">
        <!-- Keitaro Mapping (назви колонок різні в кожній команді) -->
        <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-emerald-500 bg-slate-900/40">
           <div class="flex justify-between items-center mb-2">
@@ -665,7 +750,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Таймзона файлу</label><input type="number" id="km-tz" placeholder="3" title="У якій TZ віддає час Keitaro"></div>
           </div>
        </div>
+      </div>
 
+      <div id="st-panel-app" class="st-panel hidden space-y-8">
        <!-- APP: розбір назви кампанії по позиціях -->
        <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-orange-500 bg-slate-900/40">
           <div class="flex justify-between items-center mb-2 gap-3 flex-wrap">
@@ -714,76 +801,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <!-- Готові профілі: хто як розкладає саби і які апки на них зав'язані -->
           <div id="ap-profiles-list" class="mt-5"></div>
        </div>
-
-       <!-- РЯД 1: ФОРМИ ВВОДУ -->
-       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <!-- Link Cabinet -->
-          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-blue-500 bg-slate-900/40">
-             <h3 class="text-xl font-black uppercase italic mb-6 text-blue-400 tracking-tight">Link Cabinet</h3>
-             <div class="flex gap-3">
-                <input type="text" id="prov-acc" placeholder="Account ID" class="flex-grow">
-                <input type="number" id="prov-tz" placeholder="TZ" title="Таймзона акаунта, напр. -8, 0, 3" class="!w-20 text-center">
-                <div class="flex gap-1 w-1/2">
-                  <select id="prov-agency" class="flex-grow"></select>
-                  <button onclick="promptNewAgency()" class="bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black text-white transition-all">+</button>
-                </div>
-                <button onclick="addProvider()" class="bg-blue-600 hover:bg-blue-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Link</button>
-             </div>
-          </div>
-
-          <!-- Funnel Mapper -->
-          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-purple-500 bg-slate-900/40">
-             <h3 class="text-xl font-black uppercase italic mb-6 text-purple-400 tracking-tight">Funnel Mapper</h3>
-             <div class="flex gap-3">
-                <input type="text" id="fun-name" placeholder="Funnel Name — напр. Mostbet [AppCloud]" title="Для APP: постачальника апок пиши у квадратних дужках — за ним підбереться профіль розбору сабів" class="flex-grow">
-                <input type="text" id="fun-ktid" placeholder="KTID / назва апки" class="w-1/3 text-center">
-                <label class="flex items-center gap-1.5 cursor-pointer shrink-0 px-2" title="Позначити як APP — тоді в KTID пишеться назва апки">
-                  <input type="checkbox" id="fun-is-app" class="!w-4 !h-4 !p-0 accent-orange-500">
-                  <span class="text-[10px] font-black uppercase text-orange-400">APP</span>
-                </label>
-                <button onclick="addFunnelMapping()" class="bg-purple-600 hover:bg-purple-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
-             </div>
-          </div>
-       </div>
-
-       <!-- РЯД 2: СПИСКИ (ТАБЛИЦІ) -->
-       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <!-- Linked Cabinets Table -->
-          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-slate-500 bg-slate-900/40">
-             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">Linked Cabinets</h3>
-                <input type="text" id="acc-search" oninput="filterProviders()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
-             </div>
-             <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
-                <table class="w-full text-[13px] text-left">
-                  <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
-                    <tr><th class="p-3">Account</th><th class="p-3 text-center">TZ</th><th class="p-3 text-right">Agency</th><th class="p-3"></th></tr>
-                  </thead>
-                  <tbody id="providers-list-body" class="divide-y divide-white/5">
-                    <!-- JS Rows -->
-                  </tbody>
-                </table>
-             </div>
-          </div>
-
-          <!-- KTID Mappings Table -->
-          <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-slate-500 bg-slate-900/40">
-             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">KTID Mappings</h3>
-                <input type="text" id="funnel-search" oninput="filterFunnels()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
-             </div>
-             <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
-                <table class="w-full text-[13px] text-left">
-                  <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
-                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-right">KTID</th><th class="p-3"></th></tr>
-                  </thead>
-                  <tbody id="funnels-list-body" class="divide-y divide-white/5">
-                    <!-- JS Rows -->
-                  </tbody>
-                </table>
-             </div>
-          </div>
-       </div>
+      </div>
     </div>
     
     <!-- STATUS TOAST -->
@@ -877,6 +895,7 @@ window.onload = async () => {
   await loadKnownOffers();
   await loadAppParse();
   setTrafficMode(trafficMode);
+  stSwitch(localStorage.getItem('settings_tab') || 'cabinets');
   await loadAvailableOffers(); // ТУТ ДОДАЛИ
   setupDragAndDrop('dataset');
   setupDragAndDrop('creatives');
@@ -2230,6 +2249,16 @@ async function deleteFunnelMapping(id) {
   if (!error) { showStatus("Funnel mapping removed"); refreshFunnelsTable(); }
 }
 // --- UI УТИЛІТИ ---
+
+// Таби всередині налаштувань. Форма і її таблиця лежать в одній вкладці,
+// тому «додав кабінет → бачу його у списку» лишається в межах одного екрана.
+function stSwitch(name) {
+  document.querySelectorAll('.st-panel').forEach(p =>
+    p.classList.toggle('hidden', p.id !== 'st-panel-' + name));
+  document.querySelectorAll('.st-tab').forEach(b =>
+    b.classList.toggle('active', b.id === 'st-tab-' + name));
+  localStorage.setItem('settings_tab', name);
+}
 
 function switchMode(m) {
   console.log("🔄 Перемикання режиму на:", m);
