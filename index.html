@@ -2412,9 +2412,10 @@ function renderTrend(data) {
       }
     });
 
-    // 2. Profit (Зелена суцільна) — виручка мінус спенд за день
+    // 2. Net Profit (Зелена суцільна) — виручка мінус спенд за день,
+    //    та сама формула, що й у KPI-картці Net Profit
     datasets.push({
-      label: 'Profit ($)',
+      label: 'Net Profit ($)',
       data: dailyStats.map(v => Math.round(v.rev - v.s)),
       borderColor: '#10b981',
       backgroundColor: 'rgba(16, 185, 129, 0.08)',
@@ -2467,7 +2468,13 @@ function renderTrend(data) {
           s: dayGeoData.reduce((sum, item) => sum + (Number(item.spend) || 0), 0),
           r: dayGeoData.reduce((sum, item) => sum + (Number(item.regs) || 0), 0),
           d: dayGeoData.reduce((sum, item) => sum + (Number(item.deposits) || 0), 0),
-          i: dayGeoData.reduce((sum, item) => sum + (Number(item.installs) || 0), 0)
+          i: dayGeoData.reduce((sum, item) => sum + (Number(item.installs) || 0), 0),
+          // виручка тією ж формулою, що й у KPI: депи рядка × виплата його оффера
+          rev: dayGeoData.reduce((sum, item) => {
+            const o = (item.offer || 'DEFAULT').toUpperCase().trim();
+            const payout = globalPayouts[`${geo}_${o}`] || globalPayouts[`${geo}_DEFAULT`] || 0;
+            return sum + (Number(item.deposits) || 0) * payout;
+          }, 0)
         };
       });
 
@@ -2545,15 +2552,18 @@ function renderTrend(data) {
               const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
               const cpa = stats.d > 0 ? (stats.s / stats.d).toFixed(1) : 0;
 
-              const profitLine = stats.rev !== undefined
-                ? [` 📈 Profit: ${stats.rev - stats.s >= 0 ? '' : '−'}$${Math.abs(Math.round(stats.rev - stats.s))}` +
-                   `  (Rev $${Math.round(stats.rev)})`]
+              // Виручка і Net Profit тією ж формулою, що й у KPI-картці:
+              // депозити × виплата, мінус спенд. Є в обох режимах — у daily це
+              // підсумок по всіх гео, у geo — по конкретному гео за цей день.
+              const profitLines = stats.rev !== undefined
+                ? [` 🏦 Revenue: $${Math.round(stats.rev).toLocaleString()}`,
+                   ` 📈 Net Profit: ${stats.rev - stats.s >= 0 ? '+' : '−'}$${Math.abs(Math.round(stats.rev - stats.s)).toLocaleString()}`]
                 : [];
 
               return [
                 ` 📍 ${currentChartMode === 'daily' ? 'TOTAL' : 'GEO: ' + label}`,
                 ` 💰 Spend: $${Math.round(stats.s)}`,
-                ...profitLine,
+                ...profitLines,
                 ` 📲 Inst: ${ins}`,
                 ` 📝 Reg: ${stats.r}`,
                 ` 🎯 Dep: ${stats.d}`,
@@ -2606,9 +2616,10 @@ const m = {};
     const payoutKey = `${g}_${o}`;
     const payout = globalPayouts[payoutKey] || globalPayouts[`${g}_DEFAULT`] || 0;
 
-    if (!m[g]) m[g] = { s: 0, r: 0, d: 0, rev: 0 };
-    
+    if (!m[g]) m[g] = { s: 0, i: 0, r: 0, d: 0, rev: 0 };
+
     m[g].s += Number(d.spend) || 0;
+    m[g].i += Number(d.installs) || 0;
     m[g].r += Number(d.regs) || 0;
     m[g].d += Number(d.deposits) || 0;
     // Накопичуємо виручку: депи конкретного рядка * ціну оффера цього рядка
@@ -2621,6 +2632,7 @@ const m = {};
   container.innerHTML = Object.entries(m).sort((a, b) => b[1].s - a[1].s).map(([geo, stat]) => {
     // Математика
     const r2d = stat.r > 0 ? ((stat.d / stat.r) * 100).toFixed(1) : 0;
+    const cpi = stat.i > 0 ? (stat.s / stat.i).toFixed(1) : (0).toFixed(1);
     const cpl = stat.r > 0 ? (stat.s / stat.r).toFixed(1) : (0).toFixed(1);
     const cpa = stat.d > 0 ? (stat.s / stat.d).toFixed(1) : (0).toFixed(1);
     
@@ -2639,8 +2651,12 @@ const m = {};
           <span class="font-black text-xl text-white">$${Math.round(stat.s).toLocaleString()}</span>
         </div>
 
-        <!-- РЯДОК 1: REG, DEP, R2D -->
-        <div class="grid grid-cols-3 gap-1 text-center mb-3 border-b border-white/5 pb-3">
+        <!-- РЯДОК 1: INST, REG, DEP, R2D -->
+        <div class="grid grid-cols-4 gap-1 text-center mb-3 border-b border-white/5 pb-3">
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[9px] font-black text-slate-500 uppercase">Inst</span>
+            <b class="text-lg text-cyan-300 leading-none">${stat.i}</b>
+          </div>
           <div class="flex flex-col border-r border-white/5">
             <span class="text-[9px] font-black text-slate-500 uppercase">Reg</span>
             <b class="text-lg text-blue-400 leading-none">${stat.r}</b>
@@ -2655,8 +2671,12 @@ const m = {};
           </div>
         </div>
 
-        <!-- РЯДОК 2: CPL, CPA -->
-        <div class="grid grid-cols-2 gap-1 text-center mb-3">
+        <!-- РЯДОК 2: ціни під тими ж метриками — CPI, CPL, CPA -->
+        <div class="grid grid-cols-3 gap-1 text-center mb-3">
+          <div class="flex flex-col border-r border-white/5">
+            <span class="text-[9px] font-black text-slate-500 uppercase">CPI</span>
+            <b class="text-lg text-cyan-300 leading-none">$${cpi}</b>
+          </div>
           <div class="flex flex-col border-r border-white/5">
             <span class="text-[9px] font-black text-slate-500 uppercase">CPL</span>
             <b class="text-lg text-purple-400 leading-none">$${cpl}</b>
