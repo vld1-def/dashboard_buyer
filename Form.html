@@ -173,6 +173,15 @@ select {
 .rec-select:focus { background-color: rgba(59,130,246,.25) !important; outline: 1px solid #3b82f6; }
 .rec-select.saved { animation: recFlash .8s ease; }
 /* Мітка таймзони біля акаунта */
+/* Чекбокси вибору рядків у «Базі» */
+.rec-check { appearance: none; -webkit-appearance: none; width: 15px; height: 15px; padding: 0 !important;
+  border: 1.5px solid rgba(255,255,255,.22); border-radius: 4px; background: rgba(0,0,0,.25);
+  cursor: pointer; position: relative; flex-shrink: 0; vertical-align: middle; }
+.rec-check:checked { background: linear-gradient(135deg,#3b82f6,#6366f1); border-color: #3b82f6; }
+.rec-check:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+tr.rec-row-sel { background: rgba(59,130,246,.08); }
+
 .st-tab { color: #64748b; }
 .st-tab:hover { color: #cbd5e1; }
 .st-tab.active { background: linear-gradient(135deg, rgba(59,130,246,.35), rgba(139,92,246,.28));
@@ -583,6 +592,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         <div class="card p-4 rounded-2xl"><div class="text-[9px] font-black uppercase tracking-widest text-green-500">Deps</div><div id="rec-t-deps" class="text-2xl font-black text-white mt-1">0</div></div>
       </div>
 
+      <!-- Панель масового редагування — з'являється, коли є вибрані рядки -->
+      <div id="rec-bulk" class="hidden card rounded-2xl border-l-4 border-l-blue-500 bg-slate-900/50 px-4 py-3"></div>
+
       <!-- Таблиця записів -->
       <div class="card rounded-[2rem] overflow-hidden shadow-2xl">
         <div class="overflow-x-auto max-h-[65vh] overflow-y-auto">
@@ -764,39 +776,39 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
               <button onclick="saveAppParse()" class="bg-orange-600 hover:bg-orange-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Зберегти</button>
             </div>
           </div>
-          <p class="text-[10px] opacity-40 font-bold mb-1">У APP-трафіку назва кампанії — це просто токени через «_»:</p>
-          <p class="text-[10px] font-mono text-orange-300/70 mb-2">cy638t_8wxg7hf7_YVbHTgzY_<b class="text-orange-300">апка</b>_<b class="text-orange-300">акаунт</b>_<b class="text-orange-300">крео</b>_<b class="text-orange-300">гео</b>_sub8…</p>
-          <p class="text-[10px] font-bold text-slate-500 mb-5 leading-relaxed">У кожного постачальника саби стоять по-своєму, тому налаштовується окремий профіль.
+          <p class="text-[10px] font-bold text-slate-500 mb-4 leading-relaxed">У кожного постачальника назва кампанії влаштована по-своєму, тому налаштовується окремий профіль.
             Щоб знати, чий це розклад, у <b class="text-purple-300">KTID Mappings</b> у назві воронки постав постачальника у квадратних дужках —
             напр. <span class="font-mono text-purple-300">Mostbet [AppCloud]</span>. Апка з такої воронки розбирається за профілем
             <span class="font-mono text-orange-300">AppCloud</span>; якщо дужок немає — працює профіль за замовчуванням.</p>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Позиція: назва апки</label><input type="number" min="1" id="ap-app" placeholder="4"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Позиція: акаунт</label><input type="number" min="1" id="ap-acc" placeholder="5"></div>
-            <div>
-              <label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Креатив</label>
-              <select id="ap-cid-src">
-                <option value="adname">Зі стовпця Ad name</option>
-                <option value="camp">З назви кампанії</option>
-              </select>
+
+          <label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Шаблон назви кампанії</label>
+          <input type="text" id="ap-mask" oninput="renderApPreview()" spellcheck="false"
+                 placeholder="*_*_*_{app}_{acc}_{cid}_{geo}"
+                 class="!font-mono !text-[13px] !py-3">
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            <div class="bg-black/25 rounded-2xl border border-white/5 p-4">
+              <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Як писати шаблон</p>
+              <ul class="text-[11px] font-bold text-slate-400 space-y-1.5 leading-relaxed">
+                <li><span class="font-mono text-orange-300">{app}</span> — назва апки (вона ж KTID)</li>
+                <li><span class="font-mono text-orange-300">{acc}</span> — айді акаунта</li>
+                <li><span class="font-mono text-orange-300">{cid}</span> — креатив · <span class="font-mono text-orange-300">{cid-}</span> якщо в ньому «-» замість «_»</li>
+                <li><span class="font-mono text-orange-300">{geo}</span> — гео</li>
+                <li><span class="font-mono text-slate-300">*</span> — будь-який шматок, який пропускаємо</li>
+                <li><span class="font-mono text-slate-300">sub4</span> — текст як є: має збігтися буквально</li>
+              </ul>
+              <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">Шматки розділяються тим самим «_», що й у назві.
+                Хвіст, який не описаний у шаблоні, ігнорується. Чого немає в шаблоні — береться зі стовпців звіту:
+                <span class="font-mono">{cid}</span> з <b>Ad name</b>, <span class="font-mono">{geo}</span> з <b>Country</b>.</p>
             </div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Позиція: креатив</label><input type="number" min="1" id="ap-cid-pos" placeholder="6"></div>
-            <div>
-              <label class="block text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1.5">Гео</label>
-              <select id="ap-geo-src">
-                <option value="camp">З назви кампанії</option>
-                <option value="country">Зі стовпця Country</option>
-              </select>
-            </div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Позиція: гео</label><input type="number" min="1" id="ap-geo-pos" placeholder="7"></div>
-            <div class="col-span-2 flex items-end">
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" id="ap-dash" class="!w-4 !h-4 !p-0 accent-orange-500">
-                <span class="text-[10px] font-bold text-slate-400">У кроі «-» замість «_» (повертати назад)</span>
-              </label>
+            <div class="bg-black/25 rounded-2xl border border-white/5 p-4">
+              <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Перевірка на живій назві</p>
+              <input type="text" id="ap-sample" oninput="renderApPreview()" spellcheck="false"
+                     placeholder="встав сюди справжню назву кампанії"
+                     class="!font-mono !text-[12px] !py-2">
+              <p id="ap-preview" class="text-[11px] font-mono text-slate-500 mt-3 leading-relaxed"></p>
             </div>
           </div>
-          <p id="ap-preview" class="text-[10px] font-mono text-slate-500 mt-4"></p>
 
           <!-- Готові профілі: хто як розкладає саби і які апки на них зав'язані -->
           <div id="ap-profiles-list" class="mt-5"></div>
@@ -1135,54 +1147,36 @@ function toGeoCode(v) {
 // PWA:  Mbank_KG_10708-4d07_30/07_L5   → гео і ktid на фіксованих місцях
 // APP:  cy638t_8wxg7hf7_YVbHTgzY_app_acc_cid_...  → просто токени через "_",
 //       тому позиції задаються в налаштуваннях.
-const AP_DEFAULT = { appPos: 4, accPos: 5, cidSrc: 'adname', cidPos: 6,
-                     geoSrc: 'camp', geoPos: 7, dash: false };
-let appParse = { ...AP_DEFAULT };
-// Профілі постачальників апок: у кожного свій розклад сабів.
-// { 'AppCloud': {appPos, accPos, cidSrc, cidPos, geoSrc, geoPos, dash}, ... }
-let appProfiles = {};
-let apCurrent = '';            // '' = профіль за замовчуванням (appParse)
-let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
+const AP_DEFAULT = { mask: '*_*_*_{app}_{acc}_{cid}_{geo}' };
 
-async function loadAppParse() {
-  try {
-    const { data } = await sb.from('team_settings')
-      .select('key, value').eq('team_name', currentTeam).in('key', ['app_parse', 'app_profiles']);
-    (data || []).forEach(r => {
-      if (r.key === 'app_parse')    appParse    = { ...AP_DEFAULT, ...JSON.parse(r.value) };
-      if (r.key === 'app_profiles') appProfiles = JSON.parse(r.value) || {};
-    });
-  } catch (e) { console.warn('app_parse:', e.message); }
-  apRenderProfileSelect();
-  apFillForm(apCfgOf(apCurrent));
-  renderApPreview();
-  apRenderProfilesList();
+// Старі профілі зберігались позиціями — переводимо їх у шаблон, щоб нічого
+// не зламалось після оновлення і щоб у полі одразу було видно звичну розкладку.
+function apMaskFromLegacy(c) {
+  if (c.mask) return c.mask;
+  const slot = {};
+  if (c.appPos) slot[c.appPos] = '{app}';
+  if (c.accPos) slot[c.accPos] = '{acc}';
+  if (c.cidSrc === 'camp' && c.cidPos) slot[c.cidPos] = c.dash ? '{cid-}' : '{cid}';
+  if (c.geoSrc === 'camp' && c.geoPos) slot[c.geoPos] = '{geo}';
+  const last = Math.max(0, ...Object.keys(slot).map(Number));
+  if (!last) return AP_DEFAULT.mask;
+  return Array.from({ length: last }, (_, k) => slot[k + 1] || '*').join('_');
 }
 
 // Конфіг за назвою профілю ('' → за замовчуванням)
 function apCfgOf(name) {
-  return name && appProfiles[name] ? { ...AP_DEFAULT, ...appProfiles[name] } : { ...appParse };
+  const raw = name && appProfiles[name] ? appProfiles[name] : appParse;
+  return { mask: apMaskFromLegacy(raw || {}) };
 }
 
 function apFillForm(cfg) {
-  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
-  set('ap-app', cfg.appPos); set('ap-acc', cfg.accPos);
-  set('ap-cid-src', cfg.cidSrc); set('ap-cid-pos', cfg.cidPos);
-  set('ap-geo-src', cfg.geoSrc); set('ap-geo-pos', cfg.geoPos || '');
-  const d = document.getElementById('ap-dash'); if (d) d.checked = !!cfg.dash;
+  const el = document.getElementById('ap-mask');
+  if (el) el.value = cfg.mask || AP_DEFAULT.mask;
 }
 
 function apCfgFromForm() {
-  const num = id => parseInt(document.getElementById(id)?.value, 10);
-  return {
-    appPos: num('ap-app') || AP_DEFAULT.appPos,
-    accPos: num('ap-acc') || AP_DEFAULT.accPos,
-    cidSrc: document.getElementById('ap-cid-src')?.value || 'adname',
-    cidPos: num('ap-cid-pos') || AP_DEFAULT.cidPos,
-    geoSrc: document.getElementById('ap-geo-src')?.value || 'country',
-    geoPos: num('ap-geo-pos') || 0,
-    dash: !!document.getElementById('ap-dash')?.checked
-  };
+  const v = (document.getElementById('ap-mask')?.value || '').trim();
+  return { mask: v || AP_DEFAULT.mask };
 }
 
 function apRenderProfileSelect() {
@@ -1259,14 +1253,19 @@ async function saveAppParse() {
 function renderApPreview() {
   const el = document.getElementById('ap-preview');
   if (!el) return;
-  const sample = 'cy638t_8wxg7hf7_YVbHTgzY_Mostbet_1007349722102888_KG-JS-674-1_KG_sub8';
-  const r = apParseWith(apCfgFromForm(), sample.split('_'), '', '');
-  el.innerHTML = `Зразок (<b class="text-orange-300">${apCurrent || 'за замовчуванням'}</b>): ` +
-    `<span class="text-slate-400">${sample}</span><br>` +
-    `→ апка: <b class="text-orange-300">${r.app || '—'}</b> · ` +
-    `акаунт: <b class="text-orange-300">${r.acc || '—'}</b> · ` +
-    `крео: <b class="text-orange-300">${r.cid || '(зі стовпця Ad name)'}</b> · ` +
-    `гео: <b class="text-orange-300">${r.geo || '(зі стовпця Country)'}</b>`;
+  const mask = apCfgFromForm().mask;
+  const sample = (document.getElementById('ap-sample')?.value || '').trim()
+    || 'cy638t_8wxg7hf7_YVbHTgzY_Mostbet_1007349722102888_KG-JS-674-1_KG_sub8';
+  const r = apParseMask(mask, sample.split('_'), '', '');
+  if (!r) {
+    el.innerHTML = `<span class="text-rose-400">Шаблон не підходить до цієї назви</span> —
+      перевір текстові шматки: вони мають збігатися буквально.`;
+    return;
+  }
+  const v = (x, fallback) => x ? `<b class="text-orange-300">${x}</b>` : `<span class="text-slate-600">${fallback}</span>`;
+  el.innerHTML =
+    `апка: ${v(r.app, '—')}<br>акаунт: ${v(r.acc, '—')}<br>` +
+    `крео: ${v(r.cid, 'зі стовпця Ad name')}<br>гео: ${v(r.geo, 'зі стовпця Country')}`;
 }
 
 // Список готових постачальників: як розкладені саби і які апки на них зав'язані
@@ -1279,19 +1278,10 @@ function apRenderProfilesList() {
     return;
   }
   const rows = names.map(n => {
-    const c = { ...AP_DEFAULT, ...appProfiles[n] };
-    const apps = Object.entries(mappingDB.funnels || {})
-      .filter(([, fn]) => (apProviderOf(fn) || '').toLowerCase() === n.toLowerCase())
-      .map(([ktid]) => ktid);
-    const chip = (label, val) => `<span class="text-slate-500">${label}</span> <b class="text-orange-300">${val}</b>`;
+    const mask = apMaskFromLegacy(appProfiles[n] || {});
     return `<tr class="border-b border-white/5 ${n === apCurrent ? 'bg-orange-500/5' : ''}">
       <td class="p-2 font-black text-orange-400 whitespace-nowrap">${n}</td>
-      <td class="p-2 text-[10px] whitespace-nowrap">
-        ${chip('апка', c.appPos)} · ${chip('акаунт', c.accPos)} ·
-        ${chip('крео', c.cidSrc === 'camp' ? c.cidPos : 'Ad name')} ·
-        ${chip('гео', c.geoSrc === 'camp' ? c.geoPos : 'Country')}
-        ${c.dash && c.cidSrc === 'camp' ? '<span class="text-slate-600"> · крео через «-»</span>' : ''}
-      </td>
+      <td class="p-2 text-[11px] font-mono text-slate-300 whitespace-nowrap">${mask}</td>
       <td class="p-2 text-[10px] text-right">${apps.length
         ? apps.map(a => `<span class="inline-block px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 font-bold ml-1">${a}</span>`).join('')
         : '<span class="text-slate-600 italic">жодної апки — постав [' + n + '] у назві воронки</span>'}</td>
@@ -1318,33 +1308,49 @@ function apFunnelClean(funnelName) {
 // в KTID Mappings і перевіряємо, чи стоїть там [назва профілю]. Так позиція апки може
 // відрізнятись у різних постачальників і збіг усе одно лишається однозначним.
 function apMatchProfile(parts) {
-  const at = pos => (pos > 0 && parts[pos - 1] !== undefined) ? String(parts[pos - 1]).trim() : '';
   for (const [name, p] of Object.entries(appProfiles)) {
-    const app = at(p.appPos || AP_DEFAULT.appPos);
-    if (!app) continue;
-    const prov = apProviderOf((mappingDB.funnels || {})[app]);
-    if (prov && prov.toLowerCase() === name.toLowerCase()) return { name, cfg: { ...AP_DEFAULT, ...p } };
+    const r = apParseMask(apMaskFromLegacy(p), parts, '', '');
+    if (!r || !r.app) continue;
+    const prov = apProviderOf((mappingDB.funnels || {})[r.app]);
+    if (prov && prov.toLowerCase() === name.toLowerCase()) return { name, mask: apMaskFromLegacy(p) };
   }
   return null;
 }
 
-function apParseWith(cfg, parts, adName, country) {
-  const at = pos => (pos > 0 && parts[pos - 1] !== undefined) ? String(parts[pos - 1]).trim() : '';
-  const app = at(cfg.appPos);
-  const acc = at(cfg.accPos);
-  let cid = cfg.cidSrc === 'camp' ? at(cfg.cidPos) : String(adName || '').trim();
-  // Крео не може містити "_" (воно ж роздільник), тому в назві кампанії пишеться
-  // через "-" — повертаємо назад, щоб збігалося з базою і папкою Drive.
-  if (cfg.dash && cfg.cidSrc === 'camp') cid = cid.replace(/-/g, '_');
-  const geo = cfg.geoSrc === 'camp' ? at(cfg.geoPos) : String(country || '').trim();
-  return { app, acc, cid, geo };
+// Розбір назви кампанії за шаблоном.
+// {app} {acc} {cid} {cid-} {geo} — що витягуємо, * — пропускаємо шматок,
+// будь-який інший текст має збігтися буквально (це і рятує, коли в одних апок
+// у назві стоїть «sub4», а в інших на цьому місці просто черговий токен).
+// Повертає null, якщо шаблон не підходить — тоді профіль вважається не тим.
+function apParseMask(mask, parts, adName, country) {
+  const tpl = String(mask || '').trim().split('_').filter(t => t !== '');
+  if (!tpl.length) return null;
+  const out = { app: '', acc: '', cid: '', geo: '' };
+  for (let k = 0; k < tpl.length; k++) {
+    const t = tpl[k];
+    const val = (parts[k] !== undefined ? String(parts[k]).trim() : '');
+    if (t === '*') continue;
+    const m = t.match(/^\{(app|acc|cid|cid-|geo)\}$/);
+    if (m) {
+      if (!val) return null;                       // потрібного шматка просто немає
+      if (m[1] === 'cid-') out.cid = val.replace(/-/g, '_');
+      else out[m[1]] = val;
+      continue;
+    }
+    if (val.toLowerCase() !== t.toLowerCase()) return null;   // текст не збігся
+  }
+  if (!out.cid) out.cid = String(adName || '').trim();
+  if (!out.geo) out.geo = String(country || '').trim();
+  return out;
 }
 
-// Розбір назви APP-кампанії за позиціями (1-based, як рахує користувач)
+// Розбір назви APP-кампанії
 function parseAppCampaign(campName, adName, country) {
   const parts = String(campName || '').split('_');
   const hit = apMatchProfile(parts);
-  const r = apParseWith(hit ? hit.cfg : appParse, parts, adName, country);
+  const mask = hit ? hit.mask : apMaskFromLegacy(appParse);
+  const r = apParseMask(mask, parts, adName, country)
+         || { app: '', acc: '', cid: String(adName || '').trim(), geo: String(country || '').trim() };
   r.profile = hit ? hit.name : '';
   return r;
 }
@@ -2504,6 +2510,7 @@ function recSwitchTable(t) {
   document.getElementById('rec-tbl-' + t)?.classList.add('active');
   recSort = { key: 'date', dir: -1 };
   recFilters = {};                 // у таблиць різні колонки
+  recSel.clear();                  // id з іншої таблиці тут ні до чого
   recRenderFilterChips();
   document.getElementById('rec-filter-menu')?.classList.add('hidden');
   recLoad();
@@ -2689,10 +2696,14 @@ function recRender() {
 
   // Заголовок
   const thead = document.getElementById('rec-thead');
-  thead.innerHTML = '<tr>' + cols.map(c => {
-    const arrow = recSort.key === c.key ? (recSort.dir === 1 ? ' ▲' : ' ▼') : '';
-    return `<th class="p-4 rec-th" onclick="recSortBy('${c.key}')">${c.label}${arrow}</th>`;
-  }).join('') + '<th class="p-4 text-center">×</th></tr>';
+  const allChecked = rows.length && rows.every(r => recSel.has(String(r.id)));
+  thead.innerHTML = '<tr>' +
+    `<th class="p-2 text-center w-8"><input type="checkbox" class="rec-check" ${allChecked ? 'checked' : ''}
+       onchange="recToggleAll(this.checked)" title="Вибрати всі рядки, що зараз у таблиці"></th>` +
+    cols.map(c => {
+      const arrow = recSort.key === c.key ? (recSort.dir === 1 ? ' ▲' : ' ▼') : '';
+      return `<th class="p-4 rec-th" onclick="recSortBy('${c.key}')">${c.label}${arrow}</th>`;
+    }).join('') + '<th class="p-4 text-center">×</th></tr>';
 
   // Тіло
   const tbody = document.getElementById('rec-tbody');
@@ -2733,10 +2744,14 @@ function recRender() {
                   data-id="${r.id}" data-col="${c.key}" data-type="${c.type}"
                   data-orig="${String(r[c.key] ?? '').replace(/"/g, '&quot;')}">${v}</div></td>`;
       }).join('');
-      return `<tr data-id="${r.id}">${cells}
+      const sel = recSel.has(String(r.id));
+      return `<tr data-id="${r.id}" class="${sel ? 'rec-row-sel' : ''}">
+        <td class="p-2 text-center"><input type="checkbox" class="rec-check" ${sel ? 'checked' : ''}
+          onchange="recToggleRow('${r.id}', this.checked)"></td>${cells}
         <td class="p-1 text-center"><button onclick="recDelete('${r.id}')" class="text-rose-500/60 hover:text-rose-400 font-black px-2 transition" title="Видалити">✕</button></td></tr>`;
     }).join('');
   }
+  recRenderBulkBar();
 
   // Підсумки
   const sum = k => rows.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
@@ -2745,6 +2760,99 @@ function recRender() {
   document.getElementById('rec-t-leads').textContent = sum('installs').toLocaleString('en-US');
   document.getElementById('rec-t-regs').textContent  = sum('regs').toLocaleString('en-US');
   document.getElementById('rec-t-deps').textContent  = sum(depsKey).toLocaleString('en-US');
+}
+
+// ── Масове редагування ───────────────────────────────────────────
+// Вибір живе окремо від фільтрів: відфільтрував, вибрав, змінив фільтр —
+// вибір не злітає, поки не натиснеш «Зняти».
+let recSel = new Set();
+
+function recToggleRow(id, on) {
+  on ? recSel.add(String(id)) : recSel.delete(String(id));
+  document.querySelector(`#rec-tbody tr[data-id="${id}"]`)?.classList.toggle('rec-row-sel', on);
+  recRenderBulkBar();
+}
+function recToggleAll(on) {
+  recFiltered().forEach(r => on ? recSel.add(String(r.id)) : recSel.delete(String(r.id)));
+  recRender();
+}
+function recClearSel() { recSel.clear(); recRender(); }
+
+function recRenderBulkBar() {
+  const bar = document.getElementById('rec-bulk');
+  if (!bar) return;
+  const n = recSel.size;
+  if (!n) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hidden');
+  const cols = REC_SCHEMA[recCurrentTable].filter(c => c.key !== 'id');
+  bar.innerHTML = `
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[11px] font-black uppercase tracking-widest text-blue-300 mr-1">Вибрано ${n}</span>
+      <select id="rec-bulk-col" onchange="recBulkColChanged()" class="!w-auto !py-1.5 !text-[11px] !font-bold">
+        ${cols.map(c => `<option value="${c.key}">${c.label}</option>`).join('')}
+      </select>
+      <span id="rec-bulk-value-wrap" class="contents"></span>
+      <button onclick="recBulkApply()" class="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-xl font-black uppercase text-[10px] tracking-widest transition">Застосувати до ${n}</button>
+      <button onclick="recBulkDelete()" class="bg-rose-600/80 hover:bg-rose-500 px-4 py-1.5 rounded-xl font-black uppercase text-[10px] tracking-widest transition">Видалити ${n}</button>
+      <button onclick="recClearSel()" class="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-2 transition">Зняти</button>
+    </div>`;
+  recBulkColChanged();
+}
+
+// Поле значення підлаштовується під тип стовпця: список — випадайка, число — number
+function recBulkColChanged() {
+  const wrap = document.getElementById('rec-bulk-value-wrap');
+  const key = document.getElementById('rec-bulk-col')?.value;
+  const col = REC_SCHEMA[recCurrentTable].find(c => c.key === key);
+  if (!wrap || !col) return;
+  if (col.list) {
+    const opts = recListValues(col.list, col.key);
+    wrap.innerHTML = `<select id="rec-bulk-value" class="!w-auto !py-1.5 !text-[11px] !font-bold">
+      <option value="">— порожньо —</option>
+      ${opts.map(o => `<option value="${String(o).replace(/"/g, '&quot;')}">${o}</option>`).join('')}
+    </select>`;
+  } else {
+    const type = (col.type === 'money' || col.type === 'int') ? 'number' : (col.type === 'date' ? 'date' : 'text');
+    wrap.innerHTML = `<input id="rec-bulk-value" type="${type}" placeholder="нове значення"
+      class="!w-40 !py-1.5 !text-[11px] !font-bold">`;
+  }
+}
+
+async function recBulkApply() {
+  const key = document.getElementById('rec-bulk-col').value;
+  const col = REC_SCHEMA[recCurrentTable].find(c => c.key === key);
+  const raw = String(document.getElementById('rec-bulk-value').value ?? '').trim();
+  let value = raw;
+  if (col.type === 'money' || col.type === 'int') value = raw === '' ? null : (parseFloat(raw) || 0);
+  else if (col.upper) value = raw.toUpperCase();
+  const ids = [...recSel];
+  if (!confirm(`Змінити «${col.label}» на «${raw || '(порожньо)'}» у ${ids.length} рядках?`)) return;
+
+  // .in() з великим списком id б'ється об довжину URL — шлемо пачками
+  const CHUNK = 200;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const part = ids.slice(i, i + CHUNK);
+    const { error } = await sb.from(recCurrentTable).update({ [key]: value }).in('id', part);
+    if (error) { alert('Не вдалося змінити: ' + error.message); recLoad(); return; }
+  }
+  recRows.forEach(r => { if (recSel.has(String(r.id))) r[key] = value; });
+  showStatus(`Змінено ${ids.length} рядків — ${col.label}: ${raw || '(порожньо)'}`);
+  recRender();
+}
+
+async function recBulkDelete() {
+  const ids = [...recSel];
+  if (!confirm(`Видалити ${ids.length} рядків? Дію не відкотити.`)) return;
+  const CHUNK = 200;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const part = ids.slice(i, i + CHUNK);
+    const { error } = await sb.from(recCurrentTable).delete().in('id', part);
+    if (error) { alert('Не вдалося видалити: ' + error.message); recLoad(); return; }
+  }
+  recRows = recRows.filter(r => !recSel.has(String(r.id)));
+  recSel.clear();
+  showStatus(`Видалено ${ids.length} рядків`);
+  recRender();
 }
 
 function recSortBy(key) {
