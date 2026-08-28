@@ -465,6 +465,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       </div>
       </div>
 
+      <!-- Конвертація валют — якщо в кабінеті не долари -->
+      <div id="fx-report" class="hidden card p-5 rounded-[2rem] border-l-4 border-l-amber-500 bg-slate-900/40 mb-4 text-[11px] leading-relaxed space-y-1"></div>
+
       <!-- Звіт про злиття FB × Keitaro — щоб було видно, що зійшлось, а що ні -->
       <div id="kt-merge-report" class="hidden card p-5 rounded-[2rem] border-l-4 border-l-emerald-500 bg-slate-900/40 mb-8 text-[11px] leading-relaxed"></div>
 
@@ -1763,6 +1766,28 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   return { daily: dRes.out, creatives: creativesOut };
 }
 
+// Видимий звіт про конвертацію — щоб перерахунок не був мовчазним
+// і ти міг спіймати дивний курс до того, як дані підуть у базу.
+function renderFxReport(used) {
+  const el = document.getElementById('fx-report');
+  if (!el) return;
+  const curs = Object.keys(used);
+  if (!curs.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  const money = v => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  el.classList.remove('hidden');
+  el.innerHTML = curs.map(c => {
+    const u = used[c];
+    const rates = [...u.rates].sort((a, b) => a - b);
+    const rateTxt = rates.length === 1
+      ? `курс ${rates[0].toFixed(4)}`
+      : `курс ${rates[0].toFixed(4)}–${rates[rates.length - 1].toFixed(4)} (по днях)`;
+    return `<div class="flex gap-2 items-start text-slate-300">
+      <span>💱</span><div>Спенд у <b class="text-amber-300">${c}</b> переведено в долари:
+      <b>${money(u.from)} ${c}</b> → <b class="text-emerald-400">$${money(u.to)}</b>, ${rateTxt}.
+      <span class="text-slate-500">У базу йдуть уже долари.</span></div></div>`;
+  }).join('');
+}
+
 // Звіт про злиття: скільки зійшлось і — головне — що НЕ зійшлось.
 // Мовчазне розходження тут найдорожче: рядок з ФБ-івськими конверсіями виглядає
 // так само, як уточнений з Keitaro, і помилку помічаєш уже в звітах.
@@ -1829,7 +1854,8 @@ function handleCSV(e, type) {
   }))).then(loaded => {
     const keys = Object.keys(keywords);
     const synthMap = {}; keys.forEach((k, i) => synthMap[k] = i);
-    const combined = [keys.slice()];          // службовий перший рядок
+    synthMap.cur = keys.length;               // валюта файлу — окремою колонкою
+    const combined = [keys.concat('cur')];     // службовий перший рядок
     const okNames = [], badNames = [];
 
     loaded.forEach(({ name, text }) => {
@@ -1838,10 +1864,13 @@ function handleCSV(e, type) {
       const headers = lines[0].map(h => h.toLowerCase());
       const map = mapColumns(headers);
       if (map.spend === -1 && map.name === -1) { badNames.push(name + ' (не схоже на FB-звіт)'); return; }
+      // Facebook пише валюту в самій шапці: «Amount spent (PLN)».
+      // Кожен файл — свій кабінет, тому валюта визначається окремо для кожного.
+      const cur = fbDetectCurrency(map.spend >= 0 ? lines[0][map.spend] : '');
       for (let i = 1; i < lines.length; i++) {
-        combined.push(keys.map(k => map[k] >= 0 ? (lines[i][map[k]] ?? '') : ''));
+        combined.push(keys.map(k => map[k] >= 0 ? (lines[i][map[k]] ?? '') : '').concat(cur));
       }
-      okNames.push(name);
+      okNames.push(name + (cur !== 'USD' ? ` · ${cur}` : ''));
       console.log(`FB «${name}»: рядків ${lines.length - 1} | device=${map.device !== -1 ? headers[map.device] : '—'} | platform=${map.platform !== -1 ? headers[map.platform] : '—'} | placement=${map.placement !== -1 ? headers[map.placement] : '—'}`);
     });
 
@@ -1861,9 +1890,63 @@ function handleCSV(e, type) {
   });
 }
 
-function processCampaignData(map, lines) {
+// ── Валюта і курс ────────────────────────────────────────────────
+// Спенд з кабінетів у злотих (чи будь-чому іншому) треба привести до USD,
+// інакше він завищений у кілька разів, а за ним їдуть CPI/CPL/CPA, ROI
+// і профіт — причому мовчки, без жодної помилки.
+function fbDetectCurrency(header) {
+  const m = String(header || '').match(/\(([A-Za-z]{3})\)/);
+  return m ? m[1].toUpperCase() : 'USD';
+}
+
+const FX_CACHE = (() => { try { return JSON.parse(localStorage.getItem('fx_rates') || '{}'); } catch (e) { return {}; } })();
+const fxSave = () => { try { localStorage.setItem('fx_rates', JSON.stringify(FX_CACHE)); } catch (e) {} };
+
+// Курс беремо на дату спенду, а не сьогоднішній: інакше минулий місяць
+// перерахується за курсом, якого тоді не було. За вихідні API віддає
+// останній робочий день — це саме те, що треба.
+async function fxRate(cur, date) {
+  const c = String(cur || 'USD').toUpperCase();
+  if (!c || c === 'USD') return 1;
+  const key = `${c}|${date}`;
+  if (FX_CACHE[key]) return FX_CACHE[key];
+  try {
+    const r = await fetch(`https://api.frankfurter.dev/v1/${date}?base=${c}&symbols=USD`);
+    const j = await r.json();
+    const rate = j && j.rates && j.rates.USD;
+    if (!rate) return null;
+    FX_CACHE[key] = rate; fxSave();
+    return rate;
+  } catch (e) { return null; }
+}
+
+async function processCampaignData(map, lines) {
   let dailyAggregated = {};
   let creativeAggregated = {};
+
+  // 0. Курси для всіх пар «валюта + день», які є у файлах
+  const need = new Set();
+  for (let i = 1; i < lines.length; i++) {
+    const cur = (lines[i][map.cur] || 'USD').toUpperCase();
+    if (cur === 'USD') continue;
+    const d = lines[i][map.endDate] || lines[i][map.date] || '';
+    if (d) need.add(`${cur}|${d}`);
+  }
+  const fx = {}, fxFailed = new Set();
+  for (const k of need) {
+    const [cur, d] = k.split('|');
+    const rate = await fxRate(cur, d);
+    if (rate) fx[k] = rate; else fxFailed.add(cur);
+  }
+  // Якщо курс не дістався — питаємо вручну, але не імпортуємо мовчки як є:
+  // тихо завищений спенд помітити потім майже неможливо.
+  for (const cur of fxFailed) {
+    const v = prompt(`Не вдалось отримати курс ${cur} → USD.\nВпиши його вручну (скільки доларів за 1 ${cur}):`, '');
+    const rate = parseFloat(String(v || '').replace(',', '.'));
+    if (!rate || rate <= 0) { alert(`Без курсу ${cur} імпорт зупинено — інакше спенд буде неправильний.`); return; }
+    need.forEach(k => { if (k.startsWith(cur + '|')) fx[k] = rate; });
+  }
+  const fxUsed = {};   // для звіту: скільки і за яким курсом перерахували
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
@@ -1898,7 +1981,14 @@ function processCampaignData(map, lines) {
     const funnelName = apFunnelClean(mappingDB.funnels[ktid]) || 'Unknown (' + ktid + ')';
     const agency = mappingDB.providers[accName] || 'Direct(0%)';
 
-    const spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
+    let spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
+    const cur = String(row[map.cur] || 'USD').toUpperCase();
+    if (cur !== 'USD' && spend) {
+      const rate = fx[`${cur}|${date}`] || 1;
+      const u = fxUsed[cur] || (fxUsed[cur] = { from: 0, to: 0, rates: new Set() });
+      u.from += spend; u.to += spend * rate; u.rates.add(rate);
+      spend = spend * rate;
+    }
     const regs = parseInt(row[map.regs]) || 0;
     const deps = parseInt(row[map.deps]) || 0;
     const installs = map.installs !== -1 ? (parseInt(row[map.installs]) || 0) : 0;
@@ -1931,6 +2021,8 @@ function processCampaignData(map, lines) {
     creativeAggregated[cKey].deps += deps;
     creativeAggregated[cKey].installs += installs;
   }
+
+  renderFxReport(fxUsed);
 
   // Уточнюємо конверсії з Keitaro (якщо файл завантажено)
   const merged = applyKeitaroMerge(dailyAggregated, creativeAggregated);
