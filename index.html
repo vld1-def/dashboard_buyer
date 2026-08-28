@@ -955,6 +955,14 @@ header h1 span { font-size: .85rem !important; }
 .dc-shot:hover { color: #a3e635; border-color: rgba(163,230,53,.4); }
 .dc-shot:disabled { opacity: .5; cursor: progress; }
 
+/* Чекбокси Uniqueizer */
+.uq-chk { appearance: none; -webkit-appearance: none; width: 15px; height: 15px;
+  border: 1.5px solid rgba(255,255,255,.22); border-radius: 4px; background: rgba(0,0,0,.25);
+  cursor: pointer; position: relative; flex-shrink: 0; }
+.uq-chk:checked { background: linear-gradient(135deg,#8b5cf6,#6366f1); border-color: #8b5cf6; }
+.uq-chk:checked::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
 /* Сцена для знімка: офскрін-копія картки без скла.
    Градієнти html2canvas малює через createPattern на окремому полотні, і варто
    якомусь елементу мати нульовий розмір — рендер падає. У PNG прозоре скло все
@@ -1140,6 +1148,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     <!-- Bonus Calculator -->
     <button onclick="openBonusModal()" class="p-2 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition admin-only" title="Bonus Calculator">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    </button>
+
+    <!-- Uniqueizer — варіанти відеокреативів -->
+    <button onclick="openUniqModal()" class="p-2 card rounded-xl shadow-md text-violet-400 hover:bg-gray-500/10 transition admin-only" title="Uniqueizer">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
     </button>
 
     <!-- Accounts — статуси кабінетів -->
@@ -7207,6 +7220,73 @@ function gcDiff(geo, results) {
 // ===== END GEO COMPARE =====
 </script>
 
+<!-- ===== UNIQUEIZER · варіанти відеокреативів ===== -->
+<div id="uniq-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4">
+  <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:90vh">
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
+      <div>
+        <h2 class="text-xl font-black italic tracking-tighter text-violet-400">Uniqueizer</h2>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Відео · обробка в браузері, файли нікуди не йдуть</p>
+      </div>
+      <button onclick="closeUniqModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+    </div>
+
+    <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 space-y-5">
+      <!-- Файли -->
+      <div>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Відеофайли</label>
+        <input type="file" id="uq-files" accept="video/*" multiple onchange="uqOnFiles()"
+          class="text-[11px] font-bold text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-violet-600 file:text-white file:font-black file:uppercase file:text-[10px] file:cursor-pointer">
+        <div id="uq-filelist" class="mt-2"></div>
+      </div>
+
+      <!-- Налаштування -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Варіантів на файл</label>
+          <input type="number" id="uq-count" min="1" max="30" value="3"
+            class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+        </div>
+        <div>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Сила</label>
+          <select id="uq-strength" onchange="uqApplyPreset()"
+            class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+            <option value="low">Слабко</option>
+            <option value="mid" selected>Середньо</option>
+            <option value="high">Сильно</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Якість</label>
+          <select id="uq-quality" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+            <option value="23">Звичайна</option>
+            <option value="20">Вища (важчий файл)</option>
+            <option value="27">Легша (швидше)</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <label class="flex items-center gap-2 cursor-pointer pb-1.5">
+            <input type="checkbox" id="uq-meta" checked class="uq-chk">
+            <span class="text-[10px] font-bold text-slate-300">Зачистка метаданих</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Параметри -->
+      <div id="uq-params" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+
+      <div class="flex items-center gap-3 flex-wrap">
+        <button onclick="uqRun()" id="uq-run" class="bg-violet-600 hover:bg-violet-500 px-8 py-2.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зробити варіанти</button>
+        <button onclick="uqCancel()" id="uq-cancel" class="hidden bg-rose-600/80 hover:bg-rose-500 px-5 py-2.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Стоп</button>
+        <span id="uq-status" class="text-[11px] font-bold text-slate-400"></span>
+      </div>
+      <div id="uq-bar" class="hidden h-1.5 bg-white/5 rounded-full overflow-hidden"><div id="uq-bar-fill" class="h-full bg-violet-500 transition-all" style="width:0%"></div></div>
+
+      <div id="uq-results"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== ACCOUNTS · статуси кабінетів ===== -->
 <div id="accounts-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
      onclick="if(event.target===this) closeAccountsModal()">
@@ -7649,6 +7729,229 @@ function dcShot(cardId, name, btn) {
   return shotNode(document.getElementById(cardId), `${name}_${day}.png`, btn);
 }
 
+// ===== UNIQUEIZER · варіанти відеокреативів =====
+// ffmpeg, скомпільований у WebAssembly: працює прямо в браузері, на будь-якому
+// пристрої і без встановлення. Обгортку тримаємо в репо (17 КБ) — воркер має
+// бути з того ж домену, інакше браузер його не створить; саме ядро (32 МБ)
+// тягнеться з CDN при першому запуску і далі кешується браузером.
+const UQ_PARAMS = [
+  { key:'crop',   label:'Кроп',      unit:'%',  hint:'зріже з країв і масштабує назад', min:1,  max:12, step:0.5 },
+  { key:'rotate', label:'Поворот',   unit:'°',  hint:'нахил кадру',                      min:0.2, max:4, step:0.1 },
+  { key:'color',  label:'Колір',     unit:'%',  hint:'гама, насиченість, контраст, тон', min:1,  max:12, step:0.5 },
+  { key:'fps',    label:'Кадри',     unit:'fps',hint:'зміна частоти кадрів',             min:1,  max:6,  step:1 },
+  { key:'volume', label:'Гучність',  unit:'dB', hint:'зсув рівня звуку',                 min:0.3, max:6, step:0.1 },
+  { key:'trim',   label:'Довжина',   unit:'с',  hint:'обрізати з початку і кінця',       min:0.1, max:3, step:0.1 },
+];
+const UQ_PRESETS = {
+  low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3 },
+  mid:  { crop:5, rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6 },
+  high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2 },
+};
+let uqFiles = [], uqFF = null, uqBusy = false, uqStop = false;
+
+function openUniqModal() {
+  document.getElementById('uniq-modal').classList.remove('hidden');
+  if (!document.getElementById('uq-params').children.length) { uqRenderParams(); uqApplyPreset(); }
+}
+function closeUniqModal() { document.getElementById('uniq-modal').classList.add('hidden'); }
+
+function uqRenderParams() {
+  document.getElementById('uq-params').innerHTML = UQ_PARAMS.map(p => `
+    <div class="bg-black/25 border border-white/5 rounded-xl px-3 py-2 flex items-center gap-3">
+      <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+        <input type="checkbox" id="uq-on-${p.key}" checked class="uq-chk">
+        <span class="text-[12px] font-black text-slate-200">${p.label}</span>
+        <span class="text-[10px] text-slate-500 truncate">${p.hint}</span>
+      </label>
+      <div class="flex items-center gap-1 shrink-0">
+        <span class="text-[9px] font-black uppercase text-slate-600">до</span>
+        <input type="number" id="uq-v-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}"
+          class="w-16 bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-[12px] font-bold text-violet-300 text-right outline-none focus:border-violet-500">
+        <span class="text-[10px] font-bold text-slate-500 w-7">${p.unit}</span>
+      </div>
+    </div>`).join('');
+}
+function uqApplyPreset() {
+  const p = UQ_PRESETS[document.getElementById('uq-strength').value] || UQ_PRESETS.mid;
+  UQ_PARAMS.forEach(x => { const el = document.getElementById('uq-v-' + x.key); if (el) el.value = p[x.key]; });
+}
+
+function uqOnFiles() {
+  uqFiles = [...(document.getElementById('uq-files').files || [])];
+  const mb = b => (b / 1048576).toFixed(1) + ' МБ';
+  document.getElementById('uq-filelist').innerHTML = !uqFiles.length ? '' :
+    `<div class="text-[11px] font-bold text-slate-400 space-y-0.5">
+      ${uqFiles.map(f => `<div class="flex justify-between gap-3"><span class="truncate">${f.name}</span><span class="text-slate-600 shrink-0">${mb(f.size)}</span></div>`).join('')}
+    </div>` + (uqFiles.some(f => f.size > 120 * 1048576)
+      ? '<p class="text-[10px] font-bold text-amber-400 mt-1.5">Файл понад 120 МБ може не влізти в памʼять браузера — краще стиснути заздалегідь.</p>' : '');
+}
+
+// Розміри й тривалість беремо з самого браузера — це швидше, ніж питати ffmpeg
+function uqProbe(file) {
+  return new Promise(resolve => {
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => {
+      resolve({ w: v.videoWidth, h: v.videoHeight, dur: v.duration || 0 });
+      URL.revokeObjectURL(v.src);
+    };
+    v.onerror = () => resolve({ w: 0, h: 0, dur: 0 });
+    v.src = URL.createObjectURL(file);
+  });
+}
+
+const uqRand = (a, b) => a + Math.random() * (b - a);
+const uqSign = () => Math.random() < 0.5 ? -1 : 1;
+
+// Випадкові значення в межах, які ти виставив. Кожен варіант отримує свої,
+// тому 10 копій одного файлу відрізняються між собою, а не однаково зміщені.
+function uqPickParams() {
+  const on = k => document.getElementById('uq-on-' + k).checked;
+  const amt = k => parseFloat(document.getElementById('uq-v-' + k).value) || 0;
+  const p = {};
+  if (on('crop'))   p.crop   = +uqRand(amt('crop') * 0.4, amt('crop')).toFixed(2);
+  if (on('rotate')) p.rotate = +(uqSign() * uqRand(amt('rotate') * 0.4, amt('rotate'))).toFixed(2);
+  if (on('color'))  p.color  = { gamma: +uqRand(-amt('color'), amt('color')).toFixed(2),
+                                 sat:   +uqRand(-amt('color'), amt('color')).toFixed(2),
+                                 con:   +uqRand(-amt('color'), amt('color')).toFixed(2),
+                                 hue:   +uqRand(-amt('color'), amt('color')).toFixed(2) };
+  if (on('fps'))    p.fps    = Math.round(uqSign() * uqRand(1, amt('fps')));
+  if (on('volume')) p.volume = +(uqSign() * uqRand(amt('volume') * 0.3, amt('volume'))).toFixed(2);
+  if (on('trim'))   p.trim   = { head: +uqRand(0, amt('trim')).toFixed(2), tail: +uqRand(0, amt('trim')).toFixed(2) };
+  return p;
+}
+
+// Порядок фільтрів має значення: спершу поворот, потім кроп — кроп прибирає
+// чорні кути, які лишає поворот. І тільки після цього масштаб назад у розмір.
+function uqBuildArgs(p, meta, quality, stripMeta) {
+  const vf = [], args = ['-i', 'in.mp4'];
+  if (p.trim) {
+    if (p.trim.head > 0) args.push('-ss', String(p.trim.head));
+    const left = meta.dur - p.trim.head - p.trim.tail;
+    if (left > 1) args.push('-t', String(+left.toFixed(2)));
+  }
+  if (p.rotate) vf.push(`rotate=${p.rotate}*PI/180:fillcolor=black`);
+  const cropF = 1 - ((p.crop || 0) + (p.rotate ? Math.min(4, Math.abs(p.rotate) * 2) : 0)) / 100;
+  if (cropF < 1) vf.push(`crop=iw*${cropF.toFixed(4)}:ih*${cropF.toFixed(4)}`);
+  if (p.color) {
+    const c = p.color;
+    vf.push(`eq=gamma=${(1 + c.gamma / 100).toFixed(4)}:saturation=${(1 + c.sat / 100).toFixed(4)}:contrast=${(1 + c.con / 100).toFixed(4)}`);
+    if (c.hue) vf.push(`hue=h=${(c.hue / 10).toFixed(3)}`);
+  }
+  if (meta.w && meta.h) vf.push(`scale=${meta.w}:${meta.h}`);
+  vf.push('setsar=1');
+  if (p.fps) vf.push(`fps=${Math.max(15, Math.round(30 + p.fps))}`);
+
+  args.push('-vf', vf.join(','));
+  if (p.volume) args.push('-af', `volume=${p.volume}dB`);
+  // -fflags +bitexact прибирає тег мукcера (Lavf), а handler_name доводиться
+  // гасити окремо — інакше в контейнері лишаються «VideoHandler»/«SoundHandler»
+  if (stripMeta) args.push('-map_metadata', '-1', '-map_chapters', '-1',
+    '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
+    '-metadata:s:v:0', 'handler_name=', '-metadata:s:a:0', 'handler_name=');
+  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(quality), '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4');
+  return args;
+}
+
+function uqDescribe(p) {
+  const bits = [];
+  if (p.crop)   bits.push(`кроп ${p.crop}%`);
+  if (p.rotate) bits.push(`поворот ${p.rotate}°`);
+  if (p.color)  bits.push(`колір γ${p.color.gamma > 0 ? '+' : ''}${p.color.gamma} s${p.color.sat > 0 ? '+' : ''}${p.color.sat}`);
+  if (p.fps)    bits.push(`fps ${p.fps > 0 ? '+' : ''}${p.fps}`);
+  if (p.volume) bits.push(`звук ${p.volume > 0 ? '+' : ''}${p.volume} dB`);
+  if (p.trim)   bits.push(`обріз ${p.trim.head}с / ${p.trim.tail}с`);
+  return bits.join(' · ');
+}
+
+async function uqLoadFFmpeg(onStatus) {
+  if (uqFF) return uqFF;
+  onStatus('Завантажую ядро ffmpeg (~32 МБ, лише перший раз)…');
+  const { FFmpeg } = await import('./vendor/ffmpeg/index.js');
+  const ff = new FFmpeg();
+  const cdn = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
+  await ff.load({ coreURL: cdn + '/ffmpeg-core.js', wasmURL: cdn + '/ffmpeg-core.wasm' });
+  uqFF = ff;
+  return ff;
+}
+
+function uqCancel() { uqStop = true; document.getElementById('uq-status').textContent = 'Зупиняю після поточного варіанта…'; }
+
+async function uqRun() {
+  if (uqBusy) return;
+  if (!uqFiles.length) { alert('Спершу вибери відеофайли.'); return; }
+  const count = Math.max(1, Math.min(30, parseInt(document.getElementById('uq-count').value, 10) || 1));
+  const quality = document.getElementById('uq-quality').value;
+  const stripMeta = document.getElementById('uq-meta').checked;
+  const statusEl = document.getElementById('uq-status');
+  const barWrap = document.getElementById('uq-bar'), bar = document.getElementById('uq-bar-fill');
+  const res = document.getElementById('uq-results');
+  const setStatus = t => statusEl.textContent = t;
+
+  uqBusy = true; uqStop = false;
+  document.getElementById('uq-run').disabled = true;
+  document.getElementById('uq-cancel').classList.remove('hidden');
+  barWrap.classList.remove('hidden');
+  res.innerHTML = '';
+
+  try {
+    const ff = await uqLoadFFmpeg(setStatus);
+    let done = 0; const total = uqFiles.length * count;
+    ff.on('progress', ({ progress }) => {
+      const p = Math.min(1, Math.max(0, progress || 0));
+      bar.style.width = (((done + p) / total) * 100).toFixed(1) + '%';
+    });
+
+    for (let fi = 0; fi < uqFiles.length && !uqStop; fi++) {
+      const file = uqFiles[fi];
+      const meta = await uqProbe(file);
+      const base = file.name.replace(/\.[^.]+$/, '');
+      await ff.writeFile('in.mp4', new Uint8Array(await file.arrayBuffer()));
+
+      const block = document.createElement('div');
+      block.className = 'mt-4';
+      block.innerHTML = `<p class="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-2">${file.name}
+        <span class="text-slate-600 normal-case tracking-normal font-bold">· ${meta.w}×${meta.h} · ${meta.dur.toFixed(1)}с</span></p>`;
+      res.appendChild(block);
+
+      for (let v = 1; v <= count && !uqStop; v++) {
+        setStatus(`Файл ${fi + 1}/${uqFiles.length} · варіант ${v}/${count}`);
+        const p = uqPickParams();
+        try {
+          await ff.exec(uqBuildArgs(p, meta, quality, stripMeta));
+          const data = await ff.readFile('out.mp4');
+          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+          const name = `${base}__v${v}.mp4`;
+          const row = document.createElement('div');
+          row.className = 'flex items-center gap-3 bg-white/[0.03] border border-white/5 rounded-xl px-3 py-2 mb-1.5';
+          row.innerHTML = `<span class="text-[12px] font-black text-white shrink-0">v${v}</span>
+            <span class="text-[11px] font-bold text-slate-400 flex-1 min-w-0 truncate" title="${uqDescribe(p)}">${uqDescribe(p)}</span>
+            <span class="text-[11px] font-mono text-slate-500 shrink-0">${(data.length / 1048576).toFixed(1)} МБ</span>
+            <a href="${url}" download="${name}" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Завантажити</a>`;
+          block.appendChild(row);
+          await ff.deleteFile('out.mp4');
+        } catch (e) {
+          const row = document.createElement('div');
+          row.className = 'text-[11px] font-bold text-rose-400 px-3 py-2';
+          row.textContent = `v${v}: не вдалось — ${e.message || e}`;
+          block.appendChild(row);
+        }
+        done++;
+        bar.style.width = ((done / total) * 100).toFixed(1) + '%';
+      }
+      await ff.deleteFile('in.mp4');
+    }
+    setStatus(uqStop ? 'Зупинено.' : 'Готово. Файли зберігаються по кнопці «Завантажити».');
+  } catch (e) {
+    setStatus('Помилка: ' + (e.message || e));
+  } finally {
+    uqBusy = false;
+    document.getElementById('uq-run').disabled = false;
+    document.getElementById('uq-cancel').classList.add('hidden');
+  }
+}
+
 // ===== ACCOUNTS · статуси кабінетів =====
 // Статус живе в accounts_mapping.status: active | ban | problem.
 // Колонок може ще не бути в базі — тоді показуємо підказку з SQL, а не падаємо.
@@ -7864,6 +8167,7 @@ function dcRenderWarn(unlinked) {
     database:'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
     compare:'M9 19V6l-2 1m2-1 2 1M9 19H5a2 2 0 0 1-2-2V9m6 10h6m0 0h4a2 2 0 0 0 2-2V9m-6 10V6m0 0 2-1m-2 1-2-1',
     clipboard:'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-3 7-2 2-1-1',
+    film:'M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z',
     settings:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
     logout:'M17 16l4-4m0 0-4-4m4 4H7m6 4v1a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v1',
     plus:'M12 5v14M5 12h14'
@@ -7873,14 +8177,14 @@ function dcRenderWarn(unlinked) {
     [/фототек|gallery/i,'images'], [/daily report/i,'file'], [/mission/i,'check'],
     [/change log/i,'clock'], [/quick link/i,'bookmark'], [/bonus/i,'coins'],
     [/db logs/i,'database'], [/geo compare/i,'compare'], [/перевірка/i,'clipboard'],
-    [/^accounts$/i,'users'], [/settings/i,'settings'], [/вийти|logout/i,'logout']
+    [/^accounts$/i,'users'], [/uniqueizer/i,'film'], [/settings/i,'settings'], [/вийти|logout/i,'logout']
   ];
   const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
   const RU = {
     'Select Month':'Month', 'Performance Summary':'Summary image', 'Фототека':'Gallery',
     'Daily Reports':'Daily reports', 'Mission Center':'Tasks', 'Change Log':'Change log',
     'Quick Links':'Quick links', 'Bonus Calculator':'Bonuses', 'DB Logs':'DB logs',
-    'Geo Compare':'Geo compare', 'Data Check (Keitaro)':'Data check', 'Accounts':'Accounts',
+    'Geo Compare':'Geo compare', 'Data Check (Keitaro)':'Data check', 'Accounts':'Accounts', 'Uniqueizer':'Uniqueizer',
     'Settings':'Settings', 'Log out':'Log out'
   };
 
