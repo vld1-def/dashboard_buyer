@@ -794,11 +794,16 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <li><span class="font-mono text-orange-300">{acc}</span> — айді акаунта</li>
                 <li><span class="font-mono text-orange-300">{cid}</span> — креатив · <span class="font-mono text-orange-300">{cid-}</span> якщо в ньому «-» замість «_»</li>
                 <li><span class="font-mono text-orange-300">{geo}</span> — гео</li>
-                <li><span class="font-mono text-slate-300">*</span> — будь-який шматок, який пропускаємо</li>
+                <li><span class="font-mono text-orange-300">{app=SNATCH}</span> — підставити значення жорстко, якщо в назві його немає</li>
+                <li><span class="font-mono text-slate-300">*</span> — будь-що: хоч шматок, хоч кілька</li>
                 <li><span class="font-mono text-slate-300">sub4</span> — текст як є: має збігтися буквально</li>
               </ul>
-              <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">Шматки розділяються тим самим «_», що й у назві.
-                Хвіст, який не описаний у шаблоні, ігнорується. Чого немає в шаблоні — береться зі стовпців звіту:
+              <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">Неймінг може бути яким завгодно — і токени через «_», і «&amp;sub2=…&amp;sub3=…».
+                Пиши шаблон так, як виглядає сама назва, замінивши потрібні шматки на <span class="font-mono">{…}</span>, а зайві на <span class="font-mono">*</span>.
+                Скільки символів забирає <span class="font-mono">{…}</span>, вирішує символ одразу після нього: у
+                <span class="font-mono text-orange-300">sub4={cid}</span> крео може містити «_», а в
+                <span class="font-mono text-orange-300">{cid}_{geo}</span> — уже ні.
+                Хвіст, не описаний у шаблоні, ігнорується. Чого немає в шаблоні — береться зі стовпців звіту:
                 <span class="font-mono">{cid}</span> з <b>Ad name</b>, <span class="font-mono">{geo}</span> з <b>Country</b>.</p>
             </div>
             <div class="bg-black/25 rounded-2xl border border-white/5 p-4">
@@ -1342,27 +1347,71 @@ function apMatchProfile(parts) {
 }
 
 // Розбір назви кампанії за шаблоном.
-// {app} {acc} {cid} {cid-} {geo} — що витягуємо, * — пропускаємо шматок,
-// будь-який інший текст має збігтися буквально (це і рятує, коли в одних апок
-// у назві стоїть «sub4», а в інших на цьому місці просто черговий токен).
-// Повертає null, якщо шаблон не підходить — тоді профіль вважається не тим.
-function apParseMask(mask, parts, adName, country) {
-  const tpl = String(mask || '').trim().split('_').filter(t => t !== '');
-  if (!tpl.length) return null;
-  const out = { app: '', acc: '', cid: '', geo: '' };
-  for (let k = 0; k < tpl.length; k++) {
-    const t = tpl[k];
-    const val = (parts[k] !== undefined ? String(parts[k]).trim() : '');
-    if (t === '*') continue;
-    const m = t.match(/^\{(app|acc|cid|cid-|geo)\}$/);
-    if (m) {
-      if (!val) return null;                       // потрібного шматка просто немає
-      if (m[1] === 'cid-') out.cid = val.replace(/-/g, '_');
-      else out[m[1]] = val;
+//   {app} {acc} {cid} {geo}  — що витягуємо
+//   {cid-}                   — креатив, у якому «-» замість «_»
+//   {app=SNATCH}             — підставити значення жорстко, нічого не вирізаючи
+//   *                        — пропустити шматок
+//   будь-який інший текст    — має збігтися буквально
+// Шаблон перетворюємо на регулярку, тому неймінг може бути яким завгодно:
+// і токени через «_», і «&sub2=...&sub3=...». Скільки саме символів забирає
+// {…}, вирішує роздільник, який стоїть у шаблоні одразу після нього — тому
+// в «sub4={cid}» крео може містити «_», а в «{cid}_{geo}» уже ні.
+const AP_MASK_CACHE = new Map();
+
+function apMaskCompile(mask) {
+  const src = String(mask || '').trim();
+  if (!src) return null;
+  if (AP_MASK_CACHE.has(src)) return AP_MASK_CACHE.get(src);
+
+  const primary = src.includes('&') ? '&' : '_';
+  // екрануємо будь-який символ — і як літерал, і всередині [^…]
+  const esc = c => (/[A-Za-z0-9]/.test(c) ? c : '\\' + c);
+  const keys = [], fixed = {};
+  let re = '', i = 0;
+
+  while (i < src.length) {
+    const ph = /^\{(app|acc|cid|cid-|geo)(?:=([^}]*))?\}/.exec(src.slice(i));
+    if (ph) {
+      i += ph[0].length;
+      if (ph[2] !== undefined) {                    // {app=SNATCH} — фіксоване значення
+        fixed[ph[1] === 'cid-' ? 'cid' : ph[1]] = ph[2];
+        continue;
+      }
+      const stop = i < src.length ? src[i] : primary;
+      keys.push(ph[1]);
+      re += `([^${esc(stop)}]+)`;
       continue;
     }
-    if (val.toLowerCase() !== t.toLowerCase()) return null;   // текст не збігся
+    if (src[i] === '*') {
+      // «будь-що, скільки завгодно» — щоб одна зірочка могла перестрибнути
+      // цілі шматки на кшталт «&sub0=…&sub1=…», які тобі нецікаві.
+      // Ліниво, тож зупиняється на першому ж тексті, що йде далі в шаблоні.
+      i++;
+      re += '.*?';
+      continue;
+    }
+    re += esc(src[i]); i++;
   }
+
+  // хвіст, не описаний у шаблоні, ігноруємо
+  const compiled = { re: new RegExp('^' + re + `(?:${esc(primary)}.*)?$`, 'i'), keys, fixed };
+  AP_MASK_CACHE.set(src, compiled);
+  return compiled;
+}
+
+// Повертає null, якщо шаблон не підходить — тоді профіль вважається не тим.
+function apParseMask(mask, parts, adName, country) {
+  const c = apMaskCompile(mask);
+  if (!c) return null;
+  const camp = Array.isArray(parts) ? parts.join('_') : String(parts || '');
+  const m = c.re.exec(camp);
+  if (!m) return null;
+  const out = { app: '', acc: '', cid: '', geo: '', ...c.fixed };
+  c.keys.forEach((k, idx) => {
+    const v = String(m[idx + 1] || '').trim();
+    if (k === 'cid-') out.cid = v.replace(/-/g, '_');
+    else out[k] = v;
+  });
   if (!out.cid) out.cid = String(adName || '').trim();
   if (!out.geo) out.geo = String(country || '').trim();
   return out;
