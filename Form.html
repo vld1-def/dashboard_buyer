@@ -1148,6 +1148,26 @@ function toGeoCode(v) {
 // APP:  cy638t_8wxg7hf7_YVbHTgzY_app_acc_cid_...  → просто токени через "_",
 //       тому позиції задаються в налаштуваннях.
 const AP_DEFAULT = { mask: '*_*_*_{app}_{acc}_{cid}_{geo}' };
+let appParse = { ...AP_DEFAULT };
+// Профілі постачальників апок: у кожного свій шаблон назви кампанії.
+let appProfiles = {};
+let apCurrent = '';            // '' = профіль за замовчуванням (appParse)
+let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
+
+async function loadAppParse() {
+  try {
+    const { data } = await sb.from('team_settings')
+      .select('key, value').eq('team_name', currentTeam).in('key', ['app_parse', 'app_profiles']);
+    (data || []).forEach(r => {
+      if (r.key === 'app_parse')    appParse    = JSON.parse(r.value) || {};
+      if (r.key === 'app_profiles') appProfiles = JSON.parse(r.value) || {};
+    });
+  } catch (e) { console.warn('app_parse:', e.message); }
+  apRenderProfileSelect();
+  apFillForm(apCfgOf(apCurrent));
+  renderApPreview();
+  apRenderProfilesList();
+}
 
 // Старі профілі зберігались позиціями — переводимо їх у шаблон, щоб нічого
 // не зламалось після оновлення і щоб у полі одразу було видно звичну розкладку.
@@ -1279,6 +1299,10 @@ function apRenderProfilesList() {
   }
   const rows = names.map(n => {
     const mask = apMaskFromLegacy(appProfiles[n] || {});
+    // апки, зав'язані на цей профіль через [Постачальник] у назві воронки
+    const apps = Object.entries(mappingDB.funnels || {})
+      .filter(([, fn]) => (apProviderOf(fn) || '').toLowerCase() === n.toLowerCase())
+      .map(([ktid]) => ktid);
     return `<tr class="border-b border-white/5 ${n === apCurrent ? 'bg-orange-500/5' : ''}">
       <td class="p-2 font-black text-orange-400 whitespace-nowrap">${n}</td>
       <td class="p-2 text-[11px] font-mono text-slate-300 whitespace-nowrap">${mask}</td>
@@ -2806,11 +2830,14 @@ function recBulkColChanged() {
   const col = REC_SCHEMA[recCurrentTable].find(c => c.key === key);
   if (!wrap || !col) return;
   if (col.list) {
+    // datalist, а не select: підказує відомі значення, але дозволяє вписати нове —
+    // інакше воронку, якої ще немає в списку, масово не проставиш
     const opts = recListValues(col.list, col.key);
-    wrap.innerHTML = `<select id="rec-bulk-value" class="!w-auto !py-1.5 !text-[11px] !font-bold">
-      <option value="">— порожньо —</option>
-      ${opts.map(o => `<option value="${String(o).replace(/"/g, '&quot;')}">${o}</option>`).join('')}
-    </select>`;
+    wrap.innerHTML = `<input id="rec-bulk-value" list="rec-bulk-dl" placeholder="вибери або впиши"
+        class="!w-44 !py-1.5 !text-[11px] !font-bold">
+      <datalist id="rec-bulk-dl">
+        ${opts.map(o => `<option value="${String(o).replace(/"/g, '&quot;')}"></option>`).join('')}
+      </datalist>`;
   } else {
     const type = (col.type === 'money' || col.type === 'int') ? 'number' : (col.type === 'date' ? 'date' : 'text');
     wrap.innerHTML = `<input id="rec-bulk-value" type="${type}" placeholder="нове значення"
