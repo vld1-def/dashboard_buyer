@@ -1300,17 +1300,29 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 
   <!-- Блок GEO -->
   <div id="geo-sidebar-col" class="card p-6 rounded-3xl lg:col-span-1 shadow-md flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
-    <div class="mb-6 border-b border-gray-500/10 pb-4">
-      <h2 class="font-black text-lg text-blue-500 uppercase tracking-tight mb-3">Geo Performance</h2>
-      <div class="flex flex-col gap-2 text-[10px] font-bold">
-        <div class="flex items-center gap-2 bg-gray-500/5 p-2 rounded-xl border border-gray-500/10 text-dynamic">
-          <input type="date" id="geo-filter-from" class="bg-transparent outline-none w-full">
-          <input type="date" id="geo-filter-to" class="bg-transparent outline-none w-full">
+    <div class="mb-3 border-b border-gray-500/10 pb-3">
+      <h2 class="font-black text-[13px] text-blue-500 uppercase tracking-widest mb-2">Geo Performance</h2>
+      <div class="flex items-center gap-1.5 text-[10px] font-bold">
+        <div class="flex items-center gap-1 bg-gray-500/5 px-2 py-1.5 rounded-lg border border-gray-500/10 text-dynamic flex-1 min-w-0">
+          <input type="date" id="geo-filter-from" class="bg-transparent outline-none w-full min-w-0">
+          <span class="opacity-20">/</span>
+          <input type="date" id="geo-filter-to" class="bg-transparent outline-none w-full min-w-0">
         </div>
-        <button onclick="applyGeoFilter()" class="w-full bg-blue-600 hover:bg-blue-600 text-white transition-all py-2 rounded-xl uppercase tracking-widest shadow-lg font-black">Filter Geo</button>
+        <button onclick="applyGeoFilter()" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white transition-all px-3 py-1.5 rounded-lg uppercase tracking-widest font-black">OK</button>
       </div>
     </div>
-    <div class="space-y-3 overflow-y-auto flex-grow max-h-[395px] pr-2 custom-scrollbar text-dynamic" id="geo-list"></div>
+    <div class="space-y-3 overflow-y-auto max-h-[395px] pr-2 custom-scrollbar text-dynamic" id="geo-list"></div>
+
+    <!-- Таски одразу під гео — щоб не лізти щоразу в модалку.
+         admin-only: тімлід тасків не бачить, як і кнопки Tasks у меню -->
+    <div class="mt-4 pt-3 border-t border-gray-500/10 admin-only">
+      <div class="flex justify-between items-center mb-2">
+        <h2 class="font-black text-[13px] text-purple-400 uppercase tracking-widest">Tasks
+          <span id="side-task-count" class="text-slate-600 font-bold"></span></h2>
+        <button onclick="toggleTaskModal()" class="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-purple-400 transition">Усі →</button>
+      </div>
+      <div id="side-task-list" class="space-y-1.5 overflow-y-auto max-h-[240px] pr-1 custom-scrollbar"></div>
+    </div>
   </div>
 </div>
 <!-- Weekly Heatmap Analysis -->
@@ -2742,6 +2754,49 @@ function renderTable(data) {
     const counts = { new: taskData.filter(t => t.status === 'Not in progress').length, proc: taskData.filter(t => t.status === 'In progress').length, done: taskData.filter(t => t.status === 'Completed').length, all: taskData.length };
     ['count-new','count-process','count-done','count-all'].forEach((id, i) => document.getElementById(id).innerText = Object.values(counts)[i]);
     renderTasks(currentTaskFilter);
+    renderSideTasks();
+  }
+
+  // У картці задачі показуємо лише перший рядок — у тексті бувають довгі
+  // багаторядкові списки, які рознесли б блок на пів екрана
+  function uqFirstLine(txt) {
+    const first = String(txt || '—').split(/\r?\n/).find(l => l.trim()) || '—';
+    return first.length > 110 ? first.slice(0, 110) + '…' : first;
+  }
+
+  // Короткий список під Geo Performance: тільки те, що ще не закрито,
+  // важливі зверху. Клік по кружечку одразу міняє статус, без модалки.
+  function renderSideTasks() {
+    const el = document.getElementById('side-task-list');
+    if (!el) return;
+    const open = taskData.filter(t => t.status !== 'Completed');
+    const cnt = document.getElementById('side-task-count');
+    if (cnt) cnt.textContent = open.length ? `· ${open.length}` : '';
+    if (!open.length) {
+      el.innerHTML = '<p class="text-[10px] font-bold text-slate-600 italic py-3 text-center">Відкритих задач немає</p>';
+      return;
+    }
+    const order = { High: 1, Medium: 2, Low: 3 };
+    const dot = { High: 'bg-red-500', Medium: 'bg-amber-400', Low: 'bg-slate-500' };
+    el.innerHTML = open
+      .sort((a, b) => (order[a.priority] || 9) - (order[b.priority] || 9) ||
+                      String(b.created_at || '').localeCompare(String(a.created_at || '')))
+      .map(t => {
+        const inProgress = t.status === 'In progress';
+        const next = inProgress ? 'Completed' : 'In progress';
+        return `<div class="flex items-start gap-2 bg-white/[0.03] border border-white/5 rounded-xl px-2.5 py-2 hover:bg-white/[0.06] transition">
+          <button onclick="event.stopPropagation(); changeStatus('${t.id}', '${next}')"
+            title="${inProgress ? 'Позначити виконаною' : 'Взяти в роботу'}"
+            class="mt-0.5 w-3.5 h-3.5 rounded-full border-2 shrink-0 transition
+                   ${inProgress ? 'border-emerald-400 bg-emerald-400/30 hover:bg-emerald-400' : 'border-slate-600 hover:border-purple-400'}"></button>
+          <div class="min-w-0 flex-1 cursor-pointer" onclick="toggleTaskModal()">
+            <p class="text-[11px] font-bold text-slate-200 leading-snug break-words">${uqFirstLine(t.text)}</p>
+            <p class="text-[9px] font-black uppercase tracking-widest text-slate-600 mt-0.5">
+              <span class="inline-block w-1.5 h-1.5 rounded-full ${dot[t.priority] || 'bg-slate-500'} align-middle mr-1"></span>${t.priority || '—'}
+              ${inProgress ? '· у роботі' : ''}</p>
+          </div>
+        </div>`;
+      }).join('');
   }
 
   async function changeStatus(id, newStatus) {
