@@ -1295,11 +1295,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
            </div>
         </div>
      </div>
-     <div class="h-[300px] md:h-[520px] w-full relative"><canvas id="chart-trend"></canvas></div>
+     <div class="h-[305px] md:h-[525px] w-full relative"><canvas id="chart-trend"></canvas></div>
   </div>
 
   <!-- Блок GEO -->
-  <div id="geo-sidebar-col" class="card p-4 rounded-3xl lg:col-span-1 shadow-md flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden lg:h-[610px]">
+  <div id="geo-sidebar-col" class="card p-4 rounded-3xl lg:col-span-1 shadow-md flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
     <div class="mb-3 border-b border-gray-500/10 pb-3">
       <h2 class="font-black text-[13px] text-blue-500 uppercase tracking-widest mb-2">Geo Performance</h2>
       <div class="flex items-center gap-1.5 text-[10px] font-bold">
@@ -2376,6 +2376,7 @@ async function sbFetchAll(table, build) {
   // ВИКЛИКАЄМО РЕНДЕР ГРАФІКА ТА ГЕО СПИСКУ
   renderTrend(data);
   renderGeoList(data);
+  setTimeout(syncGeoHeight, 0);   // після того, як обидві колонки відмалювались
   renderTable(data);
   renderWeeklyHeatmap(data);
 }
@@ -2756,6 +2757,30 @@ function renderTable(data) {
     renderTasks(currentTaskFilter);
     renderSideTasks();
   }
+
+  // Сайдбар з гео тримаємо рівно такої ж висоти, як графік. Фіксоване число
+  // тут не працює: шапка графіка на вузьких екранах переноситься в два рядки,
+  // і блоки розʼїжджаються. Тому просто міряємо сусідню колонку.
+  // offsetHeight, а не getBoundingClientRect — він у px макета, без урахування
+  // body{zoom}, тож значення можна одразу присвоїти в style.height.
+  function syncGeoHeight() {
+    const chart = document.getElementById('chart-main-col');
+    const side = document.getElementById('geo-sidebar-col');
+    if (!chart || !side) return;
+    if (window.innerWidth < 1024 || chart.classList.contains('hidden')) { side.style.height = ''; return; }
+    // Спершу згортаємо сайдбар — інакше він сам розтягує рядок сітки, і ми
+    // б міряли не власну висоту графіка, а спільну висоту рядка.
+    // На час заміру глушимо CSS-перехід, інакше блок помітно «складається»
+    // і розгортається на кожному рендері.
+    const prev = side.style.transition;
+    side.style.transition = 'none';
+    side.style.height = '0px';
+    const h = chart.offsetHeight;
+    side.style.height = h > 100 ? h + 'px' : '';
+    void side.offsetHeight;                 // застосувати без анімації
+    side.style.transition = prev;
+  }
+  window.addEventListener('resize', () => { clearTimeout(window._geoHT); window._geoHT = setTimeout(syncGeoHeight, 120); });
 
   // У картці задачі показуємо лише перший рядок — у тексті бувають довгі
   // багаторядкові списки, які рознесли б блок на пів екрана
