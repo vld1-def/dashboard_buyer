@@ -3444,45 +3444,52 @@ async function loadBonusTiers() {
   renderBonusGrid();
 }
 
+// Ставка НЕ прогресивна: уся сума рахується за відсотком того рівня,
+// у який вона потрапила. Профіт 6000 → усі 6000 по 25%, а не 5000 по 15%
+// плюс 1000 по 25%.
+// Рівень шукаємо як найвищий, чия нижня межа не більша за профіт — так
+// не важливо, чи сітка записана суцільно (5000–15000), чи з розривом
+// (5001–10000): дірок між рівнями не виникає.
 function calcBonus(profit) {
-  let total = 0;
-  const contrib = bonusTiers.map(t => {
-    const maxP = t.max_profit ?? Infinity;
-    const chunk = Math.max(0, Math.min(profit, maxP) - t.min_profit);
-    const earned = chunk * t.rate;
-    total += earned;
-    return earned;
-  });
-  return { total, contrib };
+  let idx = -1;
+  bonusTiers.forEach((t, i) => { if (profit >= Number(t.min_profit)) idx = i; });
+  if (idx < 0 || profit <= 0) return { total: 0, idx: -1, rate: 0 };
+  const rate = Number(bonusTiers[idx].rate) || 0;
+  return { total: profit * rate, idx, rate };
 }
 
 function fmtBonus(n) { return '$' + Math.round(n).toLocaleString(); }
 
 function updateBonusCalc(profit) {
   profit = Math.max(0, parseFloat(profit) || 0);
-  const { total, contrib } = calcBonus(profit);
+  const { total, idx, rate } = calcBonus(profit);
 
   document.getElementById('bonus-salary').textContent = fmtBonus(total);
-  document.getElementById('bonus-effrate').textContent = profit > 0 ? (total/profit*100).toFixed(1)+'%' : '0%';
+  document.getElementById('bonus-effrate').textContent = Math.round(rate * 100) + '%';
+  const hint = document.getElementById('bonus-formula');
+  if (hint) hint.textContent = idx >= 0
+    ? `${fmtBonus(profit)} × ${Math.round(rate * 100)}% — уся сума за ставкою свого рівня`
+    : 'Профіт нижчий за перший рівень';
 
   document.getElementById('bonus-tier-rows').innerHTML = bonusTiers.map((t, i) => {
     const maxP = t.max_profit ?? Infinity;
-    const isDone   = profit >= maxP;
-    const isActive = profit > t.min_profit && profit < maxP;
-    const segPct   = (maxP !== Infinity && isActive)
-      ? ((profit - t.min_profit) / (maxP - t.min_profit) * 100).toFixed(1)
+    const isActive = i === idx;
+    // прогрес показує, наскільки профіт просунувся всередині свого рівня —
+    // тобто як близько до наступного відсотка
+    const segPct = (isActive && maxP !== Infinity)
+      ? Math.min(100, (profit - t.min_profit) / (maxP - t.min_profit) * 100).toFixed(1)
       : 0;
     const label = t.max_profit != null
       ? `$${Number(t.min_profit).toLocaleString()} – $${Number(t.max_profit).toLocaleString()}`
       : `$${Number(t.min_profit).toLocaleString()}+`;
 
-    return `<div class="grid grid-cols-[1fr_56px_96px] px-4 py-2.5 transition-all ${isActive ? 'bg-emerald-500/[0.06] border-l-2 border-emerald-500' : ''} ${isDone ? 'opacity-25' : ''}">
+    return `<div class="grid grid-cols-[1fr_56px_96px] px-4 py-2.5 transition-all ${isActive ? 'bg-emerald-500/[0.06] border-l-2 border-emerald-500' : 'opacity-40'}">
       <div>
         <span class="text-[11px] font-bold ${isActive ? 'text-emerald-300' : 'text-slate-500'}">${label}</span>
-        ${isActive ? `<div class="mt-1 h-[2px] bg-white/5 rounded-full overflow-hidden w-full max-w-[140px]"><div class="h-full bg-emerald-500 rounded-full" style="width:${segPct}%"></div></div>` : ''}
+        ${isActive && segPct ? `<div class="mt-1 h-[2px] bg-white/5 rounded-full overflow-hidden w-full max-w-[140px]"><div class="h-full bg-emerald-500 rounded-full" style="width:${segPct}%"></div></div>` : ''}
       </div>
       <span class="text-[11px] font-black text-center self-center ${isActive ? 'text-emerald-400' : 'text-slate-600'}">${Math.round(t.rate*100)}%</span>
-      <span class="text-[12px] font-black text-right self-center ${contrib[i] > 0 ? (isActive ? 'text-emerald-400' : 'text-slate-400') : 'text-slate-700'}">${contrib[i] > 0 ? fmtBonus(contrib[i]) : '—'}</span>
+      <span class="text-[12px] font-black text-right self-center ${isActive ? 'text-emerald-400' : 'text-slate-700'}">${isActive ? fmtBonus(total) : '—'}</span>
     </div>`;
   }).join('');
 
@@ -6738,10 +6745,11 @@ function rbExportCSV(){
             <p id="bonus-salary" class="text-[28px] font-black text-emerald-400 leading-none">$0</p>
           </div>
           <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
-            <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Effective Rate</p>
+            <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Ставка рівня</p>
             <p id="bonus-effrate" class="text-[28px] font-black text-white leading-none">0%</p>
           </div>
         </div>
+        <p id="bonus-formula" class="text-[10px] font-bold text-slate-500 text-center -mt-1"></p>
         <!-- Tier breakdown -->
         <div class="bg-black/20 border border-white/5 rounded-2xl overflow-hidden">
           <div class="grid grid-cols-[1fr_56px_96px] px-4 py-2 border-b border-white/5">
