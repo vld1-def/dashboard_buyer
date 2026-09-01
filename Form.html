@@ -174,6 +174,13 @@ select {
 .rec-select.saved { animation: recFlash .8s ease; }
 /* Мітка таймзони біля акаунта */
 /* Чекбокси вибору рядків у «Базі» */
+.ag-chk { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; padding: 0 !important;
+  border: 1.5px solid rgba(255,255,255,.2); border-radius: 4px; background: rgba(0,0,0,.25);
+  cursor: pointer; position: relative; flex-shrink: 0; }
+.ag-chk:checked { background: linear-gradient(135deg,#3b82f6,#6366f1); border-color: #3b82f6; }
+.ag-chk:checked::after { content: ''; position: absolute; left: 3.5px; top: 0.5px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+
 .rec-check { appearance: none; -webkit-appearance: none; width: 15px; height: 15px; padding: 0 !important;
   border: 1.5px solid rgba(255,255,255,.22); border-radius: 4px; background: rgba(0,0,0,.25);
   cursor: pointer; position: relative; flex-shrink: 0; vertical-align: middle; }
@@ -468,6 +475,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <!-- Конвертація валют — якщо в кабінеті не долари -->
       <div id="fx-report" class="hidden card p-5 rounded-[2rem] border-l-4 border-l-amber-500 bg-slate-900/40 mb-4 text-[11px] leading-relaxed space-y-1"></div>
 
+      <!-- Акаунти без агента -->
+      <div id="agent-report" class="hidden card p-5 rounded-[2rem] border-l-4 border-l-blue-500 bg-slate-900/40 mb-4 text-[11px] leading-relaxed space-y-2"></div>
+
       <!-- Звіт про злиття FB × Keitaro — щоб було видно, що зійшлось, а що ні -->
       <div id="kt-merge-report" class="hidden card p-5 rounded-[2rem] border-l-4 border-l-emerald-500 bg-slate-900/40 mb-8 text-[11px] leading-relaxed"></div>
 
@@ -677,7 +687,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <div id="st-panel-cabinets" class="st-panel hidden space-y-8">
           <!-- Link Cabinet -->
           <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-blue-500 bg-slate-900/40">
-             <h3 class="text-xl font-black uppercase italic mb-6 text-blue-400 tracking-tight">Link Cabinet</h3>
+             <div class="flex justify-between items-center mb-6">
+               <h3 class="text-xl font-black uppercase italic text-blue-400 tracking-tight">Link Cabinet</h3>
+               <button onclick="agTogglePanel()" id="ag-toggle-btn"
+                 class="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-blue-400 transition px-3 py-1.5 rounded-lg border border-white/10 hover:border-blue-500/40">Агенти</button>
+             </div>
              <div class="flex gap-3">
                 <input type="text" id="prov-acc" placeholder="Account ID" class="flex-grow">
                 <input type="number" id="prov-tz" placeholder="TZ" title="Таймзона акаунта, напр. -8, 0, 3" class="!w-20 text-center">
@@ -686,6 +700,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                   <button onclick="promptNewAgency()" class="bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black text-white transition-all">+</button>
                 </div>
                 <button onclick="addProvider()" class="bg-blue-600 hover:bg-blue-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Link</button>
+             </div>
+
+             <!-- Кого показувати у випадайці: тих, з ким реально працюєш -->
+             <div id="ag-panel" class="hidden mt-4 pt-4 border-t border-white/5">
+               <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">
+                 Знята галочка ховає агента зі списку. Акаунти, вже привʼязані до нього, не змінюються.</p>
+               <div id="ag-list" class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1.5"></div>
              </div>
           </div>
 
@@ -1788,6 +1809,26 @@ function renderFxReport(used) {
   }).join('');
 }
 
+// Акаунти, у яких немає агента — інакше комісія по них просто не порахується,
+// і зрозумієш це вже за підсумками місяця.
+function renderAgentReport(noAgent, hidden) {
+  const el = document.getElementById('agent-report');
+  if (!el) return;
+  if (!noAgent.size && !hidden.size) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  const chips = arr => [...arr].slice(0, 20).map(a =>
+      `<span class="inline-block px-1.5 py-0.5 rounded bg-black/30 font-mono text-[10px] ml-1">${a}</span>`).join('')
+    + (arr.size > 20 ? `<span class="opacity-50"> …ще ${arr.size - 20}</span>` : '');
+  const parts = [];
+  if (noAgent.size) parts.push(`<div class="flex gap-2 items-start text-amber-300">
+    <span>⚠️</span><div><b>${noAgent.size}</b> акаунтів без агента — комісія по них не рахується,
+    записались як <b>Direct(0%)</b>. Привʼяжи їх у <b>Link Cabinet</b>:<br>${chips(noAgent)}</div></div>`);
+  if (hidden.size) parts.push(`<div class="flex gap-2 items-start text-slate-400">
+    <span>👁</span><div>Агент прихований зі списку, але акаунти на ньому досі крутять —
+    дані записались правильно, просто май на увазі:<br>${chips(hidden)}</div></div>`);
+  el.innerHTML = parts.join('');
+  el.classList.remove('hidden');
+}
+
 // Звіт про злиття: скільки зійшлось і — головне — що НЕ зійшлось.
 // Мовчазне розходження тут найдорожче: рядок з ФБ-івськими конверсіями виглядає
 // так само, як уточнений з Keitaro, і помилку помічаєш уже в звітах.
@@ -1947,6 +1988,7 @@ async function processCampaignData(map, lines) {
     need.forEach(k => { if (k.startsWith(cur + '|')) fx[k] = rate; });
   }
   const fxUsed = {};   // для звіту: скільки і за яким курсом перерахували
+  const accNoAgent = new Set(), accHiddenAgent = new Set();
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
@@ -1979,7 +2021,12 @@ async function processCampaignData(map, lines) {
     // [Постачальник] у назві воронки — це лише мітка для вибору профілю сабів,
     // у дані вона не йде, щоб воронка збігалася зі старими записами.
     const funnelName = apFunnelClean(mappingDB.funnels[ktid]) || 'Unknown (' + ktid + ')';
-    const agency = mappingDB.providers[accName] || 'Direct(0%)';
+    const mappedAgent = mappingDB.providers[accName];
+    // Акаунт без привʼязки мовчки стає Direct(0%) — комісія агента просто
+    // не рахується. Збираємо такі, щоб показати після імпорту.
+    if (!mappedAgent) accNoAgent.add(accName);
+    else if (hiddenAgents.has(mappedAgent)) accHiddenAgent.add(`${accName} → ${mappedAgent}`);
+    const agency = mappedAgent || 'Direct(0%)';
 
     let spend = parseFloat(String(row[map.spend] || "0").replace(/[^\d.-]/g, '')) || 0;
     const cur = String(row[map.cur] || 'USD').toUpperCase();
@@ -2023,6 +2070,7 @@ async function processCampaignData(map, lines) {
   }
 
   renderFxReport(fxUsed);
+  renderAgentReport(accNoAgent, accHiddenAgent);
 
   // Уточнюємо конверсії з Keitaro (якщо файл завантажено)
   const merged = applyKeitaroMerge(dailyAggregated, creativeAggregated);
@@ -2553,6 +2601,28 @@ function promptNewTeam() {
   }
 }
 // 3. Завантаження списку унікальних агентів для випадаючого списку
+// Агентів у команді накопичується багато, а працюєш з кількома. Приховані
+// живуть у team_settings і зникають лише з випадайок — на вже привʼязані
+// акаунти це не впливає, і в звітах вони лишаються як були.
+let hiddenAgents = new Set();
+let allAgencies = [];
+
+async function loadHiddenAgents() {
+  try {
+    const { data } = await sb.from('team_settings')
+      .select('value').eq('team_name', currentTeam).eq('key', 'hidden_agents').limit(1);
+    hiddenAgents = new Set(data && data.length ? (JSON.parse(data[0].value) || []) : []);
+  } catch (e) { hiddenAgents = new Set(); }
+}
+
+async function saveHiddenAgents() {
+  try {
+    await sb.from('team_settings').upsert(
+      { team_name: currentTeam, key: 'hidden_agents', value: JSON.stringify([...hiddenAgents]) },
+      { onConflict: 'team_name,key' });
+  } catch (e) { alert('Не вдалось зберегти: ' + e.message); }
+}
+
 async function loadAgencies() {
   const { data, error } = await sb
     .from('accounts_mapping')
@@ -2560,27 +2630,64 @@ async function loadAgencies() {
     .eq('team_name', currentTeam);
 
   if (!error) {
-    const select = document.getElementById('prov-agency');
     // Беремо дефолтні та додаємо унікальні з бази
     let agencies = ["BlueGlow(3%)", "AdForge(5%)", "2B Digital(5.5%)", "Direct(0%)"];
     if (data) {
       const fromDB = data.map(item => item.provider_name);
       agencies = [...new Set([...agencies, ...fromDB])].filter(Boolean);
     }
-    window.agenciesList = agencies;          // використовується у списках «Бази»
-    select.innerHTML = agencies.map(a => `<option value="${a}">${a}</option>`).join('');
+    allAgencies = agencies.sort((a, b) => a.localeCompare(b, 'uk'));
+    await loadHiddenAgents();
+    agRenderSelect();
+    agRenderPanel();
   }
+}
+
+function agVisible() { return allAgencies.filter(a => !hiddenAgents.has(a)); }
+
+function agRenderSelect() {
+  const select = document.getElementById('prov-agency');
+  if (!select) return;
+  const list = agVisible();
+  window.agenciesList = list;              // використовується у списках «Бази»
+  select.innerHTML = list.map(a => `<option value="${a}">${a}</option>`).join('');
+}
+
+function agTogglePanel() {
+  const p = document.getElementById('ag-panel');
+  if (p) { p.classList.toggle('hidden'); if (!p.classList.contains('hidden')) agRenderPanel(); }
+}
+
+function agRenderPanel() {
+  const el = document.getElementById('ag-list');
+  if (!el) return;
+  const btn = document.getElementById('ag-toggle-btn');
+  if (btn) btn.textContent = hiddenAgents.size ? `Агенти · сховано ${hiddenAgents.size}` : 'Агенти';
+  el.innerHTML = allAgencies.map(a => {
+    const on = !hiddenAgents.has(a);
+    return `<label class="flex items-center gap-2 cursor-pointer min-w-0">
+      <input type="checkbox" ${on ? 'checked' : ''} onchange="agToggle('${a.replace(/'/g, "\\'")}', this.checked)" class="ag-chk">
+      <span class="text-[11px] font-bold truncate ${on ? 'text-slate-200' : 'text-slate-600 line-through'}" title="${a}">${a}</span>
+    </label>`;
+  }).join('');
+}
+
+async function agToggle(name, on) {
+  on ? hiddenAgents.delete(name) : hiddenAgents.add(name);
+  agRenderSelect();
+  agRenderPanel();
+  await saveHiddenAgents();
 }
   // 4. Додавання нового агента в список (через Prompt)
 function promptNewAgency() {
   const name = prompt("Введіть назву агента та % (напр: Storm(6%)):");
-  if (name && name.trim().length > 2) {
+  const n = (name || '').trim();
+  if (n.length > 2) {
+    if (!allAgencies.includes(n)) allAgencies = [...allAgencies, n].sort((a, b) => a.localeCompare(b, 'uk'));
+    hiddenAgents.delete(n);        // щойно доданий агент має бути видимим
+    agRenderSelect(); agRenderPanel();
     const select = document.getElementById('prov-agency');
-    const opt = document.createElement('option');
-    opt.value = name.trim();
-    opt.innerText = name.trim();
-    opt.selected = true;
-    select.appendChild(opt);
+    if (select) select.value = n;
     showStatus("Агента додано до списку. Тепер натисніть 'Link'");
   }
 }
