@@ -1384,6 +1384,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <option value="android_tablet">Android Tablet</option>
                 <option value="desktop">Desktop</option>
               </select>
+              <!-- Фільтр по тегу + режим «папок» -->
+              <select id="creative-tag-filter" onchange="searchCreative()" class="h-[40px] bg-gray-500/10 border border-gray-500/20 rounded-2xl px-4 py-0 text-xs font-bold uppercase outline-none focus:border-violet-500 text-dynamic min-w-[130px]">
+                <option value="">All tags</option>
+              </select>
+              <button id="cr-group-tags" onclick="crToggleGroupTags()" title="Показати списком по тегах — як папки"
+                class="h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">📁</button>
               <!-- Числовий фільтр: метрика / умова / значення -->
               <div class="h-[40px] flex items-center gap-1.5 bg-gray-500/10 border border-gray-500/20 rounded-2xl px-3">
                 <select id="cr-f-metric" onchange="searchCreative()" class="bg-transparent text-xs font-bold uppercase outline-none cursor-pointer text-dynamic">
@@ -1442,6 +1448,17 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <span id="stats-scope-label" class="text-base font-black text-blue-400 uppercase tracking-widest text-white">Total Stats Analysis</span>
     </div>
     <button onclick="resetCreativeScope()" class="text-[10px] font-black bg-white/5 px-3 py-1.5 rounded-xl uppercase hover:bg-white/10 transition border border-white/5 text-white">Reset Filter</button>
+  </div>
+
+  <!-- Теги креатива: до якого слота / формату він належить -->
+  <div class="flex items-center gap-2 flex-wrap mb-5 -mt-3">
+    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Теги</span>
+    <div id="cr-tag-chips" class="flex items-center gap-1.5 flex-wrap"></div>
+    <input id="cr-tag-input" list="cr-tag-all" placeholder="+ тег"
+           onkeydown="if(event.key==='Enter'){event.preventDefault();crAddTagFromInput();}"
+           onblur="crAddTagFromInput()"
+           class="w-32 bg-black/25 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-violet-500">
+    <datalist id="cr-tag-all"></datalist>
   </div>
 
   <!-- СІТКА МЕТРИК: Spend | Clicks | Installs | Regs | Deps (кожна колонка — кількість + ціна) -->
@@ -2199,6 +2216,8 @@ async function sbFetchAll(table, build) {
   window.creativesRawData = creativesRawData;
 
   await loadCreativeStars();
+  await loadCreativeTags();
+  crPopulateTagFilter();
 
   if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
   if (typeof renderCreativeSidebar === 'function') renderCreativeSidebar("");
@@ -2946,6 +2965,11 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
   // Тільки з мітками
   if (crStarOnly) list = list.filter(c => crStars.has(c.cid));
 
+  // Фільтр по тегу: «— без тега —» окремим пунктом, щоб швидко знаходити нерозібране
+  const tagF = document.getElementById('creative-tag-filter')?.value || '';
+  if (tagF === '__none') list = list.filter(c => !crTagsOf(c.cid).length);
+  else if (tagF) list = list.filter(c => crTagsOf(c.cid).includes(tagF));
+
   const cnt = document.getElementById('cr-filter-count');
   if (cnt) cnt.textContent = list.length === totalBefore ? `${totalBefore} creatives` : `${list.length} of ${totalBefore}`;
 
@@ -2958,7 +2982,42 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
   const gEsc = geoFilter.replace(/'/g, "\\'");
   const dEsc = deviceFilter.replace(/'/g, "\\'");
 
-  sidebar.innerHTML = list.map(c => {
+  // Режим «папок»: той самий список, але розкладений по тегах, і над кожною
+  // групою — підсумок. Питання зазвичай не «який крео», а «який слот заходить».
+  if (crGroupTags) {
+    const groups = {};
+    list.forEach(c => {
+      const tags = crTagsOf(c.cid);
+      (tags.length ? tags : ['— без тега —']).forEach(t => (groups[t] = groups[t] || []).push(c));
+    });
+    const order = Object.keys(groups).sort((a, b) =>
+      groups[b].reduce((s, c) => s + c.s, 0) - groups[a].reduce((s, c) => s + c.s, 0));
+    sidebar.innerHTML = order.map(t => {
+      const g = groups[t];
+      const sum = g.reduce((a, c) => ({ s: a.s + c.s, ins: a.ins + c.ins, r: a.r + c.r, dp: a.dp + c.dp }),
+                           { s: 0, ins: 0, r: 0, dp: 0 });
+      const cpa = sum.dp ? '$' + (sum.s / sum.dp).toFixed(1) : '—';
+      return `<div class="mb-3">
+        <div class="flex justify-between items-baseline px-1 pb-1 mb-1 border-b border-violet-500/20">
+          <span class="text-[10px] font-black uppercase tracking-widest text-violet-300 truncate">${t}
+            <span class="text-slate-600">· ${g.length}</span></span>
+          <span class="text-[10px] font-bold text-slate-500 shrink-0">$${Math.round(sum.s)} · ${sum.dp} dep · CPA ${cpa}</span>
+        </div>
+        ${g.map(c => crSidebarRow(c, qEsc, gEsc, dEsc)).join('')}
+      </div>`;
+    }).join('');
+    document.getElementById('creative-placeholder')?.classList.add('hidden');
+    return;
+  }
+
+  sidebar.innerHTML = list.map(c => crSidebarRow(c, qEsc, gEsc, dEsc)).join('');
+  document.getElementById('creative-placeholder')?.classList.add('hidden');
+}
+
+// Один рядок списку креативів — винесено, щоб звичайний режим і режим папок
+// малювали однаково
+function crSidebarRow(c, qEsc, gEsc, dEsc) {
+  {
     const isActive = currentCreativeID === c.cid;
     const cidEsc = String(c.cid).replace(/'/g, "\\'");
     const starred = crStars.has(c.cid);
@@ -2969,7 +3028,9 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
               ${isActive ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'hover:bg-white/5 text-slate-400'}">
         <button onclick="crToggleStar(event,'${cidEsc}')" title="${starred?'Remove star':'Add star'}"
                 class="flex-shrink-0 text-[13px] leading-none transition ${starred?'text-amber-400':'opacity-25 hover:opacity-70'}">${starred?'★':'☆'}</button>
-        <span class="text-[10px] font-black truncate flex-1">${c.cid}</span>
+        <span class="text-[10px] font-black truncate flex-1">${c.cid}${crTagsOf(c.cid).length
+          ? `<span class="ml-1.5 normal-case font-bold text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 align-middle">${crTagsOf(c.cid)[0]}${crTagsOf(c.cid).length>1?' +'+(crTagsOf(c.cid).length-1):''}</span>`
+          : ''}</span>
         <span class="text-[10px] font-bold opacity-60 flex-shrink-0">$${Math.round(c.s)}</span>
         <button onclick="copyID(event, '${cidEsc}')" title="Copy creative ID"
                 class="flex-shrink-0 opacity-40 hover:opacity-100 transition p-0.5 rounded hover:bg-white/10">
@@ -2977,12 +3038,87 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
         </button>
       </div>
     `;
-  }).join('');
-
-  document.getElementById('creative-placeholder')?.classList.add('hidden');
+  }
 }
 
 // ===== МІТКИ (зірочки) на креативах =====
+// ===== ТЕГИ КРЕАТИВІВ =====
+// Тег належить креативу (cid), а не рядку статистики: на один креатив
+// припадає по 10-20 рядків (день × акаунт × девайс × плейсмент), і якби тег
+// жив у них, його довелось би дублювати всюди, а нові імпорти приходили б
+// без нього. Так само, як зірочки, лежить у team_settings — міграція не
+// потрібна, а обсяг мізерний: унікальних крео близько сотні на команду.
+let crTags = {};          // { cid: [теги] }
+let crGroupTags = false;  // режим «папок»
+
+async function loadCreativeTags() {
+  try { crTags = JSON.parse(await getTeamSetting('creative_tags') || '{}') || {}; }
+  catch (e) { crTags = {}; }
+}
+async function saveCreativeTags() {
+  try { await setTeamSetting('creative_tags', JSON.stringify(crTags)); }
+  catch (e) { console.warn('Не вдалось зберегти теги:', e.message); }
+}
+const crTagsOf = cid => crTags[cid] || [];
+function crAllTags() {
+  return [...new Set(Object.values(crTags).flat())].sort((a, b) => a.localeCompare(b, 'uk'));
+}
+
+function crAddTag(cid, tag) {
+  const t = String(tag || '').trim();
+  if (!cid || !t) return;
+  const list = crTagsOf(cid);
+  if (list.some(x => x.toLowerCase() === t.toLowerCase())) return;
+  crTags[cid] = [...list, t];
+  saveCreativeTags(); crRenderTagUI(); crPopulateTagFilter(); searchCreative();
+}
+function crRemoveTag(cid, tag) {
+  crTags[cid] = crTagsOf(cid).filter(x => x !== tag);
+  if (!crTags[cid].length) delete crTags[cid];
+  saveCreativeTags(); crRenderTagUI(); crPopulateTagFilter(); searchCreative();
+}
+function crAddTagFromInput() {
+  const el = document.getElementById('cr-tag-input');
+  if (!el || !el.value.trim() || !currentCreativeID) return;
+  const v = el.value; el.value = '';
+  crAddTag(currentCreativeID, v);
+}
+
+// Чипи тегів на картці обраного креатива
+function crRenderTagUI() {
+  const box = document.getElementById('cr-tag-chips');
+  const dl = document.getElementById('cr-tag-all');
+  if (dl) dl.innerHTML = crAllTags().map(t => `<option value="${t}"></option>`).join('');
+  if (!box) return;
+  const list = crTagsOf(currentCreativeID);
+  box.innerHTML = list.length ? list.map(t => `
+    <span class="inline-flex items-center gap-1 bg-violet-500/15 border border-violet-500/30 text-violet-300 text-[11px] font-black px-2 py-0.5 rounded-lg">
+      ${t}<button onclick="crRemoveTag('${String(currentCreativeID).replace(/'/g,"\\'")}','${t.replace(/'/g,"\\'")}')"
+        class="opacity-50 hover:opacity-100 leading-none">✕</button>
+    </span>`).join('')
+    : '<span class="text-[10px] font-bold text-slate-600 italic">поки без тега</span>';
+}
+
+function crPopulateTagFilter() {
+  const sel = document.getElementById('creative-tag-filter');
+  if (!sel) return;
+  const cur = sel.value;
+  const tags = crAllTags();
+  sel.innerHTML = '<option value="">All tags</option>'
+    + tags.map(t => `<option value="${t}">${t}</option>`).join('')
+    + '<option value="__none">— без тега —</option>';
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
+}
+
+function crToggleGroupTags() {
+  crGroupTags = !crGroupTags;
+  const b = document.getElementById('cr-group-tags');
+  b.className = crGroupTags
+    ? 'h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-violet-500/20 text-violet-300 border-violet-500/40'
+    : 'h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white';
+  searchCreative();
+}
+
 let crStars = new Set();
 let crStarOnly = false;
 
@@ -3303,6 +3439,7 @@ function crRenderTrendModal() {
 }
 
 function crSyncStarBtn() {
+  crRenderTagUI();
   const b = document.getElementById('cr-star-toggle');
   if (!b) return;
   const on = crStars.has(currentCreativeID);
