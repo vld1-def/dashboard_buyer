@@ -1375,12 +1375,25 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
               <input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID…"
                 class="h-[34px] w-40 bg-gray-500/10 border border-gray-500/20 rounded-xl px-3 text-[11px] font-bold uppercase tracking-tight outline-none focus:border-blue-500 text-dynamic">
 
-              <!-- Період: які креативи лились у ці дні -->
-              <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2 text-[11px] font-bold">
-                <input type="date" id="cr-date-from" onchange="searchCreative()" class="bg-transparent outline-none w-[104px]">
-                <span class="opacity-25">/</span>
-                <input type="date" id="cr-date-to" onchange="searchCreative()" class="bg-transparent outline-none w-[104px]">
-                <button onclick="crClearDates()" title="Очистити період" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
+              <!-- Період: сама кнопка вузька, поля дат ховаються в попап —
+                   два нативні date-інпути займали пів ряду -->
+              <div class="relative">
+                <button id="cr-date-btn" onclick="event.stopPropagation(); crToggleDatePop()"
+                  class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white whitespace-nowrap">Період</button>
+                <div id="cr-date-pop" class="hidden absolute right-0 mt-2 z-[80] card rounded-2xl border border-white/10 p-3 shadow-2xl w-[230px]"
+                     onclick="event.stopPropagation()">
+                  <div class="flex items-center gap-1 bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold mb-2">
+                    <input type="date" id="cr-date-from" onchange="searchCreative()" class="bg-transparent outline-none w-full min-w-0">
+                    <span class="opacity-25">/</span>
+                    <input type="date" id="cr-date-to" onchange="searchCreative()" class="bg-transparent outline-none w-full min-w-0">
+                  </div>
+                  <div class="grid grid-cols-2 gap-1">
+                    <button onclick="crQuickDate('today')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Сьогодні</button>
+                    <button onclick="crQuickDate('yesterday')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Вчора</button>
+                    <button onclick="crQuickDate('7')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">7 днів</button>
+                    <button onclick="crClearDates()" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition">Скинути</button>
+                  </div>
+                </div>
               </div>
 
               <select id="creative-geo-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
@@ -3184,6 +3197,36 @@ function crClearDates() {
   const a = document.getElementById('cr-date-from'), b = document.getElementById('cr-date-to');
   if (a) a.value = ''; if (b) b.value = '';
   searchCreative();
+}
+
+function crToggleDatePop() {
+  const p = document.getElementById('cr-date-pop');
+  if (p) p.classList.toggle('hidden');
+}
+// клік поза попапом закриває його
+document.addEventListener('click', () => document.getElementById('cr-date-pop')?.classList.add('hidden'));
+
+function crQuickDate(kind) {
+  const d = n => { const x = new Date(); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+  const from = document.getElementById('cr-date-from'), to = document.getElementById('cr-date-to');
+  if (kind === 'today')      { from.value = d(0); to.value = d(0); }
+  else if (kind === 'yesterday') { from.value = d(1); to.value = d(1); }
+  else                       { from.value = d(6); to.value = d(0); }
+  searchCreative();
+}
+
+// Підпис на кнопці показує вибраний період, щоб не відкривати попап заради перевірки
+function crSyncDateBtn() {
+  const b = document.getElementById('cr-date-btn');
+  if (!b) return;
+  const { from, to } = crDateRange();
+  const short = v => v ? v.slice(8) + '.' + v.slice(5, 7) : '';
+  const active = from || to;
+  b.textContent = !active ? 'Період'
+    : (from === to ? short(from) : `${short(from) || '…'}–${short(to) || '…'}`);
+  b.className = active
+    ? 'h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-violet-500/20 text-violet-300 border-violet-500/40 whitespace-nowrap'
+    : 'h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white whitespace-nowrap';
 }
 
 // Рядки поточного креатива з урахуванням активних фільтрів акаунта/гео/девайса
@@ -5258,6 +5301,7 @@ function searchCreative() {
   const query = document.getElementById('creative-search').value.toLowerCase();
   const geoFilter = document.getElementById('creative-geo-filter').value.toLowerCase();
   const deviceFilter = (document.getElementById('creative-device-filter')?.value || '').toLowerCase();
+  crSyncDateBtn();
   renderCreativeSidebar(query, geoFilter, deviceFilter);
   // Фільтри (насамперед період) міняють і цифри всередині обраного креатива,
   // тому картку теж перемальовуємо — інакше список уже за новий період,
