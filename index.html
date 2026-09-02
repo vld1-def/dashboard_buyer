@@ -2361,8 +2361,14 @@ async function sbFetchAll(table, build) {
       const match = agentRaw.match(/(\d+(?:\.\d+)?)%/);
       if (match) tc += (s * (parseFloat(match[1]) / 100));
     }
+    // Копимо не тільки спенд, а й саму комісію — інакше в тултіпі видно
+    // «скільки відкрутили в агента», але не «скільки він з цього забрав»
     const aName = agentRaw.split('(')[0].trim();
-    agentMap[aName] = (agentMap[aName] || 0) + s;
+    const pct = agentRaw.match(/(\d+(?:\.\d+)?)%/) ? parseFloat(agentRaw.match(/(\d+(?:\.\d+)?)%/)[1]) : 0;
+    const am = agentMap[aName] || (agentMap[aName] = { s: 0, fee: 0, pcts: new Set() });
+    am.s += s;
+    am.fee += s * pct / 100;
+    am.pcts.add(pct);
   });
 
   // 3. ФІНАЛЬНІ РОЗРАХУНКИ
@@ -2396,13 +2402,24 @@ async function sbFetchAll(table, build) {
   // Оновлення списку агентств у тултіпі
   const breakdownList = document.getElementById('spend-breakdown-list');
   if (breakdownList) {
-    breakdownList.innerHTML = Object.entries(agentMap)
-      .sort((a, b) => b[1] - a[1])
-      .map(([n, s]) => `
-        <div class="flex justify-between items-center text-[11px] font-bold">
-          <span class="text-slate-400 uppercase truncate pr-4">${n}</span>
-          <span class="text-white font-mono">${formatCurrency(s)}</span>
-        </div>`).join('');
+    const rows = Object.entries(agentMap).sort((a, b) => b[1].s - a[1].s);
+    const feeTotal = rows.reduce((a, [, v]) => a + v.fee, 0);
+    breakdownList.innerHTML = rows.map(([n, v]) => {
+      const pct = v.pcts.size === 1 ? [...v.pcts][0] : null;
+      const fee = v.fee > 0
+        ? `<span class="text-amber-400/90"> + ${formatCurrency(v.fee)}${pct !== null ? ` <span class="opacity-60">(${pct}%)</span>` : ''}</span>`
+        : `<span class="text-slate-600"> · без комісії</span>`;
+      return `<div class="flex justify-between items-baseline gap-3 text-[11px] font-bold">
+          <span class="text-slate-400 uppercase truncate">${n}</span>
+          <span class="font-mono whitespace-nowrap"><span class="text-white">${formatCurrency(v.s)}</span>${fee}</span>
+        </div>`;
+    }).join('')
+    + (feeTotal > 0
+        ? `<div class="flex justify-between items-baseline gap-3 text-[11px] font-black mt-1.5 pt-1.5 border-t border-white/10">
+             <span class="text-amber-400/70 uppercase">Комісій разом</span>
+             <span class="font-mono text-amber-400">${formatCurrency(feeTotal)}</span>
+           </div>`
+        : '');
   }
 
   // ВИКЛИКАЄМО РЕНДЕР ГРАФІКА ТА ГЕО СПИСКУ
