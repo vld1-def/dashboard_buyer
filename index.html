@@ -1370,13 +1370,23 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <div id="creative-analyzer-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-blue-500">
         <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
           <div><h2 class="text-xl font-black uppercase tracking-tight text-dynamic">Creative Analyzer</h2><p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest tracking-tight font-black">Full Funnel Tracking</p></div>
-           <div class="flex items-center gap-2 w-full md:w-auto flex-wrap">
-            <!-- Фільтр ГЕО -->
-              <select id="creative-geo-filter" onchange="searchCreative()" class="h-[40px] bg-gray-500/10 border border-gray-500/20 rounded-2xl px-4 py-0 text-xs font-bold uppercase outline-none focus:border-blue-500 text-dynamic min-w-[120px]">
+           <div class="flex items-center gap-1.5 w-full md:w-auto flex-wrap text-dynamic">
+              <!-- Пошук -->
+              <input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID…"
+                class="h-[34px] w-40 bg-gray-500/10 border border-gray-500/20 rounded-xl px-3 text-[11px] font-bold uppercase tracking-tight outline-none focus:border-blue-500 text-dynamic">
+
+              <!-- Період: які креативи лились у ці дні -->
+              <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2 text-[11px] font-bold">
+                <input type="date" id="cr-date-from" onchange="searchCreative()" class="bg-transparent outline-none w-[104px]">
+                <span class="opacity-25">/</span>
+                <input type="date" id="cr-date-to" onchange="searchCreative()" class="bg-transparent outline-none w-[104px]">
+                <button onclick="crClearDates()" title="Очистити період" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
+              </div>
+
+              <select id="creative-geo-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
                 <option value="">All Geo</option>
               </select>
-              <!-- Feature 11: Device filter -->
-              <select id="creative-device-filter" onchange="searchCreative()" class="h-[40px] bg-gray-500/10 border border-gray-500/20 rounded-2xl px-4 py-0 text-xs font-bold uppercase outline-none focus:border-blue-500 text-dynamic min-w-[120px]">
+              <select id="creative-device-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
                 <option value="">All Devices</option>
                 <option value="ios_phone">iPhone</option>
                 <option value="ios_tablet">iPad</option>
@@ -1384,43 +1394,33 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <option value="android_tablet">Android Tablet</option>
                 <option value="desktop">Desktop</option>
               </select>
-              <!-- Фільтр по тегу + режим «папок» -->
-              <select id="creative-tag-filter" onchange="searchCreative()" class="h-[40px] bg-gray-500/10 border border-gray-500/20 rounded-2xl px-4 py-0 text-xs font-bold uppercase outline-none focus:border-violet-500 text-dynamic min-w-[130px]">
+              <select id="creative-tag-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-violet-500 text-dynamic">
                 <option value="">All tags</option>
               </select>
               <button id="cr-group-tags" onclick="crToggleGroupTags()" title="Показати списком по тегах — як папки"
-                class="h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">📁</button>
+                class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">📁</button>
+              <button id="cr-star-only" onclick="crToggleStarOnly()" title="Тільки з мітками"
+                class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">★</button>
+
               <!-- Числовий фільтр: метрика / умова / значення -->
-              <div class="h-[40px] flex items-center gap-1.5 bg-gray-500/10 border border-gray-500/20 rounded-2xl px-3">
-                <select id="cr-f-metric" onchange="searchCreative()" class="bg-transparent text-xs font-bold uppercase outline-none cursor-pointer text-dynamic">
+              <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2">
+                <select id="cr-f-metric" onchange="searchCreative()" class="bg-transparent text-[11px] font-bold uppercase outline-none cursor-pointer text-dynamic">
                   <option value="">Metric</option>
-                  <option value="spend">Spend</option>
-                  <option value="clicks">Clicks</option>
-                  <option value="installs">Installs</option>
-                  <option value="regs">Regs</option>
-                  <option value="deps">Deposits</option>
-                  <option value="cpi">CPI</option>
-                  <option value="cpl">CPL</option>
-                  <option value="cpa">CPA</option>
-                  <option value="cpc">CPC</option>
-                  <option value="r2d">R2D %</option>
+                  <option value="spend">Spend</option><option value="clicks">Clicks</option>
+                  <option value="installs">Installs</option><option value="regs">Regs</option>
+                  <option value="deps">Deposits</option><option value="cpi">CPI</option>
+                  <option value="cpl">CPL</option><option value="cpa">CPA</option>
+                  <option value="cpc">CPC</option><option value="r2d">R2D %</option>
                 </select>
-                <select id="cr-f-op" onchange="searchCreative()" class="bg-transparent text-xs font-bold outline-none cursor-pointer text-dynamic">
-                  <option value="lt">&lt;</option>
-                  <option value="lte">≤</option>
-                  <option value="gt">&gt;</option>
-                  <option value="gte">≥</option>
-                  <option value="eq">=</option>
+                <select id="cr-f-op" onchange="searchCreative()" class="bg-transparent text-[11px] font-bold outline-none cursor-pointer text-dynamic">
+                  <option value="lt">&lt;</option><option value="lte">≤</option>
+                  <option value="gt">&gt;</option><option value="gte">≥</option><option value="eq">=</option>
                 </select>
                 <input type="number" step="any" id="cr-f-val" oninput="searchCreative()" placeholder="20"
-                       class="w-16 h-[26px] bg-white/5 border border-white/10 rounded-lg px-2 text-xs font-bold outline-none focus:border-blue-500 text-dynamic">
-                <button onclick="crClearFilter()" title="Reset filter"
-                        class="text-slate-500 hover:text-white text-sm leading-none px-1">✕</button>
+                  class="w-14 h-[24px] bg-white/5 border border-white/10 rounded-lg px-1.5 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
+                <button onclick="crClearFilter()" title="Скинути" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
               </div>
-              <!-- Тільки з мітками -->
-              <button id="cr-star-only" onclick="crToggleStarOnly()" title="Show starred only"
-                      class="h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">★</button>
-              <div class="relative flex-1 min-w-[160px] md:max-w-sm text-dynamic"><input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID..." class="w-full h-[40px] bg-gray-500/10 border border-gray-500/20 rounded-2xl px-5 py-0 text-sm outline-none focus:border-blue-500 font-bold uppercase tracking-tight text-dynamic"></div>
+
               <span id="cr-filter-count" class="text-[10px] font-bold text-slate-500 whitespace-nowrap"></span>
           </div>
         </div>
@@ -2911,7 +2911,9 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
   const grouped = {};
   const dataToUse = window.creativesRawData || [];
 
+  const dr = crDateRange();
   dataToUse.forEach(d => {
+    if (!crInDate(d, dr)) return;          // крео, що не лився в ці дні, у список не потрапляє
     const cid = d.cid || "Unknown";
     const geo = (d.geo || "").toLowerCase();
     const dev = normalizeDevice(d.device || '');
@@ -3165,10 +3167,31 @@ function crTogglePanel(kind) {
   if (open) crRenderPanels();
 }
 
+// Період з шапки. Діє і на список креативів, і на цифри всередині обраного —
+// щоб «які крео лились 7 серпня» і «скільки вони дали того дня» були одним
+// і тим самим фільтром, а не двома різними.
+function crDateRange() {
+  return { from: document.getElementById('cr-date-from')?.value || '',
+           to:   document.getElementById('cr-date-to')?.value   || '' };
+}
+function crInDate(row, r) {
+  const d = row.date || '';
+  if (r.from && d < r.from) return false;
+  if (r.to && d > r.to) return false;
+  return true;
+}
+function crClearDates() {
+  const a = document.getElementById('cr-date-from'), b = document.getElementById('cr-date-to');
+  if (a) a.value = ''; if (b) b.value = '';
+  searchCreative();
+}
+
 // Рядки поточного креатива з урахуванням активних фільтрів акаунта/гео/девайса
 function crCurrentRows() {
   const dev = document.getElementById('creative-device-filter')?.value || '';
+  const dr = crDateRange();
   return (window.creativesRawData || []).filter(d =>
+    crInDate(d, dr) &&
     (d.cid || '').toLowerCase() === (currentCreativeID || '').toLowerCase() &&
     (!activeCrAcc || d.account === activeCrAcc) &&
     (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo) &&
@@ -3456,7 +3479,9 @@ function selectCreative(cid) {
   async function showCreativeStats(accF, geoF) {
     if(!currentCreativeID) return;
     if(accF !== undefined) activeCrAcc = accF; if(geoF !== undefined) activeCrGeo = geoF;
-    const filtered = creativesRawData.filter(d => d.cid.toLowerCase() === currentCreativeID.toLowerCase());
+    const dr = crDateRange();
+    const filtered = creativesRawData.filter(d =>
+      crInDate(d, dr) && d.cid.toLowerCase() === currentCreativeID.toLowerCase());
     let allGeos = new Set(); filtered.forEach(i => { if(i.geo && i.geo !== "??") allGeos.add(i.geo.toUpperCase()); });
     if (allGeos.size === 1 && activeCrGeo === null) activeCrGeo = Array.from(allGeos)[0];
     // Feature 11: apply device filter from dropdown
@@ -5234,6 +5259,10 @@ function searchCreative() {
   const geoFilter = document.getElementById('creative-geo-filter').value.toLowerCase();
   const deviceFilter = (document.getElementById('creative-device-filter')?.value || '').toLowerCase();
   renderCreativeSidebar(query, geoFilter, deviceFilter);
+  // Фільтри (насамперед період) міняють і цифри всередині обраного креатива,
+  // тому картку теж перемальовуємо — інакше список уже за новий період,
+  // а метрики праворуч лишаються від старого.
+  if (currentCreativeID && typeof showCreativeStats === 'function') showCreativeStats();
 }
 
 // Feature 4: switchGeoTab
