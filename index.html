@@ -8391,12 +8391,14 @@ function uqRemoveFile(i) {
 function uqProbe(file) {
   return new Promise(resolve => {
     const v = document.createElement('video');
+    let settled = false;
+    const finish = r => { if (settled) return; settled = true; try { URL.revokeObjectURL(v.src); } catch (e) {} resolve(r); };
     v.preload = 'metadata';
-    v.onloadedmetadata = () => {
-      resolve({ w: v.videoWidth, h: v.videoHeight, dur: v.duration || 0 });
-      URL.revokeObjectURL(v.src);
-    };
-    v.onerror = () => resolve({ w: 0, h: 0, dur: 0 });
+    v.onloadedmetadata = () => finish({ w: v.videoWidth, h: v.videoHeight, dur: v.duration || 0 });
+    v.onerror = () => finish({ w: 0, h: 0, dur: 0 });
+    // Запобіжник: на деяких контейнерах браузер не кидає ні loadedmetadata,
+    // ні error — і тоді черга просто зависала б назавжди на цьому файлі
+    setTimeout(() => finish({ w: 0, h: 0, dur: 0 }), 8000);
     v.src = URL.createObjectURL(file);
   });
 }
@@ -8479,6 +8481,23 @@ async function uqLoadFFmpeg(onStatus) {
 
 function uqCancel() { uqStop = true; document.getElementById('uq-status').textContent = 'Зупиняю після поточного варіанта…'; }
 
+const uqFmt = ms => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
+
+// Між файлами перезапускаємо ffmpeg. Пам'ять WebAssembly не звільняється
+// після обробки — після великого відео наступний запуск упирається в неї
+// і зависає намертво. Перезапуск коштує менше секунди (ядро вже в кеші),
+// зате черга доходить до кінця.
+async function uqFreshFFmpeg(onStatus, onProgress) {
+  try { uqFF?.terminate?.(); } catch (e) {}
+  uqFF = null;
+  const ff = await uqLoadFFmpeg(onStatus);
+  ff.on('progress', onProgress);
+  return ff;
+}
+
 async function uqRun() {
   if (uqBusy) return;
   if (!uqFiles.length) { alert('Спершу вибери відеофайли.'); return; }
@@ -8490,7 +8509,6 @@ async function uqRun() {
   const res = document.getElementById('uq-results');
   const setStatus = t => statusEl.textContent = t;
 
-  // Якщо всі файли вже оброблені — новий запуск починає чергу спочатку
   if (uqFiles.every(f => uqDone.has(f.name + '|' + f.size))) uqDone.clear();
   uqBusy = true; uqStop = false; uqQueueDirty = false;
   document.getElementById('uq-run').disabled = true;
@@ -8498,19 +8516,21 @@ async function uqRun() {
   barWrap.classList.remove('hidden');
   res.innerHTML = '';
 
-  try {
-    const ff = await uqLoadFFmpeg(setStatus);
-    let done = 0;
-    const totalNow = () => Math.max(1, uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length * count);
-    ff.on('progress', ({ progress }) => {
-      const p = Math.min(1, Math.max(0, progress || 0));
-      bar.style.width = (((done + p) / totalNow()) * 100).toFixed(1) + '%';
-    });
+  const runStart = performance.now();
+  const times = [];                                  // тривалість кожного варіанта
+  const avg = () => times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+  let done = 0;
+  const totalNow = () => Math.max(1, uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length * count);
+  const onProgress = ({ progress }) => {
+    const p = Math.min(1, Math.max(0, progress || 0));
+    bar.style.width = (((done + p) / totalNow()) * 100).toFixed(1) + '%';
+  };
 
-    // Черга: беремо перший необроблений файл і йдемо далі. Зовнішній цикл
-    // потрібен на випадок, коли файл додали вже після того, як внутрішній
-    // дійшов до кінця — інакше він чекав би наступного натискання кнопки.
+  try {
+    let ff = await uqFreshFFmpeg(setStatus, onProgress);
+
     const pending = () => uqFiles.some(f => !uqDone.has(f.name + '|' + f.size));
+    let firstFile = true;
     while (pending() && !uqStop) {
     for (let fi = 0; fi < uqFiles.length && !uqStop; fi++) {
       const file = uqFiles[fi];
@@ -8518,33 +8538,54 @@ async function uqRun() {
       if (uqDone.has(fkey)) continue;
       uqCurrent = fi;
       uqRenderFileList();
+
+      if (!firstFile) { setStatus('Готую наступний файл…'); ff = await uqFreshFFmpeg(() => {}, onProgress); }
+      firstFile = false;
+
       const meta = await uqProbe(file);
       const base = file.name.replace(/\.[^.]+$/, '');
-      await ff.writeFile('in.mp4', new Uint8Array(await file.arrayBuffer()));
+      const fileStart = performance.now();
+
+      try { await ff.writeFile('in.mp4', new Uint8Array(await file.arrayBuffer())); }
+      catch (e) {
+        const bad = document.createElement('p');
+        bad.className = 'text-[11px] font-bold text-rose-400 mt-3';
+        bad.textContent = `${file.name}: не вдалось прочитати — ${e.message || e}`;
+        res.appendChild(bad);
+        uqDone.add(fkey); uqRenderFileList();
+        continue;
+      }
 
       const block = document.createElement('div');
       block.className = 'mt-4';
       block.innerHTML = `<p class="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-2">${file.name}
-        <span class="text-slate-600 normal-case tracking-normal font-bold">· ${meta.w}×${meta.h} · ${meta.dur.toFixed(1)}с</span></p>`;
+        <span class="text-slate-600 normal-case tracking-normal font-bold">· ${meta.w}×${meta.h} · ${meta.dur.toFixed(1)}с</span>
+        <span class="text-slate-600 normal-case tracking-normal font-bold" id="uq-t-${fi}"></span></p>`;
       res.appendChild(block);
 
       for (let v = 1; v <= count && !uqStop; v++) {
         const left = uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length;
-        setStatus(`${file.name} · варіант ${v}/${count} · у черзі ще ${Math.max(0, left - 1)}`);
+        const restVariants = (left - 1) * count + (count - v + 1);
+        const eta = avg() ? ` · ще ~${uqFmt(avg() * restVariants)}` : '';
+        setStatus(`${file.name} · варіант ${v}/${count} · у черзі ще ${Math.max(0, left - 1)} · ${uqFmt(performance.now() - runStart)} минуло${eta}`);
         const p = uqPickParams();
+        const vStart = performance.now();
         try {
           await ff.exec(uqBuildArgs(p, meta, quality, stripMeta));
           const data = await ff.readFile('out.mp4');
+          const took = performance.now() - vStart;
+          times.push(took);
           const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
           const name = `${base}__v${v}.mp4`;
           const row = document.createElement('div');
           row.className = 'flex items-center gap-3 bg-white/[0.03] border border-white/5 rounded-xl px-3 py-2 mb-1.5';
           row.innerHTML = `<span class="text-[12px] font-black text-white shrink-0">v${v}</span>
             <span class="text-[11px] font-bold text-slate-400 flex-1 min-w-0 truncate" title="${uqDescribe(p)}">${uqDescribe(p)}</span>
+            <span class="text-[11px] font-mono text-slate-600 shrink-0">${uqFmt(took)}</span>
             <span class="text-[11px] font-mono text-slate-500 shrink-0">${(data.length / 1048576).toFixed(1)} МБ</span>
             <a href="${url}" download="${name}" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Завантажити</a>`;
           block.appendChild(row);
-          await ff.deleteFile('out.mp4');
+          try { await ff.deleteFile('out.mp4'); } catch (e) {}
         } catch (e) {
           const row = document.createElement('div');
           row.className = 'text-[11px] font-bold text-rose-400 px-3 py-2';
@@ -8554,13 +8595,18 @@ async function uqRun() {
         done++;
         bar.style.width = ((done / totalNow()) * 100).toFixed(1) + '%';
       }
-      await ff.deleteFile('in.mp4');
+
+      try { await ff.deleteFile('in.mp4'); } catch (e) {}
+      const el = document.getElementById(`uq-t-${fi}`);
+      if (el) el.textContent = ` · ${uqFmt(performance.now() - fileStart)}`;
       if (!uqStop) uqDone.add(fkey);
       uqRenderFileList();
     }
     }
     uqCurrent = -1;
-    setStatus(uqStop ? 'Зупинено.' : 'Готово. Файли зберігаються по кнопці «Завантажити».');
+    setStatus(uqStop
+      ? `Зупинено. Витрачено ${uqFmt(performance.now() - runStart)}`
+      : `Готово за ${uqFmt(performance.now() - runStart)}. Файли зберігаються по кнопці «Завантажити».`);
   } catch (e) {
     setStatus('Помилка: ' + (e.message || e));
   } finally {
