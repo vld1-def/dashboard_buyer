@@ -2632,7 +2632,8 @@ function renderTrend(data) {
               // підсумок по всіх гео, у geo — по конкретному гео за цей день.
               const profitLines = stats.rev !== undefined
                 ? [` 🏦 Revenue: $${Math.round(stats.rev).toLocaleString()}`,
-                   ` 📈 Net Profit: ${stats.rev - stats.s >= 0 ? '+' : '−'}$${Math.abs(Math.round(stats.rev - stats.s)).toLocaleString()}`]
+                   ` 📈 Net Profit: ${stats.rev - stats.s >= 0 ? '+' : '−'}$${Math.abs(Math.round(stats.rev - stats.s)).toLocaleString()}` +
+                     (stats.s > 0 ? `  ·  ROI ${((stats.rev - stats.s) / stats.s * 100).toFixed(0)}%` : '')]
                 : [];
 
               return [
@@ -6833,8 +6834,13 @@ function rbAgg(rows){
 }
 function rbValOf(a,c){ return c.calc ? c.calc(a) : a[c.key]; }
 
+// Приглушені відтінки: мають розділяти дати, а не перебивати самі цифри
+const RB_DATE_TINTS = ['', 'bg-cyan-500/[0.07]', 'bg-violet-500/[0.07]', 'bg-amber-500/[0.06]',
+                       'bg-emerald-500/[0.06]', 'bg-rose-500/[0.06]'];
+let rbDateIdx = {};
 function rbRender(){
   rbInitOnce();
+
   const tbl=document.getElementById('rb-table'); if(!tbl) return;
   const data=rbFiltered();
   const th='p-3 text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-white/10 sticky top-0 bg-[#131c31]/95 backdrop-blur-xl cursor-pointer hover:text-cyan-400 whitespace-nowrap';
@@ -6860,12 +6866,23 @@ function rbRender(){
       rows.sort((x,y)=>(rbValOf(y.a,sc)-rbValOf(x.a,sc))*(rbSort.dir<0?1:-1));
     }
     const total=rbAgg(data);
+    // кожній даті у вибірці — свій індекс кольору, за хронологією
+    rbDateIdx = {};
+    [...new Set(rows.map(r => (String(r.k).match(/\d{4}-\d{2}-\d{2}/) || [])[0]).filter(Boolean))]
+      .sort().forEach((d, i) => rbDateIdx[d] = i);
 
     tbl.innerHTML=`<thead><tr>
         <th class="${th} text-left" onclick="rbSortBy('__key')">${rbGroups.map(g=>RB_DIMS.find(d=>d.key===g).label).join(' · ')}${rbSort.key==='__key'?(rbSort.dir<0?' ↓':' ↑'):''} <span class="opacity-40">(${rows.length})</span></th>
         ${cols.map(c=>`<th class="${th} text-right" onclick="rbSortBy('${c.key}')">${c.label}${rbSort.key===c.key?(rbSort.dir<0?' ↓':' ↑'):''}</th>`).join('')}
       </tr></thead><tbody>`+
-      rows.map(r=>`<tr class="hover:bg-white/[0.03] transition">
+      rows.map((r,i)=>{
+        // Колір закріплений ЗА ДАТОЮ, а не через рядок: таблиця зазвичай
+        // відсортована за спендом, тож дати йдуть урозкид, і смуги «через один»
+        // були б просто шумом. Так усі рядки 4-го числа мають один відтінок,
+        // 5-го — інший, і око чіпляється за дату при будь-якому сортуванні.
+        const dm=String(r.k).match(/\d{4}-\d{2}-\d{2}/);
+        const band=dm ? RB_DATE_TINTS[(rbDateIdx[dm[0]]||0) % RB_DATE_TINTS.length] : (i%2?'bg-white/[0.02]':'');
+        return `<tr class="hover:bg-white/[0.07] transition ${band}">
         <td class="p-3 text-xs font-bold text-white border-b border-white/5 whitespace-nowrap">${r.k}</td>
         ${cols.map(c=>{
           const v=rbValOf(r.a,c);
@@ -6874,7 +6891,7 @@ function rbRender(){
             : c.key==='installs'?'text-cyan-300':'text-slate-200';
           return `<td class="p-3 text-xs font-bold text-right border-b border-white/5 ${color}">${c.fmt(v)}</td>`;
         }).join('')}
-      </tr>`).join('')+
+      </tr>`;}).join('')+
       `<tr class="bg-white/[0.03]">
         <td class="p-3 text-[10px] font-black uppercase text-cyan-400 border-t-2 border-cyan-500/30">Total</td>
         ${cols.map(c=>`<td class="p-3 text-xs font-black text-right text-white border-t-2 border-cyan-500/30">${c.fmt(rbValOf(total,c))}</td>`).join('')}
@@ -8063,6 +8080,7 @@ const UQ_PRESETS = {
   high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2 },
 };
 let uqFiles = [], uqFF = null, uqBusy = false, uqStop = false;
+let uqDone = new Set(), uqCurrent = -1, uqQueueDirty = false;
 
 function openUniqModal() {
   document.getElementById('uniq-modal').classList.remove('hidden');
@@ -8092,13 +8110,42 @@ function uqApplyPreset() {
 }
 
 function uqOnFiles() {
-  uqFiles = [...(document.getElementById('uq-files').files || [])];
+  // Додаємо до вже вибраних, а не замінюємо: раніше вибір нових файлів
+  // під час обробки обнуляв чергу і поточний прогін фактично скасовувався.
+  const picked = [...(document.getElementById('uq-files').files || [])];
+  const seen = new Set(uqFiles.map(f => f.name + '|' + f.size));
+  picked.forEach(f => { if (!seen.has(f.name + '|' + f.size)) uqFiles.push(f); });
+  document.getElementById('uq-files').value = '';   // щоб той самий файл можна було додати ще раз
+  if (uqBusy) uqQueueDirty = true;
+  uqRenderFileList();
+}
+
+function uqRenderFileList() {
+  const el = document.getElementById('uq-filelist');
+  if (!el) return;
   const mb = b => (b / 1048576).toFixed(1) + ' МБ';
-  document.getElementById('uq-filelist').innerHTML = !uqFiles.length ? '' :
-    `<div class="text-[11px] font-bold text-slate-400 space-y-0.5">
-      ${uqFiles.map(f => `<div class="flex justify-between gap-3"><span class="truncate">${f.name}</span><span class="text-slate-600 shrink-0">${mb(f.size)}</span></div>`).join('')}
-    </div>` + (uqFiles.some(f => f.size > 120 * 1048576)
+  if (!uqFiles.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="text-[11px] font-bold text-slate-400 space-y-0.5 mt-1">
+      ${uqFiles.map((f, i) => {
+        const st = uqDone.has(f.name + '|' + f.size) ? '<span class="text-emerald-400">✓</span>'
+                 : (uqCurrent === i && uqBusy) ? '<span class="text-violet-400 animate-pulse">▶</span>'
+                 : '<span class="text-slate-700">•</span>';
+        return `<div class="flex items-center gap-2">
+          <span class="w-3 shrink-0 text-center">${st}</span>
+          <span class="truncate flex-1">${f.name}</span>
+          <span class="text-slate-600 shrink-0">${mb(f.size)}</span>
+          ${uqBusy ? '' : `<button onclick="uqRemoveFile(${i})" class="text-slate-600 hover:text-rose-400 leading-none px-1">✕</button>`}
+        </div>`;
+      }).join('')}
+    </div>`
+    + (uqFiles.some(f => f.size > 120 * 1048576)
       ? '<p class="text-[10px] font-bold text-amber-400 mt-1.5">Файл понад 120 МБ може не влізти в памʼять браузера — краще стиснути заздалегідь.</p>' : '');
+}
+
+function uqRemoveFile(i) {
+  if (uqBusy) return;
+  uqFiles.splice(i, 1);
+  uqRenderFileList();
 }
 
 // Розміри й тривалість беремо з самого браузера — це швидше, ніж питати ffmpeg
@@ -8204,7 +8251,9 @@ async function uqRun() {
   const res = document.getElementById('uq-results');
   const setStatus = t => statusEl.textContent = t;
 
-  uqBusy = true; uqStop = false;
+  // Якщо всі файли вже оброблені — новий запуск починає чергу спочатку
+  if (uqFiles.every(f => uqDone.has(f.name + '|' + f.size))) uqDone.clear();
+  uqBusy = true; uqStop = false; uqQueueDirty = false;
   document.getElementById('uq-run').disabled = true;
   document.getElementById('uq-cancel').classList.remove('hidden');
   barWrap.classList.remove('hidden');
@@ -8212,14 +8261,24 @@ async function uqRun() {
 
   try {
     const ff = await uqLoadFFmpeg(setStatus);
-    let done = 0; const total = uqFiles.length * count;
+    let done = 0;
+    const totalNow = () => Math.max(1, uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length * count);
     ff.on('progress', ({ progress }) => {
       const p = Math.min(1, Math.max(0, progress || 0));
-      bar.style.width = (((done + p) / total) * 100).toFixed(1) + '%';
+      bar.style.width = (((done + p) / totalNow()) * 100).toFixed(1) + '%';
     });
 
+    // Черга: беремо перший необроблений файл і йдемо далі. Зовнішній цикл
+    // потрібен на випадок, коли файл додали вже після того, як внутрішній
+    // дійшов до кінця — інакше він чекав би наступного натискання кнопки.
+    const pending = () => uqFiles.some(f => !uqDone.has(f.name + '|' + f.size));
+    while (pending() && !uqStop) {
     for (let fi = 0; fi < uqFiles.length && !uqStop; fi++) {
       const file = uqFiles[fi];
+      const fkey = file.name + '|' + file.size;
+      if (uqDone.has(fkey)) continue;
+      uqCurrent = fi;
+      uqRenderFileList();
       const meta = await uqProbe(file);
       const base = file.name.replace(/\.[^.]+$/, '');
       await ff.writeFile('in.mp4', new Uint8Array(await file.arrayBuffer()));
@@ -8231,7 +8290,8 @@ async function uqRun() {
       res.appendChild(block);
 
       for (let v = 1; v <= count && !uqStop; v++) {
-        setStatus(`Файл ${fi + 1}/${uqFiles.length} · варіант ${v}/${count}`);
+        const left = uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length;
+        setStatus(`${file.name} · варіант ${v}/${count} · у черзі ще ${Math.max(0, left - 1)}`);
         const p = uqPickParams();
         try {
           await ff.exec(uqBuildArgs(p, meta, quality, stripMeta));
@@ -8253,17 +8313,22 @@ async function uqRun() {
           block.appendChild(row);
         }
         done++;
-        bar.style.width = ((done / total) * 100).toFixed(1) + '%';
+        bar.style.width = ((done / totalNow()) * 100).toFixed(1) + '%';
       }
       await ff.deleteFile('in.mp4');
+      if (!uqStop) uqDone.add(fkey);
+      uqRenderFileList();
     }
+    }
+    uqCurrent = -1;
     setStatus(uqStop ? 'Зупинено.' : 'Готово. Файли зберігаються по кнопці «Завантажити».');
   } catch (e) {
     setStatus('Помилка: ' + (e.message || e));
   } finally {
-    uqBusy = false;
+    uqBusy = false; uqCurrent = -1;
     document.getElementById('uq-run').disabled = false;
     document.getElementById('uq-cancel').classList.add('hidden');
+    uqRenderFileList();
   }
 }
 
@@ -8444,7 +8509,9 @@ function rbShot(btn) {
   const from = document.getElementById('rb-from')?.value;
   const to = document.getElementById('rb-to')?.value;
   const period = (from || to) ? `${from || '...'}_${to || '...'}` : new Date().toISOString().slice(0, 10);
-  return shotNode(document.getElementById('rb-table-wrap'), `report_${period}.png`, btn);
+  // Знімаємо саму таблицю, а не її обгортку: обгортка на всю ширину картки,
+  // і при кількох увімкнених стовпцях половина кадру виходила порожньою.
+  return shotNode(document.getElementById('rb-table'), `report_${period}.png`, btn);
 }
 
 function dcRenderWarn(unlinked) {
