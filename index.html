@@ -8312,11 +8312,12 @@ const UQ_PARAMS = [
   { key:'fps',    label:'Кадри',     unit:'fps',hint:'зміна частоти кадрів',             min:1,  max:6,  step:1 },
   { key:'volume', label:'Гучність',  unit:'dB', hint:'зсув рівня звуку',                 min:0.3, max:6, step:0.1 },
   { key:'trim',   label:'Довжина',   unit:'с',  hint:'обрізати з початку і кінця',       min:0.1, max:3, step:0.1 },
+  { key:'size',   label:'Розмір кадру', unit:'%', hint:'трохи інша роздільність на виході', min:1, max:10, step:0.5 },
 ];
 const UQ_PRESETS = {
-  low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3 },
-  mid:  { crop:5, rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6 },
-  high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2 },
+  low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5 },
+  mid:  { crop:5, rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6, size:3 },
+  high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2, size:6 },
 };
 let uqFiles = [], uqFF = null, uqBusy = false, uqStop = false;
 let uqDone = new Set(), uqCurrent = -1, uqQueueDirty = false;
@@ -8421,6 +8422,7 @@ function uqPickParams() {
   if (on('fps'))    p.fps    = Math.round(uqSign() * uqRand(1, amt('fps')));
   if (on('volume')) p.volume = +(uqSign() * uqRand(amt('volume') * 0.3, amt('volume'))).toFixed(2);
   if (on('trim'))   p.trim   = { head: +uqRand(0, amt('trim')).toFixed(2), tail: +uqRand(0, amt('trim')).toFixed(2) };
+  if (on('size'))   p.size   = +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2);
   return p;
 }
 
@@ -8441,7 +8443,14 @@ function uqBuildArgs(p, meta, quality, stripMeta) {
     vf.push(`eq=gamma=${(1 + c.gamma / 100).toFixed(4)}:saturation=${(1 + c.sat / 100).toFixed(4)}:contrast=${(1 + c.con / 100).toFixed(4)}`);
     if (c.hue) vf.push(`hue=h=${(c.hue / 10).toFixed(3)}`);
   }
-  if (meta.w && meta.h) vf.push(`scale=${meta.w}:${meta.h}`);
+  // Роздільність на виході: за замовчуванням повертаємо вихідну, але з
+  // параметром «Розмір кадру» трохи зсуваємо її. Сторони мусять лишатись
+  // парними — інакше yuv420p не кодується.
+  if (meta.w && meta.h) {
+    const k = 1 + (p.size || 0) / 100;
+    const even = n => Math.max(2, Math.round(n * k / 2) * 2);
+    vf.push(`scale=${even(meta.w)}:${even(meta.h)}`);
+  }
   vf.push('setsar=1');
   if (p.fps) vf.push(`fps=${Math.max(15, Math.round(30 + p.fps))}`);
 
@@ -8465,6 +8474,7 @@ function uqDescribe(p) {
   if (p.fps)    bits.push(`fps ${p.fps > 0 ? '+' : ''}${p.fps}`);
   if (p.volume) bits.push(`звук ${p.volume > 0 ? '+' : ''}${p.volume} dB`);
   if (p.trim)   bits.push(`обріз ${p.trim.head}с / ${p.trim.tail}с`);
+  if (p.size)   bits.push(`розмір ${p.size > 0 ? '+' : ''}${p.size}%`);
   return bits.join(' · ');
 }
 
