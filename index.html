@@ -1317,7 +1317,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
            </div>
         </div>
      </div>
-     <div class="h-[290px] md:h-[505px] w-full relative"><canvas id="chart-trend"></canvas></div>
+     <div class="h-[310px] md:h-[545px] w-full relative"><canvas id="chart-trend"></canvas></div>
   </div>
 
   <!-- Блок GEO -->
@@ -1692,6 +1692,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     <div class="flex flex-wrap items-center gap-2 mb-3">
       <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 mr-1">Group by:</span>
       <div id="rb-groups" class="flex flex-wrap gap-1.5"></div>
+      <div id="rb-tree-box" class="flex items-center gap-1.5 ml-1 pl-2 border-l border-white/10">
+        <button id="rb-tree-btn" onclick="rbToggleTree()"
+          title="Рівнями: перший вимір — батьківський рядок, решта розкриваються всередині. Вимкнено — усе одним плоским списком, як було."
+          class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition border">Рівнями</button>
+        <button id="rb-tree-all" onclick="rbExpandAll()"
+          class="hidden px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase transition bg-black/20 border border-white/5 text-slate-400 hover:text-white">Розгорнути</button>
+      </div>
     </div>
 
     <!-- Фільтри -->
@@ -2619,17 +2626,32 @@ function renderTrend(data) {
     });
   }
 
+  // Порожня смуга під легендою: Chart.js ставить область графіка впритул до неї,
+  // і підписи значень над верхніми точками налазили на кнопки spend / net profit /
+  // cpl / cpa. Розширюємо саму легенду знизу — вона лишається вгорі, а графік
+  // з'їжджає нижче рівно на цей запас.
+  const legendGap = {
+    id: 'legendGap',
+    beforeInit(chart) {
+      const fit = chart.legend.fit;
+      chart.legend.fit = function () { fit.call(this); this.height += 22; };
+    }
+  };
+
   // --- НАЛАШТУВАННЯ CHART.JS ---
   window.chart1 = new Chart(ctx.getContext('2d'), {
     type: 'line',
+    plugins: [legendGap],
     data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      // top лишаємо рівно під підпис значення над точкою (12px bold + запас),
-      // а не 40 — інакше вгорі графіка зяяла порожня смуга
-      layout: { padding: { top: 12, bottom: 0, left: 5, right: 15 } },
+      // top у Chart.js опускає САМУ легенду, а не графік під нею, тому тут він
+      // маленький — легенда лишається притиснутою до заголовка. Простір під
+      // легенду, щоб підписи значень над верхніми точками в неї не впирались,
+      // додає плагін legendGap нижче.
+      layout: { padding: { top: 6, bottom: 0, left: 5, right: 15 } },
       plugins: {
         legend: {
           display: true,
@@ -6873,6 +6895,11 @@ const RB_COLS = [
   { key:'roi',      label:'ROI',      fmt:v=>Math.round(v)+'%', calc:a=>a.spend?(a.rev-a.spend)/a.spend*100:0 },
 ];
 let rbGroups = ['geo'];
+// Групування рівнями: перший вимір — батьківський рядок, наступні розкриваються
+// всередині нього. Вимикається — і таблиця стає такою ж плоскою, як була
+// (ключі через « · »), бо для швидкого погляду плоский список часто зручніший.
+let rbTree = localStorage.getItem('rb_tree') === '1';
+let rbOpen = new Set();
 let rbVisibleCols = JSON.parse(localStorage.getItem('rb_cols') || 'null') || ['spend','installs','regs','deposits','cpl','cpa','r2d','profit','roi'];
 let rbMode = 'list';
 let rbSort = { key:'spend', dir:-1 };
@@ -6954,6 +6981,18 @@ function rbRenderGroupChips(){
       ${on?'bg-cyan-600 text-white border-cyan-400 shadow':'bg-black/20 text-slate-400 border-white/5 hover:text-white'}">
       ${on?`<span class="opacity-70 mr-1">${idx+1}.</span>`:''}${d.label}</button>`;
   }).join('');
+  const b=document.getElementById('rb-tree-btn');
+  if(b){
+    b.className='px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition border '+
+      (rbTree?'bg-violet-600 text-white border-violet-400 shadow':'bg-black/20 text-slate-400 border-white/5 hover:text-white');
+    b.textContent = rbTree ? '⌄ Рівнями' : 'Рівнями';
+  }
+  // Розкривати нічого, якщо вимір один або режим плоский
+  const all=document.getElementById('rb-tree-all');
+  if(all){
+    all.classList.toggle('hidden', !(rbTree && rbGroups.length>1 && rbMode==='list'));
+    all.textContent = rbOpen.size ? 'Згорнути' : 'Розгорнути';
+  }
 }
 function rbToggleGroup(k){
   const i=rbGroups.indexOf(k);
@@ -6961,7 +7000,26 @@ function rbToggleGroup(k){
   if(!rbGroups.length) rbGroups=['geo'];
   // якщо групуємо по днях/місяцях — за замовчуванням хронологічний порядок
   if(rbGroups[0]==='date'||rbGroups[0]==='month') rbSort={key:'__key',dir:1};
+  rbOpen.clear();
   rbRenderGroupChips(); rbRender();
+}
+function rbToggleTree(){
+  rbTree=!rbTree;
+  localStorage.setItem('rb_tree', rbTree?'1':'0');
+  rbOpen.clear();
+  rbRenderGroupChips(); rbRender();
+}
+function rbToggleNode(path){
+  const p=decodeURIComponent(path);
+  rbOpen.has(p) ? rbOpen.delete(p) : rbOpen.add(p);
+  rbRender();
+}
+// «Розгорнути все» збирає шляхи всіх вузлів, які мають дітей
+function rbExpandAll(){
+  if(rbOpen.size){ rbOpen.clear(); rbRender(); return; }
+  const walk=ns=>ns.forEach(n=>{ if(n.kids.length){ rbOpen.add(n.path); walk(n.kids); } });
+  walk(rbBuildTree(rbFiltered(), rbGroups));
+  rbRender();
 }
 function rbRenderColsMenu(){
   document.getElementById('rb-cols-menu').innerHTML =
@@ -7011,6 +7069,34 @@ function rbAgg(rows){
 }
 function rbValOf(a,c){ return c.calc ? c.calc(a) : a[c.key]; }
 
+// ── Групування рівнями ──────────────────────────────────────────────
+// Дерево будуємо по тих самих вимірах і в тому ж порядку, що й чіпи:
+// перший — верхній рівень. Підсумки батька рахуються з його ж рядків,
+// тому вони завжди сходяться із сумою дітей.
+function rbBuildTree(rows, dims, depth=0, prefix=''){
+  if(depth>=dims.length) return [];
+  const map={};
+  rows.forEach(r=>{ const k=rbDimVal(r,dims[depth]); (map[k]=map[k]||[]).push(r); });
+  return Object.entries(map).map(([k,rs])=>{
+    const path = prefix ? prefix+'␟'+k : k;
+    return { key:k, path, depth, a:rbAgg(rs), count:rs.length, kids:rbBuildTree(rs,dims,depth+1,path) };
+  });
+}
+// Сортування те саме, що й у плоскому списку, але окремо всередині кожного вузла
+function rbSortNodes(nodes){
+  if(rbSort.key==='__key') nodes.sort((x,y)=> x.key.localeCompare(y.key,'uk',{numeric:true}) * (rbSort.dir<0?-1:1));
+  else {
+    const sc=RB_COLS.find(c=>c.key===rbSort.key)||RB_COLS[0];
+    nodes.sort((x,y)=>(rbValOf(y.a,sc)-rbValOf(x.a,sc))*(rbSort.dir<0?1:-1));
+  }
+  nodes.forEach(n=>rbSortNodes(n.kids));
+  return nodes;
+}
+function rbFlatten(nodes,out=[]){
+  nodes.forEach(n=>{ out.push(n); if(n.kids.length && rbOpen.has(n.path)) rbFlatten(n.kids,out); });
+  return out;
+}
+
 // Приглушені відтінки: мають розділяти дати, а не перебивати самі цифри
 const RB_DATE_TINTS = ['', 'bg-cyan-500/[0.07]', 'bg-violet-500/[0.07]', 'bg-amber-500/[0.06]',
                        'bg-emerald-500/[0.06]', 'bg-rose-500/[0.06]'];
@@ -7019,6 +7105,11 @@ function rbRender(){
   rbInitOnce();
 
   const tbl=document.getElementById('rb-table'); if(!tbl) return;
+  const treeAll=document.getElementById('rb-tree-all');
+  if(treeAll){
+    treeAll.classList.toggle('hidden', !(rbTree && rbGroups.length>1 && rbMode==='list'));
+    treeAll.textContent = rbOpen.size ? 'Згорнути' : 'Розгорнути';
+  }
   const data=rbFiltered();
   const th='p-3 text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-white/10 sticky top-0 bg-[#131c31]/95 backdrop-blur-xl cursor-pointer hover:text-cyan-400 whitespace-nowrap';
   const cols=RB_COLS.filter(c=>rbVisibleCols.includes(c.key));
@@ -7026,6 +7117,50 @@ function rbRender(){
   // всі стовпці ввімкнено — на всю ширину; частина вимкнена — компактно по вмісту.
   // Півот (дні/місяці) завжди широкий: там стовпців багато і вони самі розсувають таблицю.
   tbl.classList.toggle('rb-wide', rbMode!=='list' || cols.length===RB_COLS.length);
+
+  if(rbMode==='list' && rbTree && rbGroups.length>1){
+    const nodes=rbSortNodes(rbBuildTree(data, rbGroups));
+    const flat=rbFlatten(nodes);
+    const total=rbAgg(data);
+    rbDateIdx={};
+    [...new Set(flat.map(n=>(String(n.key).match(/\d{4}-\d{2}-\d{2}/)||[])[0]).filter(Boolean))]
+      .sort().forEach((d,i)=>rbDateIdx[d]=i);
+    const dimLabel=g=>RB_DIMS.find(d=>d.key===g).label;
+    // Рівні відрізняються не лише відступом, а й вагою фону: батьківський рядок
+    // помітно щільніший, останній рівень майже прозорий
+    const LVL=['bg-white/[0.05]','bg-white/[0.02]',''];
+
+    tbl.innerHTML=`<thead><tr>
+        <th class="${th} text-left" onclick="rbSortBy('__key')">${rbGroups.map(dimLabel).join(' › ')}${rbSort.key==='__key'?(rbSort.dir<0?' ↓':' ↑'):''} <span class="opacity-40">(${nodes.length})</span></th>
+        ${cols.map(c=>`<th class="${th} text-right" onclick="rbSortBy('${c.key}')">${c.label}${rbSort.key===c.key?(rbSort.dir<0?' ↓':' ↑'):''}</th>`).join('')}
+      </tr></thead><tbody>`+
+      flat.map(n=>{
+        const dm=String(n.key).match(/\d{4}-\d{2}-\d{2}/);
+        const band=dm ? RB_DATE_TINTS[(rbDateIdx[dm[0]]||0)%RB_DATE_TINTS.length] : LVL[Math.min(n.depth,LVL.length-1)];
+        const open=rbOpen.has(n.path);
+        const caret=n.kids.length
+          ? `<span class="inline-block w-3 text-cyan-400/80">${open?'▾':'▸'}</span>`
+          : `<span class="inline-block w-3 text-slate-700">·</span>`;
+        const kids=n.kids.length?`<span class="ml-1.5 text-[9px] font-black text-slate-500">${n.kids.length}</span>`:'';
+        return `<tr class="${n.kids.length?'cursor-pointer ':''}hover:bg-white/[0.07] transition ${band}"
+            ${n.kids.length?`onclick="rbToggleNode('${encodeURIComponent(n.path)}')"`:''}>
+          <td class="p-3 py-2.5 text-xs border-b border-white/5 whitespace-nowrap ${n.depth?'font-bold text-slate-300':'font-black text-white'}"
+              style="padding-left:${12+n.depth*18}px">${caret} ${n.key}${kids}</td>
+          ${cols.map(c=>{
+            const v=rbValOf(n.a,c);
+            const color=c.key==='profit'||c.key==='roi' ? (v>=0?'text-emerald-400':'text-red-400')
+              : c.key==='deposits'?'text-green-500': c.key==='regs'?'text-blue-400'
+              : c.key==='installs'?'text-cyan-300':'text-slate-200';
+            return `<td class="p-3 py-2.5 text-xs text-right border-b border-white/5 ${color} ${n.depth?'font-bold opacity-90':'font-black'}">${c.fmt(v)}</td>`;
+          }).join('')}
+        </tr>`;
+      }).join('')+
+      `<tr class="bg-white/[0.03]">
+        <td class="p-3 text-[10px] font-black uppercase text-cyan-400 border-t-2 border-cyan-500/30">Total</td>
+        ${cols.map(c=>`<td class="p-3 text-xs font-black text-right text-white border-t-2 border-cyan-500/30">${c.fmt(rbValOf(total,c))}</td>`).join('')}
+      </tr></tbody>`;
+    return;
+  }
 
   if(rbMode==='list'){
     // групуємо по вибраних вимірах
@@ -7129,8 +7264,9 @@ function rbRender(){
 
 function rbExportCSV(){
   const tbl=document.getElementById('rb-table');
+  // стрілки розкриття — суто екранна річ, у файлі вони лише заважають
   const rows=[...tbl.querySelectorAll('tr')].map(tr=>
-    [...tr.children].map(td=>'"'+td.innerText.replace(/"/g,'""').trim()+'"').join(',')).join('\n');
+    [...tr.children].map(td=>'"'+td.innerText.replace(/^[▸▾·]\s*/,'').replace(/"/g,'""').trim()+'"').join(',')).join('\n');
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+rows],{type:'text/csv;charset=utf-8'}));
   a.download=`report_${currentTeam}_${new Date().toISOString().slice(0,10)}.csv`;
@@ -9064,6 +9200,9 @@ function dcRenderWarn(unlinked) {
   const dockHidden = () => { try { return new Set(JSON.parse(localStorage.getItem(DOCK_HIDDEN_KEY) || '[]')); } catch (e) { return new Set(); } };
   const dockSaveHidden = set => { try { localStorage.setItem(DOCK_HIDDEN_KEY, JSON.stringify([...set])); } catch (e) {} };
 
+  // «Add data» — точка входу, її ховати не можна, і вона завжди остання.
+  const DOCK_LOCKED = /^add data$/i;
+
   // Кнопки дока впізнаємо за title — він стабільний і вже використовується
   // для іконок; id у них немає.
   function dockButtons() {
@@ -9072,12 +9211,29 @@ function dcRenderWarn(unlinked) {
     return [...dock.querySelectorAll('.dk')]
       .filter(b => !b.classList.contains('dk-more'))
       .map(b => ({ el: b, title: b.getAttribute('title') || '' }))
-      .filter(x => x.title && !/logout|вийти/i.test(x.title));
+      .filter(x => x.title && !/logout|вийти/i.test(x.title) && !DOCK_LOCKED.test(x.title));
   }
+
+  // Місце кожної кнопки в доці фіксуємо один раз — порядок з розмітки
+  // (команда, календар, …, Add data) і є правильним. Без цього кнопка,
+  // яку вимкнули й увімкнули назад, опинялась у кінці ряду.
+  function dockStampOrder() {
+    const dock = document.getElementById('app-dock');
+    if (!dock) return;
+    [...dock.children].forEach((el, i) => {
+      if (el.dataset.dockI === undefined) el.dataset.dockI = String(i);
+    });
+  }
+  const dockOrd = el => Number(el?.dataset?.dockI ?? 999);
+  // Кнопка місяця (і команди, і Quick Links) лежить у своїй обгортці разом
+  // з випадайкою — переносити треба обгортку цілком, інакше меню лишиться
+  // в доці й відкриватиметься не там, де кнопка.
+  const dockUnit = (el, box) => { let n = el; while (n && n.parentElement !== box) n = n.parentElement; return n; };
 
   function buildDockMore() {
     const dock = document.getElementById('app-dock');
     if (!dock || dock.querySelector('.dk-more')) return;
+    dockStampOrder();
     const wrap = document.createElement('div');
     wrap.className = 'dk-more-wrap';
     wrap.innerHTML = `<button class="dk dk-more" title="Ще" type="button">
@@ -9095,10 +9251,40 @@ function dcRenderWarn(unlinked) {
     const wrap = dock?.querySelector('.dk-more-wrap');
     const pop = wrap?.querySelector('.dk-more-pop');
     if (!pop) return;
+    dockStampOrder();
     const hidden = dockHidden();
-    // спершу повертаємо все назад у док, перед стрілкою
-    [...pop.children].forEach(el => dock.insertBefore(el, wrap));
-    dockButtons().forEach(({ el, title }) => { if (hidden.has(title)) pop.appendChild(el); });
+
+    // 1. усе назад у док і розкладаємо за початковим порядком
+    [...pop.children].forEach(el => dock.appendChild(el));
+    [...dock.children].filter(el => el !== wrap)
+      .sort((a, b) => dockOrd(a) - dockOrd(b))
+      .forEach(el => dock.appendChild(el));
+    dock.appendChild(wrap);
+
+    // 2. ховаємо вибрані — теж у початковому порядку
+    dockButtons()
+      .filter(x => hidden.has(x.title))
+      .map(x => dockUnit(x.el, dock))
+      .filter(Boolean)
+      .sort((a, b) => dockOrd(a) - dockOrd(b))
+      .forEach(u => pop.appendChild(u));
+
+    // 3. Add data лишається найправішою — після стрілки
+    const add = [...dock.children].find(el => DOCK_LOCKED.test(el.getAttribute?.('title') || ''));
+    if (add) dock.appendChild(add);
+
+    // 4. роздільники без кнопок навколо себе тільки заважають
+    const seps = [...dock.querySelectorAll(':scope > .dk-sep')];
+    seps.forEach(s => s.style.display = '');
+    const vis = [...dock.children].filter(el => el !== wrap && getComputedStyle(el).display !== 'none');
+    vis.forEach((el, i) => {
+      if (!el.classList.contains('dk-sep')) return;
+      const prev = vis[i - 1];
+      if (!prev || prev.classList.contains('dk-sep')) el.style.display = 'none';
+    });
+    const lastVis = vis.filter(el => el.style.display !== 'none').pop();
+    if (lastVis && lastVis.classList.contains('dk-sep')) lastVis.style.display = 'none';
+
     const n = pop.children.length;
     wrap.style.display = n ? '' : 'none';
     const small = wrap.querySelector('small');
@@ -9110,10 +9296,16 @@ function dcRenderWarn(unlinked) {
     const box = document.getElementById('dock-hide-list');
     if (!box) return;
     const hidden = dockHidden();
-    const all = [...dockButtons().map(x => x.title),
-                 ...[...(document.querySelector('.dk-more-pop')?.children || [])].map(e => e.getAttribute('title') || '')]
-                 .filter(Boolean);
-    const uniq = [...new Set(all)];
+    const pop = document.querySelector('.dk-more-pop');
+    // Приховані кнопки лежать у спливайці (іноді всередині своєї обгортки з
+    // випадайкою) — тягнемо їх звідти і показуємо в тому ж порядку, що в доці.
+    const inPop = [...(pop?.querySelectorAll('.dk') || [])]
+      .map(b => ({ title: b.getAttribute('title') || '', ord: dockOrd(dockUnit(b, pop)) }))
+      .filter(x => x.title && !DOCK_LOCKED.test(x.title));
+    const all = [...dockButtons().map(x => ({ title: x.title, ord: dockOrd(dockUnit(x.el, document.getElementById('app-dock'))) })), ...inPop]
+      .filter(x => x.title)
+      .sort((a, b) => a.ord - b.ord);
+    const uniq = [...new Set(all.map(x => x.title))];
     if (!uniq.length) { box.innerHTML = '<p class="text-[10px] text-slate-600 italic px-3">Меню ще не зібрано</p>'; return; }
     box.innerHTML = uniq.map(t => `
       <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
