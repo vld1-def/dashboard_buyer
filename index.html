@@ -1557,6 +1557,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       </button>
       <div id="cr-panel-trend" class="hidden px-4 pb-4"></div>
     </div>
+    <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden lg:col-span-2">
+      <button onclick="crTogglePanel('accounts')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
+        <span class="text-[10px] font-black uppercase tracking-widest text-amber-400 text-left">По кабінетах — це каб чи рандом</span>
+        <span id="cr-arrow-accounts" class="text-[10px] text-slate-500 transition-transform shrink-0">▶</span>
+      </button>
+      <div id="cr-panel-accounts" class="hidden px-4 pb-4"></div>
+    </div>
   </div>
   
   <!-- Список Кабінетів -->
@@ -3267,6 +3274,7 @@ function crCurrentRows() {
 function crRenderPanels() {
   if (crOpenPanels.has('placements')) crRenderPlacementsPanel();
   if (crOpenPanels.has('trend'))      crRenderTrendPanel();
+  if (crOpenPanels.has('accounts'))   crRenderAccountsPanel();
 }
 
 // ── Плейсмент × креатив ──
@@ -3319,6 +3327,103 @@ function crTrendDays() {
     m.r += Number(r.regs)||0;  m.d += Number(r.deps)||0;
   });
   return Object.entries(byDay).sort((a,b) => a[0].localeCompare(b[0]));
+}
+
+// ── Один креатив на різних кабінетах ────────────────────────────────
+// Питання «це каб чи рандом» вирішується не різницею цифр, а розміром
+// вибірки. При 20 інсталах CPI гуляє на ±22% сам по собі, тому різниця
+// в 30% там нічого не означає, а при 800 інсталах вона вже вагома.
+// Тому поруч з відхиленням показуємо, чи вибірки взагалі вистачає.
+//
+// Похибка CPI ≈ 1/√інсталів: це груба, але чесна оцінка — вона показує
+// саме порядок шуму, а не претендує на статистичну строгість.
+const crRelErr = n => n > 0 ? 1 / Math.sqrt(n) : 1;
+
+function crRenderAccountsPanel() {
+  const el = document.getElementById('cr-panel-accounts');
+  if (!el) return;
+  const dev = document.getElementById('creative-device-filter')?.value || '';
+  const dr = crDateRange();
+  // Беремо ВСІ кабінети цього креатива — фільтр по акаунту тут навмисно
+  // ігнорується, інакше порівнювати не було б з чим
+  const rows = (window.creativesRawData || []).filter(d =>
+    crInDate(d, dr) &&
+    (d.cid || '').toLowerCase() === (currentCreativeID || '').toLowerCase() &&
+    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo) &&
+    (!dev || normalizeDevice(d.device || '') === dev));
+
+  const m = {};
+  rows.forEach(r => {
+    const a = r.account || 'Unknown';
+    const x = m[a] || (m[a] = { s: 0, i: 0, r: 0, d: 0, days: new Set() });
+    x.s += Number(r.spend) || 0;  x.i += Number(r.installs) || 0;
+    x.r += Number(r.regs) || 0;   x.d += Number(r.deps) || 0;
+    if (r.date) x.days.add(r.date);
+  });
+  const list = Object.entries(m).sort((a, b) => b[1].s - a[1].s);
+  if (list.length < 2) {
+    el.innerHTML = `<p class="text-[12px] opacity-40 py-3">Цей креатив крутився лише на одному кабінеті — порівнювати нема з чим.</p>`;
+    return;
+  }
+
+  const tot = list.reduce((a, [, v]) => ({ s: a.s + v.s, i: a.i + v.i, d: a.d + v.d }), { s: 0, i: 0, d: 0 });
+  const avgCpi = tot.i ? tot.s / tot.i : 0;
+  const cpiOf = v => v.i ? v.s / v.i : 0;
+
+  // «Надійний» = похибка менша за 15%, тобто приблизно від 45 інсталів.
+  const RELIABLE = 0.15;
+  const solid = list.filter(([, v]) => v.i > 0 && crRelErr(v.i) <= RELIABLE);
+  const cpis = solid.map(([, v]) => cpiOf(v));
+  const spread = cpis.length > 1
+    ? `$${Math.min(...cpis).toFixed(2)} – $${Math.max(...cpis).toFixed(2)}`
+    : '—';
+
+  const th = 'text-[11px] font-black uppercase tracking-widest text-slate-500';
+  const rowsHtml = list.map(([acc, v]) => {
+    const cpi = cpiOf(v);
+    const err = crRelErr(v.i);
+    const dev = avgCpi && cpi ? (cpi - avgCpi) / avgCpi * 100 : 0;
+    const weak = v.i === 0 || err > RELIABLE;
+    // Відхилення вважаємо змістовним тільки якщо воно більше за власний шум
+    const real = !weak && Math.abs(dev) > err * 100;
+    const cls = !real ? 'text-slate-500' : dev < 0 ? 'text-emerald-400' : 'text-red-400';
+    const mark = weak
+      ? `<span class="text-[10px] font-bold text-amber-400/80">мало даних</span>`
+      : real
+        ? `<span class="${cls} font-black">${dev > 0 ? '+' : ''}${dev.toFixed(0)}%</span>`
+        : `<span class="text-slate-600">у межах шуму</span>`;
+    return `<div class="grid grid-cols-[1.4fr_repeat(6,minmax(0,1fr))] gap-x-2 items-center py-1.5 border-t border-white/5 ${weak ? 'opacity-55' : ''}">
+      <span class="text-[12px] font-mono font-bold text-blue-300 truncate" title="${acc}">${acc}</span>
+      <span class="text-[13px] font-black text-white font-mono text-right">$${Math.round(v.s).toLocaleString()}</span>
+      <span class="text-[13px] font-mono text-cyan-300 text-right">${v.i}</span>
+      <span class="text-[13px] font-mono font-black text-right ${weak ? 'text-slate-500' : 'text-white'}">${v.i ? '$' + cpi.toFixed(2) : '—'}</span>
+      <span class="text-[12px] text-right">${mark}</span>
+      <span class="text-[13px] font-mono ${v.d ? 'text-green-500' : 'text-slate-600'} text-right">${v.d}</span>
+      <span class="text-[12px] font-mono text-slate-400 text-right">${v.d ? '$' + (v.s / v.d).toFixed(0) : '—'}</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="flex flex-wrap gap-x-4 gap-y-1 items-baseline mb-2 text-[11px] font-bold">
+      <span class="text-slate-400">Кабінетів: <b class="text-white">${list.length}</b></span>
+      <span class="text-slate-400">CPI по креативу: <b class="text-white">$${avgCpi.toFixed(2)}</b></span>
+      <span class="text-slate-400">Розкид серед надійних: <b class="text-white">${spread}</b></span>
+      <span class="text-slate-500">надійних ${solid.length} з ${list.length}</span>
+    </div>
+    <div class="grid grid-cols-[1.4fr_repeat(6,minmax(0,1fr))] gap-x-2 pb-1">
+      <span class="${th}">Кабінет</span>
+      <span class="${th} text-right">Спенд</span>
+      <span class="${th} text-right">Інст</span>
+      <span class="${th} text-right">CPI</span>
+      <span class="${th} text-right">Δ до сер.</span>
+      <span class="${th} text-right">Деп</span>
+      <span class="${th} text-right">CPA</span>
+    </div>
+    ${rowsHtml}
+    <p class="text-[10px] text-slate-500 mt-2.5 pt-2 border-t border-white/5 leading-relaxed">
+      «Мало даних» — інсталів замало, щоб CPI щось означав (шум більший за 15%).
+      «У межах шуму» — відхилення менше за власну похибку кабінета, тобто це рандом, а не кабінет.
+      Кольором позначені лише ті, де різниця перевищує шум.</p>`;
 }
 
 // ── Динаміка по днях (чи вигорає) ──
