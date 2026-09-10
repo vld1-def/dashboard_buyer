@@ -7979,7 +7979,7 @@ function gcDiff(geo, results) {
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
         <h2 class="text-xl font-black italic tracking-tighter text-sky-400">Accounts</h2>
-        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Статус кабінетів · зберігається одразу</p>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Статус кабінетів · зберігається одразу · клік по плитці — фільтр</p>
       </div>
       <div class="flex items-center gap-3">
         <input id="acc-search" oninput="renderAccountsModal()" placeholder="Пошук…"
@@ -8899,9 +8899,18 @@ const ACC_STATUS = {
 };
 let accRows = [];
 let accHasStatusCol = true;
+// Фільтр по статусу живе прямо на плитках з лічильниками: цифра і кнопка —
+// це одне й те саме, тож не додаємо ще один селект у й без того щільну шапку.
+let accFilter = '';
+
+function accSetFilter(k) {
+  accFilter = (accFilter === k) ? '' : k;
+  renderAccountsModal();
+}
 
 async function openAccountsModal() {
   document.getElementById('accounts-modal').classList.remove('hidden');
+  accFilter = '';
   const body = document.getElementById('accounts-modal-body');
   body.innerHTML = '<p class="text-center opacity-40 py-16 text-xs font-black uppercase tracking-widest">Завантаження…</p>';
   try {
@@ -8962,22 +8971,31 @@ function renderAccountsModal() {
   const dot = document.getElementById('acc-ban-dot');
   if (dot) dot.classList.toggle('hidden', !(counts.ban || counts.problem));
 
-  sumEl.innerHTML = `<div class="grid grid-cols-3 gap-2">
-    ${Object.entries(ACC_STATUS).map(([k, s]) => `
-      <div class="rounded-xl border ${s.bg} px-3 py-2 text-center">
-        <p class="text-[9px] font-black uppercase tracking-widest text-slate-400">${s.label}</p>
-        <p class="text-lg font-black ${s.cls} leading-tight">${counts[k]}</p>
-      </div>`).join('')}
+  // Плитка = і лічильник, і фільтр: клік лишає тільки цей статус, повторний — знімає
+  const tile = (k, label, cls, bg, n) => `
+    <button onclick="accSetFilter('${k}')" title="${k ? 'Показати тільки: ' + label : 'Показати всі кабінети'}"
+      class="rounded-xl border px-3 py-2 text-center transition ${bg}
+             ${accFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'opacity-90 hover:opacity-100 hover:brightness-110'}">
+      <p class="text-[9px] font-black uppercase tracking-widest text-slate-400">${label}</p>
+      <p class="text-lg font-black ${cls} leading-tight">${n}</p>
+    </button>`;
+
+  sumEl.innerHTML = `<div class="grid grid-cols-4 gap-2">
+    ${tile('', 'Усі', 'text-slate-200', 'bg-white/[0.04] border-white/10', accRows.length)}
+    ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, s.cls, s.bg, counts[k])).join('')}
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
-  const rows = accRows.filter(r => !q ||
-    String(r.account_id || '').toLowerCase().includes(q) ||
-    String(r.provider_name || '').toLowerCase().includes(q) ||
-    String(r.status_note || '').toLowerCase().includes(q));
+  const rows = accRows.filter(r =>
+    (!accFilter || accStatusOf(r) === accFilter) &&
+    (!q ||
+      String(r.account_id || '').toLowerCase().includes(q) ||
+      String(r.provider_name || '').toLowerCase().includes(q) ||
+      String(r.status_note || '').toLowerCase().includes(q)));
 
   if (!rows.length) {
-    body.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Нічого не знайдено</p>';
+    const why = accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Нічого не знайдено';
+    body.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     return;
   }
 
@@ -8990,7 +9008,7 @@ function renderAccountsModal() {
 
   body.innerHTML = `
     <div class="${GRID} px-4 pb-2" style="${COLS}">
-      ${['Account','Agent','TZ','Статус','Нотатка'].map((h, i) =>
+      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','TZ','Статус','Нотатка'].map((h, i) =>
         `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${i === 2 ? 'text-center' : ''}">${h}</span>`).join('')}
     </div>
     <div class="space-y-1.5">
