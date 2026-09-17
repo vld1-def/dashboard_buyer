@@ -1032,6 +1032,50 @@ body { padding-bottom: 100px !important; padding-top: 14px !important; }
   #app-dock .dk { width: 41px; height: 41px; flex: 0 0 41px; }
 }
 
+/* ═══════════ REPORT BUILDER — МУЛЬТИФІЛЬТРИ ═══════════ */
+.rbms { position: relative; }
+.rbms-btn {
+  display: flex; align-items: center; gap: 6px; max-width: 190px;
+  background: var(--surface-2, rgba(0,0,0,.2));
+  border: 1px solid var(--border, rgba(255,255,255,.06));
+  border-radius: 11px; padding: 7px 9px;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-main, #e2e8f0); cursor: pointer; transition: border-color .15s, color .15s;
+}
+.rbms-btn:hover { border-color: rgba(139,92,246,.45); }
+.rbms.on .rbms-btn { border-color: rgba(139,92,246,.55); color: #c4b5fd; }
+.rbms-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rbms-btn svg { width: 11px; height: 11px; flex: 0 0 11px; opacity: .5; }
+.rbms-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 95; width: 230px;
+  background: var(--surface, #161a25);
+  border: 1px solid var(--border-2, rgba(255,255,255,.13));
+  border-radius: 14px; padding: 8px;
+  box-shadow: 0 24px 60px -24px rgba(0,0,0,.9);
+}
+.rbms-q { width: 100%; margin-bottom: 6px; font-size: 11px !important; padding: 6px 8px !important; }
+.rbms-acts { display: flex; gap: 6px; margin-bottom: 6px; }
+.rbms-acts button {
+  flex: 1; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
+  padding: 5px; border-radius: 8px; color: var(--text-muted, #94a3b8);
+  background: var(--surface-2, rgba(255,255,255,.04));
+  border: 1px solid var(--border, rgba(255,255,255,.06));
+  transition: color .15s, border-color .15s;
+}
+.rbms-acts button:hover { color: #c4b5fd; border-color: rgba(139,92,246,.4); }
+.rbms-list { max-height: 230px; overflow-y: auto; }
+.rbms-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 7px; border-radius: 8px;
+  font-size: 11px; font-weight: 700; color: var(--text-main, #e2e8f0); cursor: pointer;
+}
+.rbms-row:hover { background: rgba(139,92,246,.12); }
+.rbms-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rbms-row input[type="checkbox"] {
+  width: 13px !important; height: 13px !important; flex: 0 0 13px;
+  margin: 0 !important; padding: 0 !important; accent-color: #8b5cf6; cursor: pointer;
+}
+.rbms-empty { font-size: 10px; color: var(--text-muted, #94a3b8); text-align: center; padding: 10px; }
+
 /* ═══════════ КАСТОМНИЙ КАЛЕНДАР ═══════════ */
 input[type="date"] { position: relative; }
 input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:absolute; inset:0; cursor:pointer; }
@@ -1074,7 +1118,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 
 /* ══════════════════════════════════════════════════════════════════
    DESIGN LAYER — новий вигляд поверх наявних компонентних стилів.
-   Все нижче свідомо йде останнім у <style>, щоб перебивати старі
+   Все нижче свідомо йде останнім у блоці стилів, щоб перебивати старі
    правила без правок у кожному з них.
    ══════════════════════════════════════════════════════════════════ */
 
@@ -1182,73 +1226,43 @@ body {
 
 .sb-foot { padding: 10px; border-top: 1px solid var(--border); flex: 0 0 auto; }
 
-/* Картка «здоров'я» знизу сайдбара */
-.health-card {
-  border-radius: 14px; padding: 12px 10px 10px; text-align: center;
-  background: radial-gradient(120% 90% at 50% 0%, rgba(139,92,246,.16), transparent 62%), var(--surface);
-  border: 1px solid var(--border);
-}
-.health-card h4 {
-  font-size: 9px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
-  color: var(--text-muted); margin-bottom: 2px;
-}
-#health-gauge { width: 100%; max-width: 168px; margin: 0 auto; display: block; }
-#health-note { font-size: 10px; line-height: 1.45; color: var(--text-muted); font-weight: 500; margin-top: 4px; }
+/* Топбар прибрано: <header> лишається лише носієм панелі інструментів,
+   яку buildDock() переносить у плаваючий док. */
+.app-topbar-hidden { display: none; }
 
-/* ─────────── Топбар ─────────── */
-.app-topbar {
-  height: var(--tb-h); flex: 0 0 var(--tb-h);
-  display: flex; align-items: center; gap: 14px; padding: 0 20px;
-  border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; z-index: 50;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+/* Кнопка меню на вузьких екранах (топбара з бургером більше немає) */
+.mob-burger {
+  display: none; align-items: center; gap: 9px; margin-bottom: 14px;
+  padding: 9px 13px; border-radius: 11px; font-size: 13px; font-weight: 700;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-main);
 }
-.tb-left { min-width: 0; }
-#main-title { font-size: 17px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; text-transform: none; }
-#main-title span { font-size: 13px; font-weight: 700; color: var(--accent); }
-.tb-sub { display: flex; align-items: center; gap: 8px; margin-top: 1px; }
-.tb-sub, .tb-sub * { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); font-style: normal; }
-.tb-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); opacity: .5; }
+.mob-burger svg { width: 18px; height: 18px; stroke-width: 1.9; }
 
-.tb-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.tb-search {
-  display: flex; align-items: center; gap: 8px; width: 290px;
+/* Пошук у сайдбарі */
+.sb-search {
+  display: flex; align-items: center; gap: 8px; width: 100%;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 0 10px; height: 36px;
-  color: var(--text-muted); cursor: text; transition: border-color .15s;
+  border-radius: 10px; padding: 0 10px; height: 34px; margin-bottom: 4px;
+  color: var(--text-muted); transition: border-color .15s;
 }
-.tb-search:hover { border-color: var(--border-2); }
-.tb-search svg { width: 15px; height: 15px; flex: 0 0 15px; }
-.tb-search span { font-size: 12.5px; font-weight: 500; flex: 1; }
+.sb-search:hover { border-color: var(--border-2); }
+.sb-search svg { width: 15px; height: 15px; flex: 0 0 15px; stroke-width: 1.9; }
+.sb-search span { font-size: 12.5px; font-weight: 500; flex: 1; text-align: left; }
 .tb-kbd {
   font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
   background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
 }
-.tb-btn {
-  width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center;
-  background: var(--surface); border: 1px solid var(--border);
-  color: var(--text-muted); transition: .15s; position: relative; flex: 0 0 36px;
-}
-.tb-btn:hover { color: var(--text-main); border-color: var(--border-2); }
-.tb-btn svg { width: 17px; height: 17px; stroke-width: 1.8; }
-.tb-btn .dot-alert {
-  position: absolute; top: 6px; right: 6px; width: 6px; height: 6px;
-  border-radius: 50%; background: var(--bad); box-shadow: 0 0 0 2px var(--bg);
-}
-.tb-avatar {
-  width: 36px; height: 36px; border-radius: 50%; flex: 0 0 36px;
-  display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff;
-  background: linear-gradient(145deg, #8B5CF6, #4F46E5);
-  border: 1px solid rgba(255,255,255,.14);
-}
-.tb-burger { display: none; }
 
 /* Смуга місячного таргету під топбаром */
 #milestone-container {
-  margin: 0 0 16px !important; padding: 0 !important;
+  margin: 0 0 16px !important;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 12px 16px !important;
+}
+#milestone-container .ms-cap {
+  display: block; text-align: center; margin-bottom: 7px;
+  font-size: 9px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--text-muted);
 }
 #monthly-spend-label { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
 #milestone-container .relative.w-full { background: var(--surface-3) !important; border-color: var(--border) !important; height: 6px !important; }
@@ -1280,13 +1294,14 @@ body {
 /* ─────────── KPI ─────────── */
 #kpi-row { gap: 10px !important; }
 .kpi-card {
-  position: relative; overflow: hidden;
+  position: relative;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 13px 15px;
   min-height: 104px; display: flex; flex-direction: column; justify-content: center;
 }
 .kpi-card::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
+  border-radius: inherit;
   background: radial-gradient(130% 120% at 100% 0%, var(--glow, transparent) 0%, transparent 58%);
 }
 /* Піднімаємо вміст над градієнтним сяйвом ::after, але не чіпаємо
@@ -1308,6 +1323,18 @@ body {
 .kpi-delta.is-up { color: var(--ok); } .kpi-delta.is-down { color: var(--bad); }
 .kpi-foot { margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
 .kpi-foot b { font-weight: 800; }
+.kpi-card:hover { z-index: 60; }
+
+/* ─────────── Revenue Analytics ─────────── */
+.rev-value { font-size: 27px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.rev-delta { font-size: 12px; font-weight: 800; white-space: nowrap; color: var(--text-muted); }
+.rev-delta.is-up { color: var(--ok); } .rev-delta.is-down { color: var(--bad); }
+.rev-select {
+  background: var(--surface-2) !important; border: 1px solid var(--border) !important;
+  border-radius: 9px !important; color: var(--text-muted) !important;
+  font-size: 11px !important; font-weight: 700 !important; padding: 5px 8px !important;
+  cursor: pointer; outline: none;
+}
 
 /* ─────────── Поля вводу / кнопки ─────────── */
 input[type="date"], input[type="number"], input[type="text"], input[type="url"], select, textarea {
@@ -1422,9 +1449,7 @@ select option { background: var(--surface-2); color: var(--text-main); }
   body.sb-open::after {
     content: ''; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 55;
   }
-  .tb-burger { display: grid; }
-  .tb-search { width: 44px; }
-  .tb-search span, .tb-search .tb-kbd { display: none; }
+  .mob-burger { display: inline-flex; }
 }
 @media (max-width: 760px) {
   .app-content { padding: 14px 12px 104px; }
@@ -1432,23 +1457,9 @@ select option { background: var(--surface-2); color: var(--text-main); }
   .kpi-value { font-size: 22px; }
 }
 
-/* ─────────── Скидання правил старої «центрованої» шапки ───────────
-   Вони писались під верстку без сайдбара: header центрувався, а sync-бейдж
-   висів фіксованою пігулкою в кутку екрана. З новим топбаром це заважає. */
-.app-topbar { justify-content: flex-start !important; margin-bottom: 0 !important; }
-.app-topbar > .tb-left {
-  display: block !important; text-align: left !important;
-  flex-direction: row !important; align-items: flex-start !important;
-}
-.app-topbar #main-title { font-size: 17px !important; }
-.app-topbar #main-title span { font-size: 13px !important; }
-#last-sync-badge {
-  position: static !important; background: none !important; border: 0 !important;
-  border-radius: 0 !important; padding: 0 !important; box-shadow: none !important;
-  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
-  top: auto; right: auto; z-index: auto;
-}
-.tb-search span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Стара шапка ховається цілком, тож із її правил лишається тільки
+   sync-бейдж — він був fixed-пігулкою в кутку екрана. */
+#last-sync-badge { display: none !important; }
 
 /* KPI-картки вирівнюємо по верху — у макеті всі заголовки на одній лінії */
 .kpi-card { justify-content: flex-start !important; }
@@ -1493,7 +1504,6 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
-
   <script>
     function formatCurrency(n) { return '$' + Number(n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
     
@@ -1522,10 +1532,16 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
       <div class="sb-logo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
       </div>
-      <span class="sb-brand-name">Buyer OS</span>
+      <span class="sb-brand-name" id="sb-team-name">Dashboard</span>
     </div>
 
     <div class="sb-scroll custom-scrollbar">
+      <button class="sb-search" onclick="cmdOpen()" title="Пошук по розділах і інструментах">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <span>Пошук…</span>
+        <span class="tb-kbd">⌘K</span>
+      </button>
+
       <p class="sb-cap">Огляд</p>
       <button class="sb-item is-active" data-nav="__top" onclick="navGo('__top', this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
@@ -1577,37 +1593,28 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
     </div>
 
     <div class="sb-foot">
+      <button class="sb-item" onclick="toggleTheme()">
+        <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        Тема
+      </button>
       <button class="sb-item admin-only" onclick="openSettingsModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88V10a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
         Налаштування
       </button>
-
-      <div class="health-card mt-2">
-        <h4>Campaign Health</h4>
-        <svg id="health-gauge" viewBox="0 0 200 150"></svg>
-        <p id="health-note">Оцінка рахується з ROI за вибраний період.</p>
-      </div>
     </div>
   </aside>
 
   <!-- ════════════ MAIN ════════════ -->
   <div class="app-main">
 
-    <header class="app-topbar">
-      <!-- [0] заголовок -->
+    <!-- Топбар прибрано. <header> лишається прихованим носієм панелі
+         інструментів: buildDock() бере саме header.children[1] і переносить
+         її у плаваючий док, а #main-title читає решта коду. -->
+    <header class="app-topbar-hidden">
       <div class="tb-left">
-        <button class="tb-btn tb-burger" onclick="toggleSidebar()" title="Меню" style="float:left;margin-right:10px">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-        </button>
         <h1 id="main-title">Dashboard <span>Loading...</span></h1>
-        <div class="tb-sub">
-          <p id="header-month-display"></p>
-          <span class="tb-dot"></span>
-          <p id="last-sync-badge">Sync: Loading...</p>
-        </div>
       </div>
 
-      <!-- [1] РІВНО цей вузол забирає buildDock() у плаваючий док. Не чіпати порядок. -->
             <div class="flex items-center gap-2 flex-wrap">
 
   <!-- БЛОК КОМАНДИ -->
@@ -1745,37 +1752,21 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
 
   <a href="Form.html" class="admin-only bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl font-bold text-sm transition shadow-lg uppercase tracking-tight">+ Add Data</a>
 </div>
-
-      <!-- [2] права група -->
-      <div class="tb-right">
-        <div class="tb-search" onclick="cmdOpen()" title="Пошук по розділах і інструментах">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          <span>Пошук по дашборду…</span>
-          <span class="tb-kbd">⌘K</span>
-        </div>
-        <button class="tb-btn" onclick="toggleTheme()" title="Світла / темна тема">
-          <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-        </button>
-        <button class="tb-btn admin-only" onclick="toggleTaskModal()" title="Таски">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-          <span id="tb-task-dot" class="dot-alert hidden"></span>
-        </button>
-        <div class="tb-avatar admin-only" id="tb-avatar" onclick="event.stopPropagation(); toggleTeamMenu()" title="Команда">–</div>
-      </div>
     </header>
 
     <div class="app-content">
 
+      <button class="mob-burger" onclick="toggleSidebar()" title="Меню">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <span id="mob-team-name">Dashboard</span>
+      </button>
+
       <!-- Місячний таргет -->
       <div id="milestone-container">
-        <div class="flex justify-between items-end mb-2">
-          <div>
-            <span class="text-[9px] font-black uppercase tracking-[0.18em] text-muted-dynamic">Monthly Spend Target</span>
-            <h3 id="monthly-spend-label">$0 / $40,000</h3>
-          </div>
-          <div class="text-right">
-            <span id="next-rank-info" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">Left: $40,000</span>
-          </div>
+        <p class="ms-cap">Monthly Spend Target <span id="header-month-display"></span></p>
+        <div class="flex justify-between items-end gap-3 mb-2">
+          <h3 id="monthly-spend-label">$0 / $40,000</h3>
+          <span id="next-rank-info" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">Left: $40,000</span>
         </div>
         <div class="relative w-full h-1.5 bg-slate-800/60 rounded-full overflow-hidden border border-white/5">
           <div id="milestone-fill" class="h-full w-0 transition-all duration-1000 ease-out rounded-full"></div>
@@ -1874,14 +1865,32 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
           </div>
         </div>
 
-        <!-- ═══════ ГРАФІК + ГЕО ═══════ -->
+        <!-- ═══════ REVENUE + CASHFLOW + ГЕО ═══════ -->
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 overflow-hidden">
 
-          <div id="chart-main-col" class="card p-5 lg:col-span-3 transition-all duration-500 ease-in-out">
+          <!-- Revenue Analytics -->
+          <div id="revenue-col" class="card p-5 lg:col-span-1 flex flex-col">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <h2>Revenue Analytics</h2>
+              <select id="rev-range" onchange="drawRevenue()" class="rev-select">
+                <option value="0">This Month</option>
+                <option value="14">Last 14 days</option>
+                <option value="7">Last 7 days</option>
+              </select>
+            </div>
+            <div class="flex items-baseline justify-between gap-2 mt-2">
+              <p id="rev-total" class="rev-value">$0</p>
+              <span id="rev-delta" class="rev-delta"></span>
+            </div>
+            <div class="flex-1 min-h-[190px] mt-3 relative"><canvas id="chart-revenue"></canvas></div>
+          </div>
+
+          <!-- Cashflow Overview -->
+          <div id="chart-main-col" class="card p-5 lg:col-span-2 transition-all duration-500 ease-in-out">
             <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 mb-1">
               <div>
-                <h2 id="chart-title">Performance Trend</h2>
-                <p class="panel-sub">Spend · profit · CPL · CPA по днях</p>
+                <h2 id="chart-title">Cashflow Overview</h2>
+                <p class="panel-sub">Revenue проти spend</p>
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <div class="flex items-center gap-2 p-1 rounded-xl text-[10px] font-bold" style="background:var(--surface-2);border:1px solid var(--border)">
@@ -1896,9 +1905,10 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
                 </div>
               </div>
             </div>
-            <div class="h-[310px] md:h-[520px] w-full relative"><canvas id="chart-trend"></canvas></div>
+            <div class="h-[300px] md:h-[360px] w-full relative"><canvas id="chart-trend"></canvas></div>
           </div>
 
+          <!-- Geo Performance -->
           <div id="geo-sidebar-col" class="card p-4 lg:col-span-1 flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
             <div class="mb-3 pb-3" style="border-bottom:1px solid var(--border)">
               <h2 class="mb-2">Geo Performance</h2>
@@ -1913,13 +1923,6 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
             </div>
             <div class="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1.5 custom-scrollbar text-dynamic" id="geo-list"></div>
 
-            <div class="mt-3 pt-3 admin-only shrink-0" style="border-top:1px solid var(--border)">
-              <div class="flex justify-between items-center mb-2">
-                <h2 class="!text-[13px]">Tasks <span id="side-task-count" class="text-slate-500 font-bold"></span></h2>
-                <button onclick="toggleTaskModal()" class="text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-violet-400 transition">Усі →</button>
-              </div>
-              <div id="side-task-list" class="space-y-1.5 overflow-y-auto max-h-[170px] pr-1 custom-scrollbar"></div>
-            </div>
           </div>
         </div>
 
@@ -2308,12 +2311,7 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
         <span class="opacity-30">→</span>
         <input type="date" id="rb-to" onchange="rbRender()" class="bg-transparent outline-none text-white">
       </div>
-      <select id="rb-f-geo" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black uppercase text-white outline-none cursor-pointer"><option value="">All geo</option></select>
-      <select id="rb-f-acc" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[160px]"><option value="">All accounts</option></select>
-      <select id="rb-f-fun" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">All funnels</option></select>
-      <select id="rb-f-dev" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[140px]"><option value="">All devices</option></select>
-      <select id="rb-f-plat" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">All platforms</option></select>
-      <select id="rb-f-plc" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">All placements</option></select>
+      <div id="rb-filters" class="flex flex-wrap items-center gap-2"></div>
       <input id="rb-q" oninput="rbRender()" placeholder="Search…" class="bg-black/20 border border-white/5 rounded-xl px-3 py-2 text-[10px] font-bold text-white outline-none w-28 focus:border-cyan-500">
       <select id="rb-metric" onchange="rbRender()" class="hidden bg-black/20 border border-cyan-500/30 rounded-xl px-2 py-2 text-[10px] font-black uppercase text-cyan-300 outline-none cursor-pointer">
         <option value="spend">Spend</option><option value="installs">Installs</option>
@@ -2332,6 +2330,7 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
     </div><!-- /.app-content -->
   </div><!-- /.app-main -->
 </div><!-- /.app-shell -->
+
 
   <!-- MODALS -->
   <div id="screenshot-modal" class="hidden fixed inset-0 z-[60] modal-overlay flex items-center justify-center p-4 text-dynamic">
@@ -3032,7 +3031,6 @@ async function sbFetchAll(table, build) {
   if (document.getElementById('kpi-roi')) {
     document.getElementById('kpi-roi').innerText = `ROI: ${roi}%`;
   }
-  renderHealthGauge(roi);
 
   // Net Profit = виручка − спенд. Підсумковий профіт ще й без комісій та витрат.
   _kpiRevenue = totalRev;
@@ -3067,150 +3065,116 @@ async function sbFetchAll(table, build) {
   setTimeout(syncGeoHeight, 0);   // після того, як обидві колонки відмалювались
   renderTable(data);
   renderWeeklyHeatmap(data);
+  renderRevenueAnalytics(data);
   renderInsightCards(data);
 }
              
+/* ══════════════════════════════════════════════════════════════════
+   Cashflow Overview — стовпчики за макетом: revenue вгору (зелений),
+   spend вниз (жовтий), зі штрихуванням і заокругленими торцями.
+   Режими daily / geo та фільтри дат лишились ті самі.
+   ══════════════════════════════════════════════════════════════════ */
+
+const CF_UP = '#22C55E', CF_DOWN = '#EAB308';
+
+// Штрихування як у макеті: діагональні смуги всередині стовпця.
+function cfStripe(ctx, color) {
+  const key = '_cfpat_' + color;
+  if (window[key]) return window[key];
+  const c = document.createElement('canvas');
+  c.width = c.height = 10;
+  const x = c.getContext('2d');
+  x.fillStyle = color;
+  x.fillRect(0, 0, 10, 10);
+  x.strokeStyle = 'rgba(0,0,0,.20)';
+  x.lineWidth = 3.5;
+  x.beginPath(); x.moveTo(-3, 13); x.lineTo(13, -3);
+  x.moveTo(2, 18); x.lineTo(18, 2);
+  x.moveTo(-8, 8); x.lineTo(8, -8);
+  x.stroke();
+  const pat = ctx.createPattern(c, 'repeat');
+  window[key] = pat;
+  return pat;
+}
+
+function cfMoney(v) {
+  const a = Math.abs(v), sign = v < 0 ? '-' : '';
+  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
+  if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}K`;
+  return `${sign}$${Math.round(a)}`;
+}
+
 function renderTrend(data) {
-  const ctx = document.getElementById('chart-trend');
-  if (!ctx || !data.length) return;
+  const el = document.getElementById('chart-trend');
+  if (!el || !data.length) return;
   if (window.chart1) window.chart1.destroy();
+  const ctx = el.getContext('2d');
 
-  const sd = [...new Set(data.map(d => d.date))].sort();
   const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
-  const labels = sd.map(d => {
-    const dt = new Date(d);
-    return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
-  });
+  const blank = () => ({ s: 0, r: 0, d: 0, i: 0, rev: 0 });
+  const add = (o, row) => {
+    o.s += Number(row.spend) || 0;
+    o.r += Number(row.regs) || 0;
+    o.d += Number(row.deposits) || 0;
+    o.i += Number(row.installs) || 0;
+    o.rev += (typeof revenueOf === 'function' ? revenueOf(row) : 0);
+  };
 
-  let datasets = [];
+  let labels, stats;
 
-  // --- РЕЖИМ DAILY ---
   if (currentChartMode === 'daily') {
+    const sd = [...new Set(data.map(d => d.date))].sort();
     const m = {};
-    sd.forEach(d => m[d] = { s: 0, r: 0, d: 0, i: 0, rev: 0 });
-    data.forEach(d => {
-      if (m[d.date]) {
-        m[d.date].s += Number(d.spend) || 0;
-        m[d.date].r += Number(d.regs) || 0;
-        m[d.date].d += Number(d.deposits) || 0;
-        m[d.date].i += Number(d.installs) || 0;
-        // Виручка — тією ж формулою, що й у KPI: депозити × виплата для гео+оффера
-        const g = (d.geo || '').toUpperCase().trim();
-        const o = (d.offer || 'DEFAULT').toUpperCase().trim();
-        const payout = globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
-        m[d.date].rev += revenueOf(d);
-      }
+    sd.forEach(d => m[d] = blank());
+    data.forEach(row => { if (m[row.date]) add(m[row.date], row); });
+    labels = sd.map(d => {
+      const dt = new Date(d);
+      return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
     });
-
-    const dailyStats = sd.map(d => m[d]);
-
-    // 1. Spend (Синя товста)
-    datasets.push({
-      label: 'Spend ($)',
-      data: dailyStats.map(v => v.s),
-      allStats: dailyStats, // Дані для тултіпа
-      borderColor: '#8B5CF6',
-      backgroundColor: 'rgba(139, 92, 246, 0.14)',
-      borderWidth: 3,
-      pointBackgroundColor: '#8B5CF6',
-      pointBorderColor: '#8B5CF6',
-      pointBorderWidth: 2,
-      pointRadius: 3,
-      tension: 0.4,
-      fill: true,
-      datalabels: {
-        display: true,
-        align: 'top',
-        color: '#E9E9EC',
-        font: { weight: '900', size: 12 },
-        formatter: Math.round
-      }
+    stats = sd.map(d => m[d]);
+  } else {
+    const g = {};
+    data.forEach(row => {
+      const k = (row.geo || '??').toUpperCase().trim();
+      add(g[k] || (g[k] = blank()), row);
     });
-
-    // 2. Net Profit (Зелена суцільна) — виручка мінус спенд за день,
-    //    та сама формула, що й у KPI-картці Net Profit
-    datasets.push({
-      label: 'Net Profit ($)',
-      data: dailyStats.map(v => Math.round(v.rev - v.s)),
-      borderColor: '#22C55E',
-      backgroundColor: 'rgba(16, 185, 129, 0.08)',
-      borderWidth: 3,
-      pointBackgroundColor: '#121216',
-      pointBorderColor: '#22C55E',
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      tension: 0.4,
-      fill: false,
-      datalabels: { display: false }
-    });
-
-    // 3. CPL (Фіолетовий пунктир)
-    datasets.push({
-      label: 'CPL ($)',
-      data: dailyStats.map(v => v.r > 0 ? v.s / v.r : 0),
-      borderColor: '#22D3EE',
-      borderDash: [8, 5],
-      borderWidth: 2,
-      pointRadius: 0,
-      tension: 0.4,
-      fill: false,
-      datalabels: { display: false }
-    });
-
-    // 4. CPA (Жовтий пунктир)
-    datasets.push({
-      label: 'CPA ($)',
-      data: dailyStats.map(v => v.d > 0 ? v.s / v.d : 0),
-      borderColor: '#eab308',
-      borderDash: [3, 3],
-      borderWidth: 2,
-      pointRadius: 0,
-      tension: 0.4,
-      fill: false,
-      datalabels: { display: false }
-    });
-
+    // Гео багато — беремо найбільші за спендом, інакше підписи зливаються.
+    const top = Object.entries(g).sort((a, b) => b[1].s - a[1].s).slice(0, 14);
+    labels = top.map(e => e[0]);
+    stats = top.map(e => e[1]);
   }
-  // --- РЕЖИМ GEO ---
-  else {
-    const geos = [...new Set(data.map(d => (d.geo || "??").toUpperCase()))].filter(Boolean);
-    const colors = ['#8B5CF6', '#22C55E', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#fb7185'];
 
-    datasets = geos.map((geo, index) => {
-      const statsPerDay = sd.map(date => {
-        const dayGeoData = data.filter(d => d.date === date && (d.geo || "").toUpperCase() === geo);
-        return {
-          s: dayGeoData.reduce((sum, item) => sum + (Number(item.spend) || 0), 0),
-          r: dayGeoData.reduce((sum, item) => sum + (Number(item.regs) || 0), 0),
-          d: dayGeoData.reduce((sum, item) => sum + (Number(item.deposits) || 0), 0),
-          i: dayGeoData.reduce((sum, item) => sum + (Number(item.installs) || 0), 0),
-          // виручка тією ж формулою, що й у KPI: депи рядка × виплата його оффера
-          rev: dayGeoData.reduce((sum, item) => {
-            const o = (item.offer || 'DEFAULT').toUpperCase().trim();
-            const payout = globalPayouts[`${geo}_${o}`] || globalPayouts[`${geo}_DEFAULT`] || 0;
-            return sum + revenueOf(item);
-          }, 0)
-        };
-      });
-
-      return {
-        label: geo,
-        data: statsPerDay.map(v => v.s),
-        allStats: statsPerDay,
-        borderColor: colors[index % colors.length],
-        borderWidth: 3,
-        pointRadius: 4,
-        tension: 0.4,
-        fill: false,
-        datalabels: { display: false }
-      };
-    });
-  }
+  const datasets = [
+    {
+      label: 'Revenue',
+      data: stats.map(v => Math.round(v.rev)),
+      backgroundColor: cfStripe(ctx, CF_UP),
+      borderColor: CF_UP,
+      borderWidth: 0,
+      borderRadius: 9,
+      borderSkipped: false,
+      barPercentage: 0.66,
+      categoryPercentage: 0.74,
+      datalabels: { display: false }
+    },
+    {
+      // Spend униз від нуля — у макеті це відтік
+      label: 'Spend',
+      data: stats.map(v => -Math.round(v.s)),
+      backgroundColor: cfStripe(ctx, CF_DOWN),
+      borderColor: CF_DOWN,
+      borderWidth: 0,
+      borderRadius: 9,
+      borderSkipped: false,
+      barPercentage: 0.66,
+      categoryPercentage: 0.74,
+      datalabels: { display: false }
+    }
+  ];
 
   // --- ФІКС НАВЕДЕННЯ ПІД body{zoom:0.9} ---
   // Chart.js бере позицію курсора з offsetX, а той під CSS zoom рахується в іншому
-  // масштабі, ніж розміри канваса. Через це тултіп зʼїжджав уліво тим сильніше, чим
-  // правіше курсор (на 8 числі показувало 7). Рахуємо позицію самі — з clientX і
+  // масштабі, ніж розміри канваса. Рахуємо позицію самі — з clientX і
   // getBoundingClientRect(), тож масштаб уже не має значення.
   if (!window._chartZoomFix) {
     window._chartZoomFix = true;
@@ -3223,96 +3187,81 @@ function renderTrend(data) {
         if (src.clientX == null) return;
         const r = chart.canvas.getBoundingClientRect();
         if (!r.width || !r.height) return;
-        ev.x = Math.round((src.clientX - r.left) / r.width  * chart.width);
-        ev.y = Math.round((src.clientY - r.top)  / r.height * chart.height);
+        ev.x = Math.round((src.clientX - r.left) / r.width * chart.width);
+        ev.y = Math.round((src.clientY - r.top) / r.height * chart.height);
         args.inChartArea = chart.isPointInArea(ev);
       }
     });
   }
 
-  // Порожня смуга під легендою: Chart.js ставить область графіка впритул до неї,
-  // і підписи значень над верхніми точками налазили на кнопки spend / net profit /
-  // cpl / cpa. Розширюємо саму легенду знизу — вона лишається вгорі, а графік
-  // з'їжджає нижче рівно на цей запас.
-  const legendGap = {
-    id: 'legendGap',
-    beforeInit(chart) {
-      const fit = chart.legend.fit;
-      chart.legend.fit = function () { fit.call(this); this.height += 22; };
-    }
-  };
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8A8A95';
+  const gridC = document.documentElement.classList.contains('light')
+    ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.055)';
 
-  // --- НАЛАШТУВАННЯ CHART.JS ---
-  window.chart1 = new Chart(ctx.getContext('2d'), {
-    type: 'line',
-    plugins: [legendGap],
+  window.chart1 = new Chart(ctx, {
+    type: 'bar',
     data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      // top у Chart.js опускає САМУ легенду, а не графік під нею, тому тут він
-      // маленький — легенда лишається притиснутою до заголовка. Простір під
-      // легенду, щоб підписи значень над верхніми точками в неї не впирались,
-      // додає плагін legendGap нижче.
-      layout: { padding: { top: 6, bottom: 0, left: 5, right: 15 } },
+      layout: { padding: { top: 4, bottom: 0, left: 2, right: 6 } },
       plugins: {
+        datalabels: { display: false },
         legend: {
-          display: true,
           position: 'top',
-          labels: { color: '#8A8A95', usePointStyle: true, padding: 8, boxHeight: 6, font: { weight: 'bold', size: 11 } }
+          align: 'end',
+          labels: {
+            color: muted, usePointStyle: true, pointStyle: 'rectRounded',
+            boxWidth: 8, boxHeight: 8, padding: 14,
+            font: { weight: '700', size: 11 }
+          }
         },
         tooltip: {
           backgroundColor: 'rgba(18, 18, 22, 0.97)',
-          padding: 12,
           borderColor: 'rgba(139, 92, 246, 0.35)',
           borderWidth: 1,
+          padding: 12,
+          displayColors: false,
           callbacks: {
-            label: function(context) {
-              const label = context.dataset.label;
-              const stats = context.dataset.allStats ? context.dataset.allStats[context.dataIndex] : null;
-              
-              // ВАЖЛИВО: спершу перевірка на null — у daily-режимі є лінія тренду без allStats,
-              // і звернення до stats.i до перевірки роняло весь тултіп.
-              if (!stats) return null;
-              const ins = stats.i || 0;
-              if (stats.s === 0 && stats.r === 0 && stats.d === 0 && ins === 0) return null;
-
-              const cpi = ins > 0 ? (stats.s / ins).toFixed(1) : 0;
-              const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
-              const cpa = stats.d > 0 ? (stats.s / stats.d).toFixed(1) : 0;
-
-              // Виручка і Net Profit тією ж формулою, що й у KPI-картці:
-              // депозити × виплата, мінус спенд. Є в обох режимах — у daily це
-              // підсумок по всіх гео, у geo — по конкретному гео за цей день.
-              const profitLines = stats.rev !== undefined
-                ? [` 🏦 Revenue: $${Math.round(stats.rev).toLocaleString()}`,
-                   ` 📈 Net Profit: ${stats.rev - stats.s >= 0 ? '+' : '−'}$${Math.abs(Math.round(stats.rev - stats.s)).toLocaleString()}` +
-                     (stats.s > 0 ? `  ·  ROI ${((stats.rev - stats.s) / stats.s * 100).toFixed(0)}%` : '')]
-                : [];
-
+            // Обидва датасети дають один і той самий блок цифр — показуємо його раз.
+            label(c) {
+              if (c.datasetIndex !== 0) return null;
+              const v = stats[c.dataIndex];
+              if (!v) return null;
+              const profit = v.rev - v.s;
+              const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
+              const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
+              const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
               return [
-                ` 📍 ${currentChartMode === 'daily' ? 'TOTAL' : 'GEO: ' + label}`,
-                ` 💰 Spend: $${Math.round(stats.s)}`,
-                ...profitLines,
-                ` 📲 Inst: ${ins}`,
-                ` 📝 Reg: ${stats.r}`,
-                ` 🎯 Dep: ${stats.d}`,
-                ` 💵 CPI: $${cpi} | CPL: $${cpl} | CPA: $${cpa}`,
-                ` `
+                ` 💰 Spend: $${Math.round(v.s).toLocaleString()}`,
+                ` 🏦 Revenue: $${Math.round(v.rev).toLocaleString()}`,
+                ` 📈 Net Profit: ${profit >= 0 ? '+' : '−'}$${Math.abs(Math.round(profit)).toLocaleString()}` +
+                  (v.s > 0 ? `  ·  ROI ${Math.round(profit / v.s * 100)}%` : ''),
+                ` 📲 Inst: ${v.i}   📝 Reg: ${v.r}   🎯 Dep: ${v.d}`,
+                ` 💵 CPI: $${cpi} | CPL: $${cpl} | CPA: $${cpa}`
               ];
             }
           }
-        },
-        datalabels: { anchor: 'end', align: 'top' }
+        }
       },
       scales: {
-        x: { ticks: { color: '#6C6C76', font: { weight: 'bold' } }, grid: { display: false } },
-        y: { beginAtZero: true, ticks: { color: '#6C6C76' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+        x: {
+          stacked: false,
+          ticks: { color: muted, font: { weight: '600', size: 11 } },
+          grid: { display: false },
+          border: { display: false }
+        },
+        y: {
+          ticks: { color: muted, font: { weight: '600', size: 11 }, callback: v => cfMoney(v) },
+          grid: { color: gridC },
+          border: { display: false }
+        }
       }
     }
   });
 }
+
   function calculateDeltas(data) {
     const dates = [...new Set(data.map(i => i.date))].sort();
     if (dates.length < 2) return;
@@ -5103,12 +5052,12 @@ async function loadSettings() {
   if (chartCol) {
     if (!geoVisible) {
       // Розтягуємо на всі 4 колонки
-      chartCol.classList.remove('lg:col-span-3');
-      chartCol.classList.add('lg:col-span-4');
+      chartCol.classList.remove('lg:col-span-2');
+      chartCol.classList.add('lg:col-span-3');
     } else {
       // Повертаємо до 3 колонок, щоб було місце для ГЕО
-      chartCol.classList.remove('lg:col-span-4');
-      chartCol.classList.add('lg:col-span-3');
+      chartCol.classList.remove('lg:col-span-3');
+      chartCol.classList.add('lg:col-span-2');
     }
   }
   
@@ -5268,8 +5217,9 @@ function updateMilestones(data) {
   
   const left = target - totalSpend;
   if (info) {
+    const pctLeft = target > 0 ? (left / target * 100) : 0;
     info.innerText = left > 0 
-      ? `Left: $${Math.round(left).toLocaleString()}` 
+      ? `Left: $${Math.round(left).toLocaleString()} (${pctLeft.toFixed(1)}%)` 
       : "GOAL REACHED! 🚀";
     
     // Зміна кольору, якщо ціль досягнута
@@ -5983,14 +5933,14 @@ function changeChartMode(mode) {
   const btnGeo = document.getElementById('btn-geo');
   
   if (mode === 'daily') {
-    btnDaily.classList.add('bg-blue-600', 'text-white');
+    btnDaily.classList.add('bg-violet-600', 'text-white');
     btnDaily.classList.remove('text-muted-dynamic');
-    btnGeo.classList.remove('bg-blue-600', 'text-white');
+    btnGeo.classList.remove('bg-violet-600', 'text-white');
     btnGeo.classList.add('text-muted-dynamic');
   } else {
-    btnGeo.classList.add('bg-blue-600', 'text-white');
+    btnGeo.classList.add('bg-violet-600', 'text-white');
     btnGeo.classList.remove('text-muted-dynamic');
-    btnDaily.classList.remove('bg-blue-600', 'text-white');
+    btnDaily.classList.remove('bg-violet-600', 'text-white');
     btnDaily.classList.add('text-muted-dynamic');
   }
 
@@ -7514,31 +7464,127 @@ function rbPayoutOf(r){
   const g=(r.geo||'').toUpperCase().trim(), o=(r.offer||'DEFAULT').toUpperCase().trim();
   return globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
 }
+/* ═══ Мультифільтри Report Builder ═══
+   Кожен фільтр — набір вибраних значень. Порожній набір = «усі».
+   Агент доданий як окремий фільтр поряд з гео/акаунтом/воронкою. */
+const RB_FILTERS = [
+  { k:'geo',   label:'All geo' },
+  { k:'acc',   label:'All accounts' },
+  { k:'agent', label:'All agents' },
+  { k:'fun',   label:'All funnels' },
+  { k:'dev',   label:'All devices' },
+  { k:'plat',  label:'All platforms' },
+  { k:'plc',   label:'All placements' },
+];
+const rbSel = {}, rbOpts = {};
+RB_FILTERS.forEach(f => { rbSel[f.k] = new Set(); rbOpts[f.k] = []; });
+
+function rbHas(k, v){ return rbSel[k].size === 0 || rbSel[k].has(v); }
+
 function rbFiltered(){
   const from=document.getElementById('rb-from').value, to=document.getElementById('rb-to').value;
-  const g=document.getElementById('rb-f-geo').value, a=document.getElementById('rb-f-acc').value;
-  const f=document.getElementById('rb-f-fun').value, q=(document.getElementById('rb-q').value||'').toLowerCase();
-  const dev=document.getElementById('rb-f-dev')?.value||'', plc=document.getElementById('rb-f-plc')?.value||'';
-  const plat=document.getElementById('rb-f-plat')?.value||'';
+  const q=(document.getElementById('rb-q').value||'').toLowerCase();
 
   // Девайс/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
-  const src = (dev||plc||plat||rbNeedsCreatives())
+  const needCr = rbSel.dev.size || rbSel.plat.size || rbSel.plc.size || rbNeedsCreatives();
+  const src = needCr
     ? (window.creativesRawData||[]).map(c=>({...c, deposits:c.deps, offer:c.offer||'DEFAULT', agent:c.agent||'—'}))
     : (rawData||[]);
 
   return src.filter(r=>{
     if(from && r.date < from) return false;
     if(to && r.date > to) return false;
-    if(g && (r.geo||'').toUpperCase() !== g) return false;
-    if(a && String(r.account||'') !== a) return false;
-    if(f && String(r.funnel||'') !== f) return false;
-    if(dev && normalizeDevice(r.device||'') !== dev) return false;
-    if(plat && prettyPlatform(r.platform) !== plat) return false;
-    if(plc && prettyPlacement(r.placement) !== plc) return false;
+    if(!rbHas('geo',   (r.geo||'').toUpperCase())) return false;
+    if(!rbHas('acc',   String(r.account||''))) return false;
+    if(!rbHas('agent', String(r.agent||''))) return false;
+    if(!rbHas('fun',   String(r.funnel||''))) return false;
+    if(!rbHas('dev',   normalizeDevice(r.device||''))) return false;
+    if(!rbHas('plat',  prettyPlatform(r.platform))) return false;
+    if(!rbHas('plc',   prettyPlacement(r.placement))) return false;
     if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.date}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
+
+const rbEsc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+
+function rbmsTitle(f){
+  const sel=[...rbSel[f.k]];
+  if(!sel.length) return f.label;
+  const first=(rbOpts[f.k].find(o=>o.v===sel[0])||{}).label || sel[0];
+  return sel.length===1 ? first : `${first} +${sel.length-1}`;
+}
+
+function rbmsRenderAll(){
+  const box=document.getElementById('rb-filters');
+  if(!box) return;
+  const open=new Set([...box.querySelectorAll('.rbms')].filter(e=>!e.querySelector('.rbms-pop').classList.contains('hidden')).map(e=>e.dataset.k));
+  box.innerHTML = RB_FILTERS.map(f=>`
+    <div class="rbms ${rbSel[f.k].size?'on':''}" data-k="${f.k}">
+      <button class="rbms-btn" onclick="rbmsToggle(event,'${f.k}')">
+        <span class="rbms-t">${rbEsc(rbmsTitle(f))}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="rbms-pop ${open.has(f.k)?'':'hidden'}" onclick="event.stopPropagation()">
+        <input class="rbms-q" placeholder="Пошук…" oninput="rbmsSearch('${f.k}', this.value)">
+        <div class="rbms-acts">
+          <button onclick="rbmsAll('${f.k}')">Всі</button>
+          <button onclick="rbmsNone('${f.k}')">Очистити</button>
+        </div>
+        <div class="rbms-list" id="rbms-list-${f.k}">${rbmsRows(f.k,'')}</div>
+      </div>
+    </div>`).join('');
+}
+
+function rbmsRows(k, q){
+  const s=(q||'').toLowerCase();
+  const rows=rbOpts[k].filter(o=>!s || String(o.label).toLowerCase().includes(s));
+  if(!rows.length) return '<div class="rbms-empty">Нічого не знайшлось</div>';
+  return rows.map(o=>`<label class="rbms-row">
+      <input type="checkbox" ${rbSel[k].has(o.v)?'checked':''} onchange="rbmsPick('${k}', this.dataset.v, this.checked)" data-v="${rbEsc(o.v)}">
+      <span>${rbEsc(o.label)}</span>
+    </label>`).join('');
+}
+
+function rbmsSearch(k, q){
+  const el=document.getElementById('rbms-list-'+k);
+  if(el) el.innerHTML=rbmsRows(k,q);
+}
+
+function rbmsPick(k, v, on){
+  on ? rbSel[k].add(v) : rbSel[k].delete(v);
+  const wrap=document.querySelector(`.rbms[data-k="${k}"]`);
+  if(wrap){
+    wrap.classList.toggle('on', rbSel[k].size>0);
+    const t=wrap.querySelector('.rbms-t');
+    if(t) t.textContent=rbmsTitle(RB_FILTERS.find(f=>f.k===k));
+  }
+  rbRender();
+}
+
+function rbmsAll(k){
+  rbOpts[k].forEach(o=>rbSel[k].add(o.v));
+  rbmsRenderAll(); rbRender();
+}
+function rbmsNone(k){
+  rbSel[k].clear();
+  rbmsRenderAll(); rbRender();
+}
+
+function rbmsCloseAll(){
+  document.querySelectorAll('#rb-filters .rbms-pop').forEach(p=>p.classList.add('hidden'));
+}
+function rbmsToggle(ev, k){
+  ev.stopPropagation();
+  const pop=document.querySelector(`.rbms[data-k="${k}"] .rbms-pop`);
+  const wasOpen=pop && !pop.classList.contains('hidden');
+  rbmsCloseAll();
+  if(pop && !wasOpen){
+    pop.classList.remove('hidden');
+    pop.querySelector('.rbms-q')?.focus();
+  }
+}
+
 function rbDimVal(r,dim){
   if(dim==='month') return rbRowMonth(r);
   if(dim==='geo') return (r.geo||'??').toUpperCase();
@@ -7555,27 +7601,31 @@ function rbInitOnce(){
   if(rbInited || !document.getElementById('rb-groups')) return;
   rbInited = true;
   rbRenderGroupChips(); rbRenderColsMenu();
-  document.addEventListener('click', ()=>document.getElementById('rb-cols-menu')?.classList.add('hidden'));
+  rbmsRenderAll();
+  document.addEventListener('click', ()=>{
+    document.getElementById('rb-cols-menu')?.classList.add('hidden');
+    rbmsCloseAll();
+  });
 }
 function rbPopulateFilters(){
-  const set=(id,vals,label)=>{
-    const el=document.getElementById(id); if(!el) return;
-    const cur=el.value;
-    el.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${v}">${v}</option>`).join('');
-    if(vals.includes(cur)) el.value=cur;
-  };
-  const d=rawData||[];
-  set('rb-f-geo',[...new Set(d.map(r=>(r.geo||'').toUpperCase()).filter(Boolean))].sort(),'All geo');
-  set('rb-f-acc',[...new Set(d.map(r=>String(r.account||'')).filter(Boolean))].sort(),'All accounts');
-  set('rb-f-fun',[...new Set(d.map(r=>String(r.funnel||'')).filter(Boolean))].sort(),'All funnels');
-  const cr=window.creativesRawData||[];
-  const devs=[...new Set(cr.map(r=>normalizeDevice(r.device||'')).filter(Boolean))].sort();
-  const el=document.getElementById('rb-f-dev');
-  if(el){ const cur=el.value;
-    el.innerHTML='<option value="">All devices</option>'+devs.map(v=>`<option value="${v}">${DEVICE_LABELS[v]||v}</option>`).join('');
-    if(devs.includes(cur)) el.value=cur; }
-  set('rb-f-plat',[...new Set(cr.map(r=>prettyPlatform(r.platform)).filter(Boolean))].sort(),'All platforms');
-  set('rb-f-plc',[...new Set(cr.map(r=>prettyPlacement(r.placement)).filter(Boolean))].sort(),'All placements');
+  const d=rawData||[], cr=window.creativesRawData||[];
+  const uniq=arr=>[...new Set(arr.filter(Boolean))].sort();
+  const plain=vals=>vals.map(v=>({v, label:v}));
+
+  rbOpts.geo   = plain(uniq(d.map(r=>(r.geo||'').toUpperCase())));
+  rbOpts.acc   = plain(uniq(d.map(r=>String(r.account||''))));
+  rbOpts.agent = plain(uniq(d.map(r=>String(r.agent||''))));
+  rbOpts.fun   = plain(uniq(d.map(r=>String(r.funnel||''))));
+  rbOpts.dev   = uniq(cr.map(r=>normalizeDevice(r.device||''))).map(v=>({v, label:DEVICE_LABELS[v]||v}));
+  rbOpts.plat  = plain(uniq(cr.map(r=>prettyPlatform(r.platform))));
+  rbOpts.plc   = plain(uniq(cr.map(r=>prettyPlacement(r.placement))));
+
+  // Значення, яких уже немає в даних, знімаємо з вибраних
+  RB_FILTERS.forEach(f=>{
+    const ok=new Set(rbOpts[f.k].map(o=>o.v));
+    [...rbSel[f.k]].forEach(v=>{ if(!ok.has(v)) rbSel[f.k].delete(v); });
+  });
+  rbmsRenderAll();
 }
 function rbRenderGroupChips(){
   document.getElementById('rb-groups').innerHTML = RB_DIMS.map(d=>{
@@ -7659,7 +7709,8 @@ function rbSortBy(k){
 }
 function rbReset(){
   ['rb-from','rb-to','rb-q'].forEach(id=>document.getElementById(id).value='');
-  ['rb-f-geo','rb-f-acc','rb-f-fun'].forEach(id=>document.getElementById(id).value='');
+  RB_FILTERS.forEach(f=>rbSel[f.k].clear());
+  rbmsRenderAll();
   rbRender();
 }
 function rbAgg(rows){
@@ -10053,8 +10104,8 @@ function dcRenderWarn(unlinked) {
 </script>
 <script>
 /* ══════════════════════════════════════════════════════════════════
-   UI-шар нового дизайну: навігація, тема, ⌘K, гейдж, інсайт-картки.
-   Дані бере з тих самих глобалів, що й решта дашборда.
+   UI-шар нового дизайну: навігація, тема, ⌘K, Revenue Analytics,
+   інсайт-картки. Дані бере з тих самих глобалів, що й решта дашборда.
    ══════════════════════════════════════════════════════════════════ */
 (function () {
 
@@ -10072,11 +10123,8 @@ function dcRenderWarn(unlinked) {
       if (!t) return;
       // Розділ міг бути вимкнений у налаштуваннях віджетів — тоді вмикаємо назад,
       // інакше клік у меню просто нічого не робив би.
-      if (t.classList.contains('hidden')) {
-        const cb = document.querySelector(`#settings-modal input[onchange="updateVisibility()"]`);
-        t.classList.remove('hidden');
-      }
-      const y = t.getBoundingClientRect().top + window.scrollY - 78;
+      t.classList.remove('hidden');
+      const y = t.getBoundingClientRect().top + window.scrollY - 20;
       window.scrollTo({ top: y, behavior: 'smooth' });
     }
     if (el) setActiveNav(el.dataset.nav);
@@ -10115,6 +10163,7 @@ function dcRenderWarn(unlinked) {
     const ico = document.getElementById('theme-icon');
     if (ico) ico.innerHTML = light ? MOON : SUN;
     if (window.chart1) { try { window.chart1.update(); } catch (e) {} }
+    if (typeof drawRevenue === 'function') { try { drawRevenue(); } catch (e) {} }
   };
 
   (function initTheme() {
@@ -10194,12 +10243,8 @@ function dcRenderWarn(unlinked) {
     if (!c) return;
     cmdClose();
     const [kind, arg] = c[1].split(':');
-    if (kind === 'nav') {
-      navGo(arg);
-      setActiveNav(arg);
-    } else if (typeof window[arg] === 'function') {
-      window[arg]();
-    }
+    if (kind === 'nav') { navGo(arg); setActiveNav(arg); }
+    else if (typeof window[arg] === 'function') window[arg]();
   }
 
   window.cmdOpen = function () {
@@ -10215,39 +10260,136 @@ function dcRenderWarn(unlinked) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cmdOpen(); }
   });
 
-  /* ─────────── Гейдж «Campaign Health» ─────────── */
-  const TICKS = 46, GA_START = 150, GA_SWEEP = 240, GC = { x: 100, y: 104 };
+  /* ─────────── Revenue Analytics ─────────── */
+  const MON = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
+  let _revData = [];
 
-  function tickColor(p) {
-    // червоний → жовтий → зелений
-    const a = p < .5 ? [239, 68, 68] : [234, 179, 8];
-    const b = p < .5 ? [234, 179, 8] : [34, 197, 94];
-    const t = p < .5 ? p * 2 : (p - .5) * 2;
-    return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
-  }
+  const revMoney = n => {
+    const a = Math.abs(n);
+    if (a >= 1e6) return '$' + (a / 1e6).toFixed(a >= 1e7 ? 0 : 2) + 'M';
+    if (a >= 1e4) return '$' + Math.round(a / 1e3) + 'K';
+    return '$' + Math.round(a).toLocaleString('en-US');
+  };
+  const revOf = r => (typeof revenueOf === 'function' ? revenueOf(r) : 0);
 
-  window.renderHealthGauge = function (roi) {
-    const svg = document.getElementById('health-gauge');
-    if (!svg) return;
-    const score = Math.max(0, Math.min(100, Math.round(50 + Number(roi || 0))));
-    const active = Math.round(score / 100 * TICKS);
-    let out = '';
-    for (let i = 0; i < TICKS; i++) {
-      const p = i / (TICKS - 1);
-      const a = (GA_START + GA_SWEEP * p) * Math.PI / 180;
-      const r1 = 60, r2 = 72;
-      const on = i < active;
-      out += `<line x1="${(GC.x + r1 * Math.cos(a)).toFixed(1)}" y1="${(GC.y + r1 * Math.sin(a)).toFixed(1)}"
-                    x2="${(GC.x + r2 * Math.cos(a)).toFixed(1)}" y2="${(GC.y + r2 * Math.sin(a)).toFixed(1)}"
-                    stroke="${on ? tickColor(p) : 'rgba(140,140,150,.22)'}" stroke-width="3" stroke-linecap="round"/>`;
+  window.renderRevenueAnalytics = function (data) {
+    _revData = Array.isArray(data) ? data : [];
+    drawRevenue();
+  };
+
+  window.drawRevenue = function () {
+    const cv = document.getElementById('chart-revenue');
+    if (!cv || typeof Chart === 'undefined') return;
+
+    const days = Number(document.getElementById('rev-range')?.value || 0);
+    const all = [...new Set(_revData.map(r => r.date).filter(Boolean))].sort();
+    const win = days && all.length > days ? all.slice(-days) : all;
+    // Попереднє вікно тієї ж довжини — для дельти
+    const prev = days ? all.slice(Math.max(0, all.length - days * 2), all.length - win.length) : [];
+
+    const perDay = {};
+    all.forEach(d => perDay[d] = 0);
+    _revData.forEach(r => { if (r.date in perDay) perDay[r.date] += revOf(r); });
+
+    const total = win.reduce((a, d) => a + perDay[d], 0);
+    let prevTotal = prev.reduce((a, d) => a + perDay[d], 0);
+
+    // На «This Month» попереднього вікна всередині місяця немає — порівнюємо
+    // з минулим місяцем по всьому масиву даних.
+    if (!days) {
+      try {
+        const mm = /^(\d{4})-(\d{2})$/.exec(currentMonthFilter || '');
+        if (mm) {
+          const d0 = new Date(Number(mm[1]), Number(mm[2]) - 1, 1);
+          d0.setMonth(d0.getMonth() - 1);
+          const pm = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}`;
+          prevTotal = (rawData || []).filter(r => String(r.date || '').startsWith(pm))
+                                     .reduce((a, r) => a + revOf(r), 0);
+        }
+      } catch (e) { /* немає глобалів — лишаємо як є */ }
     }
-    const label = score >= 70 ? 'HEALTHY' : score >= 45 ? 'MODERATE' : 'AT RISK';
-    const col   = score >= 70 ? '#22C55E' : score >= 45 ? '#EAB308' : '#EF4444';
-    out += `<text x="100" y="100" text-anchor="middle" fill="${col}" font-size="34" font-weight="800" font-family="Inter, sans-serif">${score}<tspan font-size="15">%</tspan></text>
-            <text x="100" y="118" text-anchor="middle" fill="${col}" font-size="9.5" font-weight="800" letter-spacing="2.2" font-family="Inter, sans-serif">${label}</text>`;
-    svg.innerHTML = out;
-    const note = document.getElementById('health-note');
-    if (note) note.innerHTML = `ROI <b style="color:${col}">${Math.round(roi)}%</b> за вибраний період.`;
+
+    // Площа наростальним підсумком — як у макеті: крива йде вгору протягом періоду
+    let acc = 0;
+    const series = win.map(d => (acc += perDay[d]));
+    const labels = win.map(d => {
+      const dt = new Date(d + 'T00:00:00');
+      return `${dt.getDate()} ${MON[dt.getMonth()]}`;
+    });
+
+    const tEl = document.getElementById('rev-total');
+    if (tEl) tEl.textContent = revMoney(total);
+
+    const dEl = document.getElementById('rev-delta');
+    if (dEl) {
+      if (!prevTotal) { dEl.textContent = ''; dEl.className = 'rev-delta'; }
+      else {
+        const pct = (total - prevTotal) / prevTotal * 100;
+        dEl.textContent = `${pct >= 0 ? '↑' : '↓'} ${Math.abs(pct).toFixed(1)}%`;
+        dEl.className = 'rev-delta ' + (pct >= 0 ? 'is-up' : 'is-down');
+      }
+    }
+
+    if (window.chartRevenue) window.chartRevenue.destroy();
+    const ctx = cv.getContext('2d');
+    const muted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8A8A95';
+    const grid = document.documentElement.classList.contains('light')
+      ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.05)';
+
+    window.chartRevenue = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: series,
+          borderColor: '#A78BFA',
+          borderWidth: 2,
+          tension: 0,
+          pointRadius: c => c.dataIndex === series.length - 1 ? 3.5 : 0,
+          pointBackgroundColor: '#A78BFA',
+          pointBorderColor: '#A78BFA',
+          fill: true,
+          backgroundColor: c => {
+            const { ctx: cc, chartArea: ca } = c.chart;
+            if (!ca) return 'rgba(139,92,246,.22)';
+            const g = cc.createLinearGradient(0, ca.top, 0, ca.bottom);
+            g.addColorStop(0, 'rgba(139,92,246,.40)');
+            g.addColorStop(1, 'rgba(139,92,246,.03)');
+            return g;
+          },
+          datalabels: { display: false }
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { top: 6, right: 4, left: 0, bottom: 0 } },
+        plugins: {
+          datalabels: { display: false },
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(18,18,22,.97)',
+            borderColor: 'rgba(139,92,246,.35)', borderWidth: 1,
+            displayColors: false, padding: 10,
+            callbacks: {
+              title: c => c[0].label,
+              label: c => ` Накопичено: $${Math.round(c.parsed.y).toLocaleString('en-US')}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: muted, font: { size: 10, weight: '600' }, maxTicksLimit: 5, maxRotation: 0 },
+            grid: { display: false }, border: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: muted, font: { size: 10, weight: '600' }, maxTicksLimit: 4, callback: v => revMoney(v) },
+            grid: { color: grid }, border: { display: false }
+          }
+        }
+      }
+    });
   };
 
   /* ─────────── Нижні інсайт-картки ─────────── */
@@ -10263,7 +10405,7 @@ function dcRenderWarn(unlinked) {
       const o = byGeo[g] || (byGeo[g] = { s: 0, rev: 0, d: 0 });
       o.s += Number(r.spend) || 0;
       o.d += Number(r.deposits) || 0;
-      o.rev += (typeof revenueOf === 'function' ? revenueOf(r) : 0);
+      o.rev += revOf(r);
     });
     const top = Object.entries(byGeo)
       .map(([g, v]) => ({ g, ...v, profit: v.rev - v.s, roi: v.s > 0 ? (v.rev - v.s) / v.s * 100 : 0 }))
@@ -10307,8 +10449,8 @@ function dcRenderWarn(unlinked) {
   }
 
   // taskData оголошено через `let` — воно в глобальній лексичній області,
-  // а не у window, тож звертаємось голим ідентифікатором через typeof-щит.
-  const tasks = () => (typeof taskData !== 'undefined' && Array.isArray(taskData)) ? taskData : [];
+  // а не у window, тож звертаємось голим ідентифікатором через try-щит.
+  const tasks = () => { try { return Array.isArray(taskData) ? taskData : []; } catch (e) { return []; } };
 
   function renderInsightTasks() {
     const el = document.getElementById('ins-tasks');
@@ -10326,19 +10468,30 @@ function dcRenderWarn(unlinked) {
     }).join('') : emptyRow('Активних тасків немає');
   }
 
-  /* ─────────── Дрібна синхронізація шапки ─────────── */
-  setInterval(() => {
-    const src = document.getElementById('task-dot');
-    const dst = document.getElementById('tb-task-dot');
-    if (src && dst) dst.classList.toggle('hidden', src.classList.contains('hidden'));
+  /* ─────────── Синхронізація підписів ─────────── */
+  const MONTH_UA = ['Січень','Лютий','Березень','Квітень','Травень','Червень',
+                    'Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
 
+  setInterval(() => {
+    // Назва команди — у бренді сайдбара і на мобільній кнопці меню
     const team = document.getElementById('active-team-label');
-    const av = document.getElementById('tb-avatar');
-    if (team && av) {
-      const name = team.innerText.replace(/^TEAM:\s*/i, '').trim();
-      av.textContent = name ? name.slice(0, 2).toUpperCase() : '–';
-      av.title = name || 'Команда';
+    const name = team ? team.innerText.replace(/^TEAM:\s*/i, '').trim() : '';
+    if (name) {
+      const b = document.getElementById('sb-team-name');
+      const m = document.getElementById('mob-team-name');
+      if (b && b.textContent !== name) b.textContent = name;
+      if (m && m.textContent !== name) m.textContent = name;
     }
+
+    // Місяць — підписом у картці таргету
+    const src = document.getElementById('current-month-label');
+    const dst = document.getElementById('header-month-display');
+    if (src && dst) {
+      const mm = /^(\d{4})-(\d{2})$/.exec(src.innerText.trim());
+      const txt = mm ? `· ${MONTH_UA[Number(mm[2]) - 1]} ${mm[1]}` : '';
+      if (dst.textContent !== txt) dst.textContent = txt;
+    }
+
     const badge = document.getElementById('sb-task-badge');
     if (badge) badge.textContent = tasks().filter(t => t.status !== 'Completed').length;
     renderInsightTasks();
