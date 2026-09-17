@@ -1005,6 +1005,50 @@ body { padding-bottom: 100px !important; padding-top: 14px !important; }
   #app-dock .dk { width: 41px; height: 41px; flex: 0 0 41px; }
 }
 
+/* ═══════════ REPORT BUILDER — МУЛЬТИФІЛЬТРИ ═══════════ */
+.rbms { position: relative; }
+.rbms-btn {
+  display: flex; align-items: center; gap: 6px; max-width: 190px;
+  background: var(--surface-2, rgba(0,0,0,.2));
+  border: 1px solid var(--border, rgba(255,255,255,.06));
+  border-radius: 11px; padding: 7px 9px;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-main, #e2e8f0); cursor: pointer; transition: border-color .15s, color .15s;
+}
+.rbms-btn:hover { border-color: rgba(139,92,246,.45); }
+.rbms.on .rbms-btn { border-color: rgba(139,92,246,.55); color: #c4b5fd; }
+.rbms-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rbms-btn svg { width: 11px; height: 11px; flex: 0 0 11px; opacity: .5; }
+.rbms-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 95; width: 230px;
+  background: var(--surface, #161a25);
+  border: 1px solid var(--border-2, rgba(255,255,255,.13));
+  border-radius: 14px; padding: 8px;
+  box-shadow: 0 24px 60px -24px rgba(0,0,0,.9);
+}
+.rbms-q { width: 100%; margin-bottom: 6px; font-size: 11px !important; padding: 6px 8px !important; }
+.rbms-acts { display: flex; gap: 6px; margin-bottom: 6px; }
+.rbms-acts button {
+  flex: 1; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
+  padding: 5px; border-radius: 8px; color: var(--text-muted, #94a3b8);
+  background: var(--surface-2, rgba(255,255,255,.04));
+  border: 1px solid var(--border, rgba(255,255,255,.06));
+  transition: color .15s, border-color .15s;
+}
+.rbms-acts button:hover { color: #c4b5fd; border-color: rgba(139,92,246,.4); }
+.rbms-list { max-height: 230px; overflow-y: auto; }
+.rbms-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 7px; border-radius: 8px;
+  font-size: 11px; font-weight: 700; color: var(--text-main, #e2e8f0); cursor: pointer;
+}
+.rbms-row:hover { background: rgba(139,92,246,.12); }
+.rbms-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rbms-row input[type="checkbox"] {
+  width: 13px !important; height: 13px !important; flex: 0 0 13px;
+  margin: 0 !important; padding: 0 !important; accent-color: #8b5cf6; cursor: pointer;
+}
+.rbms-empty { font-size: 10px; color: var(--text-muted, #94a3b8); text-align: center; padding: 10px; }
+
 /* ═══════════ КАСТОМНИЙ КАЛЕНДАР ═══════════ */
 input[type="date"] { position: relative; }
 input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:absolute; inset:0; cursor:pointer; }
@@ -1708,12 +1752,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         <span class="opacity-30">→</span>
         <input type="date" id="rb-to" onchange="rbRender()" class="bg-transparent outline-none text-white">
       </div>
-      <select id="rb-f-geo" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black uppercase text-white outline-none cursor-pointer"><option value="">All geo</option></select>
-      <select id="rb-f-acc" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[160px]"><option value="">All accounts</option></select>
-      <select id="rb-f-fun" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">All funnels</option></select>
-      <select id="rb-f-dev" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[140px]"><option value="">All devices</option></select>
-      <select id="rb-f-plat" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">All platforms</option></select>
-      <select id="rb-f-plc" onchange="rbRender()" class="bg-black/20 border border-white/5 rounded-xl px-2 py-2 text-[10px] font-black text-white outline-none cursor-pointer max-w-[150px]"><option value="">All placements</option></select>
+      <div id="rb-filters" class="flex flex-wrap items-center gap-2"></div>
       <input id="rb-q" oninput="rbRender()" placeholder="Search…" class="bg-black/20 border border-white/5 rounded-xl px-3 py-2 text-[10px] font-bold text-white outline-none w-28 focus:border-cyan-500">
       <select id="rb-metric" onchange="rbRender()" class="hidden bg-black/20 border border-cyan-500/30 rounded-xl px-2 py-2 text-[10px] font-black uppercase text-cyan-300 outline-none cursor-pointer">
         <option value="spend">Spend</option><option value="installs">Installs</option>
@@ -6910,31 +6949,127 @@ function rbPayoutOf(r){
   const g=(r.geo||'').toUpperCase().trim(), o=(r.offer||'DEFAULT').toUpperCase().trim();
   return globalPayouts[`${g}_${o}`] || globalPayouts[`${g}_DEFAULT`] || 0;
 }
+/* ═══ Мультифільтри Report Builder ═══
+   Кожен фільтр — набір вибраних значень. Порожній набір = «усі».
+   Агент доданий як окремий фільтр поряд з гео/акаунтом/воронкою. */
+const RB_FILTERS = [
+  { k:'geo',   label:'All geo' },
+  { k:'acc',   label:'All accounts' },
+  { k:'agent', label:'All agents' },
+  { k:'fun',   label:'All funnels' },
+  { k:'dev',   label:'All devices' },
+  { k:'plat',  label:'All platforms' },
+  { k:'plc',   label:'All placements' },
+];
+const rbSel = {}, rbOpts = {};
+RB_FILTERS.forEach(f => { rbSel[f.k] = new Set(); rbOpts[f.k] = []; });
+
+function rbHas(k, v){ return rbSel[k].size === 0 || rbSel[k].has(v); }
+
 function rbFiltered(){
   const from=document.getElementById('rb-from').value, to=document.getElementById('rb-to').value;
-  const g=document.getElementById('rb-f-geo').value, a=document.getElementById('rb-f-acc').value;
-  const f=document.getElementById('rb-f-fun').value, q=(document.getElementById('rb-q').value||'').toLowerCase();
-  const dev=document.getElementById('rb-f-dev')?.value||'', plc=document.getElementById('rb-f-plc')?.value||'';
-  const plat=document.getElementById('rb-f-plat')?.value||'';
+  const q=(document.getElementById('rb-q').value||'').toLowerCase();
 
   // Девайс/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
-  const src = (dev||plc||plat||rbNeedsCreatives())
+  const needCr = rbSel.dev.size || rbSel.plat.size || rbSel.plc.size || rbNeedsCreatives();
+  const src = needCr
     ? (window.creativesRawData||[]).map(c=>({...c, deposits:c.deps, offer:c.offer||'DEFAULT', agent:c.agent||'—'}))
     : (rawData||[]);
 
   return src.filter(r=>{
     if(from && r.date < from) return false;
     if(to && r.date > to) return false;
-    if(g && (r.geo||'').toUpperCase() !== g) return false;
-    if(a && String(r.account||'') !== a) return false;
-    if(f && String(r.funnel||'') !== f) return false;
-    if(dev && normalizeDevice(r.device||'') !== dev) return false;
-    if(plat && prettyPlatform(r.platform) !== plat) return false;
-    if(plc && prettyPlacement(r.placement) !== plc) return false;
+    if(!rbHas('geo',   (r.geo||'').toUpperCase())) return false;
+    if(!rbHas('acc',   String(r.account||''))) return false;
+    if(!rbHas('agent', String(r.agent||''))) return false;
+    if(!rbHas('fun',   String(r.funnel||''))) return false;
+    if(!rbHas('dev',   normalizeDevice(r.device||''))) return false;
+    if(!rbHas('plat',  prettyPlatform(r.platform))) return false;
+    if(!rbHas('plc',   prettyPlacement(r.placement))) return false;
     if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.date}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
+
+const rbEsc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+
+function rbmsTitle(f){
+  const sel=[...rbSel[f.k]];
+  if(!sel.length) return f.label;
+  const first=(rbOpts[f.k].find(o=>o.v===sel[0])||{}).label || sel[0];
+  return sel.length===1 ? first : `${first} +${sel.length-1}`;
+}
+
+function rbmsRenderAll(){
+  const box=document.getElementById('rb-filters');
+  if(!box) return;
+  const open=new Set([...box.querySelectorAll('.rbms')].filter(e=>!e.querySelector('.rbms-pop').classList.contains('hidden')).map(e=>e.dataset.k));
+  box.innerHTML = RB_FILTERS.map(f=>`
+    <div class="rbms ${rbSel[f.k].size?'on':''}" data-k="${f.k}">
+      <button class="rbms-btn" onclick="rbmsToggle(event,'${f.k}')">
+        <span class="rbms-t">${rbEsc(rbmsTitle(f))}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="rbms-pop ${open.has(f.k)?'':'hidden'}" onclick="event.stopPropagation()">
+        <input class="rbms-q" placeholder="Пошук…" oninput="rbmsSearch('${f.k}', this.value)">
+        <div class="rbms-acts">
+          <button onclick="rbmsAll('${f.k}')">Всі</button>
+          <button onclick="rbmsNone('${f.k}')">Очистити</button>
+        </div>
+        <div class="rbms-list" id="rbms-list-${f.k}">${rbmsRows(f.k,'')}</div>
+      </div>
+    </div>`).join('');
+}
+
+function rbmsRows(k, q){
+  const s=(q||'').toLowerCase();
+  const rows=rbOpts[k].filter(o=>!s || String(o.label).toLowerCase().includes(s));
+  if(!rows.length) return '<div class="rbms-empty">Нічого не знайшлось</div>';
+  return rows.map(o=>`<label class="rbms-row">
+      <input type="checkbox" ${rbSel[k].has(o.v)?'checked':''} onchange="rbmsPick('${k}', this.dataset.v, this.checked)" data-v="${rbEsc(o.v)}">
+      <span>${rbEsc(o.label)}</span>
+    </label>`).join('');
+}
+
+function rbmsSearch(k, q){
+  const el=document.getElementById('rbms-list-'+k);
+  if(el) el.innerHTML=rbmsRows(k,q);
+}
+
+function rbmsPick(k, v, on){
+  on ? rbSel[k].add(v) : rbSel[k].delete(v);
+  const wrap=document.querySelector(`.rbms[data-k="${k}"]`);
+  if(wrap){
+    wrap.classList.toggle('on', rbSel[k].size>0);
+    const t=wrap.querySelector('.rbms-t');
+    if(t) t.textContent=rbmsTitle(RB_FILTERS.find(f=>f.k===k));
+  }
+  rbRender();
+}
+
+function rbmsAll(k){
+  rbOpts[k].forEach(o=>rbSel[k].add(o.v));
+  rbmsRenderAll(); rbRender();
+}
+function rbmsNone(k){
+  rbSel[k].clear();
+  rbmsRenderAll(); rbRender();
+}
+
+function rbmsCloseAll(){
+  document.querySelectorAll('#rb-filters .rbms-pop').forEach(p=>p.classList.add('hidden'));
+}
+function rbmsToggle(ev, k){
+  ev.stopPropagation();
+  const pop=document.querySelector(`.rbms[data-k="${k}"] .rbms-pop`);
+  const wasOpen=pop && !pop.classList.contains('hidden');
+  rbmsCloseAll();
+  if(pop && !wasOpen){
+    pop.classList.remove('hidden');
+    pop.querySelector('.rbms-q')?.focus();
+  }
+}
+
 function rbDimVal(r,dim){
   if(dim==='month') return rbRowMonth(r);
   if(dim==='geo') return (r.geo||'??').toUpperCase();
@@ -6951,27 +7086,31 @@ function rbInitOnce(){
   if(rbInited || !document.getElementById('rb-groups')) return;
   rbInited = true;
   rbRenderGroupChips(); rbRenderColsMenu();
-  document.addEventListener('click', ()=>document.getElementById('rb-cols-menu')?.classList.add('hidden'));
+  rbmsRenderAll();
+  document.addEventListener('click', ()=>{
+    document.getElementById('rb-cols-menu')?.classList.add('hidden');
+    rbmsCloseAll();
+  });
 }
 function rbPopulateFilters(){
-  const set=(id,vals,label)=>{
-    const el=document.getElementById(id); if(!el) return;
-    const cur=el.value;
-    el.innerHTML=`<option value="">${label}</option>`+vals.map(v=>`<option value="${v}">${v}</option>`).join('');
-    if(vals.includes(cur)) el.value=cur;
-  };
-  const d=rawData||[];
-  set('rb-f-geo',[...new Set(d.map(r=>(r.geo||'').toUpperCase()).filter(Boolean))].sort(),'All geo');
-  set('rb-f-acc',[...new Set(d.map(r=>String(r.account||'')).filter(Boolean))].sort(),'All accounts');
-  set('rb-f-fun',[...new Set(d.map(r=>String(r.funnel||'')).filter(Boolean))].sort(),'All funnels');
-  const cr=window.creativesRawData||[];
-  const devs=[...new Set(cr.map(r=>normalizeDevice(r.device||'')).filter(Boolean))].sort();
-  const el=document.getElementById('rb-f-dev');
-  if(el){ const cur=el.value;
-    el.innerHTML='<option value="">All devices</option>'+devs.map(v=>`<option value="${v}">${DEVICE_LABELS[v]||v}</option>`).join('');
-    if(devs.includes(cur)) el.value=cur; }
-  set('rb-f-plat',[...new Set(cr.map(r=>prettyPlatform(r.platform)).filter(Boolean))].sort(),'All platforms');
-  set('rb-f-plc',[...new Set(cr.map(r=>prettyPlacement(r.placement)).filter(Boolean))].sort(),'All placements');
+  const d=rawData||[], cr=window.creativesRawData||[];
+  const uniq=arr=>[...new Set(arr.filter(Boolean))].sort();
+  const plain=vals=>vals.map(v=>({v, label:v}));
+
+  rbOpts.geo   = plain(uniq(d.map(r=>(r.geo||'').toUpperCase())));
+  rbOpts.acc   = plain(uniq(d.map(r=>String(r.account||''))));
+  rbOpts.agent = plain(uniq(d.map(r=>String(r.agent||''))));
+  rbOpts.fun   = plain(uniq(d.map(r=>String(r.funnel||''))));
+  rbOpts.dev   = uniq(cr.map(r=>normalizeDevice(r.device||''))).map(v=>({v, label:DEVICE_LABELS[v]||v}));
+  rbOpts.plat  = plain(uniq(cr.map(r=>prettyPlatform(r.platform))));
+  rbOpts.plc   = plain(uniq(cr.map(r=>prettyPlacement(r.placement))));
+
+  // Значення, яких уже немає в даних, знімаємо з вибраних
+  RB_FILTERS.forEach(f=>{
+    const ok=new Set(rbOpts[f.k].map(o=>o.v));
+    [...rbSel[f.k]].forEach(v=>{ if(!ok.has(v)) rbSel[f.k].delete(v); });
+  });
+  rbmsRenderAll();
 }
 function rbRenderGroupChips(){
   document.getElementById('rb-groups').innerHTML = RB_DIMS.map(d=>{
@@ -7055,7 +7194,8 @@ function rbSortBy(k){
 }
 function rbReset(){
   ['rb-from','rb-to','rb-q'].forEach(id=>document.getElementById(id).value='');
-  ['rb-f-geo','rb-f-acc','rb-f-fun'].forEach(id=>document.getElementById(id).value='');
+  RB_FILTERS.forEach(f=>rbSel[f.k].clear());
+  rbmsRenderAll();
   rbRender();
 }
 function rbAgg(rows){
