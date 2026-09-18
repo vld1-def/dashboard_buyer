@@ -1698,6 +1698,31 @@ body.hub-open .app-content { padding-bottom: 14px; }
 /* Гео-колонка заповнює свою висоту до низу */
 #geo-sidebar-col { display: flex; flex-direction: column; }
 #geo-list { flex: 1 1 auto; min-height: 0; }
+
+/* Сторінка витрат теж на всю висоту: список тягнеться, а не впирається в 420px */
+@media (min-height: 700px) {
+  body[data-route="expenses"] .app-content {
+    height: calc(100vh / var(--zoom));
+    display: flex; flex-direction: column; gap: 16px;
+    padding-bottom: 92px; overflow: hidden;
+  }
+  body[data-route="expenses"] #dashboard-content {
+    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  }
+  body[data-route="expenses"] #expenses-section {
+    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 16px;
+  }
+  body[data-route="expenses"] #expenses-section > .card:first-child { flex: 0 0 auto; }
+  body[data-route="expenses"] #expenses-section > .card:last-child {
+    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+  }
+  body[data-route="expenses"] .exp-head,
+  body[data-route="expenses"] .exp-foot { flex: 0 0 auto; }
+  body[data-route="expenses"] .exp-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
+}
+
+/* Цифри однакової ширини — щоб суми не «стрибали» при оновленні */
+body { font-variant-numeric: tabular-nums; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -1733,16 +1758,16 @@ body.hub-open .app-content { padding-bottom: 14px; }
     </div>
 
     <div class="sb-scroll custom-scrollbar">
-      <button class="sb-search" onclick="cmdOpen()" title="Пошук по розділах і інструментах">
+      <button class="sb-search" onclick="cmdOpen()" title="Search pages and tools">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <span>Пошук…</span>
+        <span>Search…</span>
         <span class="tb-kbd">⌘K</span>
       </button>
 
-      <p class="sb-cap">Огляд</p>
+      <p class="sb-cap">Overview</p>
       <button class="sb-item is-active" data-nav="" onclick="navGo('')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
-        Дашборд
+        Dashboard
       </button>
       <button class="sb-item" data-nav="heatmap" onclick="navGo('heatmap')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
@@ -1750,15 +1775,15 @@ body.hub-open .app-content { padding-bottom: 14px; }
       </button>
       <button class="sb-item" data-nav="creatives" onclick="navGo('creatives')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z"/></svg>
-        Креативи
+        Creatives
       </button>
       <button class="sb-item" data-nav="geo" onclick="navGo('geo')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
-        Гео-розбивка
+        Geo Breakdown
       </button>
       <button class="sb-item" data-nav="placements" onclick="navGo('placements')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 20V9"/></svg>
-        Плейсменти
+        Placements
       </button>
       <button class="sb-item" data-nav="live" onclick="navGo('live')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
@@ -1766,7 +1791,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
       </button>
       <button class="sb-item" data-nav="expenses" onclick="navGo('expenses')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
-        Витрати
+        Expenses
       </button>
       <button class="sb-item" data-nav="reports" onclick="navGo('reports')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
@@ -1776,30 +1801,30 @@ body.hub-open .app-content { padding-bottom: 14px; }
       <p class="sb-cap admin-only">Data Hub</p>
       <button class="sb-item admin-only" data-hub="dataset" onclick="hubOpen('dataset', this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m-5 5 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-        Кампанії
+        Campaigns
       </button>
       <button class="sb-item admin-only" data-hub="records" onclick="hubOpen('records', this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
-        Записи
+        Records
       </button>
       <button class="sb-item admin-only" data-sheet="1" onclick="sheetsOpen()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
-        Таблиці
+        Sheets
       </button>
       <button class="sb-item admin-only" data-hub="providers" onclick="hubOpen('providers', this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h12"/><circle cx="17" cy="18" r="2.5"/></svg>
-        Джерела
+        Sources
       </button>
     </div>
 
     <div class="sb-foot">
       <button class="sb-item" onclick="toggleTheme()">
         <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-        Тема
+        Theme
       </button>
       <button class="sb-item admin-only" onclick="openSettingsModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88V10a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
-        Налаштування
+        Settings
       </button>
     </div>
   </aside>
@@ -1851,7 +1876,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
   <!-- GROUP 2: Screenshot + Gallery -->
   <div class="flex items-center gap-2 admin-only">
     <button onclick="openScreenshotModal()" class="p-2 card rounded-xl shadow-md text-green-500 hover:bg-gray-500/10 transition" title="Performance Summary"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></button>
-    <button onclick="toggleGalleryModal()" class="p-2 card rounded-xl shadow-md text-pink-400 hover:bg-gray-500/10 transition" title="Фототека">
+    <button onclick="toggleGalleryModal()" class="p-2 card rounded-xl shadow-md text-pink-400 hover:bg-gray-500/10 transition" title="Gallery">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
     </button>
   </div>
@@ -1903,7 +1928,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
     </button>
 
-    <!-- Тексти — банк заголовків/описів по гео і слотах -->
+    <!-- Texts — банк заголовків/описів по гео і слотах -->
     <button onclick="openTextsModal()" class="p-2 card rounded-xl shadow-md text-teal-300 hover:bg-gray-500/10 transition admin-only" title="Texts">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h10M4 18h7"/></svg>
     </button>
@@ -1956,7 +1981,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
 
     <div class="app-content">
 
-      <button class="mob-burger" onclick="toggleSidebar()" title="Меню">
+      <button class="mob-burger" onclick="toggleSidebar()" title="Menu">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         <span id="mob-team-name">Dashboard</span>
       </button>
@@ -1966,13 +1991,13 @@ body.hub-open .app-content { padding-bottom: 14px; }
       <div id="datahub-panel" class="card hidden">
         <div class="hub-head">
           <div class="hub-tabs">
-            <button data-hub="dataset"   onclick="hubOpen('dataset')">Кампанії</button>
-            <button data-hub="records"   onclick="hubOpen('records')">Записи</button>
-            <button data-hub="providers" onclick="hubOpen('providers')">Джерела</button>
+            <button data-hub="dataset"   onclick="hubOpen('dataset')">Campaigns</button>
+            <button data-hub="records"   onclick="hubOpen('records')">Records</button>
+            <button data-hub="providers" onclick="hubOpen('providers')">Sources</button>
           </div>
-          <button class="hub-close" onclick="hubClose()" title="Назад до дашборда">
+          <button class="hub-close" onclick="hubClose()" title="Back to dashboard">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
-            Дашборд
+            Dashboard
           </button>
         </div>
         <iframe id="datahub-frame" title="Data Hub"></iframe>
@@ -1983,22 +2008,22 @@ body.hub-open .app-content { padding-bottom: 14px; }
         <div class="hub-head">
           <div class="sh-picker">
             <select id="sh-select" onchange="sheetsPick(this.value)"></select>
-            <a id="sh-open" href="#" target="_blank" rel="noopener" class="sh-btn" title="Відкрити в Google для редагування">
+            <a id="sh-open" href="#" target="_blank" rel="noopener" class="sh-btn" title="Open in Google to edit">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
-              Редагувати
+              Edit
             </a>
-            <button class="sh-btn" onclick="sheetsToggleAdd()" title="Додати таблицю">+ Додати</button>
-            <button class="sh-btn sh-del" onclick="sheetsRemove()" title="Прибрати зі списку">Прибрати</button>
+            <button class="sh-btn" onclick="sheetsToggleAdd()" title="Add a sheet">+ Add</button>
+            <button class="sh-btn sh-del" onclick="sheetsRemove()" title="Remove from the list">Remove</button>
           </div>
-          <button class="hub-close" onclick="sheetsClose()" title="Назад до дашборда">
+          <button class="hub-close" onclick="sheetsClose()" title="Back to dashboard">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
-            Дашборд
+            Dashboard
           </button>
         </div>
         <div id="sh-add" class="sh-add hidden">
-          <input id="sh-name" placeholder="Назва (напр. Бюджети Q4)">
+          <input id="sh-name" placeholder="Name (e.g. Q4 budgets)">
           <input id="sh-url" placeholder="https://docs.google.com/spreadsheets/d/...">
-          <button class="sh-btn sh-save" onclick="sheetsAdd()">Зберегти</button>
+          <button class="sh-btn sh-save" onclick="sheetsAdd()">Save</button>
         </div>
         <div id="sh-empty" class="sh-empty hidden"></div>
         <iframe id="sh-frame" title="Google Sheet"></iframe>
@@ -2027,11 +2052,11 @@ body.hub-open .app-content { padding-bottom: 14px; }
 
           <!-- SPEND -->
           <div class="kpi-card group cursor-pointer" onclick="kpiLensCycle()"
-               title="Клік — зріз по моделі виплат: усі → CPA → спендова %" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
+               title="Click to slice by payout model: all → CPA → spend %" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
             <div class="kpi-head">
               <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg></span>
               <span class="kpi-label">Total Spend</span>
-              <span id="kpi-lens-tag" class="kpi-lens">Усі</span>
+              <span id="kpi-lens-tag" class="kpi-lens">All</span>
             </div>
             <p id="kpi-spend" class="kpi-value">$0.00</p>
             <p class="kpi-foot">
@@ -2055,7 +2080,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
               <span class="kpi-label">Total Regs</span>
             </div>
             <p id="kpi-regs" class="kpi-value">0</p>
-            <p class="kpi-foot">Реєстрації за період</p>
+            <p class="kpi-foot">Registrations this period</p>
           </div>
 
           <!-- DEPOSITS -->
@@ -2065,7 +2090,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
               <span class="kpi-label">Total Deposits</span>
             </div>
             <p id="kpi-deposits" class="kpi-value">0</p>
-            <p class="kpi-foot">Депозити за період</p>
+            <p class="kpi-foot">Deposits this period</p>
           </div>
 
           <!-- R2D -->
@@ -2087,7 +2112,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
             <p id="kpi-profit" class="kpi-value text-emerald-400">$0.00</p>
             <p class="kpi-foot">
               <span id="kpi-roi">ROI: 0%</span><br>
-              <span id="kpi-profit-total" title="Загальна виручка">Revenue: $0.00</span>
+              <span id="kpi-profit-total" title="Total revenue">Revenue: $0.00</span>
             </p>
           </div>
         </div>
@@ -2100,7 +2125,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
             <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 mb-1">
               <div>
                 <h2 id="chart-title">Cashflow Overview</h2>
-                <p class="panel-sub">Spend і net profit по днях</p>
+                <p class="panel-sub">Spend and net profit by day</p>
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <div class="flex items-center gap-2 p-1 rounded-xl text-[10px] font-bold" style="background:var(--surface-2);border:1px solid var(--border)">
@@ -2140,15 +2165,15 @@ body.hub-open .app-content { padding-bottom: 14px; }
         <div id="insights-row" class="grid grid-cols-1 lg:grid-cols-2 gap-4 admin-only">
           <div class="card p-5">
             <div class="flex items-center justify-between mb-1">
-              <h2>Активні таски</h2>
-              <button onclick="toggleTaskModal()" class="panel-sub hover:text-violet-400 transition">Усі →</button>
+              <h2>Open tasks</h2>
+              <button onclick="toggleTaskModal()" class="panel-sub hover:text-violet-400 transition">All →</button>
             </div>
             <div id="ins-tasks" class="mt-2"></div>
           </div>
           <div class="card p-5">
             <div class="flex items-center justify-between mb-1">
-              <h2>Топ гео за профітом</h2>
-              <span class="panel-sub">За період</span>
+              <h2>Top geo by profit</h2>
+              <span class="panel-sub">This period</span>
             </div>
             <div id="ins-top" class="mt-2"></div>
           </div>
@@ -2157,41 +2182,41 @@ body.hub-open .app-content { padding-bottom: 14px; }
         <!-- ═══════ ВИТРАТИ ═══════ -->
         <div id="expenses-section" class="route-off space-y-4">
           <div class="card p-5">
-            <h2>Додати витрату</h2>
-            <p class="panel-sub">Те, що не є рекламним спендом</p>
+            <h2>Add an expense</h2>
+            <p class="panel-sub">Anything outside ad spend</p>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-2 mt-3">
               <input type="date" id="exp-date">
               <select id="exp-category">
-                <option value="accounts">💳 Акаунти</option>
-                <option value="fp">🏦 ФП</option>
-                <option value="team">👥 Команда</option>
-                <option value="tools">🛠 Інструменти</option>
-                <option value="other">📦 Інше</option>
+                <option value="accounts">💳 Accounts</option>
+                <option value="fp">🏦 Entities</option>
+                <option value="team">👥 Team</option>
+                <option value="tools">🛠 Tools</option>
+                <option value="other">📦 Other</option>
               </select>
-              <input type="number" id="exp-amount" placeholder="Сума ($)" min="0" step="0.01">
-              <input type="text" id="exp-desc" placeholder="Опис — напр. поповнення FB">
+              <input type="number" id="exp-amount" placeholder="Amount ($)" min="0" step="0.01">
+              <input type="text" id="exp-desc" placeholder="Note — e.g. FB top-up">
             </div>
-            <button onclick="expAdd()" class="exp-save">+ Зберегти витрату</button>
+            <button onclick="expAdd()" class="exp-save">+ Save expense</button>
           </div>
 
           <div class="card overflow-hidden">
             <div class="exp-head">
               <div>
-                <h2>Витрати за місяць</h2>
-                <p class="panel-sub">Сума враховується в Net Profit</p>
+                <h2>Expenses this month</h2>
+                <p class="panel-sub">Counted in Net Profit</p>
               </div>
               <select id="exp-month" onchange="expLoad()" class="rev-select"></select>
             </div>
             <div class="exp-wrap custom-scrollbar">
               <table id="exp-table">
                 <thead>
-                  <tr><th>Дата</th><th>Категорія</th><th>Опис</th><th class="text-right">Сума</th><th></th></tr>
+                  <tr><th>Date</th><th>Category</th><th>Note</th><th class="text-right">Amount</th><th></th></tr>
                 </thead>
                 <tbody id="exp-body"></tbody>
               </table>
             </div>
             <div class="exp-foot">
-              <span>Разом за місяць</span>
+              <span>Month total</span>
               <span id="exp-total">$0.00</span>
             </div>
           </div>
@@ -2246,11 +2271,11 @@ body.hub-open .app-content { padding-bottom: 14px; }
               <input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID…"
                 class="h-[34px] w-40 bg-gray-500/10 border border-gray-500/20 rounded-xl px-3 text-[11px] font-bold uppercase tracking-tight outline-none focus:border-blue-500 text-dynamic">
 
-              <!-- Період: сама кнопка вузька, поля дат ховаються в попап —
+              <!-- Period: сама кнопка вузька, поля дат ховаються в попап —
                    два нативні date-інпути займали пів ряду -->
               <div class="relative">
                 <button id="cr-date-btn" onclick="event.stopPropagation(); crToggleDatePop()"
-                  class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white whitespace-nowrap">Період</button>
+                  class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white whitespace-nowrap">Period</button>
                 <div id="cr-date-pop" class="hidden absolute right-0 mt-2 z-[80] card rounded-2xl border border-white/10 p-3 shadow-2xl w-[230px]"
                      onclick="event.stopPropagation()">
                   <div class="flex items-center gap-1 bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold mb-2">
@@ -2259,10 +2284,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
                     <input type="date" id="cr-date-to" onchange="searchCreative()" class="bg-transparent outline-none w-full min-w-0">
                   </div>
                   <div class="grid grid-cols-2 gap-1">
-                    <button onclick="crQuickDate('today')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Сьогодні</button>
-                    <button onclick="crQuickDate('yesterday')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Вчора</button>
-                    <button onclick="crQuickDate('7')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">7 днів</button>
-                    <button onclick="crClearDates()" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition">Скинути</button>
+                    <button onclick="crQuickDate('today')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Today</button>
+                    <button onclick="crQuickDate('yesterday')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Yesterday</button>
+                    <button onclick="crQuickDate('7')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">7 days</button>
+                    <button onclick="crClearDates()" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition">Reset</button>
                   </div>
                 </div>
               </div>
@@ -2281,9 +2306,9 @@ body.hub-open .app-content { padding-bottom: 14px; }
               <select id="creative-tag-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-violet-500 text-dynamic">
                 <option value="">All tags</option>
               </select>
-              <button id="cr-group-tags" onclick="crToggleGroupTags()" title="Показати списком по тегах — як папки"
+              <button id="cr-group-tags" onclick="crToggleGroupTags()" title="Show as a list grouped by tag — like folders"
                 class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">📁</button>
-              <button id="cr-star-only" onclick="crToggleStarOnly()" title="Тільки з мітками"
+              <button id="cr-star-only" onclick="crToggleStarOnly()" title="Starred only"
                 class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">★</button>
 
               <!-- Числовий фільтр: метрика / умова / значення -->
@@ -2302,7 +2327,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
                 </select>
                 <input type="number" step="any" id="cr-f-val" oninput="searchCreative()" placeholder="20"
                   class="w-14 h-[24px] bg-white/5 border border-white/10 rounded-lg px-1.5 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
-                <button onclick="crClearFilter()" title="Скинути" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
+                <button onclick="crClearFilter()" title="Reset" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
               </div>
 
               <span id="cr-filter-count" class="text-[10px] font-bold text-slate-500 whitespace-nowrap"></span>
@@ -2334,11 +2359,11 @@ body.hub-open .app-content { padding-bottom: 14px; }
     <button onclick="resetCreativeScope()" class="text-[10px] font-black bg-white/5 px-3 py-1.5 rounded-xl uppercase hover:bg-white/10 transition border border-white/5 text-white">Reset Filter</button>
   </div>
 
-  <!-- Теги креатива: до якого слота / формату він належить -->
+  <!-- Tags креатива: до якого слота / формату він належить -->
   <div class="flex items-center gap-2 flex-wrap mb-5 -mt-3">
-    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Теги</span>
+    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Tags</span>
     <div id="cr-tag-chips" class="flex items-center gap-1.5 flex-wrap"></div>
-    <input id="cr-tag-input" list="cr-tag-all" placeholder="+ тег"
+    <input id="cr-tag-input" list="cr-tag-all" placeholder="+ tag"
            onkeydown="if(event.key==='Enter'){event.preventDefault();crAddTagFromInput();}"
            onblur="crAddTagFromInput()"
            class="w-32 bg-black/25 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-violet-500">
@@ -2425,14 +2450,14 @@ body.hub-open .app-content { padding-bottom: 14px; }
     </div>
     <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden lg:col-span-2">
       <button onclick="crTogglePanel('accounts')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
-        <span class="text-[10px] font-black uppercase tracking-widest text-amber-400 text-left">По кабінетах — це каб чи рандом</span>
+        <span class="text-[10px] font-black uppercase tracking-widest text-amber-400 text-left">By account — is it the account or randomness</span>
         <span id="cr-arrow-accounts" class="text-[10px] text-slate-500 transition-transform shrink-0">▶</span>
       </button>
       <div id="cr-panel-accounts" class="hidden px-4 pb-4"></div>
     </div>
   </div>
   
-  <!-- Список Кабінетів -->
+  <!-- Список Accountів -->
   <div class="mt-auto pt-6 border-t border-white/5">
     <p class="text-[10px] font-black text-muted-dynamic uppercase mb-3 tracking-widest">Active Cabinets:</p>
     <div id="cr-account-list" class="flex flex-wrap gap-2"></div>
@@ -2493,7 +2518,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
             <!-- Хедер з ефектом рідкого скла -->
             <thead class="sticky top-0 z-20 backdrop-blur-3xl bg-white/[0.03] shadow-[0_4px_30px_rgba(0,0,0,0.1)] border-b border-white/10">
                 <tr class="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                    <th onclick="sortTable('date')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Дата <span id="sort-date"></span></th>
+                    <th onclick="sortTable('date')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Date <span id="sort-date"></span></th>
                     <th onclick="sortTable('account')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Account</th>
                     <th onclick="sortTable('geo')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5 text-center">Geo</th>
                     <th class="p-5 border-b border-white/5">Agent</th>
@@ -2525,13 +2550,13 @@ body.hub-open .app-content { padding-bottom: 14px; }
           <button id="rb-mode-day" onclick="rbSetMode('day')" class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">By day</button>
           <button id="rb-mode-month" onclick="rbSetMode('month')" class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">By month</button>
         </div>
-        <!-- Стовпчики -->
+        <!-- Bars -->
         <div class="relative">
           <button onclick="rbToggleColsMenu(event)"
             class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-white transition">☰ Columns</button>
           <div id="rb-cols-menu" class="hidden absolute right-0 mt-2 w-48 card rounded-2xl shadow-2xl z-[90] p-2 border border-white/10" onclick="event.stopPropagation()"></div>
         </div>
-        <button onclick="rbShot(this)" title="Зберегти таблицю як PNG — рівно ті рядки і стовпці, що зараз видно"
+        <button onclick="rbShot(this)" title="Save the table as PNG — exactly the rows and columns shown now"
           class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-cyan-400 hover:border-cyan-500/40 transition">PNG</button>
         <button onclick="rbExportCSV()" class="px-3 py-2 rounded-xl text-[10px] font-black uppercase bg-black/20 border border-white/5 text-slate-300 hover:text-white transition">⇩ CSV</button>
       </div>
@@ -2543,10 +2568,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
       <div id="rb-groups" class="flex flex-wrap gap-1.5"></div>
       <div id="rb-tree-box" class="flex items-center gap-1.5 ml-1 pl-2 border-l border-white/10">
         <button id="rb-tree-btn" onclick="rbToggleTree()"
-          title="Рівнями: перший вимір — батьківський рядок, решта розкриваються всередині. Вимкнено — усе одним плоским списком, як було."
-          class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition border">Рівнями</button>
+          title="Nested: the first dimension is the parent row, the rest expand inside it. Off — one flat list, as before."
+          class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition border">Nested</button>
         <button id="rb-tree-all" onclick="rbExpandAll()"
-          class="hidden px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase transition bg-black/20 border border-white/5 text-slate-400 hover:text-white">Розгорнути</button>
+          class="hidden px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase transition bg-black/20 border border-white/5 text-slate-400 hover:text-white">Expand</button>
       </div>
     </div>
 
@@ -2632,10 +2657,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
 
       <!-- ТАБИ з лічильниками -->
       <div class="flex gap-4 border-b border-white/5">
-        <button onclick="filterTasks('Not in progress')" id="tab-not-in-progress" class="task-tab pb-2 text-[11px] font-bold px-2">В роботі <span id="count-new" class="ml-1 opacity-50">0</span></button>
-        <button onclick="filterTasks('In progress')" id="tab-in-progress" class="task-tab pb-2 text-[11px] font-bold px-2">Процес <span id="count-process" class="ml-1 opacity-50">0</span></button>
-        <button onclick="filterTasks('Completed')" id="tab-completed" class="task-tab pb-2 text-[11px] font-bold px-2">Виконано <span id="count-done" class="ml-1 opacity-50">0</span></button>
-        <button onclick="filterTasks('All')" id="tab-all" class="task-tab pb-2 text-[11px] font-bold px-2">Всі <span id="count-all" class="ml-1 opacity-50">0</span></button>
+        <button onclick="filterTasks('Not in progress')" id="tab-not-in-progress" class="task-tab pb-2 text-[11px] font-bold px-2">To do <span id="count-new" class="ml-1 opacity-50">0</span></button>
+        <button onclick="filterTasks('In progress')" id="tab-in-progress" class="task-tab pb-2 text-[11px] font-bold px-2">In progress <span id="count-process" class="ml-1 opacity-50">0</span></button>
+        <button onclick="filterTasks('Completed')" id="tab-completed" class="task-tab pb-2 text-[11px] font-bold px-2">Done <span id="count-done" class="ml-1 opacity-50">0</span></button>
+        <button onclick="filterTasks('All')" id="tab-all" class="task-tab pb-2 text-[11px] font-bold px-2">All <span id="count-all" class="ml-1 opacity-50">0</span></button>
       </div>
     </div>
 
@@ -2988,7 +3013,7 @@ async function refreshTeamsList() {
 }
 // 3. Створення нової команди (профіль)
 function promptCreateTeam() {
-  const newTeamName = prompt("Введіть назву нової команди (латиницею):");
+  const newTeamName = prompt("Enter a name for the new team (Latin letters):");
   
   if (newTeamName && newTeamName.trim().length > 2) {
     const formattedName = newTeamName.trim();
@@ -2996,7 +3021,7 @@ function promptCreateTeam() {
     // Вона з'явиться в базі, як тільки ви додасте перші дані.
     switchTeam(formattedName);
   } else if (newTeamName !== null) {
-    alert("Назва має бути довшою за 2 символи.");
+    alert("The name must be longer than 2 characters.");
   }
 }
 
@@ -3026,7 +3051,7 @@ function switchTeam(teamName) {
   if (error) {
     console.error("❌ Помилка Supabase при завантаженні daily_stats:", error);
     updateSyncStatus('error');
-    alert("Помилка завантаження даних. Перевірте консоль.");
+    alert("Failed to load data. Check the console.");
     return;
   }
 
@@ -3105,7 +3130,7 @@ async function sbFetchAll(table, build) {
     console.error("Помилка завантаження креативів:", error);
     return;
   }
-  console.log(`🎨 Креативів завантажено: ${crData.length}`);
+  console.log(`🎨 Creativeів завантажено: ${crData.length}`);
 
   // Зберігаємо в глобальну змінну (переконайся, що let creativesRawData = []; оголошена зверху)
   creativesRawData = crData || [];
@@ -3298,7 +3323,7 @@ async function sbFetchAll(table, build) {
       const pct = v.pcts.size === 1 ? [...v.pcts][0] : null;
       const fee = v.fee > 0
         ? `<span class="text-amber-400/90"> + ${formatCurrency(v.fee)}${pct !== null ? ` <span class="opacity-60">(${pct}%)</span>` : ''}</span>`
-        : `<span class="text-slate-600"> · без комісії</span>`;
+        : `<span class="text-slate-600"> · no fee</span>`;
       return `<div class="flex justify-between items-baseline gap-3 text-[11px] font-bold">
           <span class="text-slate-400 uppercase truncate">${n}</span>
           <span class="font-mono whitespace-nowrap"><span class="text-white">${formatCurrency(v.s)}</span>${fee}</span>
@@ -3306,7 +3331,7 @@ async function sbFetchAll(table, build) {
     }).join('')
     + (feeTotal > 0
         ? `<div class="flex justify-between items-baseline gap-3 text-[11px] font-black mt-1.5 pt-1.5 border-t border-white/10">
-             <span class="text-amber-400/70 uppercase">Комісій разом</span>
+             <span class="text-amber-400/70 uppercase">Fees total</span>
              <span class="font-mono text-amber-400">${formatCurrency(feeTotal)}</span>
            </div>`
         : '');
@@ -3322,12 +3347,15 @@ async function sbFetchAll(table, build) {
 }
              
 /* ══════════════════════════════════════════════════════════════════
-   Cashflow Overview — стовпчики за макетом: revenue вгору (зелений),
-   spend вниз (жовтий), зі штрихуванням і заокругленими торцями.
-   Режими daily / geo та фільтри дат лишились ті самі.
+   Cashflow Overview.
+   Daily — spend і net profit одним рядом; над точками підписи сум.
+   Geo   — одна лінія на кожне гео, по днях (спенд за day).
+   Вигляд (стовпчики / лінія / гостра / область) береться з налаштувань.
    ══════════════════════════════════════════════════════════════════ */
 
 const CF_SPEND = '#EAB308', CF_PROFIT = '#22C55E', CF_LOSS = '#EF4444';
+const CF_GEO_COLORS = ['#8B5CF6', '#22C55E', '#EAB308', '#3B82F6', '#EC4899',
+                       '#22D3EE', '#F97316', '#A3E635', '#F43F5E', '#60A5FA'];
 
 // Вертикальна пунктирна лінія під курсором — щоб було видно, на якій даті стоїш.
 const cfCrosshair = {
@@ -3352,6 +3380,18 @@ const cfCrosshair = {
 };
 window.cfCrosshair = cfCrosshair;
 
+// Chart style вибирається в налаштуваннях і живе в localStorage
+function cfStyle() {
+  const v = localStorage.getItem('chart_style');
+  return ['bars', 'line', 'sharp', 'area'].includes(v) ? v : 'bars';
+}
+
+function cfAlpha(hex, a) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return hex;
+  return `rgba(${parseInt(m[1],16)}, ${parseInt(m[2],16)}, ${parseInt(m[3],16)}, ${a})`;
+}
+
 // Штрихування як у макеті: діагональні смуги всередині стовпця.
 function cfStripe(ctx, color) {
   const key = '_cfpat_' + color;
@@ -3372,22 +3412,20 @@ function cfStripe(ctx, color) {
   return pat;
 }
 
-// Вигляд графіка вибирається в налаштуваннях і живе в localStorage
-function cfStyle() {
-  const v = localStorage.getItem('chart_style');
-  return ['bars', 'line', 'sharp', 'area'].includes(v) ? v : 'bars';
-}
-
-function cfAlpha(hex, a) {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-  if (!m) return hex;
-  return `rgba(${parseInt(m[1],16)}, ${parseInt(m[2],16)}, ${parseInt(m[3],16)}, ${a})`;
-}
-
 function cfMoney(v) {
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
   if (a >= 1e3) return `${sign}$${Math.round(a / 1e3)}K`;
+  return `${sign}$${Math.round(a)}`;
+}
+
+// Підпис над точкою: місця мало, але $1K замість $1 234 — надто грубо.
+// Тому до 10K лишаємо один знак після коми.
+function cfMoneyTight(v) {
+  const a = Math.abs(v), sign = v < 0 ? '-' : '';
+  if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
+  if (a >= 1e4) return `${sign}$${Math.round(a / 1e3)}K`;
+  if (a >= 1e3) return `${sign}$${(a / 1e3).toFixed(1)}K`;
   return `${sign}$${Math.round(a)}`;
 }
 
@@ -3397,7 +3435,7 @@ function renderTrend(data) {
   if (window.chart1) window.chart1.destroy();
   const ctx = el.getContext('2d');
 
-  const daysUA = ["НД", "ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ"];
+  const daysUA = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const blank = () => ({ s: 0, r: 0, d: 0, i: 0, rev: 0 });
   const add = (o, row) => {
     o.s += Number(row.spend) || 0;
@@ -3407,38 +3445,23 @@ function renderTrend(data) {
     o.rev += (typeof revenueOf === 'function' ? revenueOf(row) : 0);
   };
 
-  let labels, stats;
+  const sd = [...new Set(data.map(d => d.date))].sort();
+  const labels = sd.map(d => {
+    const dt = new Date(d);
+    return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
+  });
 
-  if (currentChartMode === 'daily') {
-    const sd = [...new Set(data.map(d => d.date))].sort();
-    const m = {};
-    sd.forEach(d => m[d] = blank());
-    data.forEach(row => { if (m[row.date]) add(m[row.date], row); });
-    labels = sd.map(d => {
-      const dt = new Date(d);
-      return `${dt.getDate()} (${daysUA[dt.getDay()]})`;
-    });
-    stats = sd.map(d => m[d]);
-  } else {
-    const g = {};
-    data.forEach(row => {
-      const k = (row.geo || '??').toUpperCase().trim();
-      add(g[k] || (g[k] = blank()), row);
-    });
-    // Гео багато — беремо найбільші за спендом, інакше підписи зливаються.
-    const top = Object.entries(g).sort((a, b) => b[1].s - a[1].s).slice(0, 14);
-    labels = top.map(e => e[0]);
-    stats = top.map(e => e[1]);
-  }
-
-  // Показуємо лише spend (вгору) і net profit (вгору/вниз за знаком).
-  // Revenue лишається в тултіпі — окремим рядом він тільки захаращував графік.
-  const profits = stats.map(v => Math.round(v.rev - v.s));
   const style = cfStyle();
-  const isBar = style === 'bars';
+  const isGeo = currentChartMode === 'geo';
+  // У режимі гео стовпчики на кожне гео × кожен day зливаються в кашу,
+  // тому там завжди лінії — як і було в оригіналі.
+  const isBar = style === 'bars' && !isGeo;
 
-  // Стовпчики — зі штрихуванням і заокругленими торцями; лінії — з тим самим
-  // кольором, різниця лише в згладжуванні та заливці.
+  const muted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8A8A95';
+  const textMain = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#E9E9EC';
+  const gridC = document.documentElement.classList.contains('light')
+    ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.055)';
+
   const shape = (color, perPoint) => isBar
     ? {
         backgroundColor: perPoint || cfStripe(ctx, color),
@@ -3450,29 +3473,84 @@ function renderTrend(data) {
         backgroundColor: cfAlpha(color, 0.18),
         borderWidth: 2.5,
         tension: style === 'sharp' ? 0 : 0.38,
-        fill: style === 'area',
+        fill: style === 'area' && !isGeo,
         pointRadius: 2.5,
         pointHoverRadius: 4,
         pointBackgroundColor: color,
         pointBorderWidth: 0
       };
 
-  const datasets = [
-    {
-      label: 'Spend',
-      data: stats.map(v => Math.round(v.s)),
-      datalabels: { display: false },
-      ...shape(CF_SPEND)
-    },
-    {
-      label: 'Net Profit',
-      data: profits,
-      datalabels: { display: false },
-      ...shape(CF_PROFIT, isBar
-        ? (c => cfStripe(ctx, profits[c.dataIndex] >= 0 ? CF_PROFIT : CF_LOSS))
-        : null)
-    }
-  ];
+  let datasets, stats = null;
+
+  if (!isGeo) {
+    const m = {};
+    sd.forEach(d => m[d] = blank());
+    data.forEach(row => { if (m[row.date]) add(m[row.date], row); });
+    stats = sd.map(d => m[d]);
+
+    const profits = stats.map(v => Math.round(v.rev - v.s));
+
+    // Підписи над точками: поки видно spend — його суми; якщо spend вимкнули
+    // в легенді, а net profit лишили — тоді суми профіту.
+    const labelFor = idx => ({
+      display: c => {
+        const ch = c.chart;
+        const spendOn = ch.isDatasetVisible(0);
+        return idx === 0 ? spendOn : (!spendOn && ch.isDatasetVisible(1));
+      },
+      anchor: 'end',
+      align: c => (Number(c.dataset.data[c.dataIndex]) < 0 ? 'bottom' : 'top'),
+      offset: 2,
+      clamp: true,
+      color: textMain,
+      font: { weight: '700', size: 10 },
+      formatter: v => cfMoneyTight(Number(v))
+    });
+
+    datasets = [
+      {
+        label: 'Spend',
+        data: stats.map(v => Math.round(v.s)),
+        datalabels: labelFor(0),
+        ...shape(CF_SPEND)
+      },
+      {
+        label: 'Net Profit',
+        data: profits,
+        datalabels: labelFor(1),
+        ...shape(CF_PROFIT, isBar
+          ? (c => cfStripe(ctx, profits[c.dataIndex] >= 0 ? CF_PROFIT : CF_LOSS))
+          : null)
+      }
+    ];
+  } else {
+    // Одна лінія на гео, по днях. Найбільші за спендом — першими.
+    const totals = {};
+    data.forEach(row => {
+      const g = (row.geo || '??').toUpperCase().trim();
+      totals[g] = (totals[g] || 0) + (Number(row.spend) || 0);
+    });
+    const geos = Object.keys(totals).sort((a, b) => totals[b] - totals[a]).slice(0, 10);
+
+    const perGeo = {};
+    geos.forEach(g => { perGeo[g] = {}; sd.forEach(d => perGeo[g][d] = blank()); });
+    data.forEach(row => {
+      const g = (row.geo || '??').toUpperCase().trim();
+      if (perGeo[g] && perGeo[g][row.date]) add(perGeo[g][row.date], row);
+    });
+
+    datasets = geos.map((g, i) => {
+      const color = CF_GEO_COLORS[i % CF_GEO_COLORS.length];
+      const series = sd.map(d => perGeo[g][d]);
+      return {
+        label: g,
+        data: series.map(v => Math.round(v.s)),
+        allStats: series,
+        datalabels: { display: false },
+        ...shape(color)
+      };
+    });
+  }
 
   // --- ФІКС НАВЕДЕННЯ ПІД body{zoom:0.9} ---
   // Chart.js бере позицію курсора з offsetX, а той під CSS zoom рахується в іншому
@@ -3496,10 +3574,6 @@ function renderTrend(data) {
     });
   }
 
-  const muted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8A8A95';
-  const gridC = document.documentElement.classList.contains('light')
-    ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.055)';
-
   window.chart1 = new Chart(ctx, {
     type: isBar ? 'bar' : 'line',
     plugins: [cfCrosshair],
@@ -3508,9 +3582,8 @@ function renderTrend(data) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 4, bottom: 0, left: 2, right: 6 } },
+      layout: { padding: { top: 18, bottom: 0, left: 2, right: 8 } },
       plugins: {
-        datalabels: { display: false },
         legend: {
           position: 'top',
           align: 'end',
@@ -3527,16 +3600,17 @@ function renderTrend(data) {
           padding: 12,
           displayColors: false,
           callbacks: {
-            // Обидва датасети дають один і той самий блок цифр — показуємо його раз.
             label(c) {
-              if (c.datasetIndex !== 0) return null;
-              const v = stats[c.dataIndex];
+              const v = isGeo ? (c.dataset.allStats || [])[c.dataIndex]
+                              : (c.datasetIndex === 0 ? stats[c.dataIndex] : null);
               if (!v) return null;
               const profit = v.rev - v.s;
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
+              const head = isGeo ? ` 📍 ${c.dataset.label}` : ' 📍 TOTAL';
               return [
+                head,
                 ` 💰 Spend: $${Math.round(v.s).toLocaleString()}`,
                 ` 🏦 Revenue: $${Math.round(v.rev).toLocaleString()}`,
                 ` 📈 Net Profit: ${profit >= 0 ? '+' : '−'}$${Math.abs(Math.round(profit)).toLocaleString()}` +
@@ -3550,7 +3624,6 @@ function renderTrend(data) {
       },
       scales: {
         x: {
-          stacked: false,
           ticks: { color: muted, font: { weight: '600', size: 11 } },
           grid: { display: false },
           border: { display: false }
@@ -3726,7 +3799,7 @@ function renderTable(data) {
     if (window.innerWidth < 1024 || chart.classList.contains('hidden')) { side.style.height = ''; return; }
     // Спершу згортаємо сайдбар — інакше він сам розтягує рядок сітки, і ми
     // б міряли не власну висоту графіка, а спільну висоту рядка.
-    // На час заміру глушимо CSS-перехід, інакше блок помітно «складається»
+    // На time заміру глушимо CSS-перехід, інакше блок помітно «складається»
     // і розгортається на кожному рендері.
     const prev = side.style.transition;
     side.style.transition = 'none';
@@ -3754,7 +3827,7 @@ function renderTable(data) {
     const cnt = document.getElementById('side-task-count');
     if (cnt) cnt.textContent = open.length ? `· ${open.length}` : '';
     if (!open.length) {
-      el.innerHTML = '<p class="text-[10px] font-bold text-slate-600 italic py-3 text-center">Відкритих задач немає</p>';
+      el.innerHTML = '<p class="text-[10px] font-bold text-slate-600 italic py-3 text-center">No open tasks</p>';
       return;
     }
     const order = { High: 1, Medium: 2, Low: 3 };
@@ -3767,14 +3840,14 @@ function renderTable(data) {
         const next = inProgress ? 'Completed' : 'In progress';
         return `<div class="flex items-start gap-2 bg-white/[0.03] border border-white/5 rounded-xl px-2.5 py-2 hover:bg-white/[0.06] transition">
           <button onclick="event.stopPropagation(); changeStatus('${t.id}', '${next}')"
-            title="${inProgress ? 'Позначити виконаною' : 'Взяти в роботу'}"
+            title="${inProgress ? 'Mark as done' : 'Start working on it'}"
             class="mt-0.5 w-3.5 h-3.5 rounded-full border-2 shrink-0 transition
                    ${inProgress ? 'border-emerald-400 bg-emerald-400/30 hover:bg-emerald-400' : 'border-slate-600 hover:border-purple-400'}"></button>
           <div class="min-w-0 flex-1 cursor-pointer" onclick="openTaskDetails('${t.id}')">
             <p class="text-[11px] font-bold text-slate-200 leading-snug break-words">${uqFirstLine(t.text)}</p>
             <p class="text-[9px] font-black uppercase tracking-widest text-slate-600 mt-0.5">
               <span class="inline-block w-1.5 h-1.5 rounded-full ${dot[t.priority] || 'bg-slate-500'} align-middle mr-1"></span>${t.priority || '—'}
-              ${inProgress ? '· у роботі' : ''}</p>
+              ${inProgress ? '· in progress' : ''}</p>
           </div>
         </div>`;
       }).join('');
@@ -3901,10 +3974,10 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
     });
   }
 
-  // Тільки з мітками
+  // Starred only
   if (crStarOnly) list = list.filter(c => crStars.has(c.cid));
 
-  // Фільтр по тегу: «— без тега —» окремим пунктом, щоб швидко знаходити нерозібране
+  // Фільтр по тегу: «— no tag —» окремим пунктом, щоб швидко знаходити нерозібране
   const tagF = document.getElementById('creative-tag-filter')?.value || '';
   if (tagF === '__none') list = list.filter(c => !crTagsOf(c.cid).length);
   else if (tagF) list = list.filter(c => crTagsOf(c.cid).includes(tagF));
@@ -3913,7 +3986,7 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
   if (cnt) cnt.textContent = list.length === totalBefore ? `${totalBefore} creatives` : `${list.length} of ${totalBefore}`;
 
   if (list.length === 0) {
-    sidebar.innerHTML = '<div class="text-center py-20 opacity-20 text-[10px] font-black uppercase tracking-widest">Нічого не знайдено</div>';
+    sidebar.innerHTML = '<div class="text-center py-20 opacity-20 text-[10px] font-black uppercase tracking-widest">Nothing found</div>';
     return;
   }
 
@@ -3927,7 +4000,7 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
     const groups = {};
     list.forEach(c => {
       const tags = crTagsOf(c.cid);
-      (tags.length ? tags : ['— без тега —']).forEach(t => (groups[t] = groups[t] || []).push(c));
+      (tags.length ? tags : ['— no tag —']).forEach(t => (groups[t] = groups[t] || []).push(c));
     });
     const order = Object.keys(groups).sort((a, b) =>
       groups[b].reduce((s, c) => s + c.s, 0) - groups[a].reduce((s, c) => s + c.s, 0));
@@ -3983,7 +4056,7 @@ function crSidebarRow(c, qEsc, gEsc, dEsc) {
 // ===== МІТКИ (зірочки) на креативах =====
 // ===== ТЕГИ КРЕАТИВІВ =====
 // Тег належить креативу (cid), а не рядку статистики: на один креатив
-// припадає по 10-20 рядків (день × акаунт × девайс × плейсмент), і якби тег
+// припадає по 10-20 рядків (day × акаунт × девайс × плейсмент), і якби тег
 // жив у них, його довелось би дублювати всюди, а нові імпорти приходили б
 // без нього. Так само, як зірочки, лежить у team_settings — міграція не
 // потрібна, а обсяг мізерний: унікальних крео близько сотні на команду.
@@ -3996,7 +4069,7 @@ async function loadCreativeTags() {
 }
 async function saveCreativeTags() {
   try { await setTeamSetting('creative_tags', JSON.stringify(crTags)); }
-  catch (e) { console.warn('Не вдалось зберегти теги:', e.message); }
+  catch (e) { console.warn('Could not save the tags:', e.message); }
 }
 const crTagsOf = cid => crTags[cid] || [];
 function crAllTags() {
@@ -4035,7 +4108,7 @@ function crRenderTagUI() {
       ${t}<button onclick="crRemoveTag('${String(currentCreativeID).replace(/'/g,"\\'")}','${t.replace(/'/g,"\\'")}')"
         class="opacity-50 hover:opacity-100 leading-none">✕</button>
     </span>`).join('')
-    : '<span class="text-[10px] font-bold text-slate-600 italic">поки без тега</span>';
+    : '<span class="text-[10px] font-bold text-slate-600 italic">no tag yet</span>';
 }
 
 function crPopulateTagFilter() {
@@ -4045,7 +4118,7 @@ function crPopulateTagFilter() {
   const tags = crAllTags();
   sel.innerHTML = '<option value="">All tags</option>'
     + tags.map(t => `<option value="${t}">${t}</option>`).join('')
-    + '<option value="__none">— без тега —</option>';
+    + '<option value="__none">— no tag —</option>';
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
 }
 
@@ -4069,7 +4142,7 @@ async function loadCreativeStars() {
 }
 async function saveCreativeStars() {
   try { await setTeamSetting('creative_stars', JSON.stringify([...crStars])); }
-  catch (e) { console.warn('Не вдалось зберегти мітки:', e.message); }
+  catch (e) { console.warn('Could not save the stars:', e.message); }
 }
 function crToggleStar(ev, cid) {
   ev.stopPropagation();
@@ -4104,7 +4177,7 @@ function crTogglePanel(kind) {
   if (open) crRenderPanels();
 }
 
-// Період з шапки. Діє і на список креативів, і на цифри всередині обраного —
+// Period з шапки. Діє і на список креативів, і на цифри всередині обраного —
 // щоб «які крео лились 7 серпня» і «скільки вони дали того дня» були одним
 // і тим самим фільтром, а не двома різними.
 function crDateRange() {
@@ -4146,7 +4219,7 @@ function crSyncDateBtn() {
   const { from, to } = crDateRange();
   const short = v => v ? v.slice(8) + '.' + v.slice(5, 7) : '';
   const active = from || to;
-  b.textContent = !active ? 'Період'
+  b.textContent = !active ? 'Period'
     : (from === to ? short(from) : `${short(from) || '…'}–${short(to) || '…'}`);
   b.className = active
     ? 'h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-violet-500/20 text-violet-300 border-violet-500/40 whitespace-nowrap'
@@ -4172,7 +4245,7 @@ function crRenderPanels() {
   if (crOpenPanels.has('accounts'))   crRenderAccountsPanel();
 }
 
-// ── Плейсмент × креатив ──
+// ── Placement × креатив ──
 function crRenderPlacementsPanel() {
   const el = document.getElementById('cr-panel-placements');
   if (!el) return;
@@ -4257,7 +4330,7 @@ function crRenderAccountsPanel() {
   });
   const list = Object.entries(m).sort((a, b) => b[1].s - a[1].s);
   if (list.length < 2) {
-    el.innerHTML = `<p class="text-[12px] opacity-40 py-3">Цей креатив крутився лише на одному кабінеті — порівнювати нема з чим.</p>`;
+    el.innerHTML = `<p class="text-[12px] opacity-40 py-3">This creative ran on a single account — nothing to compare it with.</p>`;
     return;
   }
 
@@ -4283,10 +4356,10 @@ function crRenderAccountsPanel() {
     const real = !weak && Math.abs(dev) > err * 100;
     const cls = !real ? 'text-slate-500' : dev < 0 ? 'text-emerald-400' : 'text-red-400';
     const mark = weak
-      ? `<span class="text-[10px] font-bold text-amber-400/80">мало даних</span>`
+      ? `<span class="text-[10px] font-bold text-amber-400/80">little data</span>`
       : real
         ? `<span class="${cls} font-black">${dev > 0 ? '+' : ''}${dev.toFixed(0)}%</span>`
-        : `<span class="text-slate-600">у межах шуму</span>`;
+        : `<span class="text-slate-600">within noise</span>`;
     return `<div class="grid grid-cols-[1.4fr_repeat(6,minmax(0,1fr))] gap-x-2 items-center py-1.5 border-t border-white/5 ${weak ? 'opacity-55' : ''}">
       <span class="text-[12px] font-mono font-bold text-blue-300 truncate" title="${acc}">${acc}</span>
       <span class="text-[13px] font-black text-white font-mono text-right">$${Math.round(v.s).toLocaleString()}</span>
@@ -4300,18 +4373,18 @@ function crRenderAccountsPanel() {
 
   el.innerHTML = `
     <div class="flex flex-wrap gap-x-4 gap-y-1 items-baseline mb-2 text-[11px] font-bold">
-      <span class="text-slate-400">Кабінетів: <b class="text-white">${list.length}</b></span>
-      <span class="text-slate-400">CPI по креативу: <b class="text-white">$${avgCpi.toFixed(2)}</b></span>
-      <span class="text-slate-400">Розкид серед надійних: <b class="text-white">${spread}</b></span>
+      <span class="text-slate-400">Accounts: <b class="text-white">${list.length}</b></span>
+      <span class="text-slate-400">CPI by creative: <b class="text-white">$${avgCpi.toFixed(2)}</b></span>
+      <span class="text-slate-400">Spread among reliable ones: <b class="text-white">${spread}</b></span>
       <span class="text-slate-500">надійних ${solid.length} з ${list.length}</span>
     </div>
     <div class="grid grid-cols-[1.4fr_repeat(6,minmax(0,1fr))] gap-x-2 pb-1">
-      <span class="${th}">Кабінет</span>
-      <span class="${th} text-right">Спенд</span>
-      <span class="${th} text-right">Інст</span>
+      <span class="${th}">Account</span>
+      <span class="${th} text-right">Spend</span>
+      <span class="${th} text-right">Inst</span>
       <span class="${th} text-right">CPI</span>
-      <span class="${th} text-right">Δ до сер.</span>
-      <span class="${th} text-right">Деп</span>
+      <span class="${th} text-right">Δ vs avg</span>
+      <span class="${th} text-right">Dep</span>
       <span class="${th} text-right">CPA</span>
     </div>
     ${rowsHtml}
@@ -4347,7 +4420,7 @@ function crRenderTrendPanel() {
 
   el.innerHTML = `
     <div class="flex justify-end -mt-1 mb-1">
-      <button onclick="crOpenTrendModal()" title="Розгорнути на весь екран — графіки CPI/CPL/CPA і повна таблиця"
+      <button onclick="crOpenTrendModal()" title="Open full screen — CPI/CPL/CPA charts and the full table"
         class="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-cyan-400 transition
                px-2 py-1 rounded-lg border border-white/10 hover:border-cyan-500/40">⤢ Expand</button>
     </div>
@@ -4419,7 +4492,7 @@ function crDayChart(days, label, valueOf, color, fmt) {
         <span class="text-[11px] font-black uppercase tracking-widest" style="color:${color}">${label}</span>
         <span class="text-[11px] font-mono text-slate-500">${real.length ? fmt(Math.min(...real)) + ' – ' + fmt(Math.max(...real)) : ''}</span>
       </div>${inner}</div>`;
-  if (real.length < 2) return box('<p class="text-[12px] opacity-30 py-8 text-center">замало даних</p>');
+  if (real.length < 2) return box('<p class="text-[12px] opacity-30 py-8 text-center">not enough data</p>');
 
   const W = 100, H = 34;
   const max = Math.max(...real), min = Math.min(...real);
@@ -4428,7 +4501,7 @@ function crDayChart(days, label, valueOf, color, fmt) {
   const y = v => H - ((v - min) / span) * (H - 5) - 2.5;
 
   // День без конверсій — це не «нуль», а відсутність даних. Ведемо лінію
-  // з розривом, інакше провал у нуль читається як надзвичайно дешевий день.
+  // з розривом, інакше провал у нуль читається як надзвичайно дешевий day.
   const runs = []; let cur = [];
   vals.forEach((v, i) => {
     if (v > 0) cur.push(`${x(i).toFixed(2)},${y(v).toFixed(2)}`);
@@ -4488,9 +4561,9 @@ function crRenderTrendModal() {
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-5">
       ${crDayChart(days, 'Spend', m => m.s, '#60a5fa', short)}
-      ${crDayChart(days, 'CPI · ціна інстала', cpi, '#22d3ee', short)}
-      ${crDayChart(days, 'CPL · ціна реги', cpl, '#3b82f6', short)}
-      ${crDayChart(days, 'CPA · ціна депа', cpa, '#34d399', short)}
+      ${crDayChart(days, 'CPI · cost per install', cpi, '#22d3ee', short)}
+      ${crDayChart(days, 'CPL · cost per reg', cpl, '#3b82f6', short)}
+      ${crDayChart(days, 'CPA · cost per deposit', cpa, '#34d399', short)}
     </div>
 
     <div class="overflow-x-auto">
@@ -4620,10 +4693,10 @@ async function togglePayoutModel(id, model) {
   const { error } = await sb.from('payouts').update({ model }).eq('id', id);
   if (error) {
     alert(/column .*model/i.test(error.message || '')
-      ? ['У таблиці payouts ще немає колонки моделі.',
-         'Виконай у Supabase -> SQL Editor:', '',
+      ? ['The payouts table has no model column yet.',
+         'Run this in Supabase -> SQL Editor:', '',
          "ALTER TABLE public.payouts ADD COLUMN IF NOT EXISTS model text DEFAULT 'cpa';"].join(String.fromCharCode(10))
-      : 'Не вдалось змінити модель: ' + error.message);
+      : 'Could not change the model: ' + error.message);
     return;
   }
   await refreshPayoutsFromSQL();
@@ -4654,7 +4727,7 @@ async function addGeoPayout() {
 
     if (error) {
       console.error("409 Conflict Fix Error:", error);
-      alert("Помилка: " + error.message);
+      alert("Error: " + error.message);
     } else {
       // Очищуємо поля
       document.getElementById('payout-geo').value = '';
@@ -4797,7 +4870,7 @@ function updateBonusCalc(profit) {
   const hint = document.getElementById('bonus-formula');
   if (hint) hint.textContent = idx >= 0
     ? `${fmtBonus(profit)} × ${Math.round(rate * 100)}% — уся сума за ставкою свого рівня`
-    : 'Профіт нижчий за перший рівень';
+    : 'Profit is below the first tier';
 
   document.getElementById('bonus-tier-rows').innerHTML = bonusTiers.map((t, i) => {
     const maxP = t.max_profit ?? Infinity;
@@ -4924,11 +4997,11 @@ async function saveDriveFolder() {
   if (!raw) { // порожнє = скинути на дефолт
     await setTeamSetting('drive_folder', '');
     teamDriveFolderId = null;
-    if (status) status.textContent = 'Скинуто — використовується спільна папка.';
+    if (status) status.textContent = 'Reset — the shared folder is used.';
     return;
   }
   const id = parseDriveFolderId(raw);
-  if (!id) { if (status) status.textContent = '⚠ Не схоже на лінк папки Google Drive.'; return; }
+  if (!id) { if (status) status.textContent = '⚠ That does not look like a Google Drive folder link.'; return; }
   await setTeamSetting('drive_folder', raw);
   teamDriveFolderId = id;
   if (status) status.textContent = `✓ Збережено для ${currentTeam} (ID: ${id.slice(0,12)}…)`;
@@ -4942,7 +5015,7 @@ async function loadDriveFolderSetting() {
   const status = document.getElementById('drive-folder-status');
   if (status) status.textContent = teamDriveFolderId
     ? `✓ Папка команди ${currentTeam} підключена`
-    : 'Використовується спільна папка (дефолт).';
+    : 'Using the shared folder (default).';
 }
 
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfVUGUXi3nUXlm4fAb8ItzMcZ8p-1Z6_VSfX0u7T8gdZbojZlP8x7l2QVQiEFEZCkl/exec';
@@ -5178,7 +5251,7 @@ async function submitSiteLogin() {
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
 
-  if (btn) { btn.disabled = false; btn.innerText = btn.dataset.label || 'Увійти'; }
+  if (btn) { btn.disabled = false; btn.innerText = btn.dataset.label || 'Sign in'; }
 
   if (error || !data?.session) {
     if (err) err.classList.remove('hidden');
@@ -5424,7 +5497,7 @@ function renderTasks(filter) {
 
 // Функція видалення таска (SQL)
 async function deleteTaskRow(id) {
-  if (!confirm('Видалити таск?')) return;
+  if (!confirm('Delete this task?')) return;
   const { error } = await sb.from('tasks').delete().eq('id', id);
   if (!error) refreshTasks();
 }
@@ -5465,7 +5538,7 @@ function renderReports() {
 
 // Видалення звіту (SQL)
 async function deleteReport(id) {
-  if (!confirm('Видалити звіт?')) return;
+  if (!confirm('Delete this report?')) return;
   const { error } = await sb.from('daily_reports').delete().eq('id', id);
   if (!error) refreshReports();
 }
@@ -5656,7 +5729,7 @@ function populateGeoFilter(data) {
     .filter(g => g !== "" && g !== "??")
     .sort();
 
-  console.log("📍 Оновлення списків ГЕО. Знайдено:", geos.length, "країн");
+  console.log("📍 Оновлення списків ГЕО. Знайдено:", geos.length, "countries");
 
   targetSelects.forEach(id => {
     const select = document.getElementById(id);
@@ -5671,7 +5744,7 @@ function populateGeoFilter(data) {
     // Очищуємо і додаємо дефолтний пункт
     select.innerHTML = '<option value="">ALL GEO</option>';
 
-    // Додаємо країни
+    // Додаємо countriesи
     geos.forEach(geo => {
       const opt = document.createElement('option');
       opt.value = geo;
@@ -5731,7 +5804,7 @@ function renderGeoPayoutSettings(data) {
     return `
     <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group ${on ? '' : 'opacity-45'}">
       <button onclick="togglePayoutActive('${p.id}', ${!on})"
-              title="${on ? 'Вимкнути оффер — не підтягуватиметься при імпорті' : 'Увімкнути оффер назад'}"
+              title="${on ? 'Disable the offer — it will not be pulled on import' : 'Enable the offer again'}"
               class="w-7 h-4 rounded-full shrink-0 relative transition-colors ${on ? 'bg-emerald-500/70' : 'bg-slate-600/60'}">
         <span class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-3.5' : 'left-0.5'}"></span>
       </button>
@@ -5739,8 +5812,8 @@ function renderGeoPayoutSettings(data) {
       <span class="text-slate-400 font-bold truncate flex-1 opacity-70 ${on ? '' : 'line-through'}">${p.offer || 'DEFAULT'}</span>
       <button onclick="togglePayoutModel('${p.id}', '${p.model === 'spend' ? 'cpa' : 'spend'}')"
               title="${p.model === 'spend'
-                ? 'Спенд-модель: виручка = спенд × відсоток. Клік — повернути на CPA'
-                : 'CPA: виручка = депозити × ставка. Клік — перевести на % від спенду'}"
+                ? 'Spend model: revenue = spend × percent. Click to switch back to CPA'
+                : 'CPA: revenue = deposits × rate. Click to switch to % of spend'}"
               class="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded transition ${p.model === 'spend'
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                 : 'bg-white/5 text-slate-500 border border-white/10 hover:text-white'}">${p.model === 'spend' ? '%' : 'CPA'}</button>
@@ -5760,7 +5833,7 @@ async function togglePayoutActive(id, next) {
   if (error) {
     alert(error.message.includes('active')
       ? 'Спершу виконай у Supabase:\n\nALTER TABLE public.payouts ADD COLUMN IF NOT EXISTS active boolean DEFAULT true;'
-      : 'Не вдалось змінити оффер: ' + error.message);
+      : 'Could not change the offer: ' + error.message);
     return;
   }
   await refreshPayoutsFromSQL();
@@ -5786,7 +5859,7 @@ function toggleReportModal() {
   const m = document.getElementById('report-modal');
   
   if (!m) {
-    console.error("Помилка: Елемент з id='report-modal' не знайдено в HTML!");
+    console.error("Error: Елемент з id='report-modal' не знайдено в HTML!");
     return;
   }
 
@@ -6801,7 +6874,7 @@ function sortTable(key) {
 async function deletePayoutFromSQL(payoutId) {
   // 1. Перевірка на "привидів"
   if (!payoutId || payoutId === 'undefined') {
-    alert("Помилка: запис не має ID в базі. Перезавантажте сторінку.");
+    alert("Error: запис не має ID в базі. Перезавантажте сторінку.");
     return;
   }
 
@@ -6984,7 +7057,7 @@ function exportReportsPDF() {
   const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
   const monthLabel = currentMonthFilter
     ? new Date(currentMonthFilter + '-01').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' })
-    : 'Весь час';
+    : 'Весь time';
 
   function lineToHtml(t) {
     if (!t) return '';
@@ -7755,7 +7828,7 @@ const RB_COLS = [
 let rbGroups = ['geo'];
 // Групування рівнями: перший вимір — батьківський рядок, наступні розкриваються
 // всередині нього. Вимикається — і таблиця стає такою ж плоскою, як була
-// (ключі через « · »), бо для швидкого погляду плоский список часто зручніший.
+// (ключі через « · »), бо для швидкого погляду плоский список timeто зручніший.
 let rbTree = localStorage.getItem('rb_tree') === '1';
 let rbOpen = new Set();
 let rbVisibleCols = JSON.parse(localStorage.getItem('rb_cols') || 'null') || ['spend','installs','regs','deposits','cpl','cpa','r2d','profit','roi'];
@@ -7789,7 +7862,7 @@ function rbFiltered(){
   const from=document.getElementById('rb-from').value, to=document.getElementById('rb-to').value;
   const q=(document.getElementById('rb-q').value||'').toLowerCase();
 
-  // Девайс/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
+  // Device/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
   const needCr = rbSel.dev.size || rbSel.plat.size || rbSel.plc.size || rbNeedsCreatives();
   const src = needCr
     ? (window.creativesRawData||[]).map(c=>({...c, deposits:c.deps, offer:c.offer||'DEFAULT', agent:c.agent||'—'}))
@@ -7830,10 +7903,10 @@ function rbmsRenderAll(){
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="rbms-pop ${open.has(f.k)?'':'hidden'}" onclick="event.stopPropagation()">
-        <input class="rbms-q" placeholder="Пошук…" oninput="rbmsSearch('${f.k}', this.value)">
+        <input class="rbms-q" placeholder="Search…" oninput="rbmsSearch('${f.k}', this.value)">
         <div class="rbms-acts">
-          <button onclick="rbmsAll('${f.k}')">Всі</button>
-          <button onclick="rbmsNone('${f.k}')">Очистити</button>
+          <button onclick="rbmsAll('${f.k}')">All</button>
+          <button onclick="rbmsNone('${f.k}')">Clear</button>
         </div>
         <div class="rbms-list" id="rbms-list-${f.k}">${rbmsRows(f.k,'')}</div>
       </div>
@@ -7843,7 +7916,7 @@ function rbmsRenderAll(){
 function rbmsRows(k, q){
   const s=(q||'').toLowerCase();
   const rows=rbOpts[k].filter(o=>!s || String(o.label).toLowerCase().includes(s));
-  if(!rows.length) return '<div class="rbms-empty">Нічого не знайшлось</div>';
+  if(!rows.length) return '<div class="rbms-empty">Nothing found</div>';
   return rows.map(o=>`<label class="rbms-row">
       <input type="checkbox" ${rbSel[k].has(o.v)?'checked':''} onchange="rbmsPick('${k}', this.dataset.v, this.checked)" data-v="${rbEsc(o.v)}">
       <span>${rbEsc(o.label)}</span>
@@ -7943,13 +8016,13 @@ function rbRenderGroupChips(){
   if(b){
     b.className='px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition border '+
       (rbTree?'bg-violet-600 text-white border-violet-400 shadow':'bg-black/20 text-slate-400 border-white/5 hover:text-white');
-    b.textContent = rbTree ? '⌄ Рівнями' : 'Рівнями';
+    b.textContent = rbTree ? '⌄ Nested' : 'Nested';
   }
   // Розкривати нічого, якщо вимір один або режим плоский
   const all=document.getElementById('rb-tree-all');
   if(all){
     all.classList.toggle('hidden', !(rbTree && rbGroups.length>1 && rbMode==='list'));
-    all.textContent = rbOpen.size ? 'Згорнути' : 'Розгорнути';
+    all.textContent = rbOpen.size ? 'Collapse' : 'Expand';
   }
 }
 function rbToggleGroup(k){
@@ -7972,7 +8045,7 @@ function rbToggleNode(path){
   rbOpen.has(p) ? rbOpen.delete(p) : rbOpen.add(p);
   rbRender();
 }
-// «Розгорнути все» збирає шляхи всіх вузлів, які мають дітей
+// «Expand все» збирає шляхи всіх вузлів, які мають дітей
 function rbExpandAll(){
   if(rbOpen.size){ rbOpen.clear(); rbRender(); return; }
   const walk=ns=>ns.forEach(n=>{ if(n.kids.length){ rbOpen.add(n.path); walk(n.kids); } });
@@ -7981,7 +8054,7 @@ function rbExpandAll(){
 }
 function rbRenderColsMenu(){
   document.getElementById('rb-cols-menu').innerHTML =
-    '<p class="text-[9px] font-black uppercase opacity-40 px-2 py-1 tracking-widest">Показувати стовпчики</p>'+
+    '<p class="text-[9px] font-black uppercase opacity-40 px-2 py-1 tracking-widest">Columns to show</p>'+
     RB_COLS.map(c=>`<label class="flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-white/5 cursor-pointer">
       <span class="text-[11px] font-bold text-slate-300">${c.label}</span>
       <input type="checkbox" ${rbVisibleCols.includes(c.key)?'checked':''} onchange="rbToggleCol('${c.key}',this.checked)"
@@ -8067,13 +8140,13 @@ function rbRender(){
   const treeAll=document.getElementById('rb-tree-all');
   if(treeAll){
     treeAll.classList.toggle('hidden', !(rbTree && rbGroups.length>1 && rbMode==='list'));
-    treeAll.textContent = rbOpen.size ? 'Згорнути' : 'Розгорнути';
+    treeAll.textContent = rbOpen.size ? 'Collapse' : 'Expand';
   }
   const data=rbFiltered();
   const th='p-3 text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-white/10 sticky top-0 bg-[#131c31]/95 backdrop-blur-xl cursor-pointer hover:text-cyan-400 whitespace-nowrap';
   const cols=RB_COLS.filter(c=>rbVisibleCols.includes(c.key));
 
-  // всі стовпці ввімкнено — на всю ширину; частина вимкнена — компактно по вмісту.
+  // всі стовпці ввімкнено — на всю ширину; timeтина вимкнена — компактно по вмісту.
   // Півот (дні/місяці) завжди широкий: там стовпців багато і вони самі розсувають таблицю.
   tbl.classList.toggle('rb-wide', rbMode!=='list' || cols.length===RB_COLS.length);
 
@@ -8147,7 +8220,7 @@ function rbRender(){
         ${cols.map(c=>`<th class="${th} text-right" onclick="rbSortBy('${c.key}')">${c.label}${rbSort.key===c.key?(rbSort.dir<0?' ↓':' ↑'):''}</th>`).join('')}
       </tr></thead><tbody>`+
       rows.map((r,i)=>{
-        // Колір закріплений ЗА ДАТОЮ, а не через рядок: таблиця зазвичай
+        // Colour закріплений ЗА ДАТОЮ, а не через рядок: таблиця зазвичай
         // відсортована за спендом, тож дати йдуть урозкид, і смуги «через один»
         // були б просто шумом. Так усі рядки 4-го числа мають один відтінок,
         // 5-го — інший, і око чіпляється за дату при будь-якому сортуванні.
@@ -8341,7 +8414,7 @@ function rbExportCSV(){
             <p id="bonus-salary" class="text-[28px] font-black text-emerald-400 leading-none">$0</p>
           </div>
           <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
-            <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Ставка рівня</p>
+            <p class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Tier rate</p>
             <p id="bonus-effrate" class="text-[28px] font-black text-white leading-none">0%</p>
           </div>
         </div>
@@ -8417,18 +8490,18 @@ function rbExportCSV(){
     <div class="overflow-y-auto flex-1 custom-scrollbar">
       <!-- Widgets Panel -->
       <div id="spanel-widgets" class="p-4 space-y-1">
-        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Вигляд графіка</p>
+        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Chart style</p>
         <div class="px-3 pb-3 mb-3 border-b border-white/5">
           <select id="chart-style" onchange="setChartStyle(this.value)" class="w-full !text-xs !py-2">
-            <option value="bars">Стовпчики</option>
-            <option value="line">Лінія плавна</option>
-            <option value="sharp">Лінія гостра</option>
-            <option value="area">Область із заливкою</option>
+            <option value="bars">Bars</option>
+            <option value="line">Smooth line</option>
+            <option value="sharp">Sharp line</option>
+            <option value="area">Filled area</option>
           </select>
         </div>
-        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Кнопки в меню</p>
+        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Menu buttons</p>
         <div id="dock-hide-list" class="space-y-0.5 mb-3 pb-3 border-b border-white/5"></div>
-        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pb-1.5">Блоки на дашборді</p>
+        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pb-1.5">Dashboard blocks</p>
         <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
           <div class="flex items-center gap-2.5"><span class="text-base">🗺</span><span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Geo Performance</span></div>
           <label class="toggle-switch"><input type="checkbox" id="toggle-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></label>
@@ -8613,7 +8686,7 @@ function closeGeoCompareModal() {
 
 async function gcLoadTeamsList() {
   const listEl = document.getElementById('gc-team-list');
-  listEl.innerHTML = '<p class="text-[10px] opacity-40 px-1">Завантаження...</p>';
+  listEl.innerHTML = '<p class="text-[10px] opacity-40 px-1">Loading...</p>';
   let teams = [];
   try {
     const { data } = await sb.from('daily_stats').select('team_name');
@@ -8789,7 +8862,7 @@ function gcDiff(geo, results) {
     { key:'roi',    label:'ROI %',      dir:1,  fmt:v=>Math.round(v)+'%' },
   ];
 
-  const head = `<th class="text-left p-2 text-[9px] font-black uppercase tracking-widest text-slate-500">Метрика</th>` +
+  const head = `<th class="text-left p-2 text-[9px] font-black uppercase tracking-widest text-slate-500">Metric</th>` +
     results.map((r,i)=>`<th class="p-2 text-[10px] font-black uppercase tracking-tight text-right" style="color:${GC_COLORS[i%GC_COLORS.length]}">${r.team}</th>`).join('');
 
   const body = rows.map(row => {
@@ -8847,16 +8920,16 @@ function gcDiff(geo, results) {
   <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
       <div>
-        <h2 class="text-xl font-black italic tracking-tighter text-teal-300">Тексти</h2>
+        <h2 class="text-xl font-black italic tracking-tighter text-teal-300">Texts</h2>
         <p id="tx-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
-        <input id="tx-search" oninput="txRender()" placeholder="Пошук по тексту…"
+        <input id="tx-search" oninput="txRender()" placeholder="Search text…"
           class="h-[34px] w-52 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-teal-500">
         <select id="tx-lang-filter" onchange="txRender()" class="h-[34px] bg-black/30 border border-white/10 rounded-xl px-2.5 text-[11px] font-bold text-white outline-none focus:border-teal-500">
-          <option value="">Усі мови</option>
+          <option value="">All languages</option>
         </select>
-        <button onclick="txNew()" class="h-[34px] bg-teal-600 hover:bg-teal-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Текст</button>
+        <button onclick="txNew()" class="h-[34px] bg-teal-600 hover:bg-teal-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Text</button>
         <button onclick="closeTextsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">✕</button>
       </div>
     </div>
@@ -8864,7 +8937,7 @@ function gcDiff(geo, results) {
     <div class="flex-1 min-h-0 flex">
       <!-- Дерево: гео → слоти -->
       <div class="w-56 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar p-3 space-y-1" id="tx-tree"></div>
-      <!-- Тексти -->
+      <!-- Texts -->
       <div class="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4">
         <div id="tx-editor" class="hidden mb-4"></div>
         <div id="tx-list" class="space-y-2"></div>
@@ -8879,7 +8952,7 @@ function gcDiff(geo, results) {
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
         <h2 class="text-xl font-black italic tracking-tighter text-violet-400">Uniqueizer</h2>
-        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Відео · обробка в браузері, файли нікуди не йдуть</p>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Video · processed in the browser, files are never uploaded</p>
       </div>
       <button onclick="closeUniqModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
     </div>
@@ -8887,7 +8960,7 @@ function gcDiff(geo, results) {
     <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 space-y-5">
       <!-- Файли -->
       <div>
-        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Відеофайли</label>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Video files</label>
         <input type="file" id="uq-files" accept="video/*" multiple onchange="uqOnFiles()"
           class="text-[11px] font-bold text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-violet-600 file:text-white file:font-black file:uppercase file:text-[10px] file:cursor-pointer">
         <div id="uq-filelist" class="mt-2"></div>
@@ -8896,31 +8969,31 @@ function gcDiff(geo, results) {
       <!-- Налаштування -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Варіантів на файл</label>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Variants per file</label>
           <input type="number" id="uq-count" min="1" max="30" value="3"
             class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
         </div>
         <div>
-          <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Сила</label>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Strength</label>
           <select id="uq-strength" onchange="uqApplyPreset()"
             class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
-            <option value="low">Слабко</option>
-            <option value="mid" selected>Середньо</option>
-            <option value="high">Сильно</option>
+            <option value="low">Weak</option>
+            <option value="mid" selected>Medium</option>
+            <option value="high">Strong</option>
           </select>
         </div>
         <div>
-          <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Якість</label>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Quality</label>
           <select id="uq-quality" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
-            <option value="23">Звичайна</option>
-            <option value="20">Вища (важчий файл)</option>
-            <option value="27">Легша (швидше)</option>
+            <option value="23">Normal</option>
+            <option value="20">Higher (bigger file)</option>
+            <option value="27">Lighter (faster)</option>
           </select>
         </div>
         <div class="flex items-end">
           <label class="flex items-center gap-2 cursor-pointer pb-1.5">
             <input type="checkbox" id="uq-meta" checked class="uq-chk">
-            <span class="text-[10px] font-bold text-slate-300">Зачистка метаданих</span>
+            <span class="text-[10px] font-bold text-slate-300">Metadata cleanup</span>
           </label>
         </div>
       </div>
@@ -8929,8 +9002,8 @@ function gcDiff(geo, results) {
       <div id="uq-params" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
 
       <div class="flex items-center gap-3 flex-wrap">
-        <button onclick="uqRun()" id="uq-run" class="bg-violet-600 hover:bg-violet-500 px-8 py-2.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зробити варіанти</button>
-        <button onclick="uqCancel()" id="uq-cancel" class="hidden bg-rose-600/80 hover:bg-rose-500 px-5 py-2.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Стоп</button>
+        <button onclick="uqRun()" id="uq-run" class="bg-violet-600 hover:bg-violet-500 px-8 py-2.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Generate variants</button>
+        <button onclick="uqCancel()" id="uq-cancel" class="hidden bg-rose-600/80 hover:bg-rose-500 px-5 py-2.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Stop</button>
         <span id="uq-status" class="text-[11px] font-bold text-slate-400"></span>
       </div>
       <div id="uq-bar" class="hidden h-1.5 bg-white/5 rounded-full overflow-hidden"><div id="uq-bar-fill" class="h-full bg-violet-500 transition-all" style="width:0%"></div></div>
@@ -8947,10 +9020,10 @@ function gcDiff(geo, results) {
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
         <h2 class="text-xl font-black italic tracking-tighter text-sky-400">Accounts</h2>
-        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Статус кабінетів · зберігається одразу · клік по плитці — фільтр</p>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Account status · saved instantly · click a tile to filter</p>
       </div>
       <div class="flex items-center gap-3">
-        <input id="acc-search" oninput="renderAccountsModal()" placeholder="Пошук…"
+        <input id="acc-search" oninput="renderAccountsModal()" placeholder="Search…"
           class="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none focus:border-sky-500 w-40">
         <button onclick="closeAccountsModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
       </div>
@@ -9018,14 +9091,14 @@ function gcDiff(geo, results) {
         <div id="dc-card-accounts" class="card rounded-2xl p-4 border border-white/5">
           <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
             <p class="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Accounts</p>
-            <button class="dc-shot" onclick="dcShot('dc-card-accounts','accounts',this)" title="Зберегти блок як PNG">PNG</button>
+            <button class="dc-shot" onclick="dcShot('dc-card-accounts','accounts',this)" title="Save this block as PNG">PNG</button>
           </div>
           <div class="overflow-x-auto"><table id="dc-accounts-table" class="w-full border-collapse"></table></div>
         </div>
         <div id="dc-card-unit" class="card rounded-2xl p-4 border border-white/5">
           <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
             <p class="text-[10px] font-black uppercase tracking-[0.2em] text-lime-400">Unit cost</p>
-            <button class="dc-shot" onclick="dcShot('dc-card-unit','unit-cost',this)" title="Зберегти блок як PNG">PNG</button>
+            <button class="dc-shot" onclick="dcShot('dc-card-unit','unit-cost',this)" title="Save this block as PNG">PNG</button>
           </div>
           <div class="overflow-x-auto"><table id="dc-unit-table" class="w-full border-collapse"></table></div>
           <div id="dc-unit-extra"></div>
@@ -9033,21 +9106,21 @@ function gcDiff(geo, results) {
         <div id="dc-card-devices" class="card rounded-2xl p-4 border border-white/5">
           <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
             <p class="text-[11px] font-black uppercase tracking-[0.2em] text-cyan-400">Devices</p>
-            <button class="dc-shot" onclick="dcShot('dc-card-devices','devices',this)" title="Зберегти блок як PNG">PNG</button>
+            <button class="dc-shot" onclick="dcShot('dc-card-devices','devices',this)" title="Save this block as PNG">PNG</button>
           </div>
           <div class="overflow-x-auto"><table id="dc-device-table" class="w-full border-collapse"></table></div>
         </div>
         <div id="dc-card-placements" class="card rounded-2xl p-4 border border-white/5">
           <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
             <p class="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-400">Placements</p>
-            <button class="dc-shot" onclick="dcShot('dc-card-placements','placements',this)" title="Зберегти блок як PNG">PNG</button>
+            <button class="dc-shot" onclick="dcShot('dc-card-placements','placements',this)" title="Save this block as PNG">PNG</button>
           </div>
           <div class="overflow-x-auto"><table id="dc-placement-table" class="w-full border-collapse"></table></div>
         </div>
         <div id="dc-card-creatives" class="card rounded-2xl p-4 border border-white/5 lg:col-span-2">
           <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
             <p class="text-[11px] font-black uppercase tracking-[0.2em] text-orange-400">Creatives</p>
-            <button class="dc-shot" onclick="dcShot('dc-card-creatives','creatives',this)" title="Зберегти блок як PNG — у кадр іде весь список, а не лише видима частина">PNG</button>
+            <button class="dc-shot" onclick="dcShot('dc-card-creatives','creatives',this)" title="Save this block as PNG — the whole list is captured, not just the visible part">PNG</button>
           </div>
           <div id="dc-creative-scroll" class="overflow-x-auto max-h-[340px] overflow-y-auto custom-scrollbar"><table id="dc-creative-table" class="w-full border-collapse"></table></div>
         </div>
@@ -9062,7 +9135,7 @@ let dcRows = [];        // {account, day, hour, installs, regs, deps, placementR
 let dcAccountsTz = {};  // account_id -> timezone
 let dcHasDevice = false;   // чи є у файлі стовпець із девайсом
 let dcHasCreative = false; // чи є у файлі Sub ID 3 (креатив)
-let dcSplits = { placement: {}, device: {}, creative: {} };   // агрегати за обраний день
+let dcSplits = { placement: {}, device: {}, creative: {} };   // агрегати за обраний day
 let dcUnitOverride = {};   // {i,r,d} — count, виправлений вручну в Unit cost
 
 async function openDataCheckModal() {
@@ -9095,8 +9168,8 @@ function dcParse(content) {
   const headers = split(lines[0]).map(h => h.toLowerCase());
   const idx = cands => headers.findIndex(h => cands.some(c => h === c || h.includes(c)));
   const iAcc  = idx(['sub id 5','sub_id_5','account']);
-  const iDay  = idx(['day','date','день','дата']);
-  const iHour = idx(['hour','година','час']);
+  const iDay  = idx(['day','date','day','date']);
+  const iHour = idx(['hour','hour','time']);
   const iIns  = idx(['uc (campaign)','uc','installs','instal','інстал','инстал','leads']);
   const iReg  = idx(['conv.','conv','reg','реєстр','регист']);
   const iDep  = idx(['sales','deps','deposit','депоз']);
@@ -9142,7 +9215,7 @@ function dcParse(content) {
 
 function dcCompute() {
   if (!dcRows.length) return;
-  const target = document.getElementById('dc-base-date').value;   // локальний день акаунта
+  const target = document.getElementById('dc-base-date').value;   // локальний day акаунта
   if (!target) return;
   const spend = parseFloat(document.getElementById('dc-spend').value) || 0;
   const revenue = parseFloat(document.getElementById('dc-revenue').value) || 0;
@@ -9167,7 +9240,7 @@ function dcCompute() {
     let ins = 0, reg = 0, dep = 0;
     perAcc[acc].forEach(r => {
       const [ry, rm, rd] = r.day.split('-').map(Number);
-      // час рядка у +3 → зсуваємо в локальний час акаунта, беремо його дату
+      // time рядка у +3 → зсуваємо в локальний time акаунта, беремо його дату
       const localMs = Date.UTC(ry, rm - 1, rd, r.hour, 0, 0) - offset * 3600000;
       const ld = new Date(localMs);
       const localDay = `${ld.getUTCFullYear()}-${String(ld.getUTCMonth() + 1).padStart(2, '0')}-${String(ld.getUTCDate()).padStart(2, '0')}`;
@@ -9251,7 +9324,7 @@ function dcRenderUnit(rows, spend, revenue) {
     const edited = dcUnitOverride[key] != null;
     const countCell = `<span contenteditable="true" onblur="dcSetUnit('${key}', this.innerText)"
               onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-              title="Можна виправити вручну — порожнє поле поверне значення з файлу"
+              title="You can fix it by hand — an empty field restores the value from the file"
               class="outline-none px-1.5 rounded border-b border-dashed cursor-text ${edited ? 'border-amber-400 text-amber-300' : 'border-white/20 focus:border-lime-500'}">${q}</span>`;
     return `<tr class="border-t border-white/5">
       <td class="p-2 text-[13px] font-bold text-slate-300">${m}</td>
@@ -9289,7 +9362,7 @@ function dcRenderUnit(rows, spend, revenue) {
   document.getElementById('dc-unit-extra').innerHTML =
     `<div class="mt-3 pt-3 border-t border-white/5">${ratios}</div>` +
     `<div class="mt-3 pt-3 border-t border-white/5">${moneyGrid}</div>` +
-    (hasMoney ? '' : '<p class="mt-2 text-center text-[10px] font-bold text-slate-600">впиши Spend і Revenue у шапці</p>');
+    (hasMoney ? '' : '<p class="mt-2 text-center text-[10px] font-bold text-slate-600">enter Spend and Revenue in the header</p>');
 }
 
 // Розбивка по девайсах / плейсментах — З ЗАВАНТАЖЕНОГО KEITARO-ФАЙЛУ,
@@ -9314,31 +9387,31 @@ function dcPlacementLabel(raw) {
 function dcRenderSplit(kind, tableId) {
   const t = document.getElementById(tableId);
   if (!t) return;
-  // Креативів у файлі десятки, тому їхня таблиця скролиться — шапку робимо липкою
+  // Creativeів у файлі десятки, тому їхня таблиця скролиться — шапку робимо липкою
   const th = 'p-2 text-[11px] font-black uppercase tracking-widest text-slate-500'
     + (kind === 'creative' ? ' sticky top-0 bg-[#131c31] z-10' : '');
   const map = (dcSplits && dcSplits[kind]) || {};
   const list = Object.entries(map).sort((a, b) => b[1].i - a[1].i);
   // Заголовок навмисно короткий: «Платформа · плейсмент» розсував колонку на 68px,
   // а що це саме плейсменти — і так написано в шапці картки
-  const firstCol = kind === 'device' ? 'Девайс'
-                 : kind === 'creative' ? 'Креатив'
-                 : 'Плейсмент';
+  const firstCol = kind === 'device' ? 'Device'
+                 : kind === 'creative' ? 'Creative'
+                 : 'Placement';
   const head = `<thead><tr>
     <th class="${th} text-left">${firstCol}</th>
-    <th class="${th} text-right">Інстали</th>
-    <th class="${th} text-right">Реєстр.</th>
-    <th class="${th} text-right">Депоз.</th>
+    <th class="${th} text-right">Installs</th>
+    <th class="${th} text-right">Regs</th>
+    <th class="${th} text-right">Deps</th>
     <th class="${th} text-right">Ins→Reg</th>
   </tr></thead>`;
   if (!list.length) {
     const msg = kind === 'device'
-      ? (dcHasDevice ? 'Немає даних за цей день'
-                     : 'У файлі немає стовпця з девайсом')
+      ? (dcHasDevice ? 'No data for this day'
+                     : 'The file has no device column')
       : kind === 'creative'
-      ? (dcHasCreative ? 'Немає даних за цей день'
-                       : 'У файлі немає Sub ID 3 (креатив)')
-      : 'У файлі немає Sub ID 4 (розміщення) або немає даних за цей день';
+      ? (dcHasCreative ? 'No data for this day'
+                       : 'The file has no Sub ID 3 (creative)')
+      : 'The file has no Sub ID 4 (placement), or no data for this day';
     t.innerHTML = head + `<tbody><tr><td colspan="5" class="p-3 text-center text-[13px] opacity-40">${msg}</td></tr></tbody>`;
     return;
   }
@@ -9371,7 +9444,7 @@ function dcLoadShotLib() {
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
     s.onload = resolve;
-    s.onerror = () => { _h2c = null; reject(new Error('не вдалось завантажити бібліотеку знімків')); };
+    s.onerror = () => { _h2c = null; reject(new Error('could not load the snapshot library')); };
     document.head.appendChild(s);
   });
   return _h2c;
@@ -9399,7 +9472,7 @@ async function openTextsModal() {
 function closeTextsModal() { document.getElementById('texts-modal').classList.add('hidden'); }
 async function txSave() {
   try { await setTeamSetting('texts_bank', JSON.stringify(txItems)); }
-  catch (e) { alert('Не вдалось зберегти: ' + e.message); }
+  catch (e) { alert('Could not save: ' + e.message); }
 }
 
 const txLangs = () => [...new Set(txItems.map(t => t.lang).filter(Boolean))].sort();
@@ -9419,7 +9492,7 @@ function txRenderTree() {
     `<button onclick="${onclick}" class="w-full flex justify-between items-center gap-2 ${pad} py-1.5 rounded-lg text-left transition ${active ? 'bg-teal-500/20 text-teal-200' : 'hover:bg-white/5 text-slate-400'}">
        <span class="text-[11px] font-black uppercase truncate">${txEsc(label)}</span>
        <span class="text-[10px] font-bold opacity-50 shrink-0">${count}</span></button>`;
-  el.innerHTML = btn('Усі', !txGeo, "txPick('','')", txItems.length, 'px-2')
+  el.innerHTML = btn('All', !txGeo, "txPick('','')", txItems.length, 'px-2')
     + names.map(g => {
         const cats = Object.keys(geos[g]).sort();
         const total = cats.reduce((a, c) => a + geos[g][c], 0);
@@ -9431,7 +9504,7 @@ function txRenderTree() {
 
   const sel = document.getElementById('tx-lang-filter');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">Усі мови</option>'
+  sel.innerHTML = '<option value="">All languages</option>'
     + txLangs().map(l => `<option value="${txEsc(l)}">${txEsc(l).toUpperCase()}</option>`).join('');
   sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
 }
@@ -9456,7 +9529,7 @@ function txRender() {
   if (sub) sub.textContent = `${list.length} з ${txItems.length}`
     + (txGeo ? ` · ${txGeo}${txCat ? ' / ' + txCat : ''}` : '');
   if (!list.length) {
-    el.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Порожньо. Додай перший текст</p>';
+    el.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Empty. Add your first text</p>';
     return;
   }
   el.innerHTML = list.map(t => `
@@ -9466,8 +9539,8 @@ function txRender() {
         <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300">${txEsc(t.cat || '—')}</span>
         ${t.lang ? `<span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300">${txEsc(t.lang)}</span>` : ''}
         <span class="text-[11px] font-black text-white truncate flex-1">${txEsc(t.title)}</span>
-        <button onclick="txCopy('${t.id}')" title="Скопіювати текст"
-          class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-teal-600/70 hover:bg-teal-500 transition">Копі</button>
+        <button onclick="txCopy('${t.id}')" title="Copy the text"
+          class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-teal-600/70 hover:bg-teal-500 transition">Copy</button>
         <button onclick="txEdit('${t.id}')" class="text-[10px] text-slate-500 hover:text-white px-1 transition">✎</button>
         <button onclick="txDelete('${t.id}')" class="text-[10px] text-slate-600 hover:text-rose-400 px-1 transition">✕</button>
       </div>
@@ -9482,7 +9555,7 @@ function txCopy(id) {
 }
 
 // Форма додавання/редагування. Гео і категорія підставляються з обраної гілки —
-// найчастіше додаєш саме туди, де зараз стоїш.
+// найtimeтіше додаєш саме туди, де зараз стоїш.
 function txNew() { txEditId = null; txShowEditor({ geo: txGeo, cat: txCat, lang: '', title: '', text: '' }); }
 function txEdit(id) {
   const t = txItems.find(x => x.id === id);
@@ -9496,17 +9569,17 @@ function txShowEditor(v) {
   el.innerHTML = `
     <div class="bg-teal-500/[0.06] border border-teal-500/25 rounded-2xl p-3 space-y-2">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <input id="tx-f-geo" list="tx-dl-geo" value="${txEsc(v.geo)}" placeholder="Гео (KG)" class="${inp} uppercase">
-        <input id="tx-f-cat" list="tx-dl-cat" value="${txEsc(v.cat)}" placeholder="Слот / категорія" class="${inp}">
-        <input id="tx-f-lang" list="tx-dl-lang" value="${txEsc(v.lang)}" placeholder="Мова (ua, en)" class="${inp}">
-        <input id="tx-f-title" value="${txEsc(v.title)}" placeholder="Назва (необовʼязково)" class="${inp}">
+        <input id="tx-f-geo" list="tx-dl-geo" value="${txEsc(v.geo)}" placeholder="Geo (KG)" class="${inp} uppercase">
+        <input id="tx-f-cat" list="tx-dl-cat" value="${txEsc(v.cat)}" placeholder="Slot / category" class="${inp}">
+        <input id="tx-f-lang" list="tx-dl-lang" value="${txEsc(v.lang)}" placeholder="Language (ua, en)" class="${inp}">
+        <input id="tx-f-title" value="${txEsc(v.title)}" placeholder="Name (optional)" class="${inp}">
       </div>
       ${dl('tx-dl-geo', txItems.map(t => t.geo))}${dl('tx-dl-cat', txItems.map(t => t.cat))}${dl('tx-dl-lang', txItems.map(t => t.lang))}
       <textarea id="tx-f-text" rows="4" placeholder="Сам текст…"
         class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] text-white outline-none focus:border-teal-500 resize-y">${txEsc(v.text)}</textarea>
       <div class="flex gap-2">
-        <button onclick="txSubmit()" class="bg-teal-600 hover:bg-teal-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зберегти</button>
-        <button onclick="txCancel()" class="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-3 transition">Скасувати</button>
+        <button onclick="txSubmit()" class="bg-teal-600 hover:bg-teal-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Save</button>
+        <button onclick="txCancel()" class="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-3 transition">Cancel</button>
       </div>
     </div>`;
   document.getElementById('tx-f-text').focus();
@@ -9517,7 +9590,7 @@ async function txSubmit() {
   const val = id => (document.getElementById(id)?.value || '').trim();
   const rec = { geo: val('tx-f-geo').toUpperCase(), cat: val('tx-f-cat'),
                 lang: val('tx-f-lang').toLowerCase(), title: val('tx-f-title'), text: val('tx-f-text') };
-  if (!rec.text) { alert('Текст порожній.'); return; }
+  if (!rec.text) { alert('The text is empty.'); return; }
   if (txEditId) Object.assign(txItems.find(x => x.id === txEditId) || {}, rec);
   else txItems.unshift({ id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec });
   txEditId = null;
@@ -9525,7 +9598,7 @@ async function txSubmit() {
   await txSave(); txRenderTree(); txRender();
 }
 async function txDelete(id) {
-  if (!confirm('Видалити цей текст?')) return;
+  if (!confirm('Delete this text?')) return;
   txItems = txItems.filter(x => x.id !== id);
   await txSave(); txRenderTree(); txRender();
 }
@@ -9536,13 +9609,13 @@ async function txDelete(id) {
 // бути з того ж домену, інакше браузер його не створить; саме ядро (32 МБ)
 // тягнеться з CDN при першому запуску і далі кешується браузером.
 const UQ_PARAMS = [
-  { key:'crop',   label:'Кроп',      unit:'%',  hint:'зріже з країв і масштабує назад', min:1,  max:12, step:0.5 },
-  { key:'rotate', label:'Поворот',   unit:'°',  hint:'нахил кадру',                      min:0.2, max:4, step:0.1 },
-  { key:'color',  label:'Колір',     unit:'%',  hint:'гама, насиченість, контраст, тон', min:1,  max:12, step:0.5 },
-  { key:'fps',    label:'Кадри',     unit:'fps',hint:'зміна частоти кадрів',             min:1,  max:6,  step:1 },
-  { key:'volume', label:'Гучність',  unit:'dB', hint:'зсув рівня звуку',                 min:0.3, max:6, step:0.1 },
-  { key:'trim',   label:'Довжина',   unit:'с',  hint:'обрізати з початку і кінця',       min:0.1, max:3, step:0.1 },
-  { key:'size',   label:'Розмір кадру', unit:'%', hint:'трохи інша роздільність на виході', min:1, max:10, step:0.5 },
+  { key:'crop',   label:'Crop',      unit:'%',  hint:'зріже з країв і масштабує назад', min:1,  max:12, step:0.5 },
+  { key:'rotate', label:'Rotation',   unit:'°',  hint:'нахил кадру',                      min:0.2, max:4, step:0.1 },
+  { key:'color',  label:'Colour',     unit:'%',  hint:'гама, насиченість, контраст, тон', min:1,  max:12, step:0.5 },
+  { key:'fps',    label:'Frames',     unit:'fps',hint:'frame rate change',             min:1,  max:6,  step:1 },
+  { key:'volume', label:'Volume',  unit:'dB', hint:'audio level shift',                 min:0.3, max:6, step:0.1 },
+  { key:'trim',   label:'Length',   unit:'с',  hint:'обрізати з початку і кінця',       min:0.1, max:3, step:0.1 },
+  { key:'size',   label:'Frame size', unit:'%', hint:'трохи інша роздільність на виході', min:1, max:10, step:0.5 },
 ];
 const UQ_PRESETS = {
   low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5 },
@@ -9567,7 +9640,7 @@ function uqRenderParams() {
         <span class="text-[10px] text-slate-500 truncate">${p.hint}</span>
       </label>
       <div class="flex items-center gap-1 shrink-0">
-        <span class="text-[9px] font-black uppercase text-slate-600">до</span>
+        <span class="text-[9px] font-black uppercase text-slate-600">to</span>
         <input type="number" id="uq-v-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}"
           class="w-16 bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-[12px] font-bold text-violet-300 text-right outline-none focus:border-violet-500">
         <span class="text-[10px] font-bold text-slate-500 w-7">${p.unit}</span>
@@ -9581,7 +9654,7 @@ function uqApplyPreset() {
 
 function uqOnFiles() {
   // Додаємо до вже вибраних, а не замінюємо: раніше вибір нових файлів
-  // під час обробки обнуляв чергу і поточний прогін фактично скасовувався.
+  // під time обробки обнуляв чергу і поточний прогін фактично скасовувався.
   const picked = [...(document.getElementById('uq-files').files || [])];
   const seen = new Set(uqFiles.map(f => f.name + '|' + f.size));
   picked.forEach(f => { if (!seen.has(f.name + '|' + f.size)) uqFiles.push(f); });
@@ -9609,7 +9682,7 @@ function uqRenderFileList() {
       }).join('')}
     </div>`
     + (uqFiles.some(f => f.size > 120 * 1048576)
-      ? '<p class="text-[10px] font-bold text-amber-400 mt-1.5">Файл понад 120 МБ може не влізти в памʼять браузера — краще стиснути заздалегідь.</p>' : '');
+      ? '<p class="text-[10px] font-bold text-amber-400 mt-1.5">Files over 120 MB may not fit in browser memory — better compress them first.</p>' : '');
 }
 
 function uqRemoveFile(i) {
@@ -9674,7 +9747,7 @@ function uqBuildArgs(p, meta, quality, stripMeta) {
     if (c.hue) vf.push(`hue=h=${(c.hue / 10).toFixed(3)}`);
   }
   // Роздільність на виході: за замовчуванням повертаємо вихідну, але з
-  // параметром «Розмір кадру» трохи зсуваємо її. Сторони мусять лишатись
+  // параметром «Frame size» трохи зсуваємо її. Сторони мусять лишатись
   // парними — інакше yuv420p не кодується.
   if (meta.w && meta.h) {
     const k = 1 + (p.size || 0) / 100;
@@ -9710,7 +9783,7 @@ function uqDescribe(p) {
 
 async function uqLoadFFmpeg(onStatus) {
   if (uqFF) return uqFF;
-  onStatus('Завантажую ядро ffmpeg (~32 МБ, лише перший раз)…');
+  onStatus('Loading the ffmpeg core (~32 MB, first time only)…');
   const { FFmpeg } = await import('./vendor/ffmpeg/index.js');
   const ff = new FFmpeg();
   const cdn = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
@@ -9719,7 +9792,7 @@ async function uqLoadFFmpeg(onStatus) {
   return ff;
 }
 
-function uqCancel() { uqStop = true; document.getElementById('uq-status').textContent = 'Зупиняю після поточного варіанта…'; }
+function uqCancel() { uqStop = true; document.getElementById('uq-status').textContent = 'Stopping after the current variant…'; }
 
 const uqFmt = ms => {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -9740,7 +9813,7 @@ async function uqFreshFFmpeg(onStatus, onProgress) {
 
 async function uqRun() {
   if (uqBusy) return;
-  if (!uqFiles.length) { alert('Спершу вибери відеофайли.'); return; }
+  if (!uqFiles.length) { alert('Pick the video files first.'); return; }
   const count = Math.max(1, Math.min(30, parseInt(document.getElementById('uq-count').value, 10) || 1));
   const quality = document.getElementById('uq-quality').value;
   const stripMeta = document.getElementById('uq-meta').checked;
@@ -9779,7 +9852,7 @@ async function uqRun() {
       uqCurrent = fi;
       uqRenderFileList();
 
-      if (!firstFile) { setStatus('Готую наступний файл…'); ff = await uqFreshFFmpeg(() => {}, onProgress); }
+      if (!firstFile) { setStatus('Preparing the next file…'); ff = await uqFreshFFmpeg(() => {}, onProgress); }
       firstFile = false;
 
       const meta = await uqProbe(file);
@@ -9823,7 +9896,7 @@ async function uqRun() {
             <span class="text-[11px] font-bold text-slate-400 flex-1 min-w-0 truncate" title="${uqDescribe(p)}">${uqDescribe(p)}</span>
             <span class="text-[11px] font-mono text-slate-600 shrink-0">${uqFmt(took)}</span>
             <span class="text-[11px] font-mono text-slate-500 shrink-0">${(data.length / 1048576).toFixed(1)} МБ</span>
-            <a href="${url}" download="${name}" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Завантажити</a>`;
+            <a href="${url}" download="${name}" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Download</a>`;
           block.appendChild(row);
           try { await ff.deleteFile('out.mp4'); } catch (e) {}
         } catch (e) {
@@ -9846,9 +9919,9 @@ async function uqRun() {
     uqCurrent = -1;
     setStatus(uqStop
       ? `Зупинено. Витрачено ${uqFmt(performance.now() - runStart)}`
-      : `Готово за ${uqFmt(performance.now() - runStart)}. Файли зберігаються по кнопці «Завантажити».`);
+      : `Готово за ${uqFmt(performance.now() - runStart)}. Файли зберігаються по кнопці «Download».`);
   } catch (e) {
-    setStatus('Помилка: ' + (e.message || e));
+    setStatus('Error: ' + (e.message || e));
   } finally {
     uqBusy = false; uqCurrent = -1;
     document.getElementById('uq-run').disabled = false;
@@ -9858,12 +9931,12 @@ async function uqRun() {
 }
 
 // ===== ACCOUNTS · статуси кабінетів =====
-// Статус живе в accounts_mapping.status: active | ban | problem.
+// Status живе в accounts_mapping.status: active | ban | problem.
 // Колонок може ще не бути в базі — тоді показуємо підказку з SQL, а не падаємо.
 const ACC_STATUS = {
-  active:  { label: 'Активний', cls: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
-  ban:     { label: 'Бан',      cls: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' },
-  problem: { label: 'Проблема', cls: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/30' }
+  active:  { label: 'Active', cls: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
+  ban:     { label: 'Ban',      cls: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' },
+  problem: { label: 'Issue', cls: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/30' }
 };
 let accRows = [];
 let accHasStatusCol = true;
@@ -9880,13 +9953,13 @@ async function openAccountsModal() {
   document.getElementById('accounts-modal').classList.remove('hidden');
   accFilter = '';
   const body = document.getElementById('accounts-modal-body');
-  body.innerHTML = '<p class="text-center opacity-40 py-16 text-xs font-black uppercase tracking-widest">Завантаження…</p>';
+  body.innerHTML = '<p class="text-center opacity-40 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
   try {
     accRows = await sbFetchAll('accounts_mapping',
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
     accHasStatusCol = !accRows.length || 'status' in accRows[0];
   } catch (e) {
-    body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Помилка: ${e.message}</p>`;
+    body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
     return;
   }
   renderAccountsModal();
@@ -9905,7 +9978,7 @@ async function accSetStatus(id, status) {
   row.status = status;
   renderAccountsModal();
   const { error } = await sb.from('accounts_mapping').update({ status }).eq('id', id);
-  if (error) { row.status = prev; renderAccountsModal(); alert('Не вдалось зберегти статус: ' + error.message); }
+  if (error) { row.status = prev; renderAccountsModal(); alert('Could not save the status: ' + error.message); }
 }
 
 async function accSetNote(id, note) {
@@ -9914,7 +9987,7 @@ async function accSetNote(id, note) {
   const prev = row.status_note;
   row.status_note = note;
   const { error } = await sb.from('accounts_mapping').update({ status_note: note }).eq('id', id);
-  if (error) { row.status_note = prev; renderAccountsModal(); alert('Не вдалось зберегти нотатку: ' + error.message); }
+  if (error) { row.status_note = prev; renderAccountsModal(); alert('Could not save the note: ' + error.message); }
 }
 
 function renderAccountsModal() {
@@ -9925,12 +9998,12 @@ function renderAccountsModal() {
   if (!accHasStatusCol) {
     sumEl.innerHTML = '';
     body.innerHTML = `<div class="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-5 text-[12px] leading-relaxed">
-      <p class="font-black text-amber-300 uppercase tracking-widest text-[11px] mb-2">Потрібна одна міграція</p>
-      <p class="text-slate-300 mb-3">У таблиці <b>accounts_mapping</b> ще немає колонок для статусу. Виконай у Supabase → SQL Editor:</p>
+      <p class="font-black text-amber-300 uppercase tracking-widest text-[11px] mb-2">One migration is needed</p>
+      <p class="text-slate-300 mb-3">The table <b>accounts_mapping</b> has no status columns yet. Run this in Supabase → SQL Editor:</p>
       <pre class="bg-black/40 rounded-xl p-3 font-mono text-[11px] text-emerald-300 overflow-x-auto">ALTER TABLE public.accounts_mapping
   ADD COLUMN IF NOT EXISTS status text DEFAULT 'active',
   ADD COLUMN IF NOT EXISTS status_note text;</pre>
-      <p class="text-slate-500 mt-3">Після цього просто відкрий вікно ще раз.</p></div>`;
+      <p class="text-slate-500 mt-3">After that just open this window again.</p></div>`;
     return;
   }
 
@@ -9941,7 +10014,7 @@ function renderAccountsModal() {
 
   // Плитка = і лічильник, і фільтр: клік лишає тільки цей статус, повторний — знімає
   const tile = (k, label, cls, bg, n) => `
-    <button onclick="accSetFilter('${k}')" title="${k ? 'Показати тільки: ' + label : 'Показати всі кабінети'}"
+    <button onclick="accSetFilter('${k}')" title="${k ? 'Show only: ' + label : 'Show all accounts'}"
       class="rounded-xl border px-3 py-2 text-center transition ${bg}
              ${accFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'opacity-90 hover:opacity-100 hover:brightness-110'}">
       <p class="text-[9px] font-black uppercase tracking-widest text-slate-400">${label}</p>
@@ -9949,7 +10022,7 @@ function renderAccountsModal() {
     </button>`;
 
   sumEl.innerHTML = `<div class="grid grid-cols-4 gap-2">
-    ${tile('', 'Усі', 'text-slate-200', 'bg-white/[0.04] border-white/10', accRows.length)}
+    ${tile('', 'All', 'text-slate-200', 'bg-white/[0.04] border-white/10', accRows.length)}
     ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, s.cls, s.bg, counts[k])).join('')}
   </div>`;
 
@@ -9962,7 +10035,7 @@ function renderAccountsModal() {
       String(r.status_note || '').toLowerCase().includes(q)));
 
   if (!rows.length) {
-    const why = accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Нічого не знайдено';
+    const why = accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Nothing found';
     body.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     return;
   }
@@ -9976,7 +10049,7 @@ function renderAccountsModal() {
 
   body.innerHTML = `
     <div class="${GRID} px-4 pb-2" style="${COLS}">
-      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','TZ','Додано','Статус','Нотатка'].map((h, i) =>
+      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','TZ','Added','Status','Note'].map((h, i) =>
         `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${i === 2 || i === 3 ? 'text-center' : ''}">${h}</span>`).join('')}
     </div>
     <div class="space-y-1.5">
@@ -9986,7 +10059,7 @@ function renderAccountsModal() {
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
           <span class="text-[12px] font-bold text-slate-400 truncate">${r.provider_name || '—'}</span>
           <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>
-          <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Дата додавання кабінета">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>
+          <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Date the account was added">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>
           <div class="flex gap-1">
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
               <button onclick="accSetStatus('${r.id}','${k}')"
@@ -10010,7 +10083,7 @@ async function shotNode(node, filename, btn) {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
     await dcLoadShotLib();
-    // html2canvas не розуміє CSS zoom — на час зйомки повертаємо 100%,
+    // html2canvas не розуміє CSS zoom — на time зйомки повертаємо 100%,
     // тоді ж кадр знімається в натуральному розмірі, без втрати різкості
     document.body.style.zoom = '1';
 
@@ -10021,7 +10094,7 @@ async function shotNode(node, filename, btn) {
     stage.id = 'dc-shot-stage';
     const clone = node.cloneNode(true);
     // scrollWidth, а не offsetWidth: таблиця Report Builder буває ширша за видиму
-    // частину, і по offsetWidth у кадр не влізли б праві стовпці
+    // timeтину, і по offsetWidth у кадр не влізли б праві стовпці
     clone.style.width = Math.max(node.offsetWidth, node.scrollWidth) + 'px';
     clone.style.margin = '0';
     stage.appendChild(clone);
@@ -10040,7 +10113,7 @@ async function shotNode(node, filename, btn) {
     a.href = canvas.toDataURL('image/png');
     a.click();
   } catch (e) {
-    alert('Не вдалось зробити знімок: ' + e.message);
+    alert('Could not take the snapshot: ' + e.message);
   } finally {
     document.body.style.zoom = prevZoom;
     if (stage) stage.remove();
@@ -10063,7 +10136,7 @@ function dcRenderWarn(unlinked) {
   if (!unlinked.length) { w.classList.add('hidden'); w.innerHTML = ''; return; }
   w.classList.remove('hidden');
   w.innerHTML = `<div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-[11px] text-amber-300 font-bold">
-    ⚠️ Акаунти з файлу без прив'язаної таймзони — їх не враховано. Додай у Form (Link Cabinet) з TZ:
+    ⚠️ Accounts in the file with no timezone linked were skipped. Add them in Form (Link Cabinet) with a TZ:
     <div class="mt-1 font-mono text-amber-200/80 break-all">${unlinked.join(', ')}</div></div>`;
 }
 // ===== END DATA CHECK =====
@@ -10108,7 +10181,7 @@ function dcRenderWarn(unlinked) {
   ];
   const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
   const RU = {
-    'Select Month':'Month', 'Performance Summary':'Summary image', 'Фототека':'Gallery',
+    'Select Month':'Month', 'Performance Summary':'Summary image', 'Gallery':'Gallery',
     'Daily Reports':'Daily reports', 'Mission Center':'Tasks', 'Change Log':'Change log',
     'Quick Links':'Quick links', 'Bonus Calculator':'Bonuses', 'DB Logs':'DB logs',
     'Geo Compare':'Geo compare', 'Data Check (Keitaro)':'Data check', 'Accounts':'Accounts', 'Uniqueizer':'Uniqueizer', 'Texts':'Texts',
@@ -10223,9 +10296,9 @@ function dcRenderWarn(unlinked) {
     dockStampOrder();
     const wrap = document.createElement('div');
     wrap.className = 'dk-more-wrap';
-    wrap.innerHTML = `<button class="dk dk-more" title="Ще" type="button">
+    wrap.innerHTML = `<button class="dk dk-more" title="More" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>
-        <small>Ще</small></button>
+        <small>More</small></button>
       <div class="dk-more-pop"></div>`;
     dock.appendChild(wrap);
     applyDockHidden();
@@ -10275,7 +10348,7 @@ function dcRenderWarn(unlinked) {
     const n = pop.children.length;
     wrap.style.display = n ? '' : 'none';
     const small = wrap.querySelector('small');
-    if (small) small.textContent = n ? `Ще ${n}` : 'Ще';
+    if (small) small.textContent = n ? `More ${n}` : 'More';
   }
 
   // Список кнопок у налаштуваннях
@@ -10293,7 +10366,7 @@ function dcRenderWarn(unlinked) {
       .filter(x => x.title)
       .sort((a, b) => a.ord - b.ord);
     const uniq = [...new Set(all.map(x => x.title))];
-    if (!uniq.length) { box.innerHTML = '<p class="text-[10px] text-slate-600 italic px-3">Меню ще не зібрано</p>'; return; }
+    if (!uniq.length) { box.innerHTML = '<p class="text-[10px] text-slate-600 italic px-3">The menu is not built yet</p>'; return; }
     box.innerHTML = uniq.map(t => `
       <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
         <span class="text-xs font-bold ${hidden.has(t) ? 'text-slate-500' : 'text-slate-300'} group-hover:text-white transition">${(typeof RU !== 'undefined' && RU[t]) || t}</span>
@@ -10470,6 +10543,7 @@ function dcRenderWarn(unlinked) {
     document.body.classList.toggle('hub-open', !!r.panel);
     // Тільки на дашборді блоки розтягуються на висоту екрана
     document.body.classList.toggle('route-dash', !!r.dash);
+    document.body.dataset.route = name || 'dash';
     setActiveNav(name, arg);
 
     if (!changed) return;
@@ -10558,6 +10632,7 @@ function dcRenderWarn(unlinked) {
     #app-dock{background:rgba(18,18,21,.92) !important;border:1px solid var(--border) !important;
       border-radius:16px !important;}
     ::-webkit-scrollbar-thumb{background:var(--surface-3) !important;}
+    #app-dock{display:none !important;}
   `;
 
   function hubSkin(frame) {
@@ -10572,7 +10647,7 @@ function dcRenderWarn(unlinked) {
   }
 
   /* ─────────── Витрати ─────────── */
-  const EXP_LABELS = { accounts:'💳 Акаунти', fp:'🏦 ФП', team:'👥 Команда', tools:'🛠 Інструменти', other:'📦 Інше' };
+  const EXP_LABELS = { accounts:'💳 Accounts', fp:'🏦 Entities', team:'👥 Team', tools:'🛠 Tools', other:'📦 Other' };
   const EXP_COLORS = { accounts:'#60A5FA', fp:'#FACC15', team:'#C4B5FD', tools:'#94A3B8', other:'#FB7185' };
   let expReady = false;
 
@@ -10613,12 +10688,12 @@ function dcRenderWarn(unlinked) {
       if (error) throw error;
       rows = data || [];
     } catch (e) {
-      body.innerHTML = `<tr><td colspan="5" class="exp-empty">Помилка завантаження: ${e.message || e}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="5" class="exp-empty">Failed to load: ${e.message || e}</td></tr>`;
       return;
     }
 
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="exp-empty">Витрат за цей місяць немає</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="exp-empty">No expenses this month</td></tr>';
       if (totalEl) totalEl.textContent = '$0.00';
       return;
     }
@@ -10630,7 +10705,7 @@ function dcRenderWarn(unlinked) {
         <td><span class="exp-cat" style="color:${EXP_COLORS[r.category] || 'var(--text-main)'}">${EXP_LABELS[r.category] || r.category || '—'}</span></td>
         <td class="exp-desc">${String(r.description || '—').replace(/</g, '&lt;')}</td>
         <td class="exp-amount">${money2(r.amount)}</td>
-        <td class="text-right"><button class="exp-del" onclick="expDelete('${r.id}')" title="Видалити">✕</button></td>
+        <td class="text-right"><button class="exp-del" onclick="expDelete('${r.id}')" title="Delete">✕</button></td>
       </tr>`).join('');
   };
 
@@ -10639,12 +10714,12 @@ function dcRenderWarn(unlinked) {
     const category = document.getElementById('exp-category')?.value;
     const amount = parseFloat(document.getElementById('exp-amount')?.value) || 0;
     const description = (document.getElementById('exp-desc')?.value || '').trim();
-    if (!date || !amount) return alert('Вкажіть дату і суму');
+    if (!date || !amount) return alert('Enter a date and an amount');
     try {
       const { error } = await sb.from('expenses')
         .insert([{ team_name: currentTeam, date, category, amount, description }]);
       if (error) throw error;
-    } catch (e) { return alert('Не вдалось зберегти: ' + (e.message || e)); }
+    } catch (e) { return alert('Could not save: ' + (e.message || e)); }
     document.getElementById('exp-amount').value = '';
     document.getElementById('exp-desc').value = '';
     expLoad();
@@ -10653,9 +10728,9 @@ function dcRenderWarn(unlinked) {
   };
 
   window.expDelete = async function (id) {
-    if (!confirm('Видалити витрату?')) return;
+    if (!confirm('Delete this expense?')) return;
     try { await sb.from('expenses').delete().eq('id', id); }
-    catch (e) { return alert('Не вдалось видалити: ' + (e.message || e)); }
+    catch (e) { return alert('Could not delete: ' + (e.message || e)); }
     expLoad();
     if (typeof loadExpenses === 'function') loadExpenses();
   };
@@ -10703,9 +10778,9 @@ function dcRenderWarn(unlinked) {
   window.sheetsAdd = async function () {
     const name = (document.getElementById('sh-name')?.value || '').trim();
     const url = (document.getElementById('sh-url')?.value || '').trim();
-    if (!url) return alert('Вставте посилання на таблицю');
-    if (!sheetPreview(url)) return alert('Це не схоже на посилання Google Таблиці');
-    sheets.push({ name: name || `Таблиця ${sheets.length + 1}`, url });
+    if (!url) return alert('Paste a link to the sheet');
+    if (!sheetPreview(url)) return alert('That does not look like a Google Sheets link');
+    sheets.push({ name: name || `Sheet ${sheets.length + 1}`, url });
     sheetsIdx = sheets.length - 1;
     document.getElementById('sh-name').value = '';
     document.getElementById('sh-url').value = '';
@@ -10717,7 +10792,7 @@ function dcRenderWarn(unlinked) {
   window.sheetsRemove = async function () {
     const cur = sheets[sheetsIdx];
     if (!cur) return;
-    if (!confirm(`Прибрати «${cur.name}» зі списку? Сама таблиця в Google лишиться.`)) return;
+    if (!confirm(`Remove “${cur.name}” from the list? The sheet itself stays in Google.`)) return;
     sheets.splice(sheetsIdx, 1);
     sheetsIdx = Math.max(0, sheetsIdx - 1);
     await sheetsSave();
@@ -10739,9 +10814,9 @@ function dcRenderWarn(unlinked) {
       frame.classList.add('hidden');
       frame.removeAttribute('src');
       empty.classList.remove('hidden');
-      empty.innerHTML = `<p>Тут живуть ваші Google Таблиці.</p>
-        <p class="sh-hint">Натисніть «+ Додати» і вставте посилання — воно збережеться для команди,
-        і таблиця відкриватиметься прямо тут. Перегляд лише для читання: правки — кнопкою «Редагувати».</p>`;
+      empty.innerHTML = `<p>Your Google Sheets live here.</p>
+        <p class="sh-hint">Hit “+ Add” and paste a link — it is saved for the whole team and the sheet
+        opens right here. The preview is read-only: use “Edit” to make changes.</p>`;
       if (open) open.style.display = 'none';
       return;
     }
@@ -10781,7 +10856,7 @@ function dcRenderWarn(unlinked) {
      лише ті рядки, що йдуть за обраною моделлю — і вся стрічка KPI,
      графік, гео й таблиця перераховуються під цей зріз. */
   const LENS = ['all', 'cpa', 'spend'];
-  const LENS_LABEL = { all: 'Усі', cpa: 'CPA', spend: 'Спенд %' };
+  const LENS_LABEL = { all: 'All', cpa: 'CPA', spend: 'Spend %' };
 
   function lensGet() {
     const v = localStorage.getItem('kpi_lens');
@@ -10812,7 +10887,7 @@ function dcRenderWarn(unlinked) {
 
   lensPaint();
 
-  /* ─────────── Вигляд графіка ─────────── */
+  /* ─────────── Chart style ─────────── */
   window.setChartStyle = function (v) {
     localStorage.setItem('chart_style', v);
     // applyChartFilter перемальовує з поточними фільтрами дат і режимом
@@ -10826,31 +10901,31 @@ function dcRenderWarn(unlinked) {
 
   /* ─────────── Командна панель ⌘K ─────────── */
   const CMDS = [
-    ['Дашборд',        'nav:',                      'Розділ'],
-    ['Heatmap',        'nav:heatmap',    'Розділ'],
-    ['Креативи',       'nav:creatives',  'Розділ'],
-    ['Гео-розбивка',   'nav:geo',         'Розділ'],
-    ['Плейсменти',     'nav:placements',         'Розділ'],
-    ['Live Data',      'nav:live',         'Розділ'],
-    ['Report Builder', 'nav:reports',     'Розділ'],
-    ['Таски',          'fn:toggleTaskModal',             'Інструмент'],
-    ['Щоденні звіти',  'fn:toggleReportModal',           'Інструмент'],
-    ['Бонуси',         'fn:openBonusModal',              'Інструмент'],
-    ['Кабінети',       'fn:openAccountsModal',           'Інструмент'],
-    ['Тексти',         'fn:openTextsModal',              'Інструмент'],
-    ['Uniqueizer',     'fn:openUniqModal',               'Інструмент'],
-    ['Geo Compare',    'fn:openGeoCompareModal',         'Інструмент'],
-    ['Data Check',     'fn:openDataCheckModal',          'Інструмент'],
-    ['DB Logs',        'fn:openDbLogsModal',             'Інструмент'],
-    ['Фототека',       'fn:toggleGalleryModal',          'Інструмент'],
-    ['Summary image',  'fn:openScreenshotModal',         'Інструмент'],
-    ['Налаштування',   'fn:openSettingsModal',           'Інструмент'],
-    ['Кампанії',       'hub:dataset',                    'Data Hub'],
-    ['Записи',         'hub:records',                    'Data Hub'],
-    ['Витрати',        'hub:expenses',                   'Data Hub'],
-    ['Джерела',        'hub:providers',                  'Data Hub'],
-    ['Google Таблиці', 'fn:sheetsOpen',                  'Таблиці'],
-    ['Змінити тему',   'fn:toggleTheme',                 'Вигляд']
+    ['Dashboard',      'nav:',                      'Page'],
+    ['Heatmap',        'nav:heatmap',    'Page'],
+    ['Creatives',      'nav:creatives',  'Page'],
+    ['Geo Breakdown',  'nav:geo',         'Page'],
+    ['Placements',     'nav:placements',         'Page'],
+    ['Live Data',      'nav:live',         'Page'],
+    ['Report Builder', 'nav:reports',     'Page'],
+    ['Tasks',          'fn:toggleTaskModal',             'Tool'],
+    ['Daily reports',  'fn:toggleReportModal',           'Tool'],
+    ['Bonuses',        'fn:openBonusModal',              'Tool'],
+    ['Accounts',       'fn:openAccountsModal',           'Tool'],
+    ['Texts',          'fn:openTextsModal',              'Tool'],
+    ['Uniqueizer',     'fn:openUniqModal',               'Tool'],
+    ['Geo Compare',    'fn:openGeoCompareModal',         'Tool'],
+    ['Data Check',     'fn:openDataCheckModal',          'Tool'],
+    ['DB Logs',        'fn:openDbLogsModal',             'Tool'],
+    ['Gallery',        'fn:toggleGalleryModal',          'Tool'],
+    ['Summary image',  'fn:openScreenshotModal',         'Tool'],
+    ['Settings',       'fn:openSettingsModal',           'Tool'],
+    ['Campaigns',      'hub:dataset',                    'Data Hub'],
+    ['Records',        'hub:records',                    'Data Hub'],
+    ['Expenses',       'hub:expenses',                   'Data Hub'],
+    ['Sources',        'hub:providers',                  'Data Hub'],
+    ['Google Sheets',  'fn:sheetsOpen',                  'Sheets'],
+    ['Toggle theme',   'fn:toggleTheme',                 'Appearance']
   ];
   let cmdSel = 0, cmdShown = CMDS;
 
@@ -10859,7 +10934,7 @@ function dcRenderWarn(unlinked) {
     const o = document.createElement('div');
     o.id = 'cmd-overlay';
     o.innerHTML = `<div id="cmd-box">
-        <input id="cmd-input" placeholder="Куди йдемо?" autocomplete="off">
+        <input id="cmd-input" placeholder="Where to?" autocomplete="off">
         <div id="cmd-list"></div>
       </div>`;
     document.body.appendChild(o);
@@ -10876,7 +10951,7 @@ function dcRenderWarn(unlinked) {
       ? cmdShown.map((c, i) => `<button class="cmd-row ${i === 0 ? 'is-sel' : ''}" data-i="${i}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
             ${c[0]}<small>${c[2]}</small></button>`).join('')
-      : `<div class="cmd-row" style="cursor:default">Нічого не знайшлось</div>`;
+      : `<div class="cmd-row" style="cursor:default">Nothing found</div>`;
     document.querySelectorAll('#cmd-list .cmd-row[data-i]').forEach(b =>
       b.addEventListener('click', () => cmdRun(Number(b.dataset.i))));
   }
@@ -10947,7 +11022,7 @@ function dcRenderWarn(unlinked) {
           <div class="ins-v" style="color:${t.profit >= 0 ? '#4ADE80' : '#F87171'}">${t.profit >= 0 ? '+' : '−'}${money(Math.abs(t.profit))}</div>
           <div class="ins-s">ROI ${Math.round(t.roi)}%</div>
         </div>
-      </div>`).join('') : emptyRow('Немає даних за період');
+      </div>`).join('') : emptyRow('No data for this period');
 
     renderInsightTasks();
   };
@@ -10971,14 +11046,14 @@ function dcRenderWarn(unlinked) {
           <span class="ins-pill ${prio}">${t.priority || '—'}</span>
           <div class="ins-main"><div class="ins-t">${String(t.text || '').split('\n')[0]}</div>
             <div class="ins-s">${(t.created_at || '').slice(0, 10)}</div></div>
-          <span class="ins-pill ${pill}">${t.status === 'In progress' ? 'Процес' : 'Нове'}</span>
+          <span class="ins-pill ${pill}">${t.status === 'In progress' ? 'In progress' : 'New'}</span>
         </div>`;
-    }).join('') : emptyRow('Активних тасків немає');
+    }).join('') : emptyRow('No open tasks');
   }
 
   /* ─────────── Синхронізація підписів ─────────── */
-  const MONTH_UA = ['Січень','Лютий','Березень','Квітень','Травень','Червень',
-                    'Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'];
+  const MONTH_UA = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
 
   setInterval(() => {
     // Назва команди — у бренді сайдбара і на мобільній кнопці меню
