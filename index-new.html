@@ -1571,6 +1571,28 @@ body.hub-open .app-content { padding-bottom: 14px; }
 }
 #sh-frame { flex: 1; width: 100%; border: 0; background: #fff; display: block; }
 #sh-frame.hidden { display: none; }
+
+/* ─────────── Компактніші секції ───────────
+   Стара розмітка несе і власні mb-6/mb-8, і space-y-4 контейнера —
+   відступи складались. Лишаємо один. Внутрішні паддінги й висоти
+   таблиць теж тиснемо, щоб на екран влазило більше. */
+#dashboard-content > * { margin-bottom: 0 !important; margin-top: 0 !important; }
+#dashboard-content .card.p-6 { padding: 15px !important; }
+#dashboard-content .card.p-5 { padding: 14px !important; }
+#dashboard-content .card > .mb-6 { margin-bottom: 12px !important; }
+#dashboard-content .card > .mb-5 { margin-bottom: 10px !important; }
+
+#live-table-section > .overflow-x-auto { max-height: 400px !important; }
+#live-table-section > .p-6 { padding: 14px !important; }
+#rb-table-wrap { max-height: 400px !important; }
+#placements-content { max-height: 300px !important; }
+#creative-analyzer-section [class*="max-h-["] { max-height: 320px !important; }
+
+/* Заголовки секцій нижчі: у макеті це один рядок, а не блок на три */
+#dashboard-content .card h2 + p { margin-top: 1px; }
+/* Гео-колонка підлаштовується під висоту графіка (syncGeoHeight). Після
+   стискання графіків у неї лишалось менше двох рядків — тримаємо мінімум. */
+#geo-sidebar-col { min-height: 300px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -1979,7 +2001,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
               <p id="rev-total" class="rev-value">$0</p>
               <span id="rev-delta" class="rev-delta"></span>
             </div>
-            <div class="flex-1 min-h-[140px] mt-2 relative"><canvas id="chart-revenue"></canvas></div>
+            <div class="flex-1 min-h-[118px] mt-2 relative"><canvas id="chart-revenue"></canvas></div>
           </div>
 
           <!-- Cashflow Overview -->
@@ -2002,7 +2024,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
                 </div>
               </div>
             </div>
-            <div class="h-[200px] md:h-[236px] w-full relative"><canvas id="chart-trend"></canvas></div>
+            <div class="h-[180px] md:h-[200px] w-full relative"><canvas id="chart-trend"></canvas></div>
           </div>
 
           <!-- Geo Performance -->
@@ -3266,14 +3288,15 @@ function renderTrend(data) {
     stats = top.map(e => e[1]);
   }
 
-  // Показуємо лише spend (вниз) і net profit (вгору/вниз за знаком).
+  // Показуємо лише spend (вгору) і net profit (вгору/вниз за знаком).
   // Revenue лишається в тултіпі — окремим стовпцем він тільки захаращував графік.
   const profits = stats.map(v => Math.round(v.rev - v.s));
 
   const datasets = [
     {
       label: 'Spend',
-      data: stats.map(v => -Math.round(v.s)),
+      // Догори від нуля: у макеті відтік ішов униз, але читати спенд зручніше вгору
+      data: stats.map(v => Math.round(v.s)),
       backgroundColor: cfStripe(ctx, CF_SPEND),
       borderWidth: 0,
       borderRadius: 8,
@@ -5192,6 +5215,7 @@ async function loadSettings() {
   });
   localStorage.setItem('dashboard_visibility', JSON.stringify(settings));
   applyTeamLeadSections();
+  if (typeof syncNavVisibility === 'function') syncNavVisibility();
 }
     // --- 1. УТИЛІТИ ТА СТАТУСИ ---
 function updateSyncStatus(status) {
@@ -10246,10 +10270,7 @@ function dcRenderWarn(unlinked) {
     if (id === '__top') window.scrollTo({ top: 0, behavior: 'smooth' });
     else {
       const t = document.getElementById(id);
-      if (!t) return;
-      // Розділ міг бути вимкнений у налаштуваннях віджетів — тоді вмикаємо назад,
-      // інакше клік у меню просто нічого не робив би.
-      t.classList.remove('hidden');
+      if (!t || t.classList.contains('hidden')) return;
       const y = t.getBoundingClientRect().top + window.scrollY - 20;
       window.scrollTo({ top: y, behavior: 'smooth' });
     }
@@ -10416,6 +10437,18 @@ function dcRenderWarn(unlinked) {
     if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
     if (open) { open.style.display = ''; open.href = cur.url; }
   }
+
+  // Вимкнений у налаштуваннях (або закритий для тімліда) розділ не має
+  // висіти в меню: клікати нема куди.
+  window.syncNavVisibility = function () {
+    document.querySelectorAll('.sb-item[data-nav]').forEach(b => {
+      const id = b.dataset.nav;
+      if (id === '__top') return;
+      const sec = document.getElementById(id);
+      const off = !sec || sec.classList.contains('hidden');
+      b.style.display = off ? 'none' : '';
+    });
+  };
 
   function setActiveNav(nav) {
     document.querySelectorAll('.sb-item[data-nav]').forEach(b =>
@@ -10790,6 +10823,7 @@ function dcRenderWarn(unlinked) {
     const badge = document.getElementById('sb-task-badge');
     if (badge) badge.textContent = tasks().filter(t => t.status !== 'Completed').length;
     renderInsightTasks();
+    syncNavVisibility();
   }, 1500);
 
 })();
