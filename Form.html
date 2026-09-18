@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
+  <meta charset="UTF-8">
   <base target="_top">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -361,6 +362,49 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 }
 #glass-cal .gc-nav:hover { color:#fff; background:rgba(59,130,246,.22); border-color:rgba(59,130,246,.4); }
 #glass-cal .gc-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+
+/* ─── Модалка «не знайдено колонки» при імпорті ─── */
+#mc-modal {
+  position:fixed; inset:0; z-index:400; display:none;
+  align-items:center; justify-content:center; padding:20px;
+  background:rgba(2,6,23,.72); backdrop-filter:blur(6px);
+}
+#mc-modal.open { display:flex; }
+#mc-box {
+  width:100%; max-width:520px; max-height:82vh; overflow-y:auto;
+  background:#0f172a; border:1px solid var(--glass-border);
+  border-radius:18px; padding:22px; color:var(--text-main);
+  box-shadow:0 24px 60px rgba(0,0,0,.6);
+}
+#mc-box h3 { font-size:15px; font-weight:900; margin-bottom:4px; }
+#mc-box .mc-sub { font-size:11px; color:#94a3b8; line-height:1.5; margin-bottom:16px; }
+#mc-box .mc-file {
+  font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.12em;
+  color:#60a5fa; margin:14px 0 8px; padding-bottom:6px;
+  border-bottom:1px solid rgba(255,255,255,.07);
+}
+#mc-box .mc-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+#mc-box .mc-label { flex:0 0 132px; font-size:11px; font-weight:800; }
+#mc-box .mc-row input {
+  flex:1; min-width:0; background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.1); border-radius:10px;
+  padding:7px 10px; font-size:12px; color:var(--text-main); outline:none;
+}
+#mc-box .mc-row input:focus { border-color:rgba(59,130,246,.55); }
+#mc-box .mc-zero {
+  font-size:11px; color:#fbbf24; background:rgba(251,191,36,.08);
+  border:1px solid rgba(251,191,36,.2); border-radius:10px;
+  padding:8px 11px; margin-top:10px; line-height:1.5;
+}
+#mc-box .mc-btns { display:flex; gap:8px; margin-top:20px; }
+#mc-box .mc-btns button {
+  flex:1; padding:9px; border-radius:11px; font-size:11px;
+  font-weight:900; text-transform:uppercase; letter-spacing:.06em; cursor:pointer;
+  border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:#cbd5e1;
+}
+#mc-box .mc-btns button.primary {
+  background:linear-gradient(140deg,#3b82f6,#6366f1); border-color:transparent; color:#fff;
+}
 #glass-cal .gc-dow { font-size:8.5px; font-weight:900; text-transform:uppercase; color:#64748b; text-align:center; padding:4px 0 6px; }
 #glass-cal .gc-d {
   aspect-ratio:1; display:grid; place-items:center; font-size:11px; font-weight:700;
@@ -1882,6 +1926,89 @@ function parseCsvLines(content) {
   });
 }
 
+// ── Чого не вистачає у файлі ────────────────────────────────────────
+// Раніше відсутня колонка просто ставала порожнім рядком: Account ID тихо
+// перетворювався на «Unknown», гео зникало, і це виявлялось уже в дашборді.
+// Тепер перед записом показуємо, чого бракує, і даємо дописати значення
+// вручну — одне на весь файл, бо один файл = один кабінет.
+
+// Колонки, які можна дописати константою на весь файл.
+const MC_FILLABLE = {
+  acc:       { label: 'Account ID',    ph: 'e.g. 1234567890',  accs: true },
+  name:      { label: 'Campaign name', ph: 'e.g. UA · iOS · Q3' },
+  geo:       { label: 'Geo',           ph: 'e.g. DE' },
+  cid:       { label: 'Creative ID',   ph: 'e.g. video_17' },
+  startDate: { label: 'Start date',    ph: 'YYYY-MM-DD' },
+  endDate:   { label: 'Date',          ph: 'YYYY-MM-DD' }
+};
+// Числові — константою не заповнюються, про них просто попереджаємо.
+const MC_NUMERIC = {
+  spend: 'Spend', regs: 'Registrations', deps: 'Deposits',
+  installs: 'Installs', clicks: 'Clicks'
+};
+
+let mcResolve = () => {};
+
+// perFile: [{ name, missing: ['acc', 'geo', ...] }]
+// Повертає { '<file>': { acc: '...', geo: '...' } } або null, якщо скасували.
+function askMissingColumns(perFile) {
+  const fillable = perFile
+    .map(f => ({ name: f.name, keys: f.missing.filter(k => MC_FILLABLE[k]) }))
+    .filter(f => f.keys.length);
+  const numeric = [...new Set(perFile.flatMap(f => f.missing.filter(k => MC_NUMERIC[k])))];
+
+  // Нема чого ні питати, ні показувати — не заважаємо імпорту.
+  if (!fillable.length && !numeric.length) return Promise.resolve({});
+
+  // Відомі кабінети — підказкою, щоб не друкувати ID руками.
+  const dl = document.getElementById('mc-known-accs');
+  if (dl) {
+    let known = [];
+    try { known = Object.keys((mappingDB && mappingDB.providers) || {}).sort(); } catch (e) {}
+    dl.innerHTML = known.map(a => `<option value="${a}">`).join('');
+  }
+
+  const box = document.getElementById('mc-fields');
+  box.innerHTML = fillable.map((f, fi) => `
+    <div class="mc-file">${f.name}</div>
+    ${f.keys.map(k => `
+      <div class="mc-row">
+        <span class="mc-label">${MC_FILLABLE[k].label}</span>
+        <input type="text" data-file="${fi}" data-key="${k}"
+               placeholder="${MC_FILLABLE[k].ph}"
+               ${MC_FILLABLE[k].accs ? 'list="mc-known-accs"' : ''}>
+      </div>`).join('')}
+  `).join('') + (numeric.length
+    ? `<div class="mc-zero">No column for: ${numeric.map(k => MC_NUMERIC[k]).join(', ')}.
+       These can't be filled in by hand — they will be imported as 0.</div>`
+    : '');
+
+  const modal = document.getElementById('mc-modal');
+  modal.classList.add('open');
+  box.querySelector('input')?.focus();
+
+  return new Promise(res => {
+    mcResolve = answer => {
+      modal.classList.remove('open');
+      document.removeEventListener('keydown', onKey);
+      if (answer !== 'ok') { res(null); return; }
+      const fills = {};
+      box.querySelectorAll('input').forEach(inp => {
+        const v = inp.value.trim();
+        if (!v) return;
+        const fname = fillable[Number(inp.dataset.file)].name;
+        (fills[fname] = fills[fname] || {})[inp.dataset.key] = v;
+      });
+      res(fills);
+    };
+    const onKey = ev => {
+      if (ev.key === 'Escape') mcResolve(null);
+      if (ev.key === 'Enter') mcResolve('ok');
+    };
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 // Кілька FB-файлів (по акаунту на файл) зводимо в один набір рядків.
 // У файлів можуть відрізнятись порядок і назви колонок, тому кожен розбираємо
 // власним map і переписуємо в спільний канонічний порядок полів.
@@ -1893,30 +2020,49 @@ function handleCSV(e, type) {
     const rd = new FileReader();
     rd.onload = ev => res({ name: f.name, text: ev.target.result });
     rd.readAsText(f);
-  }))).then(loaded => {
+  }))).then(async loaded => {
     const keys = Object.keys(keywords);
     const synthMap = {}; keys.forEach((k, i) => synthMap[k] = i);
     synthMap.cur = keys.length;               // валюта файлу — окремою колонкою
     const combined = [keys.concat('cur')];     // службовий перший рядок
     const okNames = [], badNames = [];
 
+    // Спершу розбираємо всі файли, ще нічого не записуючи: треба знати,
+    // яких колонок бракує, щоб запитати про них одним вікном.
+    const parsed = [];
     loaded.forEach(({ name, text }) => {
       const lines = parseCsvLines(text);
       if (lines.length < 2) { badNames.push(name + ' (порожній)'); return; }
       const headers = lines[0].map(h => h.toLowerCase());
       const map = mapColumns(headers);
       if (map.spend === -1 && map.name === -1) { badNames.push(name + ' (не схоже на FB-звіт)'); return; }
+      // Дату вважаємо знайденою, якщо є хоч одна з двох колонок.
+      const missing = keys.filter(k => map[k] === -1 &&
+        !(k === 'startDate' && map.endDate !== -1) &&
+        !(k === 'endDate' && map.startDate !== -1));
+      parsed.push({ name, lines, headers, map, missing });
+    });
+
+    if (!parsed.length) { alert('Жоден файл не вдалося прочитати як FB-звіт.'); return; }
+
+    const fills = await askMissingColumns(parsed.map(f => ({ name: f.name, missing: f.missing })));
+    if (fills === null) { showStatus('Import cancelled'); return; }
+
+    parsed.forEach(({ name, lines, headers, map }) => {
+      const fill = fills[name] || {};
       // Facebook пише валюту в самій шапці: «Amount spent (PLN)».
       // Кожен файл — свій кабінет, тому валюта визначається окремо для кожного.
       const cur = fbDetectCurrency(map.spend >= 0 ? lines[0][map.spend] : '');
       for (let i = 1; i < lines.length; i++) {
-        combined.push(keys.map(k => map[k] >= 0 ? (lines[i][map[k]] ?? '') : '').concat(cur));
+        combined.push(keys.map(k =>
+          map[k] >= 0 ? (lines[i][map[k]] ?? '') : (fill[k] ?? '')
+        ).concat(cur));
       }
-      okNames.push(name + (cur !== 'USD' ? ` · ${cur}` : ''));
+      const added = Object.keys(fill);
+      okNames.push(name + (cur !== 'USD' ? ` · ${cur}` : '') +
+        (added.length ? ` · +${added.map(k => MC_FILLABLE[k].label).join(', ')}` : ''));
       console.log(`FB «${name}»: рядків ${lines.length - 1} | device=${map.device !== -1 ? headers[map.device] : '—'} | platform=${map.platform !== -1 ? headers[map.platform] : '—'} | placement=${map.placement !== -1 ? headers[map.placement] : '—'}`);
     });
-
-    if (!okNames.length) { alert('Жоден файл не вдалося прочитати як FB-звіт.'); return; }
 
     if (type === 'dataset') {
       lastFbParse = { map: synthMap, lines: combined };
@@ -3426,6 +3572,22 @@ function recExportCSV() {
   else init();
 })();
 </script>
+
+
+<!-- Імпорт: чого не вистачає в файлі -->
+<div id="mc-modal">
+  <div id="mc-box">
+    <h3>Some columns weren't found</h3>
+    <p class="mc-sub">The report is missing the columns below. Fill in a value and it will be
+      applied to every row of that file — or leave it empty and the field stays blank.</p>
+    <div id="mc-fields"></div>
+    <datalist id="mc-known-accs"></datalist>
+    <div class="mc-btns">
+      <button type="button" onclick="mcResolve(null)">Cancel</button>
+      <button type="button" class="primary" onclick="mcResolve('ok')">Import</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
