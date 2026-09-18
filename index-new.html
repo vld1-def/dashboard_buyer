@@ -1597,6 +1597,46 @@ body.hub-open .app-content { padding-bottom: 14px; }
 /* Роутер: блок, що не належить поточній сторінці. Окремий клас, щоб не
    конфліктувати з .hidden — ним керують налаштування віджетів. */
 .route-off { display: none !important; }
+
+/* ─────────── Сторінка «Дашборд» на всю висоту екрана ───────────
+   Чотири блоки — таргет, KPI, графіки, інсайти — ділять вікно по
+   вертикалі, без порожнечі знизу й без прокрутки. На низьких екранах
+   вимикаємо: там краще звичайний потік зі скролом, ніж сплюснуті картки. */
+@media (min-height: 700px) {
+  body.route-dash .app-content {
+    height: calc(100vh / var(--zoom));
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-bottom: 92px;   /* під плаваючий док */
+    overflow: hidden;
+  }
+  body.route-dash #milestone-container { flex: 0 0 auto; margin-bottom: 0 !important; }
+  body.route-dash #dashboard-content {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  body.route-dash #kpi-row { flex: 0 0 auto; }
+
+  /* Графікам даємо трохи більше висоти, ніж інсайтам */
+  body.route-dash #charts-row  { flex: 1.35 1 0; min-height: 0; align-items: stretch; }
+  body.route-dash #insights-row { flex: 1 1 0; min-height: 0; }
+
+  /* Картка графіка: шапка фіксована, полотно забирає решту */
+  body.route-dash #chart-main-col { display: flex; flex-direction: column; min-height: 0; }
+  body.route-dash #chart-main-col > div:last-child {
+    flex: 1 1 auto; height: auto !important; min-height: 0;
+  }
+
+  /* Гео більше не рівняється по графіку інлайновою висотою — тягнеться сіткою */
+  body.route-dash #geo-sidebar-col { height: auto !important; min-height: 0; }
+
+  /* Інсайти: заголовок на місці, список прокручується всередині */
+  body.route-dash #insights-row > .card { display: flex; flex-direction: column; min-height: 0; }
+  body.route-dash #insights-row > .card > div:last-child {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -10328,6 +10368,8 @@ function dcRenderWarn(unlinked) {
     SECTIONS.forEach(id => off(id, r.section !== id));
     PANELS.forEach(id => document.getElementById(id)?.classList.toggle('hidden', r.panel !== id));
     document.body.classList.toggle('hub-open', !!r.panel);
+    // Тільки на дашборді блоки розтягуються на висоту екрана
+    document.body.classList.toggle('route-dash', !!r.dash);
     setActiveNav(name, arg);
 
     if (!changed) return;
