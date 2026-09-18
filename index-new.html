@@ -1586,6 +1586,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
 /* Гео-колонка підлаштовується під висоту графіка (syncGeoHeight). Після
    стискання графіків у неї лишалось менше двох рядків — тримаємо мінімум. */
 #geo-sidebar-col { min-height: 300px; }
+body.route-dash #geo-sidebar-col { min-height: 0; }
 /* Мітка активного зрізу на картці Total Spend */
 .kpi-lens {
   margin-left: auto; font-size: 9px; font-weight: 800; letter-spacing: .1em;
@@ -1601,8 +1602,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
 /* ─────────── Сторінка «Дашборд» на всю висоту екрана ───────────
    Чотири блоки — таргет, KPI, графіки, інсайти — ділять вікно по
    вертикалі, без порожнечі знизу й без прокрутки. На низьких екранах
-   вимикаємо: там краще звичайний потік зі скролом, ніж сплюснуті картки. */
-@media (min-height: 700px) {
+   вимикаємо: там краще звичайний потік зі скролом, ніж сплюснуті картки.
+   Так само й на вузьких: до 1024px сітка складається в одну колонку,
+   і фіксовані пропорції рядків сплющили б графік. */
+@media (min-height: 700px) and (min-width: 1024px) {
   body.route-dash .app-content {
     height: calc(100vh / var(--zoom));
     display: flex;
@@ -1618,9 +1621,19 @@ body.hub-open .app-content { padding-bottom: 14px; }
   }
   body.route-dash #kpi-row { flex: 0 0 auto; }
 
-  /* Графікам даємо трохи більше висоти, ніж інсайтам */
-  body.route-dash #charts-row  { flex: 1.35 1 0; min-height: 0; align-items: stretch; }
-  body.route-dash #insights-row { flex: 1 1 0; min-height: 0; }
+  /* Тепер це один блок на дві сітки-рядки: графік зверху, інсайти під ним,
+     а гео праворуч перекриває обидва рядки. Графіку даємо трохи більше висоти. */
+  body.route-dash #charts-row {
+    flex: 1 1 auto; min-height: 0; align-items: stretch;
+    grid-template-rows: minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+  /* Якщо інсайти сховані (не адмін / вимкнений віджет) — лишається один рядок,
+     інакше гео тягнулося б через порожню половину. */
+  body.route-dash #charts-row:has(> #insights-row.hidden),
+  body.route-dash #charts-row:has(> #insights-row.route-off) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  body.route-dash #insights-row { min-height: 0; }
 
   /* Картка графіка: шапка фіксована, полотно забирає решту */
   body.route-dash #chart-main-col { display: flex; flex-direction: column; min-height: 0; }
@@ -1628,7 +1641,8 @@ body.hub-open .app-content { padding-bottom: 14px; }
     flex: 1 1 auto; height: auto !important; min-height: 0;
   }
 
-  /* Гео більше не рівняється по графіку інлайновою висотою — тягнеться сіткою */
+  /* Гео більше не рівняється по графіку інлайновою висотою — тягнеться сіткою
+     на всю висоту обох рядків */
   body.route-dash #geo-sidebar-col { height: auto !important; min-height: 0; }
 
   /* Інсайти: заголовок на місці, список прокручується всередині */
@@ -1723,6 +1737,31 @@ body.hub-open .app-content { padding-bottom: 14px; }
 
 /* Цифри однакової ширини — щоб суми не «стрибали» при оновленні */
 body { font-variant-numeric: tabular-nums; }
+
+
+/* ─────────── Дашборд: гео праворуч на два рядки ───────────
+   Коли гео вимкнене в налаштуваннях, четверта колонка лишалась би порожньою,
+   тому графік та інсайти розтягуємо на всю ширину. */
+@media (min-width: 1024px) {
+  #charts-row:has(> #geo-sidebar-col.hidden) > #chart-main-col,
+  #charts-row:has(> #geo-sidebar-col.hidden) > #insights-row,
+  #charts-row:has(> #geo-sidebar-col.collapsed) > #chart-main-col,
+  #charts-row:has(> #geo-sidebar-col.collapsed) > #insights-row {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Інсайти всередині сітки графіка: без зовнішнього відступу, який лишився
+   від timeів, коли це був окремий рядок сторінки. */
+#insights-row { margin-top: 0 !important; }
+
+/* ─────────── Гео на вузьких екранах ───────────
+   До 1024px сітка складається в одну колонку, і гео більше нема з чим
+   рівнятись: без обмеження список тягнеться на півтори тисячі пікселів,
+   а стара max-width лишала його вузьким посеред порожнього рядка. */
+@media (max-width: 1023px) {
+  #geo-sidebar-col { max-width: none; max-height: 420px; }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2118,10 +2157,10 @@ body { font-variant-numeric: tabular-nums; }
         </div>
 
         <!-- ═══════ CASHFLOW + ГЕО ═══════ -->
-        <div id="charts-row" class="grid grid-cols-1 lg:grid-cols-4 gap-4 overflow-hidden items-start">
+        <div id="charts-row" class="grid grid-cols-1 lg:grid-cols-4 gap-4">
 
           <!-- Cashflow Overview -->
-          <div id="chart-main-col" class="card p-5 lg:col-span-3 transition-all duration-500 ease-in-out">
+          <div id="chart-main-col" class="card p-5 lg:col-start-1 lg:col-span-3 lg:row-start-1 transition-all duration-500 ease-in-out">
             <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 mb-1">
               <div>
                 <h2 id="chart-title">Cashflow Overview</h2>
@@ -2144,7 +2183,7 @@ body { font-variant-numeric: tabular-nums; }
           </div>
 
           <!-- Geo Performance -->
-          <div id="geo-sidebar-col" class="card p-4 lg:col-span-1 flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
+          <div id="geo-sidebar-col" class="card p-4 lg:col-start-4 lg:col-span-1 lg:row-start-1 lg:row-span-2 flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
             <div class="mb-3 pb-3" style="border-bottom:1px solid var(--border)">
               <h2 class="mb-2">Geo Performance</h2>
               <div class="flex items-center gap-1.5 text-[10px] font-bold">
@@ -2159,10 +2198,9 @@ body { font-variant-numeric: tabular-nums; }
             <div class="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1.5 custom-scrollbar text-dynamic" id="geo-list"></div>
 
           </div>
-        </div>
 
-        <!-- ═══════ ІНСАЙТИ ═══════ -->
-        <div id="insights-row" class="grid grid-cols-1 lg:grid-cols-2 gap-4 admin-only">
+          <!-- ═══════ ІНСАЙТИ ═══════ -->
+          <div id="insights-row" class="lg:col-start-1 lg:col-span-3 lg:row-start-2 grid grid-cols-1 md:grid-cols-2 gap-4 admin-only">
           <div class="card p-5">
             <div class="flex items-center justify-between mb-1">
               <h2>Open tasks</h2>
@@ -2177,6 +2215,7 @@ body { font-variant-numeric: tabular-nums; }
             </div>
             <div id="ins-top" class="mt-2"></div>
           </div>
+        </div>
         </div>
 
         <!-- ═══════ ВИТРАТИ ═══════ -->
@@ -3796,6 +3835,9 @@ function renderTable(data) {
     const chart = document.getElementById('chart-main-col');
     const side = document.getElementById('geo-sidebar-col');
     if (!chart || !side) return;
+    // Новий дашборд: висоту задає сітка (гео на два рядки), інлайновий height
+    // тільки заважав би — знімаємо його і виходимо.
+    if (document.body.classList.contains('route-dash')) { side.style.height = ''; return; }
     if (window.innerWidth < 1024 || chart.classList.contains('hidden')) { side.style.height = ''; return; }
     // Спершу згортаємо сайдбар — інакше він сам розтягує рядок сітки, і ми
     // б міряли не власну висоту графіка, а спільну висоту рядка.
