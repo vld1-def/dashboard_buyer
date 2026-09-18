@@ -3431,6 +3431,22 @@ function cfAlpha(hex, a) {
   return `rgba(${parseInt(m[1],16)}, ${parseInt(m[2],16)}, ${parseInt(m[3],16)}, ${a})`;
 }
 
+// Заливка area-графіка: вертикальний градієнт від повного кольору під лінією
+// до повної прозорості внизу. Chart.js дає область побудови тільки після
+// першого макета, тому це scriptable-колбек, а не готове значення.
+function cfGradient(chart, color) {
+  const area = chart.chartArea;
+  if (!area || !area.bottom) return cfAlpha(color, 0.18);  // перший кадр
+  const key = color + '|' + Math.round(area.top) + '|' + Math.round(area.bottom);
+  const cache = chart._cfGrad || (chart._cfGrad = {});
+  if (cache[key]) return cache[key];
+  const g = chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+  g.addColorStop(0, cfAlpha(color, 1));
+  g.addColorStop(1, cfAlpha(color, 0));
+  cache[key] = g;
+  return g;
+}
+
 // Штрихування як у макеті: діагональні смуги всередині стовпця.
 function cfStripe(ctx, color) {
   const key = '_cfpat_' + color;
@@ -3509,7 +3525,11 @@ function renderTrend(data) {
       }
     : {
         borderColor: color,
-        backgroundColor: cfAlpha(color, 0.18),
+        // Градієнт — лише коли площа справді заливається; для звичайних ліній
+        // backgroundColor йде в легенду й тултип, там градієнт зайвий.
+        backgroundColor: style === 'area' && !isGeo
+          ? (c => cfGradient(c.chart, color))
+          : cfAlpha(color, 0.18),
         borderWidth: 2.5,
         tension: style === 'sharp' ? 0 : 0.38,
         fill: style === 'area' && !isGeo,
