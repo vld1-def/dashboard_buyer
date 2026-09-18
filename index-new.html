@@ -3216,6 +3216,18 @@ function cfStripe(ctx, color) {
   return pat;
 }
 
+// Вигляд графіка вибирається в налаштуваннях і живе в localStorage
+function cfStyle() {
+  const v = localStorage.getItem('chart_style');
+  return ['bars', 'line', 'sharp', 'area'].includes(v) ? v : 'bars';
+}
+
+function cfAlpha(hex, a) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return hex;
+  return `rgba(${parseInt(m[1],16)}, ${parseInt(m[2],16)}, ${parseInt(m[3],16)}, ${a})`;
+}
+
 function cfMoney(v) {
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
@@ -3264,32 +3276,45 @@ function renderTrend(data) {
   }
 
   // Показуємо лише spend (вгору) і net profit (вгору/вниз за знаком).
-  // Revenue лишається в тултіпі — окремим стовпцем він тільки захаращував графік.
+  // Revenue лишається в тултіпі — окремим рядом він тільки захаращував графік.
   const profits = stats.map(v => Math.round(v.rev - v.s));
+  const style = cfStyle();
+  const isBar = style === 'bars';
+
+  // Стовпчики — зі штрихуванням і заокругленими торцями; лінії — з тим самим
+  // кольором, різниця лише в згладжуванні та заливці.
+  const shape = (color, perPoint) => isBar
+    ? {
+        backgroundColor: perPoint || cfStripe(ctx, color),
+        borderWidth: 0, borderRadius: 8, borderSkipped: false,
+        barPercentage: 0.7, categoryPercentage: 0.76
+      }
+    : {
+        borderColor: color,
+        backgroundColor: cfAlpha(color, 0.18),
+        borderWidth: 2.5,
+        tension: style === 'sharp' ? 0 : 0.38,
+        fill: style === 'area',
+        pointRadius: 2.5,
+        pointHoverRadius: 4,
+        pointBackgroundColor: color,
+        pointBorderWidth: 0
+      };
 
   const datasets = [
     {
       label: 'Spend',
-      // Догори від нуля: у макеті відтік ішов униз, але читати спенд зручніше вгору
       data: stats.map(v => Math.round(v.s)),
-      backgroundColor: cfStripe(ctx, CF_SPEND),
-      borderWidth: 0,
-      borderRadius: 8,
-      borderSkipped: false,
-      barPercentage: 0.7,
-      categoryPercentage: 0.76,
-      datalabels: { display: false }
+      datalabels: { display: false },
+      ...shape(CF_SPEND)
     },
     {
       label: 'Net Profit',
       data: profits,
-      backgroundColor: c => cfStripe(ctx, profits[c.dataIndex] >= 0 ? CF_PROFIT : CF_LOSS),
-      borderWidth: 0,
-      borderRadius: 8,
-      borderSkipped: false,
-      barPercentage: 0.7,
-      categoryPercentage: 0.76,
-      datalabels: { display: false }
+      datalabels: { display: false },
+      ...shape(CF_PROFIT, isBar
+        ? (c => cfStripe(ctx, profits[c.dataIndex] >= 0 ? CF_PROFIT : CF_LOSS))
+        : null)
     }
   ];
 
@@ -3320,7 +3345,7 @@ function renderTrend(data) {
     ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.055)';
 
   window.chart1 = new Chart(ctx, {
-    type: 'bar',
+    type: isBar ? 'bar' : 'line',
     plugins: [cfCrosshair],
     data: { labels, datasets },
     options: {
@@ -8236,6 +8261,15 @@ function rbExportCSV(){
     <div class="overflow-y-auto flex-1 custom-scrollbar">
       <!-- Widgets Panel -->
       <div id="spanel-widgets" class="p-4 space-y-1">
+        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Вигляд графіка</p>
+        <div class="px-3 pb-3 mb-3 border-b border-white/5">
+          <select id="chart-style" onchange="setChartStyle(this.value)" class="w-full !text-xs !py-2">
+            <option value="bars">Стовпчики</option>
+            <option value="line">Лінія плавна</option>
+            <option value="sharp">Лінія гостра</option>
+            <option value="area">Область із заливкою</option>
+          </select>
+        </div>
         <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Кнопки в меню</p>
         <div id="dock-hide-list" class="space-y-0.5 mb-3 pb-3 border-b border-white/5"></div>
         <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pb-1.5">Блоки на дашборді</p>
@@ -10469,6 +10503,18 @@ function dcRenderWarn(unlinked) {
       const ico = document.getElementById('theme-icon');
       if (ico) ico.innerHTML = MOON;
     }
+  })();
+
+  /* ─────────── Вигляд графіка ─────────── */
+  window.setChartStyle = function (v) {
+    localStorage.setItem('chart_style', v);
+    // applyChartFilter перемальовує з поточними фільтрами дат і режимом
+    if (typeof applyChartFilter === 'function') applyChartFilter();
+  };
+
+  (function initChartStyle() {
+    const sel = document.getElementById('chart-style');
+    if (sel) sel.value = localStorage.getItem('chart_style') || 'bars';
   })();
 
   /* ─────────── Командна панель ⌘K ─────────── */
