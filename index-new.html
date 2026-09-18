@@ -1593,6 +1593,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
   background: var(--surface-3); color: var(--text-muted); white-space: nowrap;
 }
 .kpi-lens.is-on { background: rgba(139,92,246,.18); color: #C4B5FD; }
+
+/* Роутер: блок, що не належить поточній сторінці. Окремий клас, щоб не
+   конфліктувати з .hidden — ним керують налаштування віджетів. */
+.route-off { display: none !important; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -1635,31 +1639,31 @@ body.hub-open .app-content { padding-bottom: 14px; }
       </button>
 
       <p class="sb-cap">Огляд</p>
-      <button class="sb-item is-active" data-nav="__top" onclick="navGo('__top', this)">
+      <button class="sb-item is-active" data-nav="" onclick="navGo('')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
         Дашборд
       </button>
-      <button class="sb-item" data-nav="weekly-analysis-section" onclick="navGo('weekly-analysis-section', this)">
+      <button class="sb-item" data-nav="heatmap" onclick="navGo('heatmap')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         Heatmap
       </button>
-      <button class="sb-item" data-nav="creative-analyzer-section" onclick="navGo('creative-analyzer-section', this)">
+      <button class="sb-item" data-nav="creatives" onclick="navGo('creatives')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z"/></svg>
         Креативи
       </button>
-      <button class="sb-item" data-nav="device-geo-section" onclick="navGo('device-geo-section', this)">
+      <button class="sb-item" data-nav="geo" onclick="navGo('geo')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
         Гео-розбивка
       </button>
-      <button class="sb-item" data-nav="placements-section" onclick="navGo('placements-section', this)">
+      <button class="sb-item" data-nav="placements" onclick="navGo('placements')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 20V9"/></svg>
         Плейсменти
       </button>
-      <button class="sb-item" data-nav="live-table-section" onclick="navGo('live-table-section', this)">
+      <button class="sb-item" data-nav="live" onclick="navGo('live')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
         Live Data
       </button>
-      <button class="sb-item" data-nav="report-builder-section" onclick="navGo('report-builder-section', this)">
+      <button class="sb-item" data-nav="reports" onclick="navGo('reports')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
         Report Builder
       </button>
@@ -1987,7 +1991,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
         </div>
 
         <!-- ═══════ CASHFLOW + ГЕО ═══════ -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 overflow-hidden items-start">
+        <div id="charts-row" class="grid grid-cols-1 lg:grid-cols-4 gap-4 overflow-hidden items-start">
 
           <!-- Cashflow Overview -->
           <div id="chart-main-col" class="card p-5 lg:col-span-3 transition-all duration-500 ease-in-out">
@@ -10281,90 +10285,107 @@ function dcRenderWarn(unlinked) {
    ══════════════════════════════════════════════════════════════════ */
 (function () {
 
-  /* ─────────── Сайдбар ─────────── */
+  /* ═══════════ РОУТЕР ═══════════
+     Кожен пункт меню — окрема сторінка з власною адресою (#/creatives).
+     Працюють «назад/вперед» і посилання, але Supabase ініціалізується
+     один раз, а не на кожен перехід. Сервер для цього не потрібен —
+     GitHub Pages віддає статику, весь роутинг на клієнті. */
+  const ROUTES = {
+    '':           { dash: true },
+    'heatmap':    { section: 'weekly-analysis-section' },
+    'creatives':  { section: 'creative-analyzer-section' },
+    'geo':        { section: 'device-geo-section' },
+    'placements': { section: 'placements-section' },
+    'live':       { section: 'live-table-section' },
+    'reports':    { section: 'report-builder-section' },
+    'hub':        { panel: 'datahub-panel' },
+    'sheets':     { panel: 'sheets-panel' }
+  };
+  const SECTIONS = Object.values(ROUTES).map(r => r.section).filter(Boolean);
+  const PANELS = ['datahub-panel', 'sheets-panel'];
+  // Блоки, які разом складають сторінку «Дашборд»
+  const DASH_BLOCKS = ['milestone-container', 'kpi-row', 'charts-row', 'insights-row'];
+
   window.toggleSidebar = () => document.body.classList.toggle('sb-open');
 
-  const NAV_SECTIONS = ['weekly-analysis-section','creative-analyzer-section','device-geo-section',
-                        'placements-section','live-table-section','report-builder-section'];
-
-  window.navGo = function (id, el) {
-    document.body.classList.remove('sb-open');
-    pageHide();
-    if (id === '__top') window.scrollTo({ top: 0, behavior: 'smooth' });
-    else {
-      const t = document.getElementById(id);
-      if (!t || t.classList.contains('hidden')) return;
-      const y = t.getBoundingClientRect().top + window.scrollY - 20;
-      window.scrollTo({ top: y, behavior: 'smooth' });
-    }
-    if (el) setActiveNav(el.dataset.nav);
-  };
-
-  /* ─────────── Повноекранні панелі поверх дашборда ─────────── */
-  const PANELS = ['datahub-panel', 'sheets-panel'];
-  let pageSnapshot = null, activePanel = null;
-
-  function pageShow(panelId) {
-    const panel = document.getElementById(panelId);
-    if (!panel) return null;
-    document.body.classList.remove('sb-open');
-
-    // Запамʼятовуємо, що було видно, щоб коректно повернутись:
-    // дашборд до завантаження даних лишається прихованим.
-    if (!pageSnapshot) {
-      pageSnapshot = {};
-      ['dashboard-content', 'milestone-container', 'loader'].forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        pageSnapshot[id] = el.classList.contains('hidden');
-        el.classList.add('hidden');
-      });
-    }
-    PANELS.forEach(id => { if (id !== panelId) document.getElementById(id)?.classList.add('hidden'); });
-    panel.classList.remove('hidden');
-    document.body.classList.add('hub-open');
-    activePanel = panelId;
-    document.querySelectorAll('.sb-item[data-nav]').forEach(b => b.classList.remove('is-active'));
-    window.scrollTo({ top: 0 });
-    return panel;
+  function currentRoute() {
+    const raw = String(location.hash || '').replace(/^#\/?/, '');
+    const [name, arg] = raw.split('/');
+    return { name: ROUTES[name] ? name : '', arg: arg || '' };
   }
 
-  function pageHide() {
-    PANELS.forEach(id => document.getElementById(id)?.classList.add('hidden'));
-    document.body.classList.remove('hub-open');
-    if (pageSnapshot) {
-      Object.entries(pageSnapshot).forEach(([id, wasHidden]) => {
-        const el = document.getElementById(id);
-        if (el && !wasHidden) el.classList.remove('hidden');
-      });
-      pageSnapshot = null;
+  const off = (id, v) => document.getElementById(id)?.classList.toggle('route-off', v);
+
+  let lastRoute = null;
+
+  function applyRoute(scroll) {
+    const { name, arg } = currentRoute();
+    const r = ROUTES[name];
+    const key = name + '/' + arg;
+    const changed = key !== lastRoute;
+
+    DASH_BLOCKS.forEach(id => off(id, !r.dash));
+    SECTIONS.forEach(id => off(id, r.section !== id));
+    PANELS.forEach(id => document.getElementById(id)?.classList.toggle('hidden', r.panel !== id));
+    document.body.classList.toggle('hub-open', !!r.panel);
+    setActiveNav(name, arg);
+
+    if (!changed) return;
+    lastRoute = key;
+
+    if (name === 'hub') {
+      const frame = document.getElementById('datahub-frame');
+      const mode = arg || 'dataset';
+      // Той самий origin — вкладку перемикаємо прямим викликом усередині iframe
+      const apply = () => { try { frame.contentWindow.switchMode(mode); } catch (e) {} };
+      if (frame && !frame.getAttribute('src')) {
+        frame.addEventListener('load', apply, { once: true });
+        frame.setAttribute('src', 'Form.html');
+      } else apply();
+      document.querySelectorAll('#datahub-panel .hub-tabs button')
+        .forEach(b => b.classList.toggle('is-active', b.dataset.hub === mode));
     }
-    activePanel = null;
-    document.querySelectorAll('.sb-item[data-hub], .sb-item[data-sheet]').forEach(b => b.classList.remove('is-active'));
-    document.querySelector('.sb-item[data-nav="__top"]')?.classList.add('is-active');
+    if (name === 'sheets') sheetsLoad();
+
+    document.body.classList.remove('sb-open');
+    if (scroll) window.scrollTo({ top: 0 });
   }
 
-  const hubIsOpen = () => activePanel !== null;
+  function setActiveNav(name, arg) {
+    document.querySelectorAll('.sb-item[data-nav]').forEach(b =>
+      b.classList.toggle('is-active', b.dataset.nav === name));
+    document.querySelectorAll('.sb-item[data-hub]').forEach(b =>
+      b.classList.toggle('is-active', name === 'hub' && b.dataset.hub === (arg || 'dataset')));
+    document.querySelectorAll('.sb-item[data-sheet]').forEach(b =>
+      b.classList.toggle('is-active', name === 'sheets'));
+  }
 
-  /* ─────────── Data Hub (Form.html у цій же сторінці) ─────────── */
-  window.hubOpen = function (mode) {
-    const panel = pageShow('datahub-panel');
-    if (!panel) return;
-    const frame = document.getElementById('datahub-frame');
-
-    document.querySelectorAll('.sb-item[data-hub]').forEach(b => b.classList.toggle('is-active', b.dataset.hub === mode));
-    document.querySelectorAll('#datahub-panel .hub-tabs button').forEach(b => b.classList.toggle('is-active', b.dataset.hub === mode));
-
-    // Той самий origin — вкладку перемикаємо прямим викликом усередині iframe
-    const apply = () => { try { frame.contentWindow.switchMode(mode); } catch (e) {} };
-    if (!frame.getAttribute('src')) {
-      frame.addEventListener('load', apply, { once: true });
-      frame.setAttribute('src', 'Form.html');
-    } else {
-      apply();
-    }
+  const go = h => {
+    const next = '#/' + h;
+    if (location.hash === next) applyRoute(true);
+    else location.hash = next;
   };
-  window.hubClose = pageHide;
+
+  window.navGo      = name => go(name);
+  window.hubOpen    = mode => go('hub/' + (mode || 'dataset'));
+  window.hubClose   = () => go('');
+  window.sheetsOpen = () => go('sheets');
+  window.sheetsClose = () => go('');
+
+  window.addEventListener('hashchange', () => applyRoute(true));
+
+  // Вимкнений у налаштуваннях (або закритий для тімліда) розділ не має
+  // висіти в меню: клікати нема куди.
+  // Вимкнений у налаштуваннях (або закритий для тімліда) розділ не має
+  // висіти в меню: клікати нема куди.
+  window.syncNavVisibility = function () {
+    document.querySelectorAll('.sb-item[data-nav]').forEach(b => {
+      const r = ROUTES[b.dataset.nav];
+      if (!r || !r.section) return;
+      const sec = document.getElementById(r.section);
+      b.style.display = (!sec || sec.classList.contains('hidden')) ? 'none' : '';
+    });
+  };
 
   /* ─────────── Google Таблиці ─────────── */
   let sheets = [], sheetsIdx = 0, sheetsLoaded = false;
@@ -10384,9 +10405,7 @@ function dcRenderWarn(unlinked) {
     }
   }
 
-  window.sheetsOpen = async function () {
-    if (!pageShow('sheets-panel')) return;
-    document.querySelectorAll('.sb-item[data-sheet]').forEach(b => b.classList.add('is-active'));
+  async function sheetsLoad() {
     if (!sheetsLoaded) {
       sheetsLoaded = true;
       try {
@@ -10396,8 +10415,7 @@ function dcRenderWarn(unlinked) {
       } catch (e) { sheets = []; }
     }
     sheetsRender();
-  };
-  window.sheetsClose = pageHide;
+  }
 
   window.sheetsPick = function (i) {
     sheetsIdx = Number(i) || 0;
@@ -10460,40 +10478,6 @@ function dcRenderWarn(unlinked) {
     if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
     if (open) { open.style.display = ''; open.href = cur.url; }
   }
-
-  // Вимкнений у налаштуваннях (або закритий для тімліда) розділ не має
-  // висіти в меню: клікати нема куди.
-  window.syncNavVisibility = function () {
-    document.querySelectorAll('.sb-item[data-nav]').forEach(b => {
-      const id = b.dataset.nav;
-      if (id === '__top') return;
-      const sec = document.getElementById(id);
-      const off = !sec || sec.classList.contains('hidden');
-      b.style.display = off ? 'none' : '';
-    });
-  };
-
-  function setActiveNav(nav) {
-    document.querySelectorAll('.sb-item[data-nav]').forEach(b =>
-      b.classList.toggle('is-active', b.dataset.nav === nav));
-  }
-
-  // Підсвічування пункту меню за скролом
-  let spyTick = null;
-  window.addEventListener('scroll', () => {
-    if (spyTick) return;
-    spyTick = setTimeout(() => {
-      spyTick = null;
-      if (hubIsOpen()) return;
-      let current = '__top';
-      for (const id of NAV_SECTIONS) {
-        const el = document.getElementById(id);
-        if (!el || el.classList.contains('hidden')) continue;
-        if (el.getBoundingClientRect().top <= 140) current = id;
-      }
-      setActiveNav(current);
-    }, 120);
-  }, { passive: true });
 
   /* ─────────── Тема ─────────── */
   const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
@@ -10569,13 +10553,13 @@ function dcRenderWarn(unlinked) {
 
   /* ─────────── Командна панель ⌘K ─────────── */
   const CMDS = [
-    ['Дашборд',        'nav:__top',                      'Розділ'],
-    ['Heatmap',        'nav:weekly-analysis-section',    'Розділ'],
-    ['Креативи',       'nav:creative-analyzer-section',  'Розділ'],
-    ['Гео-розбивка',   'nav:device-geo-section',         'Розділ'],
-    ['Плейсменти',     'nav:placements-section',         'Розділ'],
-    ['Live Data',      'nav:live-table-section',         'Розділ'],
-    ['Report Builder', 'nav:report-builder-section',     'Розділ'],
+    ['Дашборд',        'nav:',                      'Розділ'],
+    ['Heatmap',        'nav:heatmap',    'Розділ'],
+    ['Креативи',       'nav:creatives',  'Розділ'],
+    ['Гео-розбивка',   'nav:geo',         'Розділ'],
+    ['Плейсменти',     'nav:placements',         'Розділ'],
+    ['Live Data',      'nav:live',         'Розділ'],
+    ['Report Builder', 'nav:reports',     'Розділ'],
     ['Таски',          'fn:toggleTaskModal',             'Інструмент'],
     ['Щоденні звіти',  'fn:toggleReportModal',           'Інструмент'],
     ['Бонуси',         'fn:openBonusModal',              'Інструмент'],
@@ -10640,7 +10624,7 @@ function dcRenderWarn(unlinked) {
     if (!c) return;
     cmdClose();
     const [kind, arg] = c[1].split(':');
-    if (kind === 'nav') { navGo(arg); setActiveNav(arg); }
+    if (kind === 'nav') navGo(arg);
     else if (kind === 'hub') hubOpen(arg);
     else if (typeof window[arg] === 'function') window[arg]();
   }
@@ -10763,7 +10747,10 @@ function dcRenderWarn(unlinked) {
     if (badge) badge.textContent = tasks().filter(t => t.status !== 'Completed').length;
     renderInsightTasks();
     syncNavVisibility();
+    applyRoute(false);
   }, 1500);
+
+  applyRoute(false);
 
 })();
 </script>
