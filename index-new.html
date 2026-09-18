@@ -1138,6 +1138,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   --bad:         #EF4444;
   --info:        #3B82F6;
   --radius:      14px;
+  --zoom:        .9;   /* має збігатися з body { zoom } нижче */
   --sb-w:        238px;
   --tb-h:        62px;
   color-scheme: dark;
@@ -1173,7 +1174,10 @@ body {
 
 .app-sidebar {
   width: var(--sb-w); flex: 0 0 var(--sb-w);
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0;
+  /* Під body{zoom:.9} одиниця vh масштабується разом із рештою, і 100vh
+     давало лише 90% екрана — звідси ділення на --zoom. */
+  height: calc(100vh / var(--zoom));
   background: var(--bg-soft);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
@@ -1324,17 +1328,6 @@ body {
 .kpi-foot { margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
 .kpi-foot b { font-weight: 800; }
 .kpi-card:hover { z-index: 60; }
-
-/* ─────────── Revenue Analytics ─────────── */
-.rev-value { font-size: 27px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; font-variant-numeric: tabular-nums; }
-.rev-delta { font-size: 12px; font-weight: 800; white-space: nowrap; color: var(--text-muted); }
-.rev-delta.is-up { color: var(--ok); } .rev-delta.is-down { color: var(--bad); }
-.rev-select {
-  background: var(--surface-2) !important; border: 1px solid var(--border) !important;
-  border-radius: 9px !important; color: var(--text-muted) !important;
-  font-size: 11px !important; font-weight: 700 !important; padding: 5px 8px !important;
-  cursor: pointer; outline: none;
-}
 
 /* ─────────── Поля вводу / кнопки ─────────── */
 input[type="date"], input[type="number"], input[type="text"], input[type="url"], select, textarea {
@@ -1505,7 +1498,7 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
 /* ─────────── Data Hub: Form.html усередині сторінки ─────────── */
 #datahub-panel {
   display: flex; flex-direction: column; overflow: hidden;
-  height: calc(100vh - 54px); margin-bottom: 16px;
+  height: calc(100vh / var(--zoom) - 54px); margin-bottom: 16px;
 }
 #datahub-panel.hidden { display: none; }
 .hub-head {
@@ -1537,7 +1530,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
 /* ─────────── Google Таблиці ─────────── */
 #sheets-panel {
   display: flex; flex-direction: column; overflow: hidden;
-  height: calc(100vh - 54px); margin-bottom: 16px;
+  height: calc(100vh / var(--zoom) - 54px); margin-bottom: 16px;
 }
 #sheets-panel.hidden { display: none; }
 .sh-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -1984,28 +1977,11 @@ body.hub-open .app-content { padding-bottom: 14px; }
           </div>
         </div>
 
-        <!-- ═══════ REVENUE + CASHFLOW + ГЕО ═══════ -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 overflow-hidden">
-
-          <!-- Revenue Analytics -->
-          <div id="revenue-col" class="card p-5 lg:col-span-1 flex flex-col">
-            <div class="flex items-center justify-between gap-2 mb-1">
-              <h2>Revenue Analytics</h2>
-              <select id="rev-range" onchange="drawRevenue()" class="rev-select">
-                <option value="0">This Month</option>
-                <option value="14">Last 14 days</option>
-                <option value="7">Last 7 days</option>
-              </select>
-            </div>
-            <div class="flex items-baseline justify-between gap-2 mt-2">
-              <p id="rev-total" class="rev-value">$0</p>
-              <span id="rev-delta" class="rev-delta"></span>
-            </div>
-            <div class="flex-1 min-h-[118px] mt-2 relative"><canvas id="chart-revenue"></canvas></div>
-          </div>
+        <!-- ═══════ CASHFLOW + ГЕО ═══════ -->
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 overflow-hidden items-start">
 
           <!-- Cashflow Overview -->
-          <div id="chart-main-col" class="card p-5 lg:col-span-2 transition-all duration-500 ease-in-out">
+          <div id="chart-main-col" class="card p-5 lg:col-span-3 transition-all duration-500 ease-in-out">
             <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 mb-1">
               <div>
                 <h2 id="chart-title">Cashflow Overview</h2>
@@ -3186,7 +3162,6 @@ async function sbFetchAll(table, build) {
   setTimeout(syncGeoHeight, 0);   // після того, як обидві колонки відмалювались
   renderTable(data);
   renderWeeklyHeatmap(data);
-  renderRevenueAnalytics(data);
   renderInsightCards(data);
 }
              
@@ -5199,12 +5174,12 @@ async function loadSettings() {
   if (chartCol) {
     if (!geoVisible) {
       // Розтягуємо на всі 4 колонки
-      chartCol.classList.remove('lg:col-span-2');
-      chartCol.classList.add('lg:col-span-3');
+      chartCol.classList.remove('lg:col-span-3');
+      chartCol.classList.add('lg:col-span-4');
     } else {
       // Повертаємо до 3 колонок, щоб було місце для ГЕО
-      chartCol.classList.remove('lg:col-span-3');
-      chartCol.classList.add('lg:col-span-2');
+      chartCol.classList.remove('lg:col-span-4');
+      chartCol.classList.add('lg:col-span-3');
     }
   }
   
@@ -10253,8 +10228,9 @@ function dcRenderWarn(unlinked) {
 </script>
 <script>
 /* ══════════════════════════════════════════════════════════════════
-   UI-шар нового дизайну: навігація, тема, ⌘K, Revenue Analytics,
-   інсайт-картки. Дані бере з тих самих глобалів, що й решта дашборда.
+   UI-шар нового дизайну: навігація, тема, ⌘K, повноекранні панелі
+   (Data Hub, Таблиці) та інсайт-картки. Дані бере з тих самих
+   глобалів, що й решта дашборда.
    ══════════════════════════════════════════════════════════════════ */
 (function () {
 
@@ -10484,7 +10460,6 @@ function dcRenderWarn(unlinked) {
     const ico = document.getElementById('theme-icon');
     if (ico) ico.innerHTML = light ? MOON : SUN;
     if (window.chart1) { try { window.chart1.update(); } catch (e) {} }
-    if (typeof drawRevenue === 'function') { try { drawRevenue(); } catch (e) {} }
   };
 
   (function initTheme() {
@@ -10587,141 +10562,9 @@ function dcRenderWarn(unlinked) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cmdOpen(); }
   });
 
-  /* ─────────── Revenue Analytics ─────────── */
-  const MON = ['січ','лют','бер','кві','тра','чер','лип','сер','вер','жов','лис','гру'];
-  let _revData = [];
-
-  const revMoney = n => {
-    const a = Math.abs(n);
-    if (a >= 1e6) return '$' + (a / 1e6).toFixed(a >= 1e7 ? 0 : 2) + 'M';
-    if (a >= 1e4) return '$' + Math.round(a / 1e3) + 'K';
-    return '$' + Math.round(a).toLocaleString('en-US');
-  };
-  const revOf = r => (typeof revenueOf === 'function' ? revenueOf(r) : 0);
-
-  window.renderRevenueAnalytics = function (data) {
-    _revData = Array.isArray(data) ? data : [];
-    drawRevenue();
-  };
-
-  window.drawRevenue = function () {
-    const cv = document.getElementById('chart-revenue');
-    if (!cv || typeof Chart === 'undefined') return;
-
-    const days = Number(document.getElementById('rev-range')?.value || 0);
-    const all = [...new Set(_revData.map(r => r.date).filter(Boolean))].sort();
-    const win = days && all.length > days ? all.slice(-days) : all;
-    // Попереднє вікно тієї ж довжини — для дельти
-    const prev = days ? all.slice(Math.max(0, all.length - days * 2), all.length - win.length) : [];
-
-    const perDay = {};
-    all.forEach(d => perDay[d] = 0);
-    _revData.forEach(r => { if (r.date in perDay) perDay[r.date] += revOf(r); });
-
-    const total = win.reduce((a, d) => a + perDay[d], 0);
-    let prevTotal = prev.reduce((a, d) => a + perDay[d], 0);
-
-    // На «This Month» попереднього вікна всередині місяця немає — порівнюємо
-    // з минулим місяцем по всьому масиву даних.
-    if (!days) {
-      try {
-        const mm = /^(\d{4})-(\d{2})$/.exec(currentMonthFilter || '');
-        if (mm) {
-          const d0 = new Date(Number(mm[1]), Number(mm[2]) - 1, 1);
-          d0.setMonth(d0.getMonth() - 1);
-          const pm = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}`;
-          prevTotal = (rawData || []).filter(r => String(r.date || '').startsWith(pm))
-                                     .reduce((a, r) => a + revOf(r), 0);
-        }
-      } catch (e) { /* немає глобалів — лишаємо як є */ }
-    }
-
-    // Площа наростальним підсумком — як у макеті: крива йде вгору протягом періоду
-    let acc = 0;
-    const series = win.map(d => (acc += perDay[d]));
-    const labels = win.map(d => {
-      const dt = new Date(d + 'T00:00:00');
-      return `${dt.getDate()} ${MON[dt.getMonth()]}`;
-    });
-
-    const tEl = document.getElementById('rev-total');
-    if (tEl) tEl.textContent = revMoney(total);
-
-    const dEl = document.getElementById('rev-delta');
-    if (dEl) {
-      if (!prevTotal) { dEl.textContent = ''; dEl.className = 'rev-delta'; }
-      else {
-        const pct = (total - prevTotal) / prevTotal * 100;
-        dEl.textContent = `${pct >= 0 ? '↑' : '↓'} ${Math.abs(pct).toFixed(1)}%`;
-        dEl.className = 'rev-delta ' + (pct >= 0 ? 'is-up' : 'is-down');
-      }
-    }
-
-    if (window.chartRevenue) window.chartRevenue.destroy();
-    const ctx = cv.getContext('2d');
-    const muted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8A8A95';
-    const grid = document.documentElement.classList.contains('light')
-      ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.05)';
-
-    window.chartRevenue = new Chart(ctx, {
-      type: 'line',
-      plugins: window.cfCrosshair ? [window.cfCrosshair] : [],
-      data: {
-        labels,
-        datasets: [{
-          data: series,
-          borderColor: '#A78BFA',
-          borderWidth: 2,
-          tension: 0,
-          pointRadius: c => c.dataIndex === series.length - 1 ? 3.5 : 0,
-          pointBackgroundColor: '#A78BFA',
-          pointBorderColor: '#A78BFA',
-          fill: true,
-          backgroundColor: c => {
-            const { ctx: cc, chartArea: ca } = c.chart;
-            if (!ca) return 'rgba(139,92,246,.22)';
-            const g = cc.createLinearGradient(0, ca.top, 0, ca.bottom);
-            g.addColorStop(0, 'rgba(139,92,246,.40)');
-            g.addColorStop(1, 'rgba(139,92,246,.03)');
-            return g;
-          },
-          datalabels: { display: false }
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        layout: { padding: { top: 6, right: 4, left: 0, bottom: 0 } },
-        plugins: {
-          datalabels: { display: false },
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: 'rgba(18,18,22,.97)',
-            borderColor: 'rgba(139,92,246,.35)', borderWidth: 1,
-            displayColors: false, padding: 10,
-            callbacks: {
-              title: c => c[0].label,
-              label: c => ` Накопичено: $${Math.round(c.parsed.y).toLocaleString('en-US')}`
-            }
-          }
-        },
-        scales: {
-          x: {
-            ticks: { color: muted, font: { size: 10, weight: '600' }, maxTicksLimit: 5, maxRotation: 0 },
-            grid: { display: false }, border: { display: false }
-          },
-          y: {
-            beginAtZero: true,
-            ticks: { color: muted, font: { size: 10, weight: '600' }, maxTicksLimit: 4, callback: v => revMoney(v) },
-            grid: { color: grid }, border: { display: false }
-          }
-        }
-      }
-    });
-  };
-
   /* ─────────── Нижні інсайт-картки ─────────── */
   const money = n => '$' + Math.round(n).toLocaleString('en-US');
+  const revOf = r => (typeof revenueOf === 'function' ? revenueOf(r) : 0);
 
   window.renderInsightCards = function (data) {
     const rows = Array.isArray(data) ? data : [];
