@@ -1637,6 +1637,67 @@ body.hub-open .app-content { padding-bottom: 14px; }
     flex: 1 1 auto; min-height: 0; overflow-y: auto;
   }
 }
+
+/* ─────────── Без ховер-ефекту на блоках ───────────
+   Старий шар піднімав і підсвічував кожну картку-секцію під курсором.
+   На щільному дашборді це смикає екран, тому лишаємо статику. */
+#dashboard-content > .card:hover,
+#dashboard-content .grid > .card:hover,
+#kpi-row > .card:hover,
+.kpi-card:hover {
+  transform: none !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.025) inset, 0 10px 30px -22px rgba(0,0,0,.9) !important;
+}
+/* z-index лишаємо: ним тултіп розбивки спенду лягає поверх сусідів */
+.kpi-card:hover { z-index: 60; }
+
+/* ─────────── Витрати ─────────── */
+.exp-save {
+  display: block; width: 100%; margin-top: 12px;
+  background: rgba(139,92,246,.16); border: 1px solid rgba(139,92,246,.35);
+  color: #C4B5FD; font-size: 11px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .1em;
+  padding: 10px; border-radius: 10px; transition: .15s;
+}
+.exp-save:hover { background: rgba(139,92,246,.26); color: #fff; }
+.exp-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.exp-wrap { max-height: 420px; overflow-y: auto; }
+#exp-table { width: 100%; border-collapse: collapse; }
+#exp-table th {
+  position: sticky; top: 0; background: var(--surface-2); z-index: 1;
+  text-align: left; padding: 9px 16px; font-size: 10px; font-weight: 800;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+#exp-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+#exp-table tbody tr:last-child td { border-bottom: 0; }
+.exp-date { font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+.exp-cat { font-weight: 800; font-size: 11px; }
+.exp-desc { color: var(--text-muted); }
+.exp-amount { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.exp-del { color: rgba(239,68,68,.45); font-size: 12px; transition: .15s; }
+.exp-del:hover { color: #EF4444; }
+.exp-empty {
+  padding: 28px; text-align: center; font-size: 11px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .12em; color: var(--text-muted); opacity: .6;
+}
+.exp-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface-2);
+}
+.exp-foot span:first-child {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted);
+}
+#exp-total { font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+
+/* Гео-колонка заповнює свою висоту до низу */
+#geo-sidebar-col { display: flex; flex-direction: column; }
+#geo-list { flex: 1 1 auto; min-height: 0; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -1703,6 +1764,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
         Live Data
       </button>
+      <button class="sb-item" data-nav="expenses" onclick="navGo('expenses')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
+        Витрати
+      </button>
       <button class="sb-item" data-nav="reports" onclick="navGo('reports')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
         Report Builder
@@ -1716,10 +1781,6 @@ body.hub-open .app-content { padding-bottom: 14px; }
       <button class="sb-item admin-only" data-hub="records" onclick="hubOpen('records', this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
         Записи
-      </button>
-      <button class="sb-item admin-only" data-hub="expenses" onclick="hubOpen('expenses', this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
-        Витрати
       </button>
       <button class="sb-item admin-only" data-sheet="1" onclick="sheetsOpen()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
@@ -1907,7 +1968,6 @@ body.hub-open .app-content { padding-bottom: 14px; }
           <div class="hub-tabs">
             <button data-hub="dataset"   onclick="hubOpen('dataset')">Кампанії</button>
             <button data-hub="records"   onclick="hubOpen('records')">Записи</button>
-            <button data-hub="expenses"  onclick="hubOpen('expenses')">Витрати</button>
             <button data-hub="providers" onclick="hubOpen('providers')">Джерела</button>
           </div>
           <button class="hub-close" onclick="hubClose()" title="Назад до дашборда">
@@ -1979,8 +2039,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
               <span id="kpi-expenses-line" class="text-rose-400">-$0.00 (Expenses)</span>
             </p>
             <div class="absolute top-full left-0 mt-2 w-64 rounded-2xl p-4 z-[100] opacity-0 pointer-events-none group-hover:opacity-100 transition-all" style="background:var(--surface-2);border:1px solid var(--border-2);box-shadow:0 24px 60px -24px rgba(0,0,0,.95)">
-              <p class="text-[10px] font-black text-violet-400 uppercase tracking-[0.18em] mb-3 border-b border-white/5 pb-2">Spend by Agency</p>
-              <div id="spend-breakdown-list" class="space-y-2"></div>
+              <div id="spend-agency-wrap">
+                <p class="text-[10px] font-black text-violet-400 uppercase tracking-[0.18em] mb-3 border-b border-white/5 pb-2">Spend by Agency</p>
+                <div id="spend-breakdown-list" class="space-y-2"></div>
+              </div>
               <p class="text-[10px] font-black text-rose-400 uppercase tracking-[0.18em] mt-4 mb-3 border-b border-white/5 pb-2">Expenses by Category</p>
               <div id="expenses-breakdown" class="space-y-1.5"></div>
             </div>
@@ -2075,7 +2137,14 @@ body.hub-open .app-content { padding-bottom: 14px; }
         </div>
 
         <!-- ═══════ ІНСАЙТИ ═══════ -->
-        <div id="insights-row" class="grid grid-cols-1 lg:grid-cols-3 gap-4 admin-only">
+        <div id="insights-row" class="grid grid-cols-1 lg:grid-cols-2 gap-4 admin-only">
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-1">
+              <h2>Активні таски</h2>
+              <button onclick="toggleTaskModal()" class="panel-sub hover:text-violet-400 transition">Усі →</button>
+            </div>
+            <div id="ins-tasks" class="mt-2"></div>
+          </div>
           <div class="card p-5">
             <div class="flex items-center justify-between mb-1">
               <h2>Топ гео за профітом</h2>
@@ -2083,19 +2152,48 @@ body.hub-open .app-content { padding-bottom: 14px; }
             </div>
             <div id="ins-top" class="mt-2"></div>
           </div>
+        </div>
+
+        <!-- ═══════ ВИТРАТИ ═══════ -->
+        <div id="expenses-section" class="route-off space-y-4">
           <div class="card p-5">
-            <div class="flex items-center justify-between mb-1">
-              <h2>Останні записи</h2>
-              <button onclick="navGo('live-table-section')" class="panel-sub hover:text-violet-400 transition">Усі →</button>
+            <h2>Додати витрату</h2>
+            <p class="panel-sub">Те, що не є рекламним спендом</p>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-2 mt-3">
+              <input type="date" id="exp-date">
+              <select id="exp-category">
+                <option value="accounts">💳 Акаунти</option>
+                <option value="fp">🏦 ФП</option>
+                <option value="team">👥 Команда</option>
+                <option value="tools">🛠 Інструменти</option>
+                <option value="other">📦 Інше</option>
+              </select>
+              <input type="number" id="exp-amount" placeholder="Сума ($)" min="0" step="0.01">
+              <input type="text" id="exp-desc" placeholder="Опис — напр. поповнення FB">
             </div>
-            <div id="ins-recent" class="mt-2"></div>
+            <button onclick="expAdd()" class="exp-save">+ Зберегти витрату</button>
           </div>
-          <div class="card p-5">
-            <div class="flex items-center justify-between mb-1">
-              <h2>Активні таски</h2>
-              <button onclick="toggleTaskModal()" class="panel-sub hover:text-violet-400 transition">Усі →</button>
+
+          <div class="card overflow-hidden">
+            <div class="exp-head">
+              <div>
+                <h2>Витрати за місяць</h2>
+                <p class="panel-sub">Сума враховується в Net Profit</p>
+              </div>
+              <select id="exp-month" onchange="expLoad()" class="rev-select"></select>
             </div>
-            <div id="ins-tasks" class="mt-2"></div>
+            <div class="exp-wrap custom-scrollbar">
+              <table id="exp-table">
+                <thead>
+                  <tr><th>Дата</th><th>Категорія</th><th>Опис</th><th class="text-right">Сума</th><th></th></tr>
+                </thead>
+                <tbody id="exp-body"></tbody>
+              </table>
+            </div>
+            <div class="exp-foot">
+              <span>Разом за місяць</span>
+              <span id="exp-total">$0.00</span>
+            </div>
           </div>
         </div>
 <!-- Weekly Heatmap Analysis -->
@@ -3193,7 +3291,8 @@ async function sbFetchAll(table, build) {
   // Оновлення списку агентств у тултіпі
   const breakdownList = document.getElementById('spend-breakdown-list');
   if (breakdownList) {
-    const rows = Object.entries(agentMap).sort((a, b) => b[1].s - a[1].s);
+    const rows = Object.entries(agentMap).filter(([, v]) => v.s > 0).sort((a, b) => b[1].s - a[1].s);
+    document.getElementById('spend-agency-wrap')?.classList.toggle('hidden', rows.length === 0);
     const feeTotal = rows.reduce((a, [, v]) => a + v.fee, 0);
     breakdownList.innerHTML = rows.map(([n, v]) => {
       const pct = v.pcts.size === 1 ? [...v.pcts][0] : null;
@@ -5440,7 +5539,7 @@ function updateMilestones(data) {
 
 // --- 4. ФУНКЦІЇ ДЕТАЛЬНОГО ПЕРЕГЛЯДУ ТАСКІВ ---
 function openTaskDetails(id) {
-  const task = taskData.find(t => t.id === id);
+  const task = taskData.find(t => String(t.id) === String(id));
   if (!task) return;
   currentEditingTaskId = id;
   const modal = document.getElementById('task-detail-modal');
@@ -10338,6 +10437,7 @@ function dcRenderWarn(unlinked) {
     'placements': { section: 'placements-section' },
     'live':       { section: 'live-table-section' },
     'reports':    { section: 'report-builder-section' },
+    'expenses':   { section: 'expenses-section' },
     'hub':        { panel: 'datahub-panel' },
     'sheets':     { panel: 'sheets-panel' }
   };
@@ -10379,7 +10479,7 @@ function dcRenderWarn(unlinked) {
       const frame = document.getElementById('datahub-frame');
       const mode = arg || 'dataset';
       // Той самий origin — вкладку перемикаємо прямим викликом усередині iframe
-      const apply = () => { try { frame.contentWindow.switchMode(mode); } catch (e) {} };
+      const apply = () => { hubSkin(frame); try { frame.contentWindow.switchMode(mode); } catch (e) {} };
       if (frame && !frame.getAttribute('src')) {
         frame.addEventListener('load', apply, { once: true });
         frame.setAttribute('src', 'Form.html');
@@ -10388,6 +10488,7 @@ function dcRenderWarn(unlinked) {
         .forEach(b => b.classList.toggle('is-active', b.dataset.hub === mode));
     }
     if (name === 'sheets') sheetsLoad();
+    if (name === 'expenses') expInit();
 
     document.body.classList.remove('sb-open');
     if (scroll) window.scrollTo({ top: 0 });
@@ -10427,6 +10528,136 @@ function dcRenderWarn(unlinked) {
       const sec = document.getElementById(r.section);
       b.style.display = (!sec || sec.classList.contains('hidden')) ? 'none' : '';
     });
+  };
+
+  /* ─────────── Скін для вбудованого Form.html ───────────
+     Джерела лишаються однією реалізацією у Form.html — дублювати
+     ~700 рядків логіки кабінетів, воронок, Keitaro й APP у другий файл
+     означало б два місця, що пишуть в одні таблиці. Замість цього
+     той самий прийом, яким зроблено весь новий дизайн: шар стилів
+     поверх наявної розмітки, лише вставлений усередину iframe. */
+  const HUB_SKIN = `
+    :root{--bg:#0A0A0C;--surface:#121216;--surface-2:#17171C;--surface-3:#1E1E24;
+          --border:rgba(255,255,255,.07);--border-2:rgba(255,255,255,.13);
+          --text-main:#E9E9EC;--text-muted:#8A8A95;}
+    body{background:var(--bg) !important;background-image:none !important;
+         color:var(--text-main);font-family:Inter,ui-sans-serif,system-ui,sans-serif;}
+    .card{background:var(--surface) !important;border:1px solid var(--border) !important;
+          border-radius:14px !important;backdrop-filter:none !important;box-shadow:none !important;}
+    .card::before{display:none !important;}
+    .card[class*="border-t-"]{border-top-width:1px !important;border-top-color:var(--border) !important;}
+    h1,h2,h3{font-style:normal !important;text-transform:none !important;letter-spacing:-.01em !important;}
+    h3{font-size:15px !important;}
+    input,select,textarea{background:var(--surface-2) !important;border:1px solid var(--border) !important;
+      border-radius:9px !important;color:var(--text-main) !important;font-size:12px !important;}
+    input:focus,select:focus,textarea:focus{border-color:rgba(139,92,246,.55) !important;
+      box-shadow:0 0 0 3px rgba(139,92,246,.12) !important;outline:none !important;}
+    table thead tr,table thead{background:var(--surface-2) !important;backdrop-filter:none !important;}
+    table th{color:var(--text-muted) !important;font-size:10px !important;}
+    table td{font-size:12px !important;}
+    #app-dock{background:rgba(18,18,21,.92) !important;border:1px solid var(--border) !important;
+      border-radius:16px !important;}
+    ::-webkit-scrollbar-thumb{background:var(--surface-3) !important;}
+  `;
+
+  function hubSkin(frame) {
+    try {
+      const doc = frame && frame.contentDocument;
+      if (!doc || !doc.head || doc.getElementById('hub-skin')) return;
+      const st = doc.createElement('style');
+      st.id = 'hub-skin';
+      st.textContent = HUB_SKIN;
+      doc.head.appendChild(st);
+    } catch (e) { /* інший origin — тоді просто без скіна */ }
+  }
+
+  /* ─────────── Витрати ─────────── */
+  const EXP_LABELS = { accounts:'💳 Акаунти', fp:'🏦 ФП', team:'👥 Команда', tools:'🛠 Інструменти', other:'📦 Інше' };
+  const EXP_COLORS = { accounts:'#60A5FA', fp:'#FACC15', team:'#C4B5FD', tools:'#94A3B8', other:'#FB7185' };
+  let expReady = false;
+
+  const money2 = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  window.expInit = async function () {
+    const sel = document.getElementById('exp-month');
+    const dateEl = document.getElementById('exp-date');
+    if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+    if (sel && !expReady) {
+      expReady = true;
+      let months = [];
+      try {
+        const { data } = await sb.from('expenses').select('date').eq('team_name', currentTeam);
+        months = [...new Set((data || []).map(r => String(r.date || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+      } catch (e) { /* лишиться тільки поточний місяць */ }
+      const now = new Date().toISOString().slice(0, 7);
+      if (!months.includes(now)) months.unshift(now);
+      sel.innerHTML = months.map(m => `<option value="${m}">${m}</option>`).join('');
+      // Відкриваємо на місяці, вибраному в дашборді, якщо він у списку
+      try { if (months.includes(currentMonthFilter)) sel.value = currentMonthFilter; } catch (e) {}
+    }
+    expLoad();
+  };
+
+  window.expLoad = async function () {
+    const body = document.getElementById('exp-body');
+    const totalEl = document.getElementById('exp-total');
+    if (!body) return;
+    const month = document.getElementById('exp-month')?.value || new Date().toISOString().slice(0, 7);
+
+    let rows = null;
+    try {
+      const { data, error } = await sb.from('expenses')
+        .select('*').eq('team_name', currentTeam)
+        .gte('date', month + '-01').lte('date', month + '-31')
+        .order('date', { ascending: false });
+      if (error) throw error;
+      rows = data || [];
+    } catch (e) {
+      body.innerHTML = `<tr><td colspan="5" class="exp-empty">Помилка завантаження: ${e.message || e}</td></tr>`;
+      return;
+    }
+
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" class="exp-empty">Витрат за цей місяць немає</td></tr>';
+      if (totalEl) totalEl.textContent = '$0.00';
+      return;
+    }
+    if (totalEl) totalEl.textContent = money2(rows.reduce((a, r) => a + (Number(r.amount) || 0), 0));
+
+    body.innerHTML = rows.map(r => `
+      <tr>
+        <td class="exp-date">${r.date || ''}</td>
+        <td><span class="exp-cat" style="color:${EXP_COLORS[r.category] || 'var(--text-main)'}">${EXP_LABELS[r.category] || r.category || '—'}</span></td>
+        <td class="exp-desc">${String(r.description || '—').replace(/</g, '&lt;')}</td>
+        <td class="exp-amount">${money2(r.amount)}</td>
+        <td class="text-right"><button class="exp-del" onclick="expDelete('${r.id}')" title="Видалити">✕</button></td>
+      </tr>`).join('');
+  };
+
+  window.expAdd = async function () {
+    const date = document.getElementById('exp-date')?.value;
+    const category = document.getElementById('exp-category')?.value;
+    const amount = parseFloat(document.getElementById('exp-amount')?.value) || 0;
+    const description = (document.getElementById('exp-desc')?.value || '').trim();
+    if (!date || !amount) return alert('Вкажіть дату і суму');
+    try {
+      const { error } = await sb.from('expenses')
+        .insert([{ team_name: currentTeam, date, category, amount, description }]);
+      if (error) throw error;
+    } catch (e) { return alert('Не вдалось зберегти: ' + (e.message || e)); }
+    document.getElementById('exp-amount').value = '';
+    document.getElementById('exp-desc').value = '';
+    expLoad();
+    // Витрати входять у Net Profit — оновлюємо дашборд
+    if (typeof loadExpenses === 'function') loadExpenses();
+  };
+
+  window.expDelete = async function (id) {
+    if (!confirm('Видалити витрату?')) return;
+    try { await sb.from('expenses').delete().eq('id', id); }
+    catch (e) { return alert('Не вдалось видалити: ' + (e.message || e)); }
+    expLoad();
+    if (typeof loadExpenses === 'function') loadExpenses();
   };
 
   /* ─────────── Google Таблиці ─────────── */
@@ -10718,22 +10949,6 @@ function dcRenderWarn(unlinked) {
         </div>
       </div>`).join('') : emptyRow('Немає даних за період');
 
-    // 2. Останні записи
-    const recent = [...rows].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 5);
-    const elRec = document.getElementById('ins-recent');
-    if (elRec) elRec.innerHTML = recent.length ? recent.map(r => `
-      <div class="ins-row">
-        <span class="ins-chip">${(r.geo || '??').toUpperCase().slice(0, 3)}</span>
-        <div class="ins-main">
-          <div class="ins-t">${r.account || r.funnel || '—'}</div>
-          <div class="ins-s">${r.date || ''} · ${r.offer || 'DEFAULT'}</div>
-        </div>
-        <div class="text-right">
-          <div class="ins-v">${money(Number(r.spend) || 0)}</div>
-          <div class="ins-s">${Number(r.regs) || 0} reg · ${Number(r.deposits) || 0} dep</div>
-        </div>
-      </div>`).join('') : emptyRow('Немає записів');
-
     renderInsightTasks();
   };
 
@@ -10752,7 +10967,7 @@ function dcRenderWarn(unlinked) {
     el.innerHTML = list.length ? list.map(t => {
       const pill = t.status === 'In progress' ? 'pill-warn' : 'pill-mute';
       const prio = t.priority === 'High' ? 'pill-bad' : t.priority === 'Medium' ? 'pill-warn' : 'pill-mute';
-      return `<div class="ins-row" onclick="openTaskDetails(${t.id})" style="cursor:pointer">
+      return `<div class="ins-row" onclick="openTaskDetails('${t.id}')" style="cursor:pointer">
           <span class="ins-pill ${prio}">${t.priority || '—'}</span>
           <div class="ins-main"><div class="ins-t">${String(t.text || '').split('\n')[0]}</div>
             <div class="ins-s">${(t.created_at || '').slice(0, 10)}</div></div>
