@@ -9029,7 +9029,7 @@ function gcDiff(geo, results) {
       </div>
 
       <!-- Налаштування -->
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <div>
           <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Variants per file</label>
           <input type="number" id="uq-count" min="1" max="30" value="3"
@@ -9050,6 +9050,27 @@ function gcDiff(geo, results) {
             <option value="23">Normal</option>
             <option value="20">Higher (bigger file)</option>
             <option value="27">Lighter (faster)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5"
+                 title="x264 preset: швидше кодування коштує трохи більшого файлу">Encoding speed</label>
+          <select id="uq-preset" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+            <option value="ultrafast">Fastest</option>
+            <option value="superfast" selected>Fast</option>
+            <option value="veryfast">Balanced</option>
+            <option value="faster">Smaller file</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5"
+                 title="Скільки варіантів кодувати одноtimeно. Кожен потік — окрема копія ffmpeg зі своєю памʼяттю.">Parallel</label>
+          <select id="uq-jobs" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+            <option value="0" selected>Auto</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
           </select>
         </div>
         <div class="flex items-end">
@@ -9686,6 +9707,7 @@ const UQ_PRESETS = {
 };
 let uqFiles = [], uqFF = null, uqBusy = false, uqStop = false;
 let uqDone = new Set(), uqCurrent = -1, uqQueueDirty = false;
+let uqFine = true;   // чи має сенс дробовий прогрес (одна копія ffmpeg)
 
 function openUniqModal() {
   document.getElementById('uniq-modal').classList.remove('hidden');
@@ -9793,10 +9815,12 @@ function uqPickParams() {
 
 // Порядок фільтрів має значення: спершу поворот, потім кроп — кроп прибирає
 // чорні кути, які лишає поворот. І тільки після цього масштаб назад у розмір.
-function uqBuildArgs(p, meta, quality, stripMeta) {
-  const vf = [], args = ['-i', 'in.mp4'];
+function uqBuildArgs(p, meta, quality, stripMeta, preset) {
+  const vf = [], args = [];
+  // -ss перед -i: перемотка по контейнеру замість декодування у смітник
+  if (p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
+  args.push('-i', 'in.mp4');
   if (p.trim) {
-    if (p.trim.head > 0) args.push('-ss', String(p.trim.head));
     const left = meta.dur - p.trim.head - p.trim.tail;
     if (left > 1) args.push('-t', String(+left.toFixed(2)));
   }
@@ -9814,20 +9838,29 @@ function uqBuildArgs(p, meta, quality, stripMeta) {
   if (meta.w && meta.h) {
     const k = 1 + (p.size || 0) / 100;
     const even = n => Math.max(2, Math.round(n * k / 2) * 2);
-    vf.push(`scale=${even(meta.w)}:${even(meta.h)}`);
+    const ow = even(meta.w), oh = even(meta.h);
+    // Масштаб додаємо лише коли він справді щось міняє. scale=w:h у той самий
+    // розмір — це повний прохід swscale по кожному кадру задарма.
+    // Після кропу чи повороту кадр уже інший, там масштаб потрібен завжди.
+    if (ow !== meta.w || oh !== meta.h || p.crop || p.rotate) vf.push(`scale=${ow}:${oh}`);
   }
   vf.push('setsar=1');
   if (p.fps) vf.push(`fps=${Math.max(15, Math.round(30 + p.fps))}`);
 
-  args.push('-vf', vf.join(','));
+  if (vf.length) args.push('-vf', vf.join(','));
   if (p.volume) args.push('-af', `volume=${p.volume}dB`);
   // -fflags +bitexact прибирає тег мукcера (Lavf), а handler_name доводиться
   // гасити окремо — інакше в контейнері лишаються «VideoHandler»/«SoundHandler»
   if (stripMeta) args.push('-map_metadata', '-1', '-map_chapters', '-1',
     '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
     '-metadata:s:v:0', 'handler_name=', '-metadata:s:a:0', 'handler_name=');
-  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(quality), '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4');
+  args.push('-c:v', 'libx264', '-preset', preset || 'veryfast',
+            '-crf', String(quality), '-pix_fmt', 'yuv420p');
+  // Volume не чіпали — доріжку можна не перекодовувати. AAC на кожному
+  // варіанті коштував timeу рівно ні за що.
+  if (p.volume) args.push('-c:a', 'aac', '-b:a', '128k');
+  else args.push('-c:a', 'copy');
+  args.push('-movflags', '+faststart', 'out.mp4');
   return args;
 }
 
@@ -9846,12 +9879,31 @@ function uqDescribe(p) {
 async function uqLoadFFmpeg(onStatus) {
   if (uqFF) return uqFF;
   onStatus('Loading the ffmpeg core (~32 MB, first time only)…');
+  uqFF = await uqNewFFmpeg();
+  return uqFF;
+}
+
+// Окрема копія ffmpeg. Модуль і wasm беруться з кешу браузера, тож друга
+// й наступні копії піднімаються помітно швидше за першу.
+async function uqNewFFmpeg() {
   const { FFmpeg } = await import('./vendor/ffmpeg/index.js');
   const ff = new FFmpeg();
   const cdn = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
   await ff.load({ coreURL: cdn + '/ffmpeg-core.js', wasmURL: cdn + '/ffmpeg-core.wasm' });
-  uqFF = ff;
   return ff;
+}
+
+// Скільки копій тримати одноtimeно. Кожна тримає в памʼяті вхідне відео
+// плюс робочі буфери, тож для важких файлів звужуємо коридор — інакше
+// вкладка впаде на середині черги, і це гірше за повільну чергу.
+function uqJobCount(fileSize) {
+  const sel = parseInt((document.getElementById('uq-jobs') || {}).value, 10) || 0;
+  const cores = navigator.hardwareConcurrency || 4;
+  let n = sel > 0 ? sel : Math.max(1, Math.min(3, Math.floor(cores / 2)));
+  const mb = (fileSize || 0) / 1048576;
+  if (mb > 150) n = 1;
+  else if (mb > 60) n = Math.min(n, 2);
+  return Math.max(1, Math.min(4, n));
 }
 
 function uqCancel() { uqStop = true; document.getElementById('uq-status').textContent = 'Stopping after the current variant…'; }
@@ -9878,6 +9930,7 @@ async function uqRun() {
   if (!uqFiles.length) { alert('Pick the video files first.'); return; }
   const count = Math.max(1, Math.min(30, parseInt(document.getElementById('uq-count').value, 10) || 1));
   const quality = document.getElementById('uq-quality').value;
+  const preset = (document.getElementById('uq-preset') || {}).value || 'veryfast';
   const stripMeta = document.getElementById('uq-meta').checked;
   const statusEl = document.getElementById('uq-status');
   const barWrap = document.getElementById('uq-bar'), bar = document.getElementById('uq-bar-fill');
@@ -9896,7 +9949,10 @@ async function uqRun() {
   const avg = () => times.length ? times.reduce((a, b) => a + b, 0) / times.length : 0;
   let done = 0;
   const totalNow = () => Math.max(1, uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length * count);
+  // Коли копій ffmpeg кілька, їхні progress-події перемішуються і смуга
+  // стрибає назад. Тоді рахуємо тільки завершені варіанти.
   const onProgress = ({ progress }) => {
+    if (!uqFine) return;
     const p = Math.min(1, Math.max(0, progress || 0));
     bar.style.width = (((done + p) / totalNow()) * 100).toFixed(1) + '%';
   };
@@ -9921,7 +9977,13 @@ async function uqRun() {
       const base = file.name.replace(/\.[^.]+$/, '');
       const fileStart = performance.now();
 
-      try { await ff.writeFile('in.mp4', new Uint8Array(await file.arrayBuffer())); }
+      let srcBuf;
+      try {
+        // Байти читаємо один раз: writeFile ПЕРЕДАЄ буфер у воркер і тим
+        // самим відчіплює його, тож кожній копії ffmpeg потрібен свій зріз.
+        srcBuf = await file.arrayBuffer();
+        await ff.writeFile('in.mp4', new Uint8Array(srcBuf.slice(0)));
+      }
       catch (e) {
         const bad = document.createElement('p');
         bad.className = 'text-[11px] font-bold text-rose-400 mt-3';
@@ -9931,44 +9993,101 @@ async function uqRun() {
         continue;
       }
 
+      const jobs = Math.min(count, uqJobCount(file.size));
+      uqFine = jobs === 1;   // дробовий прогрес має сенс лише коли кодує одна копія
+
       const block = document.createElement('div');
       block.className = 'mt-4';
       block.innerHTML = `<p class="text-[11px] font-black uppercase tracking-widest text-slate-500 mb-2">${file.name}
-        <span class="text-slate-600 normal-case tracking-normal font-bold">· ${meta.w}×${meta.h} · ${meta.dur.toFixed(1)}с</span>
+        <span class="text-slate-600 normal-case tracking-normal font-bold">· ${meta.w}×${meta.h} · ${meta.dur.toFixed(1)}с${jobs > 1 ? ` · ${jobs} потоки` : ''}</span>
         <span class="text-slate-600 normal-case tracking-normal font-bold" id="uq-t-${fi}"></span></p>`;
       res.appendChild(block);
 
-      for (let v = 1; v <= count && !uqStop; v++) {
-        const left = uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length;
-        const restVariants = (left - 1) * count + (count - v + 1);
-        const eta = avg() ? ` · ще ~${uqFmt(avg() * restVariants)}` : '';
-        setStatus(`${file.name} · варіант ${v}/${count} · у черзі ще ${Math.max(0, left - 1)} · ${uqFmt(performance.now() - runStart)} минуло${eta}`);
-        const p = uqPickParams();
-        const vStart = performance.now();
-        try {
-          await ff.exec(uqBuildArgs(p, meta, quality, stripMeta));
-          const data = await ff.readFile('out.mp4');
-          const took = performance.now() - vStart;
-          times.push(took);
-          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-          const name = `${base}__v${v}.mp4`;
-          const row = document.createElement('div');
-          row.className = 'flex items-center gap-3 bg-white/[0.03] border border-white/5 rounded-xl px-3 py-2 mb-1.5';
-          row.innerHTML = `<span class="text-[12px] font-black text-white shrink-0">v${v}</span>
-            <span class="text-[11px] font-bold text-slate-400 flex-1 min-w-0 truncate" title="${uqDescribe(p)}">${uqDescribe(p)}</span>
-            <span class="text-[11px] font-mono text-slate-600 shrink-0">${uqFmt(took)}</span>
-            <span class="text-[11px] font-mono text-slate-500 shrink-0">${(data.length / 1048576).toFixed(1)} МБ</span>
-            <a href="${url}" download="${name}" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Download</a>`;
-          block.appendChild(row);
-          try { await ff.deleteFile('out.mp4'); } catch (e) {}
-        } catch (e) {
-          const row = document.createElement('div');
-          row.className = 'text-[11px] font-bold text-rose-400 px-3 py-2';
-          row.textContent = `v${v}: не вдалось — ${e.message || e}`;
-          block.appendChild(row);
+      // Порожні рядки під кожен варіант наперед: копії фінішують не по
+      // порядку, а список має лишитись v1…vN.
+      const slots = [];
+      for (let v = 1; v <= count; v++) {
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-3 bg-white/[0.02] border border-white/5 rounded-xl px-3 py-2 mb-1.5';
+        row.innerHTML = `<span class="text-[12px] font-black text-slate-600 shrink-0">v${v}</span>
+          <span class="text-[11px] font-bold text-slate-600 flex-1">у черзі…</span>`;
+        block.appendChild(row);
+        slots.push(row);
+      }
+
+      let nextV = 1;
+      const takeV = () => (uqStop || nextV > count) ? 0 : nextV++;
+
+      const fillRow = (v, p, took, data) => {
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+        const row = slots[v - 1];
+        row.className = 'flex items-center gap-3 bg-white/[0.03] border border-white/5 rounded-xl px-3 py-2 mb-1.5';
+        row.innerHTML = `<span class="text-[12px] font-black text-white shrink-0">v${v}</span>
+          <span class="text-[11px] font-bold text-slate-400 flex-1 min-w-0 truncate" title="${uqDescribe(p)}">${uqDescribe(p)}</span>
+          <span class="text-[11px] font-mono text-slate-600 shrink-0">${uqFmt(took)}</span>
+          <span class="text-[11px] font-mono text-slate-500 shrink-0">${(data.length / 1048576).toFixed(1)} МБ</span>
+          <a href="${url}" download="${base}__v${v}.mp4" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Download</a>`;
+      };
+      const failRow = (v, msg) => {
+        const row = slots[v - 1];
+        row.className = 'text-[11px] font-bold text-rose-400 px-3 py-2';
+        row.textContent = `v${v}: не вдалось — ${msg}`;
+      };
+
+      // Одна копія ffmpeg тягне варіанти з черги, поки та не спорожніє.
+      const pump = async ffw => {
+        for (;;) {
+          const v = takeV();
+          if (!v) return;
+          const tag = slots[v - 1].querySelector('span:last-child');
+          if (tag) tag.textContent = 'кодую…';
+          const vStart = performance.now();
+          try {
+            // uqPickParams теж усередині try: раніше він стояв зовні, і будь-який
+            // його виняток валив увесь прогін, а в пулі ще й обривав сусідні копії
+            // посеред кодування.
+            const p = uqPickParams();
+            await ffw.exec(uqBuildArgs(p, meta, quality, stripMeta, preset));
+            const data = await ffw.readFile('out.mp4');
+            const took = performance.now() - vStart;
+            times.push(took);
+            fillRow(v, p, took, data);
+            try { await ffw.deleteFile('out.mp4'); } catch (e) {}
+          } catch (e) {
+            failRow(v, e.message || e);
+          }
+          done++;
+          bar.style.width = ((done / totalNow()) * 100).toFixed(1) + '%';
+          const left = uqFiles.filter(f => !uqDone.has(f.name + '|' + f.size)).length;
+          const restVariants = (left - 1) * count + (count - done % count || 0);
+          // Копії йдуть паралельно, тож лишок timeу ділимо на їх кількість.
+          const eta = avg() ? ` · ще ~${uqFmt(avg() * Math.max(0, restVariants) / jobs)}` : '';
+          setStatus(`${file.name} · ${Math.min(count, nextV - 1)}/${count} · у черзі ще ${Math.max(0, left - 1)} · ${uqFmt(performance.now() - runStart)} минуло${eta}`);
         }
-        done++;
-        bar.style.width = ((done / totalNow()) * 100).toFixed(1) + '%';
+      };
+
+      // Додаткові копії піднімаємо тільки якщо є що їм дати.
+      const extra = [];
+      for (let j = 1; j < jobs && !uqStop; j++) {
+        try {
+          const ffw = await uqNewFFmpeg();
+          await ffw.writeFile('in.mp4', new Uint8Array(srcBuf.slice(0)));
+          extra.push(ffw);
+        } catch (e) {
+          // Не вистачило памʼяті на ще одну копію — працюємо тим, що вже є.
+          console.warn('uq: додаткова копія ffmpeg не піднялась', e);
+          break;
+        }
+      }
+
+      try {
+        // pump сам ніколи не відхиляється — інакше перша ж помилка забрала б
+        // із собою копії, які саме щось кодують.
+        await Promise.all([ff, ...extra].map(w => pump(w).catch(e => {
+          console.warn('uq: копія ffmpeg зупинилась', e);
+        })));
+      } finally {
+        extra.forEach(w => { try { w.terminate(); } catch (e) {} });
       }
 
       try { await ff.deleteFile('in.mp4'); } catch (e) {}
