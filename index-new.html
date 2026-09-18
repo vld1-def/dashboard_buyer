@@ -1533,6 +1533,44 @@ html.light .text-cyan-400  { color: #0891B2 !important; }
    і два плаваючі меню на екрані накладались би одне на одне. */
 body.hub-open #app-dock { display: none !important; }
 body.hub-open .app-content { padding-bottom: 14px; }
+
+/* ─────────── Google Таблиці ─────────── */
+#sheets-panel {
+  display: flex; flex-direction: column; overflow: hidden;
+  height: calc(100vh - 54px); margin-bottom: 16px;
+}
+#sheets-panel.hidden { display: none; }
+.sh-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#sh-select { min-width: 190px; max-width: 320px; }
+.sh-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; padding: 7px 11px; border-radius: 9px;
+  border: 1px solid var(--border); color: var(--text-muted); transition: .15s;
+}
+.sh-btn:hover { color: var(--text-main); border-color: var(--border-2); }
+.sh-btn svg { width: 13px; height: 13px; stroke-width: 2; }
+.sh-del:hover { color: #F87171; border-color: rgba(239,68,68,.4); }
+.sh-save {
+  background: rgba(139,92,246,.16); border-color: rgba(139,92,246,.35); color: #C4B5FD;
+}
+.sh-add {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+}
+.sh-add.hidden { display: none; }
+.sh-add input { flex: 1; min-width: 180px; }
+.sh-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; text-align: center; padding: 40px 24px;
+  font-size: 14px; font-weight: 700; color: var(--text-main);
+}
+.sh-empty.hidden { display: none; }
+.sh-empty .sh-hint {
+  font-size: 12px; font-weight: 500; color: var(--text-muted);
+  max-width: 460px; line-height: 1.6;
+}
+#sh-frame { flex: 1; width: 100%; border: 0; background: #fff; display: block; }
+#sh-frame.hidden { display: none; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -1616,6 +1654,10 @@ body.hub-open .app-content { padding-bottom: 14px; }
       <button class="sb-item admin-only" data-hub="expenses" onclick="hubOpen('expenses', this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
         Витрати
+      </button>
+      <button class="sb-item admin-only" data-sheet="1" onclick="sheetsOpen()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        Таблиці
       </button>
       <button class="sb-item admin-only" data-hub="providers" onclick="hubOpen('providers', this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h12"/><circle cx="17" cy="18" r="2.5"/></svg>
@@ -1810,6 +1852,32 @@ body.hub-open .app-content { padding-bottom: 14px; }
         <iframe id="datahub-frame" title="Data Hub"></iframe>
       </div>
 
+      <!-- Google Таблиці: збережені посилання + перегляд просто тут -->
+      <div id="sheets-panel" class="card hidden">
+        <div class="hub-head">
+          <div class="sh-picker">
+            <select id="sh-select" onchange="sheetsPick(this.value)"></select>
+            <a id="sh-open" href="#" target="_blank" rel="noopener" class="sh-btn" title="Відкрити в Google для редагування">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+              Редагувати
+            </a>
+            <button class="sh-btn" onclick="sheetsToggleAdd()" title="Додати таблицю">+ Додати</button>
+            <button class="sh-btn sh-del" onclick="sheetsRemove()" title="Прибрати зі списку">Прибрати</button>
+          </div>
+          <button class="hub-close" onclick="sheetsClose()" title="Назад до дашборда">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
+            Дашборд
+          </button>
+        </div>
+        <div id="sh-add" class="sh-add hidden">
+          <input id="sh-name" placeholder="Назва (напр. Бюджети Q4)">
+          <input id="sh-url" placeholder="https://docs.google.com/spreadsheets/d/...">
+          <button class="sh-btn sh-save" onclick="sheetsAdd()">Зберегти</button>
+        </div>
+        <div id="sh-empty" class="sh-empty hidden"></div>
+        <iframe id="sh-frame" title="Google Sheet"></iframe>
+      </div>
+
       <!-- Місячний таргет -->
       <div id="milestone-container">
         <p class="ms-cap">Monthly Spend Target <span id="header-month-display"></span></p>
@@ -1829,7 +1897,7 @@ body.hub-open .app-content { padding-bottom: 14px; }
       <div id="dashboard-content" class="hidden space-y-4">
 
         <!-- ═══════ KPI ═══════ -->
-        <div id="kpi-row" class="grid grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+        <div id="kpi-row" class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
 
           <!-- SPEND -->
           <div class="kpi-card group cursor-help" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
@@ -1868,26 +1936,6 @@ body.hub-open .app-content { padding-bottom: 14px; }
             </div>
             <p id="kpi-deposits" class="kpi-value">0</p>
             <p class="kpi-foot">Депозити за період</p>
-          </div>
-
-          <!-- CPL -->
-          <div class="kpi-card" style="--accent:#22D3EE;--glow:rgba(34,211,238,.13)">
-            <div class="kpi-head">
-              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
-              <span class="kpi-label">CPL · за реєстрацію</span>
-            </div>
-            <p class="flex items-baseline"><span id="kpi-cpl" class="kpi-value">$0.00</span><span id="delta-cpl" class="kpi-delta"></span></p>
-            <p class="kpi-foot">Spend ÷ Regs</p>
-          </div>
-
-          <!-- CPA -->
-          <div class="kpi-card" style="--accent:#EAB308;--glow:rgba(234,179,8,.13)">
-            <div class="kpi-head">
-              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg></span>
-              <span class="kpi-label">CPA · за депозит</span>
-            </div>
-            <p class="flex items-baseline"><span id="kpi-cpa" class="kpi-value">$0.00</span><span id="delta-cpa" class="kpi-delta"></span></p>
-            <p class="kpi-foot">Spend ÷ Deposits</p>
           </div>
 
           <!-- R2D -->
@@ -3067,8 +3115,10 @@ async function sbFetchAll(table, build) {
   document.getElementById('kpi-deposits').innerText = totalD;
   document.getElementById('kpi-regs').innerText = totalR;
   
-  document.getElementById('kpi-cpl').innerText = formatCurrency(totalR > 0 ? totalS / totalR : 0);
-  document.getElementById('kpi-cpa').innerText = formatCurrency(totalD > 0 ? totalS / totalD : 0);
+  const elCpl = document.getElementById('kpi-cpl');
+  if (elCpl) elCpl.innerText = formatCurrency(totalR > 0 ? totalS / totalR : 0);
+  const elCpa = document.getElementById('kpi-cpa');
+  if (elCpa) elCpa.innerText = formatCurrency(totalD > 0 ? totalS / totalD : 0);
   document.getElementById('kpi-r2d').innerText = (totalR > 0 ? (totalD / totalR * 100).toFixed(1) : 0) + '%';
   
   const pEl = document.getElementById('kpi-profit');
@@ -9729,7 +9779,7 @@ function renderAccountsModal() {
   }
 
   const GRID = 'grid gap-x-3 items-center';
-  const COLS = 'grid-template-columns: minmax(140px,1.3fr) minmax(90px,1fr) 52px 210px minmax(120px,1.4fr);';
+  const COLS = 'grid-template-columns: minmax(140px,1.3fr) minmax(90px,1fr) 52px 84px 210px minmax(120px,1.4fr);';
   // проблемні — зверху, щоб не шукати їх у довгому списку
   const order = { ban: 0, problem: 1, active: 2 };
   rows.sort((a, b) => order[accStatusOf(a)] - order[accStatusOf(b)] ||
@@ -9737,8 +9787,8 @@ function renderAccountsModal() {
 
   body.innerHTML = `
     <div class="${GRID} px-4 pb-2" style="${COLS}">
-      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','TZ','Статус','Нотатка'].map((h, i) =>
-        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${i === 2 ? 'text-center' : ''}">${h}</span>`).join('')}
+      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','TZ','Додано','Статус','Нотатка'].map((h, i) =>
+        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${i === 2 || i === 3 ? 'text-center' : ''}">${h}</span>`).join('')}
     </div>
     <div class="space-y-1.5">
       ${rows.map(r => {
@@ -9747,6 +9797,7 @@ function renderAccountsModal() {
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
           <span class="text-[12px] font-bold text-slate-400 truncate">${r.provider_name || '—'}</span>
           <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>
+          <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Дата додавання кабінета">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>
           <div class="flex gap-1">
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
               <button onclick="accSetStatus('${r.id}','${k}')"
@@ -10191,7 +10242,7 @@ function dcRenderWarn(unlinked) {
 
   window.navGo = function (id, el) {
     document.body.classList.remove('sb-open');
-    if (typeof hubClose === 'function') hubClose();
+    pageHide();
     if (id === '__top') window.scrollTo({ top: 0, behavior: 'smooth' });
     else {
       const t = document.getElementById(id);
@@ -10205,30 +10256,58 @@ function dcRenderWarn(unlinked) {
     if (el) setActiveNav(el.dataset.nav);
   };
 
-  /* ─────────── Data Hub (Form.html у цій же сторінці) ─────────── */
-  let hubSnapshot = null;
+  /* ─────────── Повноекранні панелі поверх дашборда ─────────── */
+  const PANELS = ['datahub-panel', 'sheets-panel'];
+  let pageSnapshot = null, activePanel = null;
 
-  window.hubOpen = function (mode) {
-    const panel = document.getElementById('datahub-panel');
-    const frame = document.getElementById('datahub-frame');
-    if (!panel || !frame) return;
+  function pageShow(panelId) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return null;
     document.body.classList.remove('sb-open');
 
     // Запамʼятовуємо, що було видно, щоб коректно повернутись:
     // дашборд до завантаження даних лишається прихованим.
-    if (!hubSnapshot) {
-      hubSnapshot = {};
+    if (!pageSnapshot) {
+      pageSnapshot = {};
       ['dashboard-content', 'milestone-container', 'loader'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
-        hubSnapshot[id] = el.classList.contains('hidden');
+        pageSnapshot[id] = el.classList.contains('hidden');
         el.classList.add('hidden');
       });
     }
+    PANELS.forEach(id => { if (id !== panelId) document.getElementById(id)?.classList.add('hidden'); });
     panel.classList.remove('hidden');
     document.body.classList.add('hub-open');
-
+    activePanel = panelId;
     document.querySelectorAll('.sb-item[data-nav]').forEach(b => b.classList.remove('is-active'));
+    window.scrollTo({ top: 0 });
+    return panel;
+  }
+
+  function pageHide() {
+    PANELS.forEach(id => document.getElementById(id)?.classList.add('hidden'));
+    document.body.classList.remove('hub-open');
+    if (pageSnapshot) {
+      Object.entries(pageSnapshot).forEach(([id, wasHidden]) => {
+        const el = document.getElementById(id);
+        if (el && !wasHidden) el.classList.remove('hidden');
+      });
+      pageSnapshot = null;
+    }
+    activePanel = null;
+    document.querySelectorAll('.sb-item[data-hub], .sb-item[data-sheet]').forEach(b => b.classList.remove('is-active'));
+    document.querySelector('.sb-item[data-nav="__top"]')?.classList.add('is-active');
+  }
+
+  const hubIsOpen = () => activePanel !== null;
+
+  /* ─────────── Data Hub (Form.html у цій же сторінці) ─────────── */
+  window.hubOpen = function (mode) {
+    const panel = pageShow('datahub-panel');
+    if (!panel) return;
+    const frame = document.getElementById('datahub-frame');
+
     document.querySelectorAll('.sb-item[data-hub]').forEach(b => b.classList.toggle('is-active', b.dataset.hub === mode));
     document.querySelectorAll('#datahub-panel .hub-tabs button').forEach(b => b.classList.toggle('is-active', b.dataset.hub === mode));
 
@@ -10240,24 +10319,103 @@ function dcRenderWarn(unlinked) {
     } else {
       apply();
     }
-    window.scrollTo({ top: 0 });
   };
+  window.hubClose = pageHide;
 
-  window.hubClose = function () {
-    document.getElementById('datahub-panel')?.classList.add('hidden');
-    document.body.classList.remove('hub-open');
-    if (hubSnapshot) {
-      Object.entries(hubSnapshot).forEach(([id, wasHidden]) => {
-        const el = document.getElementById(id);
-        if (el && !wasHidden) el.classList.remove('hidden');
-      });
-      hubSnapshot = null;
+  /* ─────────── Google Таблиці ─────────── */
+  let sheets = [], sheetsIdx = 0, sheetsLoaded = false;
+
+  // /edit не дозволяє вбудовування (X-Frame-Options), /preview — так.
+  function sheetPreview(u) {
+    const m = /\/spreadsheets\/d\/([A-Za-z0-9_-]+)/.exec(u || '');
+    if (!m) return '';
+    const gid = /[#&?]gid=(\d+)/.exec(u || '');
+    return `https://docs.google.com/spreadsheets/d/${m[1]}/preview` + (gid ? `#gid=${gid[1]}` : '');
+  }
+
+  async function sheetsSave() {
+    if (typeof setTeamSetting === 'function') {
+      try { await setTeamSetting('google_sheets', JSON.stringify(sheets)); }
+      catch (e) { console.warn('sheets save failed:', e.message); }
     }
-    document.querySelectorAll('.sb-item[data-hub]').forEach(b => b.classList.remove('is-active'));
-    document.querySelector('.sb-item[data-nav="__top"]')?.classList.add('is-active');
+  }
+
+  window.sheetsOpen = async function () {
+    if (!pageShow('sheets-panel')) return;
+    document.querySelectorAll('.sb-item[data-sheet]').forEach(b => b.classList.add('is-active'));
+    if (!sheetsLoaded) {
+      sheetsLoaded = true;
+      try {
+        const raw = typeof getTeamSetting === 'function' ? await getTeamSetting('google_sheets') : null;
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) sheets = parsed;
+      } catch (e) { sheets = []; }
+    }
+    sheetsRender();
+  };
+  window.sheetsClose = pageHide;
+
+  window.sheetsPick = function (i) {
+    sheetsIdx = Number(i) || 0;
+    sheetsRender();
   };
 
-  const hubIsOpen = () => !document.getElementById('datahub-panel')?.classList.contains('hidden');
+  window.sheetsToggleAdd = function () {
+    document.getElementById('sh-add')?.classList.toggle('hidden');
+    document.getElementById('sh-name')?.focus();
+  };
+
+  window.sheetsAdd = async function () {
+    const name = (document.getElementById('sh-name')?.value || '').trim();
+    const url = (document.getElementById('sh-url')?.value || '').trim();
+    if (!url) return alert('Вставте посилання на таблицю');
+    if (!sheetPreview(url)) return alert('Це не схоже на посилання Google Таблиці');
+    sheets.push({ name: name || `Таблиця ${sheets.length + 1}`, url });
+    sheetsIdx = sheets.length - 1;
+    document.getElementById('sh-name').value = '';
+    document.getElementById('sh-url').value = '';
+    document.getElementById('sh-add')?.classList.add('hidden');
+    await sheetsSave();
+    sheetsRender();
+  };
+
+  window.sheetsRemove = async function () {
+    const cur = sheets[sheetsIdx];
+    if (!cur) return;
+    if (!confirm(`Прибрати «${cur.name}» зі списку? Сама таблиця в Google лишиться.`)) return;
+    sheets.splice(sheetsIdx, 1);
+    sheetsIdx = Math.max(0, sheetsIdx - 1);
+    await sheetsSave();
+    sheetsRender();
+  };
+
+  function sheetsRender() {
+    const sel = document.getElementById('sh-select');
+    const frame = document.getElementById('sh-frame');
+    const empty = document.getElementById('sh-empty');
+    const open = document.getElementById('sh-open');
+    if (!sel || !frame || !empty) return;
+
+    sel.innerHTML = sheets.map((s, i) =>
+      `<option value="${i}" ${i === sheetsIdx ? 'selected' : ''}>${String(s.name).replace(/</g, '&lt;')}</option>`).join('');
+
+    const cur = sheets[sheetsIdx];
+    if (!cur) {
+      frame.classList.add('hidden');
+      frame.removeAttribute('src');
+      empty.classList.remove('hidden');
+      empty.innerHTML = `<p>Тут живуть ваші Google Таблиці.</p>
+        <p class="sh-hint">Натисніть «+ Додати» і вставте посилання — воно збережеться для команди,
+        і таблиця відкриватиметься прямо тут. Перегляд лише для читання: правки — кнопкою «Редагувати».</p>`;
+      if (open) open.style.display = 'none';
+      return;
+    }
+    empty.classList.add('hidden');
+    frame.classList.remove('hidden');
+    const src = sheetPreview(cur.url);
+    if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
+    if (open) { open.style.display = ''; open.href = cur.url; }
+  }
 
   function setActiveNav(nav) {
     document.querySelectorAll('.sb-item[data-nav]').forEach(b =>
@@ -10330,6 +10488,7 @@ function dcRenderWarn(unlinked) {
     ['Записи',         'hub:records',                    'Data Hub'],
     ['Витрати',        'hub:expenses',                   'Data Hub'],
     ['Джерела',        'hub:providers',                  'Data Hub'],
+    ['Google Таблиці', 'fn:sheetsOpen',                  'Таблиці'],
     ['Змінити тему',   'fn:toggleTheme',                 'Вигляд']
   ];
   let cmdSel = 0, cmdShown = CMDS;
