@@ -1586,6 +1586,13 @@ body.hub-open .app-content { padding-bottom: 14px; }
 /* Гео-колонка підлаштовується під висоту графіка (syncGeoHeight). Після
    стискання графіків у неї лишалось менше двох рядків — тримаємо мінімум. */
 #geo-sidebar-col { min-height: 300px; }
+/* Мітка активного зрізу на картці Total Spend */
+.kpi-lens {
+  margin-left: auto; font-size: 9px; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-muted); white-space: nowrap;
+}
+.kpi-lens.is-on { background: rgba(139,92,246,.18); color: #C4B5FD; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -1915,10 +1922,12 @@ body.hub-open .app-content { padding-bottom: 14px; }
         <div id="kpi-row" class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
 
           <!-- SPEND -->
-          <div class="kpi-card group cursor-help" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
+          <div class="kpi-card group cursor-pointer" onclick="kpiLensCycle()"
+               title="Клік — зріз по моделі виплат: усі → CPA → спендова %" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
             <div class="kpi-head">
               <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg></span>
               <span class="kpi-label">Total Spend</span>
+              <span id="kpi-lens-tag" class="kpi-lens">Усі</span>
             </div>
             <p id="kpi-spend" class="kpi-value">$0.00</p>
             <p class="kpi-foot">
@@ -3054,7 +3063,11 @@ async function sbFetchAll(table, build) {
 
   // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
   function renderDashboard(data) {
-  if (!data || data.length === 0) {
+  // Порожній зріз — теж результат: показуємо нулі, а не старі числа.
+  // Ранній вихід лишається тільки коли даних немає взагалі.
+  const _allRows = data;
+  if (typeof kpiLensApply === 'function') data = kpiLensApply(data) || [];
+  if (!_allRows || _allRows.length === 0) {
     console.warn("⚠️ Немає даних для відображення в KPI");
     return;
   }
@@ -3216,6 +3229,18 @@ function cfStripe(ctx, color) {
   return pat;
 }
 
+// Вигляд графіка вибирається в налаштуваннях і живе в localStorage
+function cfStyle() {
+  const v = localStorage.getItem('chart_style');
+  return ['bars', 'line', 'sharp', 'area'].includes(v) ? v : 'bars';
+}
+
+function cfAlpha(hex, a) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return hex;
+  return `rgba(${parseInt(m[1],16)}, ${parseInt(m[2],16)}, ${parseInt(m[3],16)}, ${a})`;
+}
+
 function cfMoney(v) {
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
@@ -3264,32 +3289,45 @@ function renderTrend(data) {
   }
 
   // Показуємо лише spend (вгору) і net profit (вгору/вниз за знаком).
-  // Revenue лишається в тултіпі — окремим стовпцем він тільки захаращував графік.
+  // Revenue лишається в тултіпі — окремим рядом він тільки захаращував графік.
   const profits = stats.map(v => Math.round(v.rev - v.s));
+  const style = cfStyle();
+  const isBar = style === 'bars';
+
+  // Стовпчики — зі штрихуванням і заокругленими торцями; лінії — з тим самим
+  // кольором, різниця лише в згладжуванні та заливці.
+  const shape = (color, perPoint) => isBar
+    ? {
+        backgroundColor: perPoint || cfStripe(ctx, color),
+        borderWidth: 0, borderRadius: 8, borderSkipped: false,
+        barPercentage: 0.7, categoryPercentage: 0.76
+      }
+    : {
+        borderColor: color,
+        backgroundColor: cfAlpha(color, 0.18),
+        borderWidth: 2.5,
+        tension: style === 'sharp' ? 0 : 0.38,
+        fill: style === 'area',
+        pointRadius: 2.5,
+        pointHoverRadius: 4,
+        pointBackgroundColor: color,
+        pointBorderWidth: 0
+      };
 
   const datasets = [
     {
       label: 'Spend',
-      // Догори від нуля: у макеті відтік ішов униз, але читати спенд зручніше вгору
       data: stats.map(v => Math.round(v.s)),
-      backgroundColor: cfStripe(ctx, CF_SPEND),
-      borderWidth: 0,
-      borderRadius: 8,
-      borderSkipped: false,
-      barPercentage: 0.7,
-      categoryPercentage: 0.76,
-      datalabels: { display: false }
+      datalabels: { display: false },
+      ...shape(CF_SPEND)
     },
     {
       label: 'Net Profit',
       data: profits,
-      backgroundColor: c => cfStripe(ctx, profits[c.dataIndex] >= 0 ? CF_PROFIT : CF_LOSS),
-      borderWidth: 0,
-      borderRadius: 8,
-      borderSkipped: false,
-      barPercentage: 0.7,
-      categoryPercentage: 0.76,
-      datalabels: { display: false }
+      datalabels: { display: false },
+      ...shape(CF_PROFIT, isBar
+        ? (c => cfStripe(ctx, profits[c.dataIndex] >= 0 ? CF_PROFIT : CF_LOSS))
+        : null)
     }
   ];
 
@@ -3320,7 +3358,7 @@ function renderTrend(data) {
     ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.055)';
 
   window.chart1 = new Chart(ctx, {
-    type: 'bar',
+    type: isBar ? 'bar' : 'line',
     plugins: [cfCrosshair],
     data: { labels, datasets },
     options: {
@@ -8236,6 +8274,15 @@ function rbExportCSV(){
     <div class="overflow-y-auto flex-1 custom-scrollbar">
       <!-- Widgets Panel -->
       <div id="spanel-widgets" class="p-4 space-y-1">
+        <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Вигляд графіка</p>
+        <div class="px-3 pb-3 mb-3 border-b border-white/5">
+          <select id="chart-style" onchange="setChartStyle(this.value)" class="w-full !text-xs !py-2">
+            <option value="bars">Стовпчики</option>
+            <option value="line">Лінія плавна</option>
+            <option value="sharp">Лінія гостра</option>
+            <option value="area">Область із заливкою</option>
+          </select>
+        </div>
         <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Кнопки в меню</p>
         <div id="dock-hide-list" class="space-y-0.5 mb-3 pb-3 border-b border-white/5"></div>
         <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pb-1.5">Блоки на дашборді</p>
@@ -10469,6 +10516,55 @@ function dcRenderWarn(unlinked) {
       const ico = document.getElementById('theme-icon');
       if (ico) ico.innerHTML = MOON;
     }
+  })();
+
+  /* ─────────── Зріз KPI за моделлю виплат ───────────
+     У payouts кожне гео+офер має свою модель: CPA (ставка за депозит)
+     або спендова (% від спенда). Клік по картці Total Spend показує
+     лише ті рядки, що йдуть за обраною моделлю — і вся стрічка KPI,
+     графік, гео й таблиця перераховуються під цей зріз. */
+  const LENS = ['all', 'cpa', 'spend'];
+  const LENS_LABEL = { all: 'Усі', cpa: 'CPA', spend: 'Спенд %' };
+
+  function lensGet() {
+    const v = localStorage.getItem('kpi_lens');
+    return LENS.includes(v) ? v : 'all';
+  }
+
+  window.kpiLensApply = function (rows) {
+    const lens = lensGet();
+    if (lens === 'all' || !Array.isArray(rows)) return rows;
+    if (typeof payoutInfo !== 'function') return rows;
+    return rows.filter(r => payoutInfo(r.geo, r.offer).model === lens);
+  };
+
+  function lensPaint() {
+    const tag = document.getElementById('kpi-lens-tag');
+    if (!tag) return;
+    const lens = lensGet();
+    tag.textContent = LENS_LABEL[lens];
+    tag.classList.toggle('is-on', lens !== 'all');
+  }
+
+  window.kpiLensCycle = function () {
+    const next = LENS[(LENS.indexOf(lensGet()) + 1) % LENS.length];
+    localStorage.setItem('kpi_lens', next);
+    lensPaint();
+    if (typeof applyGlobalFilter === 'function') applyGlobalFilter();
+  };
+
+  lensPaint();
+
+  /* ─────────── Вигляд графіка ─────────── */
+  window.setChartStyle = function (v) {
+    localStorage.setItem('chart_style', v);
+    // applyChartFilter перемальовує з поточними фільтрами дат і режимом
+    if (typeof applyChartFilter === 'function') applyChartFilter();
+  };
+
+  (function initChartStyle() {
+    const sel = document.getElementById('chart-style');
+    if (sel) sel.value = localStorage.getItem('chart_style') || 'bars';
   })();
 
   /* ─────────── Командна панель ⌘K ─────────── */
