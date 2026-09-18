@@ -9152,11 +9152,14 @@ function gcDiff(geo, results) {
             <option value="4">4</option>
           </select>
         </div>
-        <div class="flex items-end">
-          <label class="flex items-center gap-2 cursor-pointer pb-1.5">
-            <input type="checkbox" id="uq-meta" checked class="uq-chk">
-            <span class="text-[10px] font-bold text-slate-300">Metadata cleanup</span>
-          </label>
+        <div>
+          <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5"
+                 title="Порожні метадані самі по собі помітні. «Підмінити» вписує правдоподібні теги різних пристроїв.">Metadata</label>
+          <select id="uq-meta" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+            <option value="fake" selected>Randomise</option>
+            <option value="strip">Strip</option>
+            <option value="keep">Keep as is</option>
+          </select>
         </div>
       </div>
 
@@ -9778,11 +9781,12 @@ const UQ_PARAMS = [
   { key:'volume', label:'Volume',  unit:'dB', hint:'audio level shift',                 min:0.3, max:6, step:0.1 },
   { key:'trim',   label:'Length',   unit:'с',  hint:'обрізати з початку і кінця',       min:0.1, max:3, step:0.1 },
   { key:'size',   label:'Frame size', unit:'%', hint:'трохи інша роздільність на виході', min:1, max:10, step:0.5 },
+  { key:'noise',  label:'Зерно',     unit:'',   hint:'ледь помітний шум, свій на кожен кадр', min:2, max:24, step:1 },
 ];
 const UQ_PRESETS = {
-  low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5 },
-  mid:  { crop:5, rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6, size:3 },
-  high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2, size:6 },
+  low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5, noise:4 },
+  mid:  { crop:5, rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6, size:3,   noise:8 },
+  high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2, size:6,   noise:15 },
 };
 let uqFiles = [], uqFF = null, uqBusy = false, uqStop = false;
 let uqDone = new Set(), uqCurrent = -1, uqQueueDirty = false;
@@ -9889,12 +9893,42 @@ function uqPickParams() {
   if (on('volume')) p.volume = +(uqSign() * uqRand(amt('volume') * 0.3, amt('volume'))).toFixed(2);
   if (on('trim'))   p.trim   = { head: +uqRand(0, amt('trim')).toFixed(2), tail: +uqRand(0, amt('trim')).toFixed(2) };
   if (on('size'))   p.size   = +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2);
+  if (on('noise'))  p.noise  = Math.max(1, Math.round(uqRand(amt('noise') * 0.45, amt('noise'))));
   return p;
 }
 
 // Порядок фільтрів має значення: спершу поворот, потім кроп — кроп прибирає
 // чорні кути, які лишає поворот. І тільки після цього масштаб назад у розмір.
-function uqBuildArgs(p, meta, quality, stripMeta, preset) {
+// Правдоподібні теги: кожен варіант виглядає як знятий іншим пристроєм
+// в інший time. Дати беремо за останні два місяці — свіжий файл із
+// creation_time дворічної давності виглядав би дивніше за порожній.
+const UQ_DEVICES = [
+  { make: 'Apple',   model: 'iPhone 15 Pro',  enc: 'H.264' },
+  { make: 'Apple',   model: 'iPhone 14',      enc: 'H.264' },
+  { make: 'Apple',   model: 'iPhone 13 mini', enc: 'H.264' },
+  { make: 'samsung', model: 'SM-S918B',       enc: 'Lavf60.3.100', android: '14' },
+  { make: 'samsung', model: 'SM-A546E',       enc: 'Lavf59.27.100', android: '13' },
+  { make: 'Xiaomi',  model: '23127PN0CG',     enc: 'Lavf60.16.100', android: '14' },
+  { make: 'Google',  model: 'Pixel 8',        enc: 'Lavf60.3.100',  android: '14' }
+];
+
+function uqFakeMeta() {
+  const d = UQ_DEVICES[Math.floor(Math.random() * UQ_DEVICES.length)];
+  const ago = Math.random() * 60 * 24 * 3600 * 1000;      // до 60 днів назад
+  const when = new Date(Date.now() - ago).toISOString().replace(/\.\d+Z$/, 'Z');
+  const tags = [
+    '-metadata', `creation_time=${when}`,
+    '-metadata', `make=${d.make}`,
+    '-metadata', `model=${d.model}`,
+    '-metadata', `encoder=${d.enc}`,
+    '-metadata:s:v:0', 'handler_name=VideoHandle',
+    '-metadata:s:a:0', 'handler_name=SoundHandle'
+  ];
+  if (d.android) tags.push('-metadata', `com.android.version=${d.android}`);
+  return tags;
+}
+
+function uqBuildArgs(p, meta, quality, metaMode, preset) {
   const vf = [], args = [];
   // -ss перед -i: перемотка по контейнеру замість декодування у смітник
   if (p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
@@ -9923,6 +9957,7 @@ function uqBuildArgs(p, meta, quality, stripMeta, preset) {
     // Після кропу чи повороту кадр уже інший, там масштаб потрібен завжди.
     if (ow !== meta.w || oh !== meta.h || p.crop || p.rotate) vf.push(`scale=${ow}:${oh}`);
   }
+  if (p.noise) vf.push(`noise=alls=${p.noise}:allf=t+u`);
   vf.push('setsar=1');
   if (p.fps) vf.push(`fps=${Math.max(15, Math.round(30 + p.fps))}`);
 
@@ -9930,9 +9965,16 @@ function uqBuildArgs(p, meta, quality, stripMeta, preset) {
   if (p.volume) args.push('-af', `volume=${p.volume}dB`);
   // -fflags +bitexact прибирає тег мукcера (Lavf), а handler_name доводиться
   // гасити окремо — інакше в контейнері лишаються «VideoHandler»/«SoundHandler»
-  if (stripMeta) args.push('-map_metadata', '-1', '-map_chapters', '-1',
-    '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
-    '-metadata:s:v:0', 'handler_name=', '-metadata:s:a:0', 'handler_name=');
+  if (metaMode === 'strip') {
+    args.push('-map_metadata', '-1', '-map_chapters', '-1',
+      '-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
+      '-metadata:s:v:0', 'handler_name=', '-metadata:s:a:0', 'handler_name=');
+  } else if (metaMode === 'fake') {
+    // Спершу прибираємо чуже, потім вписуємо своє — інакше теги джерела
+    // лишились би впереміш із новими. bitexact тут не ставимо: він якраз
+    // і глушить рядок encoder, який ми хочемо підмінити.
+    args.push('-map_metadata', '-1', '-map_chapters', '-1', ...uqFakeMeta());
+  }
   args.push('-c:v', 'libx264', '-preset', preset || 'veryfast',
             '-crf', String(quality), '-pix_fmt', 'yuv420p');
   // Volume не чіпали — доріжку можна не перекодовувати. AAC на кожному
@@ -9952,6 +9994,7 @@ function uqDescribe(p) {
   if (p.volume) bits.push(`звук ${p.volume > 0 ? '+' : ''}${p.volume} dB`);
   if (p.trim)   bits.push(`обріз ${p.trim.head}с / ${p.trim.tail}с`);
   if (p.size)   bits.push(`розмір ${p.size > 0 ? '+' : ''}${p.size}%`);
+  if (p.noise)  bits.push(`зерно ${p.noise}`);
   return bits.join(' · ');
 }
 
@@ -10010,7 +10053,7 @@ async function uqRun() {
   const count = Math.max(1, Math.min(30, parseInt(document.getElementById('uq-count').value, 10) || 1));
   const quality = document.getElementById('uq-quality').value;
   const preset = (document.getElementById('uq-preset') || {}).value || 'veryfast';
-  const stripMeta = document.getElementById('uq-meta').checked;
+  const metaMode = (document.getElementById('uq-meta') || {}).value || 'fake';
   const statusEl = document.getElementById('uq-status');
   const barWrap = document.getElementById('uq-bar'), bar = document.getElementById('uq-bar-fill');
   const res = document.getElementById('uq-results');
@@ -10126,7 +10169,7 @@ async function uqRun() {
             // його виняток валив увесь прогін, а в пулі ще й обривав сусідні копії
             // посеред кодування.
             const p = uqPickParams();
-            await ffw.exec(uqBuildArgs(p, meta, quality, stripMeta, preset));
+            await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset));
             const data = await ffw.readFile('out.mp4');
             const took = performance.now() - vStart;
             times.push(took);
