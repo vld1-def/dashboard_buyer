@@ -1586,6 +1586,13 @@ body.hub-open .app-content { padding-bottom: 14px; }
 /* Гео-колонка підлаштовується під висоту графіка (syncGeoHeight). Після
    стискання графіків у неї лишалось менше двох рядків — тримаємо мінімум. */
 #geo-sidebar-col { min-height: 300px; }
+/* Мітка активного зрізу на картці Total Spend */
+.kpi-lens {
+  margin-left: auto; font-size: 9px; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-muted); white-space: nowrap;
+}
+.kpi-lens.is-on { background: rgba(139,92,246,.18); color: #C4B5FD; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -1915,10 +1922,12 @@ body.hub-open .app-content { padding-bottom: 14px; }
         <div id="kpi-row" class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
 
           <!-- SPEND -->
-          <div class="kpi-card group cursor-help" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
+          <div class="kpi-card group cursor-pointer" onclick="kpiLensCycle()"
+               title="Клік — зріз по моделі виплат: усі → CPA → спендова %" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
             <div class="kpi-head">
               <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg></span>
               <span class="kpi-label">Total Spend</span>
+              <span id="kpi-lens-tag" class="kpi-lens">Усі</span>
             </div>
             <p id="kpi-spend" class="kpi-value">$0.00</p>
             <p class="kpi-foot">
@@ -3054,7 +3063,11 @@ async function sbFetchAll(table, build) {
 
   // --- 7. РЕНДЕР KPI ТА ГРАФІКІВ ---
   function renderDashboard(data) {
-  if (!data || data.length === 0) {
+  // Порожній зріз — теж результат: показуємо нулі, а не старі числа.
+  // Ранній вихід лишається тільки коли даних немає взагалі.
+  const _allRows = data;
+  if (typeof kpiLensApply === 'function') data = kpiLensApply(data) || [];
+  if (!_allRows || _allRows.length === 0) {
     console.warn("⚠️ Немає даних для відображення в KPI");
     return;
   }
@@ -10504,6 +10517,43 @@ function dcRenderWarn(unlinked) {
       if (ico) ico.innerHTML = MOON;
     }
   })();
+
+  /* ─────────── Зріз KPI за моделлю виплат ───────────
+     У payouts кожне гео+офер має свою модель: CPA (ставка за депозит)
+     або спендова (% від спенда). Клік по картці Total Spend показує
+     лише ті рядки, що йдуть за обраною моделлю — і вся стрічка KPI,
+     графік, гео й таблиця перераховуються під цей зріз. */
+  const LENS = ['all', 'cpa', 'spend'];
+  const LENS_LABEL = { all: 'Усі', cpa: 'CPA', spend: 'Спенд %' };
+
+  function lensGet() {
+    const v = localStorage.getItem('kpi_lens');
+    return LENS.includes(v) ? v : 'all';
+  }
+
+  window.kpiLensApply = function (rows) {
+    const lens = lensGet();
+    if (lens === 'all' || !Array.isArray(rows)) return rows;
+    if (typeof payoutInfo !== 'function') return rows;
+    return rows.filter(r => payoutInfo(r.geo, r.offer).model === lens);
+  };
+
+  function lensPaint() {
+    const tag = document.getElementById('kpi-lens-tag');
+    if (!tag) return;
+    const lens = lensGet();
+    tag.textContent = LENS_LABEL[lens];
+    tag.classList.toggle('is-on', lens !== 'all');
+  }
+
+  window.kpiLensCycle = function () {
+    const next = LENS[(LENS.indexOf(lensGet()) + 1) % LENS.length];
+    localStorage.setItem('kpi_lens', next);
+    lensPaint();
+    if (typeof applyGlobalFilter === 'function') applyGlobalFilter();
+  };
+
+  lensPaint();
 
   /* ─────────── Вигляд графіка ─────────── */
   window.setChartStyle = function (v) {
