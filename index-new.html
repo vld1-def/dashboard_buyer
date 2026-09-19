@@ -1977,7 +1977,7 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 #report-modal > .card > div:first-child {
   background: transparent !important;
   border-bottom: 1px solid var(--border) !important;
-  padding: 0 16px !important; height: 56px !important;
+  padding: 13px 16px !important;
   text-transform: none !important;
 }
 #bonus-modal h2,
@@ -1991,7 +1991,6 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
   background: var(--surface-2) !important;
 }
 #bonus-modal .w-9.h-9 svg { color: var(--accent) !important; }
-#report-modal h2 + * { margin: 0; }
 
 /* ── Вкладки бонусів — як розділи налаштувань, тільки горизонтально ── */
 #bonus-modal .bonus-stab {
@@ -2065,6 +2064,8 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 #links-menu button[onclick="addQuickLink()"] {
   background: var(--accent) !important; border: none !important;
   color: #fff !important; border-radius: 10px !important;
+  padding: 7px 12px !important; font-size: 10px !important;
+  letter-spacing: .1em !important; line-height: 1.2 !important;
 }
 #links-menu button[onclick="addQuickLink()"]:hover { filter: brightness(1.12); }
 #links-menu label span { color: var(--text-muted) !important; }
@@ -2075,6 +2076,59 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 }
 #links-menu .ql-item:hover { background: var(--surface-2); border-color: var(--border); }
 #links-menu .ql-name { color: var(--text-main); font-weight: 700; font-size: 12.5px; }
+
+/* ─────────── Daily Reports: самі звіти ───────────
+   Раніше шар чіпав лише оболонку й шапку, тож на око нічого не мінялось:
+   весь екран модалки — це список звітів, а він лишався старим. */
+#report-modal > .card { height: min(680px, 88vh); }
+#report-modal > .card > div:last-child { padding: 16px 18px !important; }
+
+/* Поле нового звіту */
+#new-report-input {
+  border-radius: 12px !important; padding: 11px 13px !important;
+  font-size: 12.5px !important; line-height: 1.55 !important;
+}
+#report-modal label[class*="indigo"] {
+  background: var(--surface-2) !important; border-color: var(--border) !important;
+  color: var(--text-muted) !important; border-radius: 10px !important;
+  padding: 7px 11px !important; font-size: 10px !important;
+}
+#report-modal label[class*="indigo"]:hover { color: var(--text-main) !important; }
+#report-modal button[onclick="submitNewReport()"] {
+  border-radius: 10px !important; font-size: 11px !important;
+  padding: 8px 14px !important; text-transform: uppercase !important;
+}
+
+/* Картка одного звіту */
+#report-list-container > div {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 11px 12px !important;
+  gap: 6px !important;
+  margin-bottom: 8px !important;
+}
+#report-list-container > div:hover { border-color: var(--border-2) !important; }
+/* Date: була синя розрядка — робимо спокійний бейдж */
+#report-list-container .text-blue-500 { color: var(--text-main) !important; }
+#report-list-container span[id^="report-arrow-"] { color: var(--text-muted) !important; }
+#report-list-container .cursor-pointer { padding: 2px !important; border-radius: 8px !important; }
+#report-list-container .cursor-pointer:hover { background: var(--surface-2) !important; }
+#report-list-container [id^="report-content-"] {
+  font-size: 12.5px !important; line-height: 1.6 !important;
+  padding: 2px 4px 4px !important;
+}
+/* Порожній стан — як у решті інтерфейсу, без курсиву на пів екрана */
+#report-list-container > .text-center {
+  padding: 46px 0 !important; opacity: 1 !important;
+  font-style: normal !important; font-size: 12px !important;
+  font-weight: 700 !important; color: var(--text-muted) !important;
+}
+/* Кнопки Copy / PDF у шапці — однаковий розмір і радіус */
+#report-modal > .card > div:first-child button[class*="rounded-xl"] {
+  border-radius: 9px !important; padding: 6px 10px !important;
+  font-size: 10px !important;
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -10951,6 +11005,7 @@ function dcRenderWarn(unlinked) {
     });
 
     dock.querySelectorAll('button, a').forEach(el => {
+      if (el.closest('#links-menu, #month-menu, #team-menu')) return;
       const t = el.getAttribute('title') || '';
       el.classList.remove('p-2','px-4','card','rounded-xl','shadow-md','px-5','py-2','rounded-2xl');
       el.classList.add('dk');
