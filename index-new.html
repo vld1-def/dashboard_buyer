@@ -2205,6 +2205,40 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 .ps-line.total .r { font-size: 20px; color: var(--ok); }
 .ps-line.total.neg .r { color: var(--bad); }
 @media (max-width: 640px) { .ps-controls { grid-template-columns: 1fr; } }
+
+/* ─────────── Тости ───────────
+   Було 28 викликів alert(): кожен блокує сторінку модальним вікном
+   браузера, виглядає як системна помилка і не показує двох повідомлень
+   поспіль. Тост говорить те саме, нічого не перебиваючи. */
+#toast-wrap {
+  position: fixed; right: 16px; bottom: 96px; z-index: 100000;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  max-width: min(380px, calc(100vw - 32px)); pointer-events: none;
+}
+.toast {
+  pointer-events: auto; cursor: pointer;
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  border-radius: 12px; padding: 11px 14px;
+  box-shadow: 0 18px 44px -18px rgba(0,0,0,.85);
+  font-size: 12.5px; font-weight: 600; line-height: 1.5;
+  color: var(--text-main); white-space: pre-line;
+  animation: toast-in .18s ease-out;
+}
+.toast:hover { border-color: var(--border-2); }
+.toast.is-error { border-left-color: var(--bad); }
+.toast.is-ok    { border-left-color: var(--ok); }
+.toast.is-warn  { border-left-color: #EAB308; }
+.toast .tt {
+  display: block; font-size: 9px; font-weight: 900; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px;
+}
+.toast.out { animation: toast-out .16s ease-in forwards; }
+@keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } }
+@keyframes toast-out { to   { opacity: 0; transform: translateX(16px); } }
+@media (max-width: 760px) {
+  #toast-wrap { right: 10px; left: 10px; bottom: 92px; max-width: none; }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -6618,7 +6652,7 @@ async function togglePayoutActive(id, next) {
   const { error } = await sb.from('payouts').update({ active: next }).eq('id', id);
   if (error) {
     alert(error.message.includes('active')
-      ? 'Спершу виконай у Supabase:\n\nALTER TABLE public.payouts ADD COLUMN IF NOT EXISTS active boolean DEFAULT true;'
+      ? 'Run this in Supabase first:\n\nALTER TABLE public.payouts ADD COLUMN IF NOT EXISTS active boolean DEFAULT true;'
       : 'Could not change the offer: ' + error.message);
     return;
   }
@@ -6813,7 +6847,7 @@ async function addPhotosToReport(reportId, files) {
     }
   } else {
     if (statusEl) statusEl.classList.remove('show');
-    alert('Помилка завантаження фото: ' + error.message);
+    alert('Could not upload the photo: ' + error.message);
   }
 }
 // ===== END ADD PHOTOS TO EXISTING REPORT =====
@@ -7660,7 +7694,7 @@ function sortTable(key) {
 async function deletePayoutFromSQL(payoutId) {
   // 1. Перевірка на "привидів"
   if (!payoutId || payoutId === 'undefined') {
-    alert("Error: запис не має ID в базі. Перезавантажте сторінку.");
+    alert("Error: this row has no ID in the database. Reload the page.");
     return;
   }
 
@@ -7674,7 +7708,7 @@ async function deletePayoutFromSQL(payoutId) {
 
   if (error) {
     console.error("Supabase Error:", error);
-    alert("Помилка бази: " + error.message);
+    alert("Database error: " + error.message);
   } else {
     console.log("✅ Видалено запис:", payoutId);
     // 3. Примусове оновлення даних
@@ -9157,6 +9191,61 @@ function rbExportCSV(){
     </div>
   </div>
 </div>
+
+<script>
+/* ═══════════ ТОСТИ ═══════════
+   У файлі було 28 alert(). Кожен зупиняє сторінку модальним вікном
+   браузера, виглядає як системна помилка і не вміє показати два
+   повідомлення поспіль.
+
+   Перехоплюємо window.alert цілком, замість того щоб правити 28 місць:
+   так жоден виклик не загубиться, і майбутні теж підуть у тост. Там,
+   де потрібна відповідь користувача, стоїть confirm() — його не чіпаємо,
+   він має лишитись блокуючим. */
+
+window.toast = function (msg, kind, ms) {
+  let wrap = document.getElementById('toast-wrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'toast-wrap';
+    document.body.appendChild(wrap);
+  }
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' is-' + kind : '');
+  const title = kind === 'error' ? 'Error' : kind === 'ok' ? 'Done' : kind === 'warn' ? 'Check' : '';
+  el.innerHTML = (title ? `<span class="tt">${title}</span>` : '') +
+    String(msg == null ? '' : msg).replace(/</g, '&lt;');
+
+  const kill = () => {
+    if (el.dataset.gone) return;
+    el.dataset.gone = '1';
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 180);
+  };
+  el.addEventListener('click', kill);
+  wrap.appendChild(el);
+
+  // Більш ніж чотири тости на екрані — це вже стіна тексту
+  while (wrap.children.length > 4) wrap.firstElementChild.remove();
+
+  // Помилку лишаємо довше: її треба встигнути прочитати
+  const life = ms != null ? ms : (kind === 'error' ? 7000 : 3500);
+  if (life > 0) setTimeout(kill, life);
+  return el;
+};
+
+// Кваліфікуємо повідомлення за текстом: у коді alert() викликається і для
+// помилок, і для підказок на кшталт «вкажи дату» — розрізняти їх руками в
+// 28 місцях сенсу немає.
+(function () {
+  const RE_ERR  = /(error|failed|could not|не вдал|помилка|db error)/i;
+  const RE_WARN = /(must be|cannot be|pick |enter |paste |empty|does not look|no data|no reports)/i;
+  window.alert = function (msg) {
+    const s = String(msg == null ? '' : msg);
+    window.toast(s, RE_ERR.test(s) ? 'error' : RE_WARN.test(s) ? 'warn' : '');
+  };
+})();
+</script>
 
 <!-- Bonus Calculator Modal -->
 <div id="bonus-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
