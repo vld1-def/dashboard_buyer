@@ -1325,6 +1325,9 @@ body {
 }
 .kpi-delta { font-size: 11px; font-weight: 800; margin-left: 6px; white-space: nowrap; }
 .kpi-delta.is-up { color: var(--ok); } .kpi-delta.is-down { color: var(--bad); }
+.kpi-delta.is-flat { color: var(--text-muted); opacity: .6; }
+/* Стрілка має тулитись до числа, а не тягнути картку вшир */
+.kpi-delta { flex: 0 0 auto; }
 .kpi-foot { margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
 .kpi-foot b { font-weight: 800; }
 .kpi-card:hover { z-index: 60; }
@@ -2203,7 +2206,7 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
               <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg></span>
               <span class="kpi-label">Net Profit</span>
             </div>
-            <p id="kpi-profit" class="kpi-value text-emerald-400">$0.00</p>
+            <p class="flex items-baseline"><span id="kpi-profit" class="kpi-value text-emerald-400">$0.00</span><span id="delta-profit" class="kpi-delta"></span></p>
             <p class="kpi-foot">
               <span id="kpi-roi">ROI: 0%</span><br>
               <span id="kpi-profit-total" title="Total revenue">Revenue: $0.00</span>
@@ -3406,6 +3409,7 @@ async function sbFetchAll(table, build) {
   // Net Profit = виручка − спенд. Підсумковий профіт ще й без комісій та витрат.
   _kpiRevenue = totalRev;
   updateTotalProfit();
+  calculateDeltas(data);
 
   // Оновлення списку агентств у тултіпі
   const breakdownList = document.getElementById('spend-breakdown-list');
@@ -3777,27 +3781,62 @@ function renderTrend(data) {
 }
 
   function calculateDeltas(data) {
-    const dates = [...new Set(data.map(i => i.date))].sort();
-    if (dates.length < 2) return;
-    const maxDate = dates[dates.length - 1];
-    const curS = data.reduce((a, b) => a + b.spend, 0), curR = data.reduce((a, b) => a + b.regs, 0), curD = data.reduce((a, b) => a + b.deposits, 0);
-    const prevD = data.filter(i => i.date < maxDate);
-    const pS = prevD.reduce((a, b) => a + b.spend, 0), pR = prevD.reduce((a, b) => a + b.regs, 0), pDep = prevD.reduce((a, b) => a + b.deposits, 0);
+    const setEmpty = () => ['delta-profit', 'delta-r2d'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); }
+    });
+    if (!Array.isArray(data) || !data.length) return setEmpty();
 
-    const cCPL = curR > 0 ? curS / curR : 0, pCPL = pR > 0 ? pS / pR : 0;
-    const cCPA = curD > 0 ? curS / curD : 0, pCPA = pDep > 0 ? pS / pDep : 0;
-    const cR2D = curR > 0 ? (curD / curR * 100) : 0, pR2D = pR > 0 ? (pDep / pR * 100) : 0;
+    const dates = [...new Set(data.map(i => i.date))].filter(Boolean).sort();
+    if (dates.length < 2) return setEmpty();          // немає з чим порівнювати
+    const dLast = dates[dates.length - 1], dPrev = dates[dates.length - 2];
 
-    const up = (id, c, p, isP) => {
-      const el = document.getElementById('delta-' + id);
-      if (!el || p === 0) return;
-      const diff = c - p;
-      if (Math.abs(diff) < 0.01) { el.innerText = ""; return; }
-      const isB = isP ? diff < 0 : diff > 0;
-      el.innerText = `(${(diff > 0 ? '▲' : '▼')} ${diff > 0 ? '+' : '-'}${isP ? '$' : ''}${Math.abs(diff).toFixed(1)}${isP ? '' : '%'})`;
-      el.className = `kpi-delta ${isB ? 'is-up' : 'is-down'}`;
+    const day = d => {
+      const rows = data.filter(i => i.date === d);
+      let s = 0, r = 0, dep = 0, rev = 0;
+      rows.forEach(row => {
+        s   += Number(row.spend) || 0;
+        r   += Number(row.regs) || 0;
+        dep += Number(row.deposits) || 0;
+        rev += (typeof revenueOf === 'function' ? revenueOf(row) : 0);
+      });
+      // Витрати тут свідомо не віднімаємо: вони разові й місячні, за добу
+      // давали б стрибки, які до самого дня стосунку не мають.
+      return { profit: rev - s, r2d: r > 0 ? dep / r * 100 : null };
     };
-    up('cpl', cCPL, pCPL, true); up('cpa', cCPA, pCPA, true); up('r2d', cR2D, pR2D, false);
+    const A = day(dLast), B = day(dPrev);
+    const when = `${dPrev} → ${dLast}`;
+
+    // isPP — величина сама у відсотках, тож різниця в пунктах, а не в доларах.
+    const put = (id, cur, prev, isPP) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (cur === null || prev === null) {
+        el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title');
+        return;
+      }
+      const diff = cur - prev;
+      const eps = isPP ? 0.05 : 0.5;
+      if (Math.abs(diff) < eps) {
+        el.innerText = '=';
+        el.className = 'kpi-delta is-flat';
+        el.setAttribute('title', `No change · ${when}`);
+        return;
+      }
+      const arrow = diff > 0 ? '▲' : '▼';
+      const abs = isPP
+        ? Math.abs(diff).toFixed(1) + ' pp'
+        : formatCurrency(Math.abs(diff)).replace(/^-/, '');
+      // Відносну зміну показуємо тільки коли база додатна: від нуля чи від
+      // мінуса відсоток нічого не означає.
+      const rel = prev > 0 ? ` · ${Math.round(Math.abs(diff) / prev * 100)}%` : '';
+      el.innerText = `${arrow} ${abs}${rel}`;
+      el.className = `kpi-delta ${diff > 0 ? 'is-up' : 'is-down'}`;
+      el.setAttribute('title', `${when}`);
+    };
+
+    put('delta-profit', A.profit, B.profit, false);
+    put('delta-r2d',    A.r2d,    B.r2d,    true);
   }
 
   function renderGeoList(data) {
