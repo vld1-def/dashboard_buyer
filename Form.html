@@ -2413,6 +2413,39 @@ async function loadAvailableOffers() {
 }
 // --- ЗБЕРЕЖЕННЯ В БАЗУ (SUPABASE) ---
 
+// Чи є вже дані за ті дати, що ми збираємось залити.
+// Повертає:
+//   []          — дублів немає, лити як є
+//   [дати...]   — лити, але спершу прибрати ці дати
+//   null        — користувач скасував
+async function dupGuard(rows) {
+  const dates = [...new Set(rows.map(r => r.date).filter(Boolean))].sort();
+  if (!dates.length) return [];
+  let existing = [];
+  try {
+    const { data, error } = await sb.from('daily_stats')
+      .select('date')
+      .eq('team_name', currentTeam)
+      .in('date', dates);
+    if (error) throw error;
+    existing = [...new Set((data || []).map(r => r.date))].sort();
+  } catch (e) {
+    // Перевірку не вдалось зробити — краще спитати, ніж тихо подвоїти.
+    console.warn('dupGuard:', e);
+    return confirm('Не вдалось перевірити, чи ці дати вже залиті.\n\nЛити все одно?')
+      ? [] : null;
+  }
+  if (!existing.length) return [];
+
+  const shown = existing.slice(0, 8).join(', ') + (existing.length > 8 ? ` … +${existing.length - 8}` : '');
+  const ok = confirm(
+    `За ці дати дані вже є (${existing.length} шт.):\n${shown}\n\n` +
+    'OK — замінити: старі рядки за ці дати буде видалено, залиються нові.\n' +
+    'Скасувати — нічого не робити.'
+  );
+  return ok ? existing : null;
+}
+
 async function confirmDatasetImport() {
   if (!datasetToImport.length) return;
   showStatus("Syncing Campaigns & Creatives...");
@@ -2449,6 +2482,23 @@ async function confirmDatasetImport() {
     deps: row.deps || 0,
     team_name: currentTeam
   }));
+
+  // ── Захист від повторного імпорту ───────────────────────────────────
+  // Запис іде через insert, тож той самий звіт, залитий двічі, просто
+  // подвоював спенд і депозити — мовчки, без жодної помилки. Тепер
+  // спершу дивимось, чи за ці дати щось уже є.
+  const dupDates = await dupGuard(finalDaily);
+  if (dupDates === null) { showStatus('Import cancelled'); return; }
+  if (dupDates.length) {
+    // Користувач обрав «замінити» — прибираємо старі рядки за ці дати
+    const kill = [
+      sb.from('daily_stats').delete().eq('team_name', currentTeam).in('date', dupDates),
+      sb.from('creatives_stats').delete().eq('team_name', currentTeam).in('date', dupDates)
+    ];
+    const killed = await Promise.all(kill);
+    const kerr = killed.find(r => r.error);
+    if (kerr) { alert('Не вдалось прибрати старі дані: ' + kerr.error.message); return; }
+  }
 
   // Відправка
   const res1 = await sb.from('daily_stats').insert(finalDaily);
