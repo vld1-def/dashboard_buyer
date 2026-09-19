@@ -1930,7 +1930,9 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 .set-btn-primary:hover { filter: brightness(1.12); }
 .set-btn-amber { background: #D97706; }
 .set-btn-amber:hover { filter: brightness(1.12); }
-.set-list { margin-top: 10px; max-height: 260px; overflow-y: auto; }
+/* Список офферів більше не має власного скролу: вкладений скрол усередині
+   панелі, яка й сама прокручується, — найгірший варіант із можливих. */
+.set-list { margin-top: 10px; }
 .set-hint { font-size: 10px; color: var(--text-muted); line-height: 1.55; margin-top: 7px; }
 .set-empty {
   text-align: center; padding: 40px 0; font-size: 12px;
@@ -1952,6 +1954,127 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
   .set-navitem { width: auto; white-space: nowrap; }
   .set-search { max-width: none; }
 }
+
+/* ═══════════ Спільний шар для модалок старого вигляду ═══════════
+   Bonus Calculator, Daily Reports і Quick Links лишались з попереднього
+   дизайну: захардкоджений #0f172a, сині/бурштинові рамки, курсивні
+   заголовки. Переписувати їхню розмітку означало б чіпати десятки
+   обробників, тож натомість перекриваємо вигляд токенами теми. */
+
+/* ── Оболонка ── */
+#bonus-modal > div:last-child,
+#report-modal > .card {
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 30px 90px -30px rgba(0,0,0,.9) !important;
+}
+#bonus-modal .absolute.inset-0,
+#report-modal.modal-overlay { backdrop-filter: blur(6px); }
+
+/* ── Шапки ── */
+#bonus-modal > div:last-child > div:first-child,
+#report-modal > .card > div:first-child {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 0 16px !important; height: 56px !important;
+  text-transform: none !important;
+}
+#bonus-modal h2,
+#report-modal h2 {
+  font-size: 13px !important; font-weight: 900 !important;
+  font-style: normal !important; letter-spacing: .14em !important;
+  text-transform: uppercase !important; color: var(--text-main) !important;
+}
+#bonus-modal .w-9.h-9 {
+  width: 30px !important; height: 30px !important; border-radius: 9px !important;
+  background: var(--surface-2) !important;
+}
+#bonus-modal .w-9.h-9 svg { color: var(--accent) !important; }
+#report-modal h2 + * { margin: 0; }
+
+/* ── Вкладки бонусів — як розділи налаштувань, тільки горизонтально ── */
+#bonus-modal .bonus-stab {
+  color: var(--text-muted) !important; border-bottom: 2px solid transparent !important;
+  font-weight: 800 !important; letter-spacing: .1em !important;
+}
+#bonus-modal .bonus-stab:hover { color: var(--text-main) !important; }
+#bonus-modal .active-bonus-stab {
+  color: var(--text-main) !important; border-bottom-color: var(--accent) !important;
+}
+#bonus-modal .flex.border-b { border-bottom-color: var(--border) !important; }
+
+/* ── Картки-секції всередині ── */
+#bonus-modal .bg-white\/\[0\.02\],
+#bonus-modal .bg-black\/20 {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+}
+#bonus-modal .bg-white\/\[0\.02\] > p:first-child,
+#bonus-modal .grid > span {
+  color: var(--text-muted) !important; letter-spacing: .12em !important;
+}
+#bonus-modal .divide-white\/\[0\.03\] > * + * { border-top-color: var(--border) !important; }
+
+/* ── Поля вводу ── */
+#bonus-modal input[type="number"],
+#report-modal textarea,
+#links-menu input[type="text"],
+#links-menu input[type="url"] {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  color: var(--text-main) !important;
+  text-transform: none !important;
+}
+#bonus-modal input[type="number"]:focus,
+#report-modal textarea:focus,
+#links-menu input:focus { border-color: var(--accent) !important; }
+
+/* ── Кнопки ── */
+#bonus-modal button.bg-blue-600,
+#report-modal button.bg-blue-600 {
+  background: var(--accent) !important; border-radius: 10px !important;
+}
+#bonus-modal button.bg-blue-600:hover,
+#report-modal button.bg-blue-600:hover { filter: brightness(1.12); background: var(--accent) !important; }
+#report-modal .rounded-xl[class*="border-"] { border-radius: 10px !important; }
+
+/* ── Quick Links: та сама панель, що й решта спливайок ── */
+#links-menu {
+  width: 288px;
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 24px 60px -24px rgba(0,0,0,.85) !important;
+  padding: 12px !important;
+}
+#links-menu > p:first-child {
+  color: var(--text-muted) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+#links-menu .border-t { border-top-color: var(--border) !important; }
+#links-menu .rounded-xl.border {
+  background: var(--surface-2) !important; border-color: var(--border) !important;
+  border-radius: 10px !important;
+}
+#links-menu .rounded-xl.border span:first-child {
+  border-right-color: var(--border) !important; color: var(--text-muted) !important;
+}
+#links-menu button[onclick="addQuickLink()"] {
+  background: var(--accent) !important; border: none !important;
+  color: #fff !important; border-radius: 10px !important;
+}
+#links-menu button[onclick="addQuickLink()"]:hover { filter: brightness(1.12); }
+#links-menu label span { color: var(--text-muted) !important; }
+#ql-list { max-height: 280px; }
+#links-menu .ql-item {
+  border-radius: 10px; padding: 7px 9px;
+  border: 1px solid transparent; transition: background .15s, border-color .15s;
+}
+#links-menu .ql-item:hover { background: var(--surface-2); border-color: var(--border); }
+#links-menu .ql-name { color: var(--text-main); font-weight: 700; font-size: 12.5px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
