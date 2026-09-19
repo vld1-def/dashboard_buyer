@@ -2523,10 +2523,13 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
           </div>
 
           <!-- NET PROFIT -->
-          <div class="kpi-card" style="--accent:#10B981;--glow:rgba(16,185,129,.16)">
+          <div class="kpi-card group cursor-pointer" onclick="kpiNetCycle()"
+               title="Клік: Gross (виручка − спенд) → Net (мінус витрати)"
+               style="--accent:#10B981;--glow:rgba(16,185,129,.16)">
             <div class="kpi-head">
               <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg></span>
               <span class="kpi-label">Net Profit</span>
+              <span id="kpi-net-tag" class="kpi-lens">Gross</span>
             </div>
             <p class="flex items-baseline"><span id="kpi-profit" class="kpi-value text-emerald-400">$0.00</span><span id="delta-profit" class="kpi-delta"></span></p>
             <p class="kpi-foot">
@@ -3728,9 +3731,12 @@ async function sbFetchAll(table, build) {
     document.getElementById('kpi-roi').innerText = `ROI: ${roi}%`;
   }
 
-  // Net Profit = виручка − спенд. Підсумковий профіт ще й без комісій та витрат.
+  // Net Profit = виручка − спенд. Витрати віднімає перемикач Gross/Net.
   _kpiRevenue = totalRev;
+  window._kpiGross = profit;
+  window._kpiSpendVal = totalS;
   updateTotalProfit();
+  if (typeof kpiNetPaint === 'function') kpiNetPaint();
   calculateDeltas(data);
 
   // Оновлення списку агентств у тултіпі
@@ -8361,13 +8367,19 @@ async function loadExpenses() {
   if (error || !data || !data.length) {
     el.innerText = '-$0.00 (Expenses)';
     if (breakdown) breakdown.innerHTML = '<p class="text-[10px] opacity-30">No expenses</p>';
-    _kpiExpenses = 0; updateTotalProfit();
+    _kpiExpenses = 0;
+    window._kpiExpensesVal = 0;
+    updateTotalProfit();
+    if (typeof kpiNetPaint === 'function') kpiNetPaint();
     return;
   }
 
   const total = data.reduce((s, r) => s + (Number(r.amount)||0), 0);
   el.innerText = '-$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' (Expenses)';
-  _kpiExpenses = total; updateTotalProfit();
+  _kpiExpenses = total;
+  window._kpiExpensesVal = total;
+  updateTotalProfit();
+  if (typeof kpiNetPaint === 'function') kpiNetPaint();
 
   // Breakdown by category
   const cats = {};
@@ -11721,6 +11733,48 @@ function dcRenderWarn(unlinked) {
   };
 
   lensPaint();
+
+  /* ─────────── Gross / Net на картці профіту ───────────
+     Витрати (кабінети, юрособи, команда, інструменти) досі рахувались і
+     нікуди не йшли: Net Profit = виручка − спенд, а _kpiExpenses ніде не
+     читалось. Тепер клік по картці перемикає між грязним і чистим.
+     Типово лишається Gross, щоб число не змінилось само по собі. */
+  const NET_MODES = ['gross', 'net'];
+  const NET_LABEL = { gross: 'Gross', net: 'Net' };
+
+  function netGet() {
+    const v = localStorage.getItem('kpi_net');
+    return NET_MODES.includes(v) ? v : 'gross';
+  }
+
+  window.kpiNetPaint = function () {
+    const tag = document.getElementById('kpi-net-tag');
+    const mode = netGet();
+    if (tag) {
+      tag.textContent = NET_LABEL[mode];
+      tag.classList.toggle('is-on', mode === 'net');
+    }
+    const el = document.getElementById('kpi-profit');
+    if (!el || typeof window._kpiGross !== 'number') return;
+    const exp = Number(window._kpiExpensesVal) || 0;
+    const val = mode === 'net' ? window._kpiGross - exp : window._kpiGross;
+    el.innerText = (typeof formatCurrency === 'function')
+      ? formatCurrency(val) : '$' + val.toFixed(2);
+    el.className = `kpi-value ${val >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
+
+    // ROI рахуємо від того ж числа, що показане, інакше вони б розходились
+    const roiEl = document.getElementById('kpi-roi');
+    const spend = Number(window._kpiSpendVal) || 0;
+    if (roiEl) roiEl.innerText = `ROI: ${spend > 0 ? Math.round(val / spend * 100) : 0}%`;
+  };
+
+  window.kpiNetCycle = function () {
+    const next = NET_MODES[(NET_MODES.indexOf(netGet()) + 1) % NET_MODES.length];
+    localStorage.setItem('kpi_net', next);
+    kpiNetPaint();
+  };
+
+  kpiNetPaint();
 
   /* ─────────── Chart style ─────────── */
   window.setChartStyle = function (v) {
