@@ -2196,7 +2196,7 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
               <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span>
               <span class="kpi-label">Conversion R2D</span>
             </div>
-            <p class="flex items-baseline"><span id="kpi-r2d" class="kpi-value">0%</span><span id="delta-r2d" class="kpi-delta"></span></p>
+            <p id="kpi-r2d" class="kpi-value">0%</p>
             <p id="r2d-status" class="kpi-foot">No data</p>
           </div>
 
@@ -3781,7 +3781,7 @@ function renderTrend(data) {
 }
 
   function calculateDeltas(data) {
-    const setEmpty = () => ['delta-profit', 'delta-r2d'].forEach(id => {
+    const setEmpty = () => ['delta-profit'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); }
     });
@@ -3793,22 +3793,19 @@ function renderTrend(data) {
 
     const day = d => {
       const rows = data.filter(i => i.date === d);
-      let s = 0, r = 0, dep = 0, rev = 0;
+      let s = 0, rev = 0;
       rows.forEach(row => {
         s   += Number(row.spend) || 0;
-        r   += Number(row.regs) || 0;
-        dep += Number(row.deposits) || 0;
         rev += (typeof revenueOf === 'function' ? revenueOf(row) : 0);
       });
       // Витрати тут свідомо не віднімаємо: вони разові й місячні, за добу
       // давали б стрибки, які до самого дня стосунку не мають.
-      return { profit: rev - s, r2d: r > 0 ? dep / r * 100 : null };
+      return { profit: rev - s };
     };
     const A = day(dLast), B = day(dPrev);
     const when = `${dPrev} → ${dLast}`;
 
-    // isPP — величина сама у відсотках, тож різниця в пунктах, а не в доларах.
-    const put = (id, cur, prev, isPP) => {
+    const put = (id, cur, prev) => {
       const el = document.getElementById(id);
       if (!el) return;
       if (cur === null || prev === null) {
@@ -3816,17 +3813,14 @@ function renderTrend(data) {
         return;
       }
       const diff = cur - prev;
-      const eps = isPP ? 0.05 : 0.5;
-      if (Math.abs(diff) < eps) {
+      if (Math.abs(diff) < 0.5) {
         el.innerText = '=';
         el.className = 'kpi-delta is-flat';
         el.setAttribute('title', `No change · ${when}`);
         return;
       }
       const arrow = diff > 0 ? '▲' : '▼';
-      const abs = isPP
-        ? Math.abs(diff).toFixed(1) + ' pp'
-        : formatCurrency(Math.abs(diff)).replace(/^-/, '');
+      const abs = formatCurrency(Math.abs(diff)).replace(/^-/, '');
       // Відносну зміну показуємо тільки коли база додатна: від нуля чи від
       // мінуса відсоток нічого не означає.
       const rel = prev > 0 ? ` · ${Math.round(Math.abs(diff) / prev * 100)}%` : '';
@@ -3835,8 +3829,7 @@ function renderTrend(data) {
       el.setAttribute('title', `${when}`);
     };
 
-    put('delta-profit', A.profit, B.profit, false);
-    put('delta-r2d',    A.r2d,    B.r2d,    true);
+    put('delta-profit', A.profit, B.profit);
   }
 
   function renderGeoList(data) {
