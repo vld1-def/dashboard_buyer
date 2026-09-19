@@ -2138,6 +2138,46 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
   border-radius: 9px !important; padding: 6px 11px !important;
   font-size: 11px !important;
 }
+
+/* ─────────── Зліпок місяця ─────────── */
+.mc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
+.mc-cell {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 9px 11px;
+}
+.mc-cell .k {
+  display: block; font-size: 9px; font-weight: 900; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px;
+}
+.mc-cell .v { font-size: 15px; font-weight: 800; color: var(--text-main); }
+.mc-row {
+  display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px;
+  align-items: center; padding: 9px 11px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); margin-bottom: 4px;
+}
+.mc-row.is-click { cursor: pointer; }
+.mc-row.is-click:hover { border-color: var(--border-2); }
+.mc-row .m { font-size: 13px; font-weight: 800; color: var(--text-main); }
+.mc-row .w { font-size: 10.5px; color: var(--text-muted); }
+.mc-row .p { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mc-del {
+  font-size: 15px; line-height: 1; color: var(--text-muted);
+  padding: 0 4px; border-radius: 6px;
+}
+.mc-del:hover { color: var(--bad); background: var(--surface-3); }
+/* Порівняння: збіг приглушений, розбіжність підсвічена */
+.mc-drow {
+  display: grid; grid-template-columns: 1fr 110px 110px 110px; gap: 10px;
+  padding: 7px 11px; border-radius: 9px; font-size: 12.5px;
+  border: 1px solid transparent;
+}
+.mc-drow.head { color: var(--text-muted); font-size: 9px; font-weight: 900;
+  letter-spacing: .12em; text-transform: uppercase; padding-bottom: 4px; }
+.mc-drow .n { color: var(--text-main); font-weight: 700; }
+.mc-drow .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.mc-drow.moved { background: var(--surface); border-color: var(--border-2); }
+.mc-drow.moved .d { color: var(--bad); }
+.mc-drow.same .d { color: var(--text-muted); opacity: .5; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2286,6 +2326,10 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
       <div id="month-list" class="space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
         <!-- Сюди JS вставить місяці -->
       </div>
+      <button onclick="event.stopPropagation(); openMonthClose()"
+              class="w-full mt-2 pt-2 text-[10px] font-black uppercase tracking-widest text-left px-2 pb-1"
+              style="border-top:1px solid var(--border);color:var(--text-muted)"
+              title="Freeze this month's totals">&#10003; Month close</button>
     </div>
   </div>
 
@@ -9059,6 +9103,237 @@ function rbExportCSV(){
 </div>
 
 <!-- Settings Modal -->
+<!-- ═══════ ЗЛІПОК МІСЯЦЯ ═══════ -->
+<div id="close-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/65 backdrop-blur-sm" onclick="closeMonthClose()"></div>
+  <div class="set-shell relative w-full max-w-3xl flex flex-col overflow-hidden">
+    <div class="set-head">
+      <div class="flex items-center gap-2.5 shrink-0">
+        <svg class="w-4 h-4" style="color:var(--accent)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="17" rx="2.5"/><path d="M3 10h18M8 2v4M16 2v4"/><path d="M9 15l2 2 4-4"/>
+        </svg>
+        <h2 class="set-title">Month close</h2>
+      </div>
+      <span id="mc-month" class="set-hint" style="margin:0"></span>
+      <span id="mc-saved" class="set-saved">Saved</span>
+      <button onclick="closeMonthClose()" class="set-x" title="Close (Esc)">&times;</button>
+    </div>
+
+    <div class="set-panes custom-scrollbar">
+      <div class="set-group">
+        <div class="set-ghead">
+          <div>
+            <h3 class="set-gtitle">Freeze this month</h3>
+            <p class="set-gsub">A snapshot stores the totals exactly as they stand now. Change payouts, re-import data — the frozen number will not move.</p>
+          </div>
+          <button type="button" id="mc-take" onclick="mcTake()" class="set-btn set-btn-primary">Freeze</button>
+        </div>
+        <div id="mc-live" class="mc-grid"></div>
+      </div>
+
+      <div class="set-group">
+        <h3 class="set-gtitle">Saved snapshots</h3>
+        <p class="set-gsub">Click a snapshot to compare it with what the dashboard computes today.</p>
+        <div id="mc-list"></div>
+      </div>
+
+      <div class="set-group hidden" id="mc-diff-group">
+        <h3 class="set-gtitle">Frozen vs live · <span id="mc-diff-month"></span></h3>
+        <p class="set-gsub" id="mc-diff-when"></p>
+        <div id="mc-diff"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════ ЗЛІПОК МІСЯЦЯ ═══════════
+   Ставки не версіонуються, а імпорт можна перезалити — тож підсумки за
+   минулий місяць з часом змінюються заднім числом. Зліпок фіксує їх
+   такими, якими ти місяць закрив, і показує, якщо жива цифра відʼїхала.
+
+   Зберігаємо в team_settings (ключ snapshot_YYYY-MM) — окрема таблиця
+   вимагала б міграції, а ця вже є і вміє upsert. */
+
+const MC_KEY = m => 'snapshot_' + m;
+const MC_FIELDS = [
+  ['spend',    'Spend',    'money'],
+  ['revenue',  'Revenue',  'money'],
+  ['gross',    'Gross',    'money'],
+  ['expenses', 'Expenses', 'money'],
+  ['net',      'Net',      'money'],
+  ['roi',      'ROI',      'pct'],
+  ['regs',     'Regs',     'int'],
+  ['deposits', 'Deps',     'int']
+];
+
+const mcFmt = (v, kind) =>
+  kind === 'money' ? (typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Number(v).toFixed(2))
+  : kind === 'pct' ? Math.round(Number(v) || 0) + '%'
+  : String(Math.round(Number(v) || 0));
+
+// Підсумки місяця з того, що зараз у памʼяті й у базі витрат.
+async function mcCompute(month) {
+  const rows = (typeof rawData !== 'undefined' ? rawData : [])
+    .filter(r => String(r.date || '').startsWith(month));
+  let spend = 0, regs = 0, deposits = 0, installs = 0, revenue = 0;
+  const byGeo = {};
+  rows.forEach(r => {
+    const s = Number(r.spend) || 0;
+    const d = Number(r.deposits) || 0;
+    const rev = (typeof revenueOf === 'function' ? revenueOf(r) : 0);
+    spend += s; regs += Number(r.regs) || 0; deposits += d;
+    installs += Number(r.installs) || 0; revenue += rev;
+    const g = String(r.geo || '??').toUpperCase().trim();
+    (byGeo[g] = byGeo[g] || { spend: 0, deposits: 0, revenue: 0 });
+    byGeo[g].spend += s; byGeo[g].deposits += d; byGeo[g].revenue += rev;
+  });
+
+  // Витрати тягнемо окремо: вони живуть у своїй таблиці й не залежать
+  // від обраного в дашборді зрізу.
+  let expenses = 0;
+  try {
+    const last = new Date(+month.slice(0, 4), +month.slice(5, 7), 0).getDate();
+    const { data } = await sb.from('expenses').select('amount')
+      .eq('team_name', currentTeam)
+      .gte('date', month + '-01')
+      .lte('date', `${month}-${String(last).padStart(2, '0')}`);
+    expenses = (data || []).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  } catch (e) { console.warn('mcCompute expenses:', e); }
+
+  const gross = revenue - spend;
+  const net = gross - expenses;
+  return {
+    month, spend, revenue, gross, expenses, net,
+    roi: spend > 0 ? (net / spend * 100) : 0,
+    regs, deposits, installs,
+    geo: Object.entries(byGeo)
+      .map(([g, v]) => ({ geo: g, ...v, profit: v.revenue - v.spend }))
+      .sort((a, b) => b.spend - a.spend),
+    rows: rows.length
+  };
+}
+
+function mcCell(label, val, kind) {
+  return `<div class="mc-cell"><span class="k">${label}</span><span class="v">${mcFmt(val, kind)}</span></div>`;
+}
+
+async function openMonthClose() {
+  document.getElementById('month-menu')?.classList.add('hidden');
+  document.getElementById('close-modal').classList.remove('hidden');
+  const m = (typeof currentMonthFilter !== 'undefined' && currentMonthFilter)
+    ? currentMonthFilter : new Date().toISOString().slice(0, 7);
+  document.getElementById('mc-month').textContent = m;
+  document.getElementById('mc-diff-group').classList.add('hidden');
+  document.getElementById('mc-live').innerHTML = '<p class="set-hint">Рахую…</p>';
+  const live = await mcCompute(m);
+  window.__mcLive = live;
+  document.getElementById('mc-live').innerHTML =
+    MC_FIELDS.map(([k, label, kind]) => mcCell(label, live[k], kind)).join('');
+  mcRenderList();
+}
+function closeMonthClose() { document.getElementById('close-modal').classList.add('hidden'); }
+
+// Перелік збережених зліпків. Ключі лежать поруч із рештою налаштувань,
+// тож відбираємо їх за префіксом.
+async function mcRenderList() {
+  const box = document.getElementById('mc-list');
+  box.innerHTML = '<p class="set-hint">Завантажую…</p>';
+  let snaps = [];
+  try {
+    const { data, error } = await sb.from('team_settings')
+      .select('key,value').eq('team_name', currentTeam).like('key', 'snapshot_%');
+    if (error) throw error;
+    snaps = (data || []).map(r => {
+      try { return { key: r.key, ...JSON.parse(r.value) }; } catch (e) { return null; }
+    }).filter(Boolean).sort((a, b) => String(b.month).localeCompare(String(a.month)));
+  } catch (e) {
+    box.innerHTML = '<p class="set-hint">Не вдалось прочитати збережені зліпки.</p>';
+    return;
+  }
+  if (!snaps.length) { box.innerHTML = '<p class="set-hint">Поки жодного зліпка.</p>'; return; }
+  window.__mcSnaps = snaps;
+  box.innerHTML = snaps.map((s, i) => `
+    <div class="mc-row is-click" onclick="mcDiff(${i})">
+      <span class="m">${s.month}</span>
+      <span class="w">${String(s.takenAt || '').slice(0, 16).replace('T', ' ')}</span>
+      <span class="p" style="color:${(s.net || 0) >= 0 ? 'var(--ok)' : 'var(--bad)'}">${mcFmt(s.net, 'money')}</span>
+      <button class="mc-del" title="Delete" onclick="event.stopPropagation(); mcDelete('${s.month}')">&times;</button>
+    </div>`).join('');
+}
+
+async function mcTake() {
+  const m = document.getElementById('mc-month').textContent.trim();
+  if (!m) return;
+  const btn = document.getElementById('mc-take');
+  btn.disabled = true;
+  const snap = await mcCompute(m);
+  snap.takenAt = new Date().toISOString();
+  // Ставки, якими це пораховано — без них зліпок не пояснює сам себе
+  try { snap.payouts = JSON.parse(JSON.stringify(globalPayouts || {})); } catch (e) {}
+  try { snap.payoutModels = JSON.parse(JSON.stringify(payoutModels || {})); } catch (e) {}
+  await setTeamSetting(MC_KEY(m), JSON.stringify(snap));
+  btn.disabled = false;
+  const saved = document.getElementById('mc-saved');
+  saved.classList.add('show'); setTimeout(() => saved.classList.remove('show'), 1400);
+  mcRenderList();
+}
+
+async function mcDelete(month) {
+  if (!confirm(`Delete the snapshot for ${month}?`)) return;
+  try {
+    await sb.from('team_settings').delete()
+      .eq('team_name', currentTeam).eq('key', MC_KEY(month));
+  } catch (e) { alert('Could not delete: ' + (e.message || e)); }
+  document.getElementById('mc-diff-group').classList.add('hidden');
+  mcRenderList();
+}
+
+// Порівняння зліпка з тим, що рахується зараз. Саме тут видно, що минуле
+// переписалось: ставка змінилась або дані перезалили.
+async function mcDiff(i) {
+  const snap = (window.__mcSnaps || [])[i];
+  if (!snap) return;
+  const g = document.getElementById('mc-diff-group');
+  g.classList.remove('hidden');
+  document.getElementById('mc-diff-month').textContent = snap.month;
+  document.getElementById('mc-diff').innerHTML = '<p class="set-hint">Рахую…</p>';
+  const live = await mcCompute(snap.month);
+  document.getElementById('mc-diff-when').textContent =
+    `Frozen on ${String(snap.takenAt || '').slice(0, 16).replace('T', ' ')}`;
+
+  const rows = MC_FIELDS.map(([k, label, kind]) => {
+    const a = Number(snap[k]) || 0, b = Number(live[k]) || 0;
+    const diff = b - a;
+    const eps = kind === 'int' ? 0.5 : (kind === 'pct' ? 0.05 : 0.5);
+    const moved = Math.abs(diff) >= eps;
+    const sign = diff > 0 ? '+' : '−';
+    return `<div class="mc-drow ${moved ? 'moved' : 'same'}">
+      <span class="n">${label}</span>
+      <span class="num">${mcFmt(a, kind)}</span>
+      <span class="num">${mcFmt(b, kind)}</span>
+      <span class="num d">${moved ? sign + mcFmt(Math.abs(diff), kind) : '—'}</span>
+    </div>`;
+  }).join('');
+  const moved = MC_FIELDS.filter(([k, , kind]) => {
+    const d = Math.abs((Number(live[k]) || 0) - (Number(snap[k]) || 0));
+    return d >= (kind === 'pct' ? 0.05 : 0.5);
+  }).length;
+  document.getElementById('mc-diff').innerHTML =
+    `<div class="mc-drow head"><span>Metric</span><span class="num">Frozen</span><span class="num">Live</span><span class="num">Diff</span></div>` +
+    rows +
+    `<p class="set-hint">${moved
+      ? `${moved} metric(s) drifted. Usually one of two reasons: a payout rate changed, or the data for this month was re-imported.`
+      : 'Everything matches: live numbers equal the frozen ones.'}</p>`;
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const m = document.getElementById('close-modal');
+  if (m && !m.classList.contains('hidden')) closeMonthClose();
+});
+</script>
+
 <div id="settings-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/65 backdrop-blur-sm" onclick="closeSettingsModal()"></div>
 
@@ -11808,6 +12083,7 @@ function dcRenderWarn(unlinked) {
     ['DB Logs',        'fn:openDbLogsModal',             'Tool'],
     ['Gallery',        'fn:toggleGalleryModal',          'Tool'],
     ['Summary image',  'fn:openScreenshotModal',         'Tool'],
+    ['Month close',    'fn:openMonthClose',              'Tool'],
     ['Settings',       'fn:openSettingsModal',           'Tool'],
     ['Campaigns',      'hub:dataset',                    'Data Hub'],
     ['Records',        'hub:records',                    'Data Hub'],
