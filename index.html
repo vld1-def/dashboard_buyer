@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 09:19">
+  <meta name="build" content="build 20.09 09:24">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2412,7 +2412,7 @@ body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) 
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 09:19</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 09:24</div>
     </div>
   </aside>
 
@@ -3332,7 +3332,7 @@ body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) 
 </div>
 <!-- Feature 4: Unified Geo Modal with Tabs -->
 <div id="geo-details-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-4">
-  <div class="card w-full max-w-5xl rounded-[2rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/10 bg-[#0f172a]/95 backdrop-blur-xl">
+  <div class="card w-full max-w-[1500px] rounded-[2rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/10 bg-[#0f172a]/95 backdrop-blur-xl">
     <!-- Header -->
     <div class="p-5 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5 flex-shrink-0">
       <div>
@@ -8366,6 +8366,7 @@ function renderGeoCostTab(geo) {
 
     window.gmCharts.push(new Chart(cv.getContext('2d'), {
       type: 'line',
+      plugins: window.cfCrosshair ? [window.cfCrosshair] : [],
       data: {
         labels,
         datasets: [{
@@ -8385,18 +8386,15 @@ function renderGeoCostTab(geo) {
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 260 },
-        // Місце під підписи над верхньою точкою, інакше їх зрізає край.
-        layout: { padding: { top: 16 } },
+        layout: { padding: { top: 6 } },
+        // Ловити мишею саму точку на 30 днях незручно, тому реагуємо на
+        // весь стовпець дня: наводиш будь-де по вертикалі — бачиш цифру.
+        interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
-          datalabels: {
-            // 'auto' ховає ті підписи, що налізли б на сусідні: за 12 днів
-            // видно всі, за 31 — стільки, скільки влазить, без каші.
-            display: 'auto',
-            anchor: 'end', align: 'top', offset: 3, clamp: true,
-            color: textMain, font: { weight: '700', size: 9 },
-            formatter: gcMoney
-          },
+          // Підписів над точками навмисне немає: цифра показується при
+          // наведенні. Так лінія лишається чистою на будь-якій кількості днів.
+          datalabels: { display: false },
           tooltip: {
             displayColors: false,
             callbacks: {
