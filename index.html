@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 08:34">
+  <meta name="build" content="build 20.09 08:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2292,6 +2292,17 @@ body.sb-compact .sb-build { display: none; }
 @media (max-width: 640px) {
   #stale-bar { flex-direction: column; align-items: stretch; text-align: center; padding: 12px; }
 }
+
+/* Сторінка одного блоку (Geo Breakdown, Placements, Heatmap…): решта
+   дашборда сховані роутером, і картка лишалась заввишки зі свій вміст.
+   Коли даних мало або немає взагалі, це виглядало як зламана сторінка —
+   вузька смужка вгорі й екран порожнечі під нею. Тепер єдиний видимий
+   блок займає висоту контенту, як і належить сторінці.
+   54px — топбар і відступи; ділення на --zoom, бо 100vh у зумленому
+   body дає лише 90% екрана. */
+body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) {
+  min-height: calc(100vh / var(--zoom) - 54px);
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2401,7 +2412,7 @@ body.sb-compact .sb-build { display: none; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 08:34</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 08:47</div>
     </div>
   </aside>
 
@@ -8554,7 +8565,12 @@ function renderDeviceGeoWidget() {
   if (dgMode === 'cost') { renderGeoCostWidget(crData, el); return; }
 
   if (!crData.length) {
-    el.innerHTML = '<div class="col-span-3 text-center py-8 opacity-30 text-xs uppercase font-black">No data in creatives_stats for this month</div>';
+    // Сама назва таблиці нічого не пояснює тому, хто просто відкрив
+    // сторінку і бачить порожнечу — кажемо ще й що з цим робити.
+    el.innerHTML = '<div class="col-span-3 text-center py-16 text-xs font-black uppercase tracking-widest" style="color:var(--text-muted)">'
+      + '<div class="opacity-45">No creative data for this month</div>'
+      + '<div class="mt-2 opacity-30 normal-case tracking-normal font-bold">This page is built from creatives_stats. Upload a report in Data Hub &rarr; Campaigns.</div>'
+      + '</div>';
     return;
   }
 
