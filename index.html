@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 07:54">
+  <meta name="build" content="build 20.09 08:08">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2266,6 +2266,32 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
   font-variant-numeric: tabular-nums;
 }
 body.sb-compact .sb-build { display: none; }
+
+/* Смужка «сторінка застаріла». Стоїть над усім, включно з модалками,
+   бо поки її не побачили — будь-яка інша робота йде на старій версії. */
+#stale-bar {
+  position: fixed; z-index: 2147483000;
+  left: 50%; transform: translateX(-50%); top: 12px;
+  display: flex; align-items: center; gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 9px 10px 9px 16px; border-radius: 14px;
+  background: #B45309; color: #FFF7ED;
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 12px 34px rgba(0,0,0,.45);
+  font-size: 11.5px; font-weight: 700; letter-spacing: .01em;
+}
+#stale-bar b { font-weight: 900; font-variant-numeric: tabular-nums; }
+#stale-bar button {
+  flex: none; cursor: pointer;
+  padding: 6px 14px; border-radius: 9px; border: 0;
+  background: #FFF7ED; color: #7C2D12;
+  font-size: 10.5px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .08em;
+}
+#stale-bar button:hover { background: #fff; }
+@media (max-width: 640px) {
+  #stale-bar { flex-direction: column; align-items: stretch; text-align: center; padding: 12px; }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2375,7 +2401,7 @@ body.sb-compact .sb-build { display: none; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 07:54</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 08:08</div>
     </div>
   </aside>
 
@@ -9438,6 +9464,61 @@ window.toast = function (msg, kind, ms) {
 })();
 </script>
 
+<script>
+// ===== Детектор застарілої сторінки ==================================
+// GitHub Pages не дає керувати заголовками кешу, а браузер уміє місяцями
+// тримати стару копію 650-кілобайтного index.html і не питати сервер.
+// Через це «нових змін немає» повторювалось при повністю правильному
+// деплої, і відрізнити стару сторінку від свіжої не було чим.
+//
+// Тому сторінка перевіряє себе сама: у неї вшито штамп збірки, а поруч
+// на сервері лежить build.txt із тим самим штампом. Читаємо його повз
+// кеш — якщо значення розійшлись, у тебе стара копія.
+//
+// Перезавантажувати самі НЕ маємо права: можна стояти посеред імпорту.
+// Тому просто показуємо смужку з кнопкою.
+(function () {
+  const meta = document.querySelector('meta[name="build"]');
+  const mine = meta && meta.content;
+  if (!mine) return;
+
+  window.BUILD = mine;
+
+  function banner(live) {
+    if (document.getElementById('stale-bar')) return;
+    const el = document.createElement('div');
+    el.id = 'stale-bar';
+    el.innerHTML =
+      '<span>This page is stale — you have <b>' + mine +
+      '</b>, the server has <b>' + live + '</b></span>' +
+      '<button type="button">Reload</button>';
+    // Повз кеш надійніше через адресу, якої браузер іще не бачив:
+    // location.reload() у частині браузерів усе одно віддає копію.
+    el.querySelector('button').onclick = () => {
+      const u = new URL(location.href);
+      u.searchParams.set('v', String(Date.now()));
+      location.replace(u.toString());
+    };
+    document.body.appendChild(el);
+  }
+
+  async function check() {
+    try {
+      const r = await fetch('build.txt?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const live = (await r.text()).trim();
+      if (live && live !== mine) banner(live);
+    } catch (e) {
+      // Немає мережі або файлу — мовчимо: це діагностика, а не функція.
+    }
+  }
+
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', () => setTimeout(check, 1500));
+  else setTimeout(check, 1500);
+})();
+</script>
+
 <!-- Bonus Calculator Modal -->
 <div id="bonus-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeBonusModal()"></div>
@@ -12150,7 +12231,11 @@ function dcRenderWarn(unlinked) {
       const apply = () => { hubSkin(frame); try { frame.contentWindow.switchMode(mode); } catch (e) {} };
       if (frame && !frame.getAttribute('src')) {
         frame.addEventListener('load', apply, { once: true });
-        frame.setAttribute('src', 'Form.html');
+        // Штамп у адресі: без нього Form.html приїжджає з кешу браузера,
+        // і правки в Data Hub просто не долітають до екрана.
+        const bv = window.BUILD
+          || (document.querySelector('meta[name="build"]') || {}).content || '';
+        frame.setAttribute('src', 'Form.html?v=' + encodeURIComponent(bv));
       } else apply();
       document.querySelectorAll('#datahub-panel .hub-tabs button')
         .forEach(b => b.classList.toggle('is-active', b.dataset.hub === mode));
