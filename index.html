@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 13:15">
+  <meta name="build" content="build 20.09 13:35">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2336,6 +2336,17 @@ body[data-route="reports"] #rb-table thead th {
   background: var(--surface-2);
 }
 body[data-route="reports"] #rb-cols-menu { z-index: 120; }
+
+/* ─── Report Builder: підсумок завжди перед очима ───
+   Рядок Total переїхав у <tfoot> і липне до нижнього краю вікна таблиці,
+   поки список гортається під ним. Фон обовʼязково непрозорий — інакше
+   крізь нього просвічували б рядки, що проїжджають знизу. */
+#rb-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;              /* > 5 у липкого thead: на стику виграє підсумок */
+  background: var(--surface-2);
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2445,7 +2456,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 13:15</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 13:35</div>
     </div>
   </aside>
 
@@ -2756,10 +2767,9 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <div class="flex items-center gap-2 p-1 rounded-xl text-[10px] font-bold" style="background:var(--surface-2);border:1px solid var(--border)">
-                  <input type="date" id="chart-from" class="!bg-transparent !border-0 outline-none">
+                  <input type="date" id="chart-from" onchange="applyChartFilter()" class="!bg-transparent !border-0 outline-none">
                   <span class="opacity-25">/</span>
-                  <input type="date" id="chart-to" class="!bg-transparent !border-0 outline-none">
-                  <button onclick="applyChartFilter()" class="px-3 py-1 rounded-lg transition-all uppercase tracking-widest font-black text-violet-300 hover:text-white" style="background:rgba(139,92,246,.16);border:1px solid rgba(139,92,246,.3)">OK</button>
+                  <input type="date" id="chart-to" onchange="applyChartFilter()" class="!bg-transparent !border-0 outline-none">
                 </div>
                 <div class="flex p-1 rounded-xl" style="background:var(--surface-2);border:1px solid var(--border)">
                   <button id="btn-daily" onclick="changeChartMode('daily')" class="px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all bg-violet-600 text-white">Daily</button>
@@ -2776,11 +2786,10 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
               <h2 class="mb-2">Geo Performance</h2>
               <div class="flex items-center gap-1.5 text-[10px] font-bold">
                 <div class="flex items-center gap-1 px-2 py-1.5 rounded-lg flex-1 min-w-0" style="background:var(--surface-2);border:1px solid var(--border)">
-                  <input type="date" id="geo-filter-from" class="!bg-transparent !border-0 outline-none w-full min-w-0">
+                  <input type="date" id="geo-filter-from" onchange="applyGeoFilter()" class="!bg-transparent !border-0 outline-none w-full min-w-0">
                   <span class="opacity-25">/</span>
-                  <input type="date" id="geo-filter-to" class="!bg-transparent !border-0 outline-none w-full min-w-0">
+                  <input type="date" id="geo-filter-to" onchange="applyGeoFilter()" class="!bg-transparent !border-0 outline-none w-full min-w-0">
                 </div>
-                <button onclick="applyGeoFilter()" class="shrink-0 bg-violet-600 hover:bg-violet-500 text-white transition-all px-3 py-1.5 rounded-lg uppercase tracking-widest font-black">OK</button>
               </div>
             </div>
             <div class="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1.5 custom-scrollbar text-dynamic" id="geo-list"></div>
@@ -2860,14 +2869,13 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
     <!-- Фільтри Heatmap -->
     <div class="flex flex-wrap items-center gap-3 bg-black/20 p-2 rounded-2xl border border-white/5">
       <div class="flex items-center gap-2 px-2 border-r border-white/10">
-        <input type="date" id="heat-from" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
+        <input type="date" id="heat-from" onchange="applyWeeklyFilter()" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
         <span class="opacity-20 text-[9px]">/</span>
-        <input type="date" id="heat-to" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
+        <input type="date" id="heat-to" onchange="applyWeeklyFilter()" class="bg-transparent outline-none text-[10px] font-bold text-white uppercase">
       </div>
       <select id="heat-geo" onchange="applyWeeklyFilter()" class="bg-transparent outline-none text-[10px] font-black uppercase text-blue-400 min-w-[100px] cursor-pointer">
         <option value="">ALL GEO</option>
       </select>
-      <button onclick="applyWeeklyFilter()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded-xl text-[10px] font-black transition-all uppercase">Apply</button>
     </div>
   </div>
 
@@ -3128,16 +3136,14 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
         
         <!-- Фільтри -->
         <div class="flex flex-wrap gap-3 p-2 rounded-2xl bg-black/20 border border-white/5 text-xs font-bold">
-            <input type="date" id="filter-from" class="bg-transparent outline-none p-2 text-white">
+            <input type="date" id="filter-from" onchange="applyFilter()" class="bg-transparent outline-none p-2 text-white">
             <span class="mt-2 opacity-30 uppercase text-[9px]">To</span>
-            <input type="date" id="filter-to" class="bg-transparent outline-none p-2 text-white">
+            <input type="date" id="filter-to" onchange="applyFilter()" class="bg-transparent outline-none p-2 text-white">
             
             <!-- Оживлений селектор ГЕО -->
-            <select id="filter-geo-select" class="bg-transparent border-l border-white/10 pl-3 outline-none uppercase text-[10px] min-w-[100px] font-black tracking-widest text-white cursor-pointer">
+            <select id="filter-geo-select" onchange="applyFilter()" class="bg-transparent border-l border-white/10 pl-3 outline-none uppercase text-[10px] min-w-[100px] font-black tracking-widest text-white cursor-pointer">
                 <option value="">ALL GEO</option>
             </select>
-            
-            <button onclick="applyFilter()" class="bg-blue-600 px-6 py-2 rounded-xl text-white font-black hover:bg-blue-500 transition shadow-lg uppercase text-[10px]">Apply</button>
         </div>
     </div>
 
@@ -4320,56 +4326,60 @@ function renderTrend(data) {
 }
 
   function calculateDeltas(data) {
-    const setEmpty = () => ['delta-profit'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); }
-    });
+    const setEmpty = () => {
+      window._kpiTotPrev = null;
+      if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
+    };
     if (!Array.isArray(data) || !data.length) return setEmpty();
 
     const dates = [...new Set(data.map(i => i.date))].filter(Boolean).sort();
     if (dates.length < 2) return setEmpty();          // немає з чим порівнювати
     const dLast = dates[dates.length - 1], dPrev = dates[dates.length - 2];
 
-    const day = d => {
-      const rows = data.filter(i => i.date === d);
-      let s = 0, rev = 0;
-      rows.forEach(row => {
-        s   += Number(row.spend) || 0;
-        rev += (typeof revenueOf === 'function' ? revenueOf(row) : 0);
-      });
-      // Витрати тут свідомо не віднімаємо: вони разові й місячні, за добу
-      // давали б стрибки, які до самого дня стосунку не мають.
-      return { profit: rev - s };
-    };
-    const A = day(dLast), B = day(dPrev);
-    const when = `${dPrev} → ${dLast}`;
-
-    const put = (id, cur, prev) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      if (cur === null || prev === null) {
-        el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title');
-        return;
-      }
-      const diff = cur - prev;
-      if (Math.abs(diff) < 0.5) {
-        el.innerText = '=';
-        el.className = 'kpi-delta is-flat';
-        el.setAttribute('title', `No change · ${when}`);
-        return;
-      }
-      const arrow = diff > 0 ? '▲' : '▼';
-      const abs = formatCurrency(Math.abs(diff)).replace(/^-/, '');
-      // Відносну зміну показуємо тільки коли база додатна: від нуля чи від
-      // мінуса відсоток нічого не означає.
-      const rel = prev > 0 ? ` · ${Math.round(Math.abs(diff) / prev * 100)}%` : '';
-      el.innerText = `${arrow} ${abs}${rel}`;
-      el.className = `kpi-delta ${diff > 0 ? 'is-up' : 'is-down'}`;
-      el.setAttribute('title', `${when}`);
-    };
-
-    put('delta-profit', A.profit, B.profit);
+    // Тотал «станом на попередній day» — той самий зріз без останнього дня.
+    // Витрати сюди не входять: вони однакові для обох тоталів і на різницю
+    // не впливають, а перемикач Gross/Net віднімає їх уже при малюванні.
+    let prev = 0;
+    data.forEach(row => {
+      if (row.date === dLast) return;
+      prev += (typeof revenueOf === 'function' ? revenueOf(row) : 0) - (Number(row.spend) || 0);
+    });
+    window._kpiTotPrev = prev;
+    window._kpiTotWhen = { prev: dPrev, cur: dLast };
+    if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
   }
+
+  // Малювання окремо від підрахунку: перемикач Gross/Net міняє число на
+  // картці, і підказка має називати ті самі гроші, що там показані.
+  window.kpiDeltaPaint = function () {
+    const el = document.getElementById('delta-profit');
+    if (!el) return;
+    const clear = () => { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); };
+    const prev = window._kpiTotPrev, cur = window._kpiGross;
+    if (typeof prev !== 'number' || typeof cur !== 'number') return clear();
+
+    const off = (localStorage.getItem('kpi_net') === 'net') ? (Number(window._kpiExpensesVal) || 0) : 0;
+    const w = window._kpiTotWhen || {};
+    const money = v => (typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Number(v).toFixed(2));
+    const tip = `Total: ${money(prev - off)} (${w.prev}) → ${money(cur - off)} (${w.cur})`;
+    const diff = cur - prev;
+
+    if (Math.abs(diff) < 0.5) {
+      el.innerText = '=';
+      el.className = 'kpi-delta is-flat';
+      el.setAttribute('title', 'No change · ' + tip);
+      return;
+    }
+    const arrow = diff > 0 ? '▲' : '▼';
+    const abs = money(Math.abs(diff)).replace(/^-/, '');
+    // Відсоток — від учорашнього тотала і лише коли той додатний: від нуля
+    // чи від мінуса він нічого не означає.
+    const base = prev - off;
+    const rel = base > 0 ? ` · ${Math.round(Math.abs(diff) / base * 100)}%` : '';
+    el.innerText = `${arrow} ${abs}${rel}`;
+    el.className = `kpi-delta ${diff > 0 ? 'is-up' : 'is-down'}`;
+    el.setAttribute('title', tip);
+  };
 
   function renderGeoList(data) {
 const m = {};
@@ -9457,10 +9467,10 @@ function rbRender(){
           }).join('')}
         </tr>`;
       }).join('')+
-      `<tr class="bg-white/[0.03]">
+      `</tbody><tfoot><tr class="rb-total">
         <td class="p-3 text-[10px] font-black uppercase text-cyan-400 border-t-2 border-cyan-500/30">Total</td>
         ${cols.map(c=>`<td class="p-3 text-xs font-black text-right text-white border-t-2 border-cyan-500/30">${c.fmt(rbValOf(total,c))}</td>`).join('')}
-      </tr></tbody>`;
+      </tr></tfoot>`;
     return;
   }
 
@@ -9506,10 +9516,10 @@ function rbRender(){
           return `<td class="p-3 text-xs font-bold text-right border-b border-white/5 ${color}">${c.fmt(v)}</td>`;
         }).join('')}
       </tr>`;}).join('')+
-      `<tr class="bg-white/[0.03]">
+      `</tbody><tfoot><tr class="rb-total">
         <td class="p-3 text-[10px] font-black uppercase text-cyan-400 border-t-2 border-cyan-500/30">Total</td>
         ${cols.map(c=>`<td class="p-3 text-xs font-black text-right text-white border-t-2 border-cyan-500/30">${c.fmt(rbValOf(total,c))}</td>`).join('')}
-      </tr></tbody>`;
+      </tr></tfoot>`;
     return;
   }
 
@@ -9554,14 +9564,14 @@ function rbRender(){
         <td class="p-2.5 text-[11px] font-black text-right border-b border-white/5 text-cyan-300">${mc.fmt(rbValOf(rowTotal,mc))}</td>
       </tr>`;
     }).join('')+
-    `<tr class="bg-white/[0.03]">
+    `</tbody><tfoot><tr class="rb-total">
       <td class="p-2.5 text-[10px] font-black uppercase text-cyan-400 border-t-2 border-cyan-500/30">Total</td>
       ${colKeys.map(ck=>{
         const rs=data.filter(r=>colKeyOf(r)===ck);
         return `<td class="p-2.5 text-[11px] font-black text-right text-white border-t-2 border-cyan-500/30">${mc.fmt(rbValOf(rbAgg(rs),mc))}</td>`;
       }).join('')}
       <td class="p-2.5 text-[11px] font-black text-right text-cyan-300 border-t-2 border-cyan-500/30">${mc.fmt(rbValOf(rbAgg(data),mc))}</td>
-    </tr></tbody>`;
+    </tr></tfoot>`;
 }
 
 function rbExportCSV(){
@@ -12846,6 +12856,10 @@ function dcRenderWarn(unlinked) {
     const roiEl = document.getElementById('kpi-roi');
     const spend = Number(window._kpiSpendVal) || 0;
     if (roiEl) roiEl.innerText = `ROI: ${spend > 0 ? Math.round(val / spend * 100) : 0}%`;
+
+    // Стрілка поруч живе з того самого тотала — перемалювати її треба
+    // разом із числом, інакше підказка лишиться від іншого режиму.
+    if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
   };
 
   window.kpiNetCycle = function () {
