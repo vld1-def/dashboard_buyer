@@ -2413,39 +2413,6 @@ async function loadAvailableOffers() {
 }
 // --- ЗБЕРЕЖЕННЯ В БАЗУ (SUPABASE) ---
 
-// Чи є вже дані за ті дати, що ми збираємось залити.
-// Повертає:
-//   []          — дублів немає, лити як є
-//   [дати...]   — лити, але спершу прибрати ці дати
-//   null        — користувач скасував
-async function dupGuard(rows) {
-  const dates = [...new Set(rows.map(r => r.date).filter(Boolean))].sort();
-  if (!dates.length) return [];
-  let existing = [];
-  try {
-    const { data, error } = await sb.from('daily_stats')
-      .select('date')
-      .eq('team_name', currentTeam)
-      .in('date', dates);
-    if (error) throw error;
-    existing = [...new Set((data || []).map(r => r.date))].sort();
-  } catch (e) {
-    // Перевірку не вдалось зробити — краще спитати, ніж тихо подвоїти.
-    console.warn('dupGuard:', e);
-    return confirm('Не вдалось перевірити, чи ці дати вже залиті.\n\nЛити все одно?')
-      ? [] : null;
-  }
-  if (!existing.length) return [];
-
-  const shown = existing.slice(0, 8).join(', ') + (existing.length > 8 ? ` … +${existing.length - 8}` : '');
-  const ok = confirm(
-    `За ці дати дані вже є (${existing.length} шт.):\n${shown}\n\n` +
-    'OK — замінити: старі рядки за ці дати буде видалено, залиються нові.\n' +
-    'Скасувати — нічого не робити.'
-  );
-  return ok ? existing : null;
-}
-
 async function confirmDatasetImport() {
   if (!datasetToImport.length) return;
   showStatus("Syncing Campaigns & Creatives...");
@@ -2482,23 +2449,6 @@ async function confirmDatasetImport() {
     deps: row.deps || 0,
     team_name: currentTeam
   }));
-
-  // ── Захист від повторного імпорту ───────────────────────────────────
-  // Запис іде через insert, тож той самий звіт, залитий двічі, просто
-  // подвоював спенд і депозити — мовчки, без жодної помилки. Тепер
-  // спершу дивимось, чи за ці дати щось уже є.
-  const dupDates = await dupGuard(finalDaily);
-  if (dupDates === null) { showStatus('Import cancelled'); return; }
-  if (dupDates.length) {
-    // Користувач обрав «замінити» — прибираємо старі рядки за ці дати
-    const kill = [
-      sb.from('daily_stats').delete().eq('team_name', currentTeam).in('date', dupDates),
-      sb.from('creatives_stats').delete().eq('team_name', currentTeam).in('date', dupDates)
-    ];
-    const killed = await Promise.all(kill);
-    const kerr = killed.find(r => r.error);
-    if (kerr) { alert('Не вдалось прибрати старі дані: ' + kerr.error.message); return; }
-  }
 
   // Відправка
   const res1 = await sb.from('daily_stats').insert(finalDaily);
@@ -2727,9 +2677,13 @@ function resetImport(type) {
   const dropZone = document.getElementById('csv-drop-zone-' + type);
   if (dropZone) dropZone.classList.remove('hidden');
 
-  // Очищуємо інпути
-  document.getElementById('csv-input-dataset').value = '';
-  document.getElementById('csv-input-creatives').value = '';
+  // Очищуємо інпути. `csv-input-creatives` у розмітці немає взагалі, тож
+  // без перевірки цей рядок кидав TypeError щоразу після успішного
+  // збереження — дані вже лежали в базі, а виняток летів у виклик вище.
+  ['csv-input-dataset', 'csv-input-creatives'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
 }
 
 function setupDragAndDrop(t) { 
