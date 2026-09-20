@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 13:35">
+  <meta name="build" content="build 20.09 14:35">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2347,6 +2347,35 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   z-index: 6;              /* > 5 у липкого thead: на стику виграє підсумок */
   background: var(--surface-2);
 }
+
+/* ─── Geo Breakdown: вікно сталої висоти ───
+   Картка росла під вміст вкладки, тож при перемиканні вікно стрибало:
+   Offers давав 380 px, Placements — 750, і кнопки вкладок щоразу їхали
+   разом із ним. Тепер висота задана жорстко, а довгий вміст гортається
+   всередині (смугу скролу тримає .overflow-y-auto у розмітці).
+
+   Ділення на --zoom обовʼязкове: картка лежить усередині body { zoom: .9 },
+   тож її власні 90vh дають на екрані лише 81 %. max-height перебиваємо
+   теж — інакше клас max-h-[90vh] з розмітки зріже цю висоту назад. */
+#geo-details-modal > .card {
+  height: calc(90vh / var(--zoom));
+  max-height: calc(90vh / var(--zoom));
+}
+
+/* Вкладка Costs заповнює вікно по висоті. Без цього під чотирма графіками
+   лишалось пів екрана порожнечі — вікно ж тепер сталої висоти, а картки
+   були по 168 px і не росли.
+   :not(.hidden) обовʼязкове: display:flex за id переміг би .hidden, яким
+   switchGeoTab ховає неактивні вкладки, і вони світились би всі разом. */
+#geo-panel-costs:not(.hidden) { height: 100%; display: flex; }
+#geo-panel-costs > #geo-cost-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: 1fr;     /* два ряди ділять висоту порівну */
+}
+.gm-card { display: flex; flex-direction: column; min-height: 0; }
+.gm-canvas-box { height: 168px; }                    /* запасна висота поза сіткою */
+.gm-card > .gm-canvas-box { flex: 1 1 auto; height: auto; min-height: 120px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2456,7 +2485,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 13:35</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 14:35</div>
     </div>
   </aside>
 
@@ -8364,12 +8393,12 @@ function renderGeoCostTab(geo) {
   }
 
   host.innerHTML = GM_METRICS.map(m => `
-    <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+    <div class="gm-card bg-white/[0.02] border border-white/5 rounded-2xl p-4">
       <div class="flex items-baseline justify-between mb-3">
         <span class="text-[12px] font-black uppercase tracking-widest" style="color:${m.color}">${m.short}</span>
         <span class="text-[9px] text-slate-500 uppercase tracking-widest">${m.label}</span>
       </div>
-      <div style="height:168px"><canvas id="gm-${m.key}"></canvas></div>
+      <div class="gm-canvas-box"><canvas id="gm-${m.key}"></canvas></div>
       <div id="gm-note-${m.key}" class="text-[9px] text-slate-600 font-bold mt-2 min-h-[12px]"></div>
     </div>`).join('');
 
