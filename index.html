@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 14:42">
+  <meta name="build" content="build 20.09 18:26">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2491,7 +2491,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 14:42</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 18:26</div>
     </div>
   </aside>
 
@@ -10793,6 +10793,27 @@ function gcDiff(geo, results) {
         </div>
       </div>
 
+      <!-- Перший кадр -->
+      <div class="rounded-xl px-3 py-2.5 flex flex-col md:flex-row md:items-center gap-3"
+           style="background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.06)">
+        <div class="md:w-44 shrink-0">
+          <div class="text-[9px] font-black uppercase tracking-widest text-violet-400">Cover frame</div>
+          <div class="text-[9px] font-bold text-slate-500 mt-0.5">optional &middot; the hook people see first</div>
+        </div>
+        <input type="file" id="uq-cover" accept="image/*" onchange="uqCoverPick(event)"
+          class="text-[11px] font-bold text-slate-300 flex-1 min-w-0 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-violet-600/80 file:text-white file:font-black file:uppercase file:text-[9px] file:cursor-pointer">
+        <div id="uq-cover-prev" class="hidden"></div>
+        <div class="flex items-center gap-2 shrink-0">
+          <label class="text-[9px] font-black uppercase tracking-widest text-slate-500"
+                 title="How long the cover stays on screen. 0.1s is about three frames.">Hold</label>
+          <input type="number" id="uq-cover-dur" min="0.04" max="3" step="0.02" value="0.1"
+            class="w-16 bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-white outline-none focus:border-violet-500">
+          <span class="text-[9px] font-bold text-slate-500">s</span>
+          <button onclick="uqCoverClear()" id="uq-cover-clear"
+            class="hidden text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-400 transition">Remove</button>
+        </div>
+      </div>
+
       <!-- Параметри -->
       <div id="uq-params" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
 
@@ -11504,6 +11525,50 @@ function uqProbe(file) {
   });
 }
 
+// ── Перший кадр ──────────────────────────────────────────────────────────
+// Обкладинка підкладається в ТОЙ САМИЙ прохід кодування, що й решта
+// фільтрів. Варіант однаково перекодовується цілком, тож окремий кадр не
+// коштує майже нічого — і не треба нічого склеювати через concat, де
+// параметри двох шматків мусять збігатися байт у байт.
+let uqCover = null;   // { data: Uint8Array, ext, url, name }
+
+async function uqCoverPick(e) {
+  const f = e.target.files && e.target.files[0];
+  uqCoverClear(true);
+  if (!f) return;
+  const buf = new Uint8Array(await f.arrayBuffer());
+  uqCover = { data: buf, ext: /png/i.test(f.type) ? 'png' : 'jpg',
+              url: URL.createObjectURL(f), name: f.name };
+  const prev = document.getElementById('uq-cover-prev');
+  if (prev) {
+    prev.className = 'flex items-center gap-2 shrink-0';
+    prev.innerHTML = '<img alt="" src="' + uqCover.url +
+      '" style="height:40px;width:auto;border-radius:6px;border:1px solid rgba(255,255,255,.12)">';
+  }
+  document.getElementById('uq-cover-clear')?.classList.remove('hidden');
+}
+
+function uqCoverClear(keepInput) {
+  if (uqCover && uqCover.url) { try { URL.revokeObjectURL(uqCover.url); } catch (e) {} }
+  uqCover = null;
+  const prev = document.getElementById('uq-cover-prev');
+  if (prev) { prev.className = 'hidden'; prev.innerHTML = ''; }
+  document.getElementById('uq-cover-clear')?.classList.add('hidden');
+  if (!keepInput) { const i = document.getElementById('uq-cover'); if (i) i.value = ''; }
+}
+
+function uqCoverDur() {
+  const v = parseFloat((document.getElementById('uq-cover-dur') || {}).value);
+  return Math.min(3, Math.max(0.04, v || 0.1));
+}
+
+// Кожна копія ffmpeg має власну файлову систему, і writeFile ВІДЧІПЛЮЄ
+// переданий буфер — тому щоразу віддаємо свіжий зріз, а не той самий масив.
+async function uqWriteCover(ffw) {
+  if (!uqCover) return;
+  await ffw.writeFile('cover.' + uqCover.ext, uqCover.data.slice(0));
+}
+
 const uqRand = (a, b) => a + Math.random() * (b - a);
 const uqSign = () => Math.random() < 0.5 ? -1 : 1;
 
@@ -11558,11 +11623,12 @@ function uqFakeMeta() {
   return tags;
 }
 
-function uqBuildArgs(p, meta, quality, metaMode, preset) {
+function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   const vf = [], args = [];
   // -ss перед -i: перемотка по контейнеру замість декодування у смітник
   if (p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
   args.push('-i', 'in.mp4');
+  if (cover) args.push('-i', 'cover.' + cover.ext);
   if (p.trim) {
     const left = meta.dur - p.trim.head - p.trim.tail;
     if (left > 1) args.push('-t', String(+left.toFixed(2)));
@@ -11591,7 +11657,33 @@ function uqBuildArgs(p, meta, quality, metaMode, preset) {
   vf.push('setsar=1');
   if (p.fps) vf.push(`fps=${Math.max(15, Math.round(30 + p.fps))}`);
 
-  if (vf.length) args.push('-vf', vf.join(','));
+  // Обкладинка лягає ПІСЛЯ всього ланцюжка — щоб на неї не потрапили зерно
+  // й кольорові зсуви: перший кадр має бути рівно тією картинкою, яку дали.
+  //
+  // scale2ref бере розмір із самого відео, а не з проби. Проба (uqProbe)
+  // читає розміри через <video>, і вона мовчки повертає нулі на всьому,
+  // чого браузер не декодує — HEVC з айфона, наприклад. Прив'язка до неї
+  // означала б, що обкладинка іноді просто зникає без жодного слова.
+  //
+  // force_original_aspect_ratio=increase + центрування: картинка гарантовано
+  // не менша за кадр, а зайве overlay просто зрізає. Так у кадрі не буває
+  // чорних полів, хоч би яких пропорцій була картинка.
+  // eof_action=repeat: у картинки один кадр, без цього вона зникла б одразу.
+  if (cover) {
+    // -ss перед -i перемотує, але НЕ обнуляє часові мітки: у фільтр кадри
+    // заходять із t, що починається з величини перемотки, а не з нуля.
+    // Тому поріг рахуємо від неї, інакше умова хибна з першого ж кадру.
+    const coverFrom = (p.trim && p.trim.head > 0) ? p.trim.head : 0;
+    const coverTill = (coverFrom + cover.dur).toFixed(3);
+    args.push('-filter_complex',
+      `[0:v]${vf.join(',')}[vf];` +
+      `[1:v][vf]scale2ref=w=iw:h=ih:force_original_aspect_ratio=increase[c][v];` +
+      `[c]setsar=1[cc];` +
+      `[v][cc]overlay=(W-w)/2:(H-h)/2:eof_action=repeat:enable='lt(t,${coverTill})'[vout]`,
+      '-map', '[vout]', '-map', '0:a?');
+  } else if (vf.length) {
+    args.push('-vf', vf.join(','));
+  }
   if (p.volume) args.push('-af', `volume=${p.volume}dB`);
   // -fflags +bitexact прибирає тег мукcера (Lavf), а handler_name доводиться
   // гасити окремо — інакше в контейнері лишаються «VideoHandler»/«SoundHandler»
@@ -11684,6 +11776,9 @@ async function uqRun() {
   const quality = document.getElementById('uq-quality').value;
   const preset = (document.getElementById('uq-preset') || {}).value || 'veryfast';
   const metaMode = (document.getElementById('uq-meta') || {}).value || 'fake';
+  // Знімок налаштувань обкладинки на весь прогін: якщо її поміняти
+  // посеред черги, половина варіантів вийшла б з іншим кадром.
+  const coverArg = uqCover ? { ext: uqCover.ext, dur: uqCoverDur() } : null;
   const statusEl = document.getElementById('uq-status');
   const barWrap = document.getElementById('uq-bar'), bar = document.getElementById('uq-bar-fill');
   const res = document.getElementById('uq-results');
@@ -11735,6 +11830,7 @@ async function uqRun() {
         // самим відчіплює його, тож кожній копії ffmpeg потрібен свій зріз.
         srcBuf = await file.arrayBuffer();
         await ff.writeFile('in.mp4', new Uint8Array(srcBuf.slice(0)));
+        await uqWriteCover(ff);
       }
       catch (e) {
         const bad = document.createElement('p');
@@ -11799,7 +11895,7 @@ async function uqRun() {
             // його виняток валив увесь прогін, а в пулі ще й обривав сусідні копії
             // посеред кодування.
             const p = uqPickParams();
-            await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset));
+            await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
             const data = await ffw.readFile('out.mp4');
             const took = performance.now() - vStart;
             times.push(took);
@@ -11824,6 +11920,7 @@ async function uqRun() {
         try {
           const ffw = await uqNewFFmpeg();
           await ffw.writeFile('in.mp4', new Uint8Array(srcBuf.slice(0)));
+          await uqWriteCover(ffw);
           extra.push(ffw);
         } catch (e) {
           // Не вистачило памʼяті на ще одну копію — працюємо тим, що вже є.
@@ -12953,7 +13050,7 @@ function dcRenderWarn(unlinked) {
     const o = document.createElement('div');
     o.id = 'cmd-overlay';
     o.innerHTML = `<div id="cmd-box">
-        <input id="cmd-input" placeholder="Where to?" autocomplete="off">
+        <input id="cmd-input" placeholder="Page, geo, account, offer, creative…" autocomplete="off">
         <div id="cmd-list"></div>
       </div>`;
     document.body.appendChild(o);
@@ -12962,9 +13059,53 @@ function dcRenderWarn(unlinked) {
     o.querySelector('#cmd-input').addEventListener('keydown', cmdKey);
   }
 
+  // Динамічні записи з уже завантажених даних. Збираються щоразу заново:
+  // між двома відкриттями палітри могла змінитись команда або місяць.
+  // rawData — це top-level let, тобто у window його немає; беремо по імені.
+  function cmdData() {
+    const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : [];
+    const out = [], seen = new Set();
+    const push = (label, kind, arg, group) => {
+      label = String(label || '').trim();
+      if (!label || label === '—') return;
+      const key = group + '|' + label;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push([label, kind + ':' + arg, group]);
+    };
+    daily.forEach(r => {
+      push(String(r.geo || '').toUpperCase(), 'geo', String(r.geo || '').toUpperCase(), 'Geo');
+      push(r.account, 'rbq', r.account, 'Account');
+      push(r.offer,   'rbq', r.offer,   'Offer');
+      push(r.funnel,  'rbq', r.funnel,  'Funnel');
+      push(r.agent,   'rbq', r.agent,   'Agent');
+    });
+    (window.creativesRawData || []).forEach(c => push(c.cid, 'cid', c.cid, 'Creative'));
+    return out;
+  }
+
   function cmdRender(q) {
     const s = (q || '').trim().toLowerCase();
-    cmdShown = s ? CMDS.filter(c => c[0].toLowerCase().includes(s) || c[2].toLowerCase().includes(s)) : CMDS;
+    if (!s) {
+      cmdShown = CMDS;
+    } else {
+      const hit = c => c[0].toLowerCase().includes(s) || c[2].toLowerCase().includes(s);
+      // Точний збіг завжди перший: на «BR» потрібне гео BR, а не сторінка
+      // «Geo Breakdown», у назві якої той самий «br» сидить усередині слова.
+      // Далі — початок слова, далі — решта. Усередині однакового рангу
+      // порядок лишається вихідним, тобто сторінки перед даними.
+      const rank = c => {
+        const l = c[0].toLowerCase();
+        return l === s ? 0 : l.startsWith(s) ? 1 : 2;
+      };
+      const all = CMDS.filter(hit).concat(cmdData().filter(hit));
+      // 40 — щоб на широкому запиті не малювати тисячі рядків.
+      cmdShown = all
+        .map((c, i) => [c, rank(c), i])
+        .sort((a, b) => a[1] - b[1] || a[2] - b[2])
+        .map(x => x[0])
+        .slice(0, 40);
+    }
     cmdSel = 0;
     document.getElementById('cmd-list').innerHTML = cmdShown.length
       ? cmdShown.map((c, i) => `<button class="cmd-row ${i === 0 ? 'is-sel' : ''}" data-i="${i}">
@@ -12986,13 +13127,38 @@ function dcRenderWarn(unlinked) {
     if (e.key === 'Enter') { e.preventDefault(); cmdRun(cmdSel); }
   }
 
+  // Перехід на сторінку перемальовує її вміст, тож чіпати поля можна
+  // тільки після цього — звідси відкладений виклик.
+  function cmdAfterNav(route, fn) {
+    navGo(route);
+    setTimeout(fn, 60);
+  }
+
   function cmdRun(i) {
     const c = cmdShown[i];
     if (!c) return;
     cmdClose();
-    const [kind, arg] = c[1].split(':');
+    // split(':') не годиться: у назві оферу чи кабінета двокрапка цілком
+    // можлива, і аргумент обрізало б по ній.
+    const at = c[1].indexOf(':');
+    const kind = c[1].slice(0, at), arg = c[1].slice(at + 1);
+
     if (kind === 'nav') navGo(arg);
     else if (kind === 'hub') hubOpen(arg);
+    else if (kind === 'geo') cmdAfterNav('', () => {
+      if (typeof showGeoDetails === 'function') showGeoDetails(arg);
+    });
+    else if (kind === 'cid') cmdAfterNav('creatives', () => {
+      const box = document.getElementById('creative-search');
+      if (box) box.value = arg;
+      if (typeof selectCreative === 'function') selectCreative(arg);
+    });
+    else if (kind === 'rbq') cmdAfterNav('reports', () => {
+      const box = document.getElementById('rb-q');
+      if (!box) return;
+      box.value = arg;
+      if (typeof rbRender === 'function') rbRender();
+    });
     else if (typeof window[arg] === 'function') window[arg]();
   }
 
