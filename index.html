@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 12:34">
+  <meta name="build" content="build 20.09 13:15">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2303,6 +2303,39 @@ body.sb-compact .sb-build { display: none; }
 body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) {
   min-height: calc(100vh / var(--zoom) - 54px);
 }
+
+/* ── Report Builder на всю висоту ────────────────────────────────────
+   Таблиця жила у вікні на 400px (правило вище, у компактних картках),
+   і при довгому звіті доводилось скролити всередині маленької коробки,
+   а під нею лишалась порожнеча на пів екрана. Тепер на власній сторінці
+   картка — колонка на всю висоту: шапка з групуванням і фільтрами
+   стоїть на місці, скролиться сама таблиця, а її шапка липка.
+   116px — це padding .app-content: 12px зверху і 104px знизу під
+   плаваючий док. Ділення на --zoom, бо 100vh у зумленому body дає
+   лише 90% екрана. */
+body[data-route="reports"] #dashboard-content > #report-builder-section {
+  height: calc(100vh / var(--zoom) - 116px);
+  /* Правило вище дає сторінковим блокам min-height у -54px, і воно більше
+     за цю height, тобто мовчки перемагало б її. Перебити його класами не
+     вийде — там їх три, тож беремо другим id у селекторі. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* overflow НЕ ставимо: вище вже стоїть visible, щоб випадайка колонок
+     не зрізалась краєм картки. Скрол бере на себе сама таблиця. */
+}
+body[data-route="reports"] #report-builder-section > .p-5 { flex: none; }
+body[data-route="reports"] #rb-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;            /* без цього flex-дитина не стискається і скрол не вмикається */
+  max-height: none !important;
+  overflow: auto;
+}
+body[data-route="reports"] #rb-table thead th {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface-2);
+}
+body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2412,7 +2445,7 @@ body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) 
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 12:34</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 13:15</div>
     </div>
   </aside>
 
