@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 08:08">
+  <meta name="build" content="build 20.09 08:34">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2401,7 +2401,7 @@ body.sb-compact .sb-build { display: none; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 08:08</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 08:34</div>
     </div>
   </aside>
 
@@ -9502,20 +9502,41 @@ window.toast = function (msg, kind, ms) {
     document.body.appendChild(el);
   }
 
+  let done = false, last = 0;
+
   async function check() {
+    if (done) return;
+    // Вкладку можна перемикати десятки разів на хвилину — не смикаємо
+    // сервер частіше, ніж раз на хвилину.
+    const now = Date.now();
+    if (now - last < 60000) return;
+    last = now;
     try {
-      const r = await fetch('build.txt?t=' + Date.now(), { cache: 'no-store' });
+      const r = await fetch('build.txt?t=' + now, { cache: 'no-store' });
       if (!r.ok) return;
       const live = (await r.text()).trim();
-      if (live && live !== mine) banner(live);
+      if (live && live !== mine) { done = true; banner(live); }
     } catch (e) {
       // Немає мережі або файлу — мовчимо: це діагностика, а не функція.
     }
   }
 
+  // Одноразової перевірки при завантаженні мало: дашборд тримають
+  // відкритим днями, і така вкладка більше нічого в сервера не питає —
+  // саме через це деплої й лишались непоміченими. Тому переперевіряємо
+  // і за таймером, і коли до вкладки повертаються.
+  function start() {
+    setTimeout(() => { last = 0; check(); }, 1500);
+    setInterval(check, 10 * 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') check();
+    });
+    window.addEventListener('focus', check);
+  }
+
   if (document.readyState === 'loading')
-    document.addEventListener('DOMContentLoaded', () => setTimeout(check, 1500));
-  else setTimeout(check, 1500);
+    document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();
 </script>
 
