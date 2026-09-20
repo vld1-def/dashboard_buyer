@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 09:17">
+  <meta name="build" content="build 20.09 09:19">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2412,7 +2412,7 @@ body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) 
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 09:17</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 09:19</div>
     </div>
   </aside>
 
@@ -8326,7 +8326,7 @@ function renderGeoCostTab(geo) {
         <span class="text-[12px] font-black uppercase tracking-widest" style="color:${m.color}">${m.short}</span>
         <span class="text-[9px] text-slate-500 uppercase tracking-widest">${m.label}</span>
       </div>
-      <div style="height:150px"><canvas id="gm-${m.key}"></canvas></div>
+      <div style="height:168px"><canvas id="gm-${m.key}"></canvas></div>
       <div id="gm-note-${m.key}" class="text-[9px] text-slate-600 font-bold mt-2 min-h-[12px]"></div>
     </div>`).join('');
 
@@ -8385,9 +8385,18 @@ function renderGeoCostTab(geo) {
         responsive: true,
         maintainAspectRatio: false,
         animation: { duration: 260 },
+        // Місце під підписи над верхньою точкою, інакше їх зрізає край.
+        layout: { padding: { top: 16 } },
         plugins: {
           legend: { display: false },
-          datalabels: { display: false },   // 30 підписів у 150px не влізуть
+          datalabels: {
+            // 'auto' ховає ті підписи, що налізли б на сусідні: за 12 днів
+            // видно всі, за 31 — стільки, скільки влазить, без каші.
+            display: 'auto',
+            anchor: 'end', align: 'top', offset: 3, clamp: true,
+            color: textMain, font: { weight: '700', size: 9 },
+            formatter: gcMoney
+          },
           tooltip: {
             displayColors: false,
             callbacks: {
