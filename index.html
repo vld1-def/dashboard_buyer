@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.09 21:19">
+  <meta name="build" content="build 21.09 21:24">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2584,7 +2584,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:19</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:24</div>
     </div>
   </aside>
 
@@ -12092,10 +12092,14 @@ const ACC_STATUS = {
   problem: { label: 'Issue', cls: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/30' }
 };
 let accRows = [];
+let accTeam = '';          // для якої команди лежить кеш
 let accHasStatusCol = true;
 // Фільтр по статусу живе прямо на плитках з лічильниками: цифра і кнопка —
 // це одне й те саме, тож не додаємо ще один селект у й без того щільну шапку.
-let accFilter = '';
+// Типово стоїть «active»: кабінетів десятки, і серед мертвих губляться ті,
+// з якими працюєш. Бани й проблеми — один клік по своїй плитці.
+const ACC_FILTER_DEFAULT = 'active';
+let accFilter = ACC_FILTER_DEFAULT;
 
 function accSetFilter(k) {
   accFilter = (accFilter === k) ? '' : k;
@@ -12104,15 +12108,25 @@ function accSetFilter(k) {
 
 async function openAccountsModal() {
   document.getElementById('accounts-modal').classList.remove('hidden');
-  accFilter = '';
+  accFilter = ACC_FILTER_DEFAULT;
   const body = document.getElementById('accounts-modal-body');
-  body.innerHTML = '<p class="text-center opacity-40 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
+
+  // Уже завантажене показуємо одразу, а свіже тягнемо фоном. Раніше кожне
+  // відкриття впиралось у повний запит до бази, і на сотні кабінетів вікно
+  // просто висіло на «Loading…» щоразу.
+  const cached = accRows.length && accTeam === currentTeam;
+  if (cached) renderAccountsModal();
+  else body.innerHTML = '<p class="text-center opacity-40 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
+
   try {
     accRows = await sbFetchAll('accounts_mapping',
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
+    accTeam = currentTeam;
     accHasStatusCol = !accRows.length || 'status' in accRows[0];
   } catch (e) {
-    body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
+    // З кешем на екрані помилка фонового оновлення не має стирати список —
+    // краще трохи застарілі дані, ніж порожнє вікно.
+    if (!cached) body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
     return;
   }
   renderAccountsModal();
