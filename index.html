@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.09 18:26">
+  <meta name="build" content="build 21.09 20:49">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2382,6 +2382,64 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .gm-card { display: flex; flex-direction: column; min-height: 0; }
 .gm-canvas-box { height: 168px; }                    /* запасна висота поза сіткою */
 .gm-card > .gm-canvas-box { flex: 1 1 auto; height: auto; min-height: 120px; }
+
+/* ─── Cabinets ───
+   Рядок кабінета. Кольором світиться тільки крапка стану і рамка тих
+   рядків, що вимагають дії — бан і тиша. Решта приглушена: на сорока
+   рядках кричати мають одиниці, інакше не кричить жоден. */
+.cab-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0,1fr) auto 64px auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.cab-row:hover { background: var(--surface-3); }
+.cab-row.is-sel { outline: 2px solid rgba(139,92,246,.55); outline-offset: -1px; }
+.cab-dot { width: 8px; height: 8px; border-radius: 50%; }
+.cab-spark { height: 20px; opacity: .8; }
+.cab-chip {
+  flex: 0 0 auto;
+  font-size: 9px; font-weight: 800; letter-spacing: .06em;
+  padding: 2px 7px; border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.cab-src { font-size: 11px; color: var(--text-muted); opacity: .55; }
+.cab-link {
+  font-size: 13px; font-weight: 900; line-height: 1;
+  padding: 3px 6px; border-radius: 8px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color .15s, background .15s;
+}
+.cab-link:hover { color: #fff; background: rgba(139,92,246,.35); }
+.cab-link.is-off { opacity: .2; cursor: default; }
+
+/* Сторінка кабінетів росте на всю висоту, скролиться сам список —
+   так само, як зроблено в Report Builder. */
+body[data-route="cabinets"] #dashboard-content > #cabinets-section {
+  height: calc(100vh / var(--zoom) - 116px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+body[data-route="cabinets"] #cabinets-section > .flex.gap-4 {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+body[data-route="cabinets"] #cab-list,
+body[data-route="cabinets"] #cab-detail {
+  max-height: 100%;
+  overflow: auto;
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2448,6 +2506,10 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
         Live Data
       </button>
+      <button class="sb-item" data-nav="cabinets" onclick="navGo('cabinets')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M2 12h20"/></svg>
+        Cabinets
+      </button>
       <button class="sb-item" data-nav="expenses" onclick="navGo('expenses')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
         Expenses
@@ -2491,7 +2553,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.09 18:26</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 20:49</div>
     </div>
   </aside>
 
@@ -3265,6 +3327,35 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
     <table class="text-left border-separate border-spacing-0" id="rb-table"></table>
   </div>
 </div>
+<!-- ═══════════ CABINETS ═══════════ -->
+<div id="cabinets-section" class="card p-5 rounded-3xl shadow-xl">
+  <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
+    <div>
+      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Cabinets</h2>
+      <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Where each account lives and whether it is running</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <select id="cab-group" onchange="cabSetGroup(this.value)"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
+        <option value="agent">Group: agent</option>
+        <option value="state">Group: state</option>
+        <option value="profile">Group: profile</option>
+        <option value="">No grouping</option>
+      </select>
+      <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, note…"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
+    </div>
+  </div>
+
+  <div id="cab-migrate" class="hidden mb-4"></div>
+  <div id="cab-tiles" class="mb-4"></div>
+
+  <div class="flex gap-4 items-start">
+    <div id="cab-list" class="flex-1 min-w-0 space-y-1.5"></div>
+    <div id="cab-detail" class="hidden w-[330px] shrink-0"></div>
+  </div>
+</div>
+
 <!-- ═══════════ END REPORT BUILDER ═══════════ -->
       </div><!-- /#dashboard-content -->
     </div><!-- /.app-content -->
@@ -3818,6 +3909,7 @@ async function sbFetchAll(table, build) {
   if (typeof renderCreativeSidebar === 'function') renderCreativeSidebar("");
   if (typeof renderDeviceGeoWidget === 'function') renderDeviceGeoWidget();
   if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
+  if (typeof cabRefresh === 'function') cabRefresh();
 
   document.getElementById('creative-placeholder')?.classList.add('hidden');
 }
@@ -3895,6 +3987,7 @@ async function sbFetchAll(table, build) {
     renderDeviceGeoWidget();
   }
   if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
+  if (typeof cabRefresh === 'function') cabRefresh();
 
   // Окремо запускаємо теплову карту, щоб вона врахувала нові дати
   if (typeof applyWeeklyFilter === 'function') {
@@ -12521,6 +12614,338 @@ function dcRenderWarn(unlinked) {
 })();
 </script>
 <script>
+/* ═══════════ CABINETS ═══════════
+   Сторінка парку кабінетів. Половина того, що тут показано, ніде не
+   вводиться руками — воно рахується з daily_stats, який і так уже
+   завантажений цілком, без фільтра по місяцю.
+
+   Стан кабінета — це ручний статус (accounts_mapping.status) плюс те,
+   що кажуть гроші. Коли з'явиться Marketing API, сюди додасться третє
+   джерело, і позначка ✎ на рядку зміниться на ⟳. Поки що всі ручні. */
+
+const CAB_STATE = {
+  running: { label: 'Running',   dot: '#22C55E', tone: 'text-emerald-400', soft: 'rgba(34,197,94,.14)',  bd: 'rgba(34,197,94,.30)' },
+  silent:  { label: 'Silent',    dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.14)', bd: 'rgba(245,158,11,.32)' },
+  issue:   { label: 'Issue',     dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.10)', bd: 'rgba(245,158,11,.25)' },
+  banned:  { label: 'Banned',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.14)',  bd: 'rgba(239,68,68,.32)' },
+  idle:    { label: 'Never ran', dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' }
+};
+// Порядок = що першим потрапляє на очі. Зверху те, що вимагає дії.
+const CAB_ORDER = ['banned', 'silent', 'issue', 'running', 'idle'];
+// Колонки «де це було» можуть ще не існувати в базі — сторінка працює й без них.
+const CAB_EXTRA = [
+  { key: 'bm',      label: 'Business Manager' },
+  { key: 'profile', label: 'Browser profile' },
+  { key: 'login',   label: 'Login' },
+  { key: 'card',    label: 'Card' }
+];
+
+let cabRows = [], cabFilter = '', cabGroup = 'agent', cabSel = null;
+let cabCols = {}, cabLoaded = false;
+
+const cabDayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
+
+async function cabInit() {
+  const host = document.getElementById('cab-list');
+  if (!host) return;
+  if (cabLoaded) { cabRender(); return; }
+  host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
+  try {
+    cabRows = await sbFetchAll('accounts_mapping',
+      q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
+  } catch (e) {
+    host.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
+    return;
+  }
+  const sample = cabRows[0] || {};
+  CAB_EXTRA.forEach(c => cabCols[c.key] = c.key in sample);
+  cabLoaded = true;
+  cabRender();
+}
+
+/* Факти з грошей. «Крутить» звіряємо з останнім днем, який ВЗАГАЛІ є в
+   даних, а не з сьогоднішньою датою: звіт за сьогодні ще не залитий, і
+   інакше весь парк щоранку виглядав би мертвим. */
+function cabFacts() {
+  const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : [];
+  const map = {};
+  let lastDay = '';
+  daily.forEach(r => {
+    const acc = String(r.account || '').trim();
+    const d = String(r.date || '');
+    if (!acc || !d) return;
+    if (d > lastDay) lastDay = d;
+    const o = map[acc] || (map[acc] = { spend: 0, first: d, last: d, byDay: {} });
+    const s = Number(r.spend) || 0;
+    o.spend += s;
+    if (d < o.first) o.first = d;
+    if (d > o.last) o.last = d;
+    o.byDay[d] = (o.byDay[d] || 0) + s;
+  });
+  return { map, lastDay };
+}
+
+function cabStateOf(row, f) {
+  const st = String(row.status || 'active').toLowerCase();
+  if (st === 'ban') return 'banned';
+  if (st === 'problem') return 'issue';
+  const x = f.map[String(row.account_id || '').trim()];
+  if (!x || x.spend <= 0) return 'idle';
+  return x.last === f.lastDay ? 'running' : 'silent';
+}
+
+// Пряме посилання в Ads Manager має сенс лише для числового ID кабінета.
+// У демо-даних ID виду ACC-1041 — там посилання свідомо не буде.
+function cabAdsLink(id) {
+  const digits = String(id || '').replace(/\D/g, '');
+  return digits.length >= 6
+    ? 'https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=' + digits
+    : '';
+}
+
+function cabSetGroup(v) { cabGroup = v; cabRender(); }
+function cabSetFilter(k) { cabFilter = (cabFilter === k) ? '' : k; cabSel = null; cabRender(); }
+
+function cabPick(id) {
+  cabSel = (cabSel === id) ? null : id;
+  cabRender();
+}
+
+// Спарклайн спенду за останні 14 днів — інлайновий SVG, без Chart.js:
+// на сторінці таких графіків можуть бути десятки, і кожен інстанс
+// Chart.js тут коштував би дорожче за всю решту рендера разом.
+function cabSpark(byDay, lastDay, w, h) {
+  if (!lastDay) return '';
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(Date.parse(lastDay) - i * 86400000).toISOString().slice(0, 10);
+    days.push(byDay[d] || 0);
+  }
+  const max = Math.max(...days, 1);
+  const step = w / (days.length - 1);
+  const pts = days.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * (h - 2) - 1).toFixed(1)}`);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.5"
+      stroke-linejoin="round" stroke-linecap="round" opacity=".85"/></svg>`;
+}
+
+function cabRender() {
+  const list = document.getElementById('cab-list');
+  const tiles = document.getElementById('cab-tiles');
+  if (!list) return;
+
+  const f = cabFacts();
+  const all = cabRows.map(r => {
+    const id = String(r.account_id || '').trim();
+    const x = f.map[id] || { spend: 0, first: '', last: '', byDay: {} };
+    const state = cabStateOf(r, f);
+    return { row: r, id, x, state,
+             silent: (state === 'silent' && x.last) ? cabDayDiff(x.last, f.lastDay) : 0,
+             age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
+  });
+
+  // ── плитки-лічильники, вони ж фільтр ──
+  const counts = {};
+  CAB_ORDER.forEach(k => counts[k] = 0);
+  all.forEach(c => counts[c.state]++);
+  // Плитки тримаємо низькими й в один рядок: це навігація, а не зміст.
+  // auto-fit замість брейкпойнтів — переносяться самі, коли вузько.
+  const tile = (k, label, n, tone, soft, bd) => `
+    <button onclick="cabSetFilter('${k}')"
+      class="rounded-xl px-2.5 py-1.5 text-left transition flex items-baseline justify-between gap-2
+             ${cabFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'hover:brightness-110'}"
+      style="background:${soft};border:1px solid ${bd}">
+      <span class="text-[9px] font-black uppercase tracking-widest truncate" style="color:var(--text-muted)">${label}</span>
+      <span class="text-[15px] font-black leading-none ${tone}">${n}</span></button>`;
+  if (tiles) {
+    tiles.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px">
+      ${tile('', 'All', all.length, 'text-dynamic', 'var(--surface-2)', 'var(--border)')}
+      ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
+          CAB_STATE[k].tone, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
+    </div>`;
+  }
+
+  // ── підказка про міграцію, якщо полів «де це було» ще немає ──
+  const miss = CAB_EXTRA.filter(c => !cabCols[c.key]);
+  const mig = document.getElementById('cab-migrate');
+  if (mig) {
+    mig.classList.toggle('hidden', !miss.length);
+    if (miss.length) {
+      mig.innerHTML = `<div class="rounded-2xl p-4 text-[11px] leading-relaxed"
+           style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.22)">
+        <p class="font-black text-amber-300 uppercase tracking-widest text-[10px] mb-2">Optional: one migration</p>
+        <p style="color:var(--text-muted)">To store where each cabinet lives, add these columns in Supabase &rarr; SQL Editor. Everything else on this page already works without them.</p>
+        <pre class="mt-2 rounded-xl p-3 font-mono text-[10px] text-emerald-300 overflow-x-auto" style="background:rgba(0,0,0,.4)">ALTER TABLE public.accounts_mapping
+${miss.map(c => `  ADD COLUMN IF NOT EXISTS ${c.key} text`).join(',\n')};</pre></div>`;
+    }
+  }
+
+  // ── фільтр і пошук ──
+  const q = (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
+  let shown = all.filter(c =>
+    (!cabFilter || c.state === cabFilter) &&
+    (!q || [c.id, c.row.provider_name, c.row.status_note,
+            ...CAB_EXTRA.map(e => c.row[e.key])]
+           .some(v => String(v || '').toLowerCase().includes(q))));
+
+  if (!shown.length) {
+    list.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Nothing here</p>`;
+    cabDetail(null);
+    return;
+  }
+
+  // Спершу те, що вимагає дії, всередині — за спендом
+  const rank = s => CAB_ORDER.indexOf(s);
+  shown.sort((a, b) => rank(a.state) - rank(b.state) || b.x.spend - a.x.spend);
+
+  // ── групування ──
+  const keyOf = c => cabGroup === 'agent'   ? (c.row.provider_name || '— no agent —')
+                   : cabGroup === 'state'   ? CAB_STATE[c.state].label
+                   : cabGroup === 'profile' ? (c.row.profile || '— no profile —')
+                   : '';
+  const groups = {};
+  shown.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
+
+  list.innerHTML = Object.entries(groups).map(([g, items]) => {
+    const head = g ? `<div class="flex items-baseline gap-2 pt-3 pb-1.5 px-1">
+        <span class="text-[10px] font-black uppercase tracking-widest text-dynamic">${g}</span>
+        <span class="text-[10px] font-bold" style="color:var(--text-muted)">
+          ${items.length} · ${items.filter(i => i.state === 'running').length} running ·
+          ${cabMoney(items.reduce((a, i) => a + i.x.spend, 0))}</span></div>` : '';
+    return head + items.map(cabRowHtml).join('');
+  }).join('');
+
+  cabDetail(shown.find(c => c.id === cabSel) || null);
+}
+
+function cabRowHtml(c) {
+  const S = CAB_STATE[c.state];
+  const link = cabAdsLink(c.id);
+  const sub = c.state === 'silent' ? `${S.label} · ${c.silent} d`
+            : c.state === 'idle'   ? S.label
+            : S.label;
+  const facts = c.x.spend > 0
+    ? `${cabMoney(c.x.spend)} · ${c.age} d`
+    : 'no spend yet';
+  const prof = c.row.profile
+    ? `<span class="cab-chip">${c.row.profile}</span>` : '';
+  return `<div onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')"
+      class="cab-row ${cabSel === c.id ? 'is-sel' : ''}" style="border-color:${c.state === 'running' || c.state === 'idle' ? 'var(--border)' : S.bd}">
+    <span class="cab-dot" style="background:${S.dot}"></span>
+    <div class="min-w-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-[12px] font-black text-dynamic truncate">${c.id}</span>
+        ${prof}
+      </div>
+      <div class="text-[10px] font-bold mt-0.5 ${S.tone}">${sub}</div>
+    </div>
+    <div class="text-right">
+      <div class="text-[12px] font-black text-dynamic font-mono">${facts}</div>
+      <div class="text-[10px] font-bold truncate" style="color:var(--text-muted)">${c.row.provider_name || '—'}</div>
+    </div>
+    <div class="cab-spark ${S.tone}">${cabSpark(c.x.byDay, c.x.last, 64, 20)}</div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <span class="cab-src" title="Status set by hand. With the Marketing API this turns into a live one.">&#9998;</span>
+      ${link ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+           class="cab-link" title="Open in Ads Manager">&#8599;</a>`
+             : `<span class="cab-link is-off" title="Ads Manager link needs a numeric account id">&#8599;</span>`}
+    </div>
+  </div>`;
+}
+
+function cabDetail(c) {
+  const box = document.getElementById('cab-detail');
+  if (!box) return;
+  if (!c) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  const S = CAB_STATE[c.state];
+  const link = cabAdsLink(c.id);
+  const field = e => cabCols[e.key]
+    ? `<div class="mb-2">
+         <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">${e.label}</label>
+         <input value="${String(c.row[e.key] || '').replace(/"/g, '&quot;')}"
+           onchange="cabSaveField('${c.row.id}','${e.key}',this.value)"
+           class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"></div>`
+    : '';
+  box.innerHTML = `<div class="card p-4 rounded-2xl">
+    <div class="flex items-start justify-between gap-2 mb-3">
+      <div class="min-w-0">
+        <p class="text-[13px] font-black text-dynamic truncate">${c.id}</p>
+        <p class="text-[10px] font-black uppercase tracking-widest ${S.tone}">${S.label}</p>
+      </div>
+      <button onclick="cabPick('${encodeURIComponent(c.id)}')" class="text-slate-500 hover:text-red-400 text-lg leading-none">&times;</button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      ${[['Spend', c.x.spend > 0 ? cabMoney(c.x.spend) : '—'],
+         ['Days live', c.age || '—'],
+         ['First spend', c.x.first || '—'],
+         ['Last spend', c.x.last || '—']]
+        .map(([k, v]) => `<div class="rounded-lg px-2 py-1.5" style="background:var(--surface-2)">
+            <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
+            <p class="text-[12px] font-black text-dynamic font-mono">${v}</p></div>`).join('')}
+    </div>
+
+    <div class="mb-3 ${S.tone}">${cabSpark(c.x.byDay, c.x.last, 290, 38)}</div>
+
+    <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Status</label>
+    <div class="flex gap-1 mb-3">
+      ${[['active', 'OK'], ['problem', 'Issue'], ['ban', 'Ban']].map(([k, l]) => `
+        <button onclick="cabSetStatus('${c.row.id}','${k}')"
+          class="flex-1 px-2 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition
+                 ${String(c.row.status || 'active') === k ? 'bg-violet-600 text-white' : 'text-muted-dynamic hover:text-white'}"
+          style="${String(c.row.status || 'active') === k ? '' : 'background:var(--surface-2)'}">${l}</button>`).join('')}
+    </div>
+
+    ${CAB_EXTRA.map(field).join('')}
+
+    <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Note</label>
+    <textarea rows="3" onchange="cabSaveField('${c.row.id}','status_note',this.value)"
+      class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"
+      placeholder="What was launched here, which card, anything worth remembering">${String(c.row.status_note || '')}</textarea>
+
+    ${link ? `<a href="${link}" target="_blank" rel="noopener"
+        class="block mt-3 text-center bg-violet-600 hover:bg-violet-500 text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition">Open in Ads Manager &#8599;</a>` : ''}
+  </div>`;
+}
+
+async function cabSaveField(id, key, value) {
+  const row = cabRows.find(r => String(r.id) === String(id));
+  if (!row) return;
+  const prev = row[key];
+  row[key] = value;
+  const patch = {}; patch[key] = value;
+  const { error } = await sb.from('accounts_mapping').update(patch).eq('id', id);
+  if (error) { row[key] = prev; alert('Could not save: ' + error.message); }
+  cabRender();
+}
+
+async function cabSetStatus(id, status) {
+  const row = cabRows.find(r => String(r.id) === String(id));
+  if (!row) return;
+  const prev = row.status;
+  row.status = status;
+  cabRender();
+  const { error } = await sb.from('accounts_mapping').update({ status }).eq('id', id);
+  if (error) { row.status = prev; cabRender(); alert('Could not save: ' + error.message); }
+}
+
+// Дані дашборда приїжджають після того, як сторінка вже намальована:
+// зайшов одразу на #/cabinets — і весь парк показало б як «ніколи не
+// крутив», бо rawData на той момент ще порожній. Тому loadData у кінці
+// смикає перемальовку. Саме перемальовку, не перезавантаження списку.
+function cabRefresh() {
+  if (!cabLoaded) return;
+  if (!document.getElementById('cab-list')) return;
+  cabRender();
+}
+
+window.cabInit = cabInit;
+window.cabRefresh = cabRefresh;
+</script>
+
+<script>
 /* ══════════════════════════════════════════════════════════════════
    UI-шар нового дизайну: навігація, тема, ⌘K, повноекранні панелі
    (Data Hub, Таблиці) та інсайт-картки. Дані бере з тих самих
@@ -12540,6 +12965,7 @@ function dcRenderWarn(unlinked) {
     'geo':        { section: 'device-geo-section' },
     'placements': { section: 'placements-section' },
     'live':       { section: 'live-table-section' },
+    'cabinets':   { section: 'cabinets-section' },
     'reports':    { section: 'report-builder-section' },
     'expenses':   { section: 'expenses-section' },
     'hub':        { panel: 'datahub-panel' },
@@ -12632,6 +13058,9 @@ function dcRenderWarn(unlinked) {
     }
     if (name === 'sheets') sheetsLoad();
     if (name === 'expenses') expInit();
+    // Accountи вантажать accounts_mapping при першому заході й далі
+    // тільки перемальовуються — список парку міняється рідко.
+    if (name === 'cabinets' && typeof cabInit === 'function') cabInit();
 
     document.body.classList.remove('sb-open');
     if (scroll) window.scrollTo({ top: 0 });
@@ -13022,6 +13451,7 @@ function dcRenderWarn(unlinked) {
     ['Geo Breakdown',  'nav:geo',         'Page'],
     ['Placements',     'nav:placements',         'Page'],
     ['Live Data',      'nav:live',         'Page'],
+    ['Cabinets',       'nav:cabinets',   'Page'],
     ['Report Builder', 'nav:reports',     'Page'],
     ['Tasks',          'fn:toggleTaskModal',             'Tool'],
     ['Daily reports',  'fn:toggleReportModal',           'Tool'],
