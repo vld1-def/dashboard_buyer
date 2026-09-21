@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.09 21:37">
+  <meta name="build" content="build 21.09 21:51">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2546,6 +2546,58 @@ body[data-route="cabinets"] #cab-detail {
   #cmd-box { transition: transform .14s ease; transform: translateY(0); }
   @starting-style { #cmd-overlay.open #cmd-box { transform: translateY(-6px); } }
 }
+
+/* ─── Появи, частина друга: самі вікна, сайдбар, вкладки ───
+   Карткам вікон даємо зсув по вертикалі, а НЕ масштаб. Це принципово:
+   getBoundingClientRect повертає трансформовану рамку, тож scale змінив
+   би ширину й висоту, і графіки в гео-модалці, які міряють себе одразу
+   після відкриття, створились би не того розміру. Чистий translate
+   рамку не міняє — рухає, але не розтягує. */
+@media (prefers-reduced-motion: no-preference) {
+
+  .modal-overlay > div,
+  #settings-modal > div,
+  #bonus-modal > div,
+  #close-modal > div {
+    transition: transform .18s cubic-bezier(.2,.7,.3,1), opacity .18s ease;
+    transform: translateY(0);
+  }
+  .modal-overlay.hidden > div,
+  #settings-modal.hidden > div,
+  #bonus-modal.hidden > div,
+  #close-modal.hidden > div { transform: translateY(-10px); opacity: 0; }
+  @starting-style {
+    .modal-overlay:not(.hidden) > div,
+    #settings-modal:not(.hidden) > div,
+    #bonus-modal:not(.hidden) > div,
+    #close-modal:not(.hidden) > div { transform: translateY(-10px); opacity: 0; }
+  }
+
+  /* Сайдбар: ширина живе у --sb-w, компактний режим просто міняє змінну.
+     Разом із нею тягнемо підписи — у компактному їм ставиться font-size:0,
+     і без переходу текст зникав би стрибком, поки панель ще широка. */
+  .app-sidebar { transition: width .22s ease, flex-basis .22s ease; }
+  .sb-item {
+    transition: background .15s, color .15s,
+                font-size .18s ease, gap .18s ease, padding .18s ease;
+  }
+  .sb-brand, .sb-search, .sb-scroll, .sb-foot { transition: padding .22s ease; }
+
+  /* Вкладки всередині гео-модалки — саме затухання, без зсуву:
+     на вкладці Costs полотна міряють себе під time показу. */
+  #geo-panel-funnels, #geo-panel-offers, #geo-panel-devices,
+  #geo-panel-placements, #geo-panel-creatives, #geo-panel-costs {
+    transition: opacity .14s ease, display .14s allow-discrete;
+  }
+  #geo-panel-funnels.hidden, #geo-panel-offers.hidden, #geo-panel-devices.hidden,
+  #geo-panel-placements.hidden, #geo-panel-creatives.hidden,
+  #geo-panel-costs.hidden { opacity: 0; }
+  @starting-style {
+    #geo-panel-funnels:not(.hidden), #geo-panel-offers:not(.hidden),
+    #geo-panel-devices:not(.hidden), #geo-panel-placements:not(.hidden),
+    #geo-panel-creatives:not(.hidden), #geo-panel-costs:not(.hidden) { opacity: 0; }
+  }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2659,7 +2711,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:37</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:51</div>
     </div>
   </aside>
 
