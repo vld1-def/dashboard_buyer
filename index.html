@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.09 21:51">
+  <meta name="build" content="build 21.09 22:09">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2585,18 +2585,120 @@ body[data-route="cabinets"] #cab-detail {
 
   /* Вкладки всередині гео-модалки — саме затухання, без зсуву:
      на вкладці Costs полотна міряють себе під time показу. */
+  /* Вкладки Geo Breakdown: стара зникає МИТТЄВО, нова зʼявляється повільно.
+     Перехресне згасання тут виглядало погано — на time анімації обидві
+     панелі лишались у потоці одночасно, і вміст модалки смикався. Тому в
+     transition свідомо немає ні display, ні allow-discrete: вихід не
+     анімуємо взагалі, анімуємо лише появу. */
   #geo-panel-funnels, #geo-panel-offers, #geo-panel-devices,
   #geo-panel-placements, #geo-panel-creatives, #geo-panel-costs {
-    transition: opacity .14s ease, display .14s allow-discrete;
+    transition: opacity .34s ease;
   }
-  #geo-panel-funnels.hidden, #geo-panel-offers.hidden, #geo-panel-devices.hidden,
-  #geo-panel-placements.hidden, #geo-panel-creatives.hidden,
-  #geo-panel-costs.hidden { opacity: 0; }
   @starting-style {
     #geo-panel-funnels:not(.hidden), #geo-panel-offers:not(.hidden),
     #geo-panel-devices:not(.hidden), #geo-panel-placements:not(.hidden),
     #geo-panel-creatives:not(.hidden), #geo-panel-costs:not(.hidden) { opacity: 0; }
   }
+}
+
+/* ═══════════ ЖУРНАЛ ЗМІН КАБІНЕТІВ ═══════════ */
+
+/* Лічильник на пункті «Cabinets». Червоний — лише коли справді горить
+   (бан або проблема); решта змін лишається нейтральною, інакше значок
+   перестає щось означати. */
+.sb-item .sb-badge.is-alert {
+  background: rgba(239,68,68,.18); color: #F87171;
+  border: 1px solid rgba(239,68,68,.35);
+}
+
+/* Смуга «що змінилось, поки тебе не було» — над вмістом, на всіх сторінках. */
+#ev-banner { margin-bottom: 12px; }
+.ev-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.ev-bar.is-bad {
+  background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.30);
+}
+.ev-bar-main { flex: 1 1 320px; min-width: 0; }
+.ev-bar-head {
+  font-size: 11px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-main); margin-bottom: 6px;
+}
+.ev-bar-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 3px 8px; border-radius: 8px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  font-size: 11px; font-weight: 700;
+}
+.ev-chip b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-main); }
+.ev-chip i { font-style: normal; font-size: 10px; color: var(--text-muted); }
+.ev-more { color: var(--text-muted); }
+.ev-bar-act { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ev-btn {
+  padding: 6px 12px; border-radius: 10px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: var(--accent); color: #fff; border: none; transition: filter .15s;
+}
+.ev-btn:hover { filter: brightness(1.12); }
+.ev-x {
+  width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+  color: var(--text-muted); font-size: 18px; line-height: 1;
+  background: transparent; border: 1px solid var(--border); transition: color .15s, border-color .15s;
+}
+.ev-x:hover { color: #F87171; border-color: rgba(239,68,68,.4); }
+
+/* Рядок історії — і в бічній панелі, і в спільній стрічці. */
+.ev-row {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 4px 0; font-size: 11px; font-weight: 700;
+  border-top: 1px solid var(--border);
+}
+.ev-row:first-of-type { border-top: none; }
+.ev-dot { font-size: 14px; line-height: 1; }
+.ev-row-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-main); flex: 0 0 auto;
+}
+.ev-row-txt { flex: 1 1 auto; min-width: 0; }
+.ev-dim { color: var(--text-muted); }
+.ev-tag {
+  font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); background: var(--surface-2);
+  padding: 1px 5px; border-radius: 5px; max-width: 160px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ev-row-at { flex: 0 0 auto; font-size: 10px; color: var(--text-muted); }
+
+.ev-panel { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.ev-panel-head {
+  font-size: 9px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted); margin-bottom: 4px;
+}
+
+/* Спільна стрічка на сторінці кабінетів — згорнута за замовчуванням. */
+.ev-feed-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 7px 11px; border-radius: 10px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 10px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .1em;
+  transition: color .15s, border-color .15s;
+}
+.ev-feed-btn:hover { color: var(--text-main); }
+.ev-feed {
+  margin-top: 6px; padding: 4px 11px; max-height: 260px; overflow-y: auto;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.ev-off { padding: 8px 0; font-size: 10px; font-weight: 700; color: var(--text-muted); }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Смуга зʼявляється тим самим рухом, що й вікна: зсув, не масштаб. */
+  #ev-banner:not(.hidden) .ev-bar { animation: evIn .28s cubic-bezier(.2,.7,.3,1) both; }
+  @keyframes evIn { from { opacity: 0; transform: translateY(-8px); } }
+  .ev-feed { animation: evIn .22s ease both; }
 }
   </style>
 </head>
@@ -2667,6 +2769,7 @@ body[data-route="cabinets"] #cab-detail {
       <button class="sb-item" data-nav="cabinets" onclick="navGo('cabinets')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M2 12h20"/></svg>
         Cabinets
+        <span id="cab-badge" class="sb-badge" style="display:none"></span>
       </button>
       <button class="sb-item" data-nav="expenses" onclick="navGo('expenses')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
@@ -2711,7 +2814,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:51</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 22:09</div>
     </div>
   </aside>
 
@@ -2875,6 +2978,11 @@ body[data-route="cabinets"] #cab-detail {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         <span id="mob-team-name">Dashboard</span>
       </button>
+
+      <!-- «Що змінилось, поки тебе не було». Живе над вмістом, а не на
+           сторінці кабінетів: про бан треба знати навіть тому, хто туди
+           не заходить. Порожній — не займає місця. -->
+      <div id="ev-banner" class="hidden"></div>
 
       <!-- Data Hub: Form.html у тій самій сторінці. Той самий Supabase і той самий
            selected_team у localStorage, тож команда й дані спільні. -->
@@ -3507,6 +3615,10 @@ body[data-route="cabinets"] #cab-detail {
 
   <div id="cab-tiles" class="mb-4"></div>
 
+  <!-- Спільна стрічка змін по всьому парку. Згорнута: це довідка, а не те,
+       заради чого сюди заходять. -->
+  <div id="cab-feed" class="mb-4"></div>
+
   <div class="flex gap-4 items-start">
     <div id="cab-list" class="flex-1 min-w-0 space-y-1.5"></div>
     <div id="cab-detail" class="hidden w-[330px] shrink-0"></div>
@@ -4067,6 +4179,7 @@ async function sbFetchAll(table, build) {
   if (typeof renderDeviceGeoWidget === 'function') renderDeviceGeoWidget();
   if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
   if (typeof cabRefresh === 'function') cabRefresh();
+  if (typeof evBoot === 'function') evBoot();
 
   document.getElementById('creative-placeholder')?.classList.add('hidden');
 }
@@ -4145,6 +4258,7 @@ async function sbFetchAll(table, build) {
   }
   if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
   if (typeof cabRefresh === 'function') cabRefresh();
+  if (typeof evBoot === 'function') evBoot();
 
   // Окремо запускаємо теплову карту, щоб вона врахувала нові дати
   if (typeof applyWeeklyFilter === 'function') {
@@ -12911,7 +13025,10 @@ const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
 async function cabInit() {
   const host = document.getElementById('cab-list');
   if (!host) return;
-  if (cabLoaded) { cabRender(); return; }
+  // Зайшов сюди — значить побачив: банер і лічильник гасимо на КОЖНОМУ
+  // заході, не лише на першому. «Прочитано» має означати прочитано.
+  const seen = () => { if (typeof evDismiss === 'function') evDismiss(); };
+  if (cabLoaded) { cabRender(); seen(); return; }
   host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
   try {
     cabRows = await sbFetchAll('accounts_mapping',
@@ -12924,6 +13041,7 @@ async function cabInit() {
   CAB_EXTRA.forEach(c => cabCols[c.key] = c.key in sample);
   cabLoaded = true;
   cabRender();
+  seen();
 }
 
 /* Факти з грошей. «Крутить» звіряємо з останнім днем, який ВЗАГАЛІ є в
@@ -13045,6 +13163,8 @@ function cabRender() {
          ADD COLUMN IF NOT EXISTS login text,
          ADD COLUMN IF NOT EXISTS card text;
      До того часу сторінка працює без них. */
+
+  if (typeof evFeedPaint === 'function') evFeedPaint();
 
   // ── фільтр і пошук ──
   const q = (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
@@ -13189,6 +13309,8 @@ function cabDetail(c) {
       class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"
       placeholder="What was launched here, which card, anything worth remembering">${String(c.row.status_note || '')}</textarea>
 
+    ${typeof evForAccount === 'function' ? evForAccount(c.id) : ''}
+
     <button onclick="cabStopAll('${encodeURIComponent(c.id)}')"
       class="w-full mt-3 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
              text-red-400 hover:text-white hover:bg-red-600"
@@ -13227,10 +13349,16 @@ async function cabSetStatus(id, status) {
   const row = cabRows.find(r => String(r.id) === String(id));
   if (!row) return;
   const prev = row.status;
+  // Стан рахуємо до і після: ручний статус — це такий самий перехід, як
+  // і той, що ми ловимо з грошей, і в журналі він має лежати поруч.
+  const f = cabFacts();
+  const was = cabStateOf(row, f);
   row.status = status;
+  const now = cabStateOf(row, f);
   cabRender();
   const { error } = await sb.from('accounts_mapping').update({ status }).eq('id', id);
-  if (error) { row.status = prev; cabRender(); alert('Could not save: ' + error.message); }
+  if (error) { row.status = prev; cabRender(); alert('Could not save: ' + error.message); return; }
+  if (typeof evLog === 'function') await evLog(String(row.account_id || '').trim(), was, now, '', 'manual');
 }
 
 // Дані дашборда приїжджають після того, як сторінка вже намальована:
@@ -13245,6 +13373,305 @@ function cabRefresh() {
 
 window.cabInit = cabInit;
 window.cabRefresh = cabRefresh;
+</script>
+
+<script>
+/* ═══════════ ЖУРНАЛ ЗМІН КАБІНЕТІВ ═══════════
+   Стан кабінета вже рахується з даних (cabStateOf). Тут ми лише
+   запамʼятовуємо, коли він змінився, — щоб «кабінет забанився» не
+   треба було помічати самому.
+
+   Таблиця:
+     account_events(id, team_name, account_id, at, kind,
+                    from_state, to_state, note, source)
+
+   `at` навмисно НЕ надсилаємо з браузера: нехай його ставить база
+   (default now()). Годинник на компʼютері буває збитий, а події
+   різних людей мусять лежати в одній шкалі часу.
+
+   Якщо таблиці немає або RLS не пускає — evOn стає false, і вся ця
+   надбудова тихо вимикається до перезавантаження сторінки. Дашборд
+   мусить працювати й без неї. */
+
+const EV_TABLE = 'account_events';
+// Скільки подій тягнемо. Перший рядок по кабінету в цьому списку — його
+// останній відомий стан, тож ліміт має бути з великим запасом: одна
+// подія на реальну зміну, кілька сотень на місяць у великому парку.
+const EV_LIMIT = 4000;
+// Перший візит без позначки «бачив» не мусить вивалювати піврічну історію.
+const EV_FIRST_WINDOW = 7 * 86400000;
+// Скільки днів мовчання, перш ніж назвати кабінет тихим. Імпорт за day
+// приїжджає нерівно, і без цього запасу кабінет встигав би «замовкнути»
+// й «ожити» за одну добу — рівно той шум, від якого ми й тікаємо.
+const EV_SILENT_MIN = 2;
+
+// evOn: null — ще не пробували, true — працює, false — вимкнено до перезавантаження
+let evRows = [], evOn = null, evTeam = '', evErr = '', evSyncing = false, evOpen = false;
+// Гачок перемальовки стоїть у loadData у двох місцях, та й дані можна
+// перезавантажити руками. Звірятись частіше, ніж раз на хвилину, нема
+// сенсу: між двома викликами поспіль стан кабінета не зміниться.
+let evSyncAt = 0;
+const EV_MIN_GAP = 60000;
+
+const EV_TONE = {
+  banned:  { rank: 3, tone: 'text-red-400',    word: 'banned' },
+  issue:   { rank: 2, tone: 'text-amber-400',  word: 'has an issue' },
+  silent:  { rank: 1, tone: 'text-amber-400',  word: 'went quiet' },
+  running: { rank: 0, tone: 'text-emerald-400', word: 'is running' },
+  idle:    { rank: 0, tone: 'text-muted-dynamic', word: 'never ran' }
+};
+
+const evRank = s => (EV_TONE[s] || EV_TONE.idle).rank;
+
+function evAgo(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return '';
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return (m || 1) + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+/* ── читання ── */
+
+async function evLoad() {
+  if (evOn === false) return [];
+  const { data, error } = await sb.from(EV_TABLE).select('*')
+    .eq('team_name', currentTeam)
+    .order('at', { ascending: false })
+    .limit(EV_LIMIT);
+  if (error) {
+    evOn = false; evErr = error.message;
+    console.warn('account_events:', error.message);
+    return [];
+  }
+  evOn = true; evErr = ''; evTeam = currentTeam; evRows = data || [];
+  return evRows;
+}
+
+// Останній відомий стан по кожному кабінету. evRows уже відсортовані
+// за часом спадно, тож перший зустрінутий рядок і є останнім.
+function evLastStates() {
+  const m = {};
+  evRows.forEach(e => {
+    const id = String(e.account_id || '');
+    if (id && !(id in m)) m[id] = e.to_state;
+  });
+  return m;
+}
+
+/* ── запис ── */
+
+/* cards: [{ id, state, hold }]. hold — «ще рано судити», такі кабінети
+   просто пропускаємо: ні запису, ні втрати попереднього стану.
+
+   Account, якого ще немає в журналі, отримує рядок source='seed'. Це не
+   подія, а точка відліку: інакше перший же захід намалював би банер із
+   усім парком одразу. Сіється все, включно з idle, — щоб наступний
+   «запустився» вже був справжнім переходом, а не ще одним seed. */
+async function evSync(cards) {
+  if (evOn === false || evSyncing) return;
+  evSyncing = true;
+  try {
+    if (evOn === null || evTeam !== currentTeam) await evLoad();
+    if (evOn === false) return;
+    const last = evLastStates();
+    const add = [];
+    cards.forEach(c => {
+      if (c.hold) return;
+      const prev = last[c.id];
+      if (prev === c.state) return;
+      add.push({ team_name: currentTeam, account_id: c.id, kind: 'state',
+                 from_state: prev || null, to_state: c.state,
+                 source: prev ? 'auto' : 'seed' });
+    });
+    if (!add.length) return;
+    const { data, error } = await sb.from(EV_TABLE).insert(add).select();
+    if (error) {
+      evOn = false; evErr = error.message;
+      console.warn('account_events insert:', error.message);
+      return;
+    }
+    // Свіже — на початок: evRows тримаємо відсортованими за спаданням часу.
+    evRows = (data || []).concat(evRows);
+  } finally { evSyncing = false; }
+}
+
+// Ручна зміна статусу — така сама подія, просто з іншим джерелом.
+// Окремого kind їй не даємо навмисно: тоді evLastStates() бачив би її
+// нарівні з автоматичними, і наступна синхронізація не писала б дубль.
+async function evLog(accountId, from, to, note, source) {
+  if (evOn === false || !accountId || from === to) return;
+  const rec = { team_name: currentTeam, account_id: String(accountId), kind: 'state',
+                from_state: from || null, to_state: to, source: source || 'manual' };
+  if (note) rec.note = note;
+  const { data, error } = await sb.from(EV_TABLE).insert([rec]).select();
+  if (error) { evOn = false; evErr = error.message; return; }
+  evRows = (data || []).concat(evRows);
+  evPaint();
+}
+
+/* ── синхронізація після завантаження даних ── */
+
+async function evBoot() {
+  if (evOn === false || evSyncing) return;
+  if (typeof rawData === 'undefined' || !rawData || !rawData.length) return;
+  if (typeof cabFacts !== 'function') return;
+  if (evTeam === currentTeam && Date.now() - evSyncAt < EV_MIN_GAP) return;
+  evSyncAt = Date.now();
+
+  let rows = [];
+  try {
+    if (accTeam === currentTeam && accRows.length) {
+      rows = accRows;
+    } else {
+      rows = await sbFetchAll('accounts_mapping',
+        q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
+      // Той самий кеш, що й у вікні Accounts: воно відкриється миттєво
+      // вже з першого разу, а не після власного запиту.
+      accRows = rows; accTeam = currentTeam;
+      accHasStatusCol = !rows.length || 'status' in rows[0];
+    }
+  } catch (e) { return; }
+
+  const f = cabFacts();
+  const cards = rows.map(r => {
+    const id = String(r.account_id || '').trim();
+    const state = cabStateOf(r, f);
+    const x = f.map[id];
+    const quiet = (state === 'silent' && x && x.last) ? cabDayDiff(x.last, f.lastDay) : 0;
+    return { id, state, hold: state === 'silent' && quiet < EV_SILENT_MIN };
+  }).filter(c => c.id);
+
+  await evSync(cards);
+  evPaint();
+}
+
+/* ── «що змінилось, поки тебе не було» ── */
+
+function evSeenKey() { return 'ev_seen_' + (currentTeam || ''); }
+function evSeen() {
+  try { return localStorage.getItem(evSeenKey()) || ''; } catch (e) { return ''; }
+}
+
+function evNew() {
+  if (!evRows.length) return [];
+  const seen = evSeen() || new Date(Date.now() - EV_FIRST_WINDOW).toISOString();
+  return evRows.filter(e => e.source !== 'seed' && String(e.at || '') > seen);
+}
+
+function evDismiss() {
+  try { localStorage.setItem(evSeenKey(), new Date().toISOString()); } catch (e) {}
+  evPaint();
+}
+
+function evGoCabinets() { evDismiss(); navGo('cabinets'); }
+
+function evPaint() {
+  const news = evNew().slice().sort((a, b) =>
+    evRank(b.to_state) - evRank(a.to_state) || String(b.at).localeCompare(String(a.at)));
+
+  const badge = document.getElementById('cab-badge');
+  if (badge) {
+    badge.textContent = news.length ? String(news.length) : '';
+    badge.className = 'sb-badge' + (news.some(e => evRank(e.to_state) >= 2) ? ' is-alert' : '');
+    badge.style.display = news.length ? '' : 'none';
+  }
+
+  const box = document.getElementById('ev-banner');
+  if (!box) return;
+  if (!news.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+
+  const bad = news.filter(e => evRank(e.to_state) >= 2).length;
+  const SHOW = 5;
+  const head = bad
+    ? `${bad} cabinet${bad > 1 ? 's' : ''} need${bad > 1 ? '' : 's'} attention`
+    : `${news.length} change${news.length > 1 ? 's' : ''} since your last visit`;
+
+  box.innerHTML = `<div class="ev-bar ${bad ? 'is-bad' : ''}">
+    <div class="ev-bar-main">
+      <p class="ev-bar-head">${head}</p>
+      <div class="ev-bar-list">
+        ${news.slice(0, SHOW).map(e => `<span class="ev-chip">
+            <b>${evEsc(e.account_id)}</b>
+            <span class="${(EV_TONE[e.to_state] || EV_TONE.idle).tone}">${(EV_TONE[e.to_state] || EV_TONE.idle).word}</span>
+            <i>${evAgo(e.at)}</i></span>`).join('')}
+        ${news.length > SHOW ? `<span class="ev-chip ev-more">+${news.length - SHOW} more</span>` : ''}
+      </div>
+    </div>
+    <div class="ev-bar-act">
+      <button onclick="evGoCabinets()" class="ev-btn">Open Cabinets</button>
+      <button onclick="evDismiss()" class="ev-x" title="Mark as seen">&times;</button>
+    </div>
+  </div>`;
+  box.classList.remove('hidden');
+}
+
+const evEsc = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/* ── історія на сторінці кабінетів ── */
+
+// Один рядок історії. Дублі гасимо тут, а не в базі: дві вкладки,
+// відкриті одночасно, запишуть той самий перехід двічі, і окрема
+// міграція з унікальним індексом заради цього не варта того.
+function evKey(e) { return e.account_id + '|' + e.to_state + '|' + String(e.at || '').slice(0, 10); }
+
+function evDedup(list) {
+  const seen = {};
+  return list.filter(e => (seen[evKey(e)] ? false : (seen[evKey(e)] = 1)));
+}
+
+function evLine(e, withId) {
+  const T = EV_TONE[e.to_state] || EV_TONE.idle;
+  const from = e.from_state ? `${e.from_state} &rarr; ` : '';
+  return `<div class="ev-row">
+    <span class="ev-dot ${T.tone}">&bull;</span>
+    ${withId ? `<span class="ev-row-id">${evEsc(e.account_id)}</span>` : ''}
+    <span class="ev-row-txt"><span class="ev-dim">${from}</span><span class="${T.tone}">${evEsc(e.to_state)}</span></span>
+    ${e.source === 'manual' ? '<span class="ev-tag">by hand</span>' : ''}
+    ${e.note ? `<span class="ev-tag">${evEsc(e.note)}</span>` : ''}
+    <span class="ev-row-at" title="${evEsc(e.at)}">${evAgo(e.at)}</span>
+  </div>`;
+}
+
+// Історія одного кабінета — у бічну панель.
+function evForAccount(id, max) {
+  if (evOn === false) return '';
+  const list = evDedup(evRows.filter(e => e.account_id === id && e.source !== 'seed')).slice(0, max || 6);
+  if (!list.length) return '';
+  return `<div class="ev-panel">
+    <p class="ev-panel-head">History</p>
+    ${list.map(e => evLine(e, false)).join('')}
+  </div>`;
+}
+
+function evToggleFeed() { evOpen = !evOpen; evFeedPaint(); }
+
+// Спільна стрічка по всьому парку. Згорнута за замовчуванням: це довідка,
+// а не те, заради чого відкривають сторінку.
+function evFeedPaint() {
+  const box = document.getElementById('cab-feed');
+  if (!box) return;
+  if (evOn === false) {
+    box.innerHTML = `<p class="ev-off">History is off: ${evEsc(evErr || 'account_events is not reachable')}</p>`;
+    return;
+  }
+  const list = evDedup(evRows.filter(e => e.source !== 'seed')).slice(0, 40);
+  const n = list.length;
+  box.innerHTML = `<button class="ev-feed-btn" onclick="evToggleFeed()">
+      <span>Recent changes${n ? ` · ${n}` : ''}</span><span>${evOpen ? '&minus;' : '+'}</span></button>
+    ${evOpen ? `<div class="ev-feed">${n
+        ? list.map(e => evLine(e, true)).join('')
+        : '<p class="ev-off">Nothing recorded yet. Changes will show up here.</p>'}</div>` : ''}`;
+}
+
+window.evBoot = evBoot;
+window.evPaint = evPaint;
+window.evDismiss = evDismiss;
+window.evGoCabinets = evGoCabinets;
+window.evToggleFeed = evToggleFeed;
 </script>
 
 <script>
