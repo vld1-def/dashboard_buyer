@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.09 21:31">
+  <meta name="build" content="build 21.09 21:37">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2471,6 +2471,81 @@ body[data-route="cabinets"] #cab-detail {
   max-height: 100%;
   overflow: auto;
 }
+
+/* ─── Легкі появи ─────────────────────────────────────────────────────
+   Анімуємо ТІЛЬКИ opacity і transform: обидві властивості композитор
+   рахує на відеокарті, без перерахунку розкладки. Нічого важкого —
+   blur, box-shadow, height, width — навмисне не чіпаємо.
+
+   Показ і сховок у дашборді скрізь зроблені через classList.toggle
+   ('hidden'), тобто display:none, а display сам по собі не переходить.
+   Рятують дві речі: transition-behavior: allow-discrete (display
+   тримається, поки йде затухання) і @starting-style (стан, з якого
+   починається поява). Завдяки їм жодного виклику в JS правити не
+   довелось — анімація лишилась цілком у CSS.
+
+   Модалкам даємо саме затухання, без масштабу. У гео-модалці графіки
+   міряють свою ширину одразу після зняття .hidden, а transform міняє
+   те, що повертає getBoundingClientRect — полотна створювались би на
+   півтора відсотка вужчими й такими б і лишились. Меню й бічній панелі
+   зсув не шкодить, там нічого не міряється.
+
+   Перемикання сторінок (.route-off) не чіпаємо: там за один перехід
+   міняються всі секції одразу, і анімувати довелось би вісім елементів
+   замість одного. */
+
+@media (prefers-reduced-motion: no-preference) {
+
+  /* Повноекранні вікна й панелі — саме затухання */
+  .modal-overlay, #settings-modal, #bonus-modal, #close-modal,
+  #datahub-panel, #sheets-panel {
+    transition: opacity .16s ease, display .16s allow-discrete;
+  }
+  .modal-overlay.hidden, #settings-modal.hidden, #bonus-modal.hidden,
+  #close-modal.hidden, #datahub-panel.hidden, #sheets-panel.hidden {
+    opacity: 0;
+  }
+  @starting-style {
+    .modal-overlay:not(.hidden), #settings-modal:not(.hidden),
+    #bonus-modal:not(.hidden), #close-modal:not(.hidden),
+    #datahub-panel:not(.hidden), #sheets-panel:not(.hidden) { opacity: 0; }
+  }
+
+  /* Випадайки — коротше й з крихітним зсувом униз */
+  #month-menu, #team-menu, #rb-cols-menu {
+    transition: opacity .12s ease, transform .12s ease, display .12s allow-discrete;
+    transform: translateY(0);
+  }
+  #month-menu.hidden, #team-menu.hidden, #rb-cols-menu.hidden {
+    opacity: 0; transform: translateY(-4px);
+  }
+  @starting-style {
+    #month-menu:not(.hidden), #team-menu:not(.hidden), #rb-cols-menu:not(.hidden) {
+      opacity: 0; transform: translateY(-4px);
+    }
+  }
+
+  /* Панель кабінета під'їжджає збоку */
+  #cab-detail {
+    transition: opacity .14s ease, transform .14s ease, display .14s allow-discrete;
+    transform: translateX(0);
+  }
+  #cab-detail.hidden { opacity: 0; transform: translateX(6px); }
+  @starting-style {
+    #cab-detail:not(.hidden) { opacity: 0; transform: translateX(6px); }
+  }
+
+  /* Палітра ⌘K показується класом .open, а не .hidden */
+  #cmd-overlay {
+    opacity: 0;
+    transition: opacity .14s ease, display .14s allow-discrete;
+  }
+  #cmd-overlay.open { opacity: 1; }
+  @starting-style { #cmd-overlay.open { opacity: 0; } }
+
+  #cmd-box { transition: transform .14s ease; transform: translateY(0); }
+  @starting-style { #cmd-overlay.open #cmd-box { transform: translateY(-6px); } }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -2584,7 +2659,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:31</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:37</div>
     </div>
   </aside>
 
