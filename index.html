@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.09 20:49">
+  <meta name="build" content="build 21.09 21:09">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2384,40 +2384,71 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .gm-card > .gm-canvas-box { flex: 1 1 auto; height: auto; min-height: 120px; }
 
 /* ─── Cabinets ───
-   Рядок кабінета. Кольором світиться тільки крапка стану і рамка тих
-   рядків, що вимагають дії — бан і тиша. Решта приглушена: на сорока
-   рядках кричати мають одиниці, інакше не кричить жоден. */
-.cab-row {
-  display: grid;
-  grid-template-columns: 8px minmax(0,1fr) auto 64px auto;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  cursor: pointer;
-  transition: background .15s, border-color .15s;
+   Щільна таблиця, а не список: кабінетів десятки, і задача — побачити
+   весь парк одним екраном. Кольором світиться тільки крапка стану;
+   на сорока рядках кричати мають одиниці, інакше не кричить жоден. */
+.cab-tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
+.cab-tbl thead th {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface);
+  padding: 7px 10px;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left; white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none;
 }
-.cab-row:hover { background: var(--surface-3); }
-.cab-row.is-sel { outline: 2px solid rgba(139,92,246,.55); outline-offset: -1px; }
-.cab-dot { width: 8px; height: 8px; border-radius: 50%; }
-.cab-spark { height: 20px; opacity: .8; }
+.cab-tbl thead th:hover { color: var(--text-main); }
+.cab-tbl .ta-r { text-align: right; }
+.cab-tbl .ta-c { text-align: center; }
+.cab-tr > td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+.cab-tr { cursor: pointer; }
+.cab-tr:hover > td { background: var(--surface-2); }
+.cab-tr.is-sel > td { background: rgba(139,92,246,.14); }
+.cab-state { font-size: 10px; font-weight: 800; }
+.cab-id { font-size: 12px; font-weight: 900; }
+.cab-dim { color: var(--text-muted); font-weight: 600; }
+.cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cab-na { color: var(--text-muted); opacity: .35; }
+
+/* Колонки State й Account стискаються по вмісту, щоб ✎ і ↗ трималися
+   чіпа профілю, а не висіли посеред порожнечі. Запас забирає Agent —
+   там він читається як звичайне поле, а не як діра в рядку. */
+.cab-tbl th:nth-child(1), .cab-tbl td:nth-child(1),
+.cab-tbl th:nth-child(2), .cab-tbl td:nth-child(2) { width: 1%; }
+.cab-tbl th:nth-child(3), .cab-tbl td:nth-child(3) { width: auto; }
+
+/* Заголовок групи — окремий рядок на всю ширину таблиці */
+.cab-grp > td {
+  padding: 12px 10px 5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.cab-grp-name { font-size: 10px; font-weight: 900; letter-spacing: .1em;
+                text-transform: uppercase; color: var(--text-main); }
+.cab-grp-sub  { font-size: 10px; font-weight: 700; color: var(--text-muted); margin-left: 8px; }
+
+.cab-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
 .cab-chip {
-  flex: 0 0 auto;
+  display: inline-block; margin-left: 6px;
   font-size: 9px; font-weight: 800; letter-spacing: .06em;
-  padding: 2px 7px; border-radius: 999px;
+  padding: 1px 6px; border-radius: 999px;
   color: var(--text-muted);
   background: var(--surface-3);
   border: 1px solid var(--border);
-  white-space: nowrap;
 }
-.cab-src { font-size: 11px; color: var(--text-muted); opacity: .55; }
+.cab-src { margin-left: 6px; font-size: 10px; color: var(--text-muted); opacity: .5; }
 .cab-link {
-  font-size: 13px; font-weight: 900; line-height: 1;
-  padding: 3px 6px; border-radius: 8px;
-  color: var(--text-muted);
-  text-decoration: none;
+  margin-left: 4px;
+  font-size: 12px; font-weight: 900; line-height: 1;
+  padding: 2px 5px; border-radius: 6px;
+  color: var(--text-muted); text-decoration: none;
   transition: color .15s, background .15s;
 }
 .cab-link:hover { color: #fff; background: rgba(139,92,246,.35); }
@@ -2553,7 +2584,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 20:49</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:09</div>
     </div>
   </aside>
 
@@ -12642,6 +12673,13 @@ const CAB_EXTRA = [
 
 let cabRows = [], cabFilter = '', cabGroup = 'agent', cabSel = null;
 let cabCols = {}, cabLoaded = false;
+let cabSort = { key: 'state', dir: 1 };
+
+/* Скільки кампаній, адсетів і оголошень активні — це знає тільки
+   Marketing API (effective_status). Поки токена немає, повертаємо null,
+   і в таблиці стоїть прочерк. Саме прочерк, а не нуль: нуль читався б
+   як «нічого не запущено», хоча насправді ми просто не знаємо. */
+function cabCounts(id) { return null; }
 
 const cabDayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
@@ -12730,6 +12768,12 @@ function cabSpark(byDay, lastDay, w, h) {
       stroke-linejoin="round" stroke-linecap="round" opacity=".85"/></svg>`;
 }
 
+function cabSortBy(k) {
+  if (cabSort.key === k) cabSort.dir = -cabSort.dir;
+  else cabSort = { key: k, dir: k === 'id' || k === 'agent' ? 1 : -1 };
+  cabRender();
+}
+
 function cabRender() {
   const list = document.getElementById('cab-list');
   const tiles = document.getElementById('cab-tiles');
@@ -12795,9 +12839,18 @@ ${miss.map(c => `  ADD COLUMN IF NOT EXISTS ${c.key} text`).join(',\n')};</pre><
     return;
   }
 
-  // Спершу те, що вимагає дії, всередині — за спендом
-  const rank = s => CAB_ORDER.indexOf(s);
-  shown.sort((a, b) => rank(a.state) - rank(b.state) || b.x.spend - a.x.spend);
+  // Типове сортування — за станом: зверху те, що вимагає дії.
+  const rank = s2 => CAB_ORDER.indexOf(s2);
+  const val = { state: c => rank(c.state), id: c => c.id, agent: c => String(c.row.provider_name || ''),
+                spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '' };
+  const get = val[cabSort.key] || val.state;
+  shown.sort((a, b) => {
+    const A = get(a), B = get(b);
+    const d = typeof A === 'string' ? A.localeCompare(B) : A - B;
+    // За станом порядок фіксований (CAB_ORDER), тож напрямок не інвертуємо
+    // всліпу — всередині однакового стану добиваємо спендом.
+    return (cabSort.key === 'state' ? d : d * cabSort.dir) || b.x.spend - a.x.spend;
+  });
 
   // ── групування ──
   const keyOf = c => cabGroup === 'agent'   ? (c.row.provider_name || '— no agent —')
@@ -12807,14 +12860,31 @@ ${miss.map(c => `  ADD COLUMN IF NOT EXISTS ${c.key} text`).join(',\n')};</pre><
   const groups = {};
   shown.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
 
-  list.innerHTML = Object.entries(groups).map(([g, items]) => {
-    const head = g ? `<div class="flex items-baseline gap-2 pt-3 pb-1.5 px-1">
-        <span class="text-[10px] font-black uppercase tracking-widest text-dynamic">${g}</span>
-        <span class="text-[10px] font-bold" style="color:var(--text-muted)">
-          ${items.length} · ${items.filter(i => i.state === 'running').length} running ·
-          ${cabMoney(items.reduce((a, i) => a + i.x.spend, 0))}</span></div>` : '';
-    return head + items.map(cabRowHtml).join('');
-  }).join('');
+  const arrow = k => cabSort.key === k ? (cabSort.dir < 0 ? ' ↓' : ' ↑') : '';
+  const th = (k, label, cls) => `<th class="${cls || ''}" onclick="cabSortBy('${k}')">${label}${arrow(k)}</th>`;
+  const COLS = 10;
+
+  list.innerHTML = `<table class="cab-tbl">
+    <thead><tr>
+      ${th('state', 'State')}
+      ${th('id', 'Account')}
+      ${th('agent', 'Agent')}
+      <th class="ta-c" title="Active campaigns · ad sets · ads. Needs the Marketing API.">Camp</th>
+      <th class="ta-c" title="Active ad sets. Needs the Marketing API.">Sets</th>
+      <th class="ta-c" title="Active ads. Needs the Marketing API.">Ads</th>
+      ${th('spend', 'Spend', 'ta-r')}
+      ${th('age', 'Days', 'ta-r')}
+      ${th('last', 'Last spend', 'ta-r')}
+      <th class="ta-c">14d</th>
+    </tr></thead><tbody>
+    ${Object.entries(groups).map(([g, items]) => {
+      const head = g ? `<tr class="cab-grp"><td colspan="${COLS}">
+          <span class="cab-grp-name">${g}</span>
+          <span class="cab-grp-sub">${items.length} · ${items.filter(i => i.state === 'running').length} running ·
+            ${cabMoney(items.reduce((a, i) => a + i.x.spend, 0))}</span></td></tr>` : '';
+      return head + items.map(cabRowHtml).join('');
+    }).join('')}
+    </tbody></table>`;
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
 }
@@ -12822,36 +12892,27 @@ ${miss.map(c => `  ADD COLUMN IF NOT EXISTS ${c.key} text`).join(',\n')};</pre><
 function cabRowHtml(c) {
   const S = CAB_STATE[c.state];
   const link = cabAdsLink(c.id);
-  const sub = c.state === 'silent' ? `${S.label} · ${c.silent} d`
-            : c.state === 'idle'   ? S.label
-            : S.label;
-  const facts = c.x.spend > 0
-    ? `${cabMoney(c.x.spend)} · ${c.age} d`
-    : 'no spend yet';
-  const prof = c.row.profile
-    ? `<span class="cab-chip">${c.row.profile}</span>` : '';
-  return `<div onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')"
-      class="cab-row ${cabSel === c.id ? 'is-sel' : ''}" style="border-color:${c.state === 'running' || c.state === 'idle' ? 'var(--border)' : S.bd}">
-    <span class="cab-dot" style="background:${S.dot}"></span>
-    <div class="min-w-0">
-      <div class="flex items-center gap-2 min-w-0">
-        <span class="text-[12px] font-black text-dynamic truncate">${c.id}</span>
-        ${prof}
-      </div>
-      <div class="text-[10px] font-bold mt-0.5 ${S.tone}">${sub}</div>
-    </div>
-    <div class="text-right">
-      <div class="text-[12px] font-black text-dynamic font-mono">${facts}</div>
-      <div class="text-[10px] font-bold truncate" style="color:var(--text-muted)">${c.row.provider_name || '—'}</div>
-    </div>
-    <div class="cab-spark ${S.tone}">${cabSpark(c.x.byDay, c.x.last, 64, 20)}</div>
-    <div class="flex items-center gap-1.5 shrink-0">
+  const n = cabCounts(c.id);
+  const num = v => `<td class="ta-c cab-num">${v == null ? '<span class="cab-na">—</span>' : v}</td>`;
+  const label = c.state === 'silent' ? `${S.label} · ${c.silent}d` : S.label;
+  return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
+      onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
+    <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
+    <td>
+      <span class="cab-id">${c.id}</span>
+      ${c.row.profile ? `<span class="cab-chip">${c.row.profile}</span>` : ''}
       <span class="cab-src" title="Status set by hand. With the Marketing API this turns into a live one.">&#9998;</span>
       ${link ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
            class="cab-link" title="Open in Ads Manager">&#8599;</a>`
              : `<span class="cab-link is-off" title="Ads Manager link needs a numeric account id">&#8599;</span>`}
-    </div>
-  </div>`;
+    </td>
+    <td class="cab-dim">${c.row.provider_name || '—'}</td>
+    ${num(n && n.campaigns)}${num(n && n.adsets)}${num(n && n.ads)}
+    <td class="ta-r cab-num">${c.x.spend > 0 ? cabMoney(c.x.spend) : '<span class="cab-na">—</span>'}</td>
+    <td class="ta-r cab-num">${c.age || '<span class="cab-na">—</span>'}</td>
+    <td class="ta-r cab-dim">${c.x.last || '—'}</td>
+    <td class="ta-c ${S.tone}" style="height:1px">${cabSpark(c.x.byDay, c.x.last, 58, 16)}</td>
+  </tr>`;
 }
 
 function cabDetail(c) {
@@ -12907,7 +12968,28 @@ function cabDetail(c) {
 
     ${link ? `<a href="${link}" target="_blank" rel="noopener"
         class="block mt-3 text-center bg-violet-600 hover:bg-violet-500 text-white px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition">Open in Ads Manager &#8599;</a>` : ''}
+
+    <button onclick="cabStopAll('${encodeURIComponent(c.id)}')"
+      class="w-full mt-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
+             text-red-400 hover:text-white hover:bg-red-600"
+      style="border:1px solid rgba(239,68,68,.35)">Stop all campaigns</button>
   </div>`;
+}
+
+/* Зупинка всіх кампаній кабінета. Поки Marketing API не підключений,
+   кнопка показує той самий діалог, що й буде в бою, і нічого не міняє —
+   так видно формулювання й потік, а не абстрактну обіцянку.
+   Коли токен зʼявиться: POST на кожну активну кампанію зі status=PAUSED,
+   послідовно, з підрахунком часткових невдач і записом у журнал.
+   Зворотного «увімкнути все» не буде навмисне: вмикати треба свідомо й
+   вибірково, інакше одна кнопка піднімає те, що глушили спеціально. */
+async function cabStopAll(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const n = cabCounts(id);
+  const what = n ? `${n.campaigns} active campaign(s)` : 'every active campaign';
+  if (!confirm(`Stop ${what} in ${id}?\n\n`
+    + 'They will be paused in Facebook. Turning them back on is a separate, deliberate step.')) return;
+  alert('Marketing API is not connected yet — nothing was changed.');
 }
 
 async function cabSaveField(id, key, value) {
