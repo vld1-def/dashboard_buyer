@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.09 21:24">
+  <meta name="build" content="build 21.09 21:31">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2584,7 +2584,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:24</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 21:31</div>
     </div>
   </aside>
 
@@ -5640,6 +5640,7 @@ function openSettingsModal() {
     `🔗 ${location.origin}${location.pathname}?view=teamlead&key=${pwd}&team=${encodeURIComponent(currentTeam)}`;
   // Load TL access toggles — джерелом правди є Supabase, localStorage лише як миттєвий fallback
   loadTeamLeadToggles();
+  if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
 }
 
 async function loadTeamLeadToggles() {
@@ -10499,6 +10500,37 @@ document.addEventListener('keydown', e => {
             </div>
             <p class="set-hint">console.cloud.google.com → Enable Drive API → Credentials → API Key</p>
           </div>
+
+          <div class="set-group">
+            <h3 class="set-gtitle">Telegram alerts</h3>
+            <p class="set-gsub">Where the dashboard reports what changed: cabinets that got banned, went quiet, or were launched and never started spending.</p>
+
+            <div class="set-addrow" data-setting="telegram chat id чат телеграм">
+              <input type="text" id="tg-chat-input" placeholder="Chat ID: -1001234567890" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveTelegramChat()" class="set-btn set-btn-amber">Save</button>
+            </div>
+            <p id="tg-chat-status" class="set-hint">Add the bot to the chat, then take the ID from @userinfobot.</p>
+
+            <div id="grp-tg" class="mt-3">
+              <label class="set-row set-toggle" data-setting="telegram ban бан"><span class="set-label">Cabinet banned or restricted</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-ban" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="telegram silent тиша"><span class="set-label">Cabinet went quiet</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-silent" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="telegram nospend не крутить"><span class="set-label">Launched but not spending</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-nospend" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="telegram daily зведення"><span class="set-label">Daily summary</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-daily" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+            </div>
+
+            <div class="set-addrow mt-3" style="display:block;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.22);border-radius:12px;padding:10px 12px">
+              <p class="set-hint" style="margin:0">
+                <b style="color:#FCD34D">The bot token is not stored here — on purpose.</b><br>
+                This page is a static site: anything saved in it can be read by anyone who opens the dashboard.
+                The token will live in Supabase secrets, next to the function that actually sends the messages.
+                Until that function exists, nothing is delivered — these settings just wait for it.
+              </p>
+            </div>
+          </div>
         </section>
 
         <p id="set-empty" class="set-empty hidden">Nothing matches</p>
@@ -12658,6 +12690,53 @@ function dcRenderWarn(unlinked) {
 })();
 </script>
 <script>
+/* ═══════════ TELEGRAM ═══════════
+   Тут живе тільки те, що можна безпечно тримати в статичному сайті:
+   ID чату й перелік подій. Токен бота — НІ: сторінку відкриває вся
+   команда, і все, що в ній збережено, читається будь-ким. Токен ляже в
+   секрети Supabase поруч із функцією, яка справді надсилає.
+   Доти ці налаштування просто чекають на неї. */
+const TG_EVENTS = ['ban', 'silent', 'nospend', 'daily'];
+
+async function loadTelegramSettings() {
+  const box = document.getElementById('tg-chat-input');
+  if (!box) return;
+  const chat = await getTeamSetting('tg_chat_id');
+  box.value = chat || '';
+  let ev = {};
+  try { ev = JSON.parse(await getTeamSetting('tg_events') || '{}') || {}; } catch (e) {}
+  TG_EVENTS.forEach(k => {
+    const el = document.getElementById('tg-ev-' + k);
+    // Типово ввімкнені бан і тиша: це те, заради чого сповіщення й потрібні.
+    if (el) el.checked = k in ev ? !!ev[k] : (k === 'ban' || k === 'silent');
+  });
+  tgStatus();
+}
+
+function tgStatus() {
+  const el = document.getElementById('tg-chat-status');
+  if (!el) return;
+  const chat = (document.getElementById('tg-chat-input') || {}).value || '';
+  el.textContent = chat
+    ? 'Chat saved. Delivery starts once the sender is set up.'
+    : 'Add the bot to the chat, then take the ID from @userinfobot.';
+}
+
+async function saveTelegramChat() {
+  const v = (document.getElementById('tg-chat-input').value || '').trim();
+  await setTeamSetting('tg_chat_id', v);
+  tgStatus();
+  alert(v ? 'Telegram chat saved' : 'Telegram chat cleared');
+}
+
+async function saveTelegramEvents() {
+  const ev = {};
+  TG_EVENTS.forEach(k => ev[k] = !!(document.getElementById('tg-ev-' + k) || {}).checked);
+  await setTeamSetting('tg_events', JSON.stringify(ev));
+}
+</script>
+
+<script>
 /* ═══════════ CABINETS ═══════════
    Сторінка парку кабінетів. Половина того, що тут показано, ніде не
    вводиться руками — воно рахується з daily_stats, який і так уже
@@ -12676,6 +12755,11 @@ const CAB_STATE = {
 };
 // Порядок = що першим потрапляє на очі. Зверху те, що вимагає дії.
 const CAB_ORDER = ['banned', 'silent', 'issue', 'running', 'idle'];
+/* «Working» — те, з чим справді працюєш. Навмисне НЕ тільки running:
+   silent і issue якраз і є ті, що вимагають уваги, ховати їх за
+   замовчуванням було б рівно навпаки до сенсу сторінки. Ховаємо лише
+   мертвий вантаж — бани й ті, що не крутили жодного разу. */
+const CAB_WORKING = ['running', 'silent', 'issue'];
 // Колонки «де це було» можуть ще не існувати в базі — сторінка працює й без них.
 const CAB_EXTRA = [
   { key: 'bm',      label: 'Business Manager' },
@@ -12684,7 +12768,7 @@ const CAB_EXTRA = [
   { key: 'card',    label: 'Card' }
 ];
 
-let cabRows = [], cabFilter = '', cabGroup = 'agent', cabSel = null;
+let cabRows = [], cabFilter = 'working', cabGroup = 'agent', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
@@ -12815,11 +12899,13 @@ function cabRender() {
       style="background:${soft};border:1px solid ${bd}">
       <span class="text-[9px] font-black uppercase tracking-widest truncate" style="color:var(--text-muted)">${label}</span>
       <span class="text-[15px] font-black leading-none ${tone}">${n}</span></button>`;
+  const working = CAB_WORKING.reduce((a, k) => a + counts[k], 0);
   if (tiles) {
-    tiles.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px">
-      ${tile('', 'All', all.length, 'text-dynamic', 'var(--surface-2)', 'var(--border)')}
+    tiles.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">
+      ${tile('working', 'Working', working, 'text-violet-300', 'rgba(139,92,246,.14)', 'rgba(139,92,246,.32)')}
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].tone, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
+      ${tile('', 'All', all.length, 'text-dynamic', 'var(--surface-2)', 'var(--border)')}
     </div>`;
   }
 
@@ -12835,8 +12921,11 @@ function cabRender() {
 
   // ── фільтр і пошук ──
   const q = (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
+  const inFilter = c => !cabFilter ? true
+    : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
+    : c.state === cabFilter;
   let shown = all.filter(c =>
-    (!cabFilter || c.state === cabFilter) &&
+    inFilter(c) &&
     (!q || [c.id, c.row.provider_name, c.row.status_note,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q))));
