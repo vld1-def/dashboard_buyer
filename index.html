@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 13:23">
+  <meta name="build" content="build 22.09 13:40">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2858,7 +2858,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:23</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:40</div>
     </div>
   </aside>
 
@@ -3696,10 +3696,11 @@ body[data-route="domains"] #dm-detail {
     </div>
     <div class="flex flex-wrap items-center gap-2">
       <button onclick="dmCheckAll()" id="dm-check-btn"
+        title="Runs in your browser: only tells whether each shown domain answers. No HTTP codes, no Google flags. Skips domains already flagged — it cannot clear a flag."
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-violet-300 hover:text-white hover:bg-violet-600"
         style="border:1px solid rgba(139,92,246,.35)">Check all</button>
       <button onclick="dmDeepCheck()" id="dm-deep-btn"
-        title="Runs on the server: real HTTP codes and Safe Browsing flags. Needs the check-domains function deployed."
+        title="Runs on the server: real HTTP codes, Google blacklists and filtering DNS. The only check that can set or clear a flag. Needs the check-domains function deployed."
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-emerald-300 hover:text-white hover:bg-emerald-600"
         style="border:1px solid rgba(16,185,129,.35)">Deep check</button>
       <button onclick="dmTogglePaste()"
@@ -14025,8 +14026,26 @@ async function dmProbe(domain) {
 
 async function dmCheckAll() {
   if (dmBusy) return;
-  const targets = dmShown();
-  if (!targets.length) return;
+
+  /* Позначені домени не чіпаємо.
+
+     Браузерна проба вміє рівно одне: відповів домен чи ні. А домен із
+     міткою Google відповідає цілком нормально — саме тому мітка й
+     небезпечна. Тож проба поверне 'ok' і запише його поверх 'danger',
+     стерши висновок, якого вона робити не вміє.
+
+     Сервер таких рядків не бере (status=neq.danger), і тут має бути те
+     саме правило. Перевірити позначений домен заново можна кнопкою ↻ в
+     рядку — вона йде через сервер. */
+  const shown = dmShown();
+  const targets = shown.filter(r => r.status !== 'danger');
+  const skipped = shown.length - targets.length;
+  if (!targets.length) {
+    if (skipped) toast(`Nothing to check: all ${skipped} shown domain(s) are flagged. `
+      + 'A browser check cannot confirm or clear a flag — use Deep check, or ↻ on a row.',
+      'warn', 6000);
+    return;
+  }
   dmBusy = true;
   const btn = document.getElementById('dm-check-btn');
   let done = 0;
@@ -14074,6 +14093,13 @@ async function dmCheckAll() {
   dmBusy = false;
   if (btn) btn.textContent = 'Check all';
   dmRender();
+
+  /* Підсумок словами, бо цифри в плитках самі по собі не пояснюють, що
+     саме ця кнопка зробила, а що лишила іншій. */
+  const down = targets.filter(r => r.status === 'down').length;
+  toast(`Checked ${targets.length} domain(s): ${targets.length - down} answered, ${down} did not.`
+    + (skipped ? ` Skipped ${skipped} flagged — a browser check cannot clear a flag.` : '')
+    + ' HTTP codes and Google flags come from Deep check.', '', 5600);
 }
 
 /* ── глибока перевірка через Edge Function ──
@@ -14229,6 +14255,16 @@ async function dmCheckOne(idEnc) {
     return;
   } catch (e) {
     row.status = was;   // сервер не вийшов — повертаємо як було і пробуємо самі
+  }
+
+  /* Мітку браузером не знімають. Позначений домен відповідає так само,
+     як здоровий, тож проба скаже 'ok' — і це буде не перевірка, а
+     стирання чужого висновку. Сервера немає — лишаємо рядок як був. */
+  if (was === 'danger') {
+    row.status = was; dmRender();
+    toast('This domain is flagged. Only the server check can confirm or clear that — '
+        + 'a browser can only tell whether the domain answered at all.', 'warn', 6000);
+    return;
   }
 
   row.status = await dmProbe(row.domain);
