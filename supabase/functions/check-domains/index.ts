@@ -8,19 +8,24 @@
      1. бере домени команди (через RLS — тільки ті, що належать тому,
         хто викликав);
      2. HEAD, а якщо сервер його не розуміє — GET;
-     3. якщо є ключ Safe Browsing — питає Google, чи домен не в списку;
+     3. якщо є ключ — питає Google, чи домен не в чорному списку;
      4. пише статус назад.
 
-   Розгортання:
+   ЖОДНИХ ІМПОРТІВ. Раніше тут був supabase-js через jsr:. Бібліотека
+   для двох запитів — зайва вага, а головне: якщо імпорт не розвʼяжеться,
+   функція падає ще до запуску. Тоді шлюз віддає помилку БЕЗ CORS-
+   заголовків, і браузер показує голе «Failed to fetch» — навіть коли з
+   самим кодом усе гаразд. Діагностувати таке ззовні майже неможливо.
+
+   PostgREST — це звичайний HTTP, і supabase-js під капотом робить рівно
+   те саме: GET на /rest/v1/<таблиця> і PATCH з фільтром. RLS працює від
+   заголовка Authorization, тобто від того, хто викликав.
+
+   Розгортання: Supabase → Edge Functions → check-domains, або
      supabase functions deploy check-domains
-     supabase secrets set SAFE_BROWSING_KEY=...     # не обов'язково
 
-   Виклик із дашборда йде з токеном того, хто залогінений, тож функція
-   працює від його імені й чужих доменів не бачить. Ключ сервісної ролі
-   тут свідомо НЕ використовується: інакше будь-хто, хто докличеться до
-   функції, отримав би доступ до чужих рядків. */
-
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+   Ключ сервісної ролі тут свідомо НЕ використовується: інакше будь-хто,
+   хто докличеться до функції, отримав би доступ до чужих рядків. */
 
 const TIMEOUT = 10_000;
 const POOL = 8;
@@ -36,6 +41,7 @@ const CORS = {
 };
 
 type Verdict = { status: string; status_code: number | null };
+type Row = { id: number; domain: string; team_name: string };
 
 async function probe(domain: string): Promise<Verdict> {
   for (const method of ['HEAD', 'GET'] as const) {
@@ -145,18 +151,31 @@ async function flaggedSafeBrowsing(domains: string[], key: string): Promise<Set<
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  // OPTIONS — найперше й без жодних умов: це preflight, і якщо на нього
+  // не відповісти CORS-заголовками, браузер не покаже навіть тексту
+  // помилки, лише «Failed to fetch».
+  if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: CORS });
+  try {
+    return await handle(req);
+  } catch (e) {
+    // Будь-яка несподівана помилка теж має приїхати з CORS-заголовками,
+    // інакше в браузері вона виглядає як відсутність звʼязку.
+    return new Response(JSON.stringify({ error: 'unhandled: ' + (e as Error).message }),
+      { status: 500, headers: { ...CORS, 'content-type': 'application/json' } });
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
 
   const auth = req.headers.get('Authorization') || '';
   if (!auth) return new Response(JSON.stringify({ error: 'no authorization header' }),
     { status: 401, headers: { ...CORS, 'content-type': 'application/json' } });
 
-  // Клієнт від імені того, хто викликав: RLS лишається в силі.
-  const sb = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: auth } } }
-  );
+  const base = Deno.env.get('SUPABASE_URL')!;
+  const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
+  // apikey + Authorization — те саме, що надсилає supabase-js. RLS
+  // рахується від Authorization, тобто від того, хто викликав.
+  const hdr = { apikey: anon, Authorization: auth, 'content-type': 'application/json' };
 
   let team = '';
   let only: string[] | null = null;
@@ -171,14 +190,27 @@ Deno.serve(async (req) => {
     if (Array.isArray(body?.domains) && body.domains.length) only = body.domains.map(String);
   } catch (_e) { /* тіла може не бути */ }
 
-  let q = sb.from('domains').select('id, domain, team_name').order('id', { ascending: true }).limit(BATCH + 1);
-  if (team) q = q.eq('team_name', team);
-  if (only) q = q.in('domain', only);
-  if (after) q = q.gt('id', after);
+  const qs = new URLSearchParams();
+  qs.set('select', 'id,domain,team_name');
+  qs.set('order', 'id.asc');
+  qs.set('limit', String(BATCH + 1));
+  if (team) qs.set('team_name', 'eq.' + team);
+  if (after) qs.set('id', 'gt.' + after);
+  if (only) qs.set('domain', 'in.(' + only.map(d => '"' + d.replace(/"/g, '') + '"').join(',') + ')');
 
-  const { data, error } = await q;
-  if (error) return new Response(JSON.stringify({ error: error.message }),
-    { status: 400, headers: { ...CORS, 'content-type': 'application/json' } });
+  let data: Row[] = [];
+  try {
+    const res = await fetch(base + '/rest/v1/domains?' + qs.toString(), { headers: hdr });
+    if (!res.ok) {
+      const text = await res.text();
+      return new Response(JSON.stringify({ error: 'select failed: ' + res.status + ' ' + text }),
+        { status: 400, headers: { ...CORS, 'content-type': 'application/json' } });
+    }
+    data = await res.json();
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'select failed: ' + (e as Error).message }),
+      { status: 500, headers: { ...CORS, 'content-type': 'application/json' } });
+  }
 
   const rows = (data || []).slice(0, BATCH);
   const more = (data || []).length > BATCH;
@@ -216,12 +248,15 @@ Deno.serve(async (req) => {
              source: 'server', checked_at: at };
   });
 
-  // По одному update на рядок: upsert тут писав би й ті колонки, яких
-  // ми не читали, і затирав би PWA з нотатками порожнечею.
+  // По одному PATCH на рядок: upsert писав би й ті колонки, яких ми не
+  // читали, і затирав би PWA з нотатками порожнечею.
   await Promise.all(results.map(r =>
-    sb.from('domains').update({
-      status: r.status, status_code: r.status_code, source: 'server', checked_at: at
-    }).eq('id', r.id)));
+    fetch(base + '/rest/v1/domains?id=eq.' + encodeURIComponent(String(r.id)), {
+      method: 'PATCH',
+      headers: { ...hdr, Prefer: 'return=minimal' },
+      body: JSON.stringify({ status: r.status, status_code: r.status_code,
+                             source: 'server', checked_at: at })
+    }).catch(() => null)));
 
   return new Response(JSON.stringify({
     checked: results.length, more, flags: source,
@@ -229,4 +264,4 @@ Deno.serve(async (req) => {
     next: rows[rows.length - 1].id,
     results
   }), { headers: { ...CORS, 'content-type': 'application/json' } });
-});
+}
