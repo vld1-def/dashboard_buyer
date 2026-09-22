@@ -41,7 +41,8 @@ const CORS = {
 };
 
 type Verdict = { status: string; status_code: number | null };
-type Row = { id: number; domain: string; team_name: string; status: string | null };
+type Row = { id: number; domain: string; team_name: string; status: string | null;
+              created_by: string | null };
 
 async function probe(domain: string): Promise<Verdict> {
   for (const method of ['HEAD', 'GET'] as const) {
@@ -330,8 +331,13 @@ function tgText(worse: Change[], checked: number): string {
     return `${TG_MARK[w.to] || '\u{26AA}'} ${w.domain} — ${what}${why}`
          + `\n     було: ${TG_WAS[w.from] || w.from}${who}`;
   });
+  /* checked === worse.length означає особистий лист: там у знаменнику
+     стояло б те саме число, і «2 з 2» читалось би як «перевірено лише
+     два домени». */
   const head = `\u{1F319} Домени · нічна перевірка\n`
-             + `Погіршилось: ${worse.length} з ${checked}\n\n`;
+             + (checked > worse.length
+                 ? `Погіршилось: ${worse.length} з ${checked}\n\n`
+                 : `Погіршилось: ${worse.length}\n\n`);
   const lines = all.slice();
   const tail = () => {
     const rest = worse.length - lines.length;
@@ -341,19 +347,14 @@ function tgText(worse: Change[], checked: number): string {
   return head + lines.join('\n') + tail();
 }
 
-async function tgSend(worse: Change[], checked: number): Promise<string> {
-  if (!worse.length) return 'nothing to report';
-  const token = Deno.env.get('TG_BOT_TOKEN') || '';
-  const chat = Deno.env.get('TG_CHAT_ID') || '';
-  if (!token || !chat) return 'not configured';
+async function tgPost(token: string, chat: string, text: string): Promise<string> {
   try {
     const res = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       // Без parse_mode навмисно: домени рясніють крапками й дефісами,
       // а розмітка Telegram на них спотикається і відповідає 400.
       // Текст і так читається, а ламатись тут нема чому.
-      body: JSON.stringify({ chat_id: chat, text: tgText(worse, checked),
-                             disable_web_page_preview: true })
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
     });
     if (res.ok) return 'sent';
     // Причину віддаємо назад: її видно в net._http_response, і це
@@ -366,6 +367,62 @@ async function tgSend(worse: Change[], checked: number): Promise<string> {
   }
 }
 
+/* Кожному своє.
+
+   Домени належать конкретним людям (created_by), і сповіщення мають
+   ходити так само. Спільний чат лишається, але як доповнення для
+   тімліда, а не як єдиний спосіб: інакше баєр бачить чужі домени, а
+   свої мусить вишукувати серед них.
+
+   Кому куди писати — в tg_links. Хто себе не прив'язав, того просто
+   немає в розсилці: це не помилка, а вибір людини. */
+async function tgSend(base: string, hdr: Record<string, string>,
+                      worse: Change[], checked: number): Promise<string> {
+  if (!worse.length) return 'nothing to report';
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!token) return 'not configured';
+
+  const shared = Deno.env.get('TG_CHAT_ID') || '';
+  const out: string[] = [];
+
+  // Спільний чат бачить усе — на те він і спільний.
+  if (shared) out.push('shared:' + await tgPost(token, shared, tgText(worse, checked)));
+
+  const byOwner = new Map<string, Change[]>();
+  worse.forEach(w => {
+    if (!w.owner) return;   // нічий домен нікому й не адресуєш
+    const list = byOwner.get(w.owner);
+    if (list) list.push(w); else byOwner.set(w.owner, [w]);
+  });
+
+  if (byOwner.size) {
+    let links: { user_id: string; chat_id: string }[] = [];
+    try {
+      const res = await fetch(base + '/rest/v1/tg_links?select=user_id,chat_id&chat_id=not.is.null',
+        { headers: hdr });
+      if (res.ok) links = await res.json();
+    } catch (_e) { /* таблиці може не бути — тоді просто нікому писати */ }
+
+    const chats = new Map(links.map(l => [l.user_id, l.chat_id]));
+    let sent = 0, unlinked = 0;
+    const fails: string[] = [];
+    for (const [owner, list] of byOwner) {
+      const chat = chats.get(owner);
+      if (!chat) { unlinked++; continue; }
+      // checked ділити по людях чесно не вийде — вибірка йде по всіх
+      // одразу. Тому кажемо, скільки саме в нього, а не частку від
+      // чужого числа.
+      const r = await tgPost(token, chat, tgText(list, list.length));
+      if (r === 'sent') sent++; else fails.push(r);
+    }
+    out.push(`buyers: ${sent} sent`
+      + (unlinked ? `, ${unlinked} not linked` : '')
+      + (fails.length ? `, ${fails.length} failed (${fails[0]})` : ''));
+  }
+
+  return out.length ? out.join(' | ') : 'not configured';
+}
+
 type Batch = {
   error?: string; status?: number;
   checked: number; more: boolean; next: number; flags: string; spent: number;
@@ -373,7 +430,8 @@ type Batch = {
 };
 type Result = { id: number; domain: string; status: string; status_code: number | null;
                 flagged_by: string | null; source: string; checked_at: string };
-type Change = { domain: string; team: string; from: string; to: string; flagged_by: string | null };
+type Change = { domain: string; team: string; owner: string | null;
+                from: string; to: string; flagged_by: string | null };
 
 /* Одна порція. Винесено окремо, бо викликати її треба двома різними
    способами: сторінка просить по одній і сама веде курсор (так видно
@@ -387,7 +445,8 @@ async function runBatch(base: string, hdr: Record<string, string>,
   const qs = new URLSearchParams();
   // status потрібен не для фільтра, а щоб знати, що саме змінилось:
   // нічний прогін має доповідати про зміни, а не про весь список.
-  qs.set('select', 'id,domain,team_name,status');
+  // created_by — щоб знати, кому саме писати в Telegram.
+  qs.set('select', 'id,domain,team_name,status,created_by');
   qs.set('order', 'id.asc');
   qs.set('limit', String(BATCH + 1));
   if (o.team) qs.set('team_name', 'eq.' + o.team);
@@ -446,7 +505,8 @@ async function runBatch(base: string, hdr: Record<string, string>,
     const status = by.length ? 'danger' : v.status;
     const flagged_by = by.length ? by.join(', ') : null;
     const was = r.status || 'unknown';
-    if (status !== was) changed.push({ domain: r.domain, team: r.team_name, from: was, to: status, flagged_by });
+    if (status !== was) changed.push({ domain: r.domain, team: r.team_name,
+                                       owner: r.created_by, from: was, to: status, flagged_by });
     return { id: r.id, domain: r.domain, status, status_code: v.status_code,
              flagged_by, source: 'server', checked_at: at };
   });
@@ -567,7 +627,7 @@ async function handle(req: Request): Promise<Response> {
        Telegram, коли дійдуть руки: доповідати треба про нові проблеми,
        а не про те, що двісті доменів як працювали, так і працюють. */
     const worse = changed.filter(c => c.to === 'danger' || c.to === 'down' || c.to === 'notfound');
-    const telegram = await tgSend(worse, checked);
+    const telegram = await tgSend(base, hdr, worse, checked);
     return new Response(JSON.stringify({
       cron: true, checked, more, next: after, flags, spent,
       changed: changed.length, telegram, worse
