@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 10:14">
+  <meta name="build" content="build 22.09 10:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2472,6 +2472,33 @@ body[data-route="cabinets"] #cab-detail {
   overflow: auto;
 }
 
+/* Ширина бічної панелі тримається ТУТ, а не класом w-[330px] у розмітці.
+   Довільні значення Tailwind існують лише якщо їх знайшов збирач; варто
+   класу не потрапити в збірку — і панель роздувається до max-content
+   свого найдовшого абзацу, накриваючи собою таблицю. Структурний розмір
+   не повинен залежати від того, чи встиг хтось перегенерувати CSS. */
+#cab-detail, #dm-detail { flex: 0 0 330px; width: 330px; }
+@media (max-width: 1100px) {
+  #cab-detail, #dm-detail { flex: 0 0 280px; width: 280px; }
+}
+
+/* Домени — той самий каркас, що й кабінети: таблиця тягнеться, панель
+   фіксована, обидві скролять усередині себе, а не сторінкою. */
+body[data-route="domains"] #domains-section {
+  height: calc(100vh / var(--zoom) - 42px);
+  display: flex;
+  flex-direction: column;
+}
+body[data-route="domains"] #domains-section > .flex.gap-4 {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+body[data-route="domains"] #dm-list,
+body[data-route="domains"] #dm-detail {
+  max-height: 100%;
+  overflow: auto;
+}
+
 /* ─── Легкі появи ─────────────────────────────────────────────────────
    Анімуємо ТІЛЬКИ opacity і transform: обидві властивості композитор
    рахує на відеокарті, без перерахунку розкладки. Нічого важкого —
@@ -2525,14 +2552,14 @@ body[data-route="cabinets"] #cab-detail {
     }
   }
 
-  /* Панель кабінета під'їжджає збоку */
-  #cab-detail {
+  /* Панель кабінета чи домена під'їжджає збоку */
+  #cab-detail, #dm-detail {
     transition: opacity .14s ease, transform .14s ease, display .14s allow-discrete;
     transform: translateX(0);
   }
-  #cab-detail.hidden { opacity: 0; transform: translateX(6px); }
+  #cab-detail.hidden, #dm-detail.hidden { opacity: 0; transform: translateX(6px); }
   @starting-style {
-    #cab-detail:not(.hidden) { opacity: 0; transform: translateX(6px); }
+    #cab-detail:not(.hidden), #dm-detail:not(.hidden) { opacity: 0; transform: translateX(6px); }
   }
 
   /* Палітра ⌘K показується класом .open, а не .hidden */
@@ -2771,6 +2798,10 @@ body[data-route="cabinets"] #cab-detail {
         Cabinets
         <span id="cab-badge" class="sb-badge" style="display:none"></span>
       </button>
+      <button class="sb-item" data-nav="domains" onclick="navGo('domains')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.8 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.8-3.8-9S9.5 5.7 12 3z"/></svg>
+        Domains
+      </button>
       <button class="sb-item" data-nav="expenses" onclick="navGo('expenses')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
         Expenses
@@ -2814,7 +2845,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 10:14</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 10:22</div>
     </div>
   </aside>
 
@@ -3622,6 +3653,59 @@ body[data-route="cabinets"] #cab-detail {
   <div class="flex gap-4 items-start">
     <div id="cab-list" class="flex-1 min-w-0 space-y-1.5"></div>
     <div id="cab-detail" class="hidden w-[330px] shrink-0"></div>
+  </div>
+</div>
+
+<!-- ═══════════ DOMAINS ═══════════ -->
+<div id="domains-section" class="card p-5 rounded-3xl shadow-xl">
+  <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
+    <div>
+      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Domains</h2>
+      <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Which domain serves which PWA, and whether it still answers</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button onclick="dmCheckAll()" id="dm-check-btn"
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-violet-300 hover:text-white hover:bg-violet-600"
+        style="border:1px solid rgba(139,92,246,.35)">Check all</button>
+      <button onclick="dmTogglePaste()"
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-dynamic hover:brightness-125"
+        style="background:var(--surface-2);border:1px solid var(--border)">Paste list</button>
+      <select id="dm-group" onchange="dmSetGroup(this.value)"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
+        <option value="pwa">Group: PWA</option>
+        <option value="status">Group: status</option>
+        <option value="">No grouping</option>
+      </select>
+      <input id="dm-search" oninput="dmRender()" placeholder="Domain, PWA, note…"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
+    </div>
+  </div>
+
+  <div id="dm-tiles" class="mb-4"></div>
+
+  <!-- Вставка списку з текстового файлу -->
+  <div id="dm-paste" class="hidden mb-4">
+    <div class="rounded-2xl p-4" style="background:var(--surface-2);border:1px solid var(--border)">
+      <p class="text-[10px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Paste your list</p>
+      <p class="text-[10px] font-bold mb-2" style="color:var(--text-muted)">A line without a dot is read as a PWA name, everything under it belongs to that PWA.
+        Bullets, numbering, <span class="font-mono">https://</span> and paths are stripped. Several domains on one line are fine.</p>
+      <textarea id="dm-paste-text" rows="8" oninput="dmPastePreview()" spellcheck="false"
+        class="w-full bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[11px] font-mono text-dynamic outline-none focus:border-violet-500"
+        placeholder="Melbet&#10;  melbet-eg1.com&#10;  melbet-eg2.com&#10;&#10;Mostbet&#10;  mostbet-uz1.top"></textarea>
+      <div id="dm-paste-preview" class="text-[11px] font-bold mt-2" style="color:var(--text-muted)"></div>
+      <div class="flex gap-2 mt-3">
+        <button onclick="dmPasteSave()" id="dm-paste-save"
+          class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-violet-600 text-white hover:brightness-110 transition">Add</button>
+        <button onclick="dmTogglePaste()"
+          class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-muted-dynamic hover:text-white transition"
+          style="background:var(--surface-3)">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex gap-4 items-start">
+    <div id="dm-list" class="flex-1 min-w-0"></div>
+    <div id="dm-detail" class="hidden w-[330px] shrink-0"></div>
   </div>
 </div>
 
@@ -6610,7 +6694,7 @@ async function siteLogout() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements','cabinets','expenses'];
+  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements','cabinets','domains','expenses'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -6683,6 +6767,7 @@ async function initTeamLeadMode() {
     'report':     'report-builder-section',
     'placements': 'placements-section',
     'cabinets':   'cabinets-section',
+    'domains':    'domains-section',
     'expenses':   'expenses-section'
   };
   // ЗАБОРОНЕНО ЗА ЗАМОВЧУВАННЯМ: показуємо лише те, що явно дозволено (=== true).
@@ -6748,6 +6833,7 @@ async function loadSettings() {
     'toggle-report': 'report-builder-section',
     'toggle-placements': 'placements-section',
     'toggle-cabinets': 'cabinets-section',
+    'toggle-domains': 'domains-section',
     'toggle-expenses': 'expenses-section'
   };
 
@@ -10657,6 +10743,10 @@ document.addEventListener('keydown', e => {
                 <span class="set-label"><span class="set-ico">&#128452;</span>Cabinets</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-cabinets" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
+              <label class="set-row set-toggle" data-setting="domains домени">
+                <span class="set-label"><span class="set-ico">&#127760;</span>Domains</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-domains" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
               <label class="set-row set-toggle" data-setting="expenses витрати розходи">
                 <span class="set-label"><span class="set-ico">&#128184;</span>Expenses</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-expenses" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
@@ -10775,6 +10865,8 @@ document.addEventListener('keydown', e => {
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-table" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-cabinets" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="domains домени"><span class="set-label">Domains</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-domains" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="expenses витрати розходи"><span class="set-label">Expenses</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-expenses" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="report builder звіт"><span class="set-label">Report Builder</span>
@@ -13733,6 +13825,447 @@ window.evToggleFeed = evToggleFeed;
 </script>
 
 <script>
+/* ═══════════ DOMAINS ═══════════
+   Список доменів по PWA і чи вони ще відповідають.
+
+   ЧЕСНО ПРО ПЕРЕВІРКУ З БРАУЗЕРА
+   Код відповіді чужого домена зі сторінки НЕ видно. CORS не дає
+   прочитати відповідь, а режим no-cors повертає непрозорий об'єкт, де
+   status завжди 0 — і для 200, і для 404. Тому тут рівно два висновки:
+   «відповідає» і «не відповідає». Не відповідає — це мертвий DNS,
+   протухлий сертифікат або відкинуте з'єднання.
+
+   Справжні коди й мітки Safe Browsing писатиме Edge Function із
+   source='server'. Місце під це вже є: status_code і source. */
+
+const DM_STATE = {
+  ok:       { label: 'Answers',      dot: '#22C55E', tone: 'text-emerald-400', soft: 'rgba(34,197,94,.14)',  bd: 'rgba(34,197,94,.30)' },
+  danger:   { label: 'Flagged',      dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.14)',  bd: 'rgba(239,68,68,.32)' },
+  notfound: { label: 'Not found',    dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.14)', bd: 'rgba(245,158,11,.32)' },
+  down:     { label: 'No answer',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.10)',  bd: 'rgba(239,68,68,.25)' },
+  unknown:  { label: 'Not checked',  dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' }
+};
+// Зверху те, що вимагає дії.
+const DM_ORDER = ['danger', 'notfound', 'down', 'ok', 'unknown'];
+const DM_BAD = ['danger', 'notfound', 'down'];
+
+// Скільки перевірок одночасно. Більше — браузер просто ставить їх у
+// чергу сам, а сторінка починає підвисати на сотні доменів.
+const DM_POOL = 6;
+const DM_TIMEOUT = 8000;
+
+let dmRows = [], dmFilter = '', dmGroup = 'pwa', dmSel = null, dmLoaded = false;
+let dmSort = { key: 'status', dir: 1 };
+let dmBusy = false;
+
+/* ── розбір вставленого списку ──
+   Формат у всіх свій, тож не вимагаємо жодного. Правило одне: рядок
+   без крапки — це назва PWA, рядок із крапкою — домени. Маркери
+   списку, нумерацію, протокол і шлях зрізаємо. */
+function dmParsePaste(text) {
+  const out = [];
+  let group = '';
+  String(text || '').split(/\r?\n/).forEach(raw => {
+    let line = raw.trim();
+    if (!line) return;
+    // «- », «* », «• », «1. », «1) » на початку
+    line = line.replace(/^[-*•·—]+\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
+    if (!line) return;
+    const clean = line.replace(/:$/, '').trim();
+    if (!/\./.test(clean)) { group = clean; return; }   // заголовок групи
+    clean.split(/[\s,;|\t]+/).forEach(tok => {
+      const d = dmNormDomain(tok);
+      if (d) out.push({ domain: d, pwa: group });
+    });
+  });
+  return out;
+}
+
+// https://foo.com/path?x=1 → foo.com
+function dmNormDomain(raw) {
+  let s = String(raw || '').trim().toLowerCase();
+  if (!s) return '';
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');   // протокол
+  s = s.split('/')[0].split('?')[0].split('#')[0];
+  s = s.replace(/^www\./, '').replace(/\.$/, '');
+  s = s.split(':')[0];                             // порт
+  // Мінімальна перевірка, що це взагалі схоже на домен
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s) ? s : '';
+}
+
+const dmEsc = s => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function dmAgo(iso) {
+  if (!iso) return '—';
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return '—';
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return (m || 1) + 'm';
+  const h = Math.floor(m / 60);
+  return h < 24 ? h + 'h' : Math.floor(h / 24) + 'd';
+}
+
+/* ── завантаження ── */
+
+async function dmInit() {
+  const host = document.getElementById('dm-list');
+  if (!host) return;
+  if (dmLoaded) { dmRender(); return; }
+  host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
+  try {
+    dmRows = await sbFetchAll('domains',
+      q => q.eq('team_name', currentTeam).order('domain', { ascending: true }));
+  } catch (e) {
+    host.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">
+      Error: ${dmEsc(e.message)}<br>
+      <span class="opacity-60 text-[10px] font-normal">If the table does not exist yet — run DOMAINS.sql</span></p>`;
+    return;
+  }
+  dmLoaded = true;
+  dmRender();
+}
+
+/* ── перевірка ── */
+
+// Один домен. Резолвиться — значить щось відповіло; кинуло — не відповіло.
+// Коду відповіді тут не буде, скільки б ми не старались: no-cors його ховає.
+async function dmProbe(domain) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), DM_TIMEOUT);
+  try {
+    await fetch('https://' + domain + '/?_=' + Date.now(),
+      { mode: 'no-cors', cache: 'no-store', redirect: 'follow', signal: ctl.signal });
+    return 'ok';
+  } catch (e) {
+    return 'down';
+  } finally { clearTimeout(t); }
+}
+
+async function dmCheckAll() {
+  if (dmBusy) return;
+  const targets = dmShown();
+  if (!targets.length) return;
+  dmBusy = true;
+  const btn = document.getElementById('dm-check-btn');
+  let done = 0;
+  const paint = () => { if (btn) btn.textContent = `Checking ${done}/${targets.length}`; };
+  paint();
+
+  const queue = targets.slice();
+  const worker = async () => {
+    for (;;) {
+      const row = queue.shift();
+      if (!row) return;
+      const status = await dmProbe(row.domain);
+      row.status = status;
+      row.source = 'browser';
+      row.status_code = null;
+      row.checked_at = new Date().toISOString();
+      done++; paint();
+      // Малюємо по ходу, а не в кінці: на сотні доменів це кілька
+      // хвилин, і дивитись увесь time на незмінну таблицю неприємно.
+      if (done % 5 === 0) dmRender();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(DM_POOL, queue.length) }, worker));
+
+  // Пишемо результат одним запитом: окремий update на домен — це сотні
+  // запитів поспіль, і половина з них впирається в ліміти.
+  try {
+    await sb.from('domains').upsert(targets.map(r => ({
+      id: r.id, team_name: r.team_name, domain: r.domain, pwa: r.pwa, note: r.note,
+      status: r.status, status_code: r.status_code, source: r.source, checked_at: r.checked_at
+    })), { onConflict: 'id' });
+  } catch (e) { console.warn('domains upsert:', e.message); }
+
+  dmBusy = false;
+  if (btn) btn.textContent = 'Check all';
+  dmRender();
+}
+
+async function dmCheckOne(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const row = dmRows.find(r => String(r.id) === String(id));
+  if (!row) return;
+  row.status = 'unknown'; dmRender();
+  row.status = await dmProbe(row.domain);
+  row.source = 'browser';
+  row.status_code = null;
+  row.checked_at = new Date().toISOString();
+  dmRender();
+  try {
+    await sb.from('domains').update({
+      status: row.status, status_code: null, source: 'browser', checked_at: row.checked_at
+    }).eq('id', row.id);
+  } catch (e) { console.warn('domains update:', e.message); }
+}
+
+/* ── вставка списку ── */
+
+function dmTogglePaste() {
+  const box = document.getElementById('dm-paste');
+  if (!box) return;
+  box.classList.toggle('hidden');
+  if (!box.classList.contains('hidden')) document.getElementById('dm-paste-text')?.focus();
+}
+
+function dmPastePreview() {
+  const el = document.getElementById('dm-paste-preview');
+  if (!el) return;
+  const parsed = dmParsePaste(document.getElementById('dm-paste-text')?.value || '');
+  if (!parsed.length) { el.innerHTML = 'Nothing recognised yet.'; return; }
+  const have = new Set(dmRows.map(r => String(r.domain).toLowerCase()));
+  const seen = new Set();
+  let dup = 0, add = 0;
+  const groups = {};
+  parsed.forEach(p => {
+    if (have.has(p.domain) || seen.has(p.domain)) { dup++; return; }
+    seen.add(p.domain); add++;
+    (groups[p.pwa || '— no PWA —'] = groups[p.pwa || '— no PWA —'] || []).push(p.domain);
+  });
+  el.innerHTML = `<b class="text-dynamic">${add}</b> new`
+    + (dup ? ` · <span class="text-amber-400">${dup} already here, skipped</span>` : '')
+    + (add ? '<br>' + Object.entries(groups).map(([g, d]) =>
+        `<span class="opacity-70">${dmEsc(g)}</span> — ${d.length}`).join(' · ') : '');
+}
+
+async function dmPasteSave() {
+  const ta = document.getElementById('dm-paste-text');
+  const parsed = dmParsePaste(ta?.value || '');
+  const have = new Set(dmRows.map(r => String(r.domain).toLowerCase()));
+  const seen = new Set();
+  const fresh = [];
+  parsed.forEach(p => {
+    if (have.has(p.domain) || seen.has(p.domain)) return;
+    seen.add(p.domain);
+    fresh.push({ team_name: currentTeam, domain: p.domain, pwa: p.pwa || null, status: 'unknown' });
+  });
+  if (!fresh.length) { alert('Nothing new to add.'); return; }
+  const btn = document.getElementById('dm-paste-save');
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+  try {
+    const { data, error } = await sb.from('domains').insert(fresh).select();
+    if (error) throw error;
+    dmRows = dmRows.concat(data || []);
+    if (ta) ta.value = '';
+    dmPastePreview();
+    dmTogglePaste();
+    dmRender();
+  } catch (e) {
+    alert('Could not add: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Add'; }
+  }
+}
+
+/* ── таблиця ── */
+
+function dmSetGroup(v) { dmGroup = v; dmRender(); }
+function dmSetFilter(k) { dmFilter = (dmFilter === k) ? '' : k; dmSel = null; dmRender(); }
+function dmPick(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  dmSel = (dmSel === id) ? null : id;
+  dmRender();
+}
+function dmSortBy(k) {
+  if (dmSort.key === k) dmSort.dir = -dmSort.dir;
+  else dmSort = { key: k, dir: k === 'status' ? 1 : 1 };
+  dmRender();
+}
+
+// Рядки, які зараз на екрані — їх і перевіряємо кнопкою «Check all».
+// Перевіряти приховані фільтром було б несподівано: натиснув на
+// «Not checked», а чекає весь список.
+function dmShown() {
+  const q = (document.getElementById('dm-search')?.value || '').toLowerCase().trim();
+  return dmRows.filter(r => {
+    const st = r.status || 'unknown';
+    const inFilter = !dmFilter ? true
+      : dmFilter === 'bad' ? DM_BAD.includes(st)
+      : st === dmFilter;
+    return inFilter && (!q || [r.domain, r.pwa, r.note]
+      .some(v => String(v || '').toLowerCase().includes(q)));
+  });
+}
+
+function dmRender() {
+  const list = document.getElementById('dm-list');
+  const tiles = document.getElementById('dm-tiles');
+  if (!list) return;
+
+  const counts = {};
+  DM_ORDER.forEach(k => counts[k] = 0);
+  dmRows.forEach(r => counts[r.status || 'unknown'] = (counts[r.status || 'unknown'] || 0) + 1);
+  const bad = DM_BAD.reduce((a, k) => a + counts[k], 0);
+
+  const tile = (k, label, n, tone, soft, bd) => `
+    <button onclick="dmSetFilter('${k}')"
+      class="rounded-xl px-2.5 py-1.5 text-left transition flex items-baseline justify-between gap-2
+             ${dmFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'hover:brightness-110'}"
+      style="background:${soft};border:1px solid ${bd}">
+      <span class="text-[9px] font-black uppercase tracking-widest truncate" style="color:var(--text-muted)">${label}</span>
+      <span class="text-[15px] font-black leading-none ${tone}">${n}</span></button>`;
+  if (tiles) {
+    tiles.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">
+      ${tile('bad', 'Problem', bad, 'text-red-400', 'rgba(239,68,68,.14)', 'rgba(239,68,68,.32)')}
+      ${DM_ORDER.map(k => tile(k, DM_STATE[k].label, counts[k],
+          DM_STATE[k].tone, DM_STATE[k].soft, DM_STATE[k].bd)).join('')}
+      ${tile('', 'All', dmRows.length, 'text-dynamic', 'var(--surface-2)', 'var(--border)')}
+    </div>`;
+  }
+
+  let shown = dmShown();
+  if (!dmRows.length) {
+    list.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">
+      No domains yet — use <span class="text-violet-400">Paste list</span></p>`;
+    dmDetail(null);
+    return;
+  }
+  if (!shown.length) {
+    list.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Nothing here</p>`;
+    dmDetail(null);
+    return;
+  }
+
+  const rank = s => DM_ORDER.indexOf(s || 'unknown');
+  const val = {
+    status: r => rank(r.status), domain: r => String(r.domain || ''),
+    pwa: r => String(r.pwa || ''), checked: r => String(r.checked_at || '')
+  };
+  const get = val[dmSort.key] || val.status;
+  shown = shown.slice().sort((a, b) => {
+    const A = get(a), B = get(b);
+    const d = typeof A === 'string' ? A.localeCompare(B) : A - B;
+    return (dmSort.key === 'status' ? d : d * dmSort.dir)
+        || String(a.domain).localeCompare(String(b.domain));
+  });
+
+  const keyOf = r => dmGroup === 'pwa' ? (r.pwa || '— no PWA —')
+                   : dmGroup === 'status' ? DM_STATE[r.status || 'unknown'].label
+                   : '';
+  const groups = {};
+  shown.forEach(r => (groups[keyOf(r)] = groups[keyOf(r)] || []).push(r));
+
+  const arrow = k => dmSort.key === k ? (dmSort.dir < 0 ? ' ↓' : ' ↑') : '';
+  const th = (k, label, cls) => `<th class="${cls || ''}" onclick="dmSortBy('${k}')">${label}${arrow(k)}</th>`;
+  const COLS = 5;
+
+  list.innerHTML = `<table class="cab-tbl">
+    <thead><tr>
+      ${th('status', 'Status')}
+      ${th('domain', 'Domain')}
+      ${th('pwa', 'PWA')}
+      ${th('checked', 'Checked', 'ta-r')}
+      <th class="ta-c">·</th>
+    </tr></thead><tbody>
+    ${Object.entries(groups).map(([g, items]) => {
+      const nBad = items.filter(i => DM_BAD.includes(i.status)).length;
+      const head = g ? `<tr class="cab-grp"><td colspan="${COLS}">
+          <span class="cab-grp-name">${dmEsc(g)}</span>
+          <span class="cab-grp-sub">${items.length}${nBad ? ` · <span class="text-red-400">${nBad} problem</span>` : ''}</span></td></tr>` : '';
+      return head + items.map(dmRowHtml).join('');
+    }).join('')}
+    </tbody></table>`;
+
+  dmDetail(shown.find(r => String(r.id) === String(dmSel)) || null);
+}
+
+function dmRowHtml(r) {
+  const S = DM_STATE[r.status || 'unknown'];
+  const enc = encodeURIComponent(String(r.id)).replace(/'/g, '%27');
+  return `<tr class="cab-tr ${String(dmSel) === String(r.id) ? 'is-sel' : ''}" onclick="dmPick('${enc}')">
+    <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${S.label}${
+      r.status_code ? ` · ${r.status_code}` : ''}</span></td>
+    <td><a href="https://${dmEsc(r.domain)}" target="_blank" rel="noopener"
+        onclick="event.stopPropagation()" class="cab-id hover:underline">${dmEsc(r.domain)}</a>
+      ${r.source === 'browser' ? '<span class="cab-src" title="Checked from the browser: it only tells whether the domain answered, not the HTTP code.">&#9998;</span>' : ''}</td>
+    <td class="cab-dim">${dmEsc(r.pwa) || '—'}</td>
+    <td class="ta-r cab-dim">${dmAgo(r.checked_at)}</td>
+    <td class="ta-c"><button onclick="event.stopPropagation();dmCheckOne('${enc}')"
+      class="cab-link" title="Check this one">&#8635;</button></td>
+  </tr>`;
+}
+
+function dmDetail(r) {
+  const box = document.getElementById('dm-detail');
+  if (!box) return;
+  if (!r) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  const S = DM_STATE[r.status || 'unknown'];
+  const enc = encodeURIComponent(String(r.id));
+  box.innerHTML = `<div class="card p-4 rounded-2xl">
+    <div class="flex items-start justify-between gap-2 mb-3">
+      <div class="min-w-0">
+        <p class="text-[13px] font-black text-dynamic truncate">${dmEsc(r.domain)}</p>
+        <p class="text-[10px] font-black uppercase tracking-widest ${S.tone}">${S.label}</p>
+      </div>
+      <button onclick="dmPick('${enc}')" class="text-slate-500 hover:text-red-400 text-lg leading-none">&times;</button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      ${[['Checked', dmAgo(r.checked_at)],
+         ['Source', r.source || '—'],
+         ['HTTP', r.status_code || '—'],
+         ['Added', String(r.created_at || '').slice(0, 10) || '—']]
+        .map(([k, v]) => `<div class="rounded-lg px-2 py-1.5" style="background:var(--surface-2)">
+            <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
+            <p class="text-[12px] font-black text-dynamic font-mono">${dmEsc(v)}</p></div>`).join('')}
+    </div>
+
+    ${r.source === 'browser' ? `<p class="text-[10px] font-bold mb-3" style="color:var(--text-muted)">
+      Checked from the browser, so HTTP is empty on purpose: a page cannot read the status code of another domain.
+      A 404 and a working page look the same from here. Real codes need the Edge Function.</p>` : ''}
+
+    <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">PWA</label>
+    <input value="${dmEsc(r.pwa || '')}" onchange="dmSaveField('${r.id}','pwa',this.value)"
+      class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500 mb-2">
+
+    <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Note</label>
+    <textarea rows="3" onchange="dmSaveField('${r.id}','note',this.value)"
+      class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"
+      placeholder="Where it is registered, which cabinet it ran on">${dmEsc(r.note || '')}</textarea>
+
+    <div class="flex gap-2 mt-3">
+      <button onclick="dmCheckOne('${enc}')"
+        class="flex-1 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
+               text-violet-300 hover:text-white hover:bg-violet-600"
+        style="border:1px solid rgba(139,92,246,.35)">Check</button>
+      <button onclick="dmDelete('${enc}')"
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
+               text-red-400 hover:text-white hover:bg-red-600"
+        style="border:1px solid rgba(239,68,68,.35)">Delete</button>
+    </div>
+  </div>`;
+}
+
+async function dmSaveField(id, key, value) {
+  const row = dmRows.find(r => String(r.id) === String(id));
+  if (!row) return;
+  const prev = row[key];
+  row[key] = value;
+  const patch = {}; patch[key] = value;
+  const { error } = await sb.from('domains').update(patch).eq('id', id);
+  if (error) { row[key] = prev; alert('Could not save: ' + error.message); }
+  dmRender();
+}
+
+async function dmDelete(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const row = dmRows.find(r => String(r.id) === String(id));
+  if (!row) return;
+  if (!confirm(`Remove ${row.domain} from the list?\n\nThis only deletes the row here — the domain itself is not touched.`)) return;
+  const { error } = await sb.from('domains').delete().eq('id', id);
+  if (error) { alert('Could not delete: ' + error.message); return; }
+  dmRows = dmRows.filter(r => String(r.id) !== String(id));
+  dmSel = null;
+  dmRender();
+}
+
+window.dmInit = dmInit;
+</script>
+
+<script>
 /* ══════════════════════════════════════════════════════════════════
    UI-шар нового дизайну: навігація, тема, ⌘K, повноекранні панелі
    (Data Hub, Таблиці) та інсайт-картки. Дані бере з тих самих
@@ -13753,6 +14286,7 @@ window.evToggleFeed = evToggleFeed;
     'placements': { section: 'placements-section' },
     'live':       { section: 'live-table-section' },
     'cabinets':   { section: 'cabinets-section' },
+    'domains':    { section: 'domains-section' },
     'reports':    { section: 'report-builder-section' },
     'expenses':   { section: 'expenses-section' },
     'hub':        { panel: 'datahub-panel' },
@@ -13848,6 +14382,8 @@ window.evToggleFeed = evToggleFeed;
     // Accountи вантажать accounts_mapping при першому заході й далі
     // тільки перемальовуються — список парку міняється рідко.
     if (name === 'cabinets' && typeof cabInit === 'function') cabInit();
+    // Домени, як і кабінети, вантажаться один раз при першому заході.
+    if (name === 'domains' && typeof dmInit === 'function') dmInit();
 
     document.body.classList.remove('sb-open');
     if (scroll) window.scrollTo({ top: 0 });
@@ -14282,6 +14818,7 @@ window.evToggleFeed = evToggleFeed;
     ['Placements',     'nav:placements',         'Page'],
     ['Live Data',      'nav:live',         'Page'],
     ['Cabinets',       'nav:cabinets',   'Page'],
+    ['Domains',        'nav:domains',    'Page'],
     ['Report Builder', 'nav:reports',     'Page'],
     ['Tasks',          'fn:toggleTaskModal',             'Tool'],
     ['Daily reports',  'fn:toggleReportModal',           'Tool'],
