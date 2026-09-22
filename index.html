@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 13:57">
+  <meta name="build" content="build 22.09 14:01">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2858,7 +2858,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:57</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 14:01</div>
     </div>
   </aside>
 
@@ -14120,6 +14120,10 @@ async function dmCheck() {
   const say = t => { if (btn) btn.textContent = t; };
   say('Checking…');
 
+  /* Позначених рахуємо ДО прогону. Після — у це число потрапили б і ті,
+     кого цей самий прогін щойно позначив, і підсумок казав би «пропущено
+     1», хоча пропущено нуль, а знайдено один. */
+  const wasFlagged = dmRows.filter(r => r.status === 'danger').length;
   const srv = await dmCheckServer(narrowed ? shown.map(r => r.domain) : null, say);
 
   if (srv.ok) {
@@ -14129,7 +14133,7 @@ async function dmCheck() {
     const where = String(srv.flags || '').split('+').filter(Boolean).map(k => NAMES[k] || k).join(' + ');
     // Скільки не чіпали. Мовчазний пропуск виглядав би як «перевірило не
     // всіх», і довіри до цифри не було б.
-    const skipped = narrowed ? 0 : dmRows.filter(r => r.status === 'danger').length;
+    const skipped = narrowed ? 0 : wasFlagged;
     const tail = skipped ? ` Skipped ${skipped} already flagged — filter to Danger and check again to re-check those.` : '';
     toast(where
       ? `Checked ${srv.total} domain(s) via ${where}. Flagged: ${srv.flagged}.` + tail
