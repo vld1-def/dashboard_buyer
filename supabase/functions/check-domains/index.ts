@@ -300,7 +300,14 @@ async function noteSpend(base: string, hdr: Record<string, string>,
    Немає секретів — просто нічого не шлемо. Перевірка доменів від цього
    не залежить і має працювати сама по собі. */
 
-const TG_MAX = 25;   // скільки доменів перелічуємо поіменно
+const TG_MAX = 25;    // скільки доменів перелічуємо поіменно
+/* Ліміт повідомлення в Telegram — 4096 символів, і за нього він
+   відповідає 400. Двадцять пʼять звичайних доменів у нього вкладаються
+   з великим запасом, але в домені дозволено 253 символи, а поруч ще
+   список того, хто поставив мітку. Тож ріжемо не лише за кількістю, а
+   й за довжиною: краще коротший список і хвіст «і ще N», ніж мовчання
+   через відмову. */
+const TG_LIMIT = 3900;
 
 const TG_MARK: Record<string, string> = {
   danger: '\u{1F534}', notfound: '\u{1F7E0}', down: '\u{26AB}'
@@ -315,7 +322,7 @@ const TG_WAS: Record<string, string> = {
 
 function tgText(worse: Change[], checked: number): string {
   const teams = new Set(worse.map(w => w.team));
-  const lines = worse.slice(0, TG_MAX).map(w => {
+  const all = worse.slice(0, TG_MAX).map(w => {
     const what = TG_WHAT[w.to] || w.to;
     const why = w.to === 'danger' && w.flagged_by ? ` (${w.flagged_by})` : '';
     // Команду називаємо, лише коли їх кілька: в одній команді це шум.
@@ -323,11 +330,15 @@ function tgText(worse: Change[], checked: number): string {
     return `${TG_MARK[w.to] || '\u{26AA}'} ${w.domain} — ${what}${why}`
          + `\n     було: ${TG_WAS[w.from] || w.from}${who}`;
   });
-  const rest = worse.length - lines.length;
-  return `\u{1F319} Домени · нічна перевірка\n`
-       + `Погіршилось: ${worse.length} з ${checked}\n\n`
-       + lines.join('\n')
-       + (rest > 0 ? `\n\n…і ще ${rest}. Решта — у дашборді, фільтр Problem.` : '');
+  const head = `\u{1F319} Домени · нічна перевірка\n`
+             + `Погіршилось: ${worse.length} з ${checked}\n\n`;
+  const lines = all.slice();
+  const tail = () => {
+    const rest = worse.length - lines.length;
+    return rest > 0 ? `\n\n…і ще ${rest}. Решта — у дашборді, фільтр Problem.` : '';
+  };
+  while (lines.length > 1 && (head + lines.join('\n') + tail()).length > TG_LIMIT) lines.pop();
+  return head + lines.join('\n') + tail();
 }
 
 async function tgSend(worse: Change[], checked: number): Promise<string> {
