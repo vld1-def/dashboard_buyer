@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 13:40">
+  <meta name="build" content="build 22.09 13:57">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2858,7 +2858,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:40</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:57</div>
     </div>
   </aside>
 
@@ -3695,14 +3695,15 @@ body[data-route="domains"] #dm-detail {
       <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Which domain serves which PWA, and whether it still answers</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <button onclick="dmCheckAll()" id="dm-check-btn"
-        title="Runs in your browser: only tells whether each shown domain answers. No HTTP codes, no Google flags. Skips domains already flagged — it cannot clear a flag."
-        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-violet-300 hover:text-white hover:bg-violet-600"
-        style="border:1px solid rgba(139,92,246,.35)">Check all</button>
-      <button onclick="dmDeepCheck()" id="dm-deep-btn"
-        title="Runs on the server: real HTTP codes, Google blacklists and filtering DNS. The only check that can set or clear a flag. Needs the check-domains function deployed."
+      <button onclick="dmCheck()" id="dm-check-btn"
+        title="Real HTTP codes, Google blacklists and filtering DNS — from the server. Checks the whole list and skips domains already flagged; filter or search first to check exactly those rows, flagged ones included. No server — falls back to a browser check that can only tell whether a domain answers."
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-emerald-300 hover:text-white hover:bg-emerald-600"
-        style="border:1px solid rgba(16,185,129,.35)">Deep check</button>
+        style="border:1px solid rgba(16,185,129,.35)">Check</button>
+      <button onclick="dmCheckHelp()"
+        title="What the check needs, and what to do when the server does not answer"
+        class="px-2 py-2 rounded-xl text-[10px] font-black transition text-muted-dynamic hover:text-white"
+        style="border:1px solid var(--border)">?</button>
+      <span id="dm-quota" class="hidden text-[9px] font-black uppercase tracking-widest cursor-help"></span>
       <button onclick="dmTogglePaste()"
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-dynamic hover:brightness-125"
         style="background:var(--surface-2);border:1px solid var(--border)">Paste list</button>
@@ -13885,8 +13886,10 @@ window.evToggleFeed = evToggleFeed;
    «відповідає» і «не відповідає». Не відповідає — це мертвий DNS,
    протухлий сертифікат або відкинуте з'єднання.
 
-   Справжні коди й мітки Safe Browsing писатиме Edge Function із
-   source='server'. Місце під це вже є: status_code і source. */
+   Справжні коди й мітки дає Edge Function check-domains — вона питає
+   з сервера, де CORS не заважає, і пише source='server'. Кнопка
+   перевірки одна: спершу сервер, а якщо його немає — браузерна проба
+   як запасний шлях. */
 
 const DM_STATE = {
   ok:       { label: 'Answers',      dot: '#22C55E', tone: 'text-emerald-400', soft: 'rgba(34,197,94,.14)',  bd: 'rgba(34,197,94,.30)' },
@@ -13903,6 +13906,10 @@ const DM_BAD = ['danger', 'notfound', 'down'];
 // чергу сам, а сторінка починає підвисати на сотні доменів.
 const DM_POOL = 6;
 const DM_TIMEOUT = 8000;
+// Скільки доменів за раз шлемо у функцію явним списком. Він їде в
+// PostgREST як in.(…) у рядку запиту — на сотнях доменів просто не
+// влізе, тому ріжемо самі.
+const DM_CHUNK = 120;
 
 let dmRows = [], dmFilter = '', dmGroup = 'pwa', dmSel = null, dmLoaded = false;
 let dmSort = { key: 'status', dir: 1 };
@@ -13993,6 +14000,9 @@ function dmAgo(iso) {
 async function dmInit() {
   const host = document.getElementById('dm-list');
   if (!host) return;
+  // До перевірки на dmLoaded: інакше лічильник зʼявлявся б тільки при
+  // першому заході на сторінку, а далі мовчав.
+  dmWrLoad().then(dmWrPaint);
   if (dmLoaded) { dmRender(); return; }
   host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
   try {
@@ -14024,45 +14034,237 @@ async function dmProbe(domain) {
   } finally { clearTimeout(t); }
 }
 
-async function dmCheckAll() {
+/* ── квота Web Risk ──
+
+   Google не віддає «скільки лишилось» жодним API: у Cloud Console це
+   видно в Billing → Reports, і на цьому все. Тому рахуємо самі — і
+   можемо порахувати точно, бо ціна прогону відома наперед: Web Risk це
+   рівно один запит на домен, а функція каже, скільки доменів вона
+   перевірила. Фільтрувальний DNS безкоштовний і в лічильник не йде.
+
+   Рахунок ведеться по команді, а не по людині: ключ у Google один на
+   всіх, тож і квота спільна. І лічильник бачить рівно те, що витратив
+   цей дашборд — якщо тим самим ключем користується ще щось, справжня
+   цифра буде більша. */
+const DM_WR_FREE = 100000;
+const DM_WR_KEY  = 'wr_usage';
+let dmWr = null;                                  // { '2026-09': 412, … }
+
+const dmMonth = () => new Date().toISOString().slice(0, 7);
+
+async function dmWrLoad() {
+  if (dmWr) return dmWr;
+  try { dmWr = JSON.parse((await getTeamSetting(DM_WR_KEY)) || '{}') || {}; }
+  catch (e) { dmWr = {}; }
+  return dmWr;
+}
+
+async function dmWrAdd(n) {
+  if (!n) return;
+  await dmWrLoad();
+  const m = dmMonth();
+  dmWr[m] = (dmWr[m] || 0) + n;
+  // Пів року історії — досить, щоб побачити, чи витрати ростуть.
+  const keep = Object.keys(dmWr).sort().slice(-6);
+  dmWr = Object.fromEntries(keep.map(k => [k, dmWr[k]]));
+  dmWrPaint();
+  try { await setTeamSetting(DM_WR_KEY, JSON.stringify(dmWr)); } catch (e) {}
+}
+
+function dmWrPaint() {
+  const el = document.getElementById('dm-quota');
+  if (!el) return;
+  const used = (dmWr || {})[dmMonth()] || 0;
+  if (!used) { el.classList.add('hidden'); return; }
+  const left = Math.max(0, DM_WR_FREE - used);
+  const part = used / DM_WR_FREE;
+  const n = x => x.toLocaleString('en-US').replace(/,/g, ' ');
+  el.classList.remove('hidden');
+  el.style.color = part > .95 ? 'var(--bad)' : part > .8 ? 'var(--warn)' : 'var(--text-muted)';
+  el.textContent = `Web Risk: ${n(left)} left of ${n(DM_WR_FREE)}`;
+  el.title = `Spent ${n(used)} lookup(s) in ${dmMonth()}.\n\n`
+    + 'Counted here, not asked from Google: Web Risk has no "requests left" API. '
+    + 'One domain = one lookup, and the check reports how many domains it went through, '
+    + 'so the figure is exact for what this dashboard spends.\n\n'
+    + 'Filtering DNS is free and unlimited — it is not counted.\n\n'
+    + 'The authoritative number: Google Cloud Console → Billing → Reports, filtered to Web Risk API.';
+}
+
+/* ── перевірка ──
+
+   Одна кнопка на все. Спершу сервер: лише він бачить справжній код
+   відповіді й чорні списки. Сервера немає — тихо відкочуємось на
+   браузерну пробу, яка вміє рівно одне: відповів домен чи ні. Краще
+   грубий сигнал, ніж кнопка, яка не робить нічого.
+
+   Раніше кнопок було дві, і це збивало з пантелику: «Check all»
+   виглядав як головний, а насправді був найслабшим з двох і ще й
+   стирав мітки. Тепер вибір робить не людина, а наявність сервера.
+
+   ЩО саме перевіряти — вирішує те, що на екрані:
+     - нічого не звужено → весь список команди, позначені пропускаються
+       (мітку Google знімає рідко, а квота не безмежна);
+     - стоїть фільтр або пошук → рівно ці рядки, і позначені теж. Якщо
+       ти сам звузив список до Danger і натиснув перевірку — це і є
+       прохання перевірити їх заново. */
+async function dmCheck() {
   if (dmBusy) return;
-
-  /* Позначені домени не чіпаємо.
-
-     Браузерна проба вміє рівно одне: відповів домен чи ні. А домен із
-     міткою Google відповідає цілком нормально — саме тому мітка й
-     небезпечна. Тож проба поверне 'ok' і запише його поверх 'danger',
-     стерши висновок, якого вона робити не вміє.
-
-     Сервер таких рядків не бере (status=neq.danger), і тут має бути те
-     саме правило. Перевірити позначений домен заново можна кнопкою ↻ в
-     рядку — вона йде через сервер. */
+  const q = (document.getElementById('dm-search')?.value || '').trim();
+  const narrowed = !!dmFilter || !!q;
   const shown = dmShown();
-  const targets = shown.filter(r => r.status !== 'danger');
-  const skipped = shown.length - targets.length;
-  if (!targets.length) {
-    if (skipped) toast(`Nothing to check: all ${skipped} shown domain(s) are flagged. `
-      + 'A browser check cannot confirm or clear a flag — use Deep check, or ↻ on a row.',
-      'warn', 6000);
-    return;
-  }
+  if (!dmRows.length) return;
+  if (narrowed && !shown.length) { toast('Nothing is shown to check.', 'warn', 3000); return; }
+
   dmBusy = true;
   const btn = document.getElementById('dm-check-btn');
-  let done = 0;
-  const paint = () => { if (btn) btn.textContent = `Checking ${done}/${targets.length}`; };
-  paint();
+  const say = t => { if (btn) btn.textContent = t; };
+  say('Checking…');
 
+  const srv = await dmCheckServer(narrowed ? shown.map(r => r.domain) : null, say);
+
+  if (srv.ok) {
+    dmBusy = false; say('Check'); dmRender();
+    if (!srv.total) { toast('Nothing to check — everything shown is already flagged.', 'warn', 5000); return; }
+    const NAMES = { 'web-risk': 'Web Risk', 'safe-browsing': 'Safe Browsing', dns: 'filtering DNS' };
+    const where = String(srv.flags || '').split('+').filter(Boolean).map(k => NAMES[k] || k).join(' + ');
+    // Скільки не чіпали. Мовчазний пропуск виглядав би як «перевірило не
+    // всіх», і довіри до цифри не було б.
+    const skipped = narrowed ? 0 : dmRows.filter(r => r.status === 'danger').length;
+    const tail = skipped ? ` Skipped ${skipped} already flagged — filter to Danger and check again to re-check those.` : '';
+    toast(where
+      ? `Checked ${srv.total} domain(s) via ${where}. Flagged: ${srv.flagged}.` + tail
+      : `Checked ${srv.total} domain(s) — HTTP codes only.\n\n`
+        + 'No blacklist source answered. Filtering DNS needs no key and should always work, '
+        + 'so this usually means the function could not reach the network.',
+      where ? '' : 'warn', where ? 5000 : 9000);
+    return;
+  }
+
+  /* Сервера немає. Кажемо про це один раз і тут же робимо те, що ще
+     можемо — не лишаємо людину з помилкою і без результату. */
+  const swept = await dmSweep(shown, say);
+  dmBusy = false; say('Check'); dmRender();
+  const head = srv.reason === 'missing'
+    ? 'The check-domains function is not deployed, so this was a browser check only.'
+    : srv.reason === 'auth'
+    ? 'Log in first — the server check runs as you. This was a browser check only.'
+    : 'The server check did not go through, so this was a browser check only.';
+  // Нуль перевірених — це не результат, а глухий кут: усе видиме
+  // позначене, а зняти мітку браузер не може. Так і кажемо, замість
+  // «0 checked: 0 answered, 0 did not».
+  const body = swept.total
+    ? `${swept.total} checked: ${swept.total - swept.down} answered, ${swept.down} did not.`
+      + (swept.skipped ? ` Skipped ${swept.skipped} flagged — a browser cannot clear a flag.` : '')
+      + '\n\nHTTP codes and Google flags need the server.'
+    : `Nothing left to check: all ${swept.skipped} shown domain(s) are flagged, `
+      + 'and only the server check can confirm or clear a flag.';
+  toast(`${head}\n\n${body}`, 'warn', 9000);
+}
+
+/* Серверна частина. Повертає {ok}, а не кидає: рішення, що робити
+   далі, приймає dmCheck, і йому потрібна причина, а не виняток.
+
+   only — явний список доменів. Функція вважає його свідомим вибором і
+   фільтр «пропускай позначені» не вмикає. Шлемо порціями: цей список
+   їде в PostgREST як in.(…) у рядку запиту, і на сотнях доменів він
+   просто не влізе. */
+async function dmCheckServer(only, say) {
+  let total = 0, flagged = 0, flags = 'none', spent = 0;
+  const apply = j => {
+    (j.results || []).forEach(x => {
+      const row = dmRows.find(r => String(r.id) === String(x.id));
+      if (!row) return;
+      row.status = x.status; row.status_code = x.status_code;
+      row.flagged_by = x.flagged_by;
+      row.source = x.source; row.checked_at = x.checked_at;
+    });
+    total += j.checked || 0;
+    // Яким саме списком питали — це єдиний спосіб побачити, чи ключ
+    // узагалі підхопився. Без нього danger не зʼявиться ніколи, і
+    // ззовні це виглядає як «перевірка нічого не знайшла».
+    flags = j.flags || flags;
+    // Web Risk — один запит на домен, тож перевірені домени і є витрата.
+    if (/web-risk|safe-browsing/.test(String(j.flags || ''))) spent += j.checked || 0;
+    flagged += (j.results || []).filter(x => x.status === 'danger').length;
+    say(`Checking ${total}…`);
+    dmRender();
+  };
+
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess && sess.session && sess.session.access_token;
+    if (!token) return { ok: false, reason: 'auth' };
+    const call = async body => {
+      const res = await fetch(SUPABASE_URL + '/functions/v1/check-domains', {
+        method: 'POST',
+        // apikey поруч із Authorization: шлюз Supabase очікує обидва, і без
+        // ключа запит можна не побачити взагалі — замість відповіді прийде
+        // відмова ще на підході.
+        headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+                   'content-type': 'application/json' },
+        body: JSON.stringify(Object.assign({ team: currentTeam }, body))
+      });
+      if (res.status === 404) throw Object.assign(new Error('not deployed'), { reason: 'missing' });
+      if (!res.ok) {
+        let msg = 'HTTP ' + res.status;
+        try { msg = (await res.json()).error || msg; } catch (e) {}
+        throw new Error(msg);
+      }
+      return res.json();
+    };
+
+    if (only) {
+      for (let i = 0; i < only.length; i += DM_CHUNK) apply(await call({ domains: only.slice(i, i + DM_CHUNK) }));
+    } else {
+      // Функція віддає порціями: Edge Function обмежена в часі, і на
+      // сотнях доменів чесна порція краща за обрив посеред роботи.
+      // after — курсор: без нього вона щоразу віддавала б ту саму першу
+      // порцію, і цикл ганяв би її по колу.
+      let after = 0;
+      for (let pass = 0; pass < 50; pass++) {
+        const j = await call({ after });
+        apply(j);
+        after = j.next || after;
+        if (!j.more || !j.next) break;
+      }
+    }
+    await dmWrAdd(spent);
+    return { ok: true, total, flagged, flags };
+  } catch (e) {
+    await dmWrAdd(spent);   // що встигли витратити — витрачено
+    /* «Failed to fetch» означає рівно одне: браузер не зміг виконати
+       запит. ЧОМУ саме — він не знає й не скаже, бо відповідь без
+       CORS-заголовків для нього просто не існує. Три причини виглядають
+       однаково: функції немає, функція падає на старті, увімкнена
+       перевірка JWT (preflight OPTIONS іде без Authorization завжди).
+       Тому причину не називаємо — пояснення дає dmCheckHelp. */
+    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    return { ok: false, reason: e.reason || (net ? 'net' : 'error'), error: e.message };
+  }
+}
+
+/* Браузерна проба по всьому видимому списку — запасний шлях.
+
+   Позначені рядки обходить. Проба вміє рівно одне: відповів домен чи
+   ні. А домен із міткою Google відповідає цілком нормально — саме тому
+   мітка й небезпечна. Тож проба повернула б 'ok' і записала його
+   поверх 'danger', стерши висновок, якого вона робити не вміє. */
+async function dmSweep(shown, say) {
+  const targets = shown.filter(r => r.status !== 'danger');
+  const skipped = shown.length - targets.length;
+  if (!targets.length) return { total: 0, down: 0, skipped };
+
+  let done = 0;
   const queue = targets.slice();
   const worker = async () => {
     for (;;) {
       const row = queue.shift();
       if (!row) return;
-      const status = await dmProbe(row.domain);
-      row.status = status;
+      row.status = await dmProbe(row.domain);
       row.source = 'browser';
       row.status_code = null;
       row.checked_at = new Date().toISOString();
-      done++; paint();
+      done++; say(`Checking ${done}/${targets.length}`);
       // Малюємо по ходу, а не в кінці: на сотні доменів це кілька
       // хвилин, і дивитись увесь time на незмінну таблицю неприємно.
       if (done % 5 === 0) dmRender();
@@ -14090,133 +14292,24 @@ async function dmCheckAll() {
     }
   } catch (e) { console.warn('domains update:', e.message); }
 
-  dmBusy = false;
-  if (btn) btn.textContent = 'Check all';
-  dmRender();
-
-  /* Підсумок словами, бо цифри в плитках самі по собі не пояснюють, що
-     саме ця кнопка зробила, а що лишила іншій. */
-  const down = targets.filter(r => r.status === 'down').length;
-  toast(`Checked ${targets.length} domain(s): ${targets.length - down} answered, ${down} did not.`
-    + (skipped ? ` Skipped ${skipped} flagged — a browser check cannot clear a flag.` : '')
-    + ' HTTP codes and Google flags come from Deep check.', '', 5600);
+  return { total: targets.length, down: targets.filter(r => r.status === 'down').length, skipped };
 }
 
-/* ── глибока перевірка через Edge Function ──
-   Те, чого браузер не вміє: справжній код відповіді й мітки Safe
-   Browsing. Запит іде з сервера, де CORS не заважає. Функція працює від
-   імені того, хто залогінений, тож чужих доменів не бачить. */
-async function dmDeepCheck() {
-  if (dmBusy) return;
-  dmBusy = true;
-  const btn = document.getElementById('dm-deep-btn');
-  const say = t => { if (btn) btn.textContent = t; };
-  say('Checking…');
-  let total = 0, flags = 'none', flagged = 0;
-  try {
-    const { data: sess } = await sb.auth.getSession();
-    const token = sess && sess.session && sess.session.access_token;
-    if (!token) { alert('Log in first — the server check runs as you, not as the page.'); return; }
-
-    // Функція віддає порціями: Edge Function обмежена в часі, і на
-    // сотнях доменів чесна порція краща за обрив посеред роботи.
-    let after = 0;
-    for (let pass = 0; pass < 50; pass++) {
-      const res = await fetch(SUPABASE_URL + '/functions/v1/check-domains', {
-        method: 'POST',
-        // apikey поруч із Authorization: шлюз Supabase очікує обидва, і без
-        // ключа запит можна не побачити взагалі — замість відповіді прийде
-        // відмова ще на підході.
-        headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
-                   'content-type': 'application/json' },
-        // after — курсор: без нього функція щоразу віддавала б ту саму
-        // першу порцію, і цикл ганяв би її по колу.
-        body: JSON.stringify({ team: currentTeam, after })
-      });
-      if (res.status === 404) {
-        alert('The check-domains function is not deployed yet.\n\n'
-            + 'Until then the browser check works, but it can only tell whether a domain answered — not the HTTP code.');
-        return;
-      }
-      if (!res.ok) {
-        let msg = 'HTTP ' + res.status;
-        try { msg = (await res.json()).error || msg; } catch (e) {}
-        alert('Server check failed: ' + msg);
-        return;
-      }
-      const j = await res.json();
-      (j.results || []).forEach(x => {
-        const row = dmRows.find(r => String(r.id) === String(x.id));
-        if (!row) return;
-        row.status = x.status; row.status_code = x.status_code;
-        row.flagged_by = x.flagged_by;
-        row.source = x.source; row.checked_at = x.checked_at;
-      });
-      total += j.checked || 0;
-      // Яким саме списком питали — це єдиний спосіб побачити, чи ключ
-      // узагалі підхопився. Без нього danger не зʼявиться ніколи, і
-      // ззовні це виглядає як «перевірка нічого не знайшла».
-      flags = j.flags || 'none';
-      flagged += (j.results || []).filter(x => x.status === 'danger').length;
-      after = j.next || after;
-      say(`Checking ${total}…`);
-      dmRender();
-      if (!j.more || !j.next) break;
-    }
-  } catch (e) {
-    /* «Failed to fetch» означає рівно одне: браузер не зміг виконати
-       запит. ЧОМУ саме — він не знає й не скаже, бо відповідь без
-       CORS-заголовків для нього просто не існує.
-
-       Тому не називаємо винну причину, а даємо порядок перевірки. Перший
-       пункт — логи: вони одні відповідають однозначно. Раніше тут стояло
-       впевнене «швидше за все ввімкнена перевірка JWT», і це виявилось
-       не так — вимкнена перевірка нічого не змінила, а текст збивав зі
-       сліду.
-
-       Три причини виглядають у браузері однаково:
-         - функція не розгорнута або названа інакше → шлюз віддає 404
-           без CORS-заголовків;
-         - функція падає ще на старті → шлюз віддає помилку без них же;
-         - увімкнена перевірка JWT → шлюз відкидає preflight OPTIONS,
-           у якому заголовка Authorization немає ніколи. */
-    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
-    alert(net
-      ? 'Server check failed: the request never went through.\n\n'
-        + 'The browser cannot say why — a reply without CORS headers does not exist for it.\n'
-        + 'Check in this order:\n\n'
-        + '1. Supabase → Edge Functions → check-domains → Logs.\n'
-        + '   Empty right after pressing this button = the request never reached the function.\n'
-        + '   An entry with an error = it started and crashed, and the reason is right there.\n\n'
-        + '2. The function is deployed under exactly this name: check-domains.\n\n'
-        + '3. Settings → JWT Verification is off. The browser sends an OPTIONS request first, '
-        + 'always without an Authorization header, so Supabase rejects it before the function runs.'
-      : 'Server check failed: ' + e.message);
-  } finally {
-    dmBusy = false;
-    say('Deep check');
-    dmRender();
-  }
-
-  /* Підсумок обовʼязковий. Раніше кнопка просто верталась до звичного
-     вигляду, і відрізнити «перевірило й нічого не знайшло» від «ключа
-     немає, тож чорний список ніхто й не питав» було неможливо. */
-  if (total) {
-    // flags приходить як 'web-risk+dns', 'dns', 'safe-browsing+dns'…
-    const NAMES = { 'web-risk': 'Web Risk', 'safe-browsing': 'Safe Browsing', dns: 'filtering DNS' };
-    const where = String(flags || '').split('+').filter(Boolean)
-      .map(k => NAMES[k] || k).join(' + ');
-    // Скільки не чіпали. Мовчазний пропуск виглядав би як «перевірило не
-    // всіх», і довіри до цифри не було б.
-    const skipped = dmRows.filter(r => r.status === 'danger').length;
-    const tail = skipped ? ` Skipped ${skipped} already flagged — use ↻ on a row to re-check one.` : '';
-    toast(where
-      ? `Checked ${total} domain(s) via ${where}. Flagged: ${flagged}.` + tail
-      : `Checked ${total} domain(s) — HTTP codes only.\n\n`
-        + 'No blacklist source answered. Filtering DNS needs no key and should always work, '
-        + 'so this usually means the function could not reach the network.',
-      where ? '' : 'warn', where ? 4200 : 9000);
-  }
+/* Чому серверної перевірки може не бути — окремою кнопкою, а не в
+   тості: читати це треба один раз, а перевіряти щодня. */
+function dmCheckHelp() {
+  alert('The server check runs in a Supabase Edge Function. If it does not answer, '
+    + 'the browser cannot say why — a reply without CORS headers does not exist for it.\n\n'
+    + 'Check in this order:\n\n'
+    + '1. Supabase → Edge Functions → check-domains → Logs.\n'
+    + '   Empty right after pressing Check = the request never reached the function.\n'
+    + '   An entry with an error = it started and crashed, and the reason is right there.\n\n'
+    + '2. The function is deployed under exactly this name: check-domains.\n'
+    + '   Renaming it in the dashboard does not change its URL.\n\n'
+    + '3. Settings → JWT Verification is off. The browser sends an OPTIONS request first, '
+    + 'always without an Authorization header, so Supabase rejects it before the function runs.\n\n'
+    + 'Until it works, Check still runs in your browser: it can tell whether a domain answers, '
+    + 'but not its HTTP code and not whether Google flagged it.');
 }
 
 /* Перевірка одного рядка. Спершу пробуємо сервер: лише він бачить
@@ -14614,7 +14707,8 @@ async function dmDelete(idEnc) {
 }
 
 window.dmInit = dmInit;
-window.dmDeepCheck = dmDeepCheck;
+window.dmCheck = dmCheck;
+window.dmCheckHelp = dmCheckHelp;
 </script>
 
 <script>
