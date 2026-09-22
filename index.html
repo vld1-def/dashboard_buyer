@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 10:57">
+  <meta name="build" content="build 22.09 10:59">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2845,7 +2845,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 10:57</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 10:59</div>
     </div>
   </aside>
 
@@ -14006,14 +14006,25 @@ async function dmCheckAll() {
   };
   await Promise.all(Array.from({ length: Math.min(DM_POOL, queue.length) }, worker));
 
-  // Пишемо результат одним запитом: окремий update на домен — це сотні
-  // запитів поспіль, і половина з них впирається в ліміти.
+  /* Пишемо один update на кожен отриманий статус, а не на кожен домен:
+     статусів усього кілька, тож це 2-3 запити замість сотень.
+
+     Навмисно НЕ upsert. По-перше, PostgREST вимагає, щоб усі об'єкти в
+     пачці мали однакові ключі, а поле зі значенням undefined випадає з
+     JSON — тож один домен без нотатки ламав би весь запит. По-друге,
+     upsert тягнув би за собою pwa, note й решту, яких ця операція не
+     стосується. Тут міняються рівно чотири колонки. */
+  const at = new Date().toISOString();
+  const byStatus = {};
+  targets.forEach(r => (byStatus[r.status] = byStatus[r.status] || []).push(r.id));
   try {
-    await sb.from('domains').upsert(targets.map(r => ({
-      id: r.id, team_name: r.team_name, domain: r.domain, pwa: r.pwa, note: r.note,
-      status: r.status, status_code: r.status_code, source: r.source, checked_at: r.checked_at
-    })), { onConflict: 'id' });
-  } catch (e) { console.warn('domains upsert:', e.message); }
+    for (const [status, ids] of Object.entries(byStatus)) {
+      const { error } = await sb.from('domains')
+        .update({ status, status_code: null, source: 'browser', checked_at: at })
+        .in('id', ids);
+      if (error) throw error;
+    }
+  } catch (e) { console.warn('domains update:', e.message); }
 
   dmBusy = false;
   if (btn) btn.textContent = 'Check all';
