@@ -92,13 +92,22 @@ async function probe(domain: string): Promise<Verdict> {
    логін, пароль і порт — збіг шукається лише за хостом і шляхом. Тому
    достатньо одного запису на домен. */
 
+/* SOCIAL_ENGINEERING_EXTENDED_COVERAGE — окремий список Google саме під
+   фішинг і сайти-обманки. За їхніми ж словами, він піднімає покриття
+   таких сторінок «до 90% у деяких випадках». Без нього домен, на якому
+   Chrome малює червоний екран «Небезпечний сайт», цілком може не
+   знайтись у звичайному SOCIAL_ENGINEERING.
+
+   У Safe Browsing v4 такого типу немає — там натомість
+   POTENTIALLY_HARMFUL_APPLICATION, він додається нижче окремо. */
 const THREATS = ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'];
+const THREATS_WR = THREATS.concat('SOCIAL_ENGINEERING_EXTENDED_COVERAGE');
 
 // Web Risk: один GET на домен. Пакетного варіанта в Lookup API немає,
 // тож женемо пулом, як і самі перевірки доменів.
 async function flaggedWebRisk(domains: string[], key: string): Promise<Set<string>> {
   const out = new Set<string>();
-  const qs = THREATS.map(t => 'threatTypes=' + t).join('&');
+  const qs = THREATS_WR.map(t => 'threatTypes=' + t).join('&');
   const queue = domains.slice();
   const worker = async () => {
     for (;;) {
@@ -180,6 +189,12 @@ async function handle(req: Request): Promise<Response> {
   let team = '';
   let only: string[] | null = null;
   let after = 0;
+  // Перевіряти домен, який уже позначений, — витрачати квоту Web Risk
+  // намарно: мітку Google знімає рідко, а безкоштовних запитів 100 000
+  // на місяць. Тому за замовчуванням такі пропускаємо. Перевірити
+  // конкретний домен примусово можна, передавши force або список
+  // domains — тоді це свідомий вибір, а не фоновий прогін.
+  let force = false;
   try {
     const body = await req.json();
     team = String(body?.team || '');
@@ -187,6 +202,7 @@ async function handle(req: Request): Promise<Response> {
     // BATCH рядків, і дашборд ганяв би одну порцію по колу, так і не
     // дійшовши до решти списку.
     after = Number(body?.after || 0) || 0;
+    force = body?.force === true;
     if (Array.isArray(body?.domains) && body.domains.length) only = body.domains.map(String);
   } catch (_e) { /* тіла може не бути */ }
 
@@ -197,6 +213,8 @@ async function handle(req: Request): Promise<Response> {
   if (team) qs.set('team_name', 'eq.' + team);
   if (after) qs.set('id', 'gt.' + after);
   if (only) qs.set('domain', 'in.(' + only.map(d => '"' + d.replace(/"/g, '') + '"').join(',') + ')');
+  // Явний список доменів — це теж свідомий вибір, тож фільтр не вмикаємо.
+  if (!force && !only) qs.set('status', 'neq.danger');
 
   let data: Row[] = [];
   try {

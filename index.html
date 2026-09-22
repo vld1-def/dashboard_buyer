@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 12:37">
+  <meta name="build" content="build 22.09 13:05">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2858,7 +2858,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 12:37</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:05</div>
     </div>
   </aside>
 
@@ -3721,7 +3721,13 @@ body[data-route="domains"] #dm-detail {
   <!-- Вставка списку з текстового файлу -->
   <div id="dm-paste" class="hidden mb-4">
     <div class="rounded-2xl p-4" style="background:var(--surface-2);border:1px solid var(--border)">
-      <p class="text-[10px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Paste your list</p>
+      <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <p class="text-[10px] font-black uppercase tracking-widest" style="color:var(--text-muted)">Paste your list</p>
+        <select id="dm-paste-group" onchange="dmPastePreview()"
+          class="bg-black/25 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
+          <option value="">Group: from the text</option>
+        </select>
+      </div>
       <p class="text-[10px] font-bold mb-2" style="color:var(--text-muted)">A line without a dot is read as a PWA name, everything under it belongs to that PWA.
         Bullets, numbering, <span class="font-mono">https://</span> and paths are stripped. Several domains on one line are fine.</p>
       <textarea id="dm-paste-text" rows="8" oninput="dmPastePreview()" spellcheck="false"
@@ -14172,8 +14178,12 @@ async function dmDeepCheck() {
     const where = flags === 'web-risk' ? 'Web Risk'
                 : flags === 'safe-browsing' ? 'Safe Browsing'
                 : '';
+    // Скільки не чіпали. Мовчазний пропуск виглядав би як «перевірило не
+    // всіх», і довіри до цифри не було б.
+    const skipped = dmRows.filter(r => r.status === 'danger').length;
+    const tail = skipped ? ` Skipped ${skipped} already flagged — use ↻ on a row to re-check one.` : '';
     toast(where
-      ? `Checked ${total} domain(s) via ${where}. Flagged: ${flagged}.`
+      ? `Checked ${total} domain(s) via ${where}. Flagged: ${flagged}.` + tail
       : `Checked ${total} domain(s) — HTTP codes only.\n\n`
         + 'No blacklist key on the function, so nothing can ever come back as Flagged. '
         + 'Add WEB_RISK_KEY in Project Settings → Edge Functions → Secrets.',
@@ -14181,11 +14191,43 @@ async function dmDeepCheck() {
   }
 }
 
+/* Перевірка одного рядка. Спершу пробуємо сервер: лише він бачить
+   справжній код і чорний список, і лише через нього можна ПЕРЕВІРИТИ
+   ЗАНОВО вже позначений домен — масовий прогін такі пропускає, щоб не
+   палити квоту. Явний список доменів функція вважає свідомим вибором і
+   фільтр не вмикає.
+
+   Сервера немає — тихо відкочуємось на браузерну пробу: краще грубий
+   сигнал, ніж кнопка, яка не робить нічого. */
 async function dmCheckOne(idEnc) {
   const id = decodeURIComponent(idEnc);
   const row = dmRows.find(r => String(r.id) === String(id));
   if (!row) return;
+  const was = row.status;
   row.status = 'unknown'; dmRender();
+
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess && sess.session && sess.session.access_token;
+    if (!token) throw new Error('no session');
+    const res = await fetch(SUPABASE_URL + '/functions/v1/check-domains', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ team: currentTeam, domains: [row.domain] })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    const x = (j.results || [])[0];
+    if (!x) throw new Error('empty');
+    row.status = x.status; row.status_code = x.status_code;
+    row.source = x.source; row.checked_at = x.checked_at;
+    dmRender();
+    return;
+  } catch (e) {
+    row.status = was;   // сервер не вийшов — повертаємо як було і пробуємо самі
+  }
+
   row.status = await dmProbe(row.domain);
   row.source = 'browser';
   row.status_code = null;
@@ -14204,13 +14246,33 @@ function dmTogglePaste() {
   const box = document.getElementById('dm-paste');
   if (!box) return;
   box.classList.toggle('hidden');
-  if (!box.classList.contains('hidden')) document.getElementById('dm-paste-text')?.focus();
+  if (box.classList.contains('hidden')) return;
+  dmFillGroups();
+  document.getElementById('dm-paste-text')?.focus();
+}
+
+/* Список наявних груп у випадайці. Додавати домени до вже заведеної PWA
+   інакше можна було тільки одним способом: згадати її заголовок дослівно
+   й надрукувати його перед списком. Тепер — вибрати зі списку. */
+function dmFillGroups() {
+  const sel = document.getElementById('dm-paste-group');
+  if (!sel) return;
+  const keep = sel.value;
+  const names = [...new Set(dmRows.map(r => String(r.pwa || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">Group: from the text</option>'
+    + names.map(n => `<option value="${dmEsc(n)}">${dmEsc(n)}</option>`).join('');
+  if (keep && names.includes(keep)) sel.value = keep;
+}
+
+function dmPasteGroup() {
+  return (document.getElementById('dm-paste-group')?.value || '').trim();
 }
 
 function dmPastePreview() {
   const el = document.getElementById('dm-paste-preview');
   if (!el) return;
-  const parsed = dmParsePaste(document.getElementById('dm-paste-text')?.value || '');
+  const parsed = dmPasteRows();
   if (!parsed.length) { el.innerHTML = 'Nothing recognised yet.'; return; }
   const have = new Set(dmRows.map(r => String(r.domain).toLowerCase()));
   const seen = new Set();
@@ -14230,9 +14292,19 @@ function dmPastePreview() {
         [...kt].slice(0, 8).map(dmEsc).join(', ')}${kt.size > 8 ? ` +${kt.size - 8}` : ''}</span>` : '');
 }
 
+/* Розбір плюс вибрана група. Коли група задана явно, вона перекриває
+   заголовки з тексту — інакше вибір у випадайці нічого б не означав для
+   списку, у якому заголовки вже є. Гео й ktid при цьому не вигадуємо:
+   вони належать конкретній кампанії, а не групі. */
+function dmPasteRows() {
+  const g = dmPasteGroup();
+  const parsed = dmParsePaste(document.getElementById('dm-paste-text')?.value || '');
+  return g ? parsed.map(p => ({ ...p, pwa: g })) : parsed;
+}
+
 async function dmPasteSave() {
   const ta = document.getElementById('dm-paste-text');
-  const parsed = dmParsePaste(ta?.value || '');
+  const parsed = dmPasteRows();
   const have = new Set(dmRows.map(r => String(r.domain).toLowerCase()));
   const seen = new Set();
   const fresh = [];
@@ -14384,6 +14456,8 @@ function dmRowHtml(r) {
       r.status_code ? ` · ${r.status_code}` : ''}</span></td>
     <td><a href="https://${dmEsc(r.domain)}" target="_blank" rel="noopener"
         onclick="event.stopPropagation()" class="cab-id hover:underline">${dmEsc(r.domain)}</a>
+      <button onclick="event.stopPropagation();dmCopy('${enc}')" class="cab-link dm-copy"
+        title="Copy with https://">&#128203;</button>
       ${r.source === 'browser' ? '<span class="cab-src" title="Checked from the browser: it only tells whether the domain answered, not the HTTP code.">&#9998;</span>' : ''}</td>
     <td class="cab-dim">${dmEsc(r.pwa) || '—'}</td>
     <td class="ta-c cab-dim">${dmEsc(r.geo) || '—'}</td>
@@ -14449,6 +14523,30 @@ function dmDetail(r) {
         style="border:1px solid rgba(239,68,68,.35)">Delete</button>
     </div>
   </div>`;
+}
+
+/* Копіюємо саме з https://, бо домен майже завжди потрібен як посилання:
+   вставити в браузер, у кабінет, у чат. Дописувати схему руками щоразу —
+   те дрібне тертя, яке й робить список незручним.
+
+   navigator.clipboard працює лише на https і лише з жесту користувача —
+   тут і те, і те є. Але в старих браузерах його може не бути, тому
+   запасний шлях через прихований textarea лишаємо. */
+async function dmCopy(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const row = dmRows.find(r => String(r.id) === String(id));
+  if (!row) return;
+  const text = 'https://' + row.domain;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e2) {}
+    ta.remove();
+  }
+  toast(text, '', 1600);
 }
 
 async function dmSaveField(id, key, value) {
