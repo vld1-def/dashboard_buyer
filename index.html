@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 12:11">
+  <meta name="build" content="build 22.09 12:25">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2858,7 +2858,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 12:11</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 12:25</div>
     </div>
   </aside>
 
@@ -14129,25 +14129,33 @@ async function dmDeepCheck() {
       }
     }
   } catch (e) {
-    /* «Failed to fetch» означає, що запит не дійшов узагалі: браузер не
-       зміг його виконати. Сам текст нічого не пояснює, тож підказуємо
-       найчастішу причину.
+    /* «Failed to fetch» означає рівно одне: браузер не зміг виконати
+       запит. ЧОМУ саме — він не знає й не скаже, бо відповідь без
+       CORS-заголовків для нього просто не існує.
 
-       Перед POST браузер шле OPTIONS — питає дозволу. Заголовка
-       Authorization у цьому запиті немає НІКОЛИ, так влаштовані браузери.
-       Якщо у функції увімкнена перевірка JWT, шлюз Supabase відкидає цей
-       OPTIONS з 401 ще до нашого коду — і браузер каже «Failed to fetch».
+       Тому не називаємо винну причину, а даємо порядок перевірки. Перший
+       пункт — логи: вони одні відповідають однозначно. Раніше тут стояло
+       впевнене «швидше за все ввімкнена перевірка JWT», і це виявилось
+       не так — вимкнена перевірка нічого не змінила, а текст збивав зі
+       сліду.
 
-       Вимкнути перевірку тут безпечно: функція сама вимагає Authorization
-       і працює від імені того, хто викликав, тож RLS лишається в силі. */
+       Три причини виглядають у браузері однаково:
+         - функція не розгорнута або названа інакше → шлюз віддає 404
+           без CORS-заголовків;
+         - функція падає ще на старті → шлюз віддає помилку без них же;
+         - увімкнена перевірка JWT → шлюз відкидає preflight OPTIONS,
+           у якому заголовка Authorization немає ніколи. */
     const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
     alert(net
-      ? 'Server check failed: the request did not go through.\n\n'
-        + 'Most likely JWT verification is on for the function. The browser sends an OPTIONS '
-        + 'request first, always without an Authorization header, and Supabase rejects it before '
-        + 'the function runs.\n\n'
-        + 'Supabase → Edge Functions → check-domains → Settings → JWT Verification → Disable.\n\n'
-        + 'This stays safe: the function requires the header itself and runs as you, so RLS applies.'
+      ? 'Server check failed: the request never went through.\n\n'
+        + 'The browser cannot say why — a reply without CORS headers does not exist for it.\n'
+        + 'Check in this order:\n\n'
+        + '1. Supabase → Edge Functions → check-domains → Logs.\n'
+        + '   Empty right after pressing this button = the request never reached the function.\n'
+        + '   An entry with an error = it started and crashed, and the reason is right there.\n\n'
+        + '2. The function is deployed under exactly this name: check-domains.\n\n'
+        + '3. Settings → JWT Verification is off. The browser sends an OPTIONS request first, '
+        + 'always without an Authorization header, so Supabase rejects it before the function runs.'
       : 'Server check failed: ' + e.message);
   } finally {
     dmBusy = false;
