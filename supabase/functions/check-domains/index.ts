@@ -41,7 +41,7 @@ const CORS = {
 };
 
 type Verdict = { status: string; status_code: number | null };
-type Row = { id: number; domain: string; team_name: string };
+type Row = { id: number; domain: string; team_name: string; status: string | null };
 
 async function probe(domain: string): Promise<Verdict> {
   for (const method of ['HEAD', 'GET'] as const) {
@@ -244,66 +244,91 @@ Deno.serve(async (req) => {
   }
 });
 
-async function handle(req: Request): Promise<Response> {
+/* Спільний секрет звіряємо по всій довжині, а не до першої розбіжності.
+   Дешево, і знімає цілий клас питань до коду. */
+function sameSecret(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
-  const auth = req.headers.get('Authorization') || '';
-  if (!auth) return new Response(JSON.stringify({ error: 'no authorization header' }),
-    { status: 401, headers: { ...CORS, 'content-type': 'application/json' } });
+/* Скільки запитів Web Risk витрачено — пишемо в team_settings, поруч із
+   рештою налаштувань команди. Окрема таблиця заради одного числа не
+   потрібна, а так дашборд читає його тим самим getTeamSetting.
 
-  const base = Deno.env.get('SUPABASE_URL')!;
-  const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
-  // apikey + Authorization — те саме, що надсилає supabase-js. RLS
-  // рахується від Authorization, тобто від того, хто викликав.
-  const hdr = { apikey: anon, Authorization: auth, 'content-type': 'application/json' };
+   Робить це лише нічний прогін: він іде від сервісної ролі, і RLS йому
+   не завада. Ручну перевірку рахує сама сторінка — там запис іде від
+   людини, і вигадувати їй created_by у функції було б зайвим ризиком. */
+async function noteSpend(base: string, hdr: Record<string, string>,
+                         byTeam: Map<string, number>): Promise<void> {
+  const month = new Date().toISOString().slice(0, 7);
+  for (const [team, n] of byTeam) {
+    if (!n || !team) continue;
+    try {
+      const res = await fetch(base + '/rest/v1/team_settings?select=value'
+        + '&team_name=eq.' + encodeURIComponent(team) + '&key=eq.wr_usage', { headers: hdr });
+      let cur: Record<string, number> = {};
+      if (res.ok) {
+        const rows = await res.json();
+        try { cur = JSON.parse(rows?.[0]?.value || '{}') || {}; } catch (_e) { cur = {}; }
+      }
+      cur[month] = (cur[month] || 0) + n;
+      // Пів року історії — досить, щоб побачити, чи витрати ростуть.
+      const keep = Object.keys(cur).sort().slice(-6);
+      const trimmed: Record<string, number> = {};
+      keep.forEach(k => trimmed[k] = cur[k]);
+      await fetch(base + '/rest/v1/team_settings', {
+        method: 'POST',
+        headers: { ...hdr, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify({ team_name: team, key: 'wr_usage', value: JSON.stringify(trimmed) })
+      });
+    } catch (_e) { /* лічильник — не причина завалити перевірку */ }
+  }
+}
 
-  let team = '';
-  let only: string[] | null = null;
-  let after = 0;
-  // Перевіряти домен, який уже позначений, — витрачати квоту Web Risk
-  // намарно: мітку Google знімає рідко, а безкоштовних запитів 100 000
-  // на місяць. Тому за замовчуванням такі пропускаємо. Перевірити
-  // конкретний домен примусово можна, передавши force або список
-  // domains — тоді це свідомий вибір, а не фоновий прогін.
-  let force = false;
-  try {
-    const body = await req.json();
-    team = String(body?.team || '');
-    // Курсор. Без нього кожен наступний виклик повертав би ті самі перші
-    // BATCH рядків, і дашборд ганяв би одну порцію по колу, так і не
-    // дійшовши до решти списку.
-    after = Number(body?.after || 0) || 0;
-    force = body?.force === true;
-    if (Array.isArray(body?.domains) && body.domains.length) only = body.domains.map(String);
-  } catch (_e) { /* тіла може не бути */ }
+type Batch = {
+  error?: string; status?: number;
+  checked: number; more: boolean; next: number; flags: string; spent: number;
+  results: Result[]; changed: Change[]; byTeam: Map<string, number>;
+};
+type Result = { id: number; domain: string; status: string; status_code: number | null;
+                flagged_by: string | null; source: string; checked_at: string };
+type Change = { domain: string; team: string; from: string; to: string; flagged_by: string | null };
+
+/* Одна порція. Винесено окремо, бо викликати її треба двома різними
+   способами: сторінка просить по одній і сама веде курсор (так видно
+   поступ), нічний прогін крутить їх поспіль до кінця списку. */
+async function runBatch(base: string, hdr: Record<string, string>,
+                        o: { team: string; only: string[] | null; after: number; force: boolean }
+                       ): Promise<Batch> {
+  const empty = { checked: 0, more: false, next: o.after, flags: '', spent: 0,
+                  results: [] as Result[], changed: [] as Change[], byTeam: new Map<string, number>() };
 
   const qs = new URLSearchParams();
-  qs.set('select', 'id,domain,team_name');
+  // status потрібен не для фільтра, а щоб знати, що саме змінилось:
+  // нічний прогін має доповідати про зміни, а не про весь список.
+  qs.set('select', 'id,domain,team_name,status');
   qs.set('order', 'id.asc');
   qs.set('limit', String(BATCH + 1));
-  if (team) qs.set('team_name', 'eq.' + team);
-  if (after) qs.set('id', 'gt.' + after);
-  if (only) qs.set('domain', 'in.(' + only.map(d => '"' + d.replace(/"/g, '') + '"').join(',') + ')');
+  if (o.team) qs.set('team_name', 'eq.' + o.team);
+  if (o.after) qs.set('id', 'gt.' + o.after);
+  if (o.only) qs.set('domain', 'in.(' + o.only.map(d => '"' + d.replace(/"/g, '') + '"').join(',') + ')');
   // Явний список доменів — це теж свідомий вибір, тож фільтр не вмикаємо.
-  if (!force && !only) qs.set('status', 'neq.danger');
+  if (!o.force && !o.only) qs.set('status', 'neq.danger');
 
   let data: Row[] = [];
   try {
     const res = await fetch(base + '/rest/v1/domains?' + qs.toString(), { headers: hdr });
-    if (!res.ok) {
-      const text = await res.text();
-      return new Response(JSON.stringify({ error: 'select failed: ' + res.status + ' ' + text }),
-        { status: 400, headers: { ...CORS, 'content-type': 'application/json' } });
-    }
+    if (!res.ok) return { ...empty, error: 'select failed: ' + res.status + ' ' + (await res.text()), status: 400 };
     data = await res.json();
   } catch (e) {
-    return new Response(JSON.stringify({ error: 'select failed: ' + (e as Error).message }),
-      { status: 500, headers: { ...CORS, 'content-type': 'application/json' } });
+    return { ...empty, error: 'select failed: ' + (e as Error).message, status: 500 };
   }
 
-  const rows = (data || []).slice(0, BATCH);
-  const more = (data || []).length > BATCH;
-  if (!rows.length) return new Response(JSON.stringify({ checked: 0, more: false, results: [] }),
-    { headers: { ...CORS, 'content-type': 'application/json' } });
+  const rows = data.slice(0, BATCH);
+  const more = data.length > BATCH;
+  if (!rows.length) return empty;
 
   const verdicts = new Map<number, Verdict>();
   const queue = rows.slice();
@@ -330,18 +355,21 @@ async function handle(req: Request): Promise<Response> {
     flaggedByDns(names)
   ]);
   const google = wrKey ? 'web-risk' : sbKey ? 'safe-browsing' : '';
-  const source = [google, 'dns'].filter(Boolean).join('+');
+  const flags = [google, 'dns'].filter(Boolean).join('+');
 
   const at = new Date().toISOString();
-  const results = rows.map(r => {
+  const changed: Change[] = [];
+  const results: Result[] = rows.map(r => {
     const v = verdicts.get(r.id)!;
     // Хто саме сказав «погано». Домен у чорному списку віддає звичайні
     // 200, тому мітка завжди важливіша за код відповіді.
     const by = (bad.has(r.domain) ? [google || 'blacklist'] : []).concat(dns.get(r.domain) || []);
     const status = by.length ? 'danger' : v.status;
+    const flagged_by = by.length ? by.join(', ') : null;
+    const was = r.status || 'unknown';
+    if (status !== was) changed.push({ domain: r.domain, team: r.team_name, from: was, to: status, flagged_by });
     return { id: r.id, domain: r.domain, status, status_code: v.status_code,
-             flagged_by: by.length ? by.join(', ') : null,
-             source: 'server', checked_at: at };
+             flagged_by, source: 'server', checked_at: at };
   });
 
   // По одному PATCH на рядок: upsert писав би й ті колонки, яких ми не
@@ -354,10 +382,125 @@ async function handle(req: Request): Promise<Response> {
                              flagged_by: r.flagged_by, source: 'server', checked_at: at })
     }).catch(() => null)));
 
+  // Web Risk — рівно один запит на домен, тож перевірені домени і є
+  // витрата. DNS безкоштовний і в рахунок не йде.
+  const spent = google ? rows.length : 0;
+  const byTeam = new Map<string, number>();
+  if (spent) rows.forEach(r => byTeam.set(r.team_name, (byTeam.get(r.team_name) || 0) + 1));
+
+  return { checked: results.length, more, next: rows[rows.length - 1].id,
+           flags, spent, results, changed, byTeam };
+}
+
+async function handle(req: Request): Promise<Response> {
+
+  const base = Deno.env.get('SUPABASE_URL')!;
+  const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+  /* Два входи, і це не одне й те саме.
+
+     Звичайний — зі сторінки. Заголовок Authorization несе токен людини,
+     PostgREST рахує від нього RLS, і функція бачить рівно ті домени, що
+     й вона сама. Ключ сервісної ролі тут свідомо НЕ використовується.
+
+     Нічний — з розкладу. О пʼятій ранку ніхто не залогінений, токена
+     взяти нізвідки, тож RLS від нього не порахуєш. Для цього окремий
+     заголовок x-cron-key зі спільним секретом: звірили — і тільки тоді
+     беремо ключ сервісної ролі й обходимо всі команди.
+
+     Чому саме так, а не «покласти ключ сервісної ролі в розклад»: у
+     розкладі лежить CRON_SECRET, який уміє рівно одне — запустити
+     перевірку доменів. Ключ сервісної ролі вміє все й лишається в
+     секретах функції. */
+  const cronKey = req.headers.get('x-cron-key') || '';
+  let hdr: Record<string, string>;
+  let cron = false;
+
+  if (cronKey) {
+    const want = Deno.env.get('CRON_SECRET') || '';
+    const svc = Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    if (!want || !svc) return new Response(JSON.stringify({
+      error: 'scheduled run is not configured: set CRON_SECRET and SERVICE_ROLE_KEY in the function secrets' }),
+      { status: 400, headers: { ...CORS, 'content-type': 'application/json' } });
+    if (!sameSecret(cronKey, want)) return new Response(JSON.stringify({ error: 'bad cron key' }),
+      { status: 401, headers: { ...CORS, 'content-type': 'application/json' } });
+    cron = true;
+    hdr = { apikey: svc, Authorization: 'Bearer ' + svc, 'content-type': 'application/json' };
+  } else {
+    const auth = req.headers.get('Authorization') || '';
+    if (!auth) return new Response(JSON.stringify({ error: 'no authorization header' }),
+      { status: 401, headers: { ...CORS, 'content-type': 'application/json' } });
+    // apikey + Authorization — те саме, що надсилає supabase-js. RLS
+    // рахується від Authorization, тобто від того, хто викликав.
+    hdr = { apikey: anon, Authorization: auth, 'content-type': 'application/json' };
+  }
+
+  let team = '';
+  let only: string[] | null = null;
+  let after = 0;
+  // Перевіряти домен, який уже позначений, — витрачати квоту Web Risk
+  // намарно: мітку Google знімає рідко, а безкоштовних запитів 100 000
+  // на місяць. Тому за замовчуванням такі пропускаємо. Перевірити
+  // конкретний домен примусово можна, передавши force або список
+  // domains — тоді це свідомий вибір, а не фоновий прогін.
+  let force = false;
+  try {
+    const body = await req.json();
+    team = String(body?.team || '');
+    // Курсор. Без нього кожен наступний виклик повертав би ті самі перші
+    // BATCH рядків, і дашборд ганяв би одну порцію по колу, так і не
+    // дійшовши до решти списку.
+    after = Number(body?.after || 0) || 0;
+    force = body?.force === true;
+    if (Array.isArray(body?.domains) && body.domains.length) only = body.domains.map(String);
+  } catch (_e) { /* тіла може не бути */ }
+
+  /* Нічний прогін крутить порції сам: розклад стріляє один раз, і
+     лишити півсписка неперевіреним до завтра — гірше, ніж попрацювати
+     хвилину. Дедлайн потрібен, бо в Edge Function час не нескінченний:
+     упершись у нього, чесно віддаємо more і скільки встигли. */
+  if (cron) {
+    const deadline = Date.now() + 110_000;
+    let checked = 0, flags = '', spent = 0, more = false;
+    const changed: Change[] = [];
+    const byTeam = new Map<string, number>();
+    for (let pass = 0; pass < 200; pass++) {
+      const b = await runBatch(base, hdr, { team, only, after, force });
+      if (b.error) return new Response(JSON.stringify({ error: b.error }),
+        { status: b.status || 500, headers: { ...CORS, 'content-type': 'application/json' } });
+      checked += b.checked;
+      spent += b.spent;
+      flags = b.flags || flags;
+      changed.push(...b.changed);
+      b.byTeam.forEach((n, t) => byTeam.set(t, (byTeam.get(t) || 0) + n));
+      after = b.next;
+      more = b.more;
+      if (!b.more || !b.checked) { more = false; break; }
+      if (Date.now() > deadline) break;
+    }
+    await noteSpend(base, hdr, byTeam);
+    /* Що змінилось — окремо від того, що перевірено. Саме це піде в
+       Telegram, коли дійдуть руки: доповідати треба про нові проблеми,
+       а не про те, що двісті доменів як працювали, так і працюють. */
+    const worse = changed.filter(c => c.to === 'danger' || c.to === 'down' || c.to === 'notfound');
+    return new Response(JSON.stringify({
+      cron: true, checked, more, next: after, flags, spent,
+      changed: changed.length, worse
+    }), { headers: { ...CORS, 'content-type': 'application/json' } });
+  }
+
+  const b = await runBatch(base, hdr, { team, only, after, force });
+  if (b.error) return new Response(JSON.stringify({ error: b.error }),
+    { status: b.status || 500, headers: { ...CORS, 'content-type': 'application/json' } });
+
   return new Response(JSON.stringify({
-    checked: results.length, more, flags: source,
+    checked: b.checked, more: b.more, flags: b.flags,
+    // Скільки запитів Web Risk коштувала ця порція. Сторінка веде
+    // лічильник сама — писати team_settings від імені людини у функції
+    // означало б вигадувати їй created_by.
+    spent: b.spent,
     // Звідки продовжувати наступним викликом.
-    next: rows[rows.length - 1].id,
-    results
+    next: b.next,
+    results: b.results
   }), { headers: { ...CORS, 'content-type': 'application/json' } });
 }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 14:01">
+  <meta name="build" content="build 22.09 14:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2454,6 +2454,40 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-link:hover { color: #fff; background: rgba(139,92,246,.35); }
 .cab-link.is-off { opacity: .2; cursor: default; }
 
+/* Кнопка копіювання домена — перед самим доменом, бо копіюють частіше,
+   ніж відкривають, а шукати її в кінці рядка різної довжини незручно.
+
+   Іконкою, а не емодзі: емодзі малює операційна система, у кожної воно
+   своє, і ні розмір, ні колір під тему не підженеш. SVG успадковує
+   currentColor і поводиться як звичайний текст.
+
+   Розмір і положення тут, а не класами в розмітці: довільні значення
+   Tailwind двічі підводили саме на структурі. */
+.dm-copy {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 21px; height: 21px; margin-right: 7px; vertical-align: -5px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface-2); color: var(--text-muted);
+  opacity: .5; cursor: pointer;
+  transition: opacity .15s, color .15s, background .15s, border-color .15s;
+}
+.dm-copy svg { width: 12px; height: 12px; display: block; }
+/* Галочка лежить поверх іконки й чекає свого класу. */
+.dm-copy .i-done { display: none; }
+/* Поки на рядок не навели, кнопка ледь помітна: у списку на сотні
+   доменів колонка з яскравих кнопок читається гірше за самі домени. */
+.cab-tr:hover .dm-copy, .dm-copy:focus-visible { opacity: 1; }
+.dm-copy:hover {
+  opacity: 1; color: #fff;
+  background: rgba(139,92,246,.22); border-color: rgba(139,92,246,.55);
+}
+.dm-copy.is-done {
+  opacity: 1; color: var(--ok);
+  background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.5);
+}
+.dm-copy.is-done .i-copy { display: none; }
+.dm-copy.is-done .i-done { display: block; }
+
 /* Сторінка кабінетів росте на всю висоту, скролиться сам список —
    так само, як зроблено в Report Builder. */
 body[data-route="cabinets"] #dashboard-content > #cabinets-section {
@@ -2858,7 +2892,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 14:01</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 14:17</div>
     </div>
   </aside>
 
@@ -13911,6 +13945,17 @@ const DM_TIMEOUT = 8000;
 // влізе, тому ріжемо самі.
 const DM_CHUNK = 120;
 
+/* Іконка, а не емодзі. Емодзі малює система, і в кожній воно своє:
+   розмір, колір і вертикаль стрибають, а пофарбувати його під тему
+   не можна взагалі. SVG успадковує currentColor і поводиться як текст. */
+const DM_ICON_COPY = '<svg class="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+  + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<rect x="9" y="9" width="12" height="12" rx="2"/>'
+  + '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const DM_ICON_DONE = '<svg class="i-done" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+  + ' stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="M20 6 9 17l-5-5"/></svg>';
+
 let dmRows = [], dmFilter = '', dmGroup = 'pwa', dmSel = null, dmLoaded = false;
 let dmSort = { key: 'status', dir: 1 };
 let dmBusy = false;
@@ -14187,8 +14232,12 @@ async function dmCheckServer(only, say) {
     // узагалі підхопився. Без нього danger не зʼявиться ніколи, і
     // ззовні це виглядає як «перевірка нічого не знайшла».
     flags = j.flags || flags;
-    // Web Risk — один запит на домен, тож перевірені домени і є витрата.
-    if (/web-risk|safe-browsing/.test(String(j.flags || ''))) spent += j.checked || 0;
+    /* Скільки коштувала порція. Нова функція каже це прямо; стара
+       такого поля не знає, і тоді рахуємо самі — Web Risk це один запит
+       на домен. Так лічильник працює і до оновлення функції, і після,
+       не рахуючи те саме двічі. */
+    spent += typeof j.spent === 'number' ? j.spent
+           : (/web-risk|safe-browsing/.test(String(j.flags || '')) ? (j.checked || 0) : 0);
     flagged += (j.results || []).filter(x => x.status === 'danger').length;
     say(`Checking ${total}…`);
     dmRender();
@@ -14591,10 +14640,10 @@ function dmRowHtml(r) {
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${S.label}${
       r.status_code ? ` · ${r.status_code}` : ''}</span>${
       r.flagged_by ? `<span class="cab-chip" title="Which blacklist flagged it">${dmEsc(r.flagged_by)}</span>` : ''}</td>
-    <td><a href="https://${dmEsc(r.domain)}" target="_blank" rel="noopener"
+    <td><button onclick="event.stopPropagation();dmCopy('${enc}',this)" class="dm-copy"
+        title="Copy with https://" aria-label="Copy domain with https://">${DM_ICON_COPY}${DM_ICON_DONE}</button
+      ><a href="https://${dmEsc(r.domain)}" target="_blank" rel="noopener"
         onclick="event.stopPropagation()" class="cab-id hover:underline">${dmEsc(r.domain)}</a>
-      <button onclick="event.stopPropagation();dmCopy('${enc}')" class="cab-link dm-copy"
-        title="Copy with https://">&#128203;</button>
       ${r.source === 'browser' ? '<span class="cab-src" title="Checked from the browser: it only tells whether the domain answered, not the HTTP code.">&#9998;</span>' : ''}</td>
     <td class="cab-dim">${dmEsc(r.pwa) || '—'}</td>
     <td class="ta-c cab-dim">${dmEsc(r.geo) || '—'}</td>
@@ -14670,7 +14719,7 @@ function dmDetail(r) {
    navigator.clipboard працює лише на https і лише з жесту користувача —
    тут і те, і те є. Але в старих браузерах його може не бути, тому
    запасний шлях через прихований textarea лишаємо. */
-async function dmCopy(idEnc) {
+async function dmCopy(idEnc, btn) {
   const id = decodeURIComponent(idEnc);
   const row = dmRows.find(r => String(r.id) === String(id));
   if (!row) return;
@@ -14684,7 +14733,14 @@ async function dmCopy(idEnc) {
     try { document.execCommand('copy'); } catch (e2) {}
     ta.remove();
   }
-  toast(text, '', 1600);
+  /* Галочка просто на кнопці. Тост про копіювання перекриває підсумок
+     перевірки й узагалі забагато шуму для дії, яку роблять десятками. */
+  if (btn) {
+    btn.classList.add('is-done');
+    setTimeout(() => btn.classList.remove('is-done'), 1100);
+  } else {
+    toast(text, '', 1600);
+  }
 }
 
 async function dmSaveField(id, key, value) {
