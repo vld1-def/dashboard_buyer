@@ -287,6 +287,85 @@ async function noteSpend(base: string, hdr: Record<string, string>,
   }
 }
 
+/* ── повідомлення в Telegram ──
+
+   Шлемо, тільки якщо є що сказати. Щоденне «все гаразд» перестають
+   читати на третій день, і тоді разом з ним перестають помічати те
+   єдине повідомлення, заради якого все й робилось.
+
+   Токен бота і chat_id живуть у секретах функції. У дашборді їм не
+   місце: це статичний сайт, який відкриває вся команда, і все
+   збережене в ньому видно кожному, хто подивиться в консоль.
+
+   Немає секретів — просто нічого не шлемо. Перевірка доменів від цього
+   не залежить і має працювати сама по собі. */
+
+const TG_MAX = 25;    // скільки доменів перелічуємо поіменно
+/* Ліміт повідомлення в Telegram — 4096 символів, і за нього він
+   відповідає 400. Двадцять пʼять звичайних доменів у нього вкладаються
+   з великим запасом, але в домені дозволено 253 символи, а поруч ще
+   список того, хто поставив мітку. Тож ріжемо не лише за кількістю, а
+   й за довжиною: краще коротший список і хвіст «і ще N», ніж мовчання
+   через відмову. */
+const TG_LIMIT = 3900;
+
+const TG_MARK: Record<string, string> = {
+  danger: '\u{1F534}', notfound: '\u{1F7E0}', down: '\u{26AB}'
+};
+const TG_WHAT: Record<string, string> = {
+  danger: 'мітка', notfound: '404 — сторінки немає', down: 'не відповідає'
+};
+const TG_WAS: Record<string, string> = {
+  ok: 'працював', danger: 'був із міткою', notfound: 'був 404',
+  down: 'не відповідав', unknown: 'не перевірявся'
+};
+
+function tgText(worse: Change[], checked: number): string {
+  const teams = new Set(worse.map(w => w.team));
+  const all = worse.slice(0, TG_MAX).map(w => {
+    const what = TG_WHAT[w.to] || w.to;
+    const why = w.to === 'danger' && w.flagged_by ? ` (${w.flagged_by})` : '';
+    // Команду називаємо, лише коли їх кілька: в одній команді це шум.
+    const who = teams.size > 1 ? ` · ${w.team}` : '';
+    return `${TG_MARK[w.to] || '\u{26AA}'} ${w.domain} — ${what}${why}`
+         + `\n     було: ${TG_WAS[w.from] || w.from}${who}`;
+  });
+  const head = `\u{1F319} Домени · нічна перевірка\n`
+             + `Погіршилось: ${worse.length} з ${checked}\n\n`;
+  const lines = all.slice();
+  const tail = () => {
+    const rest = worse.length - lines.length;
+    return rest > 0 ? `\n\n…і ще ${rest}. Решта — у дашборді, фільтр Problem.` : '';
+  };
+  while (lines.length > 1 && (head + lines.join('\n') + tail()).length > TG_LIMIT) lines.pop();
+  return head + lines.join('\n') + tail();
+}
+
+async function tgSend(worse: Change[], checked: number): Promise<string> {
+  if (!worse.length) return 'nothing to report';
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  const chat = Deno.env.get('TG_CHAT_ID') || '';
+  if (!token || !chat) return 'not configured';
+  try {
+    const res = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      // Без parse_mode навмисно: домени рясніють крапками й дефісами,
+      // а розмітка Telegram на них спотикається і відповідає 400.
+      // Текст і так читається, а ламатись тут нема чому.
+      body: JSON.stringify({ chat_id: chat, text: tgText(worse, checked),
+                             disable_web_page_preview: true })
+    });
+    if (res.ok) return 'sent';
+    // Причину віддаємо назад: її видно в net._http_response, і це
+    // єдиний спосіб дізнатись, що бот мовчить не просто так.
+    let why = 'HTTP ' + res.status;
+    try { why = (await res.json()).description || why; } catch (_e) { /* хай буде код */ }
+    return 'failed: ' + why;
+  } catch (e) {
+    return 'failed: ' + (e as Error).message;
+  }
+}
+
 type Batch = {
   error?: string; status?: number;
   checked: number; more: boolean; next: number; flags: string; spent: number;
@@ -488,9 +567,10 @@ async function handle(req: Request): Promise<Response> {
        Telegram, коли дійдуть руки: доповідати треба про нові проблеми,
        а не про те, що двісті доменів як працювали, так і працюють. */
     const worse = changed.filter(c => c.to === 'danger' || c.to === 'down' || c.to === 'notfound');
+    const telegram = await tgSend(worse, checked);
     return new Response(JSON.stringify({
       cron: true, checked, more, next: after, flags, spent,
-      changed: changed.length, worse
+      changed: changed.length, telegram, worse
     }), { headers: { ...CORS, 'content-type': 'application/json' } });
   }
 
