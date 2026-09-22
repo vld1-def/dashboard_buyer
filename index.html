@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 14:17">
+  <meta name="build" content="build 22.09 15:19">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2892,7 +2892,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 14:17</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 15:19</div>
     </div>
   </aside>
 
@@ -10981,11 +10981,18 @@ document.addEventListener('keydown', e => {
             <h3 class="set-gtitle">Telegram alerts</h3>
             <p class="set-gsub">Where the dashboard reports what changed: cabinets that got banned, went quiet, or were launched and never started spending.</p>
 
-            <div class="set-addrow" data-setting="telegram chat id чат телеграм">
-              <input type="text" id="tg-chat-input" placeholder="Chat ID: -1001234567890" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
-              <button type="button" onclick="saveTelegramChat()" class="set-btn set-btn-amber">Save</button>
+            <div class="set-addrow" data-setting="telegram bot бот телеграм username">
+              <input type="text" id="tg-bot-input" placeholder="Bot username, without @" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveTelegramBot()" class="set-btn set-btn-amber">Save</button>
             </div>
-            <p id="tg-chat-status" class="set-hint">Add the bot to the chat, then take the ID from @userinfobot.</p>
+            <p class="set-hint">The name BotFather gave you. Shared by the team — each buyer connects their own chat to the same bot.</p>
+
+            <div class="set-addrow mt-2" data-setting="telegram connect підключити зв'язати">
+              <button type="button" id="tg-link-btn" onclick="tgConnect()" class="set-btn set-btn-amber hidden">Connect Telegram</button>
+              <button type="button" id="tg-unlink-btn" onclick="tgUnlink()" class="set-btn hidden">Disconnect</button>
+            </div>
+            <p id="tg-link-status" class="set-hint">Loading…</p>
+            <p class="set-hint opacity-60">You get alerts about your own domains only. The link is personal and works once — do not pass it on.</p>
 
             <div id="grp-tg" class="mt-3">
               <label class="set-row set-toggle" data-setting="telegram ban бан"><span class="set-label">Cabinet banned or restricted</span>
@@ -11002,8 +11009,10 @@ document.addEventListener('keydown', e => {
               <p class="set-hint" style="margin:0">
                 <b style="color:#FCD34D">The bot token is not stored here — on purpose.</b><br>
                 This page is a static site: anything saved in it can be read by anyone who opens the dashboard.
-                The token will live in Supabase secrets, next to the function that actually sends the messages.
-                Until that function exists, nothing is delivered — these settings just wait for it.
+                The token lives in Supabase secrets, next to the function that sends the messages — see TELEGRAM.sql.
+                What is stored here is only the bot name, which is public anyway.<br>
+                The toggles above cover cabinet alerts, which are not built yet. Domain alerts work already:
+                they run with the nightly check and report only what got worse.
               </p>
             </div>
           </div>
@@ -13167,18 +13176,26 @@ function dcRenderWarn(unlinked) {
 </script>
 <script>
 /* ═══════════ TELEGRAM ═══════════
-   Тут живе тільки те, що можна безпечно тримати в статичному сайті:
-   ID чату й перелік подій. Токен бота — НІ: сторінку відкриває вся
-   команда, і все, що в ній збережено, читається будь-ким. Токен ляже в
-   секрети Supabase поруч із функцією, яка справді надсилає.
-   Доти ці налаштування просто чекають на неї. */
+   Тут живе тільки те, що можна безпечно тримати в статичному сайті.
+   Токен бота — НІ: сторінку відкриває вся команда, і все, що в ній
+   збережено, читається будь-ким. Токен лежить у секретах Supabase
+   поруч із функцією, яка надсилає.
+
+   Що робить ця частина: видає одноразовий код, яким баєр прив'язує
+   свій Telegram до свого акаунта.
+
+   ЧОМУ КОДОМ, А НЕ ПОШТОЮ. Напрошувалось простіше — бот питає пошту,
+   людина відповідає. Але пошта не таємниця, це ім'я: хто завгодно
+   вписав би чужу і читав би чужі сповіщення. Код видається лише тому,
+   хто вже залогінений у дашборді, тобто вже довів, що він це він. */
+
 const TG_EVENTS = ['ban', 'silent', 'nospend', 'daily'];
+const TG_CODE_MIN = 15;           // скільки хвилин живе код
 
 async function loadTelegramSettings() {
-  const box = document.getElementById('tg-chat-input');
+  const box = document.getElementById('tg-bot-input');
   if (!box) return;
-  const chat = await getTeamSetting('tg_chat_id');
-  box.value = chat || '';
+  box.value = (await getTeamSetting('tg_bot_username')) || '';
   let ev = {};
   try { ev = JSON.parse(await getTeamSetting('tg_events') || '{}') || {}; } catch (e) {}
   TG_EVENTS.forEach(k => {
@@ -13186,23 +13203,16 @@ async function loadTelegramSettings() {
     // Типово ввімкнені бан і тиша: це те, заради чого сповіщення й потрібні.
     if (el) el.checked = k in ev ? !!ev[k] : (k === 'ban' || k === 'silent');
   });
-  tgStatus();
+  tgRefresh();
 }
 
-function tgStatus() {
-  const el = document.getElementById('tg-chat-status');
-  if (!el) return;
-  const chat = (document.getElementById('tg-chat-input') || {}).value || '';
-  el.textContent = chat
-    ? 'Chat saved. Delivery starts once the sender is set up.'
-    : 'Add the bot to the chat, then take the ID from @userinfobot.';
-}
-
-async function saveTelegramChat() {
-  const v = (document.getElementById('tg-chat-input').value || '').trim();
-  await setTeamSetting('tg_chat_id', v);
-  tgStatus();
-  alert(v ? 'Telegram chat saved' : 'Telegram chat cleared');
+async function saveTelegramBot() {
+  // Зрізаємо @ і посилання: люди вставляють і так, і так.
+  const v = (document.getElementById('tg-bot-input').value || '')
+    .trim().replace(/^https?:\/\/t\.me\//i, '').replace(/^@/, '').replace(/\?.*$/, '');
+  document.getElementById('tg-bot-input').value = v;
+  await setTeamSetting('tg_bot_username', v);
+  tgRefresh();
 }
 
 async function saveTelegramEvents() {
@@ -13210,6 +13220,112 @@ async function saveTelegramEvents() {
   TG_EVENTS.forEach(k => ev[k] = !!(document.getElementById('tg-ev-' + k) || {}).checked);
   await setTeamSetting('tg_events', JSON.stringify(ev));
 }
+
+/* Мій рядок у tg_links. Його може не бути зовсім — тоді нічого не
+   прив'язано; таблиці теж може не бути, якщо TELEGRAM.sql ще не
+   виконали, і це треба сказати прямо, а не мовчки нічого не робити. */
+async function tgMine() {
+  const { data: u } = await sb.auth.getUser();
+  const uid = u && u.user && u.user.id;
+  if (!uid) return { error: 'no-session' };
+  const { data, error } = await sb.from('tg_links')
+    .select('user_id,email,chat_id,tg_name,linked_at,code,code_expires')
+    .eq('user_id', uid).limit(1);
+  if (error) return { error: 'no-table', message: error.message };
+  return { uid, email: (u.user.email || ''), row: (data || [])[0] || null };
+}
+
+async function tgRefresh() {
+  const box = document.getElementById('tg-link-status');
+  const btn = document.getElementById('tg-link-btn');
+  const off = document.getElementById('tg-unlink-btn');
+  if (!box) return;
+
+  const mine = await tgMine();
+  const show = (html, canLink, canUnlink) => {
+    box.innerHTML = html;
+    if (btn) btn.classList.toggle('hidden', !canLink);
+    if (off) off.classList.toggle('hidden', !canUnlink);
+  };
+
+  if (mine.error === 'no-session')
+    return show('Log in to connect Telegram.', false, false);
+  if (mine.error === 'no-table')
+    return show('Telegram links are not set up yet — run TELEGRAM.sql, then reload.', false, false);
+
+  const r = mine.row;
+  if (r && r.chat_id) {
+    const when = r.linked_at ? new Date(r.linked_at).toLocaleDateString() : '';
+    return show(`Connected${r.tg_name ? ' to <b>' + tgEsc(r.tg_name) + '</b>' : ''}`
+      + `${when ? ' · since ' + when : ''}<br>`
+      + `<span class="opacity-60">Alerts about your own domains go to that chat. `
+      + `Send /stop to the bot to disconnect from your side.</span>`, false, true);
+  }
+  show('Not connected. Alerts about your domains will go only to the shared chat, if one is set.',
+       true, false);
+}
+
+function tgEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* Код — з криптографічного генератора браузера, не з Math.random:
+   вгадати його має бути неможливо, бо це ключ від чужих сповіщень.
+   Telegram дозволяє в /start лише літери, цифри, _ і -, тож беремо
+   base36. */
+function tgCode() {
+  const a = new Uint8Array(16);
+  crypto.getRandomValues(a);
+  return Array.from(a, b => b.toString(36).padStart(2, '0')).join('').slice(0, 24);
+}
+
+async function tgConnect() {
+  const bot = (document.getElementById('tg-bot-input').value || '').trim().replace(/^@/, '');
+  if (!bot) { alert('Enter the bot username first — the one BotFather gave you, without @.'); return; }
+
+  const mine = await tgMine();
+  if (mine.error) { alert('Cannot connect: ' + (mine.message || mine.error)); return; }
+
+  const code = tgCode();
+  const row = {
+    user_id: mine.uid,
+    // Пошту кладемо самі: так боту не потрібні адмінські права, щоб
+    // показати, до якого акаунта він прив'язався.
+    email: mine.email,
+    team_name: currentTeam,
+    code,
+    code_expires: new Date(Date.now() + TG_CODE_MIN * 60000).toISOString()
+  };
+  const { error } = await sb.from('tg_links').upsert(row, { onConflict: 'user_id' });
+  if (error) { alert('Cannot create the code: ' + error.message); return; }
+
+  const link = 'https://t.me/' + bot + '?start=' + code;
+  const box = document.getElementById('tg-link-status');
+  box.innerHTML = `Open this link and press Start:<br>
+    <a href="${tgEsc(link)}" target="_blank" rel="noopener"
+       class="font-mono break-all" style="color:var(--accent)">${tgEsc(link)}</a><br>
+    <span class="opacity-60">The code works once and expires in ${TG_CODE_MIN} minutes.
+    If the link does not open, send the bot: <span class="font-mono">/start ${tgEsc(code)}</span></span>`;
+  document.getElementById('tg-link-btn')?.classList.add('hidden');
+  window.open(link, '_blank', 'noopener');
+}
+
+async function tgUnlink() {
+  if (!confirm('Stop sending domain alerts to your Telegram?')) return;
+  const mine = await tgMine();
+  if (mine.error || !mine.uid) return;
+  const { error } = await sb.from('tg_links')
+    .update({ chat_id: null, tg_name: null, linked_at: null, code: null, code_expires: null })
+    .eq('user_id', mine.uid);
+  if (error) { alert('Could not disconnect: ' + error.message); return; }
+  tgRefresh();
+}
+
+window.tgConnect = tgConnect;
+window.tgUnlink = tgUnlink;
+window.tgRefresh = tgRefresh;
+window.saveTelegramBot = saveTelegramBot;
 </script>
 
 <script>
