@@ -159,6 +159,76 @@ async function flaggedSafeBrowsing(domains: string[], key: string): Promise<Set<
   return out;
 }
 
+/* ── Другий і третій погляд: фільтрувальні DNS ──
+
+   Web Risk — це думка Google, і тільки Google. Ми вже бачили, що домен
+   із червоним екраном у Chrome може не знайтись у його ж Lookup API.
+   Тому питаємо ще два джерела, які нічого не коштують і не мають ні
+   квот, ні ліцензійних обмежень на комерційне використання.
+
+   Прийом простий: резолвимо домен ДВІЧІ — через звичайний резолвер і
+   через той, що фільтрує шкідливе. Різниця у відповідях і є вироком.
+
+     1.1.1.1  (cloudflare-dns.com)           — без фільтра, це контроль
+     1.1.1.2  (security.cloudflare-dns.com)  — блокує malware і фішинг,
+                                               віддаючи 0.0.0.0
+     9.9.9.9  (dns.quad9.net)                — блокує, віддаючи NXDOMAIN
+                                               (Status 3)
+
+   Домен, який контроль резолвить, а фільтр — ні, лежить у чиємусь
+   списку загроз. Чий саме — записуємо, щоб було видно, хто сказав.
+
+   Чому це варте свічок: Cloudflare і Quad9 збирають дані з десятків
+   фідів (не лише від Google), тож разом вони бачать помітно більше.
+   А коштує це рівно нічого. */
+
+type Dns = { blocked: boolean; resolved: boolean };
+
+async function doh(url: string, domain: string): Promise<Dns> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 6000);
+  try {
+    const res = await fetch(url + '?name=' + encodeURIComponent(domain) + '&type=A',
+      { headers: { accept: 'application/dns-json' }, signal: ctl.signal });
+    if (!res.ok) return { blocked: false, resolved: false };
+    const j = await res.json();
+    const ans: { data?: string }[] = j.Answer || [];
+    const ips = ans.map(a => String(a.data || '')).filter(x => /^\d+\.\d+\.\d+\.\d+$/.test(x));
+    // NXDOMAIN (3) або відповідь 0.0.0.0 — це «заблоковано».
+    const nx = j.Status === 3;
+    const sink = ips.length > 0 && ips.every(ip => ip === '0.0.0.0');
+    return { blocked: nx || sink, resolved: ips.some(ip => ip !== '0.0.0.0') };
+  } catch (_e) {
+    return { blocked: false, resolved: false };
+  } finally { clearTimeout(t); }
+}
+
+// Повертає домен → хто його позначив.
+async function flaggedByDns(domains: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const queue = domains.slice();
+  const worker = async () => {
+    for (;;) {
+      const d = queue.shift();
+      if (!d) return;
+      const [plain, cf, q9] = await Promise.all([
+        doh('https://cloudflare-dns.com/dns-query', d),
+        doh('https://security.cloudflare-dns.com/dns-query', d),
+        doh('https://dns.quad9.net/dns-query', d)
+      ]);
+      // Якщо навіть звичайний резолвер домен не знає — він просто
+      // мертвий, а не позначений. Мовчання фільтра тут нічого не значить.
+      if (!plain.resolved) continue;
+      const by: string[] = [];
+      if (cf.blocked) by.push('cloudflare');
+      if (q9.blocked) by.push('quad9');
+      if (by.length) out.set(d, by);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(POOL, queue.length) }, worker));
+  return out;
+}
+
 Deno.serve(async (req) => {
   // OPTIONS — найперше й без жодних умов: це preflight, і якщо на нього
   // не відповісти CORS-заголовками, браузер не покаже навіть тексту
@@ -251,18 +321,26 @@ async function handle(req: Request): Promise<Response> {
   const wrKey = Deno.env.get('WEB_RISK_KEY') || '';
   const sbKey = Deno.env.get('SAFE_BROWSING_KEY') || '';
   const names = rows.map(r => r.domain);
-  const bad = wrKey ? await flaggedWebRisk(names, wrKey)
-            : sbKey ? await flaggedSafeBrowsing(names, sbKey)
-            : new Set<string>();
-  const source = wrKey ? 'web-risk' : sbKey ? 'safe-browsing' : 'none';
+  // Google і DNS питаємо паралельно — вони незалежні, і чекати одне на
+  // одного нема сенсу.
+  const [bad, dns] = await Promise.all([
+    wrKey ? flaggedWebRisk(names, wrKey)
+          : sbKey ? flaggedSafeBrowsing(names, sbKey)
+          : Promise.resolve(new Set<string>()),
+    flaggedByDns(names)
+  ]);
+  const google = wrKey ? 'web-risk' : sbKey ? 'safe-browsing' : '';
+  const source = [google, 'dns'].filter(Boolean).join('+');
 
   const at = new Date().toISOString();
   const results = rows.map(r => {
     const v = verdicts.get(r.id)!;
-    // Мітка Google важливіша за код відповіді: домен у списку віддає
-    // звичайні 200, і саме тому його самому не помітити.
-    const status = bad.has(r.domain) ? 'danger' : v.status;
+    // Хто саме сказав «погано». Домен у чорному списку віддає звичайні
+    // 200, тому мітка завжди важливіша за код відповіді.
+    const by = (bad.has(r.domain) ? [google || 'blacklist'] : []).concat(dns.get(r.domain) || []);
+    const status = by.length ? 'danger' : v.status;
     return { id: r.id, domain: r.domain, status, status_code: v.status_code,
+             flagged_by: by.length ? by.join(', ') : null,
              source: 'server', checked_at: at };
   });
 
@@ -273,7 +351,7 @@ async function handle(req: Request): Promise<Response> {
       method: 'PATCH',
       headers: { ...hdr, Prefer: 'return=minimal' },
       body: JSON.stringify({ status: r.status, status_code: r.status_code,
-                             source: 'server', checked_at: at })
+                             flagged_by: r.flagged_by, source: 'server', checked_at: at })
     }).catch(() => null)));
 
   return new Response(JSON.stringify({

@@ -31,6 +31,7 @@ create table if not exists public.domains (
   -- notfound — 404 та інші 4xx (тільки з сервера)
   -- danger   — мітка Safe Browsing чи схоже (тільки з сервера)
   status_code int,                        -- лише з сервера, з браузера завжди null
+  flagged_by  text,                       -- web-risk / cloudflare / quad9, через кому
   source      text,                       -- 'browser' | 'server'
   checked_at  timestamptz,
   created_at  timestamptz not null default now(),
@@ -53,6 +54,10 @@ create index if not exists domains_created_by_idx
 alter table public.domains add column if not exists geo      text;
 alter table public.domains add column if not exists ktid     text;
 alter table public.domains add column if not exists campaign text;
+-- Хто саме позначив домен: web-risk, cloudflare, quad9 — або кілька
+-- через кому. Без цього «danger» нічого не пояснює, а джерела різні й
+-- бачать різне.
+alter table public.domains add column if not exists flagged_by text;
 
 -- ktid — це те саме, що в daily_stats: через нього домен зв'язується з
 -- воронкою, а отже зі спендом. Звідси й береться сигнал «домен затих».
