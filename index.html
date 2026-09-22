@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 10:22">
+  <meta name="build" content="build 22.09 10:59">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2845,7 +2845,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 10:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 10:59</div>
     </div>
   </aside>
 
@@ -3667,6 +3667,10 @@ body[data-route="domains"] #dm-detail {
       <button onclick="dmCheckAll()" id="dm-check-btn"
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-violet-300 hover:text-white hover:bg-violet-600"
         style="border:1px solid rgba(139,92,246,.35)">Check all</button>
+      <button onclick="dmDeepCheck()" id="dm-deep-btn"
+        title="Runs on the server: real HTTP codes and Safe Browsing flags. Needs the check-domains function deployed."
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-emerald-300 hover:text-white hover:bg-emerald-600"
+        style="border:1px solid rgba(16,185,129,.35)">Deep check</button>
       <button onclick="dmTogglePaste()"
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-dynamic hover:brightness-125"
         style="background:var(--surface-2);border:1px solid var(--border)">Paste list</button>
@@ -13859,26 +13863,58 @@ let dmSort = { key: 'status', dir: 1 };
 let dmBusy = false;
 
 /* ── розбір вставленого списку ──
-   Формат у всіх свій, тож не вимагаємо жодного. Правило одне: рядок
-   без крапки — це назва PWA, рядок із крапкою — домени. Маркери
-   списку, нумерацію, протокол і шлях зрізаємо. */
+   Формат у всіх свій, тож не вимагаємо жодного. Правило одне: рядок,
+   який не схожий на домен, — це заголовок, усе під ним належить йому.
+   Маркери списку, нумерацію, роздільники «---», протокол і шлях
+   зрізаємо.
+
+   Заголовком зазвичай стоїть ціла назва кампанії:
+
+     Mbank_KG_10708-ex8g_18/09
+     https://mplay-kg-games.website
+     https://big-win-kg.forum
+     ---
+
+   Це краще, ніж просто назва PWA: разом із нею приїжджають гео і ktid,
+   а ktid — це вже зв'язок із воронкою, тобто зі спендом. Тому заголовок
+   зберігаємо цілим, а PWA/гео/ktid із нього виводимо. */
 function dmParsePaste(text) {
   const out = [];
-  let group = '';
+  let head = '';
   String(text || '').split(/\r?\n/).forEach(raw => {
     let line = raw.trim();
     if (!line) return;
+    if (/^[-=_*~—]{3,}$/.test(line)) { head = ''; return; }   // роздільник між блоками
     // «- », «* », «• », «1. », «1) » на початку
     line = line.replace(/^[-*•·—]+\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
     if (!line) return;
     const clean = line.replace(/:$/, '').trim();
-    if (!/\./.test(clean)) { group = clean; return; }   // заголовок групи
-    clean.split(/[\s,;|\t]+/).forEach(tok => {
-      const d = dmNormDomain(tok);
-      if (d) out.push({ domain: d, pwa: group });
-    });
+    const toks = clean.split(/[\s,;|\t]+/).map(dmNormDomain).filter(Boolean);
+    // Рядок без жодного домена — заголовок. Саме так, а не «рядок без
+    // крапки»: назва кампанії теж може містити крапку, а ось доменом
+    // вона не буде.
+    if (!toks.length) { head = clean; return; }
+    const info = dmHeadInfo(head);
+    toks.forEach(d => out.push({ domain: d, ...info }));
   });
   return out;
+}
+
+/* Mbank_KG_10708-ex8g_18/09 → pwa Mbank, geo KG, ktid 10708-ex8g.
+   Позиції ті самі, що й у типовому шаблоні імпорту (*_{geo}_{ktid}).
+   Якщо заголовок не схожий на назву кампанії — беремо його цілком як
+   назву PWA, бо саме так виглядає простий список «Melbet / домени». */
+function dmHeadInfo(head) {
+  const h = String(head || '').trim();
+  if (!h) return { pwa: null, geo: null, ktid: null, campaign: null };
+  const p = h.split('_');
+  if (p.length < 3) return { pwa: h, geo: null, ktid: null, campaign: null };
+  return {
+    pwa: (p[0] || '').trim() || h,
+    geo: (p[1] || '').toUpperCase().trim() || null,
+    ktid: (p[2] || '').trim() || null,
+    campaign: h
+  };
 }
 
 // https://foo.com/path?x=1 → foo.com
@@ -13970,18 +14006,92 @@ async function dmCheckAll() {
   };
   await Promise.all(Array.from({ length: Math.min(DM_POOL, queue.length) }, worker));
 
-  // Пишемо результат одним запитом: окремий update на домен — це сотні
-  // запитів поспіль, і половина з них впирається в ліміти.
+  /* Пишемо один update на кожен отриманий статус, а не на кожен домен:
+     статусів усього кілька, тож це 2-3 запити замість сотень.
+
+     Навмисно НЕ upsert. По-перше, PostgREST вимагає, щоб усі об'єкти в
+     пачці мали однакові ключі, а поле зі значенням undefined випадає з
+     JSON — тож один домен без нотатки ламав би весь запит. По-друге,
+     upsert тягнув би за собою pwa, note й решту, яких ця операція не
+     стосується. Тут міняються рівно чотири колонки. */
+  const at = new Date().toISOString();
+  const byStatus = {};
+  targets.forEach(r => (byStatus[r.status] = byStatus[r.status] || []).push(r.id));
   try {
-    await sb.from('domains').upsert(targets.map(r => ({
-      id: r.id, team_name: r.team_name, domain: r.domain, pwa: r.pwa, note: r.note,
-      status: r.status, status_code: r.status_code, source: r.source, checked_at: r.checked_at
-    })), { onConflict: 'id' });
-  } catch (e) { console.warn('domains upsert:', e.message); }
+    for (const [status, ids] of Object.entries(byStatus)) {
+      const { error } = await sb.from('domains')
+        .update({ status, status_code: null, source: 'browser', checked_at: at })
+        .in('id', ids);
+      if (error) throw error;
+    }
+  } catch (e) { console.warn('domains update:', e.message); }
 
   dmBusy = false;
   if (btn) btn.textContent = 'Check all';
   dmRender();
+}
+
+/* ── глибока перевірка через Edge Function ──
+   Те, чого браузер не вміє: справжній код відповіді й мітки Safe
+   Browsing. Запит іде з сервера, де CORS не заважає. Функція працює від
+   імені того, хто залогінений, тож чужих доменів не бачить. */
+async function dmDeepCheck() {
+  if (dmBusy) return;
+  dmBusy = true;
+  const btn = document.getElementById('dm-deep-btn');
+  const say = t => { if (btn) btn.textContent = t; };
+  say('Checking…');
+  let total = 0;
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess && sess.session && sess.session.access_token;
+    if (!token) { alert('Log in first — the server check runs as you, not as the page.'); return; }
+
+    // Функція віддає порціями: Edge Function обмежена в часі, і на
+    // сотнях доменів чесна порція краща за обрив посеред роботи.
+    let after = 0;
+    for (let pass = 0; pass < 50; pass++) {
+      const res = await fetch(SUPABASE_URL + '/functions/v1/check-domains', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'content-type': 'application/json' },
+        // after — курсор: без нього функція щоразу віддавала б ту саму
+        // першу порцію, і цикл ганяв би її по колу.
+        body: JSON.stringify({ team: currentTeam, after })
+      });
+      if (res.status === 404) {
+        alert('The check-domains function is not deployed yet.\n\n'
+            + 'Until then the browser check works, but it can only tell whether a domain answered — not the HTTP code.');
+        return;
+      }
+      if (!res.ok) {
+        let msg = 'HTTP ' + res.status;
+        try { msg = (await res.json()).error || msg; } catch (e) {}
+        alert('Server check failed: ' + msg);
+        return;
+      }
+      const j = await res.json();
+      (j.results || []).forEach(x => {
+        const row = dmRows.find(r => String(r.id) === String(x.id));
+        if (!row) return;
+        row.status = x.status; row.status_code = x.status_code;
+        row.source = x.source; row.checked_at = x.checked_at;
+      });
+      total += j.checked || 0;
+      after = j.next || after;
+      say(`Checking ${total}…`);
+      dmRender();
+      if (!j.more || !j.next) {
+        if (!j.safe_browsing) console.info('check-domains: SAFE_BROWSING_KEY not set — no danger flags');
+        break;
+      }
+    }
+  } catch (e) {
+    alert('Server check failed: ' + e.message);
+  } finally {
+    dmBusy = false;
+    say('Deep check');
+    dmRender();
+  }
 }
 
 async function dmCheckOne(idEnc) {
@@ -14018,16 +14128,19 @@ function dmPastePreview() {
   const have = new Set(dmRows.map(r => String(r.domain).toLowerCase()));
   const seen = new Set();
   let dup = 0, add = 0;
-  const groups = {};
+  const groups = {}, kt = new Set();
   parsed.forEach(p => {
     if (have.has(p.domain) || seen.has(p.domain)) { dup++; return; }
     seen.add(p.domain); add++;
     (groups[p.pwa || '— no PWA —'] = groups[p.pwa || '— no PWA —'] || []).push(p.domain);
+    if (p.ktid) kt.add(p.ktid);
   });
   el.innerHTML = `<b class="text-dynamic">${add}</b> new`
     + (dup ? ` · <span class="text-amber-400">${dup} already here, skipped</span>` : '')
     + (add ? '<br>' + Object.entries(groups).map(([g, d]) =>
-        `<span class="opacity-70">${dmEsc(g)}</span> — ${d.length}`).join(' · ') : '');
+        `<span class="opacity-70">${dmEsc(g)}</span> — ${d.length}`).join(' · ') : '')
+    + (add && kt.size ? `<br><span class="opacity-60">KTID picked up from the headers: ${
+        [...kt].slice(0, 8).map(dmEsc).join(', ')}${kt.size > 8 ? ` +${kt.size - 8}` : ''}</span>` : '');
 }
 
 async function dmPasteSave() {
@@ -14039,7 +14152,9 @@ async function dmPasteSave() {
   parsed.forEach(p => {
     if (have.has(p.domain) || seen.has(p.domain)) return;
     seen.add(p.domain);
-    fresh.push({ team_name: currentTeam, domain: p.domain, pwa: p.pwa || null, status: 'unknown' });
+    fresh.push({ team_name: currentTeam, domain: p.domain, pwa: p.pwa || null,
+                 geo: p.geo || null, ktid: p.ktid || null, campaign: p.campaign || null,
+                 status: 'unknown' });
   });
   if (!fresh.length) { alert('Nothing new to add.'); return; }
   const btn = document.getElementById('dm-paste-save');
@@ -14084,7 +14199,7 @@ function dmShown() {
     const inFilter = !dmFilter ? true
       : dmFilter === 'bad' ? DM_BAD.includes(st)
       : st === dmFilter;
-    return inFilter && (!q || [r.domain, r.pwa, r.note]
+    return inFilter && (!q || [r.domain, r.pwa, r.note, r.geo, r.ktid, r.campaign]
       .some(v => String(v || '').toLowerCase().includes(q)));
   });
 }
@@ -14131,7 +14246,8 @@ function dmRender() {
   const rank = s => DM_ORDER.indexOf(s || 'unknown');
   const val = {
     status: r => rank(r.status), domain: r => String(r.domain || ''),
-    pwa: r => String(r.pwa || ''), checked: r => String(r.checked_at || '')
+    pwa: r => String(r.pwa || ''), ktid: r => String(r.ktid || ''),
+    geo: r => String(r.geo || ''), checked: r => String(r.checked_at || '')
   };
   const get = val[dmSort.key] || val.status;
   shown = shown.slice().sort((a, b) => {
@@ -14149,13 +14265,15 @@ function dmRender() {
 
   const arrow = k => dmSort.key === k ? (dmSort.dir < 0 ? ' ↓' : ' ↑') : '';
   const th = (k, label, cls) => `<th class="${cls || ''}" onclick="dmSortBy('${k}')">${label}${arrow(k)}</th>`;
-  const COLS = 5;
+  const COLS = 7;
 
   list.innerHTML = `<table class="cab-tbl">
     <thead><tr>
       ${th('status', 'Status')}
       ${th('domain', 'Domain')}
       ${th('pwa', 'PWA')}
+      ${th('geo', 'Geo', 'ta-c')}
+      ${th('ktid', 'KTID')}
       ${th('checked', 'Checked', 'ta-r')}
       <th class="ta-c">·</th>
     </tr></thead><tbody>
@@ -14181,6 +14299,8 @@ function dmRowHtml(r) {
         onclick="event.stopPropagation()" class="cab-id hover:underline">${dmEsc(r.domain)}</a>
       ${r.source === 'browser' ? '<span class="cab-src" title="Checked from the browser: it only tells whether the domain answered, not the HTTP code.">&#9998;</span>' : ''}</td>
     <td class="cab-dim">${dmEsc(r.pwa) || '—'}</td>
+    <td class="ta-c cab-dim">${dmEsc(r.geo) || '—'}</td>
+    <td class="cab-dim" title="${dmEsc(r.campaign || '')}">${dmEsc(r.ktid) || '—'}</td>
     <td class="ta-r cab-dim">${dmAgo(r.checked_at)}</td>
     <td class="ta-c"><button onclick="event.stopPropagation();dmCheckOne('${enc}')"
       class="cab-link" title="Check this one">&#8635;</button></td>
@@ -14207,11 +14327,16 @@ function dmDetail(r) {
       ${[['Checked', dmAgo(r.checked_at)],
          ['Source', r.source || '—'],
          ['HTTP', r.status_code || '—'],
+         ['Geo', r.geo || '—'],
+         ['KTID', r.ktid || '—'],
          ['Added', String(r.created_at || '').slice(0, 10) || '—']]
         .map(([k, v]) => `<div class="rounded-lg px-2 py-1.5" style="background:var(--surface-2)">
             <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
             <p class="text-[12px] font-black text-dynamic font-mono">${dmEsc(v)}</p></div>`).join('')}
     </div>
+
+    ${r.campaign ? `<p class="text-[10px] font-mono mb-3 break-all" style="color:var(--text-muted)"
+      title="The line this domain was pasted under">${dmEsc(r.campaign)}</p>` : ''}
 
     ${r.source === 'browser' ? `<p class="text-[10px] font-bold mb-3" style="color:var(--text-muted)">
       Checked from the browser, so HTTP is empty on purpose: a page cannot read the status code of another domain.
@@ -14263,6 +14388,7 @@ async function dmDelete(idEnc) {
 }
 
 window.dmInit = dmInit;
+window.dmDeepCheck = dmDeepCheck;
 </script>
 
 <script>
