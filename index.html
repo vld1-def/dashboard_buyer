@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.09 22:09">
+  <meta name="build" content="build 22.09 09:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2814,7 +2814,7 @@ body[data-route="cabinets"] #cab-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.09 22:09</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 09:47</div>
     </div>
   </aside>
 
@@ -5938,7 +5938,10 @@ function setFilter(q, clear) {
   const input = document.getElementById('set-search');
   if (clear && input) input.value = '';
   q = String(q || '').trim().toLowerCase();
-  const panes = document.querySelector('.set-panes');
+  // Вікно «Month close» користується тими самими стилями .set-*, і в DOM
+  // стоїть РАНІШЕ за налаштування, тож querySelector('.set-panes') брав
+  // його контейнер — порожній щодо рядків. Тримаємось за id.
+  const panes = document.getElementById('set-panes');
   if (!panes) return;
   document.querySelector('.set-search')?.classList.toggle('has-q', !!q);
 
@@ -6607,7 +6610,7 @@ async function siteLogout() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements'];
+  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements','cabinets','expenses'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -6678,7 +6681,9 @@ async function initTeamLeadMode() {
     'table':      'live-table-section',
     'device-geo': 'device-geo-section',
     'report':     'report-builder-section',
-    'placements': 'placements-section'
+    'placements': 'placements-section',
+    'cabinets':   'cabinets-section',
+    'expenses':   'expenses-section'
   };
   // ЗАБОРОНЕНО ЗА ЗАМОВЧУВАННЯМ: показуємо лише те, що явно дозволено (=== true).
   // Інакше кожен новий блок автоматично ставав би видимим для тімліда.
@@ -6741,7 +6746,9 @@ async function loadSettings() {
     'toggle-table': 'live-table-section',
     'toggle-heatmap': 'weekly-analysis-section',
     'toggle-report': 'report-builder-section',
-    'toggle-placements': 'placements-section'
+    'toggle-placements': 'placements-section',
+    'toggle-cabinets': 'cabinets-section',
+    'toggle-expenses': 'expenses-section'
   };
 
   for (const [checkId, sectionId] of Object.entries(config)) {
@@ -10584,7 +10591,7 @@ document.addEventListener('keydown', e => {
       </nav>
 
       <!-- ── Права колонка ── -->
-      <div class="set-panes custom-scrollbar">
+      <div id="set-panes" class="set-panes custom-scrollbar">
 
         <!-- GENERAL -->
         <section id="spanel-general" class="set-pane">
@@ -10617,8 +10624,8 @@ document.addEventListener('keydown', e => {
           <div class="set-group">
             <div class="set-ghead">
               <div>
-                <h3 class="set-gtitle">Dashboard blocks</h3>
-                <p class="set-gsub">Blocks turned off here disappear from the page and from the menu.</p>
+                <h3 class="set-gtitle">Pages</h3>
+                <p class="set-gsub">The pages in the sidebar. Turned off here, a page disappears from the menu too. Names match the sidebar one to one.</p>
               </div>
               <div class="set-bulk">
                 <button type="button" onclick="setBulk('#grp-blocks', true)">All on</button>
@@ -10626,33 +10633,80 @@ document.addEventListener('keydown', e => {
               </div>
             </div>
             <div id="grp-blocks">
-              <label class="set-row set-toggle" data-setting="geo performance гео">
-                <span class="set-label"><span class="set-ico">🗺</span>Geo Performance</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
-              </label>
-              <label class="set-row set-toggle" data-setting="weekly analysis heatmap тепл">
-                <span class="set-label"><span class="set-ico">📅</span>Weekly Analysis</span>
+              <label class="set-row set-toggle" data-setting="heatmap weekly analysis тепл тижден">
+                <span class="set-label"><span class="set-ico">&#128197;</span>Heatmap</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-heatmap" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="creative analyzer креатив">
-                <span class="set-label"><span class="set-ico">🎨</span>Creative Analyzer</span>
+              <label class="set-row set-toggle" data-setting="creatives creative analyzer креатив">
+                <span class="set-label"><span class="set-ico">&#127912;</span>Creatives</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-creatives" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="device geo пристрій">
-                <span class="set-label"><span class="set-ico">📱</span>Device × Geo</span>
+              <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій">
+                <span class="set-label"><span class="set-ico">&#128241;</span>Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-device-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
+              <label class="set-row set-toggle" data-setting="placements плейсмент">
+                <span class="set-label"><span class="set-ico">&#128208;</span>Placements</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-placements" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
               <label class="set-row set-toggle" data-setting="live data feed таблиця">
-                <span class="set-label"><span class="set-ico">📋</span>Live Data Feed</span>
+                <span class="set-label"><span class="set-ico">&#128203;</span>Live Data</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-table" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
+              <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк">
+                <span class="set-label"><span class="set-ico">&#128452;</span>Cabinets</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-cabinets" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="expenses витрати розходи">
+                <span class="set-label"><span class="set-ico">&#128184;</span>Expenses</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-expenses" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
               <label class="set-row set-toggle" data-setting="report builder звіт">
-                <span class="set-label"><span class="set-ico">📊</span>Report Builder</span>
+                <span class="set-label"><span class="set-ico">&#128202;</span>Report Builder</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-report" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="placements плейсмент">
-                <span class="set-label"><span class="set-ico">📐</span>Placements</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-placements" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+            </div>
+          </div>
+
+          <div class="set-group">
+            <h3 class="set-gtitle">Dashboard widgets</h3>
+            <p class="set-gsub">Blocks on the Dashboard page itself, not pages of their own.</p>
+            <div id="grp-dash">
+              <label class="set-row set-toggle" data-setting="geo performance гео колонка">
+                <span class="set-label"><span class="set-ico">&#128506;</span>Geo Performance</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
+            <p class="set-gsub" style="margin-top:6px">With it off, the chart beside it stretches to full width.</p>
+          </div>
+
+          <div class="set-group">
+            <div class="set-ghead">
+              <div>
+                <h3 class="set-gtitle">Sidebar tools</h3>
+                <p class="set-gsub">The lower half of the sidebar. These open panels, not pages, so they have their own switch — and it is yours alone, not the team’s.</p>
+              </div>
+              <div class="set-bulk">
+                <button type="button" onclick="setBulk('#grp-tools', true)">All on</button>
+                <button type="button" onclick="setBulk('#grp-tools', false)">All off</button>
+              </div>
+            </div>
+            <div id="grp-tools">
+              <label class="set-row set-toggle" data-setting="campaigns data hub кампанії дані">
+                <span class="set-label"><span class="set-ico">&#128451;</span>Campaigns</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-hub-dataset" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="records записи">
+                <span class="set-label"><span class="set-ico">&#128196;</span>Records</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-hub-records" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="sheets таблиці гугл">
+                <span class="set-label"><span class="set-ico">&#128209;</span>Sheets</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-sheets" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="sources providers джерела агенції">
+                <span class="set-label"><span class="set-ico">&#128268;</span>Sources</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-hub-providers" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
               </label>
             </div>
           </div>
@@ -10707,20 +10761,24 @@ document.addEventListener('keydown', e => {
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-kpi" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="performance trend графік"><span class="set-label">Performance Trend</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-chart" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="geo performance гео"><span class="set-label">Geo Performance</span>
+              <label class="set-row set-toggle" data-setting="geo performance гео колонка"><span class="set-label">Geo Performance</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="creative analyzer креатив"><span class="set-label">Creative Analyzer</span>
-                <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="weekly analysis heatmap"><span class="set-label">Weekly Analysis</span>
+              <label class="set-row set-toggle" data-setting="heatmap weekly analysis тепл тижден"><span class="set-label">Heatmap</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-heatmap" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="live data feed таблиця"><span class="set-label">Live Data Feed</span>
-                <span class="toggle-switch"><input type="checkbox" id="tl-show-table" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="device geo пристрій"><span class="set-label">Device × Geo</span>
+              <label class="set-row set-toggle" data-setting="creatives creative analyzer креатив"><span class="set-label">Creatives</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій"><span class="set-label">Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="report builder звіт"><span class="set-label">Report Builder</span>
-                <span class="toggle-switch"><input type="checkbox" id="tl-show-report" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="placements плейсмент"><span class="set-label">Placements</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-placements" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="live data feed таблиця"><span class="set-label">Live Data</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-table" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-cabinets" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="expenses витрати розходи"><span class="set-label">Expenses</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-expenses" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="report builder звіт"><span class="set-label">Report Builder</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-report" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
             </div>
           </div>
         </section>
@@ -13818,17 +13876,60 @@ window.evToggleFeed = evToggleFeed;
 
   window.addEventListener('hashchange', () => applyRoute(true));
 
-  // Вимкнений у налаштуваннях (або закритий для тімліда) розділ не має
-  // висіти в меню: клікати нема куди.
+  /* ─────────── Нижня половина сайдбара ───────────
+     Data Hub, Таблиці й Джерела — не сторінки, а панелі: секції в DOM
+     під ними немає, тож видимістю секції їх не вимкнеш. Тримаємо для
+     них окремий список прихованих і ховаємо самі пункти меню.
+     Живе в localStorage, бо це вибір конкретної людини, а не команди:
+     сховав у себе — не сховав усім. */
+  const SB_TOOLS = {
+    'tool-hub-dataset':   '.sb-item[data-hub="dataset"]',
+    'tool-hub-records':   '.sb-item[data-hub="records"]',
+    'tool-sheets':        '.sb-item[data-sheet]',
+    'tool-hub-providers': '.sb-item[data-hub="providers"]'
+  };
+  const SB_TOOLS_KEY = 'sidebar_tools';
+
+  function sbToolsRead() {
+    try { return JSON.parse(localStorage.getItem(SB_TOOLS_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+
+  // Типово все увімкнено: у списку лежать лише свідомо вимкнені.
+  window.sbToolsApply = function () {
+    const off = sbToolsRead();
+    Object.entries(SB_TOOLS).forEach(([id, sel]) => {
+      const on = off[id] !== false;
+      const cb = document.getElementById(id);
+      if (cb) cb.checked = on;
+      document.querySelectorAll(sel).forEach(el => el.style.display = on ? '' : 'none');
+    });
+  };
+
+  window.sbToolSet = function (cb) {
+    const off = sbToolsRead();
+    off[cb.id] = !!cb.checked;
+    try { localStorage.setItem(SB_TOOLS_KEY, JSON.stringify(off)); } catch (e) {}
+    sbToolsApply();
+    if (typeof setSaved === 'function') setSaved();
+  };
+
   // Вимкнений у налаштуваннях (або закритий для тімліда) розділ не має
   // висіти в меню: клікати нема куди.
   window.syncNavVisibility = function () {
+    let hidHere = '';
     document.querySelectorAll('.sb-item[data-nav]').forEach(b => {
       const r = ROUTES[b.dataset.nav];
       if (!r || !r.section) return;
       const sec = document.getElementById(r.section);
-      b.style.display = (!sec || sec.classList.contains('hidden')) ? 'none' : '';
+      const off = !sec || sec.classList.contains('hidden');
+      b.style.display = off ? 'none' : '';
+      if (off && b.dataset.nav === (document.body.dataset.route || '')) hidHere = b.dataset.nav;
     });
+    sbToolsApply();
+    // Вимкнули сторінку, на якій стоїмо, — лишитись на ній означало б
+    // порожній екран без жодного пункту меню, щоб піти геть.
+    if (hidHere) go('');
   };
 
   /* ─────────── Скін для вбудованого Form.html ───────────
