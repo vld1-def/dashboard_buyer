@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 13:05">
+  <meta name="build" content="build 22.09 13:23">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2858,7 +2858,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 13:23</div>
     </div>
   </aside>
 
@@ -14123,6 +14123,7 @@ async function dmDeepCheck() {
         const row = dmRows.find(r => String(r.id) === String(x.id));
         if (!row) return;
         row.status = x.status; row.status_code = x.status_code;
+        row.flagged_by = x.flagged_by;
         row.source = x.source; row.checked_at = x.checked_at;
       });
       total += j.checked || 0;
@@ -14175,9 +14176,10 @@ async function dmDeepCheck() {
      вигляду, і відрізнити «перевірило й нічого не знайшло» від «ключа
      немає, тож чорний список ніхто й не питав» було неможливо. */
   if (total) {
-    const where = flags === 'web-risk' ? 'Web Risk'
-                : flags === 'safe-browsing' ? 'Safe Browsing'
-                : '';
+    // flags приходить як 'web-risk+dns', 'dns', 'safe-browsing+dns'…
+    const NAMES = { 'web-risk': 'Web Risk', 'safe-browsing': 'Safe Browsing', dns: 'filtering DNS' };
+    const where = String(flags || '').split('+').filter(Boolean)
+      .map(k => NAMES[k] || k).join(' + ');
     // Скільки не чіпали. Мовчазний пропуск виглядав би як «перевірило не
     // всіх», і довіри до цифри не було б.
     const skipped = dmRows.filter(r => r.status === 'danger').length;
@@ -14185,9 +14187,9 @@ async function dmDeepCheck() {
     toast(where
       ? `Checked ${total} domain(s) via ${where}. Flagged: ${flagged}.` + tail
       : `Checked ${total} domain(s) — HTTP codes only.\n\n`
-        + 'No blacklist key on the function, so nothing can ever come back as Flagged. '
-        + 'Add WEB_RISK_KEY in Project Settings → Edge Functions → Secrets.',
-      where ? '' : 'warn', where ? 3200 : 9000);
+        + 'No blacklist source answered. Filtering DNS needs no key and should always work, '
+        + 'so this usually means the function could not reach the network.',
+      where ? '' : 'warn', where ? 4200 : 9000);
   }
 }
 
@@ -14221,6 +14223,7 @@ async function dmCheckOne(idEnc) {
     const x = (j.results || [])[0];
     if (!x) throw new Error('empty');
     row.status = x.status; row.status_code = x.status_code;
+    row.flagged_by = x.flagged_by;
     row.source = x.source; row.checked_at = x.checked_at;
     dmRender();
     return;
@@ -14453,7 +14456,8 @@ function dmRowHtml(r) {
   const enc = encodeURIComponent(String(r.id)).replace(/'/g, '%27');
   return `<tr class="cab-tr ${String(dmSel) === String(r.id) ? 'is-sel' : ''}" onclick="dmPick('${enc}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${S.label}${
-      r.status_code ? ` · ${r.status_code}` : ''}</span></td>
+      r.status_code ? ` · ${r.status_code}` : ''}</span>${
+      r.flagged_by ? `<span class="cab-chip" title="Which blacklist flagged it">${dmEsc(r.flagged_by)}</span>` : ''}</td>
     <td><a href="https://${dmEsc(r.domain)}" target="_blank" rel="noopener"
         onclick="event.stopPropagation()" class="cab-id hover:underline">${dmEsc(r.domain)}</a>
       <button onclick="event.stopPropagation();dmCopy('${enc}')" class="cab-link dm-copy"
@@ -14488,6 +14492,7 @@ function dmDetail(r) {
       ${[['Checked', dmAgo(r.checked_at)],
          ['Source', r.source || '—'],
          ['HTTP', r.status_code || '—'],
+         ['Flagged by', r.flagged_by || '—'],
          ['Geo', r.geo || '—'],
          ['KTID', r.ktid || '—'],
          ['Added', String(r.created_at || '').slice(0, 10) || '—']]
