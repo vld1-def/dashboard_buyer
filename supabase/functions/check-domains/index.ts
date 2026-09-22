@@ -466,8 +466,13 @@ async function handle(req: Request): Promise<Response> {
     const byTeam = new Map<string, number>();
     for (let pass = 0; pass < 200; pass++) {
       const b = await runBatch(base, hdr, { team, only, after, force });
-      if (b.error) return new Response(JSON.stringify({ error: b.error }),
-        { status: b.status || 500, headers: { ...CORS, 'content-type': 'application/json' } });
+      if (b.error) {
+        // Витрачене вже витрачено: обірвавшись мовчки, ми б загубили
+        // рахунок за все, що функція встигла перевірити до помилки.
+        await noteSpend(base, hdr, byTeam);
+        return new Response(JSON.stringify({ error: b.error, checked, spent }),
+          { status: b.status || 500, headers: { ...CORS, 'content-type': 'application/json' } });
+      }
       checked += b.checked;
       spent += b.spent;
       flags = b.flags || flags;
