@@ -103,6 +103,19 @@ create policy "own_delete" on public.tg_links for delete to authenticated
 --     токени Supabase і надсилає звичайний POST. Замість JWT функцію
 --     захищає TG_WEBHOOK_SECRET, який вона звіряє на кожному запиті.
 --
+--     Те саме можна зробити й мишкою, і це надійніше, бо не залежить
+--     від версії CLI: Edge Functions → telegram-bot → Details →
+--     вимкнути Verify JWT.
+--
+--     Те саме записано і в supabase/config.toml, щоб наступний деплой
+--     без прапорця не ввімкнув перевірку назад. Якщо ваш CLI на цей
+--     файл лається — видаліть його і користуйтесь прапорцем або
+--     перемикачем: на роботу функції сам файл не впливає.
+--
+--     Ознака того, що JWT не вимкнено: у getWebhookInfo нижче
+--     last_error_message буде про 401, а в логах функції — порожньо.
+--     Запит до неї просто не доходить.
+--
 --     Потім скажіть Telegram, куди слати (одним рядком у браузері):
 --
 --        https://api.telegram.org/bot<ТОКЕН>/setWebhook?url=https://<ПРОЄКТ>.supabase.co/functions/v1/telegram-bot&secret_token=<TG_WEBHOOK_SECRET>
