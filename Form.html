@@ -725,6 +725,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">🎯 Funnels</button>
         <button onclick="stSwitch('keitaro')" id="st-tab-keitaro"
           class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">📊 Keitaro</button>
+        <button onclick="stSwitch('pwa')" id="st-tab-pwa"
+          class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">🌐 PWA</button>
         <button onclick="stSwitch('app')" id="st-tab-app"
           class="st-tab px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition whitespace-nowrap">📱 APP</button>
       </div>
@@ -829,6 +831,52 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-blue-400 mb-1.5">Registrations</label><input type="text" id="km-reg" placeholder="Conv."></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-green-500 mb-1.5">Deposits</label><input type="text" id="km-dep" placeholder="Sales"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">File timezone</label><input type="number" id="km-tz" placeholder="3" title="Which TZ Keitaro reports time in"></div>
+          </div>
+       </div>
+      </div>
+
+      <div id="st-panel-pwa" class="st-panel hidden space-y-8">
+       <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-sky-500 bg-slate-900/40">
+          <div class="flex justify-between items-center mb-2 gap-3 flex-wrap">
+            <h3 class="text-xl font-black uppercase italic text-sky-400 tracking-tight">PWA &middot; campaign parsing</h3>
+            <div class="flex gap-2 items-center">
+              <button onclick="pwaResetMask()" title="Back to the default pattern" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Reset</button>
+              <button onclick="savePwaParse()" class="bg-sky-600 hover:bg-sky-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
+            </div>
+          </div>
+          <p class="text-[10px] font-bold text-slate-500 mb-4 leading-relaxed">Where <b class="text-sky-300">geo</b> and <b class="text-sky-300">KTID</b> sit inside the campaign name.
+            The same pattern is used on both sides of the import &mdash; Facebook and Keitaro &mdash; because rows are merged by
+            <span class="font-mono text-sky-300">date|account|geo|ktid</span>. Change it here and both sides move together.
+            The account and the creative are taken from the report columns, not from the name, so they are not in the pattern.</p>
+
+          <label class="block text-[9px] font-black uppercase tracking-widest text-sky-400 mb-1.5">Campaign name pattern</label>
+          <input type="text" id="pwa-mask" oninput="renderPwaPreview()" spellcheck="false"
+                 placeholder="*_{geo}_{ktid}"
+                 class="!font-mono !text-[13px] !py-3">
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            <div class="bg-black/25 rounded-2xl border border-white/5 p-4">
+              <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">How to write the pattern</p>
+              <ul class="text-[11px] font-bold text-slate-400 space-y-1.5 leading-relaxed">
+                <li><span class="font-mono text-sky-300">{geo}</span> &mdash; geo, two letters</li>
+                <li><span class="font-mono text-sky-300">{ktid}</span> &mdash; KTID, the funnel id</li>
+                <li><span class="font-mono text-slate-300">*</span> &mdash; anything: one chunk or several</li>
+                <li><span class="font-mono text-slate-300">Melbet</span> &mdash; literal text: must match exactly</li>
+              </ul>
+              <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">A tail the pattern does not describe is ignored, so
+                <span class="font-mono text-sky-300">*_{geo}_{ktid}</span> is enough for
+                <span class="font-mono">Melbet_EG_10864-9lm5_19/09_001</span> &mdash; the date and the number at the end need no mention.
+                How many characters <span class="font-mono">{&hellip;}</span> takes is decided by the character right after it.</p>
+              <p class="text-[10px] text-amber-300/80 mt-3 leading-relaxed">If a name does not match, geo becomes <b>??</b> and KTID becomes <b>0</b> &mdash;
+                the row is still written. After the import you will be told how many names did not match. Check here first.</p>
+            </div>
+            <div class="bg-black/25 rounded-2xl border border-white/5 p-4">
+              <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">Check against a real name</p>
+              <input type="text" id="pwa-sample" oninput="renderPwaPreview()" spellcheck="false"
+                     placeholder="paste a real campaign name here"
+                     class="!font-mono !text-[12px] !py-2">
+              <p id="pwa-preview" class="text-[11px] font-mono text-slate-500 mt-3 leading-relaxed"></p>
+            </div>
           </div>
        </div>
       </div>
@@ -1222,6 +1270,22 @@ function toGeoCode(v) {
 // APP:  cy638t_8wxg7hf7_YVbHTgzY_app_acc_cid_...  → просто токени через "_",
 //       тому позиції задаються в налаштуваннях.
 const AP_DEFAULT = { mask: '*_*_*_{app}_{acc}_{cid}_{geo}' };
+
+/* ═══════════ PWA: шаблон назви кампанії ═══════════
+   Раніше гео і ktid бралися з жорстких позицій: parts[1] і parts[2].
+   Це працювало рівно для одного способу називати кампанії. Тепер це
+   такий самий шаблон, як в APP, а типове значення точно повторює
+   стару поведінку — налаштовувати нічого не треба, якщо ви називаєте
+   кампанії як досі:
+
+     Melbet_EG_10864-9lm5_19/09_001
+            ^^ гео          хвіст шаблоном не описаний і ігнорується
+               ^^^^^^^^^^ ktid
+
+   Акаунт і креатив у PWA беруться з колонок звіту, а не з назви,
+   тому в шаблоні їх немає. */
+const PWA_DEFAULT_MASK = '*_{geo}_{ktid}';
+let pwaMask = PWA_DEFAULT_MASK;
 let appParse = { ...AP_DEFAULT };
 // Профілі постачальників апок: у кожного свій шаблон назви кампанії.
 let appProfiles = {};
@@ -1231,12 +1295,17 @@ let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
 async function loadAppParse() {
   try {
     const { data } = await sb.from('team_settings')
-      .select('key, value').eq('team_name', currentTeam).in('key', ['app_parse', 'app_profiles']);
+      .select('key, value').eq('team_name', currentTeam)
+      .in('key', ['app_parse', 'app_profiles', 'pwa_parse']);
     (data || []).forEach(r => {
       if (r.key === 'app_parse')    appParse    = JSON.parse(r.value) || {};
       if (r.key === 'app_profiles') appProfiles = JSON.parse(r.value) || {};
+      // Порожній рядок у базі не має стирати типовий шаблон — інакше
+      // одне невдале збереження залишило б увесь імпорт без розбору.
+      if (r.key === 'pwa_parse')    pwaMask     = (JSON.parse(r.value) || {}).mask || PWA_DEFAULT_MASK;
     });
   } catch (e) { console.warn('app_parse:', e.message); }
+  pwaFillForm();
   apRenderProfileSelect();
   apFillForm(apCfgOf(apCurrent));
   renderApPreview();
@@ -1343,6 +1412,60 @@ async function saveAppParse() {
   } catch (e) { alert('Could not save: ' + e.message); }
 }
 
+/* ═══════════ PWA: налаштування шаблону ═══════════ */
+
+function pwaFillForm() {
+  const el = document.getElementById('pwa-mask');
+  if (el) el.value = pwaMask;
+  renderPwaPreview();
+}
+
+function pwaResetMask() {
+  const el = document.getElementById('pwa-mask');
+  if (el) el.value = PWA_DEFAULT_MASK;
+  renderPwaPreview();
+}
+
+// Той самий прийом, що і в APP: показуємо на живому зразку, що саме
+// буде витягнуто. Помилку в шаблоні інакше видно лише після імпорту,
+// коли дані вже в базі.
+function renderPwaPreview() {
+  const el = document.getElementById('pwa-preview');
+  if (!el) return;
+  const mask = (document.getElementById('pwa-mask')?.value || '').trim() || PWA_DEFAULT_MASK;
+  const sample = (document.getElementById('pwa-sample')?.value || '').trim()
+    || 'Melbet_EG_10864-9lm5_19/09_001';
+  const r = apParseMask(mask, sample.split('_'), '', '');
+  if (!r || !r.geo) {
+    el.innerHTML = `<span class="text-rose-400">The pattern does not match this name.</span>
+      Geo would be written as <b>??</b> and KTID as <b>0</b>. Check the literal parts — they must match exactly.`;
+    return;
+  }
+  const v = x => `<b class="text-sky-300">${x}</b>`;
+  el.innerHTML = `geo: ${v(String(r.geo).toUpperCase())}<br>ktid: ${v(r.ktid || '0')}`;
+}
+
+async function savePwaParse() {
+  const mask = (document.getElementById('pwa-mask')?.value || '').trim() || PWA_DEFAULT_MASK;
+  // Не даємо зберегти шаблон, який не витягує гео: такий розбір мовчки
+  // залив би весь імпорт з гео «??», і це помітили б уже у звітах.
+  if (!apParseMask(mask, 'Melbet_EG_10864-9lm5_19/09_001'.split('_'), '', '') && !mask.includes('{geo}')) {
+    alert('The pattern has no {geo} — geo would be empty for every row. Add it before saving.');
+    return;
+  }
+  try {
+    await sb.from('team_settings').upsert(
+      { team_name: currentTeam, key: 'pwa_parse', value: JSON.stringify({ mask }) },
+      { onConflict: 'team_name,key' });
+    pwaMask = mask;
+    showStatus('PWA parsing saved');
+    renderPwaPreview();
+    // Уже розібраний звіт перечитуємо новим шаблоном — щоб результат було
+    // видно одразу, а не після повторного завантаження файлу.
+    if (lastFbParse) processCampaignData(lastFbParse.map, lastFbParse.lines);
+  } catch (e) { alert('Could not save: ' + e.message); }
+}
+
 // Показуємо на зразку, що саме буде витягнуто — щоб не гадати
 function renderApPreview() {
   const el = document.getElementById('ap-preview');
@@ -1439,7 +1562,7 @@ function apMaskCompile(mask) {
   let re = '', i = 0;
 
   while (i < src.length) {
-    const ph = /^\{(app|acc|cid|cid-|geo)(?:=([^}]*))?\}/.exec(src.slice(i));
+    const ph = /^\{(app|acc|cid|cid-|geo|ktid)(?:=([^}]*))?\}/.exec(src.slice(i));
     if (ph) {
       i += ph[0].length;
       if (ph[2] !== undefined) {                    // {app=SNATCH} — фіксоване значення
@@ -1475,7 +1598,7 @@ function apParseMask(mask, parts, adName, country) {
   const camp = Array.isArray(parts) ? parts.join('_') : String(parts || '');
   const m = c.re.exec(camp);
   if (!m) return null;
-  const out = { app: '', acc: '', cid: '', geo: '', ...c.fixed };
+  const out = { app: '', acc: '', cid: '', geo: '', ktid: '', ...c.fixed };
   c.keys.forEach((k, idx) => {
     const v = String(m[idx + 1] || '').trim();
     if (k === 'cid-') out.cid = v.replace(/-/g, '_');
@@ -1484,6 +1607,18 @@ function apParseMask(mask, parts, adName, country) {
   if (!out.cid) out.cid = String(adName || '').trim();
   if (!out.geo) out.geo = String(country || '').trim();
   return out;
+}
+
+/* Розбір назви PWA-кампанії. Не збіглося з шаблоном — віддаємо ту саму
+   заглушку, що й раніше давали відсутні позиції ('??' і '0'), щоб
+   поведінка на кривих назвах не змінилась. Скільки таких було, рахуємо
+   окремо: мовчки залити пів-імпорту з гео «??» — найгірше, що тут може
+   статись, і про це треба сказати вголос. */
+let pwaMissed = 0;
+function parsePwaCampaign(campName) {
+  const r = apParseMask(pwaMask, String(campName || '').split('_'), '', '');
+  if (!r || !r.geo) { pwaMissed++; return { geo: '??', ktid: '0' }; }
+  return { geo: String(r.geo).toUpperCase().trim(), ktid: String(r.ktid || '0').trim() };
 }
 
 // Розбір назви APP-кампанії
@@ -1664,11 +1799,11 @@ function parseKeitaro(content) {
     const localDay = `${ld.getUTCFullYear()}-${String(ld.getUTCMonth() + 1).padStart(2, '0')}-${String(ld.getUTCDate()).padStart(2, '0')}`;
     days.add(localDay);
 
-    // geo та ktid дістаємо з назви кампанії так само, як це робить FB-парсер
+    // geo та ktid дістаємо з назви кампанії тим самим шаблоном, що й
+    // FB-парсер. Інакше ключ злиття date|acc|geo|ktid розійдеться, і
+    // депозити з Keitaro просто не приклеяться до витрат з Facebook.
     const campRaw = String(r[iCamp] || '');
-    const parts = campRaw.split('_');
-    const geo = (parts[1] || '??').toUpperCase().trim();
-    const ktid = (parts[2] || '0').trim();
+    const { geo, ktid } = parsePwaCampaign(campRaw);
     const cr = (r[iCr] || '').trim();
     const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
     const funnel = apFunnelClean(mappingDB.funnels[funRaw] || mappingDB.funnels[ktid]) || funRaw || '—';
@@ -1859,7 +1994,7 @@ function renderFxReport(used) {
 function renderAgentReport(noAgent, hidden) {
   const el = document.getElementById('agent-report');
   if (!el) return;
-  if (!noAgent.size && !hidden.size) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  if (!noAgent.size && !hidden.size && !pwaMissed) { el.classList.add('hidden'); el.innerHTML = ''; return; }
   const chips = arr => [...arr].slice(0, 20).map(a =>
       `<span class="inline-block px-1.5 py-0.5 rounded bg-black/30 font-mono text-[10px] ml-1">${a}</span>`).join('')
     + (arr.size > 20 ? `<span class="opacity-50"> …+${arr.size - 20} more</span>` : '');
@@ -1870,6 +2005,12 @@ function renderAgentReport(noAgent, hidden) {
   if (hidden.size) parts.push(`<div class="flex gap-2 items-start text-slate-400">
     <span>👁</span><div>The agent is hidden from the list, but its accounts are still running —
     the data was written correctly, just so you know:<br>${chips(hidden)}</div></div>`);
+  // Найдорожча мовчазна помилка тут — неправильний шаблон назви: дані
+  // заливаються, виглядають як справжні, і тільки гео скрізь «??».
+  if (pwaMissed) parts.push(`<div class="flex gap-2 items-start text-rose-300">
+    <span>&#9888;&#65039;</span><div><b>${pwaMissed}</b> campaign names did not match the PWA pattern
+    <span class="font-mono text-rose-200">${pwaMask}</span> — their geo was written as <b>??</b> and KTID as <b>0</b>.
+    Fix the pattern in <b>Settings &rarr; PWA</b> and import again.</div></div>`);
   el.innerHTML = parts.join('');
   el.classList.remove('hidden');
 }
@@ -2136,6 +2277,7 @@ async function processCampaignData(map, lines) {
   }
   const fxUsed = {};   // для звіту: скільки і за яким курсом перерахували
   const accNoAgent = new Set(), accHiddenAgent = new Set();
+  pwaMissed = 0;
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
@@ -2157,10 +2299,10 @@ async function processCampaignData(map, lines) {
       cid = a.cid || 'No CID';
       geo = toGeoCode(a.geo) || '??';
     } else {
-      // PWA: Mbank_KG_10708-4d07_30/07_L5
-      const parts = String(campName).split('_');
-      geo = (parts[1] || '??').toUpperCase().trim();
-      ktid = (parts[2] || '0').trim();
+      // PWA: Mbank_KG_10708-4d07_30/07_L5 — позиції задані шаблоном
+      const w = parsePwaCampaign(campName);
+      geo = w.geo;
+      ktid = w.ktid;
       accName = row[map.acc];
       cid = row[map.cid] || 'No CID';
     }
