@@ -66,13 +66,59 @@ async function probe(domain: string): Promise<Verdict> {
   return { status: 'down', status_code: null };
 }
 
-// Safe Browsing: до 500 записів за запит, тож ріжемо пачками.
-async function flagged(domains: string[], key: string): Promise<Set<string>> {
+/* ── Чи домен у чорному списку Google ──
+
+   Два різні продукти на тій самій базі:
+
+   Web Risk (webrisk.googleapis.com) — комерційний. Безкоштовний обсяг
+   плюс оплата за перевищення. Саме його вимагають умови Google для
+   використання «for sale or revenue-generating purposes», тобто для
+   нашого випадку.
+
+   Safe Browsing v4 (safebrowsing.googleapis.com) — безкоштовний, але
+   тільки для некомерційного використання. Лишаємо як запасний варіант,
+   бо код уже написаний і комусь підійде.
+
+   Якщо є обидва ключі — беремо Web Risk.
+
+   ВАЖЛИВО ПРО СХЕМУ. Раніше тут надсилались і http, і https «про всяк
+   випадок». Це було зайве: під час канонізації Google відкидає схему,
+   логін, пароль і порт — збіг шукається лише за хостом і шляхом. Тому
+   достатньо одного запису на домен. */
+
+const THREATS = ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE'];
+
+// Web Risk: один GET на домен. Пакетного варіанта в Lookup API немає,
+// тож женемо пулом, як і самі перевірки доменів.
+async function flaggedWebRisk(domains: string[], key: string): Promise<Set<string>> {
   const out = new Set<string>();
-  // 450 записів на запит — ліміт Google. Кожен домен дає два записи,
-  // тож доменів у пачці вдвічі менше.
-  for (let i = 0; i < domains.length; i += 240) {
-    const chunk = domains.slice(i, i + 240);
+  const qs = THREATS.map(t => 'threatTypes=' + t).join('&');
+  const queue = domains.slice();
+  const worker = async () => {
+    for (;;) {
+      const d = queue.shift();
+      if (!d) return;
+      try {
+        const url = 'https://webrisk.googleapis.com/v1/uris:search?' + qs
+          + '&uri=' + encodeURIComponent('http://' + d + '/')
+          + '&key=' + encodeURIComponent(key);
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const j = await res.json();
+        // Порожній обʼєкт у відповіді означає «збігів немає».
+        if (j && j.threat) out.add(d);
+      } catch (_e) { /* мітки — бонус, а не причина завалити перевірку */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(POOL, queue.length) }, worker));
+  return out;
+}
+
+// Safe Browsing v4: пакетно, до 500 записів за запит.
+async function flaggedSafeBrowsing(domains: string[], key: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < domains.length; i += 450) {
+    const chunk = domains.slice(i, i + 450);
     try {
       const res = await fetch(
         'https://safebrowsing.googleapis.com/v4/threatMatches:find?key=' + encodeURIComponent(key),
@@ -80,17 +126,10 @@ async function flagged(domains: string[], key: string): Promise<Set<string>> {
           body: JSON.stringify({
             client: { clientId: 'dashboard-buyer', clientVersion: '1.0' },
             threatInfo: {
-              threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'],
+              threatTypes: THREATS.concat('POTENTIALLY_HARMFUL_APPLICATION'),
               platformTypes: ['ANY_PLATFORM'],
               threatEntryTypes: ['URL'],
-              // І http, і https: Google зберігає загрозу за конкретним URL,
-              // і домен, позначений лише за однією схемою, за іншою може
-              // не знайтись. Зайвий запис коштує нічого, пропущена мітка —
-              // саме той випадок, заради якого все це й робиться.
-              threatEntries: chunk.flatMap(d => [
-                { url: 'http://' + d + '/' },
-                { url: 'https://' + d + '/' }
-              ])
+              threatEntries: chunk.map(d => ({ url: 'http://' + d + '/' }))
             }
           }) });
       if (!res.ok) continue;
@@ -100,7 +139,7 @@ async function flagged(domains: string[], key: string): Promise<Set<string>> {
         const host = u.replace(/^[a-z]+:\/\//, '').split('/')[0];
         if (host) out.add(host.replace(/^www\./, ''));
       });
-    } catch (_e) { /* мітки — приємний бонус, а не причина завалити перевірку */ }
+    } catch (_e) { /* те саме */ }
   }
   return out;
 }
@@ -157,8 +196,15 @@ Deno.serve(async (req) => {
   };
   await Promise.all(Array.from({ length: Math.min(POOL, queue.length) }, worker));
 
-  const key = Deno.env.get('SAFE_BROWSING_KEY') || '';
-  const bad = key ? await flagged(rows.map(r => r.domain), key) : new Set<string>();
+  // Web Risk має перевагу: він — комерційний варіант, і саме його
+  // вимагають умови Google, якщо перевірка обслуговує бізнес.
+  const wrKey = Deno.env.get('WEB_RISK_KEY') || '';
+  const sbKey = Deno.env.get('SAFE_BROWSING_KEY') || '';
+  const names = rows.map(r => r.domain);
+  const bad = wrKey ? await flaggedWebRisk(names, wrKey)
+            : sbKey ? await flaggedSafeBrowsing(names, sbKey)
+            : new Set<string>();
+  const source = wrKey ? 'web-risk' : sbKey ? 'safe-browsing' : 'none';
 
   const at = new Date().toISOString();
   const results = rows.map(r => {
@@ -178,7 +224,7 @@ Deno.serve(async (req) => {
     }).eq('id', r.id)));
 
   return new Response(JSON.stringify({
-    checked: results.length, more, safe_browsing: !!key,
+    checked: results.length, more, flags: source,
     // Звідки продовжувати наступним викликом.
     next: rows[rows.length - 1].id,
     results
