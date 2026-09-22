@@ -46,7 +46,7 @@ begin
     'daily_stats','creatives_stats','payouts','expenses',
     'tasks','daily_reports','team_settings','quick_links',
     'change_log','accounts_mapping','funnels_mapping',
-    'bonus_tiers','sync_logs','account_events','domains'
+    'settings','bonus_tiers','sync_logs','account_events','domains'
   ]
   loop
     if exists (select 1 from information_schema.tables
@@ -82,6 +82,7 @@ update public.quick_links      set created_by = 'ВАШ-UUID-СЮДИ' where cre
 update public.change_log       set created_by = 'ВАШ-UUID-СЮДИ' where created_by is null;
 update public.accounts_mapping set created_by = 'ВАШ-UUID-СЮДИ' where created_by is null;
 update public.funnels_mapping  set created_by = 'ВАШ-UUID-СЮДИ' where created_by is null;
+update public.settings         set created_by = 'ВАШ-UUID-СЮДИ' where created_by is null;
 update public.account_events   set created_by = 'ВАШ-UUID-СЮДИ' where created_by is null;
 update public.domains          set created_by = 'ВАШ-UUID-СЮДИ' where created_by is null;
 
@@ -111,6 +112,7 @@ union all select 'quick_links',      count(*) from public.quick_links      where
 union all select 'change_log',       count(*) from public.change_log       where created_by is null
 union all select 'accounts_mapping', count(*) from public.accounts_mapping where created_by is null
 union all select 'funnels_mapping',  count(*) from public.funnels_mapping  where created_by is null
+union all select 'settings',         count(*) from public.settings         where created_by is null
 union all select 'account_events',   count(*) from public.account_events   where created_by is null
 union all select 'domains',          count(*) from public.domains          where created_by is null;
 
@@ -130,7 +132,7 @@ begin
     'daily_stats','creatives_stats','payouts','expenses',
     'tasks','daily_reports','team_settings','quick_links',
     'change_log','accounts_mapping','funnels_mapping',
-    'bonus_tiers','sync_logs','account_events','domains'
+    'settings','bonus_tiers','sync_logs','account_events','domains'
   ]
   loop
     if exists (select 1 from information_schema.tables
@@ -160,7 +162,7 @@ begin
     'daily_stats','creatives_stats','payouts','expenses',
     'tasks','daily_reports','team_settings',
     'change_log','accounts_mapping','funnels_mapping',
-    'bonus_tiers','sync_logs','account_events','domains'
+    'settings','bonus_tiers','sync_logs','account_events','domains'
   ]
   loop
     if exists (select 1 from information_schema.tables
@@ -250,7 +252,7 @@ create policy "own_delete" on public.quick_links for delete to authenticated
 --      'daily_stats','creatives_stats','payouts','expenses',
 --      'tasks','daily_reports','team_settings','quick_links',
 --      'change_log','accounts_mapping','funnels_mapping',
---      'bonus_tiers','sync_logs','account_events','domains'
+--      'settings','bonus_tiers','sync_logs','account_events','domains'
 --    ]
 --    loop
 --      if exists (select 1 from information_schema.tables
