@@ -20,6 +20,9 @@ create table if not exists public.domains (
   team_name   text not null,
   domain      text not null,
   pwa         text,                       -- до якої PWA належить
+  geo         text,                       -- виводиться із заголовка списку
+  ktid        text,                       -- він же — звʼязок із воронкою
+  campaign    text,                       -- рядок-заголовок цілком, як вставили
   note        text,
   status      text not null default 'unknown',
   -- unknown  — ще не перевіряли
@@ -45,6 +48,16 @@ create index if not exists domains_team_pwa_idx
 
 create index if not exists domains_created_by_idx
   on public.domains (created_by);
+
+-- Якщо таблиця вже створена без цих колонок — доганяємо.
+alter table public.domains add column if not exists geo      text;
+alter table public.domains add column if not exists ktid     text;
+alter table public.domains add column if not exists campaign text;
+
+-- ktid — це те саме, що в daily_stats: через нього домен зв'язується з
+-- воронкою, а отже зі спендом. Звідси й береться сигнал «домен затих».
+create index if not exists domains_team_ktid_idx
+  on public.domains (team_name, ktid);
 
 
 -- ── Якщо вмикаєте SECURITY_BUYERS.sql ──
