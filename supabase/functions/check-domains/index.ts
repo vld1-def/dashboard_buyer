@@ -69,8 +69,10 @@ async function probe(domain: string): Promise<Verdict> {
 // Safe Browsing: до 500 записів за запит, тож ріжемо пачками.
 async function flagged(domains: string[], key: string): Promise<Set<string>> {
   const out = new Set<string>();
-  for (let i = 0; i < domains.length; i += 450) {
-    const chunk = domains.slice(i, i + 450);
+  // 450 записів на запит — ліміт Google. Кожен домен дає два записи,
+  // тож доменів у пачці вдвічі менше.
+  for (let i = 0; i < domains.length; i += 240) {
+    const chunk = domains.slice(i, i + 240);
     try {
       const res = await fetch(
         'https://safebrowsing.googleapis.com/v4/threatMatches:find?key=' + encodeURIComponent(key),
@@ -81,7 +83,14 @@ async function flagged(domains: string[], key: string): Promise<Set<string>> {
               threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'],
               platformTypes: ['ANY_PLATFORM'],
               threatEntryTypes: ['URL'],
-              threatEntries: chunk.map(d => ({ url: 'http://' + d + '/' }))
+              // І http, і https: Google зберігає загрозу за конкретним URL,
+              // і домен, позначений лише за однією схемою, за іншою може
+              // не знайтись. Зайвий запис коштує нічого, пропущена мітка —
+              // саме той випадок, заради якого все це й робиться.
+              threatEntries: chunk.flatMap(d => [
+                { url: 'http://' + d + '/' },
+                { url: 'https://' + d + '/' }
+              ])
             }
           }) });
       if (!res.ok) continue;

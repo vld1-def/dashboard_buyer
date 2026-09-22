@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 10:59">
+  <meta name="build" content="build 22.09 11:44">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2478,6 +2478,19 @@ body[data-route="cabinets"] #cab-detail {
    свого найдовшого абзацу, накриваючи собою таблицю. Структурний розмір
    не повинен залежати від того, чи встиг хтось перегенерувати CSS. */
 #cab-detail, #dm-detail { flex: 0 0 330px; width: 330px; }
+
+/* Екран першого запуску. Позиція й z-index — ТУТ, а не класами z-[998]
+   у розмітці: довільні значення Tailwind існують лише якщо їх знайшов
+   збирач, і варто класу не потрапити в збірку, як «накладка» тихо
+   лягає під вміст сторінки. Видно її при цьому лишається, тож у коді
+   все ніби працює. Один раз на цьому вже обпеклись із шириною панелі. */
+#team-first-run {
+  position: fixed; inset: 0; z-index: 998;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: var(--bg);
+}
+#team-first-run.hidden { display: none; }
+#team-first-run > .card { width: 100%; max-width: 380px; }
 @media (max-width: 1100px) {
   #cab-detail, #dm-detail { flex: 0 0 280px; width: 280px; }
 }
@@ -2845,9 +2858,27 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 10:59</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 11:44</div>
     </div>
   </aside>
+
+  <!-- Перший запуск: у нового баєра ще немає жодного рядка, тож і назви
+       команди взятись нізвідки. Питаємо один раз, до завантаження даних. -->
+  <div id="team-first-run" class="hidden">
+    <div class="card p-7 rounded-3xl">
+      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic mb-1">Name your workspace</h2>
+      <p class="text-[11px] font-bold mb-4 leading-relaxed" style="color:var(--text-muted)">
+        Everything you add — campaigns, payouts, cabinets — is filed under this name.
+        Only you see your own data; the name is just how it is labelled. You can change it later.</p>
+      <input id="team-first-input" placeholder="e.g. your nickname or team"
+        class="w-full bg-black/25 border border-white/10 rounded-xl px-3 py-2.5 text-[13px] font-bold text-dynamic outline-none focus:border-violet-500"
+        autocomplete="off" spellcheck="false">
+      <p id="team-first-err" class="hidden text-[10px] font-bold text-rose-400 mt-1.5">At least 3 characters.</p>
+      <button onclick="teamFirstSave()"
+        class="w-full mt-4 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest bg-violet-600 text-white hover:brightness-110 transition">
+        Continue</button>
+    </div>
+  </div>
 
   <!-- ════════════ MAIN ════════════ -->
   <div class="app-main">
@@ -3995,7 +4026,7 @@ body[data-route="domains"] #dm-detail {
   let creativeFiles = {}, globalPayouts = {};
   let pendingReportImages = []; // { file, tag, localUrl }
   
-  let currentTeam = localStorage.getItem('selected_team') || "Makeberry";
+  let currentTeam = localStorage.getItem('selected_team') || '';
   let currentMonthFilter = localStorage.getItem('selected_dashboard_month') || "";
   let currentTaskFilter = 'Not in progress', currentChartMode = 'daily', currentCreativeID = '';
 
@@ -4048,6 +4079,13 @@ window.onload = async () => {
   const authed = await checkSiteAuth();
   if (!authed) return;
 
+  // У нового користувача ще немає жодного рядка, а отже й назви команди.
+  // Питаємо один раз, до першого запиту за даними.
+  if (typeof teamFirstRun === 'function') {
+    const picked = await teamFirstRun();
+    if (picked) currentTeam = picked;
+  }
+
   try {
     // 1. Спочатку завантажуємо базові налаштування (таргет, видимість)
     loadSettings();
@@ -4093,8 +4131,9 @@ async function refreshTeamsList() {
     // Отримуємо унікальні імена команд із таблиці daily_stats
     const { data, error } = await sb.from('daily_stats').select('team_name');
     
-    // Завжди маємо дефолтну команду, якщо база порожня
-    let teams = ["Makeberry"]; 
+    // Список будується з власних даних. Якщо їх ще немає, показуємо
+    // рівно те, що людина щойно назвала, — і нічого чужого.
+    let teams = currentTeam ? [currentTeam] : [];
     
     if (data && data.length > 0) {
       const uniqueTeams = [...new Set(data.map(item => item.team_name))];
@@ -14424,6 +14463,54 @@ window.dmDeepCheck = dmDeepCheck;
   const DASH_BLOCKS = ['milestone-container', 'kpi-row', 'charts-row', 'insights-row'];
 
   window.toggleSidebar = () => document.body.classList.toggle('sb-open');
+
+  /* ═══════════ ПЕРШИЙ ЗАПУСК ═══════════
+     Раніше дашборд мовчки підставляв «Makeberry» усім, у кого в браузері
+     ще нічого не вибрано. Поки баєр був один — не заважало. Тепер кожен
+     новий користувач потрапляв би в чужу назву команди: даних він не
+     побачить (їх фільтрує RLS по автору), але писав би свої рядки під
+     чужим ярликом.
+
+     Тому: якщо вибору немає — дивимось, чи є в людини власні дані, і
+     лише коли їх зовсім немає, питаємо назву. Наявних користувачів це
+     не чіпає: у них selected_team уже лежить у localStorage. */
+  window.teamFirstRun = function () {
+    return new Promise(async resolve => {
+      let saved = '';
+      try { saved = localStorage.getItem('selected_team') || ''; } catch (e) {}
+      if (saved) return resolve(saved);
+
+      // Після RLS цей запит бачить лише власні рядки — тобто якщо щось
+      // повернулось, назва команди в людини вже є, питати нема про що.
+      try {
+        const { data } = await sb.from('daily_stats').select('team_name').limit(1);
+        const found = data && data[0] && String(data[0].team_name || '').trim();
+        if (found) {
+          try { localStorage.setItem('selected_team', found); } catch (e) {}
+          return resolve(found);
+        }
+      } catch (e) { /* немає звʼязку — краще спитати, ніж підставити чуже */ }
+
+      const box = document.getElementById('team-first-run');
+      if (!box) return resolve('');
+      box.classList.remove('hidden');
+      setTimeout(() => document.getElementById('team-first-input')?.focus(), 80);
+      document.getElementById('team-first-input')?.addEventListener('keydown', e => {
+        if (e.key === 'Enter') teamFirstSave();
+      });
+      window._teamFirstResolve = resolve;
+    });
+  };
+
+  window.teamFirstSave = function () {
+    const el = document.getElementById('team-first-input');
+    const err = document.getElementById('team-first-err');
+    const v = (el?.value || '').trim();
+    if (v.length < 3) { err?.classList.remove('hidden'); el?.focus(); return; }
+    try { localStorage.setItem('selected_team', v); } catch (e) {}
+    document.getElementById('team-first-run')?.classList.add('hidden');
+    if (window._teamFirstResolve) window._teamFirstResolve(v);
+  };
 
   /* ─────────── Компактний сайдбар ───────────
      Підписи в компактному режимі ховає CSS (font-size: 0), тож саму назву
