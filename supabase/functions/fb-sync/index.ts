@@ -267,11 +267,17 @@ function urlsFor(actId: string): string[] {
      effective_status — саме ефективний: оголошення в зупиненому адсеті
      має ADSET_PAUSED, а не ACTIVE. Тобто ACTIVE тут означає «нічим
      зверху не заглушене й не на паузі саме». */
-  const bulk = (edge: string) => act + '/' + edge
-    + '?fields=effective_status&limit=' + LIST_LIMIT + '&summary=total_count';
+  const bulk = (edge: string, extra: string) => act + '/' + edge
+    + '?fields=' + encodeURIComponent('effective_status' + (extra ? ',' + extra : ''))
+    + '&limit=' + LIST_LIMIT + '&summary=total_count';
   return [
     act + '?fields=' + encodeURIComponent(INNER),
-    bulk('campaigns'), bulk('adsets'), bulk('ads')
+    // Бюджети беремо там само, де статуси: окремий запит заради одного
+    // числа коштував би стільки ж, скільки весь список.
+    bulk('campaigns', 'daily_budget,lifetime_budget'),
+    bulk('adsets', 'daily_budget,lifetime_budget'),
+    // campaign_id й adset_id — заради підрахунку ЖИВОГО (див. нижче).
+    bulk('ads', 'campaign_id,adset_id')
   ];
 }
 
@@ -298,6 +304,34 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     err = 'Facebook did not answer in time';
   }
 
+  /* ЩО ТАКЕ «ЖИВА» КАМПАНІЯ
+
+     Кампанія може мати effective_status ACTIVE і не показувати нічого:
+     усі її оголошення відхилені або чекають перевірки. Формально ввімкнена,
+     фактично мертва. Рахувати такі активними — саме та брехня, через яку
+     «10 активних із 60» не сходилось із тим, що видно в Ads Manager.
+
+     Тому спершу збираємо кампанії й адсети, у яких є хоч ОДНЕ активне
+     оголошення, і далі вважаємо живими лише їх. Для цього в оголошень і
+     просимо campaign_id з adset_id — більше ні для чого вони тут не
+     потрібні. */
+  const adsPart = parts[3];
+  const liveCampaigns = new Set<string>();
+  const liveAdsets = new Set<string>();
+  if (adsPart && adsPart.code === 200) {
+    (Array.isArray(adsPart.body?.data) ? adsPart.body.data : []).forEach((r: Json) => {
+      if (String(r.effective_status) !== 'ACTIVE') return;
+      if (r.campaign_id) liveCampaigns.add(String(r.campaign_id));
+      if (r.adset_id) liveAdsets.add(String(r.adset_id));
+    });
+  }
+  const liveIds: Record<string, Set<string> | null> =
+    { campaigns: liveCampaigns, adsets: liveAdsets, ads: null };
+
+  // Скільки грошей на день дозволено тому, що справді крутиться.
+  let dailyBudget = 0;
+  let sawBudget = false;
+
   ['campaigns', 'adsets', 'ads'].forEach((edge, i) => {
     const p = parts[i + 1];
     if (!p) { if (!err) err = 'Facebook did not answer in time'; return; }
@@ -307,10 +341,32 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     }
     const rows: Json[] = Array.isArray(p.body?.data) ? p.body.data : [];
     const by: Record<string, number> = {};
+    const live = liveIds[edge];
+    let liveHere = 0;
     rows.forEach(r => {
       const k = String(r.effective_status || 'UNKNOWN');
       by[k] = (by[k] || 0) + 1;
+      if (k !== 'ACTIVE') return;
+      // Для оголошень ACTIVE і є «живе»: нижче за них нікого немає.
+      if (live && !live.has(String(r.id))) return;
+      liveHere++;
+      /* Денний бюджет беремо лише з кампаній: у Facebook він стоїть або
+         на кампанії (CBO), або на адсетах — сумувати обидва рівні
+         означало б порахувати ті самі гроші двічі. */
+      if (edge === 'campaigns' && r.daily_budget != null) {
+        dailyBudget += Number(r.daily_budget) || 0;
+        sawBudget = true;
+      }
     });
+    /* Кампанії без свого бюджету — бюджет на адсетах. Додаємо їх, тільки
+       якщо на кампаніях не було нічого: інакше подвоїли б. */
+    if (edge === 'adsets' && !sawBudget) {
+      rows.forEach(r => {
+        if (String(r.effective_status) !== 'ACTIVE') return;
+        if (!liveAdsets.has(String(r.id))) return;
+        if (r.daily_budget != null) dailyBudget += Number(r.daily_budget) || 0;
+      });
+    }
     /* Кабінет із тисячами оголошень в одну сторінку не влазить. Тоді
        розбивка стосується лише того, що приїхало, і мовчати про це
        не можна: інакше сума в підказці не зійдеться з підсумком, і
@@ -319,7 +375,12 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     const over = all != null && rows.length < all;
     if (over) by._more = all - rows.length;
 
-    patch[edge + '_active'] = by.ACTIVE || 0;
+    /* Два різні числа, і плутати їх не можна:
+         _on   — скільки ввімкнено (effective_status ACTIVE)
+         _active — скільки з них СПРАВДІ крутить, тобто має живе оголошення
+       На екрані показуємо друге, перше лишається в підказці. */
+    patch[edge + '_on'] = by.ACTIVE || 0;
+    patch[edge + '_active'] = live ? liveHere : (by.ACTIVE || 0);
 
     /* Знаменник — із ЦІЄЇ Ж відповіді, а не з іншого запиту. Архівоване
        й видалене з нього прибираємо: це історія, а не те, що могло б
@@ -333,6 +394,9 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
       : rows.length - (by.ARCHIVED || 0) - (by.DELETED || 0);
     patch[edge + '_by_status'] = by;
   });
+
+  // Бюджети Facebook віддає в мінімальних одиницях валюти, як і решту грошей.
+  if (adsPart && adsPart.code === 200) patch.daily_budget = dailyBudget ? dailyBudget / 100 : 0;
 
   return { patch, err };
 }
@@ -399,8 +463,12 @@ type TokenRow = { id: number; label: string; token: string;
 type Outcome = { accounts: number; failed: number; changed: number;
                  error: string; throttled: boolean };
 
+/* Привід написати людині. owner — хто саме має це прочитати: кабінети
+   належать конкретним баєрам, і сповіщення ходять так само. */
+type Alert = { owner: string; name: string; kind: 'bad' | 'good'; text: string };
+
 async function syncToken(base: string, hdr: Json, t: TokenRow,
-                         deadline: number): Promise<Outcome> {
+                         deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false };
 
   let accs: Json[];
@@ -419,6 +487,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
 
   out.accounts = accs.length;
   if (!accs.length) {
+    // Токен більше не бачить нічого. Рядки не видаляємо — позначаємо.
+    await markMissing(base, hdr, t.id, []);
     await markToken(base, hdr, t.id, 'no-accounts',
       'No ad account is visible — check Add Assets on the system user');
     return out;
@@ -426,11 +496,15 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
 
   // Що ми знали про ці кабінети до цього прогону — щоб помітити зміну
   // стану. Одним запитом на токен, а не по рядку.
-  const known = new Map<string, string>();
+  const known = new Map<string, { status: string; rejected: number }>();
   try {
     const prev = await pgGet(base, hdr,
-      'fb_accounts?select=account_id,status&created_by=eq.' + encodeURIComponent(t.created_by));
-    prev.forEach((r: Json) => known.set(String(r.account_id), String(r.status || '')));
+      'fb_accounts?select=account_id,status,ads_by_status&created_by='
+      + encodeURIComponent(t.created_by));
+    prev.forEach((r: Json) => known.set(String(r.account_id), {
+      status: String(r.status || ''),
+      rejected: Number(r.ads_by_status?.DISAPPROVED) || 0
+    }));
   } catch (_e) { /* перший прогін: знати нічого */ }
 
   const now = new Date().toISOString();
@@ -455,6 +529,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
         card: fsd.display_string || null, card_type: fsd.type || null,
         amount_spent: cents(a.amount_spent), spend_cap: cents(a.spend_cap),
         balance: cents(a.balance),
+        // Побачили — значить не зник. Знімаємо позначку, якщо вона була.
+        missing_since: null,
         sync_error: null, synced_at: now
       } as Json
     };
@@ -489,17 +565,76 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
 
   rows.forEach(r => {
     const was = known.get(String(r.account_id));
-    if (was !== undefined && was !== r.status) {
+    if (!was) return;   // перший раз бачимо — порівнювати нема з чим
+    const name = String(r.name || r.account_id);
+
+    if (was.status !== r.status) {
       out.changed++;
-      changes.push({ account_id: String(r.account_id), from: was, to: String(r.status),
+      changes.push({ account_id: String(r.account_id), from: was.status, to: String(r.status),
                      note: [r.name, r.disable_reason].filter(Boolean).join(' · ') });
+      /* Повернення до active — теж новина, і хороша. Мовчати про неї
+         означало б, що з бота приходять лише погані звістки, а такого
+         бота вимикають. */
+      const worse = r.status !== 'active';
+      alerts.push({ owner: t.created_by, name,
+        kind: worse ? 'bad' : 'good',
+        text: worse
+          ? name + ' — ' + String(r.status)
+            + (r.disable_reason ? ' (' + r.disable_reason + ')' : '')
+          : name + ' — back to active' });
+    }
+
+    /* Нові відхилення. Саме НОВІ: писати щогодини «у тебе 120
+       відхилених» — найкоротший шлях до того, щоб сповіщення перестали
+       читати. Цікаво, коли число зросло. */
+    const nowRej = Number((r.ads_by_status as Json)?.DISAPPROVED) || 0;
+    /* У вимкненому кабінеті не крутиться нічого, і відхилення там —
+       не новина, а наслідок. Писати про них поверх «кабінет забанено»
+       означало б два повідомлення про одну біду. */
+    if (r.status === 'active' && nowRej > was.rejected) {
+      alerts.push({ owner: t.created_by, name, kind: 'bad',
+        text: name + ' — +' + (nowRej - was.rejected)
+            + ' rejected ad(s), ' + nowRej + ' in total' });
     }
   });
 
   await pgUpsert(base, hdr, 'fb_accounts', 'created_by,account_id', rows);
+  await markMissing(base, hdr, t.id, accs.map(a => String(a.account_id || '')));
   await noteChanges(base, hdr, t.team_name || '', changes);
   await markToken(base, hdr, t.id, 'ok', `Sees ${accs.length} ad account(s)`);
   return out;
+}
+
+/* ── кабінет, який зник ──
+
+   Токен перестав бачити кабінет: його забрали в БМ, відкликали доступ,
+   закрили. Рядок при цьому НЕ видаляємо, і це свідомо.
+
+   Видалити означало б втратити все, що ти до нього дописав — агента,
+   профіль, логін, нотатку, — і зробити це мовчки. А ще список просто
+   зменшився б, і зрозуміти, котрого кабінета не стало, було б нізвідки:
+   зникле не лишає сліду.
+
+   Тому ставимо дату, коли перестали бачити. Дані лишаються останніми
+   відомими, на сторінці такий рядок підписаний, і рішення видаляти —
+   твоє, а не автоматики.
+
+   Позначаємо ТІЛЬКИ після успішного перелічення. Якщо Facebook відмовив
+   або ми вперлись у ліміт, ми не знаємо, що зникло, а що просто не
+   приїхало, — і мовчазно позначити весь парк було б найгіршим, що ця
+   функція може зробити. */
+async function markMissing(base: string, hdr: Json, tokenId: number,
+                           seen: string[]): Promise<void> {
+  try {
+    let q = 'fb_accounts?token_id=eq.' + tokenId + '&missing_since=is.null';
+    // Номери кабінетів — цифри, тож лапки й екранування тут ні до чого.
+    const ids = seen.filter(x => /^\d+$/.test(x));
+    if (ids.length) q += '&account_id=not.in.(' + ids.join(',') + ')';
+    await fetch(base + '/rest/v1/' + q, {
+      method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
+      body: JSON.stringify({ missing_since: new Date().toISOString() })
+    });
+  } catch (_e) { /* позначка — не привід завалити імпорт */ }
 }
 
 /* Стан самого токена тримаємо свіжим: саме сюди дивляться, коли імпорт
@@ -512,6 +647,100 @@ async function markToken(base: string, hdr: Json, id: number,
       body: JSON.stringify({ status, status_note: note, checked_at: new Date().toISOString() })
     });
   } catch (_e) { /* не привід валити імпорт */ }
+}
+
+/* ═══════════ TELEGRAM ═══════════
+
+   Пишемо, ТІЛЬКИ коли є що сказати. Щогодинне «все гаразд» перестають
+   читати на третій день, а разом з ним перестають помічати те єдине
+   повідомлення, заради якого все й робилось.
+
+   Через це сповіщення йдуть лише про ЗМІНИ: кабінет змінив стан або
+   відхилених оголошень стало більше, ніж було. «У тебе 120
+   відхилених» щогодини — найкоротший шлях до вимкненого бота.
+
+   Кожному своє: кабінети належать конкретним баєрам (created_by
+   токена), і адресати беруться з tg_links. Хто себе не прив'язав —
+   того просто немає в розсилці, це вибір людини, а не помилка.
+
+   Токен бота живе в секретах функції. У дашборді йому не місце: це
+   статичний сайт, який відкриває вся команда. */
+
+const TG_MAX = 20;     // скільки кабінетів перелічуємо поіменно
+const TG_LIMIT = 3900; // межа Telegram — 4096, лишаємо запас
+
+function tgText(list: Alert[]): string {
+  const bad = list.filter(a => a.kind === 'bad');
+  const head = (bad.length ? 'Кабінети: ' + bad.length + ' потребують уваги'
+                           : 'Кабінети: є зміни') + '\n\n';
+  const mark = (a: Alert) => (a.kind === 'bad' ? '\u26a0 ' : '\u2705 ') + a.text;
+  // Спершу погане: саме через нього відкривають повідомлення.
+  const sorted = bad.concat(list.filter(a => a.kind !== 'bad'));
+  const lines = sorted.slice(0, TG_MAX).map(mark);
+  const tail = () => {
+    const rest = sorted.length - lines.length;
+    return rest > 0 ? '\n\n\u2026і ще ' + rest + '. Решта — у дашборді, вкладка Cabinets.' : '';
+  };
+  while (lines.length > 1 && (head + lines.join('\n') + tail()).length > TG_LIMIT) lines.pop();
+  return head + lines.join('\n') + tail();
+}
+
+async function tgPost(token: string, chat: string, text: string): Promise<string> {
+  try {
+    const res = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      // Без parse_mode навмисно: назви кабінетів рясніють дужками й
+      // підкресленнями, а розмітка Telegram на них спотикається і
+      // відповідає 400. Текст і так читається.
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
+    });
+    if (res.ok) return 'sent';
+    let why = 'HTTP ' + res.status;
+    try { why = (await res.json()).description || why; } catch (_e) { /* хай буде код */ }
+    return 'failed: ' + why;
+  } catch (e) {
+    return 'failed: ' + (e as Error).message;
+  }
+}
+
+async function tgSend(base: string, hdr: Json, alerts: Alert[]): Promise<string> {
+  if (!alerts.length) return 'nothing to report';
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!token) return 'not configured';
+
+  const out: string[] = [];
+  // Спільний чат бачить усе — на те він і спільний. Немає — не біда.
+  const shared = Deno.env.get('TG_CHAT_ID') || '';
+  if (shared) out.push('shared:' + await tgPost(token, shared, tgText(alerts)));
+
+  const byOwner = new Map<string, Alert[]>();
+  alerts.forEach(a => {
+    if (!a.owner) return;
+    const list = byOwner.get(a.owner);
+    if (list) list.push(a); else byOwner.set(a.owner, [a]);
+  });
+  if (!byOwner.size) return out.join(' | ') || 'nobody to notify';
+
+  let links: { user_id: string; chat_id: string }[] = [];
+  try {
+    const res = await fetch(base + '/rest/v1/tg_links?select=user_id,chat_id&chat_id=not.is.null',
+      { headers: hdr });
+    if (res.ok) links = await res.json();
+  } catch (_e) { /* таблиці може не бути — тоді нікому писати */ }
+
+  const chats = new Map(links.map(l => [l.user_id, l.chat_id]));
+  let sent = 0, unlinked = 0;
+  const fails: string[] = [];
+  for (const [owner, list] of byOwner) {
+    const chat = chats.get(owner);
+    if (!chat) { unlinked++; continue; }
+    const r = await tgPost(token, chat, tgText(list));
+    if (r === 'sent') sent++; else fails.push(r);
+  }
+  out.push('buyers: ' + sent + ' sent'
+    + (unlinked ? ', ' + unlinked + ' not linked' : '')
+    + (fails.length ? ', ' + fails.length + ' failed (' + fails[0] + ')' : ''));
+  return out.join(' | ');
 }
 
 /* ── вхід ── */
@@ -579,6 +808,7 @@ async function handle(req: Request): Promise<Response> {
     note: 'no tokens to sync' });
 
   const deadline = Date.now() + DEADLINE_MS;
+  const alerts: Alert[] = [];
   let accounts = 0, failed = 0, changed = 0, done = 0;
   const problems: string[] = [];
   let throttled = false;
@@ -587,7 +817,7 @@ async function handle(req: Request): Promise<Response> {
     if (Date.now() > deadline) break;
     let r: Outcome;
     try {
-      r = await syncToken(base, hdr, t, deadline);
+      r = await syncToken(base, hdr, t, deadline, alerts);
     } catch (e) {
       // Один поганий токен не мусить зупиняти решту: у людини їх
       // десяток, і зупинятись на першому — найгірше з можливого.
@@ -605,9 +835,12 @@ async function handle(req: Request): Promise<Response> {
     }
   }
 
+  const telegram = await tgSend(base, hdr, alerts);
+
   return reply({
     cron, tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
+    telegram,
     problems: problems.slice(0, 10)
   });
 }

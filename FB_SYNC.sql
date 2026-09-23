@@ -82,9 +82,14 @@ create table if not exists public.fb_accounts (
   clicks_today      bigint,
 
   -- ── скільки чого всередині ──
-  campaigns int, campaigns_active int,
-  adsets    int, adsets_active    int,
-  ads       int, ads_active       int,
+  -- Три різні числа, і плутати їх не можна:
+  --   campaigns        — скільки їх узагалі (без архіву)
+  --   campaigns_on     — скільки ВВІМКНЕНО (effective_status ACTIVE)
+  --   campaigns_active — скільки СПРАВДІ крутить, тобто має живе оголошення
+  -- Кампанія буває ввімкнена й мертва: усі її оголошення відхилені.
+  campaigns int, campaigns_on int, campaigns_active int,
+  adsets    int, adsets_on    int, adsets_active    int,
+  ads       int, ads_on       int, ads_active       int,
 
   -- Розбивка по effective_status: {"ACTIVE":3,"DISAPPROVED":141,…}.
   -- Без неї «3 зі 180» — чесне, але мовчазне число: воно каже, що 177
@@ -98,8 +103,16 @@ create table if not exists public.fb_accounts (
   -- Якщо саме по цьому кабінету Graph відповів помилкою — вона тут, а
   -- решта полів лишаються з минулого разу. Один кабінет, який не
   -- відповів, не мусить стирати дані по всіх інших.
+  -- Денний бюджет того, що СПРАВДІ крутиться, у валюті кабінета.
+  daily_budget numeric,
+
   sync_error text,
   synced_at  timestamptz,
+
+  -- Коли токен перестав бачити цей кабінет. Рядок не видаляємо: у ньому
+  -- твої підписи, а зникле не лишає сліду — з порожнечі не зрозуміти,
+  -- котрого кабінета не стало.
+  missing_since timestamptz,
 
   created_at timestamptz not null default now(),
 
@@ -143,7 +156,13 @@ grant select on public.fb_accounts to authenticated;
 alter table public.fb_accounts
   add column if not exists campaigns_by_status jsonb,
   add column if not exists adsets_by_status    jsonb,
-  add column if not exists ads_by_status       jsonb;
+  add column if not exists ads_by_status       jsonb,
+  -- Скільки ввімкнено (на відміну від _active — скільки справді крутить)
+  add column if not exists campaigns_on  int,
+  add column if not exists adsets_on     int,
+  add column if not exists ads_on        int,
+  add column if not exists daily_budget  numeric,
+  add column if not exists missing_since timestamptz;
 
 
 -- ───────────────────────────────────────────────────────────
