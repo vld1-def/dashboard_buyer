@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 20:41">
+  <meta name="build" content="build 23.09 20:44">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3315,7 +3315,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:41</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:44</div>
     </div>
   </aside>
 
@@ -14542,6 +14542,14 @@ function fbrDownload(text, name) {
    кажемо про це вголос і не видаємо обрізане за повне. */
 const FBR_MAX_CALLS = 40;
 
+/* А це окрема стеля — на очікування, і рахується вона окремо саме
+   тому, що це інша біда. Сторінок може бути багато чесно; а от звіт,
+   який Facebook будує п'яту хвилину, він не добудує й на двадцятій.
+   Спільний лічильник дав би вічний цикл у браузері: кожне очікування
+   поверталось би до того самого місця, і кнопка крутилась би доти,
+   доки не закриють вкладку. */
+const FBR_MAX_WAIT = 150;   // ≈ 5 хвилин по 2 секунди
+
 window.fbrRun = async function (idEnc) {
   if (fbrBusy) return;
   const id = decodeURIComponent(idEnc);
@@ -14560,18 +14568,23 @@ window.fbrRun = async function (idEnc) {
 
     const rows = [];
     let after = '';
-    let calls = 0;
+    let pages = 0;
+    let waits = 0;
     let cut = false;
 
     for (;;) {
-      if (calls++ >= FBR_MAX_CALLS) { cut = true; break; }
+      if (pages >= FBR_MAX_CALLS) { cut = true; break; }
       const j = await fbrCall({ action: 'fetch', account_id: id, run_id: run, after });
       if (!j.ready) {
+        if (++waits > FBR_MAX_WAIT) throw new Error(
+          'Facebook is still building this report after '
+          + Math.round(FBR_MAX_WAIT * 2 / 60) + ' minutes. Take a shorter period '
+          + 'or a simpler breakdown — it usually goes through then.');
         fbrSay('Facebook is building it… ' + (Number(j.percent) || 0) + '%');
         await new Promise(r => setTimeout(r, 2000));
-        calls--;   // очікування не витрачає ліміт сторінок
         continue;
       }
+      pages++;
       rows.push(...(j.rows || []));
       fbrSay('Got ' + rows.length + ' row(s)…');
       after = j.after || '';
