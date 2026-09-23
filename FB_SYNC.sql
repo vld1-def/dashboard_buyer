@@ -38,7 +38,8 @@ create table if not exists public.fb_accounts (
   amount_spent numeric,        -- за весь час
   spend_cap    numeric,        -- 0 = ліміту немає
   balance      numeric,
-  daily_budget numeric,        -- денний бюджет того, що справді крутить
+  daily_budget numeric,        -- сума денних бюджетів того, що крутить
+  daily_limit  numeric,        -- денний ліміт САМОГО кабінета, якщо Graph його віддає
 
   -- Сьогодні — у часовому поясі кабінета, не вашому.
   spend_today       numeric,
@@ -109,6 +110,7 @@ alter table public.fb_accounts
   add column if not exists adsets_on     int,
   add column if not exists ads_on        int,
   add column if not exists daily_budget  numeric,
+  add column if not exists daily_limit   numeric,
   add column if not exists missing_since timestamptz;
 
 

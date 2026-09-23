@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 18:56">
+  <meta name="build" content="build 23.09 19:29">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3252,7 +3252,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 18:56</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 19:29</div>
     </div>
   </aside>
 
@@ -14392,7 +14392,7 @@ const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_t
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
   + 'amount_spent,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
-  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
+  + 'campaigns_on,adsets_on,ads_on,daily_budget,daily_limit,missing_since';
 
 // Немає таблиці зовсім — не те саме, що немає кількох колонок.
 const CAB_NO_TABLE = /relation .* does not exist|42P01/i;
@@ -14934,9 +14934,15 @@ function cabDetail(c) {
         ${cell('Ads', pair(c.fb.ads_active, c.fb.ads),
                cabByStatus(c.fb.ads_by_status))}
         ${cell('Card', esc(c.fb.card || '—'))}
-        ${cell('Daily budget', c.fb.daily_budget != null
+        ${cell('Daily limit', c.fb.daily_limit != null
+            ? cabMoneyCur(c.fb.daily_limit, c.fb.currency) : '—',
+            'The cap Facebook puts on this ad account per day. A dash means Facebook '
+          + 'did not give us this field — see daily_limit_field in the sync result.')}
+        ${cell('Budgets/day', c.fb.daily_budget != null
             ? cabMoneyCur(c.fb.daily_budget, c.fb.currency) : '—',
-            'What the campaigns that are actually delivering are allowed to spend per day')}
+            'Not a limit: the daily budgets of the campaigns that are actually delivering, '
+          + 'added up. Zero means nothing live has a daily budget — lifetime budgets, or '
+          + 'nothing is delivering at all.')}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}

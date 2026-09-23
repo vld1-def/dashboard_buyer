@@ -51,8 +51,8 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 
 // Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 4 запити
 // на кабінет виходить 12 кабінетів за виклик.
-const PER_ACC = 4;
-const BATCH_MAX = 48;
+const PER_ACC = 5;
+const BATCH_MAX = 50;   // 10 кабінетів за виклик
 
 // Edge Function не працює вічно. Упершись у дедлайн, чесно віддаємо
 // «є ще» замість того, щоб обірватись, нічого не записавши.
@@ -277,7 +277,19 @@ function urlsFor(actId: string): string[] {
     bulk('campaigns', 'daily_budget,lifetime_budget'),
     bulk('adsets', 'daily_budget,lifetime_budget'),
     // campaign_id й adset_id — заради підрахунку ЖИВОГО (див. нижче).
-    bulk('ads', 'campaign_id,adset_id')
+    bulk('ads', 'campaign_id,adset_id'),
+    /* Денний ліміт САМОГО кабінета — окремим підзапитом навмисно.
+
+       Це не сума бюджетів кампаній, а стеля, яку Facebook ставить на
+       кабінет («your account has a daily spending limit of $X»). Різні
+       речі, і плутати їх не можна.
+
+       Чому окремо: я не певен, що Graph віддає це поле — у документації
+       на AdAccount його немає серед очевидних. Якщо не віддає, впаде
+       рівно цей підзапит, а не весь пакет, і ми дізнаємось точний текст
+       відмови замість того, щоб гадати. Ціна питання — один запит на
+       кабінет. */
+    act + '?fields=' + encodeURIComponent('daily_spend_limit')
   ];
 }
 
@@ -287,9 +299,11 @@ const total = (o: Json | null | undefined): number | null =>
 /* Одна відповідь пакета → одне поле. Помилку саме по цьому кабінету
    повертаємо окремо: решта полів має лишитись з минулого разу, а не
    обнулитись через те, що Facebook не віддав інсайти. */
-function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
+function readParts(parts: (Json | null)[]): { patch: Json; err: string; limitNote: string } {
   const patch: Json = {};
   let err = '';
+  // Що Graph сказав про daily_spend_limit. Порожньо = поле є й приїхало.
+  let limitNote = '';
 
   const p0 = parts[0];
   if (p0 && p0.code === 200) {
@@ -398,7 +412,18 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
   // Бюджети Facebook віддає в мінімальних одиницях валюти, як і решту грошей.
   if (adsPart && adsPart.code === 200) patch.daily_budget = dailyBudget ? dailyBudget / 100 : 0;
 
-  return { patch, err };
+  /* Денний ліміт кабінета. Якщо поля немає — не вигадуємо число, а
+     запамʼятовуємо, що саме відповів Graph: інакше «—» на екрані
+     однаково означало б і «ліміту немає», і «ми не вміємо його
+     дізнатись». */
+  const limPart = parts[4];
+  if (limPart && limPart.code === 200) {
+    patch.daily_limit = cents(limPart.body?.daily_spend_limit);
+  } else if (limPart) {
+    limitNote = String(limPart.body?.error?.message || 'HTTP ' + limPart.code);
+  }
+
+  return { patch, err, limitNote };
 }
 
 /* ── PostgREST ──
@@ -461,7 +486,7 @@ type TokenRow = { id: number; label: string; token: string;
                   created_by: string; team_name: string | null };
 
 type Outcome = { accounts: number; failed: number; changed: number;
-                 error: string; throttled: boolean };
+                 error: string; throttled: boolean; limitNote: string };
 
 /* Привід написати людині. owner — хто саме має це прочитати: кабінети
    належать конкретним баєрам, і сповіщення ходять так само. */
@@ -469,7 +494,8 @@ type Alert = { owner: string; name: string; kind: 'bad' | 'good'; text: string }
 
 async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
-  const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false };
+  const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
+                        limitNote: '' };
 
   let accs: Json[];
   try {
@@ -552,9 +578,10 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       break;
     }
     slice.forEach((x, k) => {
-      const { patch, err } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      const { patch, err, limitNote } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
       Object.assign(x.row, patch);
       if (err) { x.row.sync_error = err; out.failed++; }
+      if (limitNote && !out.limitNote) out.limitNote = limitNote;
       rows.push(x.row);
     });
   }
@@ -809,6 +836,7 @@ async function handle(req: Request): Promise<Response> {
 
   const deadline = Date.now() + DEADLINE_MS;
   const alerts: Alert[] = [];
+  let limitNote = '';
   let accounts = 0, failed = 0, changed = 0, done = 0;
   const problems: string[] = [];
   let throttled = false;
@@ -826,6 +854,7 @@ async function handle(req: Request): Promise<Response> {
     }
     done++;
     accounts += r.accounts; failed += r.failed; changed += r.changed;
+    if (r.limitNote && !limitNote) limitNote = r.limitNote;
     if (r.error) problems.push(t.label + ': ' + r.error);
     if (r.throttled) {
       // Ліміт Facebook рахує навіть відмовлені запити. Далі по списку
@@ -841,6 +870,9 @@ async function handle(req: Request): Promise<Response> {
     cron, tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
     telegram,
+    // Порожньо — поле є й приїхало. Інакше тут текст відмови Graph, і
+    // саме він каже, чи вміє Marketing API віддавати денний ліміт.
+    daily_limit_field: limitNote || 'ok',
     problems: problems.slice(0, 10)
   });
 }
