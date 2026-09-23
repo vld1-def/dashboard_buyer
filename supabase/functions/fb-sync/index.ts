@@ -10,7 +10,10 @@
         все й затівалось: забанений кабінет має бути видно одразу, а
         не за три дні;
      2. скільки відкручено сьогодні;
-     3. скільки живих кампаній, адсетів, оголошень;
+     3. скільки живих кампаній, адсетів, оголошень — і, головне, у
+        якому стані решта: відхилені, на перевірці, без платіжки. Без
+        цього «3 зі 180» не відповідає на питання, заради якого туди
+        взагалі дивляться;
      4. чим платить — тип картки й останні чотири цифри.
 
    ПРО БІН КАРТКИ, щоб не шукати даремно. Marketing API не віддає
@@ -238,13 +241,26 @@ const INNER = 'insights.date_preset(today){spend,impressions,clicks}'
   + ',adsets.limit(0).summary(total_count)'
   + ',ads.limit(0).summary(total_count)';
 
+/* Скільки обʼєктів тягнемо заради розбивки. Це не «скільки їх у
+   кабінеті» — це стеля однієї сторінки. Те, що не влізло, чесно
+   позначаємо як непораховане, а не вдаємо повноту. */
+const LIST_LIMIT = 500;
+
 function urlsFor(actId: string): string[] {
   const act = 'act_' + actId;
-  const live = (edge: string) => act + '/' + edge + '?limit=0&summary=total_count'
-    + '&effective_status=' + encodeURIComponent('["ACTIVE"]');
+  /* Раніше тут просто рахувалось, скільки ACTIVE. Число було чесне, але
+     мовчазне: «3 зі 180» не каже, чому решта 177 не крутиться, і рівно
+     це питання виникало першим. Тому тепер тягнемо статуси списком і
+     рахуємо самі — запитів стільки ж, а відповідь повна.
+
+     effective_status — саме ефективний: оголошення в зупиненому адсеті
+     має ADSET_PAUSED, а не ACTIVE. Тобто ACTIVE тут означає «нічим
+     зверху не заглушене й не на паузі саме». */
+  const bulk = (edge: string) => act + '/' + edge
+    + '?fields=effective_status&limit=' + LIST_LIMIT + '&summary=total_count';
   return [
     act + '?fields=' + encodeURIComponent(INNER),
-    live('campaigns'), live('adsets'), live('ads')
+    bulk('campaigns'), bulk('adsets'), bulk('ads')
   ];
 }
 
@@ -274,11 +290,27 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     err = 'Facebook did not answer in time';
   }
 
-  const live = ['campaigns_active', 'adsets_active', 'ads_active'];
-  live.forEach((key, i) => {
+  ['campaigns', 'adsets', 'ads'].forEach((edge, i) => {
     const p = parts[i + 1];
-    if (p && p.code === 200) patch[key] = total(p.body);
-    else if (!err && p) err = String(p.body?.error?.message || 'HTTP ' + p.code);
+    if (!p) { if (!err) err = 'Facebook did not answer in time'; return; }
+    if (p.code !== 200) {
+      if (!err) err = String(p.body?.error?.message || 'HTTP ' + p.code);
+      return;
+    }
+    const rows: Json[] = Array.isArray(p.body?.data) ? p.body.data : [];
+    const by: Record<string, number> = {};
+    rows.forEach(r => {
+      const k = String(r.effective_status || 'UNKNOWN');
+      by[k] = (by[k] || 0) + 1;
+    });
+    /* Кабінет із тисячами оголошень в одну сторінку не влазить. Тоді
+       розбивка стосується лише того, що приїхало, і мовчати про це
+       не можна: інакше сума в підказці не зійдеться з підсумком, і
+       довіри не буде ні до того, ні до того. */
+    const all = total(p.body);
+    if (all != null && rows.length < all) by._more = all - rows.length;
+    patch[edge + '_active'] = by.ACTIVE || 0;
+    patch[edge + '_by_status'] = by;
   });
 
   return { patch, err };

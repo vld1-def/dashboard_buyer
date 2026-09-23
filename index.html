@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 14:33">
+  <meta name="build" content="build 23.09 16:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2552,6 +2552,9 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-dim { color: var(--text-muted); font-weight: 600; }
 .cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cab-na { color: var(--text-muted); opacity: .35; }
+/* Число, під яким є розбивка. Підказка без будь-якої ознаки —
+   це підказка, про яку ніхто ніколи не дізнається. */
+.cab-num.has-tip { cursor: help; border-bottom: 1px dotted var(--border); }
 
 /* Колонки State й Account стискаються по вмісту, щоб ✎ і ↗ трималися
    чіпа профілю, а не висіли посеред порожнечі. Запас забирає Agent —
@@ -3197,7 +3200,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 14:33</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 16:22</div>
     </div>
   </aside>
 
@@ -14224,6 +14227,35 @@ function cabAgo(iso) {
   return h < 24 ? h + 'h ago' : Math.floor(h / 24) + 'd ago';
 }
 
+/* effective_status словами. Facebook пише їх капсом через підкреслення
+   й регулярно додає нові — тому незнайоме не ховаємо, а показуємо як є,
+   просто в нижньому регістрі. */
+const CAB_ST_WORD = {
+  ACTIVE: 'active', PAUSED: 'paused',
+  DISAPPROVED: 'rejected', PENDING_REVIEW: 'in review', PREAPPROVED: 'pre-approved',
+  WITH_ISSUES: 'with issues', PENDING_BILLING_INFO: 'no billing',
+  CAMPAIGN_PAUSED: 'campaign paused', ADSET_PAUSED: 'ad set paused',
+  IN_PROCESS: 'processing', ARCHIVED: 'archived', DELETED: 'deleted',
+  _more: 'not counted'
+};
+
+/* Статуси, які означають «саме це тебе й тримає»: їх видно окремим
+   рядком, бо пауза — твій вибір, а відхилення — ні. */
+const CAB_ST_BAD = ['DISAPPROVED', 'WITH_ISSUES', 'PENDING_BILLING_INFO'];
+
+const cabStWord = k => CAB_ST_WORD[k] || String(k).toLowerCase().replace(/_/g, ' ');
+
+/* Розбивка рядком, від більшого до меншого. Без ACTIVE, коли поруч уже
+   стоїть «3/180»: повторювати ту саму трійку двічі — зайвий шум. */
+function cabByStatus(by, skipActive) {
+  if (!by || typeof by !== 'object') return '';
+  return Object.entries(by)
+    .filter(([k, n]) => Number(n) > 0 && !(skipActive && k === 'ACTIVE'))
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => n + ' ' + cabStWord(k))
+    .join(' \u00b7 ');
+}
+
 const cabDayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
 const CAB_CUR = { USD: '$', EUR: '\u20AC', GBP: '\u00A3', UAH: '\u20B4' };
@@ -14272,7 +14304,8 @@ async function cabFbLoad() {
     const { data, error } = await sb.from('fb_accounts')
       .select('account_id,name,status,disable_reason,currency,card,spend_today,team_name,'
             + 'campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
-            + 'amount_spent,sync_error,synced_at,business_name,business_id,token_id');
+            + 'amount_spent,sync_error,synced_at,business_name,business_id,token_id,'
+            + 'campaigns_by_status,adsets_by_status,ads_by_status');
     if (error) throw error;
     /* Команду відсіюємо тут, а не запитом. RLS і так віддає лише свої
        рядки, а team_name у токена може бути порожнім — тоді фільтр у
@@ -14627,6 +14660,11 @@ function cabRowHtml(c, hasFb) {
   const n = cabCounts(c.fb);
   const why = cabWhy(c);
   const num = v => `<td class="ta-c cab-num">${v == null ? '<span class="cab-na">—</span>' : v}</td>`;
+  // Те саме, але з розбивкою в підказці: щоб не відкривати панель
+  // заради питання «а чому так мало».
+  const numTip = (v, tip) => !tip ? num(v)
+    : `<td class="ta-c cab-num has-tip" title="${cabEsc(tip)}">${
+        v == null ? '<span class="cab-na">—</span>' : v}</td>`;
   const label = c.state === 'silent' ? `${S.label} · ${c.silent}d` : S.label;
   /* Account, якого немає у твоєму списку, підписуємо його назвою з
      Facebook: голий номер нічого не каже, а назва — каже. */
@@ -14656,13 +14694,29 @@ function cabRowHtml(c, hasFb) {
       : c.tok.agent
         ? `<span class="cab-auto" title="Agent from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.agent)}</span>`
         : '—'}</td>
-    ${hasFb ? num(n && n.campaigns) + num(n && n.adsets) + num(n && n.ads)
+    ${hasFb ? numTip(n && n.campaigns, cabByStatus(c.fb.campaigns_by_status))
+            + numTip(n && n.adsets, cabByStatus(c.fb.adsets_by_status))
+            + numTip(n && n.ads, cabByStatus(c.fb.ads_by_status))
             + `<td class="ta-r cab-num cab-today">${today}</td>` : ''}
     <td class="ta-r cab-num">${c.x.spend > 0 ? cabMoney(c.x.spend) : '<span class="cab-na">—</span>'}</td>
     <td class="ta-r cab-num">${c.age || '<span class="cab-na">—</span>'}</td>
     <td class="ta-r cab-dim">${c.x.last || '—'}</td>
     <td class="ta-c ${S.tone}" style="height:1px">${cabSpark(c.x.byDay, c.x.last, 58, 16)}</td>
   </tr>`;
+}
+
+/* «3 зі 180» — чесне число, яке нічого не пояснює. Цей рядок і є
+   пояснення: що саме тримає решту. Відхилені й «з помилками» виділені
+   кольором, бо пауза — твій вибір, а відхилення — ні. */
+function cabWhyNot(fb) {
+  const by = fb && fb.ads_by_status;
+  if (!by || typeof by !== 'object') return '';
+  const rest = cabByStatus(by, true);
+  if (!rest) return '';
+  const n = Object.entries(by).reduce((a, [k, v]) => a + (k === 'ACTIVE' ? 0 : Number(v) || 0), 0);
+  if (!n) return '';
+  const bad = CAB_ST_BAD.some(k => Number(by[k]) > 0);
+  return `<p class="${bad ? 'cab-fb-warn' : 'cab-fb-note'}">${n} ad(s) not running: ${cabEsc(rest)}</p>`;
 }
 
 function cabDetail(c) {
@@ -14676,7 +14730,8 @@ function cabDetail(c) {
   const enc = encodeURIComponent(c.id);
   const why = cabWhy(c);
 
-  const cell = (k, v) => `<div class="rounded-lg px-2 py-1.5" style="background:var(--surface-2)">
+  const cell = (k, v, tip) => `<div class="rounded-lg px-2 py-1.5"${
+      tip ? ` title="${esc(tip)}"` : ''} style="background:var(--surface-2)">
       <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
       <p class="text-[12px] font-black text-dynamic font-mono">${v}</p></div>`;
 
@@ -14702,11 +14757,15 @@ function cabDetail(c) {
         ${cell('Today', Number(c.fb.spend_today) > 0
             ? cabMoneyCur(c.fb.spend_today, c.fb.currency) : '—')}
         ${cell('State', esc(c.fb.status || '—'))}
-        ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns))}
-        ${cell('Ad sets', pair(c.fb.adsets_active, c.fb.adsets))}
-        ${cell('Ads', pair(c.fb.ads_active, c.fb.ads))}
+        ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns),
+               cabByStatus(c.fb.campaigns_by_status))}
+        ${cell('Ad sets', pair(c.fb.adsets_active, c.fb.adsets),
+               cabByStatus(c.fb.adsets_by_status))}
+        ${cell('Ads', pair(c.fb.ads_active, c.fb.ads),
+               cabByStatus(c.fb.ads_by_status))}
         ${cell('Card', esc(c.fb.card || '—'))}
       </div>
+      ${cabWhyNot(c.fb)}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
     </div>`;

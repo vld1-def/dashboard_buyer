@@ -86,6 +86,15 @@ create table if not exists public.fb_accounts (
   adsets    int, adsets_active    int,
   ads       int, ads_active       int,
 
+  -- Розбивка по effective_status: {"ACTIVE":3,"DISAPPROVED":141,…}.
+  -- Без неї «3 зі 180» — чесне, але мовчазне число: воно каже, що 177
+  -- оголошень не крутяться, і нічого не каже про те, ЧОМУ. Ключ _more
+  -- означає, що обʼєктів більше, ніж влізло в одну сторінку, і
+  -- розбивка стосується лише порахованих.
+  campaigns_by_status jsonb,
+  adsets_by_status    jsonb,
+  ads_by_status       jsonb,
+
   -- Якщо саме по цьому кабінету Graph відповів помилкою — вона тут, а
   -- решта полів лишаються з минулого разу. Один кабінет, який не
   -- відповів, не мусить стирати дані по всіх інших.
@@ -121,6 +130,20 @@ create policy "own_select" on public.fb_accounts for select to authenticated
   using (created_by = auth.uid());
 
 grant select on public.fb_accounts to authenticated;
+
+
+-- ──────────────────────────────────────────────────────────
+--  ЯКЩО ТАБЛИЦЯ ВЖЕ СТВОРЕНА РАНІШЕ
+-- ──────────────────────────────────────────────────────────
+--  create table if not exists нічого не додає до наявної таблиці, тож
+--  нові стовпчики доводиться дописувати окремо. Виконайте — це
+--  безпечно й на новій базі теж, і безпечно виконувати двічі.
+-- ──────────────────────────────────────────────────────────
+
+alter table public.fb_accounts
+  add column if not exists campaigns_by_status jsonb,
+  add column if not exists adsets_by_status    jsonb,
+  add column if not exists ads_by_status       jsonb;
 
 
 -- ───────────────────────────────────────────────────────────
