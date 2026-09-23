@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 18:35">
+  <meta name="build" content="build 23.09 18:56">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3252,7 +3252,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 18:35</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 18:56</div>
     </div>
   </aside>
 
@@ -14180,7 +14180,7 @@ let cabSort = { key: 'state', dir: 1 };
 /* Те, що приїхало з Facebook. Таблиці може не бути зовсім (FB_SYNC.sql
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
-let cabFb = [], cabFbErr = '', cabAll = [];
+let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
 
 /* Назви токенів за їх id. Потрібні не заради краси: у назві токена вже
    записано те, чого Facebook не знає й ніколи не скаже. */
@@ -14374,21 +14374,46 @@ async function cabInit() {
 
    Помилку не показуємо як аварію: таблиці може просто не бути, і тоді
    сторінка має працювати так само, як працювала до токенів. */
+/* Колонки двома наборами навмисно.
+
+   CORE — те, що є в таблиці з першого дня. NEW — те, що додавалось
+   пізніше, і чого в базі може ще не бути, якщо ALTER з FB_SYNC.sql не
+   виконано.
+
+   Раніше вони йшли одним списком, і це коштувало дорого: запит падав
+   цілком, cabFb ставав порожнім, і ВСІ кабінети зникали з розділу
+   «Live from Facebook» — без жодного слова про причину. Виглядало як
+   «дані пропали», хоча дані на місці, просто база на п'ять колонок
+   старіша за сторінку.
+
+   Тепер невідома колонка означає рівно те, чим вона є: кількох чисел
+   не буде, поки не виконаєш ALTER. Решта працює. */
+const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_today,'
+  + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
+  + 'amount_spent,sync_error,synced_at,business_name,token_id';
+const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
+  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
+
+// Немає таблиці зовсім — не те саме, що немає кількох колонок.
+const CAB_NO_TABLE = /relation .* does not exist|42P01/i;
+const CAB_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
+
 async function cabFbLoad() {
   cabFbErr = '';
+  cabFbOld = '';
   try {
-    const { data, error } = await sb.from('fb_accounts')
-      .select('account_id,name,status,disable_reason,currency,card,spend_today,team_name,'
-            + 'campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
-            + 'amount_spent,sync_error,synced_at,business_name,business_id,token_id,'
-            + 'campaigns_by_status,adsets_by_status,ads_by_status,'
-            + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since');
-    if (error) throw error;
+    let res = await sb.from('fb_accounts').select(CAB_FB_CORE + ',' + CAB_FB_NEW);
+    if (res.error && CAB_NO_COLUMN.test(res.error.message || '')) {
+      // База старіша за сторінку. Беремо те, що є, і кажемо про це вголос.
+      cabFbOld = res.error.message;
+      res = await sb.from('fb_accounts').select(CAB_FB_CORE);
+    }
+    if (res.error) throw res.error;
     /* Команду відсіюємо тут, а не запитом. RLS і так віддає лише свої
        рядки, а team_name у токена може бути порожнім — тоді фільтр у
        запиті сховав би геть усе, і виглядало б це як «нічого не
        приїхало», а не як «не проставлена команда». */
-    cabFb = (data || []).filter(r => !r.team_name || r.team_name === currentTeam);
+    cabFb = (res.data || []).filter(r => !r.team_name || r.team_name === currentTeam);
     /* Назви токенів окремим запитом. Сам токен звідти не приїде й
        приїхати не може: права на цей стовпчик забрано в усіх. */
     const t = await sb.from('fb_tokens').select('id,label');
@@ -14396,8 +14421,32 @@ async function cabFbLoad() {
     (t.data || []).forEach(x => cabTokens[x.id] = x.label);
   } catch (e) {
     cabFb = [];
-    cabFbErr = /fb_accounts|does not exist|schema cache/i.test(e.message || '')
-      ? 'not-set-up' : (e.message || 'error');
+    cabFbErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+/* Сказати, чому кабінетів немає.
+
+   Найдорожча помилка попередньої версії була не в запиті, а тут: її не
+   було. cabFbErr проставлявся й нікуди не виводився, тож кабінети
+   просто зникали мовчки. Порожній екран без причини — найгірше, що
+   сторінка може показати: незрозуміло навіть, це зламалось чи так і
+   має бути. */
+function cabFbNote() {
+  const out = document.getElementById('cab-sync-status');
+  if (!out) return;
+  if (cabFbErr === 'not-set-up') {
+    out.innerHTML = 'Facebook data is not set up yet — run <span class="font-mono">FB_SYNC.sql</span>, '
+      + 'deploy <span class="font-mono">fb-sync</span>, then press Sync now.';
+    out.style.color = 'var(--text-muted)';
+  } else if (cabFbErr) {
+    out.innerHTML = 'Could not read Facebook data: ' + cabEsc(cabFbErr);
+    out.style.color = 'var(--bad)';
+  } else if (cabFbOld) {
+    out.innerHTML = 'Your database is a few columns behind this page, so some numbers are missing. '
+      + 'Run the <span class="font-mono">alter table</span> block from '
+      + '<span class="font-mono">FB_SYNC.sql</span>. Everything else works.';
+    out.style.color = 'var(--warn)';
   }
 }
 
@@ -14640,6 +14689,8 @@ function cabRender() {
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q))));
 
+  cabFbNote();
+
   /* Коли востаннє ходили в Facebook — просто на кнопці. Окремий рядок
      під нею читали б раз і забували, а тут воно перед очима щоразу,
      коли виникає питання «а це свіже?». */
@@ -14664,7 +14715,9 @@ function cabRender() {
     /* «Nothing here» на порожньому зрізі — найгірша з відповідей:
        людина бачить порожнечу й не знає, чи це фільтр, чи справді
        нічого немає. */
-    const why = cabSrc === 'fb' && !nFb
+    const why = cabFbErr
+        ? 'Facebook data could not be read — see the note above the tiles'
+      : cabSrc === 'fb' && !nFb
         ? 'No cabinet is covered by a token yet — press Sync now'
       : cabSrc === 'old' && nFb === all.length
         ? 'Every cabinet is covered by a token'
