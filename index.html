@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 12:12">
+  <meta name="build" content="build 23.09 12:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1740,6 +1740,25 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
    замість двох, усі варіанти видно одразу, і — головне — в <option>
    не можна покласти SVG, лише текст. З випадайкою іконки були б
    неможливі в принципі. */
+/* ─────────── Токени Facebook ─────────── */
+.fb-row {
+  display: grid; gap: 2px 10px; align-items: center;
+  grid-template-columns: 1fr auto;
+  padding: 10px 12px; margin-bottom: 6px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.fb-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Кружечок кольором стану: зелений — працює, жовтий — бракує прав,
+   червоний — протух чи відкликаний. Це перше, на що дивишся. */
+.fb-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.fb-label { font-size: 12px; font-weight: 800; color: var(--text-main);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-bm { font-size: 10px; font-weight: 700; color: var(--text-muted);
+         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-meta { grid-column: 1; font-size: 10px; color: var(--text-muted); }
+.fb-acts { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 6px; }
+.fb-acts .set-btn { font-size: 9px; padding: 5px 9px; }
+
 .exp-cats {
   display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
 }
@@ -3084,7 +3103,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:12</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:22</div>
     </div>
   </aside>
 
@@ -6255,6 +6274,7 @@ function openSettingsModal() {
   // Load TL access toggles — джерелом правди є Supabase, localStorage лише як миттєвий fallback
   loadTeamLeadToggles();
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
+  if (typeof fbLoad === 'function') fbLoad();
 }
 
 async function loadTeamLeadToggles() {
@@ -11188,6 +11208,26 @@ document.addEventListener('keydown', e => {
           </div>
 
           <div class="set-group">
+            <h3 class="set-gtitle">Facebook tokens</h3>
+            <p class="set-gsub">System user tokens: where the dashboard reads stats from, and what it pauses campaigns with.</p>
+
+            <div class="set-addrow" data-setting="facebook token фейсбук токен bm бм">
+              <input type="text" id="fb-label-input" placeholder="Name — e.g. Oleh&#39;s BM" class="set-input" style="flex:0 0 200px;min-width:0">
+              <input type="password" id="fb-token-input" placeholder="System user token" class="set-input font-mono" style="flex:1 1 auto;min-width:0" autocomplete="off">
+              <button type="button" onclick="fbAdd()" class="set-btn set-btn-amber">Check &amp; add</button>
+            </div>
+            <p id="fb-add-status" class="set-hint"></p>
+
+            <div id="fb-list" class="mt-2"></div>
+
+            <p class="set-hint opacity-60">
+              The token is checked against Facebook the moment you add it — you see its permissions, expiry and how many
+              ad accounts it can reach. Nobody can read it back afterwards, you included: the database grants no access to
+              that column, and only the server function retrieves it. Where to get a token: see FB_TOKENS.sql.
+            </p>
+          </div>
+
+          <div class="set-group">
             <h3 class="set-gtitle">Telegram alerts</h3>
             <p class="set-gsub">Where the dashboard reports what changed: cabinets that got banned, went quiet, or were launched and never started spending.</p>
 
@@ -13536,6 +13576,221 @@ window.tgConnect = tgConnect;
 window.tgUnlink = tgUnlink;
 window.tgRefresh = tgRefresh;
 window.saveTelegramBot = saveTelegramBot;
+</script>
+
+<script>
+/* ═══════════ ТОКЕНИ FACEBOOK ═══════════
+   Місце, де живуть токени системних користувачів: із підписом, чий це
+   БМ і які кабінети він бачить.
+
+   ПРО БЕЗПЕКУ, бо вона тут не декоративна. Дашборд — статичний сайт,
+   і все, що він уміє прочитати, читається будь-ким, хто відкриє
+   сторінку й зазирне в консоль. Тому в fb_tokens права на стовпчик
+   token забрано в усіх: записати можна, прочитати назад — ні, включно
+   з власником. Дістане його лише Edge Function від сервісної ролі,
+   коли ходитиме в Marketing API.
+
+   Через це список показує все, КРІМ самого секрету, і «показати
+   токен» тут не буде ніколи — не тому, що я забув, а тому, що база
+   його не віддасть.
+
+   ПЕРЕВІРКА в мить додавання, просто звідси: токен щойно вписали, він
+   у руках, тож питаємо Graph API самі. Зберігаємо його ВІДПОВІДЬ —
+   права, строк, список кабінетів. Через місяць це єдиний спосіб
+   згадати, чому токен не бачить половини кабінетів. Окрема функція
+   для цього не потрібна: запит іде з твого браузера з твоїм же
+   токеном, нікуди більше він при цьому не потрапляє. */
+
+const FB_API = 'https://graph.facebook.com/v21.0';
+// Без цих прав сенсу від токена немає: перші два — читати статистику,
+// третій — гасити кампанії, четвертий — бачити структуру БМ.
+const FB_NEED = ['ads_read', 'read_insights'];
+const FB_NICE = ['ads_management', 'business_management'];
+
+let fbRows = [];
+
+const fbEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* ── опитування Facebook ──
+   Три запити: хто це, що вміє, які кабінети. Токен передаємо в тілі
+   POST, а не в рядку запиту: адреси з токеном осідають у логах
+   проксі, історії браузера й заголовку Referer. */
+async function fbAsk(path, token, params) {
+  const body = new URLSearchParams(Object.assign({ access_token: token }, params || {}));
+  const res = await fetch(FB_API + path, {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    // Graph приймає GET-запити методом POST, якщо попросити явно.
+    body: body.toString() + '&method=GET'
+  });
+  const j = await res.json().catch(() => ({}));
+  if (j && j.error) throw new Error(j.error.message || 'Graph API error');
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return j;
+}
+
+async function fbInspect(token) {
+  // debug_token каже про сам токен: права, строк, застосунок. Інші два
+  // — що він реально бачить. Перше без другого нічого не гарантує:
+  // права можуть бути, а кабінети системному юзеру не видані.
+  const dbg = await fbAsk('/debug_token', token, { input_token: token });
+  const d = (dbg && dbg.data) || {};
+  const scopes = d.scopes || [];
+  const expires = d.expires_at ? new Date(d.expires_at * 1000).toISOString() : null;
+
+  let accounts = [], bm = null;
+  try {
+    const a = await fbAsk('/me/adaccounts', token,
+      { fields: 'id,name,account_status,business', limit: '200' });
+    accounts = (a.data || []).map(x => ({
+      id: x.id, name: x.name || '',
+      status: x.account_status === 1 ? 'active' : 'inactive'
+    }));
+    const withBm = (a.data || []).find(x => x.business);
+    if (withBm) bm = { id: withBm.business.id, name: withBm.business.name || '' };
+  } catch (e) { /* кабінетів може не бути видно — це теж діагноз */ }
+
+  const missing = FB_NEED.filter(s => !scopes.includes(s));
+  const status = !d.is_valid ? 'error'
+    : (expires && Date.parse(expires) < Date.now()) ? 'expired'
+    : missing.length ? 'no-scopes'
+    : 'ok';
+  const note = status === 'error' ? 'Facebook says this token is not valid'
+    : status === 'expired' ? 'Expired'
+    : status === 'no-scopes' ? 'Missing permissions: ' + missing.join(', ')
+    : accounts.length ? `Sees ${accounts.length} ad account(s)`
+    : 'Permissions are fine, but no ad account is visible — check Add Assets on the system user';
+
+  return { scopes, expires_at: expires, accounts, bm, app_id: d.app_id || null, status, note };
+}
+
+/* ── список ── */
+
+const FB_TONE = { ok: 'var(--ok)', expired: 'var(--bad)', error: 'var(--bad)',
+                  'no-scopes': 'var(--warn)', unknown: 'var(--text-muted)' };
+
+window.fbLoad = async function () {
+  const box = document.getElementById('fb-list');
+  if (!box) return;
+  // Навмисно перелічуємо поля: select('*') спробував би дістати token,
+  // а на нього немає прав — і весь запит упав би цілком.
+  const { data, error } = await sb.from('fb_tokens')
+    .select('id,label,bm_id,bm_name,scopes,expires_at,accounts,status,status_note,checked_at,note')
+    .order('created_at', { ascending: false });
+  if (error) {
+    box.innerHTML = /fb_tokens|does not exist|schema cache/i.test(error.message)
+      ? '<p class="set-hint">Token storage does not exist yet — run FB_TOKENS.sql, then reload.</p>'
+      : `<p class="set-hint">Could not read: ${fbEsc(error.message)}</p>`;
+    return;
+  }
+  fbRows = data || [];
+  if (!fbRows.length) { box.innerHTML = '<p class="set-hint">No tokens added yet.</p>'; return; }
+
+  box.innerHTML = fbRows.map(r => {
+    const accs = Array.isArray(r.accounts) ? r.accounts.length : 0;
+    const exp = r.expires_at
+      ? new Date(r.expires_at).toLocaleDateString()
+      : 'never expires';
+    return `<div class="fb-row">
+      <div class="fb-main">
+        <span class="fb-dot" style="background:${FB_TONE[r.status] || FB_TONE.unknown}"></span>
+        <span class="fb-label">${fbEsc(r.label)}</span>
+        ${r.bm_name || r.bm_id
+          ? `<span class="fb-bm">${fbEsc(r.bm_name || '')} ${r.bm_id ? '· ' + fbEsc(r.bm_id) : ''}</span>` : ''}
+      </div>
+      <div class="fb-meta">
+        ${accs} ad account(s) · ${fbEsc(exp)}
+        ${r.status_note ? ' · ' + fbEsc(r.status_note) : ''}
+      </div>
+      <div class="fb-acts">
+        <button type="button" class="set-btn" onclick="fbShow(${r.id})">Accounts</button>
+        <button type="button" class="set-btn" onclick="fbDrop(${r.id})">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+};
+
+window.fbShow = function (id) {
+  const r = fbRows.find(x => x.id === id);
+  if (!r) return;
+  const accs = Array.isArray(r.accounts) ? r.accounts : [];
+  alert(`${r.label}\n\n`
+    + `Permissions: ${(r.scopes || []).join(', ') || '—'}\n`
+    + `Checked: ${r.checked_at ? new Date(r.checked_at).toLocaleString() : '—'}\n\n`
+    + (accs.length
+        ? 'Ad accounts:\n' + accs.map(a => `  ${a.id}  ${a.name}${a.status === 'active' ? '' : '  (inactive)'}`).join('\n')
+        : 'No ad accounts visible.\n\nMost common cause: the system user has no Ad Accounts assigned in Business Settings → Add Assets.'));
+};
+
+window.fbDrop = async function (id) {
+  const r = fbRows.find(x => x.id === id);
+  if (!confirm(`Remove "${r ? r.label : id}"?\n\n`
+    + 'This deletes the token from the database but does NOT revoke it at Facebook. '
+    + 'If it could have leaked, revoke it there too: '
+    + 'Business Settings → System Users → Revoke.')) return;
+  const { error } = await sb.from('fb_tokens').delete().eq('id', id);
+  if (error) return alert('Could not remove: ' + error.message);
+  fbLoad();
+};
+
+/* ── додавання ── */
+
+window.fbAdd = async function () {
+  const tokEl = document.getElementById('fb-token-input');
+  const labEl = document.getElementById('fb-label-input');
+  const out = document.getElementById('fb-add-status');
+  const token = (tokEl.value || '').trim();
+  const label = (labEl.value || '').trim();
+  if (!token) return alert('Paste the token first');
+  if (!label) return alert('Give it a name — in a month you will not remember whose BM this is');
+
+  const say = (t, tone) => { out.innerHTML = t; out.style.color = tone || 'var(--text-muted)'; };
+  say('Asking Facebook…');
+
+  let info;
+  try { info = await fbInspect(token); }
+  catch (e) {
+    return say('Facebook refused: ' + fbEsc(e.message)
+      + '<br><span class="opacity-60">Usually an expired token, or one cut short when copying.</span>',
+      'var(--bad)');
+  }
+
+  // Показуємо, що знайшли, ДО збереження: краще побачити «0 кабінетів»
+  // тут, ніж за тиждень, коли імпорт мовчки привезе порожнечу.
+  const nice = FB_NICE.filter(s => !(info.scopes || []).includes(s));
+  const warn = info.status !== 'ok'
+    ? `\n\nStatus: ${info.note}`
+    : nice.length ? `\n\nWill work, but without ${nice.join(', ')} the dashboard cannot pause campaigns.` : '';
+  const ok = confirm(`Found:\n\n`
+    + `Permissions: ${(info.scopes || []).join(', ') || '—'}\n`
+    + `Expires: ${info.expires_at ? new Date(info.expires_at).toLocaleString() : 'never'}\n`
+    + `Ad accounts: ${info.accounts.length}\n`
+    + (info.bm ? `BM: ${info.bm.name || ''} (${info.bm.id})\n` : '')
+    + warn
+    + `\n\nSave?`);
+  if (!ok) return say('');
+
+  const { data: u } = await sb.auth.getUser();
+  const row = {
+    created_by: u && u.user && u.user.id,
+    team_name: currentTeam,
+    label, token,
+    bm_id: info.bm ? info.bm.id : null,
+    bm_name: info.bm ? info.bm.name : null,
+    scopes: info.scopes, expires_at: info.expires_at,
+    accounts: info.accounts, app_id: info.app_id,
+    status: info.status, status_note: info.note,
+    checked_at: new Date().toISOString()
+  };
+  const { error } = await sb.from('fb_tokens').insert([row]);
+  if (error) return say('Could not save: ' + fbEsc(error.message), 'var(--bad)');
+
+  // Чистимо поле одразу: токен не має лишатись у формі, яку хтось
+  // побачить через плече.
+  tokEl.value = ''; labEl.value = '';
+  say('Saved. Nobody can read this token back — not even you. That is deliberate.', 'var(--ok)');
+  fbLoad();
+};
 </script>
 
 <script>
