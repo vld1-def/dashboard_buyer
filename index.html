@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 13:16">
+  <meta name="build" content="build 23.09 14:05">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2580,6 +2580,35 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   border: 1px solid var(--border);
 }
 .cab-src { margin-left: 6px; font-size: 11px; color: var(--text-muted); opacity: .5; }
+/* ⟳ проти ✎ — це не прикраса, а єдине, що на рядку відрізняє
+   статус, який щогодини підтвердив Facebook, від того, який хтось
+   клацнув три місяці тому. Тому живий — помітніший. */
+.cab-src.is-live { color: var(--ok); opacity: .75; }
+.cab-today { color: var(--text-main); }
+
+/* Заголовок секції — над таблицею, а не рядком у ній: у двох
+   секцій різні набори колонок, тож і таблиці дві. */
+.cab-sec { display: flex; align-items: baseline; gap: 8px; padding: 14px 2px 6px; }
+.cab-sec-name { font-size: 11px; font-weight: 900; letter-spacing: .1em;
+                text-transform: uppercase; color: var(--text-muted); }
+.cab-sec-name.is-live { color: var(--ok); }
+.cab-sec-sub { font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .7; }
+
+/* Блок «що каже Facebook» у бічній панелі. Відділений рамкою
+   навмисно: це єдине місце на панелі, де числа не твої й не зі
+   звітів, і плутати їх із сусідніми не можна. */
+.cab-fb {
+  margin-top: 4px; padding: 10px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.cab-fb-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+}
+.cab-fb-head span { font-weight: 700; letter-spacing: 0; text-transform: none; opacity: .7; }
+.cab-fb-note { margin-top: 6px; font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.cab-fb-warn { margin-top: 6px; font-size: 10px; font-weight: 700; color: var(--warn); }
 .cab-link {
   margin-left: 4px;
   font-size: 13px; font-weight: 900; line-height: 1;
@@ -3145,7 +3174,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 13:16</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 14:05</div>
     </div>
   </aside>
 
@@ -3956,8 +3985,14 @@ body[data-route="domains"] #dm-detail {
         <option value="profile">Group: profile</option>
         <option value="">No grouping</option>
       </select>
-      <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, note…"
+      <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
+      <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
+           ходять сюди. У налаштуваннях така сама лишається навмисно: щойно додав
+           токен — хочеться натиснути відразу, не йдучи нікуди. -->
+      <button type="button" id="cab-sync" onclick="cabSync()"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none transition hover:border-violet-500 disabled:opacity-40"
+        title="Ask Facebook right now instead of waiting for the hourly run">Sync now</button>
     </div>
   </div>
 
@@ -14146,13 +14181,25 @@ window.fbSync = async function () {
 
 <script>
 /* ═══════════ CABINETS ═══════════
-   Сторінка парку кабінетів. Половина того, що тут показано, ніде не
-   вводиться руками — воно рахується з daily_stats, який і так уже
-   завантажений цілком, без фільтра по місяцю.
+   Сторінка парку кабінетів. Три джерела, і вони НЕ рівноцінні.
 
-   Стан кабінета — це ручний статус (accounts_mapping.status) плюс те,
-   що кажуть гроші. Коли з'явиться Marketing API, сюди додасться третє
-   джерело, і позначка ✎ на рядку зміниться на ⟳. Поки що всі ручні. */
+     Facebook (fb_accounts, наповнює fb-sync щогодини) — знає напевно,
+       чи кабінет вимкнено і за що, скільки відкручено сьогодні, скільки
+       живого всередині. До нього бан тут виявлявся єдиним способом: хтось
+       помічав і ставив галочку руками. Забанений кабінет виглядав просто
+       «тихим», як і той, що просто взяв вихідний.
+
+     Гроші (daily_stats) — історія: скільки за період, коли вперше й
+       востаннє. Facebook цього не дасть: він віддає сьогодні.
+
+     Людина (accounts_mapping) — те, чого не знає ніхто інший: чий це
+       агент, який профіль, логін, і «живий, але ми його відклали».
+
+   СПИСОК ДІЛИТЬСЯ НАДВОЄ, і це не косметика. Зверху — кабінети, які
+   бачить токен: там статус справжній. Нижче — ті, яких токен не бачить:
+   там усе по-старому, стан угадується з мовчання. Змішувати їх в одну
+   таблицю означало б показувати два різні за надійністю числа під одним
+   заголовком, і через тиждень ніхто б не пам'ятав, яке з них чого варте. */
 
 const CAB_STATE = {
   running: { label: 'Running',   dot: '#22C55E', tone: 'text-emerald-400', soft: 'rgba(34,197,94,.14)',  bd: 'rgba(34,197,94,.30)' },
@@ -14180,14 +14227,86 @@ let cabRows = [], cabFilter = 'working', cabGroup = 'agent', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
-/* Скільки кампаній, адсетів і оголошень активні — це знає тільки
-   Marketing API (effective_status). Поки токена немає, повертаємо null,
-   і в таблиці стоїть прочерк. Саме прочерк, а не нуль: нуль читався б
-   як «нічого не запущено», хоча насправді ми просто не знаємо. */
-function cabCounts(id) { return null; }
+/* Те, що приїхало з Facebook. Таблиці може не бути зовсім (FB_SYNC.sql
+   ще не виконано) — тоді cabFb лишається порожнім, обидві секції
+   злипаються в одну, і сторінка працює рівно як раніше. */
+let cabFb = [], cabFbErr = '', cabAll = [];
+
+/* Стан кабінета словами Facebook. unknown потрапляє в issue навмисно:
+   незнайомий код — привід подивитись, а не привід малювати зелене. */
+const CAB_FB_STATE = {
+  active: '', banned: 'banned', closed: 'banned', closing: 'banned',
+  unsettled: 'issue', review: 'issue', grace: 'issue', unknown: 'issue'
+};
+
+/* Скільки кампаній, адсетів і оголошень ЗАРАЗ крутиться. Знає це тільки
+   Marketing API (effective_status), тому без токена — null, і в таблиці
+   стоїть прочерк. Саме прочерк, а не нуль: нуль читався б як «нічого не
+   запущено», хоча насправді ми просто не знаємо. */
+function cabCounts(fb) {
+  if (!fb) return null;
+  const n = v => (v == null || v === '' ? null : Number(v));
+  const c = n(fb.campaigns_active), a = n(fb.adsets_active), d = n(fb.ads_active);
+  return (c == null && a == null && d == null) ? null : { campaigns: c, adsets: a, ads: d };
+}
+
+/* Зв'язок між твоїм підписом кабінета і номером з Facebook.
+
+   Порядок навмисний: спершу те, що вказали руками, і лише потім
+   здогадки. Здогадка, яка перебиває ручний вибір, — найгірший вид
+   допомоги: її не видно, поки не стане пізно. */
+function cabFbFor(row) {
+  if (!cabFb.length) return null;
+  const mine = String(row.fb_account_id || '').replace(/\D/g, '');
+  if (mine) return cabFb.find(a => String(a.account_id) === mine) || null;
+  const id = String(row.account_id || '').trim();
+  if (!id) return null;
+  /* Підпис і є номером — збіг точний, тлумачити нічого.
+     Це перевіряємо ОКРЕМО від правила про шість цифр нижче: без цього
+     короткий номер не зійшовся б сам із собою, кабінет опинився б
+     одночасно в обох секціях — раз як твій рядок без токена, раз як
+     «новий із Facebook». Рівно це й сталось на перевірці. */
+  if (cabFb.some(a => String(a.account_id) === id))
+    return cabFb.find(a => String(a.account_id) === id);
+  const digits = id.replace(/\D/g, '');
+  // Номер усередині підпису виду act_123… або ACC-123…. Шість цифр —
+  // щоб «ACC-12» не почало випадково зчіплюватись із чимось.
+  if (digits.length >= 6) {
+    const byId = cabFb.find(a => String(a.account_id) === digits);
+    if (byId) return byId;
+  }
+  // Назва кабінета у Facebook. Ознака слабша, тому лише повний збіг.
+  const low = id.toLowerCase();
+  return low ? (cabFb.find(a => String(a.name || '').trim().toLowerCase() === low) || null) : null;
+}
+
+// Коли востаннє ходили в Facebook. Беремо найсвіжіше по всьому парку:
+// один кабінет міг не відповісти, і його time тут ні до чого.
+function cabFbAt() {
+  let last = '';
+  cabFb.forEach(a => { if (a.synced_at && a.synced_at > last) last = a.synced_at; });
+  return last;
+}
+
+function cabAgo(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return '';
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return (m || 1) + 'm ago';
+  const h = Math.floor(m / 60);
+  return h < 24 ? h + 'h ago' : Math.floor(h / 24) + 'd ago';
+}
 
 const cabDayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
+const CAB_CUR = { USD: '$', EUR: '\u20AC', GBP: '\u00A3', UAH: '\u20B4' };
+/* Валюту беремо з кабінета, а не з дашборда: долар на євровому
+   кабінеті — це не округлення, це інше число. */
+function cabMoneyCur(n, cur) {
+  const v = Math.round(Number(n) || 0).toLocaleString('en-US');
+  const sign = CAB_CUR[cur];
+  return sign ? sign + v : v + (cur ? ' ' + cur : '');
+}
 
 async function cabInit() {
   const host = document.getElementById('cab-list');
@@ -14206,10 +14325,58 @@ async function cabInit() {
   }
   const sample = cabRows[0] || {};
   CAB_EXTRA.forEach(c => cabCols[c.key] = c.key in sample);
+  // Колонка зв'язку з Facebook теж може ще не існувати — тоді ручної
+  // прив'язки не буде, лишиться автоматична за номером і назвою.
+  cabCols.fb_account_id = 'fb_account_id' in sample;
+  await cabFbLoad();
   cabLoaded = true;
   cabRender();
   seen();
 }
+
+/* Що сказав Facebook. Окремо від accounts_mapping, бо це різні за
+   природою речі: там твої підписи, тут факти, які ти не редагуєш.
+
+   Помилку не показуємо як аварію: таблиці може просто не бути, і тоді
+   сторінка має працювати так само, як працювала до токенів. */
+async function cabFbLoad() {
+  cabFbErr = '';
+  try {
+    const { data, error } = await sb.from('fb_accounts')
+      .select('account_id,name,status,disable_reason,currency,card,spend_today,team_name,'
+            + 'campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
+            + 'amount_spent,sync_error,synced_at,business_name');
+    if (error) throw error;
+    /* Команду відсіюємо тут, а не запитом. RLS і так віддає лише свої
+       рядки, а team_name у токена може бути порожнім — тоді фільтр у
+       запиті сховав би геть усе, і виглядало б це як «нічого не
+       приїхало», а не як «не проставлена команда». */
+    cabFb = (data || []).filter(r => !r.team_name || r.team_name === currentTeam);
+  } catch (e) {
+    cabFb = [];
+    cabFbErr = /fb_accounts|does not exist|schema cache/i.test(e.message || '')
+      ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+/* Кнопка «Sync now» на цій сторінці. Сама синхронізація живе у fbtok.js
+   разом із токенами — тут лише виклик і перемальовка: дублювати запит
+   заради другої кнопки означало б мати два місця, де його чинити. */
+window.cabSync = async function () {
+  const btn = document.getElementById('cab-sync');
+  if (!btn || typeof fbSync !== 'function') return;
+  btn.disabled = true;
+  const was = btn.textContent;
+  btn.textContent = 'Syncing…';
+  try {
+    await fbSync();
+    await cabFbLoad();
+    cabRender();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = was;
+  }
+};
 
 /* Факти з грошей. «Крутить» звіряємо з останнім днем, який ВЗАГАЛІ є в
    даних, а не з сьогоднішньою датою: звіт за сьогодні ще не залитий, і
@@ -14233,13 +14400,47 @@ function cabFacts() {
   return { map, lastDay };
 }
 
-function cabStateOf(row, f) {
+/* Стан кабінета. Джерел три, і порядок між ними не випадковий.
+
+   Правило одне: проблему може ДОДАТИ будь-хто, а зняти чужу — ніхто.
+   Facebook сказав «вимкнено» — жодна ручна позначка цього не стирає,
+   бо бан це факт, а не думка. Людина позначила «проблема» — зелений
+   статус із Facebook її не перебиває, бо Facebook не знає, що кабінет
+   відклали свідомо.
+
+   Те саме правило стоїть на доменах, і поставлене воно було не від
+   доброго життя: автоматика, яка знімає мітку людини, одного разу вже
+   стерла висновок, якого сама зробити не вміла. */
+function cabStateOf(row, f, fb) {
+  const byFb = fb ? CAB_FB_STATE[String(fb.status || 'unknown')] : '';
+  if (byFb === 'banned') return 'banned';
   const st = String(row.status || 'active').toLowerCase();
   if (st === 'ban') return 'banned';
+  if (byFb === 'issue') return 'issue';
   if (st === 'problem') return 'issue';
+  /* Facebook каже, що сьогодні вже відкручено — значить крутить, і не
+     важливо, що вечірній імпорт ще не приїхав. Саме через це до токена
+     робочий кабінет цілий day виглядав тихим. */
+  if (fb && Number(fb.spend_today) > 0) return 'running';
   const x = f.map[String(row.account_id || '').trim()];
   if (!x || x.spend <= 0) return 'idle';
   return x.last === f.lastDay ? 'running' : 'silent';
+}
+
+/* Хто саме поставив цей стан — щоб на рядку було видно, чому він такий.
+   Без цього «Banned» від Facebook і «Banned», який хтось клацнув рік
+   тому, виглядають однаково, а варті вони різного. */
+function cabWhy(c) {
+  const byFb = c.fb ? CAB_FB_STATE[String(c.fb.status || 'unknown')] : '';
+  if (byFb && (c.state === 'banned' || c.state === 'issue')) {
+    const why = c.fb.disable_reason ? ' · ' + c.fb.disable_reason : '';
+    return { mark: '\u27F3', text: 'Facebook: ' + (c.fb.status || '') + why };
+  }
+  const st = String(c.row.status || 'active').toLowerCase();
+  if (st === 'ban' || st === 'problem')
+    return { mark: '\u270E', text: 'Set by hand' + (c.fb ? ', Facebook says ' + c.fb.status : '') };
+  if (c.fb) return { mark: '\u27F3', text: 'Facebook: ' + (c.fb.status || '') };
+  return { mark: '\u270E', text: 'Guessed from reports — no token sees this one' };
 }
 
 // Пряме посилання в Ads Manager має сенс лише для числового ID кабінета.
@@ -14283,20 +14484,46 @@ function cabSortBy(k) {
   cabRender();
 }
 
+/* Один кабінет у тому вигляді, у якому його малює таблиця: рядок із
+   accounts_mapping (твої підписи), рядок із fb_accounts (факти) і те,
+   що порахували гроші. Будь-якого з трьох може не бути. */
+function cabMake(row, fb, id, f) {
+  const x = f.map[id] || { spend: 0, first: '', last: '', byDay: {} };
+  const state = cabStateOf(row, f, fb);
+  return { row, fb, id, x, state,
+           silent: (state === 'silent' && x.last) ? cabDayDiff(x.last, f.lastDay) : 0,
+           age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
+}
+
 function cabRender() {
   const list = document.getElementById('cab-list');
   const tiles = document.getElementById('cab-tiles');
   if (!list) return;
 
   const f = cabFacts();
-  const all = cabRows.map(r => {
+
+  // ── злиття джерел ──
+  const taken = new Set();
+  cabAll = cabRows.map(r => {
     const id = String(r.account_id || '').trim();
-    const x = f.map[id] || { spend: 0, first: '', last: '', byDay: {} };
-    const state = cabStateOf(r, f);
-    return { row: r, id, x, state,
-             silent: (state === 'silent' && x.last) ? cabDayDiff(x.last, f.lastDay) : 0,
-             age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
+    const fb = cabFbFor(r);
+    if (fb) taken.add(String(fb.account_id));
+    return cabMake(r, fb, id, f);
   });
+  /* Accountи, які бачить токен, а у твоєму списку їх немає. Це не
+     помилка й не вимагає дії: видали системному юзеру — і він тут же
+     з'явився. Раніше кожен такий доводилось заводити руками, і саме
+     через це список і розходився з дійсністю. */
+  cabFb.forEach(a2 => {
+    const id = String(a2.account_id);
+    // Уже зчепили — або такий підпис у списку вже є. Друге майже
+    // неможливе після точного збігу вище, але два рядки з однаковим
+    // id ламали б вибір у бічній панелі, а це надто дорога ціна за
+    // рядок коду, якого тут немає.
+    if (taken.has(id) || cabAll.some(c => c.id === id)) return;
+    cabAll.push(cabMake({ account_id: id, _new: true }, a2, id, f));
+  });
+  const all = cabAll;
 
   // ── плитки-лічильники, вони ж фільтр ──
   const counts = {};
@@ -14311,7 +14538,7 @@ function cabRender() {
       style="background:${soft};border:1px solid ${bd}">
       <span class="text-[9px] font-black uppercase tracking-widest truncate" style="color:var(--text-muted)">${label}</span>
       <span class="text-[15px] font-black leading-none ${tone}">${n}</span></button>`;
-  const working = CAB_WORKING.reduce((a, k) => a + counts[k], 0);
+  const working = CAB_WORKING.reduce((a2, k) => a2 + counts[k], 0);
   if (tiles) {
     tiles.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">
       ${tile('working', 'Working', working, 'text-violet-300', 'rgba(139,92,246,.14)', 'rgba(139,92,246,.32)')}
@@ -14341,6 +14568,7 @@ function cabRender() {
   let shown = all.filter(c =>
     inFilter(c) &&
     (!q || [c.id, c.row.provider_name, c.row.status_note,
+            c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q))));
 
@@ -14350,12 +14578,35 @@ function cabRender() {
     return;
   }
 
+  /* Ділимо за покриттям токеном. Поки токена немає жодного, ділити нема
+     чого — тоді це одна таблиця без заголовків, як і було. */
+  const split = cabFb.length > 0;
+  list.innerHTML = split
+    ? cabSection(shown.filter(c => c.fb), true) + cabSection(shown.filter(c => !c.fb), false)
+    : cabSection(shown, false, true);
+
+  cabDetail(shown.find(c => c.id === cabSel) || null);
+}
+
+/* Одна секція = заголовок + таблиця. Колонки в секціях РІЗНІ, і це
+   головне, заради чого список поділено: скільки живих кампаній у
+   кабінета, якого не бачить жоден токен, не знає ніхто. Показувати там
+   стовпчик із прочерками означало б робити вигляд, що відповідь десь є
+   і ми її просто не дістали. */
+function cabSection(items, hasFb, bare) {
+  if (!items.length) return '';
+
+  const arrow = k => cabSort.key === k ? (cabSort.dir < 0 ? ' ↓' : ' ↑') : '';
+  const th = (k, label, cls) => `<th class="${cls || ''}" onclick="cabSortBy('${k}')">${label}${arrow(k)}</th>`;
+
   // Типове сортування — за станом: зверху те, що вимагає дії.
   const rank = s2 => CAB_ORDER.indexOf(s2);
-  const val = { state: c => rank(c.state), id: c => c.id, agent: c => String(c.row.provider_name || ''),
+  const val = { state: c => rank(c.state), id: c => c.id,
+                agent: c => String(c.row.provider_name || ''),
+                today: c => (c.fb ? Number(c.fb.spend_today) || 0 : 0),
                 spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '' };
   const get = val[cabSort.key] || val.state;
-  shown.sort((a, b) => {
+  const sorted = items.slice().sort((a, b) => {
     const A = get(a), B = get(b);
     const d = typeof A === 'string' ? A.localeCompare(B) : A - B;
     // За станом порядок фіксований (CAB_ORDER), тож напрямок не інвертуємо
@@ -14369,56 +14620,71 @@ function cabRender() {
                    : cabGroup === 'profile' ? (c.row.profile || '— no profile —')
                    : '';
   const groups = {};
-  shown.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
+  sorted.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
 
-  const arrow = k => cabSort.key === k ? (cabSort.dir < 0 ? ' ↓' : ' ↑') : '';
-  const th = (k, label, cls) => `<th class="${cls || ''}" onclick="cabSortBy('${k}')">${label}${arrow(k)}</th>`;
-  const COLS = 10;
+  const COLS = hasFb ? 11 : 7;
+  const head = `<div class="cab-sec">
+      <span class="cab-sec-name ${hasFb ? 'is-live' : ''}">${
+        hasFb ? 'Live from Facebook' : 'No token sees these'}</span>
+      <span class="cab-sec-sub">${items.length} · ${
+        hasFb ? (cabFbAt() ? 'updated ' + cabAgo(cabFbAt()) : 'never synced')
+              : 'state guessed from reports'}</span>
+    </div>`;
 
-  list.innerHTML = `<table class="cab-tbl">
+  return (bare ? '' : head) + `<table class="cab-tbl">
     <thead><tr>
       ${th('state', 'State')}
       ${th('id', 'Account')}
       ${th('agent', 'Agent')}
-      <th class="ta-c" title="Active campaigns · ad sets · ads. Needs the Marketing API.">Camp</th>
-      <th class="ta-c" title="Active ad sets. Needs the Marketing API.">Sets</th>
-      <th class="ta-c" title="Active ads. Needs the Marketing API.">Ads</th>
+      ${hasFb ? `
+      <th class="ta-c" title="Campaigns running right now">Camp</th>
+      <th class="ta-c" title="Ad sets running right now">Sets</th>
+      <th class="ta-c" title="Ads running right now">Ads</th>
+      ${th('today', 'Today', 'ta-r')}` : ''}
       ${th('spend', 'Spend', 'ta-r')}
       ${th('age', 'Days', 'ta-r')}
       ${th('last', 'Last spend', 'ta-r')}
       <th class="ta-c">14d</th>
     </tr></thead><tbody>
-    ${Object.entries(groups).map(([g, items]) => {
-      const head = g ? `<tr class="cab-grp"><td colspan="${COLS}">
+    ${Object.entries(groups).map(([g, list2]) => {
+      const gh = g ? `<tr class="cab-grp"><td colspan="${COLS}">
           <span class="cab-grp-name">${g}</span>
-          <span class="cab-grp-sub">${items.length} · ${items.filter(i => i.state === 'running').length} running ·
-            ${cabMoney(items.reduce((a, i) => a + i.x.spend, 0))}</span></td></tr>` : '';
-      return head + items.map(cabRowHtml).join('');
+          <span class="cab-grp-sub">${list2.length} · ${list2.filter(i => i.state === 'running').length} running ·
+            ${cabMoney(list2.reduce((a2, i) => a2 + i.x.spend, 0))}</span></td></tr>` : '';
+      return gh + list2.map(c => cabRowHtml(c, hasFb)).join('');
     }).join('')}
     </tbody></table>`;
-
-  cabDetail(shown.find(c => c.id === cabSel) || null);
 }
 
-function cabRowHtml(c) {
+function cabRowHtml(c, hasFb) {
   const S = CAB_STATE[c.state];
-  const link = cabAdsLink(c.id);
-  const n = cabCounts(c.id);
+  const link = cabAdsLink(c.fb ? c.fb.account_id : c.id);
+  const n = cabCounts(c.fb);
+  const why = cabWhy(c);
   const num = v => `<td class="ta-c cab-num">${v == null ? '<span class="cab-na">—</span>' : v}</td>`;
   const label = c.state === 'silent' ? `${S.label} · ${c.silent}d` : S.label;
+  /* Account, якого немає у твоєму списку, підписуємо його назвою з
+     Facebook: голий номер нічого не каже, а назва — каже. */
+  const primary = c.row._new ? (c.fb.name || c.id) : c.id;
+  const second = c.row._new ? c.id
+    : (c.fb && c.fb.name && c.fb.name !== c.id ? c.fb.name : '');
+  const today = c.fb && Number(c.fb.spend_today) > 0
+    ? cabMoneyCur(c.fb.spend_today, c.fb.currency) : '<span class="cab-na">—</span>';
   return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
       onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
     <td>
-      <span class="cab-id">${c.id}</span>
+      <span class="cab-id">${primary}</span>
+      ${second ? `<span class="cab-chip">${second}</span>` : ''}
       ${c.row.profile ? `<span class="cab-chip">${c.row.profile}</span>` : ''}
-      <span class="cab-src" title="Status set by hand. With the Marketing API this turns into a live one.">&#9998;</span>
+      <span class="cab-src ${c.fb ? 'is-live' : ''}" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       ${link ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
            class="cab-link" title="Open in Ads Manager">&#8599;</a>`
              : `<span class="cab-link is-off" title="Ads Manager link needs a numeric account id">&#8599;</span>`}
     </td>
     <td class="cab-dim">${c.row.provider_name || '—'}</td>
-    ${num(n && n.campaigns)}${num(n && n.adsets)}${num(n && n.ads)}
+    ${hasFb ? num(n && n.campaigns) + num(n && n.adsets) + num(n && n.ads)
+            + `<td class="ta-r cab-num cab-today">${today}</td>` : ''}
     <td class="ta-r cab-num">${c.x.spend > 0 ? cabMoney(c.x.spend) : '<span class="cab-na">—</span>'}</td>
     <td class="ta-r cab-num">${c.age || '<span class="cab-na">—</span>'}</td>
     <td class="ta-r cab-dim">${c.x.last || '—'}</td>
@@ -14432,6 +14698,63 @@ function cabDetail(c) {
   if (!c) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   box.classList.remove('hidden');
   const S = CAB_STATE[c.state];
+  const esc = v => String(v == null ? '' : v)
+    .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  const enc = encodeURIComponent(c.id);
+  const why = cabWhy(c);
+
+  const cell = (k, v) => `<div class="rounded-lg px-2 py-1.5" style="background:var(--surface-2)">
+      <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
+      <p class="text-[12px] font-black text-dynamic font-mono">${v}</p></div>`;
+
+  /* Живих зі скількох. Одне число без другого брехливе в обидва боки:
+     «3 кампанії» не каже, чи решта сорока вимкнена свідомо, чи їх
+     просто немає. */
+  const pair = (live, all) => (live == null && all == null) ? '—'
+    : (live == null ? '?' : live) + '/' + (all == null ? '?' : all);
+
+  const head = `<div class="flex items-start justify-between gap-2 mb-3">
+      <div class="min-w-0">
+        <p class="text-[13px] font-black text-dynamic truncate">${esc(c.row._new ? (c.fb.name || c.id) : c.id)}</p>
+        <p class="text-[10px] font-black uppercase tracking-widest ${S.tone}">${S.label}</p>
+        <p class="text-[9px] font-bold" style="color:var(--text-muted)">${esc(why.text)}</p>
+      </div>
+      <button onclick="cabPick('${enc}')" class="text-slate-500 hover:text-red-400 text-lg leading-none">&times;</button>
+    </div>`;
+
+  // ── що каже Facebook ──
+  const fbBlock = !c.fb ? '' : `<div class="cab-fb">
+      <p class="cab-fb-head">Facebook<span>${cabFbAt() ? cabAgo(cabFbAt()) : 'never synced'}</span></p>
+      <div class="grid grid-cols-2 gap-2">
+        ${cell('Today', Number(c.fb.spend_today) > 0
+            ? cabMoneyCur(c.fb.spend_today, c.fb.currency) : '—')}
+        ${cell('State', esc(c.fb.status || '—'))}
+        ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns))}
+        ${cell('Ad sets', pair(c.fb.adsets_active, c.fb.adsets))}
+        ${cell('Ads', pair(c.fb.ads_active, c.fb.ads))}
+        ${cell('Card', esc(c.fb.card || '—'))}
+      </div>
+      ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
+      ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
+    </div>`;
+
+  /* Account, який приїхав із токена, а в accounts_mapping його немає.
+     Редагувати тут нічого: рядка, куди писати агента й профіль, ще не
+     існує. Заводимо його одним натисканням, а не змушуємо йти в іншу
+     вкладку й переписувати номер руками. */
+  if (c.row._new) {
+    box.innerHTML = `<div class="card p-4 rounded-2xl">
+      ${head}${fbBlock}
+      <p class="text-[10px] font-bold mt-3 mb-2" style="color:var(--text-muted)">
+        This one came from the token and is not in your list yet. Add it to write down
+        the agent, profile, login and notes — Facebook knows none of that.</p>
+      <button onclick="cabAdopt('${enc}')"
+        class="w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
+               bg-violet-600 text-white hover:brightness-110">Add to my list</button>
+    </div>`;
+    return;
+  }
+
   const field = e => cabCols[e.key]
     ? `<div class="mb-2">
          <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">${e.label}</label>
@@ -14439,28 +14762,45 @@ function cabDetail(c) {
            onchange="cabSaveField('${c.row.id}','${e.key}',this.value)"
            class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"></div>`
     : '';
+
+  /* Ручна прив'язка. Потрібна лише тоді, коли автоматика не впоралась:
+     підпис кабінета в тебе свій, а Facebook знає його під номером.
+     Показуємо тільки там, де є що прив'язувати, — інакше це просто ще
+     один порожній селект на панелі. */
+  /* Що можна прив'язати. «Вільний» тут означає «не причеплений до
+     ЖОДНОГО твого рядка» — синтетичні рядки, які сторінка намалювала з
+     самого Facebook, не рахуються. Інакше вийшло б навпаки до потреби:
+     кабінет, що приїхав із токена сам, ніколи не можна було б зчепити з
+     твоїм записом, а це і є найчастіший випадок. */
+  const free = cabFb.filter(x => !cabAll.some(y =>
+    y.fb && !y.row._new && String(y.fb.account_id) === String(x.account_id)));
+  const linkBlock = (c.fb || !cabFb.length || !free.length) ? ''
+    : cabCols.fb_account_id
+      ? `<label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Facebook cabinet</label>
+         <select onchange="cabLinkTo('${c.row.id}',this.value)"
+           class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500 mb-3">
+           <option value="">— not linked —</option>
+           ${free.map(x => `<option value="${esc(x.account_id)}">${esc(x.name || x.account_id)} · ${esc(x.account_id)}</option>`).join('')}
+         </select>`
+      : `<p class="text-[10px] font-bold mb-3" style="color:var(--text-muted)">
+           ${free.length} cabinet(s) from the token match nothing here. To link them by hand, add the column:
+           <span class="font-mono">alter table public.accounts_mapping add column if not exists fb_account_id text;</span></p>`;
+
   box.innerHTML = `<div class="card p-4 rounded-2xl">
-    <div class="flex items-start justify-between gap-2 mb-3">
-      <div class="min-w-0">
-        <p class="text-[13px] font-black text-dynamic truncate">${c.id}</p>
-        <p class="text-[10px] font-black uppercase tracking-widest ${S.tone}">${S.label}</p>
-      </div>
-      <button onclick="cabPick('${encodeURIComponent(c.id)}')" class="text-slate-500 hover:text-red-400 text-lg leading-none">&times;</button>
-    </div>
+    ${head}
 
     <div class="grid grid-cols-2 gap-2 mb-3">
       ${[['Spend', c.x.spend > 0 ? cabMoney(c.x.spend) : '—'],
          ['Days live', c.age || '—'],
          ['First spend', c.x.first || '—'],
-         ['Last spend', c.x.last || '—']]
-        .map(([k, v]) => `<div class="rounded-lg px-2 py-1.5" style="background:var(--surface-2)">
-            <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
-            <p class="text-[12px] font-black text-dynamic font-mono">${v}</p></div>`).join('')}
+         ['Last spend', c.x.last || '—']].map(([k, v]) => cell(k, v)).join('')}
     </div>
 
     <div class="mb-3 ${S.tone}">${cabSpark(c.x.byDay, c.x.last, 290, 38)}</div>
 
-    <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Status</label>
+    ${fbBlock}
+
+    <label class="block text-[9px] font-black uppercase tracking-widest mb-1 mt-3" style="color:var(--text-muted)">Status</label>
     <div class="flex gap-1 mb-3">
       ${[['active', 'OK'], ['problem', 'Issue'], ['ban', 'Ban']].map(([k, l]) => `
         <button onclick="cabSetStatus('${c.row.id}','${k}')"
@@ -14468,7 +14808,10 @@ function cabDetail(c) {
                  ${String(c.row.status || 'active') === k ? 'bg-violet-600 text-white' : 'text-muted-dynamic hover:text-white'}"
           style="${String(c.row.status || 'active') === k ? '' : 'background:var(--surface-2)'}">${l}</button>`).join('')}
     </div>
+    ${c.fb && CAB_FB_STATE[String(c.fb.status || '')] ? `<p class="cab-fb-warn mb-3">
+        Facebook says this one is ${esc(c.fb.status)} — the buttons above cannot undo that.</p>` : ''}
 
+    ${linkBlock}
     ${CAB_EXTRA.map(field).join('')}
 
     <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Note</label>
@@ -14478,12 +14821,29 @@ function cabDetail(c) {
 
     ${typeof evForAccount === 'function' ? evForAccount(c.id) : ''}
 
-    <button onclick="cabStopAll('${encodeURIComponent(c.id)}')"
+    <button onclick="cabStopAll('${enc}')"
       class="w-full mt-3 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
              text-red-400 hover:text-white hover:bg-red-600"
       style="border:1px solid rgba(239,68,68,.35)">Stop all campaigns</button>
   </div>`;
 }
+
+/* Завести кабінет, який приїхав із токена, у свій список. Номер і
+   прив'язку ставимо самі — переписувати його руками означає рано чи
+   пізно переставити цифру. */
+window.cabAdopt = async function (idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const c = cabAll.find(x => x.id === id);
+  if (!c || !c.fb) return;
+  const patch = { team_name: currentTeam, account_id: id };
+  if (cabCols.fb_account_id) patch.fb_account_id = id;
+  const { data, error } = await sb.from('accounts_mapping').insert(patch).select();
+  if (error) return alert('Could not add: ' + error.message);
+  if (data && data[0]) cabRows.push(data[0]);
+  cabRender();
+};
+
+window.cabLinkTo = function (id, fbId) { return cabSaveField(id, 'fb_account_id', fbId); };
 
 /* Зупинка всіх кампаній кабінета. Поки Marketing API не підключений,
    кнопка показує той самий діалог, що й буде в бою, і нічого не міняє —
@@ -14494,8 +14854,9 @@ function cabDetail(c) {
    вибірково, інакше одна кнопка піднімає те, що глушили спеціально. */
 async function cabStopAll(idEnc) {
   const id = decodeURIComponent(idEnc);
-  const n = cabCounts(id);
-  const what = n ? `${n.campaigns} active campaign(s)` : 'every active campaign';
+  const c = cabAll.find(x => x.id === id);
+  const n = cabCounts(c && c.fb);
+  const what = n && n.campaigns != null ? `${n.campaigns} active campaign(s)` : 'every active campaign';
   if (!confirm(`Stop ${what} in ${id}?\n\n`
     + 'They will be paused in Facebook. Turning them back on is a separate, deliberate step.')) return;
   alert('Marketing API is not connected yet — nothing was changed.');
@@ -14519,9 +14880,10 @@ async function cabSetStatus(id, status) {
   // Стан рахуємо до і після: ручний статус — це такий самий перехід, як
   // і той, що ми ловимо з грошей, і в журналі він має лежати поруч.
   const f = cabFacts();
-  const was = cabStateOf(row, f);
+  const fb = cabFbFor(row);
+  const was = cabStateOf(row, f, fb);
   row.status = status;
-  const now = cabStateOf(row, f);
+  const now = cabStateOf(row, f, fb);
   cabRender();
   const { error } = await sb.from('accounts_mapping').update({ status }).eq('id', id);
   if (error) { row.status = prev; cabRender(); alert('Could not save: ' + error.message); return; }
