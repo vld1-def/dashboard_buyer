@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 12:33">
+  <meta name="build" content="build 23.09 13:16">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1791,6 +1791,16 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
 .fb-acts { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 6px; }
 .fb-acts .set-btn { font-size: 9px; padding: 5px 9px; }
 
+/* Todayшні витрати стоять праворуч і в одній колонці: список
+   кабінетів читають саме по них, і числа, які гуляють по рядку від довжини
+   назви, порівняти оком неможливо. tabular-nums з тієї ж причини. */
+.fb-nums { grid-column: 2; grid-row: 1 / span 2; text-align: right; min-width: 0; }
+.fb-spend { display: block; font-size: 12px; font-weight: 800; color: var(--text-main);
+            font-variant-numeric: tabular-nums; }
+.fb-unit { display: block; font-size: 9px; font-weight: 700; letter-spacing: .08em;
+           text-transform: uppercase; color: var(--text-muted); }
+.fb-warn { color: var(--warn); }
+
 .exp-cats {
   display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
 }
@@ -3135,7 +3145,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:33</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 13:16</div>
     </div>
   </aside>
 
@@ -6308,6 +6318,7 @@ function openSettingsModal() {
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
   if (typeof setSubTabInit === 'function') setSubTabInit();
   if (typeof fbLoad === 'function') fbLoad();
+  if (typeof fbAccLoad === 'function') fbAccLoad();
 }
 
 async function loadTeamLeadToggles() {
@@ -11260,6 +11271,30 @@ document.addEventListener('keydown', e => {
               that column, and only the server function retrieves it. Where to get a token: see FB_TOKENS.sql.
             </p>
           </div>
+
+          <!-- Що Facebook каже про кабінети. Окремо від Cabinets навмисно:
+               там статус ставить людина, і імпорт, який щогодини затирав би
+               чужу позначку, був би не помічником. -->
+          <div class="set-group">
+            <h3 class="set-gtitle">Ad accounts from Facebook</h3>
+            <p class="set-gsub">What Marketing API says about every ad account those tokens can reach: state, today&#39;s spend, what is live inside, which card pays. Pulled automatically every hour.</p>
+
+            <div class="set-addrow" data-setting="facebook sync імпорт синхронізація кабінети спенд статус картка">
+              <button type="button" id="fb-sync-btn" onclick="fbSync()" class="set-btn set-btn-amber">Sync now</button>
+              <input type="text" id="fb-acc-filter" oninput="fbAccPaint()" placeholder="Filter by name, id, card or state" class="set-input" style="flex:1 1 auto;min-width:0">
+            </div>
+            <p id="fb-sync-status" class="set-hint"></p>
+
+            <div id="fb-acc-list" class="fb-list mt-2"></div>
+
+            <p class="set-hint opacity-60">
+              Hourly is a deliberate choice, not a limitation: Facebook counts even refused requests against the rate limit,
+              and hitting it means not even the account state comes through &mdash; the one thing this is for. Numbers read
+              live/total, so 3/40 means three of forty campaigns are running. Spend is today in the ad account&#39;s own time
+              zone, the way Facebook counts it. The card shows the type and last four digits &mdash; Marketing API does not
+              expose the BIN anywhere, so there is nothing else to show. Setup: FB_SYNC.sql, then FB_SYNC_CRON.sql.
+            </p>
+          </div>
           </div>
 
           <div id="isub-pane-tg" class="set-subpane">
@@ -13900,6 +13935,212 @@ window.fbAdd = async function () {
   tokEl.value = ''; labEl.value = '';
   say('Saved. Nobody can read this token back — not even you. That is deliberate.', 'var(--ok)');
   fbLoad();
+};
+
+
+/* ═══════════ ЩО FACEBOOK КАЖЕ ПРО КАБІНЕТИ ═══════════
+   Досі токен працював рівно один раз — у мить додавання. Тепер за ним
+   щогодини ходить функція fb-sync і складає у fb_accounts стан
+   кабінета, сьогоднішні витрати, скільки живих кампаній/адсетів/
+   оголошень і чим платить.
+
+   Тут тільки показ і кнопка «зробити це зараз». Сам похід у Marketing
+   API зі сторінки неможливий: токен закритий навіть від власника, і
+   дістає його лише функція від сервісної ролі.
+
+   ЧОМУ ОКРЕМА ТАБЛИЦЯ, А НЕ КОЛОНКИ В КАБІНЕТАХ: у Cabinets статус
+   ставить людина, часто всупереч Facebook («живий, але ми його
+   відклали»). Імпорт, який щогодини затирає чужу позначку, — не
+   помічник. Тому машинне й ручне лежать поруч і не б'ються.
+
+   БІН КАРТКИ. Його немає. Marketing API не віддає перших шести цифр
+   жодним полем — це дані платіжної системи. Максимум — «Visa *4242»:
+   тип і останні чотири. Саме воно тут і показується. */
+
+const FB_ACC_TONE = {
+  active:    'var(--ok)',
+  banned:    'var(--bad)',
+  closed:    'var(--bad)',
+  closing:   'var(--bad)',
+  unsettled: 'var(--warn)',
+  review:    'var(--warn)',
+  grace:     'var(--warn)',
+  unknown:   'var(--text-muted)'
+};
+
+// Словами — бо status_code сам по собі нікому нічого не каже.
+const FB_ACC_WORD = {
+  active: 'active', banned: 'disabled by Facebook', closed: 'closed',
+  closing: 'closing', unsettled: 'unpaid', review: 'under review',
+  grace: 'grace period', unknown: 'unknown'
+};
+
+/* Що стоїть нагорі. Сортувати цей список по витратах було б рівно
+   навпаки змісту: забанений кабінет нічого не крутить, тобто має нуль,
+   тобто опинився би в самому кінці — і його б просто не побачили.
+   Тому спершу те, що болить, і вже всередині рівних — по грошах. */
+const FB_ACC_RANK = {
+  banned: 0, closed: 0, closing: 0,
+  unsettled: 1, review: 1, grace: 1,
+  unknown: 2,
+  active: 3
+};
+
+let fbAccRows = [], fbSyncing = false;
+
+const FB_CUR = { USD: '$', EUR: '€', GBP: '£', UAH: '₴' };
+
+function fbMoney(v, cur) {
+  if (v == null) return '—';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  const s = n.toLocaleString('en-US', { minimumFractionDigits: n < 100 ? 2 : 0,
+                                        maximumFractionDigits: n < 100 ? 2 : 0 });
+  const sign = FB_CUR[cur];
+  return sign ? sign + s : s + (cur ? ' ' + cur : '');
+}
+
+function fbAgo(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return '';
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return (m || 1) + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+window.fbAccLoad = async function () {
+  const box = document.getElementById('fb-acc-list');
+  if (!box) return;
+  const { data, error } = await sb.from('fb_accounts')
+    .select('account_id,name,status,status_code,disable_reason,currency,'
+          + 'card,spend_today,campaigns,campaigns_active,adsets,adsets_active,'
+          + 'ads,ads_active,amount_spent,sync_error,synced_at,business_name')
+    .order('spend_today', { ascending: false, nullsFirst: false });
+  if (error) {
+    // Таблиці ще немає — це найчастіший стан у перші дні, і він не
+    // помилка. Решту причин показуємо як є.
+    box.innerHTML = /fb_accounts|does not exist|schema cache/i.test(error.message)
+      ? '<p class="set-hint">Not set up yet — run FB_SYNC.sql, deploy the fb-sync function, then press Sync now.</p>'
+      : `<p class="set-hint">Could not read: ${fbEsc(error.message)}</p>`;
+    fbAccRows = [];
+    return;
+  }
+  fbAccRows = data || [];
+  fbAccPaint();
+};
+
+window.fbAccPaint = function () {
+  const box = document.getElementById('fb-acc-list');
+  if (!box) return;
+  if (!fbAccRows.length) {
+    box.innerHTML = '<p class="set-hint">Nothing pulled yet. Add a token above, then press Sync now.</p>';
+    return;
+  }
+  const q = (document.getElementById('fb-acc-filter')?.value || '').toLowerCase().trim();
+  const shown = (!q ? fbAccRows : fbAccRows.filter(r =>
+    [r.account_id, r.name, r.status, r.card, r.business_name]
+      .some(v => String(v || '').toLowerCase().includes(q))))
+    .slice()
+    .sort((a, b) => {
+      const ra = FB_ACC_RANK[a.status] ?? 2, rb = FB_ACC_RANK[b.status] ?? 2;
+      if (ra !== rb) return ra - rb;
+      return (Number(b.spend_today) || 0) - (Number(a.spend_today) || 0);
+    });
+  if (!shown.length) { box.innerHTML = '<p class="set-hint">Nothing matches that.</p>'; return; }
+
+  /* Живих / усього. Одне число без другого брехливе в обидва боки:
+     «3 кампанії» не каже, чи решта сорока вимкнена вручну чи їх
+     просто немає. */
+  const pair = (live, all) => live == null && all == null ? '—'
+    : (live == null ? '?' : live) + '/' + (all == null ? '?' : all);
+
+  box.innerHTML = shown.map(r => {
+    const st = String(r.status || 'unknown');
+    const why = r.disable_reason ? ' · ' + fbEsc(r.disable_reason) : '';
+    return `<div class="fb-row">
+      <div class="fb-main">
+        <span class="fb-dot" style="background:${FB_ACC_TONE[st] || FB_ACC_TONE.unknown}"></span>
+        <span class="fb-label">${fbEsc(r.name || r.account_id)}</span>
+        <span class="fb-bm">${fbEsc(r.account_id)}${r.card ? ' · ' + fbEsc(r.card) : ''}</span>
+      </div>
+      <div class="fb-nums">
+        <span class="fb-spend">${fbEsc(fbMoney(r.spend_today, r.currency))}</span>
+        <span class="fb-unit">today</span>
+      </div>
+      <div class="fb-meta">
+        ${fbEsc(FB_ACC_WORD[st] || st)}${why}
+        · camp ${pair(r.campaigns_active, r.campaigns)}
+        · sets ${pair(r.adsets_active, r.adsets)}
+        · ads ${pair(r.ads_active, r.ads)}
+        ${r.synced_at ? ' · ' + fbEsc(fbAgo(r.synced_at)) : ''}
+        ${r.sync_error ? `<span class="fb-warn"> · ${fbEsc(r.sync_error)}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+};
+
+/* ── запустити зараз ──
+   Той самий виклик, що й у розкладу, тільки від вашого імені: функція
+   перевіряє ваш JWT в Supabase Auth і синхронізує ТІЛЬКИ ваші токени.
+   Попросити чужі не вийде — межі ставить перевірений uid, а не тіло
+   запиту. */
+window.fbSync = async function () {
+  if (fbSyncing) return;
+  const btn = document.getElementById('fb-sync-btn');
+  const out = document.getElementById('fb-sync-status');
+  const say = (t, tone) => { if (out) { out.innerHTML = t; out.style.color = tone || 'var(--text-muted)'; } };
+
+  fbSyncing = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  say('Asking Facebook — this takes up to a minute…');
+
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess && sess.session && sess.session.access_token;
+    if (!token) throw new Error('not signed in');
+
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-sync', {
+      method: 'POST',
+      // apikey поруч із Authorization: шлюз Supabase очікує обидва.
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: '{}'
+    });
+    if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+
+    await fbAccLoad();
+    await fbLoad();
+
+    if (!j.tokens) { say('No tokens to sync — add one above first.', 'var(--warn)'); return; }
+    const bits = [`${j.accounts} ad account(s) from ${j.tokens} token(s)`];
+    if (j.changed) bits.push(`${j.changed} changed state`);
+    if (j.failed) bits.push(`${j.failed} came back incomplete`);
+    if (j.throttled) bits.push('hit the Facebook rate limit — the rest comes in with the next hourly run');
+    if (j.more) bits.push('ran out of time, more left');
+    const tone = j.throttled || j.failed ? 'var(--warn)' : 'var(--ok)';
+    say(fbEsc(bits.join(' · '))
+      + (j.problems && j.problems.length
+          ? '<br><span class="opacity-70">' + j.problems.map(fbEsc).join('<br>') + '</span>' : ''),
+      tone);
+  } catch (e) {
+    /* «Failed to fetch» означає рівно одне: браузер не зміг виконати
+       запит. ЧОМУ — він не знає й не скаже, бо відповідь без
+       CORS-заголовків для нього просто не існує. Тому причину не
+       вигадуємо, а перелічуємо ті три, що виглядають однаково. */
+    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    say(e.code === 'missing' || net
+      ? 'The fb-sync function did not answer. Either it is not deployed yet '
+        + '(<span class="font-mono">supabase functions deploy fb-sync</span>), '
+        + 'or it fails on start-up, or JWT verification is on for it.'
+      : 'Facebook sync failed: ' + fbEsc(e.message), 'var(--bad)');
+  } finally {
+    fbSyncing = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Sync now'; }
+  }
 };
 </script>
 
