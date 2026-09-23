@@ -267,11 +267,17 @@ function urlsFor(actId: string): string[] {
      effective_status — саме ефективний: оголошення в зупиненому адсеті
      має ADSET_PAUSED, а не ACTIVE. Тобто ACTIVE тут означає «нічим
      зверху не заглушене й не на паузі саме». */
-  const bulk = (edge: string) => act + '/' + edge
-    + '?fields=effective_status&limit=' + LIST_LIMIT + '&summary=total_count';
+  const bulk = (edge: string, extra: string) => act + '/' + edge
+    + '?fields=' + encodeURIComponent('effective_status' + (extra ? ',' + extra : ''))
+    + '&limit=' + LIST_LIMIT + '&summary=total_count';
   return [
     act + '?fields=' + encodeURIComponent(INNER),
-    bulk('campaigns'), bulk('adsets'), bulk('ads')
+    // Бюджети беремо там само, де статуси: окремий запит заради одного
+    // числа коштував би стільки ж, скільки весь список.
+    bulk('campaigns', 'daily_budget,lifetime_budget'),
+    bulk('adsets', 'daily_budget,lifetime_budget'),
+    // campaign_id й adset_id — заради підрахунку ЖИВОГО (див. нижче).
+    bulk('ads', 'campaign_id,adset_id')
   ];
 }
 
@@ -298,6 +304,34 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     err = 'Facebook did not answer in time';
   }
 
+  /* ЩО ТАКЕ «ЖИВА» КАМПАНІЯ
+
+     Кампанія може мати effective_status ACTIVE і не показувати нічого:
+     усі її оголошення відхилені або чекають перевірки. Формально ввімкнена,
+     фактично мертва. Рахувати такі активними — саме та брехня, через яку
+     «10 активних із 60» не сходилось із тим, що видно в Ads Manager.
+
+     Тому спершу збираємо кампанії й адсети, у яких є хоч ОДНЕ активне
+     оголошення, і далі вважаємо живими лише їх. Для цього в оголошень і
+     просимо campaign_id з adset_id — більше ні для чого вони тут не
+     потрібні. */
+  const adsPart = parts[3];
+  const liveCampaigns = new Set<string>();
+  const liveAdsets = new Set<string>();
+  if (adsPart && adsPart.code === 200) {
+    (Array.isArray(adsPart.body?.data) ? adsPart.body.data : []).forEach((r: Json) => {
+      if (String(r.effective_status) !== 'ACTIVE') return;
+      if (r.campaign_id) liveCampaigns.add(String(r.campaign_id));
+      if (r.adset_id) liveAdsets.add(String(r.adset_id));
+    });
+  }
+  const liveIds: Record<string, Set<string> | null> =
+    { campaigns: liveCampaigns, adsets: liveAdsets, ads: null };
+
+  // Скільки грошей на день дозволено тому, що справді крутиться.
+  let dailyBudget = 0;
+  let sawBudget = false;
+
   ['campaigns', 'adsets', 'ads'].forEach((edge, i) => {
     const p = parts[i + 1];
     if (!p) { if (!err) err = 'Facebook did not answer in time'; return; }
@@ -307,10 +341,32 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     }
     const rows: Json[] = Array.isArray(p.body?.data) ? p.body.data : [];
     const by: Record<string, number> = {};
+    const live = liveIds[edge];
+    let liveHere = 0;
     rows.forEach(r => {
       const k = String(r.effective_status || 'UNKNOWN');
       by[k] = (by[k] || 0) + 1;
+      if (k !== 'ACTIVE') return;
+      // Для оголошень ACTIVE і є «живе»: нижче за них нікого немає.
+      if (live && !live.has(String(r.id))) return;
+      liveHere++;
+      /* Денний бюджет беремо лише з кампаній: у Facebook він стоїть або
+         на кампанії (CBO), або на адсетах — сумувати обидва рівні
+         означало б порахувати ті самі гроші двічі. */
+      if (edge === 'campaigns' && r.daily_budget != null) {
+        dailyBudget += Number(r.daily_budget) || 0;
+        sawBudget = true;
+      }
     });
+    /* Кампанії без свого бюджету — бюджет на адсетах. Додаємо їх, тільки
+       якщо на кампаніях не було нічого: інакше подвоїли б. */
+    if (edge === 'adsets' && !sawBudget) {
+      rows.forEach(r => {
+        if (String(r.effective_status) !== 'ACTIVE') return;
+        if (!liveAdsets.has(String(r.id))) return;
+        if (r.daily_budget != null) dailyBudget += Number(r.daily_budget) || 0;
+      });
+    }
     /* Кабінет із тисячами оголошень в одну сторінку не влазить. Тоді
        розбивка стосується лише того, що приїхало, і мовчати про це
        не можна: інакше сума в підказці не зійдеться з підсумком, і
@@ -319,7 +375,12 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     const over = all != null && rows.length < all;
     if (over) by._more = all - rows.length;
 
-    patch[edge + '_active'] = by.ACTIVE || 0;
+    /* Два різні числа, і плутати їх не можна:
+         _on   — скільки ввімкнено (effective_status ACTIVE)
+         _active — скільки з них СПРАВДІ крутить, тобто має живе оголошення
+       На екрані показуємо друге, перше лишається в підказці. */
+    patch[edge + '_on'] = by.ACTIVE || 0;
+    patch[edge + '_active'] = live ? liveHere : (by.ACTIVE || 0);
 
     /* Знаменник — із ЦІЄЇ Ж відповіді, а не з іншого запиту. Архівоване
        й видалене з нього прибираємо: це історія, а не те, що могло б
@@ -333,6 +394,9 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
       : rows.length - (by.ARCHIVED || 0) - (by.DELETED || 0);
     patch[edge + '_by_status'] = by;
   });
+
+  // Бюджети Facebook віддає в мінімальних одиницях валюти, як і решту грошей.
+  if (adsPart && adsPart.code === 200) patch.daily_budget = dailyBudget ? dailyBudget / 100 : 0;
 
   return { patch, err };
 }
@@ -419,6 +483,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
 
   out.accounts = accs.length;
   if (!accs.length) {
+    // Токен більше не бачить нічого. Рядки не видаляємо — позначаємо.
+    await markMissing(base, hdr, t.id, []);
     await markToken(base, hdr, t.id, 'no-accounts',
       'No ad account is visible — check Add Assets on the system user');
     return out;
@@ -455,6 +521,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
         card: fsd.display_string || null, card_type: fsd.type || null,
         amount_spent: cents(a.amount_spent), spend_cap: cents(a.spend_cap),
         balance: cents(a.balance),
+        // Побачили — значить не зник. Знімаємо позначку, якщо вона була.
+        missing_since: null,
         sync_error: null, synced_at: now
       } as Json
     };
@@ -497,9 +565,42 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   });
 
   await pgUpsert(base, hdr, 'fb_accounts', 'created_by,account_id', rows);
+  await markMissing(base, hdr, t.id, accs.map(a => String(a.account_id || '')));
   await noteChanges(base, hdr, t.team_name || '', changes);
   await markToken(base, hdr, t.id, 'ok', `Sees ${accs.length} ad account(s)`);
   return out;
+}
+
+/* ── кабінет, який зник ──
+
+   Токен перестав бачити кабінет: його забрали в БМ, відкликали доступ,
+   закрили. Рядок при цьому НЕ видаляємо, і це свідомо.
+
+   Видалити означало б втратити все, що ти до нього дописав — агента,
+   профіль, логін, нотатку, — і зробити це мовчки. А ще список просто
+   зменшився б, і зрозуміти, котрого кабінета не стало, було б нізвідки:
+   зникле не лишає сліду.
+
+   Тому ставимо дату, коли перестали бачити. Дані лишаються останніми
+   відомими, на сторінці такий рядок підписаний, і рішення видаляти —
+   твоє, а не автоматики.
+
+   Позначаємо ТІЛЬКИ після успішного перелічення. Якщо Facebook відмовив
+   або ми вперлись у ліміт, ми не знаємо, що зникло, а що просто не
+   приїхало, — і мовчазно позначити весь парк було б найгіршим, що ця
+   функція може зробити. */
+async function markMissing(base: string, hdr: Json, tokenId: number,
+                           seen: string[]): Promise<void> {
+  try {
+    let q = 'fb_accounts?token_id=eq.' + tokenId + '&missing_since=is.null';
+    // Номери кабінетів — цифри, тож лапки й екранування тут ні до чого.
+    const ids = seen.filter(x => /^\d+$/.test(x));
+    if (ids.length) q += '&account_id=not.in.(' + ids.join(',') + ')';
+    await fetch(base + '/rest/v1/' + q, {
+      method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
+      body: JSON.stringify({ missing_since: new Date().toISOString() })
+    });
+  } catch (_e) { /* позначка — не привід завалити імпорт */ }
 }
 
 /* Стан самого токена тримаємо свіжим: саме сюди дивляться, коли імпорт

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 16:57">
+  <meta name="build" content="build 23.09 18:24">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2609,6 +2609,13 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-srcn { opacity: .5; margin-left: 4px; font-variant-numeric: tabular-nums; }
 
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+/* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
+   прочитали б раз і забули, а тут воно перед очима щоразу. */
+.cab-syncago { margin-left: 6px; opacity: .5; font-weight: 700;
+               letter-spacing: 0; text-transform: none; }
+.cab-syncago:empty { display: none; }
+/* Account, якого токен більше не бачить. */
+.cab-chip.is-gone { color: var(--warn); border-color: var(--warn); opacity: .8; }
 .cab-syncmsg:not(:empty) { margin-bottom: 10px; }
 .cab-today { color: var(--text-main); }
 
@@ -3200,7 +3207,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 16:57</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 18:24</div>
     </div>
   </aside>
 
@@ -4030,7 +4037,8 @@ body[data-route="domains"] #dm-detail {
            токен — хочеться натиснути відразу, не йдучи нікуди. -->
       <button type="button" id="cab-sync" onclick="cabSync()"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none transition hover:border-violet-500 disabled:opacity-40"
-        title="Ask Facebook right now instead of waiting for the hourly run">Sync now</button>
+        title="Ask Facebook right now instead of waiting for the hourly run"><span>Sync now</span><span
+          id="cab-sync-ago" class="cab-syncago"></span></button>
     </div>
   </div>
 
@@ -14258,6 +14266,17 @@ const cabStWord = k => CAB_ST_WORD[k] || String(k).toLowerCase().replace(/_/g, '
 
 /* Розбивка рядком, від більшого до меншого. Без ACTIVE, коли поруч уже
    стоїть «3/180»: повторювати ту саму трійку двічі — зайвий шум. */
+/* Ввімкнено проти крутить. Різниця між цими числами — це й є кампанії,
+   у яких усі оголошення відхилені або на перевірці: формально ON,
+   фактично мертві. Саме через них «активних» було більше, ніж насправді. */
+function cabOnTip(fb, edge) {
+  if (!fb) return '';
+  const on = Number(fb[edge + '_on']);
+  const live = Number(fb[edge + '_active']);
+  if (!Number.isFinite(on) || !Number.isFinite(live) || on <= live) return '';
+  return on + ' switched on, ' + live + ' actually delivering';
+}
+
 function cabByStatus(by, skipActive) {
   if (!by || typeof by !== 'object') return '';
   return Object.entries(by)
@@ -14316,7 +14335,8 @@ async function cabFbLoad() {
       .select('account_id,name,status,disable_reason,currency,card,spend_today,team_name,'
             + 'campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
             + 'amount_spent,sync_error,synced_at,business_name,business_id,token_id,'
-            + 'campaigns_by_status,adsets_by_status,ads_by_status');
+            + 'campaigns_by_status,adsets_by_status,ads_by_status,'
+            + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since');
     if (error) throw error;
     /* Команду відсіюємо тут, а не запитом. RLS і так віддає лише свої
        рядки, а team_name у токена може бути порожнім — тоді фільтр у
@@ -14350,15 +14370,17 @@ window.cabSync = async function () {
     out.style.color = tone || 'var(--text-muted)';
   };
   btn.disabled = true;
-  const was = btn.textContent;
-  btn.textContent = 'Syncing…';
+  // Кнопка тепер має два вузли: підпис і time. Міняємо лише підпис.
+  const lbl = btn.querySelector('span') || btn;
+  const was = lbl.textContent;
+  lbl.textContent = 'Syncing…';
   try {
     await fbSync(say);
     await cabFbLoad();
     cabRender();
   } finally {
     btn.disabled = false;
-    btn.textContent = was;
+    lbl.textContent = was;
   }
 };
 
@@ -14423,6 +14445,8 @@ function cabWhy(c) {
   const st = String(c.row.status || 'active').toLowerCase();
   if (st === 'ban' || st === 'problem')
     return { mark: '\u270E', text: 'Set by hand' + (c.fb ? ', Facebook says ' + c.fb.status : '') };
+  if (c.gone) return { mark: '\u270E', text: 'The token no longer sees this cabinet \u2014 '
+    + 'everything here is the last thing it saw, on ' + String(c.fb.missing_since).slice(0, 10) };
   if (c.fb) return { mark: '\u27F3', text: 'Facebook: ' + (c.fb.status || '') };
   return { mark: '\u270E', text: 'Guessed from reports — no token sees this one' };
 }
@@ -14474,7 +14498,11 @@ function cabSortBy(k) {
 function cabMake(row, fb, id, f) {
   const x = f.map[id] || { spend: 0, first: '', last: '', byDay: {} };
   const state = cabStateOf(row, f, fb);
-  return { row, fb, id, x, state, tok: cabFromToken(fb),
+  /* Токен перестав його бачити — дані заморожені на останньому відомому.
+     Показувати такий рядок серед живих означало б видавати вчорашнє за
+     сьогоднішнє, тож він переїжджає до тих, кого токен не бачить. */
+  const gone = !!(fb && fb.missing_since);
+  return { row, fb, gone, id, x, state, tok: cabFromToken(fb),
            silent: (state === 'silent' && x.last) ? cabDayDiff(x.last, f.lastDay) : 0,
            age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
 }
@@ -14553,7 +14581,8 @@ function cabRender() {
      що підтверджує Facebook» і «показати лише забанені» — різні
      питання, і звалювати їх в одну стрічку плиток означало б зробити
      обидва незрозумілими. */
-  const inSrc = c => cabSrc === 'fb' ? !!c.fb : cabSrc === 'old' ? !c.fb : true;
+  const inSrc = c => cabSrc === 'fb' ? (!!c.fb && !c.gone)
+                   : cabSrc === 'old' ? (!c.fb || c.gone) : true;
   let shown = all.filter(c =>
     inFilter(c) && inSrc(c) &&
     (!q || [c.id, c.row.provider_name, c.row.status_note,
@@ -14562,8 +14591,18 @@ function cabRender() {
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q))));
 
+  /* Коли востаннє ходили в Facebook — просто на кнопці. Окремий рядок
+     під нею читали б раз і забували, а тут воно перед очима щоразу,
+     коли виникає питання «а це свіже?». */
+  const ago = document.getElementById('cab-sync-ago');
+  if (ago) {
+    const at = cabFbAt();
+    ago.textContent = at ? cabAgo(at) : (cabFb.length ? '' : 'never');
+    ago.title = at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet';
+  }
+
   // Підсвічуємо активний зріз і показуємо, скільки в кожному.
-  const nFb = all.filter(c => c.fb).length;
+  const nFb = all.filter(c => c.fb && !c.gone).length;
   [['', all.length], ['fb', nFb], ['old', all.length - nFb]].forEach(([k, n]) => {
     const b = document.getElementById('cab-src-' + (k || 'all'));
     if (!b) return;
@@ -14590,7 +14629,7 @@ function cabRender() {
      чого — тоді це одна таблиця без заголовків, як і було. */
   const split = cabFb.length > 0;
   list.innerHTML = split
-    ? cabSection(shown.filter(c => c.fb), true) + cabSection(shown.filter(c => !c.fb), false)
+    ? cabSection(shown.filter(c => c.fb && !c.gone), true) + cabSection(shown.filter(c => !c.fb || c.gone), false)
     : cabSection(shown, false, true);
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
@@ -14646,8 +14685,8 @@ function cabSection(items, hasFb, bare) {
       ${th('id', 'Account')}
       ${th('agent', 'Agent')}
       ${hasFb ? `
-      <th class="ta-c" title="Campaigns running right now">Camp</th>
-      <th class="ta-c" title="Ad sets running right now">Sets</th>
+      <th class="ta-c" title="Campaigns that actually deliver: switched on AND with a live ad inside">Camp</th>
+      <th class="ta-c" title="Ad sets that actually deliver: switched on AND with a live ad inside">Sets</th>
       <th class="ta-c" title="Ads running right now">Ads</th>
       ${th('today', 'Today', 'ta-r')}` : ''}
       ${th('spend', 'Spend', 'ta-r')}
@@ -14695,7 +14734,9 @@ function cabRowHtml(c, hasFb) {
         : c.tok.browser
           ? `<span class="cab-chip is-auto" title="Browser from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.browser)}</span>`
           : ''}
-      <span class="cab-src ${c.fb ? 'is-live' : ''}" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
+      <span class="cab-src ${c.fb && !c.gone ? 'is-live' : ''}" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
+      ${c.gone ? `<span class="cab-chip is-gone" title="The token stopped seeing this cabinet on ${
+        cabEsc(String(c.fb.missing_since).slice(0, 10))} — the numbers below are the last ones it saw">gone</span>` : ''}
       ${link ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
            class="cab-link" title="Open in Ads Manager">&#8599;</a>`
              : `<span class="cab-link is-off" title="Ads Manager link needs a numeric account id">&#8599;</span>`}
@@ -14705,8 +14746,8 @@ function cabRowHtml(c, hasFb) {
       : c.tok.agent
         ? `<span class="cab-auto" title="Agent from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.agent)}</span>`
         : '—'}</td>
-    ${hasFb ? numTip(n && n.campaigns, cabByStatus(c.fb.campaigns_by_status))
-            + numTip(n && n.adsets, cabByStatus(c.fb.adsets_by_status))
+    ${hasFb ? numTip(n && n.campaigns, [cabOnTip(c.fb, 'campaigns'), cabByStatus(c.fb.campaigns_by_status)].filter(Boolean).join(' \u2014 '))
+            + numTip(n && n.adsets, [cabOnTip(c.fb, 'adsets'), cabByStatus(c.fb.adsets_by_status)].filter(Boolean).join(' \u2014 '))
             + numTip(n && n.ads, cabByStatus(c.fb.ads_by_status))
             + `<td class="ta-r cab-num cab-today">${today}</td>` : ''}
     <td class="ta-r cab-num">${c.x.spend > 0 ? cabMoney(c.x.spend) : '<span class="cab-na">—</span>'}</td>
@@ -14719,6 +14760,17 @@ function cabRowHtml(c, hasFb) {
 /* «3 зі 180» — чесне число, яке нічого не пояснює. Цей рядок і є
    пояснення: що саме тримає решту. Відхилені й «з помилками» виділені
    кольором, бо пауза — твій вибір, а відхилення — ні. */
+/* Кампанії, які ввімкнені й нічого не показують. Окремим рядком і
+   червоним, бо це не «трохи менше, ніж здавалось» — це гроші, які ти
+   вважаєш робочими, а вони стоять. */
+function cabDead(fb) {
+  if (!fb) return '';
+  const n = Number(fb.campaigns_on) - Number(fb.campaigns_active);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  return `<p class="cab-fb-warn">${n} campaign(s) switched on but not delivering `
+    + '\u2014 nothing inside them is approved and running.</p>';
+}
+
 function cabWhyNot(fb) {
   const by = fb && fb.ads_by_status;
   if (!by || typeof by !== 'object') return '';
@@ -14780,7 +14832,11 @@ function cabDetail(c) {
         ${cell('Ads', pair(c.fb.ads_active, c.fb.ads),
                cabByStatus(c.fb.ads_by_status))}
         ${cell('Card', esc(c.fb.card || '—'))}
+        ${cell('Daily budget', c.fb.daily_budget != null
+            ? cabMoneyCur(c.fb.daily_budget, c.fb.currency) : '—',
+            'What the campaigns that are actually delivering are allowed to spend per day')}
       </div>
+      ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
