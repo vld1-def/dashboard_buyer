@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 08:37">
+  <meta name="build" content="build 23.09 12:12">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1208,6 +1208,10 @@ body {
 .sb-cap {
   font-size: 9px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
   color: var(--text-muted); opacity: .65; padding: 0 8px; margin: 14px 0 6px;
+  /* Висота задана явно, хоч текст і однорядковий: від auto перехід не
+     працює, і в компактному режимі підписи розділів зникали стрибком —
+     список смикався вгору посеред руху панелі. */
+  height: 13px; line-height: 13px; overflow: hidden;
 }
 .sb-cap:first-child { margin-top: 0; }
 
@@ -1242,6 +1246,12 @@ body {
 body.sb-compact .sb-lbl,
 body.sb-compact .sb-brand-name,
 body.sb-compact .sb-search span { max-width: 0; }
+/* Підказка ⌘K — окремий випадок: у неї власні падінги й рамка, і
+   max-width:0 їх не чіпає. Чотирнадцять пікселів порожнечі лишались у
+   кнопці завширшки 42 і зсували іконку пошуку з центру. */
+body.sb-compact .sb-search .tb-kbd {
+  padding-left: 0; padding-right: 0; border-width: 0;
+}
 .sb-item .sb-badge {
   margin-left: auto; font-size: 10px; font-weight: 800;
   background: var(--surface-3); color: var(--text-muted);
@@ -1272,6 +1282,9 @@ body.sb-compact .sb-search span { max-width: 0; }
 .sb-search:hover { border-color: var(--border-2); }
 .sb-search svg { width: 15px; height: 15px; flex: 0 0 15px; stroke-width: 1.9; }
 .sb-search span { font-size: 12.5px; font-weight: 500; flex: 1; text-align: left; }
+/* Підказка ⌘K — теж span, тож flex:1 вище розтягував її на пів кнопки:
+   вісімдесят пікселів замість тридцяти. Чіпу розтягуватись нема чого. */
+.sb-search .tb-kbd { flex: 0 0 auto; text-align: right; }
 .tb-kbd {
   font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
   background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
@@ -1836,11 +1849,7 @@ body.sb-compact .sb-brand { padding: 0; justify-content: center; }
 body.sb-compact .sb-scroll { padding: 10px 8px 8px; }
 /* Підписи розділів: висоту прибираємо, але не миттєво — разом із
    прозорістю, щоб список не смикався. */
-body.sb-compact .sb-cap {
-  height: 0; margin: 0; padding: 0; overflow: hidden;
-  transition: opacity .1s ease, transform .1s ease,
-              height .2s ease, margin .2s ease, padding .2s ease;
-}
+body.sb-compact .sb-cap { height: 0; margin: 0; padding: 0; }
 /* Замість підписів розділів — тонка риска, щоб групи не злипались */
 body.sb-compact .sb-cap + .sb-item { margin-top: 10px; position: relative; }
 body.sb-compact .sb-cap + .sb-item::before {
@@ -1859,7 +1868,9 @@ body.sb-compact .sb-item .sb-badge {
 }
 body.sb-compact .sb-item { position: relative; }
 
-body.sb-compact .sb-search { justify-content: center; padding: 0; height: 36px; }
+/* gap теж у нуль: три проміжки по 8px між іконкою й двома підписами
+   лишались і в компактному, зсуваючи іконку вліво від центру. */
+body.sb-compact .sb-search { justify-content: center; padding: 0; gap: 0; height: 36px; }
 
 
 body.sb-compact .sb-foot { padding: 8px 8px 10px; }
@@ -2726,6 +2737,8 @@ body[data-route="domains"] #dm-detail {
      підписи зникають миттєво й усі разом, бо якщо тягнути їх, вони
      ще мить стирчать із панелі, яка вже вужча за них, і це виглядає
      як поломка. Те саме правило, що й у вкладках Geo. */
+  /* РОЗГОРТАННЯ — крива з невеликим перельотом: панель приїжджає й
+     трішки доважує, ніби має інерцію. */
   .app-sidebar {
     transition: width .34s cubic-bezier(.34, 1.08, .5, 1),
                 flex-basis .34s cubic-bezier(.34, 1.08, .5, 1);
@@ -2735,6 +2748,21 @@ body[data-route="domains"] #dm-detail {
                 gap .26s cubic-bezier(.34, 1.08, .5, 1),
                 padding .26s cubic-bezier(.34, 1.08, .5, 1);
   }
+
+  /* ЗГОРТАННЯ — та сама крива тут читається як дефект: переліт означає,
+     що панель на мить стає ВУЖЧОЮ за кінцеві 64px і відскакує назад.
+     Коли щось приїжджає, це схоже на вагу; коли їде геть — на поламану
+     верстку. Тому назад — рішуче й без відскоку, і трохи швидше. */
+  body.sb-compact .app-sidebar {
+    transition: width .26s cubic-bezier(.4, 0, .2, 1),
+                flex-basis .26s cubic-bezier(.4, 0, .2, 1);
+  }
+  body.sb-compact .sb-item {
+    transition: background .15s, color .15s,
+                gap .2s cubic-bezier(.4, 0, .2, 1),
+                padding .2s cubic-bezier(.4, 0, .2, 1);
+  }
+  body.sb-compact .sb-toggle svg { transition: transform .26s cubic-bezier(.4, 0, .2, 1); }
   .sb-brand, .sb-search, .sb-scroll, .sb-foot { transition: padding .3s ease; }
 
   /* Розгортання: підпис виїжджає зліва вслід за панеллю. */
@@ -2754,7 +2782,10 @@ body[data-route="domains"] #dm-detail {
   }
   body.sb-compact .sb-cap {
     opacity: 0; transform: translateX(-10px);
-    transition: opacity .1s ease, transform .1s ease;
+    transition: opacity .1s ease, transform .1s ease,
+                height .2s cubic-bezier(.4, 0, .2, 1),
+                margin .2s cubic-bezier(.4, 0, .2, 1),
+                padding .2s cubic-bezier(.4, 0, .2, 1);
     transition-delay: 0ms;
   }
 
@@ -3053,7 +3084,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 08:37</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:12</div>
     </div>
   </aside>
 
