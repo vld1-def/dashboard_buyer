@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 12:22">
+  <meta name="build" content="build 23.09 12:30">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3103,7 +3103,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:30</div>
     </div>
   </aside>
 
@@ -13602,9 +13602,16 @@ window.saveTelegramBot = saveTelegramBot;
    токеном, нікуди більше він при цьому не потрапляє. */
 
 const FB_API = 'https://graph.facebook.com/v21.0';
-// Без цих прав сенсу від токена немає: перші два — читати статистику,
-// третій — гасити кампанії, четвертий — бачити структуру БМ.
-const FB_NEED = ['ads_read', 'read_insights'];
+/* Обов'язкове рівно одне: ads_read. Ним читається і сама статистика, і
+   edge /insights рекламного кабінета — окремого дозволу для цього не
+   існує.
+
+   read_insights тут НЕ потрібен, хоч назва й підказує протилежне: він
+   про інсайти Сторінок і застосунків, до реклами стосунку не має, і в
+   списку дозволів системного користувача його зазвичай навіть не
+   пропонують. Спершу я вписав його в обов'язкові — і цим позначав би
+   жовтим «бракує прав» кожен цілком робочий токен. */
+const FB_NEED = ['ads_read'];
 const FB_NICE = ['ads_management', 'business_management'];
 
 let fbRows = [];
@@ -13651,15 +13658,20 @@ async function fbInspect(token) {
   } catch (e) { /* кабінетів може не бути видно — це теж діагноз */ }
 
   const missing = FB_NEED.filter(s => !scopes.includes(s));
+  /* Нуль кабінетів — теж не «ok». Формально з токеном усе гаразд, але
+     зробити ним не можна нічого, і зелений кружечок на такому рядку
+     прямо вводить в оману. */
   const status = !d.is_valid ? 'error'
     : (expires && Date.parse(expires) < Date.now()) ? 'expired'
     : missing.length ? 'no-scopes'
+    : !accounts.length ? 'no-accounts'
     : 'ok';
   const note = status === 'error' ? 'Facebook says this token is not valid'
     : status === 'expired' ? 'Expired'
     : status === 'no-scopes' ? 'Missing permissions: ' + missing.join(', ')
-    : accounts.length ? `Sees ${accounts.length} ad account(s)`
-    : 'Permissions are fine, but no ad account is visible — check Add Assets on the system user';
+    : status === 'no-accounts'
+      ? 'Permissions are fine, but no ad account is visible — check Add Assets on the system user'
+    : `Sees ${accounts.length} ad account(s)`;
 
   return { scopes, expires_at: expires, accounts, bm, app_id: d.app_id || null, status, note };
 }
@@ -13667,7 +13679,8 @@ async function fbInspect(token) {
 /* ── список ── */
 
 const FB_TONE = { ok: 'var(--ok)', expired: 'var(--bad)', error: 'var(--bad)',
-                  'no-scopes': 'var(--warn)', unknown: 'var(--text-muted)' };
+                  'no-scopes': 'var(--warn)', 'no-accounts': 'var(--warn)',
+                  unknown: 'var(--text-muted)' };
 
 window.fbLoad = async function () {
   const box = document.getElementById('fb-list');
