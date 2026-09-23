@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 20:44">
+  <meta name="build" content="build 23.09 20:57">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2670,6 +2670,9 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .fbr-hint { margin-top: 6px; font-size: 9px; font-weight: 700; line-height: 1.45; color: var(--text-muted); }
 .fbr-hint:empty { display: none; }
 .fbr-hint.is-bad { color: var(--bad); }
+/* «Такої події тут не бачили» — підпис на самому полі, а не окремим
+   рядком нижче: зв'язок із конкретним рядком має бути видно одразу. */
+.fbr-warn { color: var(--warn); font-weight: 900; letter-spacing: .06em; }
 
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
@@ -3315,7 +3318,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:44</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:57</div>
     </div>
   </aside>
 
@@ -14328,10 +14331,35 @@ const FBR_BD_COLS = {
 /* Конверсії, які вміє приймати Form.html. label — що побачиш у
    налаштуванні, head — заголовок колонки у файлі. */
 const FBR_CONV = [
-  ['reg',  'Registration', 'Registrations completed'],
-  ['dep',  'Deposit',      'Purchases'],
+  ['reg',  'Registration',   'Registrations completed'],
+  ['dep',  'Deposit',        'Purchases'],
   ['inst', 'Install / lead', 'Leads']
 ];
+
+/* ЩО БЕРЕТЬСЯ САМО.
+
+   Спершу вибір був обовʼязковий: три списки, і поки в них не ткнеш,
+   файл неповний. Це неправильно поставлене питання — у переважній
+   більшості кабінетів відповідь та сама, і питати її щоразу означає
+   змушувати людину працювати за програму.
+
+   Тепер подія береться за списком нижче: перша, яка справді є в цьому
+   кабінеті. Немає жодної — беремо все одно першу, канонічну, і чесно
+   підписуємо, що такої події тут не бачили. Стовпчик при цьому не
+   зникає: Form.html чекає на нього, і його відсутність коштувала б
+   зайвого вікна «чого бракує» на кожному імпорті.
+
+   Порядок у списках не випадковий: зверху те, що Facebook віддає
+   частіше. omni_* рахує і сайт, і застосунок; offsite_conversion.*
+   — те, що приходить із пікселя. */
+const FBR_GUESS = {
+  reg:  ['complete_registration', 'offsite_conversion.fb_pixel_complete_registration',
+         'omni_complete_registration', 'onsite_web_complete_registration'],
+  dep:  ['purchase', 'omni_purchase', 'offsite_conversion.fb_pixel_purchase',
+         'onsite_web_purchase', 'app_custom_event.fb_mobile_purchase'],
+  inst: ['lead', 'offsite_conversion.fb_pixel_lead', 'omni_lead',
+         'mobile_app_install', 'app_install']
+};
 
 let fbrFor = '';        // для якого кабінета розкрито блок
 let fbrEvents = null;   // [{type,n}] — що приходить у цей кабінет
@@ -14341,7 +14369,14 @@ let fbrBusy = '';       // текст на time роботи; '' — вільн�
    кабінета перемальовується цілком, і повідомлення, записане прямо у
    вузол, зникало б рівно в ту мить, коли його дочитують. */
 let fbrMsg = { html: '', tone: '' };
-let fbrBd = '';
+/* Розріз за замовчуванням — найширший. Саме його ти й вивантажуєш
+   руками: гео, платформа, плейсмент і пристрій усі є серед полів,
+   які шукає Form.html, тож звужувати його нема сенсу. */
+let fbrBd = 'country_placement';
+
+/* '' — брати само, '-' — не вивантажувати, будь-що інше — вибрана
+   подія. «Брати само» і «не треба» навмисно різні значення: звести їх
+   в одне означало б не розрізняти «я не вибрав» і «я не хочу». */
 let fbrMap = { reg: '', dep: '', inst: '' };
 let fbrMapLoaded = false;
 
@@ -14434,19 +14469,26 @@ function fbrBlock(c) {
   const opt = (v, label, sel) =>
     `<option value="${fbrEsc(v)}"${sel === v ? ' selected' : ''}>${fbrEsc(label)}</option>`;
 
+  /* Список лишається, але вибирати нічого не треба: зверху стоїть
+     «беру само» з уже підставленою подією. Він тут для кабінета, у
+     якого своя конверсія — а не для того, щоб питати щоразу. */
   const evSel = ([key, label]) => {
     if (fbrEvents === null) return `<p class="fbr-hint">${fbrEsc(label)}: looking…</p>`;
-    if (!fbrEvents.length) return '';
-    return `<label class="fbr-row"><span>${fbrEsc(label)}</span>
+    const now = fbrPick(key);
+    const auto = fbrMap[key] === '' ;
+    const miss = auto && now && !fbrSeen(now);
+    return `<label class="fbr-row"><span>${fbrEsc(label)}${
+        miss ? ' <b class="fbr-warn">not seen here</b>' : ''}</span>
       <select onchange="fbrSetConv('${key}', this.value)">
-        ${opt('', '— not exported —', fbrMap[key])}
+        ${opt('', 'auto: ' + (now || '—'), fbrMap[key])}
         ${fbrEvents.map(e => opt(e.type, e.type + '  (' + e.n + ')', fbrMap[key])).join('')}
+        ${opt('-', '— do not export —', fbrMap[key])}
       </select></label>`;
   };
 
   const noEvents = fbrEvents && !fbrEvents.length && !fbrErr
-    ? `<p class="fbr-hint">No conversions came through this cabinet in the last 30 days, so
-       there is nothing to map yet. Spend, clicks and impressions still export.</p>` : '';
+    ? `<p class="fbr-hint">Facebook reported no conversions at all in this cabinet over the last
+       30 days. The columns still go into the file, with zeros — Form.html expects them.</p>` : '';
 
   return `<div class="fbr">
     <p class="fbr-head">Export report
@@ -14464,9 +14506,10 @@ function fbrBlock(c) {
     <button type="button" onclick="fbrRun('${enc}')" class="fbr-go"
       ${fbrBusy ? 'disabled' : ''}>${fbrBusy ? fbrEsc(fbrBusy) : 'Download CSV'}</button>
     <p class="fbr-hint">Period comes from the filter above: <b>${fbrEsc(cabRangeLabel())}</b>.
-      Facebook builds the report on its side, so a month of ad-level rows takes a while.
-      Not every breakdown can be combined with every other — if Facebook refuses this
-      one, it says so below and the parts work separately.</p>
+      Everything else is already set the way Form.html wants it — press Download.
+      Touch the lists above only if this cabinet counts something of its own.
+      Facebook builds the report on its side, so a month of ad-level rows takes a while;
+      if it refuses this breakdown, it says so below and the narrower ones work.</p>
     <p id="fbr-msg" class="fbr-hint"${fbrMsg.tone ? ` style="color:${fbrMsg.tone}"` : ''}>${fbrMsg.html}</p>
   </div>`;
 }
@@ -14487,6 +14530,25 @@ function fbrCell(v) {
   return /[",]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
+/* Яку подію беремо для цієї колонки. Порядок такий:
+     вибрана руками > перша зі списку здогадок, яка є в кабінеті >
+     перша здогадка як є.
+   Останній випадок — це кабінет, у якому такої конверсії за 30 днів
+   не було жодної. Колонка все одно потрібна (Form.html її чекає), а
+   нулі в ній чесні: конверсій справді не було. Але сказати про це
+   людині треба, тож fbrSeen нижче позначає такий випадок. */
+function fbrPick(key) {
+  const chosen = fbrMap[key];
+  if (chosen === '-') return '';            // сказали не вивантажувати
+  if (chosen) return chosen;                // вибрали руками
+  const guess = FBR_GUESS[key] || [];
+  const seen = (fbrEvents || []).map(e => e.type);
+  return guess.find(t => seen.includes(t)) || guess[0] || '';
+}
+
+// Чи бачили цю подію в кабінеті за останні 30 днів.
+const fbrSeen = type => !!type && (fbrEvents || []).some(e => e.type === type);
+
 /* Скільки разів сталася подія. Facebook складає всі конверсії в один
    масив actions — беремо звідти ту, яку вибрали. */
 function fbrAction(row, type) {
@@ -14498,12 +14560,18 @@ function fbrAction(row, type) {
 
 function fbrCsv(rows, cur, bd) {
   /* Валюта — у заголовку спенду. Form.html читає її саме звідти. */
-  const head = ['Reporting starts', 'Reporting ends', 'Account name',
-                'Campaign name', 'Ad set name', 'Ad name',
-                'Amount spent (' + (cur || 'USD') + ')', 'Impressions', 'Link clicks'];
-  const take = [r => r.date_start, r => r.date_stop, r => r.account_name,
-                r => r.campaign_name, r => r.adset_name, r => r.ad_name,
-                r => r.spend, r => r.impressions,
+  /* Номер кабінета, а не назва. Назва в дашборді своя, рукописна, і з
+     фебешною збігається далеко не завжди — імпорт за нею не знаходив
+     кабінет і заводив новий. Номер один і той самий скрізь.
+
+     Адсета й показів тут немає навмисно: Form.html їх не читає, а
+     кожен зайвий стовпчик — це ще одна нагода мапперу помилитись. */
+  const head = ['Reporting starts', 'Reporting ends', 'Account ID',
+                'Campaign name', 'Ad name',
+                'Amount spent (' + (cur || 'USD') + ')', 'Link clicks'];
+  const take = [r => r.date_start, r => r.date_stop, r => r.account_id,
+                r => r.campaign_name, r => r.ad_name,
+                r => r.spend,
                 // inline_link_clicks — це «кліки по посиланню», те саме,
                 // що у фебешному експорті. clicks там ширше: рахує будь-який
                 // клік по оголошенню, і плутати їх не можна.
@@ -14515,9 +14583,10 @@ function fbrCsv(rows, cur, bd) {
   });
 
   FBR_CONV.forEach(([key, , label]) => {
-    if (!fbrMap[key]) return;   // не вибрано — колонки немає
+    const type = fbrPick(key);
+    if (!type) return;   // сказали не вивантажувати
     head.push(label);
-    take.push(r => fbrAction(r, fbrMap[key]));
+    take.push(r => fbrAction(r, type));
   });
 
   const out = [head.map(fbrCell).join(',')];
