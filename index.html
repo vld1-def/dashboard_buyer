@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 21:02">
+  <meta name="build" content="build 23.09 21:06">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3371,7 +3371,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 21:02</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 21:06</div>
     </div>
   </aside>
 
@@ -14766,6 +14766,7 @@ let fcmList = null;    // [] або null, поки їдуть
 let fcmErr = '';
 let fcmNote = '';      // «нема чого модерувати» тощо
 let fcmMore = false;   // постів більше, ніж ми встигли обійти
+let fcmSeen = 0, fcmPosts = 0;
 let fcmSel = [];       // вибрані id
 let fcmBusy = '';
 let fcmMsg = { html: '', tone: '' };
@@ -14817,6 +14818,8 @@ async function fcmLoad(id) {
     fcmList = j.comments || [];
     fcmNote = j.note || '';
     fcmMore = !!j.more;
+    fcmSeen = Number(j.looked) || 0;
+    fcmPosts = Number(j.posts) || 0;
     /* Пости, до яких не пустило, — не привід сховати решту, але й
        мовчати про них не можна: інакше «коментарів немає» означало б
        водночас «їх справді немає» і «нам не дали подивитись». */
@@ -14951,8 +14954,9 @@ function fcmBlock(c) {
             onchange="fcmPickAll(this.checked)"> ${fcmList.length} comment(s)</label>
          <div class="fcm-list">${rows}</div>
          ${acts}`}
-    ${fcmMore ? `<p class="fbr-hint">Only the first posts were checked — this cabinet runs
-       more of them than one pass covers. Press Comments again after moderating these.</p>` : ''}
+    ${fcmMore ? `<p class="fbr-hint">Checked ${fcmSeen} of ${fcmPosts} posts — the ones with a
+       running ad first, since that is where new comments land. The rest are older posts
+       nothing points at right now.</p>` : ''}
     <p id="fcm-msg" class="fbr-hint"${fcmMsg.tone ? ` style="color:${fcmMsg.tone}"` : ''}>${fcmMsg.html}</p>
   </div>`;
 }

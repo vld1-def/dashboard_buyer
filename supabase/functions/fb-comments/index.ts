@@ -103,21 +103,33 @@ async function graph(path: string, token: string, params: Json,
    effective_object_story_id має вигляд {page_id}_{post_id}. Оголошення
    без нього — це ті, що ведуть не на пост Сторінки (наприклад, чистий
    лідформ), і коментарів у них немає за визначенням. */
-async function ourPosts(token: string, actId: string): Promise<Map<string, string[]>> {
+type Post = { names: string[]; live: boolean };
+
+async function ourPosts(token: string, actId: string): Promise<Map<string, Post>> {
   const j = await graph('/act_' + actId + '/ads', token, {
     fields: 'name,effective_status,creative{effective_object_story_id}',
     limit: ADS_LIMIT
   });
-  const posts = new Map<string, string[]>();   // story_id -> назви оголошень
+  const posts = new Map<string, Post>();
   (Array.isArray(j.data) ? j.data : []).forEach((ad: Json) => {
     const story = String(ad?.creative?.effective_object_story_id || '');
     if (!story.includes('_')) return;
-    const names = posts.get(story);
+    const live = String(ad.effective_status) === 'ACTIVE';
     const name = String(ad.name || ad.id || '');
-    if (names) { if (!names.includes(name)) names.push(name); }
-    else posts.set(story, [name]);
+    const have = posts.get(story);
+    if (!have) { posts.set(story, { names: [name], live }); return; }
+    if (!have.names.includes(name)) have.names.push(name);
+    have.live = have.live || live;
   });
-  return posts;
+
+  /* Пости, під якими зараз крутиться оголошення — наперед.
+
+     Без цього порядок задавав Graph, тобто він був випадковий, а ми
+     встигаємо обійти не всі. У кабінеті з сотнею постів це означало б,
+     що живі — саме ті, під якими спам і збирається — могли не потрапити
+     в перегляд ЖОДНОГО разу, скільки не натискай. */
+  return new Map([...posts.entries()].sort(
+    (a, b) => Number(b[1].live) - Number(a[1].live)));
 }
 
 /* Токен Сторінки. Системний користувач має бачити цю Сторінку як актив
@@ -220,7 +232,7 @@ async function handle(req: Request): Promise<Response> {
 }
 
 /* ── показати, що там пишуть ── */
-async function listComments(token: string, posts: Map<string, string[]>,
+async function listComments(token: string, posts: Map<string, Post>,
                             cache: Map<string, { token: string; name: string }>): Promise<Response> {
   if (!posts.size) return reply({ comments: [], posts: 0,
     note: 'No ad in this cabinet points at a Page post, so there is nothing to moderate.' });
@@ -230,7 +242,7 @@ async function listComments(token: string, posts: Map<string, string[]>,
   const problems: string[] = [];
   let seen = 0;
 
-  for (const [story, adNames] of posts) {
+  for (const [story, post] of posts) {
     if (seen >= POSTS_MAX || Date.now() > deadline) break;
     seen++;
     try {
@@ -244,8 +256,9 @@ async function listComments(token: string, posts: Map<string, string[]>,
         id: String(c.id || ''),
         story,
         page: pg.name,
-        ad: adNames[0] || '',
-        ads: adNames.length,
+        ad: post.names[0] || '',
+        ads: post.names.length,
+        live: post.live,
         message: String(c.message || ''),
         from: String(c.from?.name || ''),
         created_time: c.created_time || null,
@@ -285,7 +298,7 @@ async function listComments(token: string, posts: Map<string, string[]>,
    запиту, а виводимо з посту, який щойно звірили зі списком кабінета.
    Тобто дотягнутись цим токеном можна лише до Сторінки, яку тобі й так
    видали в твоєму ж бізнесі. */
-async function moderate(token: string, posts: Map<string, string[]>,
+async function moderate(token: string, posts: Map<string, Post>,
                         action: string, body: Json,
                         cache: Map<string, { token: string; name: string }>): Promise<Response> {
   const ids: string[] = Array.isArray(body?.comment_ids)
