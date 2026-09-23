@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 19:29">
+  <meta name="build" content="build 23.09 20:14">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2608,6 +2608,23 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-srcsel #cab-src-fb.is-on { color: var(--ok); }
 .cab-srcn { opacity: .5; margin-left: 4px; font-variant-numeric: tabular-nums; }
 
+/* Вибір періоду. Ті самі сегменти, що й у зрізі за джерелом — це
+   сусідні перемикачі однієї ваги, і виглядати вони мають однаково.
+   Ручні дати зʼявляються лише в режимі Custom: два порожні поля
+   поруч із пресетами щодня питали б «а мені їх заповнювати?». */
+.cab-range { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cab-range-days {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 900; color: var(--text-muted);
+}
+.cab-range-days input {
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  border-radius: 10px; padding: 5px 8px;
+  font-size: 10px; font-weight: 700; color: var(--text-main);
+  outline: none; color-scheme: dark;
+}
+.cab-range-days input:focus { border-color: var(--accent); }
+
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
    прочитали б раз і забули, а тут воно перед очима щоразу. */
@@ -3252,7 +3269,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 19:29</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:14</div>
     </div>
   </aside>
 
@@ -4075,6 +4092,10 @@ body[data-route="domains"] #dm-detail {
         <button type="button" id="cab-src-old" onclick="cabSetSrc('old')"
           title="Only cabinets no token sees — state guessed from reports">Old <span class="cab-srcn"></span></button>
       </div>
+      <!-- Period, за який рахуємо витрати. Малюється з cabinets.js:
+           вибір і його підпис мають жити в одному місці, інакше
+           заголовок стовпчика колись розійдеться з тим, що в ньому. -->
+      <div id="cab-range" class="cab-range"></div>
       <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
       <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
@@ -11426,6 +11447,15 @@ document.addEventListener('keydown', e => {
               <button type="button" id="tg-unlink-btn" onclick="tgUnlink()" class="set-btn hidden">Disconnect</button>
             </div>
             <p id="tg-link-status" class="set-hint">Loading…</p>
+
+            <!-- Перевірка звʼязку. Стоїть тут, поруч із прив'язкою, бо
+                 питання «а воно взагалі працює?» виникає одразу після
+                 неї, а не колись потім у іншій вкладці. -->
+            <div class="set-addrow mt-2" data-setting="telegram test тест перевірка">
+              <button type="button" id="tg-test-btn" onclick="tgTest()" class="set-btn"
+                title="Asks the fb-sync function to send one message to your chat — the same route the real alerts take">Send a test message</button>
+            </div>
+            <p id="tg-test-status" class="set-hint"></p>
             <p class="set-hint opacity-60">You get alerts about your own domains only. The link is personal and works once — do not pass it on.</p>
 
             <div id="grp-tg" class="mt-3">
@@ -13774,6 +13804,73 @@ async function tgUnlink() {
   tgRefresh();
 }
 
+/* ── перевірка звʼязку ──
+
+   Питання, яке виникає рівно тоді, коли все налаштовано, а нічого не
+   приходить: це тиша від того, що новин немає, чи від того, що щось
+   не так? Відповісти на нього з дашборда неможливо — токен бота тут
+   не зберігається й зберігатись не буде.
+
+   Тому питаємо ту саму функцію, яка й розсилає: вона єдина має
+   токен. Маршрут навмисно той самий, що в справжніх сповіщень —
+   секрет, tg_links, sendMessage. Тест, який іде іншою дорогою,
+   перевіряє не те, що треба.
+
+   Пише тільки в ТВІЙ чат. Смикати командний чат заради перевірки —
+   найкоротший шлях до того, щоб бота вимкнули. */
+async function tgTest() {
+  const box = document.getElementById('tg-test-status');
+  const btn = document.getElementById('tg-test-btn');
+  const say = (html, colour) => {
+    if (!box) return;
+    box.innerHTML = html;
+    box.style.color = colour || 'var(--text-muted)';
+  };
+  if (btn) btn.disabled = true;
+  say('Asking the function to send it\u2026');
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess && sess.session && sess.session.access_token;
+    if (!token) throw new Error('not signed in');
+
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-sync', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ test: true })
+    });
+    if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+
+    if (j.test === 'sent')
+      return say('Sent. If it is not in your Telegram within a few seconds, '
+        + 'the chat is linked to a different bot than the one now in the secrets.', 'var(--ok)');
+    /* Кожна відмова має власну причину й власну дію. Одне «не
+       вдалося» на всі випадки залишало б людину рівно там, де вона й
+       була: щось не так, а що — невідомо. */
+    if (j.test === 'not configured')
+      return say('The function has no bot token. Add <span class="font-mono">TG_BOT_TOKEN</span> '
+        + 'to the fb-sync secrets \u2014 not here, and not in the database.', 'var(--warn)');
+    if (j.test === 'not linked')
+      return say('Your Telegram is not connected yet \u2014 press Connect Telegram above '
+        + 'and start the bot.', 'var(--warn)');
+    if (j.test === 'no links table')
+      return say('Telegram links are not set up \u2014 run <span class="font-mono">TELEGRAM.sql</span>.',
+        'var(--warn)');
+    say('Telegram refused it: ' + tgEsc(String(j.note || j.test || 'unknown')), 'var(--bad)');
+  } catch (e) {
+    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    say(e.code === 'missing' || net
+      ? 'The fb-sync function did not answer \u2014 it is either not deployed '
+        + '(<span class="font-mono">supabase functions deploy fb-sync</span>) or failing on start-up.'
+      : 'Could not send: ' + tgEsc(e.message), 'var(--bad)');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+window.tgTest = tgTest;
 window.tgConnect = tgConnect;
 window.tgUnlink = tgUnlink;
 window.tgRefresh = tgRefresh;
@@ -14106,6 +14203,10 @@ window.fbSync = async function (say, body) {
     if (j.failed) bits.push(`${j.failed} came back incomplete`);
     if (j.throttled) bits.push('hit the Facebook rate limit — the rest comes in with the next hourly run');
     if (j.more) bits.push('ran out of time, more left');
+    /* Історія витрат — окрема таблиця з окремою долею: її може ще не
+       бути. Мовчати про це не можна, бо саме на неї спирається вибір
+       періоду на вкладці Cabinets. */
+    if (j.history) bits.push('spend history: ' + j.history);
     tell(fbEsc(bits.join(' · '))
       + (j.problems && j.problems.length
           ? '<br><span class="opacity-70">' + j.problems.map(fbEsc).join('<br>') + '</span>' : ''),
@@ -14182,6 +14283,12 @@ let cabSort = { key: 'state', dir: 1 };
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
 
+/* Витрати за вибраний період: номер кабінета — сума. Окремо від
+   cabFb, бо це інша таблиця й інша доля: fb_spend_daily могло ще не
+   бути створено, і тоді період вибрати можна, а от показати за нього
+   нічого — про що треба сказати вголос, а не малювати прочерки. */
+let cabDays = {}, cabDaysErr = '';
+
 /* Назви токенів за їх id. Потрібні не заради краси: у назві токена вже
    записано те, чого Facebook не знає й ніколи не скаже. */
 let cabTokens = {};
@@ -14199,6 +14306,83 @@ window.cabSetSrc = function (v) {
   cabSrc = ['', 'fb', 'old'].includes(v) ? v : '';
   try { localStorage.setItem('cab_src', cabSrc); } catch (e) {}
   cabSel = null;
+  cabRender();
+};
+
+/* ── за який період дивимось витрати ──
+
+   Довго тут було одне число — сьогодні. Воно відповідає рівно на
+   одне питання й мовчить про решту: чи кабінет узагалі крутив цього
+   тижня, чи просто сьогодні зранку ще ні. Різниця між цими двома
+   станами й вирішує, чи йти його рятувати.
+
+   Тепер період вибирається, а числа беруться з fb_spend_daily —
+   по днях, як їх бачить Facebook. Вибір запамʼятовується.
+
+   День у базі — у часовому поясі САМОГО кабінета. Межі періоду ми
+   рахуємо у вашому. Для парку в одному поясі це те саме; для парку,
+   розкиданого по світу, край періоду може розійтись на добу — і це
+   чесніше, ніж зводити все до однієї дати, якої немає в жодному
+   звіті Facebook. */
+let cabRange = { key: 'today', since: '', until: '' };
+try {
+  const raw = JSON.parse(localStorage.getItem('cab_range') || 'null');
+  if (raw && raw.key) cabRange = { key: raw.key, since: raw.since || '', until: raw.until || '' };
+} catch (e) {}
+
+const CAB_RANGES = [
+  ['today', 'Today'], ['yest', 'Yesterday'], ['7d', '7 days'], ['30d', '30 days']
+];
+
+const cabDay = n => {
+  const t = new Date();
+  t.setDate(t.getDate() - n);
+  return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0')
+       + '-' + String(t.getDate()).padStart(2, '0');
+};
+
+/* Межі вибраного періоду, завжди since <= until. Порожні поля в
+   ручному режимі не вважаємо помилкою: одна дата означає один day. */
+function cabRangeDates() {
+  if (cabRange.key === 'yest') return [cabDay(1), cabDay(1)];
+  if (cabRange.key === '7d')   return [cabDay(6), cabDay(0)];
+  if (cabRange.key === '30d')  return [cabDay(29), cabDay(0)];
+  if (cabRange.key === 'custom') {
+    const a = cabRange.since || cabRange.until || cabDay(0);
+    const b = cabRange.until || cabRange.since || cabDay(0);
+    return a <= b ? [a, b] : [b, a];
+  }
+  return [cabDay(0), cabDay(0)];
+}
+
+const cabNiceDay = d => {
+  const t = new Date(d + 'T00:00:00');
+  return isNaN(t) ? d : t.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+function cabRangeLabel() {
+  const fixed = CAB_RANGES.find(r => r[0] === cabRange.key);
+  if (fixed) return fixed[1];
+  const [a, b] = cabRangeDates();
+  return a === b ? cabNiceDay(a) : cabNiceDay(a) + ' \u2013 ' + cabNiceDay(b);
+}
+
+window.cabSetRange = async function (key) {
+  cabRange = { key, since: cabRange.since, until: cabRange.until };
+  if (key === 'custom' && !cabRange.since && !cabRange.until) {
+    cabRange.since = cabDay(6);
+    cabRange.until = cabDay(0);
+  }
+  try { localStorage.setItem('cab_range', JSON.stringify(cabRange)); } catch (e) {}
+  await cabDaysLoad();
+  cabRender();
+};
+
+window.cabSetRangeDay = async function (which, value) {
+  cabRange = { key: 'custom', since: cabRange.since, until: cabRange.until };
+  cabRange[which] = value || '';
+  try { localStorage.setItem('cab_range', JSON.stringify(cabRange)); } catch (e) {}
+  await cabDaysLoad();
   cabRender();
 };
 
@@ -14364,6 +14548,7 @@ async function cabInit() {
   // прив'язки не буде, лишиться автоматична за номером і назвою.
   cabCols.fb_account_id = 'fb_account_id' in sample;
   await cabFbLoad();
+  await cabDaysLoad();
   cabLoaded = true;
   cabRender();
   seen();
@@ -14392,10 +14577,11 @@ const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_t
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
   + 'amount_spent,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
-  + 'campaigns_on,adsets_on,ads_on,daily_budget,daily_limit,missing_since';
+  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
 
 // Немає таблиці зовсім — не те саме, що немає кількох колонок.
 const CAB_NO_TABLE = /relation .* does not exist|42P01/i;
+
 const CAB_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
 async function cabFbLoad() {
@@ -14425,6 +14611,44 @@ async function cabFbLoad() {
   }
 }
 
+/* Витрати по днях за вибраний період. Запитуємо саме діапазон, а не
+   «останні 30 днів у памʼять»: історія в базі накопичується глибше за
+   вікно, яке переписує імпорт, тож за минулий квартал теж можна
+   спитати — і відповідь буде.
+
+   Команду, як і в cabFbLoad, відсіюємо вже тут: RLS віддає лише свої
+   рядки, а team_name у токена буває порожнім. */
+async function cabDaysLoad() {
+  cabDays = {};
+  cabDaysErr = '';
+  const [since, until] = cabRangeDates();
+  try {
+    const rows = await sbFetchAll('fb_spend_daily',
+      q => q.gte('day', since).lte('day', until).order('day', { ascending: true }));
+    rows.forEach(r => {
+      if (r.team_name && r.team_name !== currentTeam) return;
+      const id = String(r.account_id || '');
+      if (!id) return;
+      cabDays[id] = (cabDays[id] || 0) + (Number(r.spend) || 0);
+    });
+  } catch (e) {
+    cabDaysErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+/* Скільки цей кабінет відкрутив за вибраний період.
+
+   null означає «не знаємо», і це не нуль: коли таблиці історії ще
+   немає, показати 0 було б брехнею про кабінет, який цілком може
+   крутити. Єдиний виняток — «сьогодні»: це число лежить і в самому
+   fb_accounts, тож на нього і спираємось, поки історії немає. */
+function cabSpendIn(fb) {
+  if (!fb) return null;
+  const id = String(fb.account_id || '');
+  if (!cabDaysErr) return cabDays[id] || 0;
+  return cabRange.key === 'today' ? (Number(fb.spend_today) || 0) : null;
+}
+
 /* Сказати, чому кабінетів немає.
 
    Найдорожча помилка попередньої версії була не в запиті, а тут: її не
@@ -14447,6 +14671,18 @@ function cabFbNote() {
       + 'Run the <span class="font-mono">alter table</span> block from '
       + '<span class="font-mono">FB_SYNC.sql</span>. Everything else works.';
     out.style.color = 'var(--warn)';
+  } else if (cabDaysErr === 'not-set-up') {
+    /* Той самий урок, що й з колонками: пусті клітинки без пояснення
+       читаються як «кабінет нічого не крутить», а це протилежне
+       правді. Кажемо, чого бракує і що з цим робити. */
+    out.innerHTML = 'Spend history is not set up yet, so only <b>Today</b> has numbers. '
+      + 'Run the <span class="font-mono">fb_spend_daily</span> block from '
+      + '<span class="font-mono">FB_SYNC.sql</span>, redeploy '
+      + '<span class="font-mono">fb-sync</span>, then press Sync now.';
+    out.style.color = 'var(--warn)';
+  } else if (cabDaysErr) {
+    out.innerHTML = 'Could not read spend history: ' + cabEsc(cabDaysErr);
+    out.style.color = 'var(--bad)';
   }
 }
 
@@ -14472,6 +14708,7 @@ window.cabSync = async function () {
   try {
     await fbSync(say);
     await cabFbLoad();
+    await cabDaysLoad();
     cabRender();
   } finally {
     btn.disabled = false;
@@ -14701,6 +14938,26 @@ function cabRender() {
     ago.title = at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet';
   }
 
+  /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:
+     підпис на кнопці, заголовок стовпчика й число в ньому беруться з
+     одного cabRange, і розійтись їм нема як. */
+  const rng = document.getElementById('cab-range');
+  if (rng) {
+    const [a, b] = cabRangeDates();
+    const rb = (k, l, tip) => `<button type="button" class="${cabRange.key === k ? 'is-on' : ''}"
+        onclick="cabSetRange('${k}')"${tip ? ` title="${cabEsc(tip)}"` : ''}>${cabEsc(l)}</button>`;
+    rng.innerHTML = `<div class="cab-srcsel">${
+        CAB_RANGES.map(r => rb(r[0], r[1])).join('')
+      }${rb('custom', 'Custom', 'Any two dates \u2014 history goes as deep as the sync has been running')}</div>`
+      + (cabRange.key === 'custom' ? `<span class="cab-range-days">
+          <input type="date" value="${a}" max="${cabDay(0)}"
+                 onchange="cabSetRangeDay('since', this.value)">
+          <span>\u2013</span>
+          <input type="date" value="${b}" max="${cabDay(0)}"
+                 onchange="cabSetRangeDay('until', this.value)">
+        </span>` : '');
+  }
+
   // Підсвічуємо активний зріз і показуємо, скільки в кожному.
   const nFb = all.filter(c => c.fb && !c.gone).length;
   [['', all.length], ['fb', nFb], ['old', all.length - nFb]].forEach(([k, n]) => {
@@ -14752,7 +15009,7 @@ function cabSection(items, hasFb, bare) {
   const rank = s2 => CAB_ORDER.indexOf(s2);
   const val = { state: c => rank(c.state), id: c => c.id,
                 agent: c => String(c.row.provider_name || c.tok.agent || ''),
-                today: c => (c.fb ? Number(c.fb.spend_today) || 0 : 0),
+                today: c => (c.fb ? Number(cabSpendIn(c.fb)) || 0 : 0),
                 spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '' };
   const get = val[cabSort.key] || val.state;
   const sorted = items.slice().sort((a, b) => {
@@ -14790,7 +15047,7 @@ function cabSection(items, hasFb, bare) {
       <th class="ta-c" title="Campaigns that actually deliver: switched on AND with a live ad inside">Camp</th>
       <th class="ta-c" title="Ad sets that actually deliver: switched on AND with a live ad inside">Sets</th>
       <th class="ta-c" title="Ads running right now">Ads</th>
-      ${th('today', 'Today', 'ta-r')}` : ''}
+      ${th('today', cabEsc(cabRangeLabel()), 'ta-r')}` : ''}
       ${th('spend', 'Spend', 'ta-r')}
       ${th('age', 'Days', 'ta-r')}
       ${th('last', 'Last spend', 'ta-r')}
@@ -14823,8 +15080,14 @@ function cabRowHtml(c, hasFb) {
   const primary = c.row._new ? (c.fb.name || c.id) : c.id;
   const second = c.row._new ? c.id
     : (c.fb && c.fb.name && c.fb.name !== c.id ? c.fb.name : '');
-  const today = c.fb && Number(c.fb.spend_today) > 0
-    ? cabMoneyCur(c.fb.spend_today, c.fb.currency) : '<span class="cab-na">—</span>';
+  /* Прочерк тут означає рівно «нуль за цей період», і нічого більше.
+     Коли ми взагалі не знаємо — історії ще немає — показуємо знак
+     питання: це різні відповіді, і плутати їх не можна. */
+  const inRange = c.fb ? cabSpendIn(c.fb) : null;
+  const today = !c.fb ? '<span class="cab-na">—</span>'
+    : inRange == null ? '<span class="cab-na" title="No spend history yet — see the note above the tiles">?</span>'
+    : inRange > 0 ? cabMoneyCur(inRange, c.fb.currency)
+    : '<span class="cab-na">—</span>';
   return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
       onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
@@ -14924,8 +15187,14 @@ function cabDetail(c) {
   const fbBlock = !c.fb ? '' : `<div class="cab-fb">
       <p class="cab-fb-head">Facebook<span>${cabFbAt() ? cabAgo(cabFbAt()) : 'never synced'}</span></p>
       <div class="grid grid-cols-2 gap-2">
-        ${cell('Today', Number(c.fb.spend_today) > 0
-            ? cabMoneyCur(c.fb.spend_today, c.fb.currency) : '—')}
+        ${(() => {
+          const v = cabSpendIn(c.fb);
+          const [a, b] = cabRangeDates();
+          return cell(esc(cabRangeLabel()),
+            v == null ? '?' : v > 0 ? cabMoneyCur(v, c.fb.currency) : '—',
+            v == null ? 'No spend history yet — run the fb_spend_daily block from FB_SYNC.sql'
+                      : (a === b ? a : a + ' — ' + b) + ', as Facebook counts the day for this cabinet');
+        })()}
         ${cell('State', esc(c.fb.status || '—'))}
         ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns),
                cabByStatus(c.fb.campaigns_by_status))}
@@ -14934,10 +15203,6 @@ function cabDetail(c) {
         ${cell('Ads', pair(c.fb.ads_active, c.fb.ads),
                cabByStatus(c.fb.ads_by_status))}
         ${cell('Card', esc(c.fb.card || '—'))}
-        ${cell('Daily limit', c.fb.daily_limit != null
-            ? cabMoneyCur(c.fb.daily_limit, c.fb.currency) : '—',
-            'The cap Facebook puts on this ad account per day. A dash means Facebook '
-          + 'did not give us this field — see daily_limit_field in the sync result.')}
         ${cell('Budgets/day', c.fb.daily_budget != null
             ? cabMoneyCur(c.fb.daily_budget, c.fb.currency) : '—',
             'Not a limit: the daily budgets of the campaigns that are actually delivering, '
