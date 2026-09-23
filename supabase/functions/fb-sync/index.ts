@@ -463,8 +463,12 @@ type TokenRow = { id: number; label: string; token: string;
 type Outcome = { accounts: number; failed: number; changed: number;
                  error: string; throttled: boolean };
 
+/* Привід написати людині. owner — хто саме має це прочитати: кабінети
+   належать конкретним баєрам, і сповіщення ходять так само. */
+type Alert = { owner: string; name: string; kind: 'bad' | 'good'; text: string };
+
 async function syncToken(base: string, hdr: Json, t: TokenRow,
-                         deadline: number): Promise<Outcome> {
+                         deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false };
 
   let accs: Json[];
@@ -492,11 +496,15 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
 
   // Що ми знали про ці кабінети до цього прогону — щоб помітити зміну
   // стану. Одним запитом на токен, а не по рядку.
-  const known = new Map<string, string>();
+  const known = new Map<string, { status: string; rejected: number }>();
   try {
     const prev = await pgGet(base, hdr,
-      'fb_accounts?select=account_id,status&created_by=eq.' + encodeURIComponent(t.created_by));
-    prev.forEach((r: Json) => known.set(String(r.account_id), String(r.status || '')));
+      'fb_accounts?select=account_id,status,ads_by_status&created_by='
+      + encodeURIComponent(t.created_by));
+    prev.forEach((r: Json) => known.set(String(r.account_id), {
+      status: String(r.status || ''),
+      rejected: Number(r.ads_by_status?.DISAPPROVED) || 0
+    }));
   } catch (_e) { /* перший прогін: знати нічого */ }
 
   const now = new Date().toISOString();
@@ -557,10 +565,36 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
 
   rows.forEach(r => {
     const was = known.get(String(r.account_id));
-    if (was !== undefined && was !== r.status) {
+    if (!was) return;   // перший раз бачимо — порівнювати нема з чим
+    const name = String(r.name || r.account_id);
+
+    if (was.status !== r.status) {
       out.changed++;
-      changes.push({ account_id: String(r.account_id), from: was, to: String(r.status),
+      changes.push({ account_id: String(r.account_id), from: was.status, to: String(r.status),
                      note: [r.name, r.disable_reason].filter(Boolean).join(' · ') });
+      /* Повернення до active — теж новина, і хороша. Мовчати про неї
+         означало б, що з бота приходять лише погані звістки, а такого
+         бота вимикають. */
+      const worse = r.status !== 'active';
+      alerts.push({ owner: t.created_by, name,
+        kind: worse ? 'bad' : 'good',
+        text: worse
+          ? name + ' — ' + String(r.status)
+            + (r.disable_reason ? ' (' + r.disable_reason + ')' : '')
+          : name + ' — back to active' });
+    }
+
+    /* Нові відхилення. Саме НОВІ: писати щогодини «у тебе 120
+       відхилених» — найкоротший шлях до того, щоб сповіщення перестали
+       читати. Цікаво, коли число зросло. */
+    const nowRej = Number((r.ads_by_status as Json)?.DISAPPROVED) || 0;
+    /* У вимкненому кабінеті не крутиться нічого, і відхилення там —
+       не новина, а наслідок. Писати про них поверх «кабінет забанено»
+       означало б два повідомлення про одну біду. */
+    if (r.status === 'active' && nowRej > was.rejected) {
+      alerts.push({ owner: t.created_by, name, kind: 'bad',
+        text: name + ' — +' + (nowRej - was.rejected)
+            + ' rejected ad(s), ' + nowRej + ' in total' });
     }
   });
 
@@ -613,6 +647,100 @@ async function markToken(base: string, hdr: Json, id: number,
       body: JSON.stringify({ status, status_note: note, checked_at: new Date().toISOString() })
     });
   } catch (_e) { /* не привід валити імпорт */ }
+}
+
+/* ═══════════ TELEGRAM ═══════════
+
+   Пишемо, ТІЛЬКИ коли є що сказати. Щогодинне «все гаразд» перестають
+   читати на третій день, а разом з ним перестають помічати те єдине
+   повідомлення, заради якого все й робилось.
+
+   Через це сповіщення йдуть лише про ЗМІНИ: кабінет змінив стан або
+   відхилених оголошень стало більше, ніж було. «У тебе 120
+   відхилених» щогодини — найкоротший шлях до вимкненого бота.
+
+   Кожному своє: кабінети належать конкретним баєрам (created_by
+   токена), і адресати беруться з tg_links. Хто себе не прив'язав —
+   того просто немає в розсилці, це вибір людини, а не помилка.
+
+   Токен бота живе в секретах функції. У дашборді йому не місце: це
+   статичний сайт, який відкриває вся команда. */
+
+const TG_MAX = 20;     // скільки кабінетів перелічуємо поіменно
+const TG_LIMIT = 3900; // межа Telegram — 4096, лишаємо запас
+
+function tgText(list: Alert[]): string {
+  const bad = list.filter(a => a.kind === 'bad');
+  const head = (bad.length ? 'Кабінети: ' + bad.length + ' потребують уваги'
+                           : 'Кабінети: є зміни') + '\n\n';
+  const mark = (a: Alert) => (a.kind === 'bad' ? '\u26a0 ' : '\u2705 ') + a.text;
+  // Спершу погане: саме через нього відкривають повідомлення.
+  const sorted = bad.concat(list.filter(a => a.kind !== 'bad'));
+  const lines = sorted.slice(0, TG_MAX).map(mark);
+  const tail = () => {
+    const rest = sorted.length - lines.length;
+    return rest > 0 ? '\n\n\u2026і ще ' + rest + '. Решта — у дашборді, вкладка Cabinets.' : '';
+  };
+  while (lines.length > 1 && (head + lines.join('\n') + tail()).length > TG_LIMIT) lines.pop();
+  return head + lines.join('\n') + tail();
+}
+
+async function tgPost(token: string, chat: string, text: string): Promise<string> {
+  try {
+    const res = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      // Без parse_mode навмисно: назви кабінетів рясніють дужками й
+      // підкресленнями, а розмітка Telegram на них спотикається і
+      // відповідає 400. Текст і так читається.
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
+    });
+    if (res.ok) return 'sent';
+    let why = 'HTTP ' + res.status;
+    try { why = (await res.json()).description || why; } catch (_e) { /* хай буде код */ }
+    return 'failed: ' + why;
+  } catch (e) {
+    return 'failed: ' + (e as Error).message;
+  }
+}
+
+async function tgSend(base: string, hdr: Json, alerts: Alert[]): Promise<string> {
+  if (!alerts.length) return 'nothing to report';
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!token) return 'not configured';
+
+  const out: string[] = [];
+  // Спільний чат бачить усе — на те він і спільний. Немає — не біда.
+  const shared = Deno.env.get('TG_CHAT_ID') || '';
+  if (shared) out.push('shared:' + await tgPost(token, shared, tgText(alerts)));
+
+  const byOwner = new Map<string, Alert[]>();
+  alerts.forEach(a => {
+    if (!a.owner) return;
+    const list = byOwner.get(a.owner);
+    if (list) list.push(a); else byOwner.set(a.owner, [a]);
+  });
+  if (!byOwner.size) return out.join(' | ') || 'nobody to notify';
+
+  let links: { user_id: string; chat_id: string }[] = [];
+  try {
+    const res = await fetch(base + '/rest/v1/tg_links?select=user_id,chat_id&chat_id=not.is.null',
+      { headers: hdr });
+    if (res.ok) links = await res.json();
+  } catch (_e) { /* таблиці може не бути — тоді нікому писати */ }
+
+  const chats = new Map(links.map(l => [l.user_id, l.chat_id]));
+  let sent = 0, unlinked = 0;
+  const fails: string[] = [];
+  for (const [owner, list] of byOwner) {
+    const chat = chats.get(owner);
+    if (!chat) { unlinked++; continue; }
+    const r = await tgPost(token, chat, tgText(list));
+    if (r === 'sent') sent++; else fails.push(r);
+  }
+  out.push('buyers: ' + sent + ' sent'
+    + (unlinked ? ', ' + unlinked + ' not linked' : '')
+    + (fails.length ? ', ' + fails.length + ' failed (' + fails[0] + ')' : ''));
+  return out.join(' | ');
 }
 
 /* ── вхід ── */
@@ -680,6 +808,7 @@ async function handle(req: Request): Promise<Response> {
     note: 'no tokens to sync' });
 
   const deadline = Date.now() + DEADLINE_MS;
+  const alerts: Alert[] = [];
   let accounts = 0, failed = 0, changed = 0, done = 0;
   const problems: string[] = [];
   let throttled = false;
@@ -688,7 +817,7 @@ async function handle(req: Request): Promise<Response> {
     if (Date.now() > deadline) break;
     let r: Outcome;
     try {
-      r = await syncToken(base, hdr, t, deadline);
+      r = await syncToken(base, hdr, t, deadline, alerts);
     } catch (e) {
       // Один поганий токен не мусить зупиняти решту: у людини їх
       // десяток, і зупинятись на першому — найгірше з можливого.
@@ -706,9 +835,12 @@ async function handle(req: Request): Promise<Response> {
     }
   }
 
+  const telegram = await tgSend(base, hdr, alerts);
+
   return reply({
     cron, tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
+    telegram,
     problems: problems.slice(0, 10)
   });
 }

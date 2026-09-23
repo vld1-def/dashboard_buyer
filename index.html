@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 18:24">
+  <meta name="build" content="build 23.09 18:35">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2621,6 +2621,51 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 
 /* Заголовок секції — над таблицею, а не рядком у ній: у двох
    секцій різні набори колонок, тож і таблиці дві. */
+/* ─────────── Плитки-фільтри (Cabinets і Domains) ───────────
+   Були прямокутники, підсвічені кільцем і brightness. Кільце читалось
+   як фокус, brightness — як наведення, і «що зараз вибрано» доводилось
+   вгадувати. Тепер увімкнений фільтр залитий своїм кольором, вимкнений
+   ні, і сплутати їх неможливо.
+
+   Colour приходить змінними: --flt (сам колір), --flt-soft (заливка),
+   --flt-bd (рамка). Завдяки цьому файл нічого не знає про перелік
+   станів, а кожна сторінка передає свої.
+
+   Плитка з нулем притлумлена навмисно: фільтр, який нічого не покаже,
+   не має виглядати так само запрошувально, як той, де сім банів. */
+.flt {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 10px; border-radius: 12px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  transition: background .16s, border-color .16s, transform .16s;
+  text-align: left; min-width: 0;
+}
+.flt:hover { border-color: var(--flt-bd, var(--border)); transform: translateY(-1px); }
+.flt-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px;
+  background: var(--flt, var(--text-muted));
+  transition: box-shadow .16s;
+}
+.flt-name {
+  font-size: 9px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.flt-n {
+  margin-left: auto; font-size: 15px; font-weight: 900; line-height: 1;
+  color: var(--flt, var(--text-main)); font-variant-numeric: tabular-nums;
+}
+.flt.is-zero { opacity: .4; }
+.flt.is-zero:hover { opacity: .7; }
+.flt.is-on {
+  background: var(--flt-soft, var(--surface-3));
+  border-color: var(--flt, var(--border));
+}
+.flt.is-on .flt-name { color: var(--text-main); }
+.flt.is-on .flt-dot { box-shadow: 0 0 0 3px var(--flt-soft, transparent); }
+.flt-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px;
+}
+
 .cab-sec { display: flex; align-items: baseline; gap: 8px; padding: 14px 2px 6px; }
 .cab-sec-name { font-size: 11px; font-weight: 900; letter-spacing: .1em;
                 text-transform: uppercase; color: var(--text-muted); }
@@ -3207,7 +3252,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 18:24</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 18:35</div>
     </div>
   </aside>
 
@@ -4048,9 +4093,10 @@ body[data-route="domains"] #dm-detail {
 
   <div id="cab-tiles" class="mb-4"></div>
 
-  <!-- Спільна стрічка змін по всьому парку. Згорнута: це довідка, а не те,
-       заради чого сюди заходять. -->
-  <div id="cab-feed" class="mb-4"></div>
+  <!-- Стрічка змін переїхала в тости: зайшов, побачив, воно зникло саме.
+       Вузол лишається — у ньому зʼявляється хіба що попередження, що
+       журнал недоступний. Історія конкретного кабінета — у його панелі. -->
+  <div id="cab-feed"></div>
 
   <div class="flex gap-4 items-start">
     <div id="cab-list" class="flex-1 min-w-0 space-y-1.5"></div>
@@ -14543,20 +14589,23 @@ function cabRender() {
   all.forEach(c => counts[c.state]++);
   // Плитки тримаємо низькими й в один рядок: це навігація, а не зміст.
   // auto-fit замість брейкпойнтів — переносяться самі, коли вузько.
-  const tile = (k, label, n, tone, soft, bd) => `
-    <button onclick="cabSetFilter('${k}')"
-      class="rounded-xl px-2.5 py-1.5 text-left transition flex items-baseline justify-between gap-2
-             ${cabFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'hover:brightness-110'}"
-      style="background:${soft};border:1px solid ${bd}">
-      <span class="text-[9px] font-black uppercase tracking-widest truncate" style="color:var(--text-muted)">${label}</span>
-      <span class="text-[15px] font-black leading-none ${tone}">${n}</span></button>`;
+  /* Colour передаємо змінними — і клас .flt однаково обслуговує цю
+     сторінку й Domains. Нуль притлумлюємо: фільтр, який нічого не
+     покаже, не має виглядати запрошувально. */
+  const tile = (k, label, n, colour, soft, bd) => `
+    <button type="button" onclick="cabSetFilter('${k}')"
+      class="flt ${cabFilter === k ? 'is-on' : ''} ${n ? '' : 'is-zero'}"
+      style="--flt:${colour};--flt-soft:${soft};--flt-bd:${bd}">
+      <span class="flt-dot"></span>
+      <span class="flt-name">${label}</span>
+      <span class="flt-n">${n}</span></button>`;
   const working = CAB_WORKING.reduce((a2, k) => a2 + counts[k], 0);
   if (tiles) {
-    tiles.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">
-      ${tile('working', 'Working', working, 'text-violet-300', 'rgba(139,92,246,.14)', 'rgba(139,92,246,.32)')}
+    tiles.innerHTML = `<div class="flt-row">
+      ${tile('working', 'Working', working, '#8B5CF6', 'rgba(139,92,246,.14)', 'rgba(139,92,246,.32)')}
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
-          CAB_STATE[k].tone, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
-      ${tile('', 'All', all.length, 'text-dynamic', 'var(--surface-2)', 'var(--border)')}
+          CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
+      ${tile('', 'All', all.length, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
     </div>`;
   }
 
@@ -15145,7 +15194,7 @@ const EV_FIRST_WINDOW = 7 * 86400000;
 const EV_SILENT_MIN = 2;
 
 // evOn: null — ще не пробували, true — працює, false — вимкнено до перезавантаження
-let evRows = [], evOn = null, evTeam = '', evErr = '', evSyncing = false, evOpen = false;
+let evRows = [], evOn = null, evTeam = '', evErr = '', evSyncing = false;
 // Гачок перемальовки стоїть у loadData у двох місцях, та й дані можна
 // перезавантажити руками. Звірятись частіше, ніж раз на хвилину, нема
 // сенсу: між двома викликами поспіль стан кабінета не зміниться.
@@ -15397,31 +15446,64 @@ function evForAccount(id, max) {
   </div>`;
 }
 
-function evToggleFeed() { evOpen = !evOpen; evFeedPaint(); }
 
 // Спільна стрічка по всьому парку. Згорнута за замовчуванням: це довідка,
 // а не те, заради чого відкривають сторінку.
+/* ── що змінилось, поки тебе не було ──
+
+   Раніше це був згорнутий блок «Recent changes» угорі сторінки. Він
+   займав місце постійно, а читали його один раз — і далі гортали повз,
+   бо в згорнутому вигляді він однаково нічого не каже.
+
+   Тепер — тости: зайшов, побачив, воно зникло саме. Історія від цього
+   не губиться, вона лишається там, де за нею приходять свідомо: у
+   панелі конкретного кабінета (evForAccount).
+
+   Тости показуємо ОДИН раз на завантаження сторінки. evFeedPaint
+   смикається з кожної перемальовки таблиці, і без цієї засувки кожен
+   клік по фільтру викидав би ту саму пачку заново. */
+const evShown = {};
+
 function evFeedPaint() {
   const box = document.getElementById('cab-feed');
-  if (!box) return;
+  if (box) box.innerHTML = '';
+
   if (evOn === false) {
-    box.innerHTML = `<p class="ev-off">History is off: ${evEsc(evErr || 'account_events is not reachable')}</p>`;
+    // Журнал не працює — сказати про це треба, але теж один раз.
+    if (!evShown._off) {
+      evShown._off = 1;
+      if (typeof toast === 'function')
+        toast('History is off: ' + (evErr || 'account_events is not reachable'), 'warn', 6000);
+    }
     return;
   }
-  const list = evDedup(evRows.filter(e => e.source !== 'seed')).slice(0, 40);
-  const n = list.length;
-  box.innerHTML = `<button class="ev-feed-btn" onclick="evToggleFeed()">
-      <span>Recent changes${n ? ` · ${n}` : ''}</span><span>${evOpen ? '&minus;' : '+'}</span></button>
-    ${evOpen ? `<div class="ev-feed">${n
-        ? list.map(e => evLine(e, true)).join('')
-        : '<p class="ev-off">Nothing recorded yet. Changes will show up here.</p>'}</div>` : ''}`;
+  if (typeof toast !== 'function') return;
+
+  // Спершу найгірше: саме через нього сюди й заходять.
+  const news = evDedup(evNew()).sort((a2, b2) =>
+    evRank(b2.to_state) - evRank(a2.to_state) || String(b2.at).localeCompare(String(a2.at)));
+  const fresh = news.filter(e => !evShown[evKey(e)]);
+  if (!fresh.length) return;
+
+  /* Три, а не чотири. Тостів на екрані вміщається чотири, і четвертим
+     іде підсумок «…і ще N» — інакше він витісняв би найперший, тобто
+     рівно той, що найгірший і стоїть угорі. Перевірка це й показала. */
+  const SHOW = 3;
+  fresh.forEach(e => evShown[evKey(e)] = 1);
+  fresh.slice(0, SHOW).forEach(e => {
+    const T = EV_TONE[e.to_state] || EV_TONE.idle;
+    const kind = evRank(e.to_state) >= 2 ? 'error' : evRank(e.to_state) >= 1 ? 'warn' : 'ok';
+    toast(e.account_id + ' — ' + T.word + (e.note ? ' · ' + e.note : ''),
+      kind, kind === 'ok' ? 4000 : 9000);
+  });
+  if (fresh.length > SHOW)
+    toast('…and ' + (fresh.length - SHOW) + ' more change(s). Open a cabinet to see its history.', '', 9000);
 }
 
 window.evBoot = evBoot;
 window.evPaint = evPaint;
 window.evDismiss = evDismiss;
 window.evGoCabinets = evGoCabinets;
-window.evToggleFeed = evToggleFeed;
 </script>
 
 <script>
@@ -16073,19 +16155,22 @@ function dmRender() {
   dmRows.forEach(r => counts[r.status || 'unknown'] = (counts[r.status || 'unknown'] || 0) + 1);
   const bad = DM_BAD.reduce((a, k) => a + counts[k], 0);
 
-  const tile = (k, label, n, tone, soft, bd) => `
-    <button onclick="dmSetFilter('${k}')"
-      class="rounded-xl px-2.5 py-1.5 text-left transition flex items-baseline justify-between gap-2
-             ${dmFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'hover:brightness-110'}"
-      style="background:${soft};border:1px solid ${bd}">
-      <span class="text-[9px] font-black uppercase tracking-widest truncate" style="color:var(--text-muted)">${label}</span>
-      <span class="text-[15px] font-black leading-none ${tone}">${n}</span></button>`;
+  /* Colour передаємо змінними — і клас .flt однаково обслуговує цю
+     сторінку й Domains. Нуль притлумлюємо: фільтр, який нічого не
+     покаже, не має виглядати запрошувально. */
+  const tile = (k, label, n, colour, soft, bd) => `
+    <button type="button" onclick="dmSetFilter('${k}')"
+      class="flt ${dmFilter === k ? 'is-on' : ''} ${n ? '' : 'is-zero'}"
+      style="--flt:${colour};--flt-soft:${soft};--flt-bd:${bd}">
+      <span class="flt-dot"></span>
+      <span class="flt-name">${label}</span>
+      <span class="flt-n">${n}</span></button>`;
   if (tiles) {
-    tiles.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px">
-      ${tile('bad', 'Problem', bad, 'text-red-400', 'rgba(239,68,68,.14)', 'rgba(239,68,68,.32)')}
+    tiles.innerHTML = `<div class="flt-row">
+      ${tile('bad', 'Problem', bad, '#EF4444', 'rgba(239,68,68,.14)', 'rgba(239,68,68,.32)')}
       ${DM_ORDER.map(k => tile(k, DM_STATE[k].label, counts[k],
-          DM_STATE[k].tone, DM_STATE[k].soft, DM_STATE[k].bd)).join('')}
-      ${tile('', 'All', dmRows.length, 'text-dynamic', 'var(--surface-2)', 'var(--border)')}
+          DM_STATE[k].dot, DM_STATE[k].soft, DM_STATE[k].bd)).join('')}
+      ${tile('', 'All', dmRows.length, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
     </div>`;
   }
 
