@@ -49,10 +49,20 @@ const CORS = {
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
-// Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 4 запити
-// на кабінет виходить 12 кабінетів за виклик.
+// Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 5 запитів
+// на кабінет виходить 10 кабінетів за виклик.
 const PER_ACC = 5;
 const BATCH_MAX = 50;   // 10 кабінетів за виклик
+
+/* Скільки днів витрат забираємо щоразу. Вікно ковзне, записуємо
+   впритул (upsert по дню), тож історія в базі накопичується глибше за
+   нього — а от перезаписуються тільки останні 30 днів.
+
+   Перезапис тут не марнотратство, а сенс: Facebook уточнює витрати
+   заднім числом (повернення, перерахунок). Цифра за позавчора цілком
+   може змінитись, і тоді в базі має лежати уточнена, а не та, яку ми
+   один раз побачили й законсервували. */
+const HISTORY_DAYS = 30;
 
 // Edge Function не працює вічно. Упершись у дедлайн, чесно віддаємо
 // «є ще» замість того, щоб обірватись, нічого не записавши.
@@ -198,6 +208,26 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/* Сьогодні — у часовому поясі САМОГО кабінета. Це не педантизм: доба
+   кабінета в Лос-Анджелесі зсунута від вашої на десять годин, і взяти
+   свою дату означало б попросити в Facebook звіт за період, якого в
+   нього немає. Формат en-CA — це рівно YYYY-MM-DD. */
+function todayIn(tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC' }).format(new Date());
+  } catch (_e) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC' }).format(new Date());
+  }
+}
+
+/* Зсув дати на n днів. Через UTC-опівніч, щоб переведення годинника
+   не з'їло й не подвоїло день. */
+function shiftDay(day: string, n: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const t = Date.UTC(y, (m || 1) - 1, d || 1) + n * 86400000;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
 /* ── крок 1: які взагалі є кабінети ──
    Сторінкуємо курсором, а не адресою з paging.next: та несе в собі
    токен, і ганяти його по рядках запиту — рівно те, чого ми уникаємо. */
@@ -257,7 +287,7 @@ const INNER = 'insights.date_preset(today){spend,impressions,clicks}';
    позначаємо як непораховане, а не вдаємо повноту. */
 const LIST_LIMIT = 500;
 
-function urlsFor(actId: string): string[] {
+function urlsFor(actId: string, tz: string): string[] {
   const act = 'act_' + actId;
   /* Раніше тут просто рахувалось, скільки ACTIVE. Число було чесне, але
      мовчазне: «3 зі 180» не каже, чому решта 177 не крутиться, і рівно
@@ -278,18 +308,20 @@ function urlsFor(actId: string): string[] {
     bulk('adsets', 'daily_budget,lifetime_budget'),
     // campaign_id й adset_id — заради підрахунку ЖИВОГО (див. нижче).
     bulk('ads', 'campaign_id,adset_id'),
-    /* Денний ліміт САМОГО кабінета — окремим підзапитом навмисно.
+    /* Витрати по днях — щоб на сторінці працював вибір періоду, а не
+       саме лише «сьогодні». Одне число за добу й нічого більше:
+       розріз по кампаніях — це вже експорт, інша вага й інша вкладка.
 
-       Це не сума бюджетів кампаній, а стеля, яку Facebook ставить на
-       кабінет («your account has a daily spending limit of $X»). Різні
-       речі, і плутати їх не можна.
+       time_range явними датами, а не date_preset: пресети Facebook
+       по-різному вирішують, чи входить у них сьогодні, і перевірити
+       це ззовні ніяк. Дати ж означають рівно те, що написано.
 
-       Чому окремо: я не певен, що Graph віддає це поле — у документації
-       на AdAccount його немає серед очевидних. Якщо не віддає, впаде
-       рівно цей підзапит, а не весь пакет, і ми дізнаємось точний текст
-       відмови замість того, щоб гадати. Ціна питання — один запит на
-       кабінет. */
-    act + '?fields=' + encodeURIComponent('daily_spend_limit')
+       Днів без витрат у відповіді просто немає — і не треба: у базі
+       відсутній день і нуль читаються однаково. */
+    act + '/insights?fields=' + encodeURIComponent('spend,impressions,clicks')
+      + '&time_increment=1&limit=' + (HISTORY_DAYS + 10)
+      + '&time_range=' + encodeURIComponent(JSON.stringify({
+          since: shiftDay(todayIn(tz), -(HISTORY_DAYS - 1)), until: todayIn(tz) })),
   ];
 }
 
@@ -299,11 +331,12 @@ const total = (o: Json | null | undefined): number | null =>
 /* Одна відповідь пакета → одне поле. Помилку саме по цьому кабінету
    повертаємо окремо: решта полів має лишитись з минулого разу, а не
    обнулитись через те, що Facebook не віддав інсайти. */
-function readParts(parts: (Json | null)[]): { patch: Json; err: string; limitNote: string } {
+type Day = { day: string; spend: number | null;
+             impressions: number | null; clicks: number | null };
+
+function readParts(parts: (Json | null)[]): { patch: Json; err: string; days: Day[] | null } {
   const patch: Json = {};
   let err = '';
-  // Що Graph сказав про daily_spend_limit. Порожньо = поле є й приїхало.
-  let limitNote = '';
 
   const p0 = parts[0];
   if (p0 && p0.code === 200) {
@@ -412,18 +445,25 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string; limitNot
   // Бюджети Facebook віддає в мінімальних одиницях валюти, як і решту грошей.
   if (adsPart && adsPart.code === 200) patch.daily_budget = dailyBudget ? dailyBudget / 100 : 0;
 
-  /* Денний ліміт кабінета. Якщо поля немає — не вигадуємо число, а
-     запамʼятовуємо, що саме відповів Graph: інакше «—» на екрані
-     однаково означало б і «ліміту немає», і «ми не вміємо його
-     дізнатись». */
-  const limPart = parts[4];
-  if (limPart && limPart.code === 200) {
-    patch.daily_limit = cents(limPart.body?.daily_spend_limit);
-  } else if (limPart) {
-    limitNote = String(limPart.body?.error?.message || 'HTTP ' + limPart.code);
+  /* Витрати по днях. null означає «не знаємо» — і це не те саме, що
+     порожній масив: порожній ми б записали як «за місяць не витрачено
+     нічого», а це вже твердження, якого ми робити не можемо.
+
+     Помилку сюди НЕ пишемо: історія — надбудова над станом кабінета, і
+     класти через неї sync_error на цілий рядок було б непропорційно.
+     Скільки кабінетів її не віддали, видно у відповіді функції. */
+  const insPart = parts[4];
+  let days: Day[] | null = null;
+  if (insPart && insPart.code === 200) {
+    days = (Array.isArray(insPart.body?.data) ? insPart.body.data : [])
+      .map((r: Json) => ({
+        day: String(r.date_start || ''),
+        spend: num(r.spend), impressions: num(r.impressions), clicks: num(r.clicks)
+      }))
+      .filter((d: Day) => /^\d{4}-\d{2}-\d{2}$/.test(d.day));
   }
 
-  return { patch, err, limitNote };
+  return { patch, err, days };
 }
 
 /* ── PostgREST ──
@@ -486,7 +526,8 @@ type TokenRow = { id: number; label: string; token: string;
                   created_by: string; team_name: string | null };
 
 type Outcome = { accounts: number; failed: number; changed: number;
-                 error: string; throttled: boolean; limitNote: string };
+                 error: string; throttled: boolean;
+                 days: number; noHistory: number; historyError: string };
 
 /* Привід написати людині. owner — хто саме має це прочитати: кабінети
    належать конкретним баєрам, і сповіщення ходять так само. */
@@ -495,7 +536,7 @@ type Alert = { owner: string; name: string; kind: 'bad' | 'good'; text: string }
 async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
-                        limitNote: '' };
+                        days: 0, noHistory: 0, historyError: '' };
 
   let accs: Json[];
   try {
@@ -535,6 +576,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
 
   const now = new Date().toISOString();
   const rows: Json[] = [];
+  const dayRows: Json[] = [];
   const changes: { account_id: string; from: string; to: string; note: string }[] = [];
 
   // Основа рядка — з того, що вже приїхало списком: стан, картка,
@@ -567,7 +609,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     const slice = base_.slice(i, i + BATCH_MAX / PER_ACC);
     let parts: (Json | null)[];
     try {
-      parts = await graphBatch(t.token, slice.flatMap(x => urlsFor(x.id)));
+      parts = await graphBatch(t.token,
+        slice.flatMap(x => urlsFor(x.id, String(x.row.timezone_name || ''))));
     } catch (e) {
       const g = e as GraphError;
       out.error = g.message;
@@ -578,11 +621,17 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       break;
     }
     slice.forEach((x, k) => {
-      const { patch, err, limitNote } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      const { patch, err, days } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
       Object.assign(x.row, patch);
       if (err) { x.row.sync_error = err; out.failed++; }
-      if (limitNote && !out.limitNote) out.limitNote = limitNote;
       rows.push(x.row);
+      if (!days) { out.noHistory++; return; }
+      days.forEach(d => dayRows.push({
+        created_by: t.created_by, team_name: t.team_name,
+        account_id: x.id, day: d.day,
+        spend: d.spend, impressions: d.impressions, clicks: d.clicks,
+        currency: x.row.currency, synced_at: now
+      }));
     });
   }
 
@@ -626,6 +675,16 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   });
 
   await pgUpsert(base, hdr, 'fb_accounts', 'created_by,account_id', rows);
+  /* Історія — окремою таблицею й окремим ризиком. Її може ще не бути
+     (ALTER з FB_SYNC.sql не виконано), і це не привід втратити все
+     інше, що ми щойно дізнались про кабінети. Але й мовчати не
+     будемо: причина їде у відповідь функції, а сторінка її показує. */
+  try {
+    await pgUpsert(base, hdr, 'fb_spend_daily', 'created_by,account_id,day', dayRows);
+    out.days = dayRows.length;
+  } catch (e) {
+    out.historyError = (e as Error).message;
+  }
   await markMissing(base, hdr, t.id, accs.map(a => String(a.account_id || '')));
   await noteChanges(base, hdr, t.team_name || '', changes);
   await markToken(base, hdr, t.id, 'ok', `Sees ${accs.length} ad account(s)`);
@@ -770,6 +829,39 @@ async function tgSend(base: string, hdr: Json, alerts: Alert[]): Promise<string>
   return out.join(' | ');
 }
 
+/* Перевірка звʼязку, яку просять саме тоді, коли все налаштовано, але
+   ще жодного разу нічого не приходило — і незрозуміло, чи це тиша від
+   того, що новин немає, чи від того, що щось не так.
+
+   Пишемо ТІЛЬКИ в чат того, хто натиснув. Не в спільний: тест має
+   перевіряти звʼязок, а не смикати команду. І маршрут навмисно той
+   самий, що в справжніх сповіщень — секрет, tg_links, tgPost: інакше
+   він перевіряв би не те, що треба. */
+async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!token) return { test: 'not configured',
+    note: 'TG_BOT_TOKEN is not set in the fb-sync secrets — the function has nothing to send with' };
+
+  let chat = '';
+  try {
+    const res = await fetch(base + '/rest/v1/tg_links?select=chat_id&user_id=eq.'
+      + encodeURIComponent(owner) + '&limit=1', { headers: hdr });
+    if (!res.ok) return { test: 'no links table',
+      note: 'tg_links is not there yet — run TELEGRAM.sql' };
+    chat = String(((await res.json())[0] || {}).chat_id || '');
+  } catch (e) {
+    return { test: 'failed', note: (e as Error).message };
+  }
+  if (!chat) return { test: 'not linked',
+    note: 'Your Telegram is not connected — press Connect Telegram above and start the bot' };
+
+  const r = await tgPost(token, chat,
+    '\u2705 Перевірка звʼязку з дашборда.\n\n'
+    + 'Якщо ти це читаєш — сповіщення про кабінети прийдуть сюди ж: '
+    + 'зміна стану кабінета й нові відхилення. Щогодинного «все гаразд» не буде.');
+  return { test: r, shared: false };
+}
+
 /* ── вхід ── */
 Deno.serve(async (req) => {
   // OPTIONS — найперше й без жодних умов: без CORS-заголовків на
@@ -813,10 +905,20 @@ async function handle(req: Request): Promise<Response> {
     if (!onlyOwner) return reply({ error: 'could not verify who is calling' }, 401);
   }
 
+  let wantTest = false;
   try {
     const body = await req.json();
     onlyToken = Number(body?.token_id || 0) || 0;
+    wantTest = body?.test === true;
   } catch (_e) { /* тіла може не бути */ }
+
+  /* Тестове повідомлення — дія людини й тільки людини. З розкладу воно
+     не має сенсу: нікому буде його читати, а розсилати тест щогодини —
+     найкоротший шлях до вимкненого бота. */
+  if (wantTest) {
+    if (cron) return reply({ error: 'the test message is for a person, not for the schedule' }, 400);
+    return reply(await tgTest(base, hdr, onlyOwner));
+  }
 
   let q = 'fb_tokens?select=id,label,token,created_by,team_name&order=id.asc';
   if (onlyOwner) q += '&created_by=eq.' + encodeURIComponent(onlyOwner);
@@ -836,8 +938,8 @@ async function handle(req: Request): Promise<Response> {
 
   const deadline = Date.now() + DEADLINE_MS;
   const alerts: Alert[] = [];
-  let limitNote = '';
   let accounts = 0, failed = 0, changed = 0, done = 0;
+  let days = 0, noHistory = 0, historyError = '';
   const problems: string[] = [];
   let throttled = false;
 
@@ -854,7 +956,8 @@ async function handle(req: Request): Promise<Response> {
     }
     done++;
     accounts += r.accounts; failed += r.failed; changed += r.changed;
-    if (r.limitNote && !limitNote) limitNote = r.limitNote;
+    days += r.days; noHistory += r.noHistory;
+    if (r.historyError && !historyError) historyError = r.historyError;
     if (r.error) problems.push(t.label + ': ' + r.error);
     if (r.throttled) {
       // Ліміт Facebook рахує навіть відмовлені запити. Далі по списку
@@ -866,13 +969,21 @@ async function handle(req: Request): Promise<Response> {
 
   const telegram = await tgSend(base, hdr, alerts);
 
+  /* Про історію витрат кажемо одним рядком. Мовчання тут коштувало б
+     дорого: вибір періоду на сторінці спирається саме на неї, і «чому
+     за минулий тиждень нулі» має мати відповідь у тому ж місці, де
+     натискають Sync. */
+  const history = historyError
+    ? (/fb_spend_daily|does not exist|42P01/i.test(historyError)
+        ? 'no table yet — run the fb_spend_daily block from FB_SYNC.sql'
+        : historyError)
+    : days + ' day(s)' + (noHistory ? ', ' + noHistory + ' cabinet(s) gave none' : '');
+
   return reply({
     cron, tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
+    history,
     telegram,
-    // Порожньо — поле є й приїхало. Інакше тут текст відмови Graph, і
-    // саме він каже, чи вміє Marketing API віддавати денний ліміт.
-    daily_limit_field: limitNote || 'ok',
     problems: problems.slice(0, 10)
   });
 }

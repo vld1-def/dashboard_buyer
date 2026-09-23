@@ -39,7 +39,6 @@ create table if not exists public.fb_accounts (
   spend_cap    numeric,        -- 0 = ліміту немає
   balance      numeric,
   daily_budget numeric,        -- сума денних бюджетів того, що крутить
-  daily_limit  numeric,        -- денний ліміт САМОГО кабінета, якщо Graph його віддає
 
   -- Сьогодні — у часовому поясі кабінета, не вашому.
   spend_today       numeric,
@@ -110,8 +109,53 @@ alter table public.fb_accounts
   add column if not exists adsets_on     int,
   add column if not exists ads_on        int,
   add column if not exists daily_budget  numeric,
-  add column if not exists daily_limit   numeric,
   add column if not exists missing_since timestamptz;
+
+
+-- ════════════════════════════════════════════════════════════
+--  fb_spend_daily — витрати кабінета по днях
+-- ════════════════════════════════════════════════════════════
+--  Заради вибору періоду на сторінці. У fb_accounts лежить лише
+--  сьогодні — одне число, яке не відповідає на питання «а скільки
+--  цей кабінет відкрутив минулого тижня».
+--
+--  День — у часовому поясі САМОГО кабінета, як і в звітах Facebook.
+--
+--  Кожен прогін переписує останні 30 днів. Це не марнотратство:
+--  Facebook уточнює витрати заднім числом, і в базі має лежати
+--  уточнена цифра, а не та, яку ми один раз побачили. Глибше за 30
+--  днів записи просто лишаються — історія накопичується.
+--
+--  Дня без витрат тут немає зовсім: відсутній рядок і нуль читаються
+--  однаково, а порожніх рядків було б більше, ніж даних.
+-- ════════════════════════════════════════════════════════════
+
+create table if not exists public.fb_spend_daily (
+  created_by  uuid not null references auth.users(id) on delete cascade,
+  account_id  text not null,
+  day         date not null,
+
+  spend       numeric,
+  impressions bigint,
+  clicks      bigint,
+
+  currency    text,
+  team_name   text,
+  synced_at   timestamptz,
+
+  primary key (created_by, account_id, day)
+);
+
+create index if not exists fb_spend_daily_day_idx
+  on public.fb_spend_daily (created_by, day);
+
+alter table public.fb_spend_daily enable row level security;
+
+drop policy if exists "own_select" on public.fb_spend_daily;
+create policy "own_select" on public.fb_spend_daily for select to authenticated
+  using (created_by = auth.uid());
+
+grant select on public.fb_spend_daily to authenticated;
 
 
 -- ────────────────────────────────────────────────────────────
@@ -136,4 +180,9 @@ alter table public.accounts_mapping
 --  Порожньо — імпорт ще не ходив: Cabinets → Sync now.
 --  spend_today скрізь null — або сьогодні не крутили, або токену
 --  бракує ads_read (видно у fb_tokens.status).
+--
+--  Історія по днях:
+--
+--    select day, sum(spend) from public.fb_spend_daily
+--     group by day order by day desc;
 -- ════════════════════════════════════════════════════════════
