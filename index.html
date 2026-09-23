@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 16:40">
+  <meta name="build" content="build 23.09 16:57">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3200,7 +3200,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 16:40</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 16:57</div>
     </div>
   </aside>
 
@@ -14015,10 +14015,14 @@ window.fbAdd = async function () {
 
 let fbSyncing = false;
 
-window.fbSync = async function (say) {
+window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
   // Нікуди писати — і не пишемо. Виклик від цього не ламається.
   const tell = typeof say === 'function' ? say : () => {};
+  /* body: { token_id } — синхронізувати лише один токен. Потрібно там,
+     де щойно щось змінили в одному кабінеті: ганяти через це весь парк
+     означало б чекати хвилину замість секунди. */
+  const payload = JSON.stringify(body || {});
   fbSyncing = true;
   tell('Asking Facebook — this takes up to a minute…');
 
@@ -14032,7 +14036,7 @@ window.fbSync = async function (say) {
       // apikey поруч із Authorization: шлюз Supabase очікує обидва.
       headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
                  'content-type': 'application/json' },
-      body: '{}'
+      body: payload
     });
     if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
     const j = await res.json().catch(() => ({}));
@@ -14934,21 +14938,82 @@ window.cabFillFromToken = async function (id) {
   if (error) { Object.assign(c.row, prev); cabRender(); alert('Could not save: ' + error.message); }
 };
 
-/* Зупинка всіх кампаній кабінета. Поки Marketing API не підключений,
-   кнопка показує той самий діалог, що й буде в бою, і нічого не міняє —
-   так видно формулювання й потік, а не абстрактну обіцянку.
-   Коли токен зʼявиться: POST на кожну активну кампанію зі status=PAUSED,
-   послідовно, з підрахунком часткових невдач і записом у журнал.
-   Зворотного «увімкнути все» не буде навмисне: вмикати треба свідомо й
-   вибірково, інакше одна кнопка піднімає те, що глушили спеціально. */
+/* Зупинка всіх кампаній кабінета.
+
+   Зупиняємо КАМПАНІЇ, і тільки їх: пауза на кампанії глушить усе, що
+   під нею. Адсети й оголошення чіпати не треба, і на кабінеті з
+   десятьма кампаніями це десять записів замість двохсот.
+
+   Сам похід у Facebook — у функції fb-pause: токен закритий навіть від
+   власника, і зі сторінки написати ним нічого не можна. Це не перешкода,
+   яку варто обходити, а те, заради чого все й зроблено.
+
+   Зворотної кнопки «увімкнути все» немає навмисно: вмикати треба
+   вибірково й свідомо, інакше одна кнопка підніме те, що глушили
+   спеціально. */
 async function cabStopAll(idEnc) {
   const id = decodeURIComponent(idEnc);
   const c = cabAll.find(x => x.id === id);
-  const n = cabCounts(c && c.fb);
+  if (!c || !c.fb) return alert('This cabinet is not covered by a token — nothing to stop from here.');
+
+  const n = cabCounts(c.fb);
   const what = n && n.campaigns != null ? `${n.campaigns} active campaign(s)` : 'every active campaign';
-  if (!confirm(`Stop ${what} in ${id}?\n\n`
-    + 'They will be paused in Facebook. Turning them back on is a separate, deliberate step.')) return;
-  alert('Marketing API is not connected yet — nothing was changed.');
+  const name = c.fb.name || id;
+  if (!confirm(`Stop ${what} in ${name}?\n\n`
+    + 'They will be paused in Facebook. Turning them back on is a separate, deliberate step '
+    + '— there is no button for it here.')) return;
+
+  const out = document.getElementById('cab-sync-status');
+  const say = (html, tone) => {
+    if (!out) return;
+    out.innerHTML = html;
+    out.style.color = tone || 'var(--text-muted)';
+  };
+  say(`Pausing campaigns in ${cabEsc(name)}…`);
+
+  let j;
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess && sess.session && sess.session.access_token;
+    if (!token) throw new Error('not signed in');
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ account_id: c.fb.account_id })
+    });
+    if (res.status === 404 && !res.headers.get('content-type')?.includes('json'))
+      throw Object.assign(new Error('not deployed'), { code: 'missing' });
+    j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+  } catch (e) {
+    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    return say(e.code === 'missing' || net
+      ? 'The fb-pause function did not answer. Either it is not deployed yet '
+        + '(<span class="font-mono">supabase functions deploy fb-pause</span>), '
+        + 'or JWT verification is on for it.'
+      : 'Could not stop: ' + cabEsc(e.message), 'var(--bad)');
+  }
+
+  if (!j.total) return say(cabEsc(j.note || 'Nothing was running in this cabinet.'));
+
+  /* Часткова невдача — не виняток, а очікуваний результат, і мовчати про
+     неї найгірше: людина натиснула кнопку й вважає, що кабінет стоїть. */
+  const bits = [`Paused ${j.paused} of ${j.total} campaign(s)`];
+  if (j.failed) bits.push(`${j.failed} did not stop`);
+  if (j.stopped) bits.push(cabEsc(j.stopped));
+  say(bits.join(' · ')
+    + (j.problems && j.problems.length
+        ? '<br><span class="opacity-70">' + j.problems.map(cabEsc).join('<br>') + '</span>' : ''),
+    j.failed ? 'var(--bad)' : 'var(--ok)');
+
+  /* Числа в базі щойно застаріли. Не вгадуємо їх, а питаємо Facebook
+     заново — і саме по цьому токену, щоб не ганяти весь парк. */
+  if (typeof fbSync === 'function' && c.fb.token_id) {
+    await fbSync(null, { token_id: c.fb.token_id });
+    await cabFbLoad();
+    cabRender();
+  }
 }
 
 async function cabSaveField(id, key, value) {
@@ -15036,7 +15101,10 @@ const EV_TONE = {
   issue:   { rank: 2, tone: 'text-amber-400',  word: 'has an issue' },
   silent:  { rank: 1, tone: 'text-amber-400',  word: 'went quiet' },
   running: { rank: 0, tone: 'text-emerald-400', word: 'is running' },
-  idle:    { rank: 0, tone: 'text-muted-dynamic', word: 'never ran' }
+  idle:    { rank: 0, tone: 'text-muted-dynamic', word: 'never ran' },
+  /* Не стан, а дія: хтось зупинив кампанії руками. Рангу не даємо —
+     це не те, що «вимагає уваги», а те, що вже зроблено свідомо. */
+  paused:  { rank: 0, tone: 'text-violet-300', word: 'was stopped' }
 };
 
 const evRank = s => (EV_TONE[s] || EV_TONE.idle).rank;
@@ -15070,9 +15138,17 @@ async function evLoad() {
 
 // Останній відомий стан по кожному кабінету. evRows уже відсортовані
 // за часом спадно, тож перший зустрінутий рядок і є останнім.
+/* Останній ВІДОМИЙ СТАН кожного кабінета.
+
+   Рахуємо лише kind='state'. Ручну зміну статусу сюди свідомо пускаємо
+   — вона теж стан, і наступна звірка через це не пише дубль. А от
+   зупинка кампаній (kind='pause') — це дія, а не стан: якби вона сюди
+   потрапляла, звірка одразу побачила б розбіжність і дописала зайву
+   подію поверх. */
 function evLastStates() {
   const m = {};
   evRows.forEach(e => {
+    if (e.kind && e.kind !== 'state') return;
     const id = String(e.account_id || '');
     if (id && !(id in m)) m[id] = e.to_state;
   });
