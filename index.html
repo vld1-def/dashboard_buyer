@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 20:57">
+  <meta name="build" content="build 23.09 21:02">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2674,6 +2674,59 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    рядком нижче: зв'язок із конкретним рядком має бути видно одразу. */
 .fbr-warn { color: var(--warn); font-weight: 900; letter-spacing: .06em; }
 
+/* ─── Коментарі під оголошеннями — D
+   Стрічка в панелі кабінета, тож усе дрібне й із власною прокруткою:
+   коментарів буває сотня, а панель одна. Схований коментар притлумлено
+   — він уже не на людях, і привертати ним увагу вдруге нема сенсу. */
+.fcm-all {
+  display: flex; align-items: center; gap: 6px; margin: 2px 0 6px;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer;
+}
+.fcm-list {
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(0, 0, 0, .2);
+}
+.fcm-row {
+  display: flex; gap: 6px; padding: 6px 7px; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.fcm-row:last-child { border-bottom: 0; }
+.fcm-row:hover { background: rgba(255, 255, 255, .03); }
+.fcm-row.is-on { background: rgba(139, 92, 246, .12); }
+.fcm-row.is-hidden { opacity: .5; }
+.fcm-row input { margin-top: 2px; accent-color: var(--accent); }
+.fcm-body { min-width: 0; flex: 1 1 auto; }
+.fcm-top {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  font-size: 9px; font-weight: 700; color: var(--text-muted);
+}
+.fcm-top b { color: var(--text-main); font-weight: 900; }
+.fcm-tag {
+  padding: 0 4px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+}
+.fcm-text {
+  display: block; margin: 2px 0; font-size: 10px; font-weight: 600; line-height: 1.4;
+  color: var(--text-main); overflow-wrap: anywhere;
+}
+.fcm-ad {
+  display: block; font-size: 8px; font-weight: 700; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fcm-acts { display: flex; gap: 4px; margin-top: 8px; }
+.fcm-acts button {
+  flex: 1 1 0; padding: 7px 4px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: border-color .15s, color .15s;
+}
+.fcm-acts button:hover:not(:disabled) { border-color: var(--accent); color: var(--text-main); }
+.fcm-acts button.is-bad { color: var(--bad); border-color: rgba(239, 68, 68, .3); }
+.fcm-acts button.is-bad:hover:not(:disabled) { background: var(--bad); color: #fff; border-color: var(--bad); }
+.fcm-acts button:disabled { opacity: .35; cursor: default; }
+
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
    прочитали б раз і забули, а тут воно перед очима щоразу. */
@@ -3318,7 +3371,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:57</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 21:02</div>
     </div>
   </aside>
 
@@ -14685,6 +14738,227 @@ window.fbrRun = async function (idEnc) {
 </script>
 
 <script>
+/* ═══════════ КОМЕНТАРІ ПІД ОГОЛОШЕННЯМИ ═══════════
+
+   Просили «автоматично чистити коментарі — або дати дозвіл чистити
+   самому з дашборда». Тут друге, і це свідомий вибір, а не півміри.
+
+   Автоматика, яка видаляє чужі повідомлення, помиляється мовчки. Під
+   оголошенням лежить не лише спам: там питання від людей, які збирались
+   купити, і відповіді самої команди. Видалене не лишає сліду, тож
+   дізнатись, що саме зітерло, неможливо в принципі. Коли захочеш саме
+   автоматику — вона має працювати за ПРАВИЛАМИ (слова, посилання), і
+   писати ці правила мусиш ти.
+
+   ДВІ ДІЇ, і різниця між ними велика:
+     Hide   — коментар лишається видимим тільки своєму авторові. Той не
+              бачить, що його сховали, і не йде писати ще раз зі злості.
+              Оборотно.
+     Delete — назавжди, без жодного способу повернути.
+   Тому Hide тут — головна кнопка, а Delete питає підтвердження.
+
+   Текст коментарів — чужий і сирий. Він іде в розмітку тільки через
+   fcmEsc: рівно тут і виглядає найпривабливіше зламати сторінку чиїмось
+   ім'ям із кутовою дужкою. */
+
+let fcmFor = '';       // для якого кабінета розкрито
+let fcmList = null;    // [] або null, поки їдуть
+let fcmErr = '';
+let fcmNote = '';      // «нема чого модерувати» тощо
+let fcmMore = false;   // постів більше, ніж ми встигли обійти
+let fcmSel = [];       // вибрані id
+let fcmBusy = '';
+let fcmMsg = { html: '', tone: '' };
+
+const fcmEsc = v => String(v == null ? '' : v)
+  .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+async function fcmCall(body) {
+  const { data: sess } = await sb.auth.getSession();
+  const token = sess && sess.session && sess.session.access_token;
+  if (!token) throw new Error('not signed in');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/fb-comments', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+               'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+  return j;
+}
+
+function fcmWhy(e) {
+  const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+  return (e.code === 'missing' || net)
+    ? 'The fb-comments function did not answer — deploy it first: '
+      + '<span class="font-mono">supabase functions deploy fb-comments</span>'
+    : fcmEsc(e.message);
+}
+
+const fcmSay = (html, tone) => {
+  fcmMsg = { html, tone: tone || 'var(--text-muted)' };
+  const el = document.getElementById('fcm-msg');
+  if (!el) return;
+  el.innerHTML = html;
+  el.style.color = fcmMsg.tone;
+};
+
+async function fcmLoad(id) {
+  fcmList = null;
+  fcmErr = '';
+  fcmNote = '';
+  fcmMore = false;
+  fcmSel = [];
+  cabRefresh();
+  try {
+    const j = await fcmCall({ action: 'list', account_id: id });
+    fcmList = j.comments || [];
+    fcmNote = j.note || '';
+    fcmMore = !!j.more;
+    /* Пости, до яких не пустило, — не привід сховати решту, але й
+       мовчати про них не можна: інакше «коментарів немає» означало б
+       водночас «їх справді немає» і «нам не дали подивитись». */
+    if (j.problems && j.problems.length) fcmErr = j.problems.map(fcmEsc).join('<br>');
+  } catch (e) {
+    fcmList = [];
+    fcmErr = fcmWhy(e);
+  }
+  if (fcmFor === id) cabRefresh();
+}
+
+window.fcmToggle = function (idEnc) {
+  const id = decodeURIComponent(idEnc);
+  if (fcmFor === id) { fcmFor = ''; cabRefresh(); return; }
+  fcmFor = id;
+  fcmMsg = { html: '', tone: '' };
+  fcmLoad(id);
+};
+
+window.fcmPick = function (cid) {
+  const i = fcmSel.indexOf(cid);
+  if (i < 0) fcmSel.push(cid); else fcmSel.splice(i, 1);
+  cabRefresh();
+};
+
+window.fcmPickAll = function (on) {
+  fcmSel = on ? (fcmList || []).map(c => c.id) : [];
+  cabRefresh();
+};
+
+/* Дію виконуємо по постах: функція звіряє пост зі списком кабінета, і
+   один виклик на всі коментарі одного посту — це і менше запитів, і
+   рівно та межа, яку вона перевіряє. */
+window.fcmAct = async function (idEnc, action) {
+  if (fcmBusy) return;
+  const id = decodeURIComponent(idEnc);
+  const picked = (fcmList || []).filter(c => fcmSel.includes(c.id));
+  if (!picked.length) return;
+
+  if (action === 'delete' && !confirm(
+      'Delete ' + picked.length + ' comment(s) for good?\n\n'
+    + 'There is no way back. If you only want them out of sight, use Hide — '
+    + 'the author still sees their own comment and does not come back to repost it.')) return;
+
+  const byStory = new Map();
+  picked.forEach(c => {
+    const list = byStory.get(c.story);
+    if (list) list.push(c.id); else byStory.set(c.story, [c.id]);
+  });
+
+  fcmBusy = 'Working…';
+  cabRefresh();
+  let done = 0;
+  const bad = [];
+  for (const [story, ids] of byStory) {
+    try {
+      const j = await fcmCall({ action, account_id: id, story_id: story, comment_ids: ids });
+      done += Number(j.done) || 0;
+      (j.problems || []).forEach(p => bad.push(p));
+    } catch (e) {
+      bad.push(e.message);
+    }
+  }
+  fcmBusy = '';
+  const word = action === 'delete' ? 'deleted' : action === 'hide' ? 'hidden' : 'shown again';
+  fcmSay(done + ' comment(s) ' + word
+    + (bad.length ? '<br>' + bad.slice(0, 3).map(fcmEsc).join('<br>') : ''),
+    bad.length ? 'var(--warn)' : 'var(--ok)');
+  // Перечитуємо: після видалення список на екрані — вже не те, що там є.
+  await fcmLoad(id);
+};
+
+/* Короткий підпис часу. Повна дата в title: у стрічці важливо «давно
+   чи щойно», а не число. */
+function fcmAgo(iso) {
+  const t = Date.parse(iso || '');
+  if (!t) return '';
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 60) return m + 'm';
+  if (m < 1440) return Math.round(m / 60) + 'h';
+  return Math.round(m / 1440) + 'd';
+}
+
+function fcmBlock(c) {
+  if (!c || !c.fb) return '';
+  const id = c.id;
+  const enc = encodeURIComponent(id).replace(/'/g, '%27');
+  if (fcmFor !== id) {
+    return `<button type="button" onclick="fcmToggle('${enc}')" class="fbr-open"
+        title="Read and moderate the comments under this cabinet's ads">Comments…</button>`;
+  }
+
+  const head = `<p class="fbr-head">Comments
+      <button type="button" onclick="fcmToggle('${enc}')" title="Close">&times;</button></p>`;
+
+  if (fcmList === null) return `<div class="fbr">${head}
+    <p class="fbr-hint">Asking Facebook… this walks every ad of the cabinet, so it takes a moment.</p></div>`;
+
+  const rows = fcmList.map(x => {
+    const on = fcmSel.includes(x.id);
+    return `<label class="fcm-row ${on ? 'is-on' : ''} ${x.is_hidden ? 'is-hidden' : ''}">
+      <input type="checkbox" ${on ? 'checked' : ''} onchange="fcmPick('${fcmEsc(x.id)}')">
+      <span class="fcm-body">
+        <span class="fcm-top">
+          <b>${fcmEsc(x.from || 'someone')}</b>
+          <span title="${fcmEsc(x.created_time || '')}">${fcmAgo(x.created_time)}</span>
+          ${x.is_hidden ? '<span class="fcm-tag">hidden</span>' : ''}
+          ${x.likes ? '<span class="fcm-tag">♥ ' + x.likes + '</span>' : ''}
+        </span>
+        <span class="fcm-text">${fcmEsc(x.message) || '<i>no text — a photo or a sticker</i>'}</span>
+        <span class="fcm-ad" title="${fcmEsc(x.ad)}">${fcmEsc(x.ad)}${
+          x.ads > 1 ? ' +' + (x.ads - 1) : ''}</span>
+      </span></label>`;
+  }).join('');
+
+  const n = fcmSel.length;
+  const acts = `<div class="fcm-acts">
+      <button type="button" onclick="fcmAct('${enc}','hide')" ${n && !fcmBusy ? '' : 'disabled'}
+        title="Only the author keeps seeing it. Reversible.">Hide${n ? ' ' + n : ''}</button>
+      <button type="button" onclick="fcmAct('${enc}','unhide')" ${n && !fcmBusy ? '' : 'disabled'}
+        title="Put them back in public view">Unhide</button>
+      <button type="button" onclick="fcmAct('${enc}','delete')" class="is-bad"
+        ${n && !fcmBusy ? '' : 'disabled'} title="Gone for good">Delete</button>
+    </div>`;
+
+  return `<div class="fbr">${head}
+    ${fcmErr ? `<p class="fbr-hint is-bad">${fcmErr}</p>` : ''}
+    ${!fcmList.length
+      ? `<p class="fbr-hint">${fcmEsc(fcmNote) || 'Nothing has been written under these ads yet.'}</p>`
+      : `<label class="fcm-all"><input type="checkbox" ${
+            fcmSel.length === fcmList.length ? 'checked' : ''}
+            onchange="fcmPickAll(this.checked)"> ${fcmList.length} comment(s)</label>
+         <div class="fcm-list">${rows}</div>
+         ${acts}`}
+    ${fcmMore ? `<p class="fbr-hint">Only the first posts were checked — this cabinet runs
+       more of them than one pass covers. Press Comments again after moderating these.</p>` : ''}
+    <p id="fcm-msg" class="fbr-hint"${fcmMsg.tone ? ` style="color:${fcmMsg.tone}"` : ''}>${fcmMsg.html}</p>
+  </div>`;
+}
+</script>
+
+<script>
 /* ═══════════ CABINETS ═══════════
    Сторінка парку кабінетів. Три джерела, і вони НЕ рівноцінні.
 
@@ -15772,6 +16046,8 @@ function cabDetail(c) {
     ${typeof evForAccount === 'function' ? evForAccount(c.id) : ''}
 
     ${typeof fbrBlock === 'function' ? fbrBlock(c) : ''}
+
+    ${typeof fcmBlock === 'function' ? fcmBlock(c) : ''}
 
     <button onclick="cabStopAll('${enc}')"
       class="w-full mt-3 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
