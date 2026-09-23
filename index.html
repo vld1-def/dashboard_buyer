@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.09 16:26">
+  <meta name="build" content="build 23.09 00:10">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2895,7 +2895,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.09 16:26</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 00:10</div>
     </div>
   </aside>
 
@@ -4519,10 +4519,20 @@ async function sbFetchAll(table, build) {
     document.getElementById('kpi-roi').innerText = `ROI: ${roi}%`;
   }
 
-  // Net Profit = виручка − спенд. Витрати віднімає перемикач Gross/Net.
+  /* Gross = виручка − спенд. Комісію агента й витрати віднімає
+     перемикач Gross/Net — обидві цифри віддаємо йому сюди.
+
+     Комісія рахувалась і раніше, але лише малювалась рядком «+ $X
+     (Fees)» біля спенду й у жодну суму не входила. На 5% від шестизначного
+     спенду це сотні доларів, які тихо сиділи в прибутку. */
   _kpiRevenue = totalRev;
   window._kpiGross = profit;
   window._kpiSpendVal = totalS;
+  window._kpiFeesVal = tc;
+  window._kpiAgents = Object.entries(agentMap)
+    .filter(([, v]) => v.fee > 0)
+    .map(([n, v]) => ({ name: n, fee: v.fee, pct: v.pcts.size === 1 ? [...v.pcts][0] : null }))
+    .sort((a, b) => b.fee - a.fee);
   updateTotalProfit();
   if (typeof kpiNetPaint === 'function') kpiNetPaint();
   calculateDeltas(data);
@@ -4929,7 +4939,10 @@ function renderTrend(data) {
     const prev = window._kpiTotPrev, cur = window._kpiGross;
     if (typeof prev !== 'number' || typeof cur !== 'number') return clear();
 
-    const off = (localStorage.getItem('kpi_net') === 'net') ? (Number(window._kpiExpensesVal) || 0) : 0;
+    // У режимі Net тотали теж мають бути чистими — інакше підказка
+    // називала б інші гроші, ніж число на картці.
+    const off = (localStorage.getItem('kpi_net') === 'net')
+      ? (Number(window._kpiFeesVal) || 0) + (Number(window._kpiExpensesVal) || 0) : 0;
     const w = window._kpiTotWhen || {};
     const money = v => (typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Number(v).toFixed(2));
     const tip = `Total: ${money(prev - off)} (${w.prev}) → ${money(cur - off)} (${w.cur})`;
@@ -9632,6 +9645,7 @@ async function loadExpenses() {
     if (breakdown) breakdown.innerHTML = '<p class="text-[10px] opacity-30">No expenses</p>';
     _kpiExpenses = 0;
     window._kpiExpensesVal = 0;
+    window._kpiExpenseCats = null;
     updateTotalProfit();
     if (typeof kpiNetPaint === 'function') kpiNetPaint();
     return;
@@ -9641,6 +9655,11 @@ async function loadExpenses() {
   el.innerText = '-$' + total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' (Expenses)';
   _kpiExpenses = total;
   window._kpiExpensesVal = total;
+  // Розбивка по категоріях рахується нижче, але потрібна перемикачу
+  // вже тут: підказка Net має назвати, з чого склалась сума.
+  window._kpiExpenseCats = data.reduce((a, r) => {
+    a[r.category || 'other'] = (a[r.category || 'other'] || 0) + (Number(r.amount) || 0);
+    return a; }, {});
   updateTotalProfit();
   if (typeof kpiNetPaint === 'function') kpiNetPaint();
 
@@ -15437,6 +15456,51 @@ window.dmCheckHelp = dmCheckHelp;
     return NET_MODES.includes(v) ? v : 'gross';
   }
 
+  /* Скільки коштує відкрутити ці гроші, крім самого спенду.
+
+     Комісія агента раніше лише малювалась рядком «+ $X (Fees)» біля
+     спенду і в жодну суму не входила — тобто сиділа в прибутку. Тепер
+     вона така сама витрата, як акаунти чи інструменти. */
+  const EXP_NAMES = { accounts: 'Accounts', fp: 'Payments', team: 'Team',
+                      tools: 'Tools', other: 'Other' };
+  const netMoney = v => (typeof formatCurrency === 'function'
+                        ? formatCurrency(v) : '$' + Number(v).toFixed(2));
+
+  function netCosts() {
+    return (Number(window._kpiFeesVal) || 0) + (Number(window._kpiExpensesVal) || 0);
+  }
+
+  /* Підказка. Число, яке зменшилось саме по собі, викликає підозру —
+     і правильно робить. Тому картка має пояснювати себе без питань. */
+  function netTip(mode, val) {
+    const fees = Number(window._kpiFeesVal) || 0;
+    const exp = Number(window._kpiExpensesVal) || 0;
+    if (mode !== 'net') {
+      const tail = (fees + exp) > 0
+        ? `\n\nНе враховано: ${netMoney(fees + exp)} (комісія агента і витрати).`
+          + '\nКлік — перемкнути на Net.'
+        : '\n\nКлік — перемкнути на Net.';
+      return 'Gross: виручка − спенд.' + tail;
+    }
+    const lines = ['Net: виручка − спенд − комісія агента − витрати', '',
+                   'Gross' + '\u2003' + netMoney(window._kpiGross)];
+    const agents = window._kpiAgents || [];
+    if (fees > 0) {
+      lines.push('− комісія агента\u2003' + netMoney(fees));
+      agents.slice(0, 4).forEach(a => lines.push(
+        '\u2003\u2003' + a.name + (a.pct !== null ? ` (${a.pct}%)` : '') + '\u2003' + netMoney(a.fee)));
+    }
+    if (exp > 0) {
+      lines.push('− витрати\u2003' + netMoney(exp));
+      Object.entries(window._kpiExpenseCats || {})
+        .sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .forEach(([k, v]) => lines.push('\u2003\u2003' + (EXP_NAMES[k] || k) + '\u2003' + netMoney(v)));
+    }
+    if (!fees && !exp) lines.push('(комісій і витрат за цей період немає)');
+    lines.push('', 'Net\u2003' + netMoney(val), '', 'Клік — перемкнути на Gross.');
+    return lines.join('\n');
+  }
+
   window.kpiNetPaint = function () {
     const tag = document.getElementById('kpi-net-tag');
     const mode = netGet();
@@ -15446,11 +15510,12 @@ window.dmCheckHelp = dmCheckHelp;
     }
     const el = document.getElementById('kpi-profit');
     if (!el || typeof window._kpiGross !== 'number') return;
-    const exp = Number(window._kpiExpensesVal) || 0;
-    const val = mode === 'net' ? window._kpiGross - exp : window._kpiGross;
+    const val = mode === 'net' ? window._kpiGross - netCosts() : window._kpiGross;
     el.innerText = (typeof formatCurrency === 'function')
       ? formatCurrency(val) : '$' + val.toFixed(2);
     el.className = `kpi-value ${val >= 0 ? 'text-emerald-400' : 'text-red-500'}`;
+    el.title = netTip(mode, val);
+    if (tag) tag.title = el.title;
 
     // ROI рахуємо від того ж числа, що показане, інакше вони б розходились
     const roiEl = document.getElementById('kpi-roi');
