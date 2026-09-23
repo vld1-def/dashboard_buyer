@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 16:22">
+  <meta name="build" content="build 23.09 16:40">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3200,7 +3200,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 16:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 16:40</div>
     </div>
   </aside>
 
@@ -14243,6 +14243,13 @@ const CAB_ST_WORD = {
    рядком, бо пауза — твій вибір, а відхилення — ні. */
 const CAB_ST_BAD = ['DISAPPROVED', 'WITH_ISSUES', 'PENDING_BILLING_INFO'];
 
+/* А це не «не крутиться» — це історія. Архівоване вже прибрано зі
+   знаменника на боці імпорту, тож і в рядок «скільки не крутиться»
+   воно потрапляти не мусить: інакше те саме число рахувалось би двічі
+   по-різному. У підказці лишається — щоб було видно, куди поділась
+   решта з Ads Manager. */
+const CAB_ST_GONE = ['ARCHIVED', 'DELETED'];
+
 const cabStWord = k => CAB_ST_WORD[k] || String(k).toLowerCase().replace(/_/g, ' ');
 
 /* Розбивка рядком, від більшого до меншого. Без ACTIVE, коли поруч уже
@@ -14711,9 +14718,14 @@ function cabRowHtml(c, hasFb) {
 function cabWhyNot(fb) {
   const by = fb && fb.ads_by_status;
   if (!by || typeof by !== 'object') return '';
-  const rest = cabByStatus(by, true);
+  const skip = k => k === 'ACTIVE' || CAB_ST_GONE.includes(k);
+  const rest = Object.entries(by)
+    .filter(([k, v]) => Number(v) > 0 && !skip(k))
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => v + ' ' + cabStWord(k))
+    .join(' \u00b7 ');
   if (!rest) return '';
-  const n = Object.entries(by).reduce((a, [k, v]) => a + (k === 'ACTIVE' ? 0 : Number(v) || 0), 0);
+  const n = Object.entries(by).reduce((a, [k, v]) => a + (skip(k) ? 0 : Number(v) || 0), 0);
   if (!n) return '';
   const bad = CAB_ST_BAD.some(k => Number(by[k]) > 0);
   return `<p class="${bad ? 'cab-fb-warn' : 'cab-fb-note'}">${n} ad(s) not running: ${cabEsc(rest)}</p>`;
