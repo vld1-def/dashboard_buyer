@@ -229,17 +229,28 @@ async function listAccounts(token: string): Promise<Json[]> {
         (розгортання полів дає все це одним запитом);
      2-4. скільки з них ЗАРАЗ крутиться.
 
-   summary=total_count з limit=0 — саме те, що треба: число без
-   вивантаження самих обʼєктів. Інакше кабінет на дві тисячі оголошень
-   з'їв би весь ліміт часу на самому лише підрахунку.
+   ЧОМУ ОБИДВА ЧИСЛА БЕРУТЬСЯ З ОДНІЄЇ ВІДПОВІДІ
+
+   Спершу було не так: знаменник рахувався розгортанням поля на самому
+   кабінеті (act_X?fields=ads.limit(0).summary(total_count)), а
+   чисельник — окремим запитом до ребра act_X/ads. Це два різні виклики,
+   і множини в них НЕ зобовʼязані збігатись: розгорнуте поле й пряме
+   ребро по-різному поводяться з архівованим. У парі «10 з 60» це
+   означало порівняння одного з іншим, і пояснити таке число неможливо,
+   бо воно ні про що.
+
+   Тепер обидва числа рахуються з однієї відповіді, по рядках, які
+   реально приїхали. Розбивка в підказці тому й сходиться з підсумком
+   точно, а не приблизно.
+
+   Заодно зникла залежність від summary(total_count) на відфільтрованому
+   ребрі — рахунок, якому давно не варто довіряти: він то враховує
+   фільтр, то ні, і перевірити це ззовні ніяк.
 
    date_preset=today рахується в часовому поясі САМОГО КАБІНЕТА, а не
    вашому. Зводити це до локального часу означало б показувати число,
    якого немає в жодному звіті Facebook. */
-const INNER = 'insights.date_preset(today){spend,impressions,clicks}'
-  + ',campaigns.limit(0).summary(total_count)'
-  + ',adsets.limit(0).summary(total_count)'
-  + ',ads.limit(0).summary(total_count)';
+const INNER = 'insights.date_preset(today){spend,impressions,clicks}';
 
 /* Скільки обʼєктів тягнемо заради розбивки. Це не «скільки їх у
    кабінеті» — це стеля однієї сторінки. Те, що не влізло, чесно
@@ -281,9 +292,6 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
     patch.spend_today = num(ins.spend);
     patch.impressions_today = num(ins.impressions);
     patch.clicks_today = num(ins.clicks);
-    patch.campaigns = total(b.campaigns);
-    patch.adsets = total(b.adsets);
-    patch.ads = total(b.ads);
   } else if (p0) {
     err = String(p0.body?.error?.message || 'HTTP ' + p0.code);
   } else {
@@ -308,8 +316,21 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string } {
        не можна: інакше сума в підказці не зійдеться з підсумком, і
        довіри не буде ні до того, ні до того. */
     const all = total(p.body);
-    if (all != null && rows.length < all) by._more = all - rows.length;
+    const over = all != null && rows.length < all;
+    if (over) by._more = all - rows.length;
+
     patch[edge + '_active'] = by.ACTIVE || 0;
+
+    /* Знаменник — із ЦІЄЇ Ж відповіді, а не з іншого запиту. Архівоване
+       й видалене з нього прибираємо: це історія, а не те, що могло б
+       крутитись. У розбивці воно лишається, тож нічого не ховається —
+       просто не роздуває число, поруч з яким стоїть кількість активних.
+
+       Коли сторінка переповнилась, частки архівованого в невидимому
+       хвості ми не знаємо, тож беремо підсумок як є. Це верхня межа, і
+       ключ _more поруч каже, що вона саме така. */
+    patch[edge] = over ? all
+      : rows.length - (by.ARCHIVED || 0) - (by.DELETED || 0);
     patch[edge + '_by_status'] = by;
   });
 
