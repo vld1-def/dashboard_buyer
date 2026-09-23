@@ -96,8 +96,10 @@ async function graph(path: string, token: string, params: Json, real = false): P
    файл довелось би правити руками перед імпортом, і сенс кнопки
    зникав би. */
 const FIELDS = [
-  'account_name', 'campaign_name', 'adset_name', 'ad_name',
-  'spend', 'impressions', 'clicks', 'inline_link_clicks',
+  // Номер кабінета, а не назва: у дашборді кабінети звуться номерами,
+  // і саме за номером імпорт знаходить, чий це рядок.
+  'account_id', 'campaign_name', 'ad_name',
+  'spend', 'clicks', 'inline_link_clicks',
   'actions', 'date_start', 'date_stop'
 ].join(',');
 
