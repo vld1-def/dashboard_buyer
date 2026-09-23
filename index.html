@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 12:30">
+  <meta name="build" content="build 23.09 12:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1740,7 +1740,39 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
    замість двох, усі варіанти видно одразу, і — головне — в <option>
    не можна покласти SVG, лише текст. З випадайкою іконки були б
    неможливі в принципі. */
+/* ─────────── Підвкладки всередині розділу налаштувань ─────────── */
+.set-subtabs {
+  display: flex; gap: 4px; margin: 0 0 14px;
+  padding: 3px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.set-subtab {
+  flex: 1 1 auto; padding: 7px 12px; border-radius: 8px;
+  font-size: 11px; font-weight: 800; letter-spacing: .03em;
+  color: var(--text-muted); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: color .15s, background .15s;
+}
+.set-subtab:hover { color: var(--text-main); }
+.set-subtab.is-on { color: var(--text-main); background: var(--surface); }
+.set-subcount {
+  font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-muted);
+}
+
+/* Невидима підвкладка — саме класом, а не hidden: у режимі пошуку
+   (#set-panes.searching) правило нижче повертає всі панелі назад, і
+   пошук по налаштуваннях знаходить рядки в усіх трьох, не знаючи про
+   існування підвкладок узагалі. */
+.set-subpane.sub-off { display: none; }
+#set-panes.searching .set-subpane.sub-off { display: revert; }
+/* Самі перемикачі в режимі пошуку зайві: панелі й так усі відкриті. */
+#set-panes.searching .set-subtabs { display: none; }
+
 /* ─────────── Токени Facebook ─────────── */
+/* Список росте, вікно налаштувань — ні. Після приблизно семи рядків
+   починається власна прокрутка, а не розтягування модалки. */
+.fb-list { max-height: 320px; overflow-y: auto; }
 .fb-row {
   display: grid; gap: 2px 10px; align-items: center;
   grid-template-columns: 1fr auto;
@@ -3103,7 +3135,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:30</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 12:33</div>
     </div>
   </aside>
 
@@ -6274,6 +6306,7 @@ function openSettingsModal() {
   // Load TL access toggles — джерелом правди є Supabase, localStorage лише як миттєвий fallback
   loadTeamLeadToggles();
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
+  if (typeof setSubTabInit === 'function') setSubTabInit();
   if (typeof fbLoad === 'function') fbLoad();
 }
 
@@ -11192,22 +11225,20 @@ document.addEventListener('keydown', e => {
 
         <!-- INTEGRATIONS -->
         <section id="spanel-integrations" class="set-pane hidden">
-          <div class="set-group">
-            <h3 class="set-gtitle">Google Drive preview</h3>
-            <p class="set-gsub">This team’s creatives folder. The link must be shared with anyone who has it.</p>
-            <div class="set-addrow" data-setting="drive folder папка креативи">
-              <input type="url" id="drive-folder-input" placeholder="https://drive.google.com/drive/folders/…" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
-              <button type="button" onclick="saveDriveFolder()" class="set-btn set-btn-amber">Save</button>
-            </div>
-            <p id="drive-folder-status" class="set-hint"></p>
-            <div class="set-addrow mt-3" data-setting="drive api key ключ">
-              <input type="text" id="drive-api-key-input" placeholder="API key: AIza…" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
-              <button type="button" onclick="saveDriveApiKey()" class="set-btn set-btn-amber">Save</button>
-            </div>
-            <p class="set-hint">console.cloud.google.com → Enable Drive API → Credentials → API Key</p>
+
+          <!-- Підвкладки. Токенів FB з часом стає багато, і тримати їх
+               поруч із двома одноразовими налаштуваннями означає
+               гортати повз них щоразу. Порядок за частотою звернень:
+               токени змінюються постійно, Drive і бот — раз. -->
+          <div class="set-subtabs">
+            <button type="button" id="isub-fb" class="set-subtab" onclick="setSubTab('fb')">
+              Facebook<span id="fb-count" class="set-subcount hidden"></span></button>
+            <button type="button" id="isub-tg" class="set-subtab" onclick="setSubTab('tg')">Telegram</button>
+            <button type="button" id="isub-drive" class="set-subtab" onclick="setSubTab('drive')">Google Drive</button>
           </div>
 
-          <div class="set-group">
+          <div id="isub-pane-fb" class="set-subpane">
+<div class="set-group">
             <h3 class="set-gtitle">Facebook tokens</h3>
             <p class="set-gsub">System user tokens: where the dashboard reads stats from, and what it pauses campaigns with.</p>
 
@@ -11218,7 +11249,10 @@ document.addEventListener('keydown', e => {
             </div>
             <p id="fb-add-status" class="set-hint"></p>
 
-            <div id="fb-list" class="mt-2"></div>
+            <div id="fb-filter-wrap" class="set-addrow mt-2 hidden">
+              <input type="text" id="fb-filter" oninput="fbPaint()" placeholder="Filter by name, BM or account id" class="set-input" style="flex:1 1 auto;min-width:0">
+            </div>
+            <div id="fb-list" class="fb-list mt-2"></div>
 
             <p class="set-hint opacity-60">
               The token is checked against Facebook the moment you add it — you see its permissions, expiry and how many
@@ -11226,8 +11260,10 @@ document.addEventListener('keydown', e => {
               that column, and only the server function retrieves it. Where to get a token: see FB_TOKENS.sql.
             </p>
           </div>
+          </div>
 
-          <div class="set-group">
+          <div id="isub-pane-tg" class="set-subpane">
+<div class="set-group">
             <h3 class="set-gtitle">Telegram alerts</h3>
             <p class="set-gsub">Where the dashboard reports what changed: cabinets that got banned, went quiet, or were launched and never started spending.</p>
 
@@ -11265,6 +11301,24 @@ document.addEventListener('keydown', e => {
                 they run with the nightly check and report only what got worse.
               </p>
             </div>
+          </div>
+          </div>
+
+          <div id="isub-pane-drive" class="set-subpane">
+          <div class="set-group">
+            <h3 class="set-gtitle">Google Drive preview</h3>
+            <p class="set-gsub">This team’s creatives folder. The link must be shared with anyone who has it.</p>
+            <div class="set-addrow" data-setting="drive folder папка креативи">
+              <input type="url" id="drive-folder-input" placeholder="https://drive.google.com/drive/folders/…" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveDriveFolder()" class="set-btn set-btn-amber">Save</button>
+            </div>
+            <p id="drive-folder-status" class="set-hint"></p>
+            <div class="set-addrow mt-3" data-setting="drive api key ключ">
+              <input type="text" id="drive-api-key-input" placeholder="API key: AIza…" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveDriveApiKey()" class="set-btn set-btn-amber">Save</button>
+            </div>
+            <p class="set-hint">console.cloud.google.com → Enable Drive API → Credentials → API Key</p>
+          </div>
           </div>
         </section>
 
@@ -13601,6 +13655,26 @@ window.saveTelegramBot = saveTelegramBot;
    для цього не потрібна: запит іде з твого браузера з твоїм же
    токеном, нікуди більше він при цьому не потрапляє. */
 
+/* ── підвкладки розділу «Інтеграції» ──
+   Живуть тут, а не у віджетах, бо єдиний їхній споживач — цей розділ,
+   і саме токени змусили його розділити. */
+const ISUB = ['fb', 'tg', 'drive'];
+
+window.setSubTab = function (which) {
+  if (!ISUB.includes(which)) which = ISUB[0];
+  try { localStorage.setItem('set_isub', which); } catch (e) {}
+  ISUB.forEach(k => {
+    document.getElementById('isub-pane-' + k)?.classList.toggle('sub-off', k !== which);
+    document.getElementById('isub-' + k)?.classList.toggle('is-on', k === which);
+  });
+};
+
+window.setSubTabInit = function () {
+  let saved = 'fb';
+  try { saved = localStorage.getItem('set_isub') || 'fb'; } catch (e) {}
+  setSubTab(saved);
+};
+
 const FB_API = 'https://graph.facebook.com/v21.0';
 /* Обов'язкове рівно одне: ads_read. Ним читається і сама статистика, і
    edge /insights рекламного кабінета — окремого дозволу для цього не
@@ -13697,9 +13771,32 @@ window.fbLoad = async function () {
     return;
   }
   fbRows = data || [];
+  fbCount();
+  // Фільтр з'являється не одразу: на трьох токенах він лише займає
+  // місце, на двадцяти без нього не обійтись.
+  document.getElementById('fb-filter-wrap')?.classList.toggle('hidden', fbRows.length < 6);
   if (!fbRows.length) { box.innerHTML = '<p class="set-hint">No tokens added yet.</p>'; return; }
+  fbPaint();
+};
 
-  box.innerHTML = fbRows.map(r => {
+function fbCount() {
+  const el = document.getElementById('fb-count');
+  if (!el) return;
+  el.textContent = fbRows.length;
+  el.classList.toggle('hidden', !fbRows.length);
+}
+
+window.fbPaint = function () {
+  const box = document.getElementById('fb-list');
+  if (!box) return;
+  const q = (document.getElementById('fb-filter')?.value || '').toLowerCase().trim();
+  const shown = !q ? fbRows : fbRows.filter(r =>
+    [r.label, r.bm_name, r.bm_id, r.status,
+     ...(Array.isArray(r.accounts) ? r.accounts.map(a => a.id + ' ' + (a.name || '')) : [])]
+      .some(v => String(v || '').toLowerCase().includes(q)));
+  if (!shown.length) { box.innerHTML = '<p class="set-hint">Nothing matches that.</p>'; return; }
+
+  box.innerHTML = shown.map(r => {
     const accs = Array.isArray(r.accounts) ? r.accounts.length : 0;
     const exp = r.expires_at
       ? new Date(r.expires_at).toLocaleDateString()
