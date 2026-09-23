@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 20:14">
+  <meta name="build" content="build 23.09 20:41">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2625,6 +2625,52 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 }
 .cab-range-days input:focus { border-color: var(--accent); }
 
+/* ─────────── Експорт звіту кабінета ───────────
+   Живе в панелі кабінета, тож усе вузьке: підпис зліва, поле справа,
+   в один стовпчик. Кнопка «Download CSV» виділена кольором акценту —
+   це те, заради чого блок відкривали. */
+.fbr-open, .fbr-go {
+  width: 100%; margin-top: 8px; padding: 8px 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: border-color .15s, color .15s;
+}
+.fbr-open:hover { border-color: var(--accent); color: var(--text-main); }
+.fbr-go { border-color: var(--accent); color: var(--text-main); }
+.fbr-go:hover { background: var(--accent); color: #fff; }
+.fbr-go:disabled { opacity: .45; cursor: default; background: var(--surface-2); color: var(--text-muted); }
+
+.fbr {
+  margin-top: 10px; padding: 10px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.fbr-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 8px;
+}
+.fbr-head button {
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 15px; line-height: 1; cursor: pointer;
+}
+.fbr-head button:hover { color: var(--bad); }
+.fbr-row { display: block; margin-bottom: 6px; }
+.fbr-row span {
+  display: block; margin-bottom: 3px;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.fbr-row select {
+  width: 100%; background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px 8px;
+  font-size: 10px; font-weight: 700; color: var(--text-main);
+  outline: none; cursor: pointer;
+}
+.fbr-row select:focus { border-color: var(--accent); }
+.fbr-hint { margin-top: 6px; font-size: 9px; font-weight: 700; line-height: 1.45; color: var(--text-muted); }
+.fbr-hint:empty { display: none; }
+.fbr-hint.is-bad { color: var(--bad); }
+
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
    прочитали б раз і забули, а тут воно перед очима щоразу. */
@@ -3269,7 +3315,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:14</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 20:41</div>
     </div>
   </aside>
 
@@ -14231,6 +14277,332 @@ window.fbSync = async function (say, body) {
 </script>
 
 <script>
+/* ═══════════ ЕКСПОРТ ЗВІТУ КАБІНЕТА ═══════════
+
+   Те саме, що ти робив руками: зайти у Facebook, зібрати звіт, скачати
+   файл. Тільки кнопкою, і файл одразу в тому вигляді, який читає
+   Form.html.
+
+   ЧОМУ ЗАГОЛОВКИ САМЕ ТАКІ. Form.html розпізнає колонки за назвами, і
+   назви ці відомі: 'reporting starts', 'campaign name', 'ad name',
+   'amount spent', 'country', 'publisher platform'… Ми не вигадуємо
+   формат — ми влучаємо в наявний. Тому цей файл можна залити тим самим
+   імпортом, що й фебешний, і нічого в ньому не правити.
+
+   ВАЛЮТА ЖИВЕ В ЗАГОЛОВКУ СПЕНДУ, і це не косметика: Form.html бере її
+   саме звідти — «Amount spent (PLN)» — і за нею перераховує в долари
+   за курсом того дня. Написати просто «Amount spent» означало б тихо
+   видати злоті за долари. Тому валюта завжди в дужках.
+
+   РЯДКИ БЕЗ ПЕРЕВОДІВ. Розбірник Form.html спершу ріже файл по
+   рядках і лише потім розбирає лапки. Назва оголошення з переводом
+   рядка розвалила б таблицю, тому переводи в значеннях замінюємо
+   пробілом.
+
+   ЩО ВВАЖАТИ РЕГОЮ Й ДЕПОМ, Facebook не знає. Він віддає конверсії як
+   action_type своїми іменами. Вибір людини, один раз, зі списку того,
+   що реально приходило в цей кабінет. Не вибрано — колонки в файлі
+   просто немає: порожня колонка виглядала б як «нуль конверсій», а це
+   інше твердження. */
+
+const FBR_BREAKDOWNS = [
+  ['', 'By day'],
+  ['country', 'By day + country'],
+  ['placement', 'By day + placement'],
+  ['country_placement', 'By day + country + placement']
+];
+
+/* Колонки розрізу. Ключі збігаються з тим, що Facebook кладе в рядок,
+   заголовки — з тим, що шукає Form.html. */
+const FBR_BD_COLS = {
+  country: [['country', 'Country']],
+  placement: [['publisher_platform', 'Publisher platform'],
+              ['platform_position', 'Platform position'],
+              ['impression_device', 'Impression device']],
+  country_placement: [['country', 'Country'],
+                      ['publisher_platform', 'Publisher platform'],
+                      ['platform_position', 'Platform position'],
+                      ['impression_device', 'Impression device']]
+};
+
+/* Конверсії, які вміє приймати Form.html. label — що побачиш у
+   налаштуванні, head — заголовок колонки у файлі. */
+const FBR_CONV = [
+  ['reg',  'Registration', 'Registrations completed'],
+  ['dep',  'Deposit',      'Purchases'],
+  ['inst', 'Install / lead', 'Leads']
+];
+
+let fbrFor = '';        // для якого кабінета розкрито блок
+let fbrEvents = null;   // [{type,n}] — що приходить у цей кабінет
+let fbrErr = '';
+let fbrBusy = '';       // текст на time роботи; '' — вільно
+/* Останнє сказане й яким тоном. Тримаємо станом, а не в DOM: панель
+   кабінета перемальовується цілком, і повідомлення, записане прямо у
+   вузол, зникало б рівно в ту мить, коли його дочитують. */
+let fbrMsg = { html: '', tone: '' };
+let fbrBd = '';
+let fbrMap = { reg: '', dep: '', inst: '' };
+let fbrMapLoaded = false;
+
+const fbrEsc = v => String(v == null ? '' : v)
+  .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+/* Вибір «що є рега» — командний, не персональний: файли з різних
+   кабінетів зводяться в одну таблицю, і різні правила в різних людей
+   зробили б її несумісною сама з собою. */
+async function fbrLoadMap() {
+  if (fbrMapLoaded) return;
+  fbrMapLoaded = true;
+  try {
+    const raw = await getTeamSetting('fb_report_map');
+    if (raw) fbrMap = { ...fbrMap, ...JSON.parse(raw) };
+  } catch (e) { /* немає — виберуть заново */ }
+}
+
+async function fbrSaveMap(key, value) {
+  fbrMap[key] = value || '';
+  try { await setTeamSetting('fb_report_map', JSON.stringify(fbrMap)); } catch (e) {}
+}
+
+window.fbrSetConv = async function (key, value) {
+  await fbrSaveMap(key, value);
+};
+
+window.fbrSetBd = function (v) {
+  fbrBd = v;
+};
+
+/* ── виклик функції ──
+   Окрема від fbSync: там прогін усього парку, тут звіт одного
+   кабінета. Спільного в них лише спосіб постукати. */
+async function fbrCall(body) {
+  const { data: sess } = await sb.auth.getSession();
+  const token = sess && sess.session && sess.session.access_token;
+  if (!token) throw new Error('not signed in');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/fb-report', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+               'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+  return j;
+}
+
+function fbrWhy(e) {
+  const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+  return (e.code === 'missing' || net)
+    ? 'The fb-report function did not answer — deploy it first: '
+      + '<span class="font-mono">supabase functions deploy fb-report</span>'
+    : fbrEsc(e.message);
+}
+
+window.fbrToggle = async function (idEnc) {
+  const id = decodeURIComponent(idEnc);
+  if (fbrFor === id) { fbrFor = ''; cabRefresh(); return; }
+  fbrFor = id;
+  fbrEvents = null;
+  fbrErr = '';
+  fbrMsg = { html: '', tone: '' };
+  await fbrLoadMap();
+  cabRefresh();
+  /* Перелік подій тягнемо один раз на відкриття. Це окремий похід у
+     Facebook, тож робити його на кожну перемальовку панелі не варто. */
+  try {
+    const j = await fbrCall({ action: 'events', account_id: id });
+    fbrEvents = j.events || [];
+  } catch (e) {
+    fbrEvents = [];
+    fbrErr = fbrWhy(e);
+  }
+  if (fbrFor === id) cabRefresh();
+};
+
+/* ── сам блок у панелі кабінета ── */
+function fbrBlock(c) {
+  if (!c || !c.fb) return '';
+  const id = c.id;
+  const enc = encodeURIComponent(id).replace(/'/g, '%27');
+  if (fbrFor !== id) {
+    return `<button type="button" onclick="fbrToggle('${enc}')" class="fbr-open"
+        title="Build the same report you now export by hand in Ads Manager">Export report…</button>`;
+  }
+
+  const opt = (v, label, sel) =>
+    `<option value="${fbrEsc(v)}"${sel === v ? ' selected' : ''}>${fbrEsc(label)}</option>`;
+
+  const evSel = ([key, label]) => {
+    if (fbrEvents === null) return `<p class="fbr-hint">${fbrEsc(label)}: looking…</p>`;
+    if (!fbrEvents.length) return '';
+    return `<label class="fbr-row"><span>${fbrEsc(label)}</span>
+      <select onchange="fbrSetConv('${key}', this.value)">
+        ${opt('', '— not exported —', fbrMap[key])}
+        ${fbrEvents.map(e => opt(e.type, e.type + '  (' + e.n + ')', fbrMap[key])).join('')}
+      </select></label>`;
+  };
+
+  const noEvents = fbrEvents && !fbrEvents.length && !fbrErr
+    ? `<p class="fbr-hint">No conversions came through this cabinet in the last 30 days, so
+       there is nothing to map yet. Spend, clicks and impressions still export.</p>` : '';
+
+  return `<div class="fbr">
+    <p class="fbr-head">Export report
+      <button type="button" onclick="fbrToggle('${enc}')" title="Close">&times;</button></p>
+
+    <label class="fbr-row"><span>Rows</span>
+      <select onchange="fbrSetBd(this.value)">
+        ${FBR_BREAKDOWNS.map(b => opt(b[0], b[1], fbrBd)).join('')}
+      </select></label>
+
+    ${FBR_CONV.map(evSel).join('')}
+    ${noEvents}
+    ${fbrErr ? `<p class="fbr-hint is-bad">${fbrErr}</p>` : ''}
+
+    <button type="button" onclick="fbrRun('${enc}')" class="fbr-go"
+      ${fbrBusy ? 'disabled' : ''}>${fbrBusy ? fbrEsc(fbrBusy) : 'Download CSV'}</button>
+    <p class="fbr-hint">Period comes from the filter above: <b>${fbrEsc(cabRangeLabel())}</b>.
+      Facebook builds the report on its side, so a month of ad-level rows takes a while.
+      Not every breakdown can be combined with every other — if Facebook refuses this
+      one, it says so below and the parts work separately.</p>
+    <p id="fbr-msg" class="fbr-hint"${fbrMsg.tone ? ` style="color:${fbrMsg.tone}"` : ''}>${fbrMsg.html}</p>
+  </div>`;
+}
+
+const fbrSay = (html, tone) => {
+  fbrMsg = { html, tone: tone || 'var(--text-muted)' };
+  const el = document.getElementById('fbr-msg');
+  if (!el) return;
+  el.innerHTML = html;
+  el.style.color = fbrMsg.tone;
+};
+
+/* ── значення однієї клітинки ── */
+function fbrCell(v) {
+  // Переводи рядків ламають розбірник Form.html — він ріже файл по них
+  // ще до того, як побачить лапки.
+  const s = String(v == null ? '' : v).replace(/[\r\n]+/g, ' ');
+  return /[",]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/* Скільки разів сталася подія. Facebook складає всі конверсії в один
+   масив actions — беремо звідти ту, яку вибрали. */
+function fbrAction(row, type) {
+  if (!type) return null;
+  const hit = (Array.isArray(row.actions) ? row.actions : [])
+    .find(a => String(a && a.action_type) === type);
+  return hit ? (Number(hit.value) || 0) : 0;
+}
+
+function fbrCsv(rows, cur, bd) {
+  /* Валюта — у заголовку спенду. Form.html читає її саме звідти. */
+  const head = ['Reporting starts', 'Reporting ends', 'Account name',
+                'Campaign name', 'Ad set name', 'Ad name',
+                'Amount spent (' + (cur || 'USD') + ')', 'Impressions', 'Link clicks'];
+  const take = [r => r.date_start, r => r.date_stop, r => r.account_name,
+                r => r.campaign_name, r => r.adset_name, r => r.ad_name,
+                r => r.spend, r => r.impressions,
+                // inline_link_clicks — це «кліки по посиланню», те саме,
+                // що у фебешному експорті. clicks там ширше: рахує будь-який
+                // клік по оголошенню, і плутати їх не можна.
+                r => (r.inline_link_clicks != null ? r.inline_link_clicks : r.clicks)];
+
+  (FBR_BD_COLS[bd] || []).forEach(([key, label]) => {
+    head.push(label);
+    take.push(r => r[key]);
+  });
+
+  FBR_CONV.forEach(([key, , label]) => {
+    if (!fbrMap[key]) return;   // не вибрано — колонки немає
+    head.push(label);
+    take.push(r => fbrAction(r, fbrMap[key]));
+  });
+
+  const out = [head.map(fbrCell).join(',')];
+  rows.forEach(r => out.push(take.map(f => fbrCell(f(r))).join(',')));
+  // BOM — щоб Excel не з'їв кирилицю в назвах кампаній.
+  return String.fromCharCode(0xFEFF) + out.join('\n');
+}
+
+function fbrDownload(text, name) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* Скільки сторінок згодні забрати. Це не «стільки рядків буває», а
+   стеля, за якою файл усе одно ніхто не відкриє. Упершись у неї, ми
+   кажемо про це вголос і не видаємо обрізане за повне. */
+const FBR_MAX_CALLS = 40;
+
+window.fbrRun = async function (idEnc) {
+  if (fbrBusy) return;
+  const id = decodeURIComponent(idEnc);
+  const c = (cabAll || []).find(x => x.id === id);
+  if (!c || !c.fb) return;
+  const [since, until] = cabRangeDates();
+
+  fbrBusy = 'Working…';
+  cabRefresh();
+  fbrSay('Asking Facebook to build the report…');
+
+  try {
+    const start = await fbrCall({ action: 'start', account_id: id,
+                                  since, until, breakdown: fbrBd });
+    const run = start.run_id;
+
+    const rows = [];
+    let after = '';
+    let calls = 0;
+    let cut = false;
+
+    for (;;) {
+      if (calls++ >= FBR_MAX_CALLS) { cut = true; break; }
+      const j = await fbrCall({ action: 'fetch', account_id: id, run_id: run, after });
+      if (!j.ready) {
+        fbrSay('Facebook is building it… ' + (Number(j.percent) || 0) + '%');
+        await new Promise(r => setTimeout(r, 2000));
+        calls--;   // очікування не витрачає ліміт сторінок
+        continue;
+      }
+      rows.push(...(j.rows || []));
+      fbrSay('Got ' + rows.length + ' row(s)…');
+      after = j.after || '';
+      if (!after) break;
+    }
+
+    if (!rows.length) {
+      fbrSay('Facebook returned nothing for ' + since + ' – ' + until
+        + '. Either the cabinet did not run then, or the period is outside its history.',
+        'var(--warn)');
+      return;
+    }
+
+    const name = (c.fb.account_id || id) + '_' + since + '_' + until
+      + (fbrBd ? '_' + fbrBd : '') + '.csv';
+    fbrDownload(fbrCsv(rows, c.fb.currency, fbrBd), name);
+    fbrSay(rows.length + ' row(s) saved as <span class="font-mono">' + fbrEsc(name) + '</span>'
+      + (cut ? '<br><b>The report was longer than that</b> — this file is cut off. '
+             + 'Take a shorter period or a simpler breakdown.' : '')
+      + '<br>Import it in Form.html the same way you import the Facebook one.',
+      cut ? 'var(--warn)' : 'var(--ok)');
+  } catch (e) {
+    fbrSay(fbrWhy(e), 'var(--bad)');
+  } finally {
+    fbrBusy = '';
+    cabRefresh();
+  }
+};
+</script>
+
+<script>
 /* ═══════════ CABINETS ═══════════
    Сторінка парку кабінетів. Три джерела, і вони НЕ рівноцінні.
 
@@ -15316,6 +15688,8 @@ function cabDetail(c) {
       placeholder="What was launched here, which card, anything worth remembering">${String(c.row.status_note || '')}</textarea>
 
     ${typeof evForAccount === 'function' ? evForAccount(c.id) : ''}
+
+    ${typeof fbrBlock === 'function' ? fbrBlock(c) : ''}
 
     <button onclick="cabStopAll('${enc}')"
       class="w-full mt-3 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
