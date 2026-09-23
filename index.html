@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 14:05">
+  <meta name="build" content="build 23.09 14:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2584,6 +2584,29 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    статус, який щогодини підтвердив Facebook, від того, який хтось
    клацнув три місяці тому. Тому живий — помітніший. */
 .cab-src.is-live { color: var(--ok); opacity: .75; }
+/* Значення, виведене з назви токена, а не вписане руками.
+   Відрізняється навмисно: інакше через тиждень ніхто не скаже, чи це
+   збережене поле, чи здогадка. */
+.cab-auto { opacity: .55; font-style: italic; }
+.cab-chip.is-auto { opacity: .6; border-style: dashed; }
+
+/* Перемикач зрізу: All / Live / Old */
+.cab-srcsel {
+  display: inline-flex; gap: 2px; padding: 2px; border-radius: 12px;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+}
+.cab-srcsel button {
+  padding: 6px 10px; border-radius: 10px; border: 0; background: transparent;
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: background .15s, color .15s;
+}
+.cab-srcsel button:hover { color: var(--text-main); }
+.cab-srcsel button.is-on { background: var(--surface-3); color: var(--text-main); }
+.cab-srcsel #cab-src-fb.is-on { color: var(--ok); }
+.cab-srcn { opacity: .5; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+.cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.cab-syncmsg:not(:empty) { margin-bottom: 10px; }
 .cab-today { color: var(--text-main); }
 
 /* Заголовок секції — над таблицею, а не рядком у ній: у двох
@@ -3174,7 +3197,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 14:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 14:33</div>
     </div>
   </aside>
 
@@ -3982,9 +4005,21 @@ body[data-route="domains"] #dm-detail {
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
         <option value="agent">Group: agent</option>
         <option value="state">Group: state</option>
-        <option value="profile">Group: profile</option>
+        <option value="profile">Group: browser</option>
+        <option value="bm">Group: BM</option>
         <option value="">No grouping</option>
       </select>
+      <!-- Зріз за джерелом. Окремий вимір від стану, тому й окремий
+           перемикач, а не ще дві плитки в тій самій стрічці. Вибір
+           запам'ятовується між заходами. -->
+      <div class="cab-srcsel">
+        <button type="button" id="cab-src-all" onclick="cabSetSrc('')"
+          title="Every cabinet">All <span class="cab-srcn"></span></button>
+        <button type="button" id="cab-src-fb" onclick="cabSetSrc('fb')"
+          title="Only cabinets a token sees — state confirmed by Facebook">Live <span class="cab-srcn"></span></button>
+        <button type="button" id="cab-src-old" onclick="cabSetSrc('old')"
+          title="Only cabinets no token sees — state guessed from reports">Old <span class="cab-srcn"></span></button>
+      </div>
       <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
       <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
@@ -3995,6 +4030,10 @@ body[data-route="domains"] #dm-detail {
         title="Ask Facebook right now instead of waiting for the hourly run">Sync now</button>
     </div>
   </div>
+
+  <!-- Результат синхронізації. Порожній, поки нічого не запускали —
+       місця не займає. -->
+  <p id="cab-sync-status" class="cab-syncmsg"></p>
 
   <div id="cab-tiles" class="mb-4"></div>
 
@@ -6353,7 +6392,6 @@ function openSettingsModal() {
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
   if (typeof setSubTabInit === 'function') setSubTabInit();
   if (typeof fbLoad === 'function') fbLoad();
-  if (typeof fbAccLoad === 'function') fbAccLoad();
 }
 
 async function loadTeamLeadToggles() {
@@ -11305,31 +11343,14 @@ document.addEventListener('keydown', e => {
               ad accounts it can reach. Nobody can read it back afterwards, you included: the database grants no access to
               that column, and only the server function retrieves it. Where to get a token: see FB_TOKENS.sql.
             </p>
-          </div>
-
-          <!-- Що Facebook каже про кабінети. Окремо від Cabinets навмисно:
-               там статус ставить людина, і імпорт, який щогодини затирав би
-               чужу позначку, був би не помічником. -->
-          <div class="set-group">
-            <h3 class="set-gtitle">Ad accounts from Facebook</h3>
-            <p class="set-gsub">What Marketing API says about every ad account those tokens can reach: state, today&#39;s spend, what is live inside, which card pays. Pulled automatically every hour.</p>
-
-            <div class="set-addrow" data-setting="facebook sync імпорт синхронізація кабінети спенд статус картка">
-              <button type="button" id="fb-sync-btn" onclick="fbSync()" class="set-btn set-btn-amber">Sync now</button>
-              <input type="text" id="fb-acc-filter" oninput="fbAccPaint()" placeholder="Filter by name, id, card or state" class="set-input" style="flex:1 1 auto;min-width:0">
-            </div>
-            <p id="fb-sync-status" class="set-hint"></p>
-
-            <div id="fb-acc-list" class="fb-list mt-2"></div>
-
             <p class="set-hint opacity-60">
-              Hourly is a deliberate choice, not a limitation: Facebook counts even refused requests against the rate limit,
-              and hitting it means not even the account state comes through &mdash; the one thing this is for. Numbers read
-              live/total, so 3/40 means three of forty campaigns are running. Spend is today in the ad account&#39;s own time
-              zone, the way Facebook counts it. The card shows the type and last four digits &mdash; Marketing API does not
-              expose the BIN anywhere, so there is nothing else to show. Setup: FB_SYNC.sql, then FB_SYNC_CRON.sql.
+              What those tokens actually pull &mdash; cabinet state, today&#39;s spend, what is live inside &mdash; lives on the
+              Cabinets page, together with the Sync now button. Name a token
+              <span class="font-mono">Agent_Browser_BMid</span> and the dashboard fills in the agent, the browser number and
+              the BM for every cabinet it sees.
             </p>
           </div>
+
           </div>
 
           <div id="isub-pane-tg" class="set-subpane">
@@ -13973,163 +13994,30 @@ window.fbAdd = async function () {
 };
 
 
-/* ═══════════ ЩО FACEBOOK КАЖЕ ПРО КАБІНЕТИ ═══════════
-   Досі токен працював рівно один раз — у мить додавання. Тепер за ним
-   щогодини ходить функція fb-sync і складає у fb_accounts стан
-   кабінета, сьогоднішні витрати, скільки живих кампаній/адсетів/
-   оголошень і чим платить.
+/* ═══════════ ЗАПУСТИТИ СИНХРОНІЗАЦІЮ ═══════════
+   Сам похід у Marketing API зі сторінки неможливий: токен закритий
+   навіть від власника, дістає його лише Edge Function від сервісної
+   ролі. Тут — виклик цієї функції, і більше нічого.
 
-   Тут тільки показ і кнопка «зробити це зараз». Сам похід у Marketing
-   API зі сторінки неможливий: токен закритий навіть від власника, і
-   дістає його лише функція від сервісної ролі.
+   САМ СПИСОК КАБІНЕТІВ ЖИВЕ НЕ ТУТ. Він був тут рівно один реліз, і це
+   було не те місце: дивитись на стан кабінетів ходять на вкладку
+   Cabinets, а не в налаштування, куди заходять раз на місяць. У
+   налаштуваннях лишились токени — тобто те, що тут справді
+   налаштовують.
 
-   ЧОМУ ОКРЕМА ТАБЛИЦЯ, А НЕ КОЛОНКИ В КАБІНЕТАХ: у Cabinets статус
-   ставить людина, часто всупереч Facebook («живий, але ми його
-   відклали»). Імпорт, який щогодини затирає чужу позначку, — не
-   помічник. Тому машинне й ручне лежать поруч і не б'ються.
+   Показувати результат функція не вміє й не мусить: хто покликав, той і
+   каже, куди писати. Через це один і той самий виклик обслуговує і
+   кнопку на Cabinets, і будь-що, що зʼявиться потім, — без другої копії
+   запиту, яку довелось би чинити двічі. */
 
-   БІН КАРТКИ. Його немає. Marketing API не віддає перших шести цифр
-   жодним полем — це дані платіжної системи. Максимум — «Visa *4242»:
-   тип і останні чотири. Саме воно тут і показується. */
+let fbSyncing = false;
 
-const FB_ACC_TONE = {
-  active:    'var(--ok)',
-  banned:    'var(--bad)',
-  closed:    'var(--bad)',
-  closing:   'var(--bad)',
-  unsettled: 'var(--warn)',
-  review:    'var(--warn)',
-  grace:     'var(--warn)',
-  unknown:   'var(--text-muted)'
-};
-
-// Словами — бо status_code сам по собі нікому нічого не каже.
-const FB_ACC_WORD = {
-  active: 'active', banned: 'disabled by Facebook', closed: 'closed',
-  closing: 'closing', unsettled: 'unpaid', review: 'under review',
-  grace: 'grace period', unknown: 'unknown'
-};
-
-/* Що стоїть нагорі. Сортувати цей список по витратах було б рівно
-   навпаки змісту: забанений кабінет нічого не крутить, тобто має нуль,
-   тобто опинився би в самому кінці — і його б просто не побачили.
-   Тому спершу те, що болить, і вже всередині рівних — по грошах. */
-const FB_ACC_RANK = {
-  banned: 0, closed: 0, closing: 0,
-  unsettled: 1, review: 1, grace: 1,
-  unknown: 2,
-  active: 3
-};
-
-let fbAccRows = [], fbSyncing = false;
-
-const FB_CUR = { USD: '$', EUR: '€', GBP: '£', UAH: '₴' };
-
-function fbMoney(v, cur) {
-  if (v == null) return '—';
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '—';
-  const s = n.toLocaleString('en-US', { minimumFractionDigits: n < 100 ? 2 : 0,
-                                        maximumFractionDigits: n < 100 ? 2 : 0 });
-  const sign = FB_CUR[cur];
-  return sign ? sign + s : s + (cur ? ' ' + cur : '');
-}
-
-function fbAgo(iso) {
-  const ms = Date.now() - Date.parse(iso);
-  if (!(ms >= 0)) return '';
-  const m = Math.floor(ms / 60000);
-  if (m < 60) return (m || 1) + 'm ago';
-  const h = Math.floor(m / 60);
-  if (h < 24) return h + 'h ago';
-  return Math.floor(h / 24) + 'd ago';
-}
-
-window.fbAccLoad = async function () {
-  const box = document.getElementById('fb-acc-list');
-  if (!box) return;
-  const { data, error } = await sb.from('fb_accounts')
-    .select('account_id,name,status,status_code,disable_reason,currency,'
-          + 'card,spend_today,campaigns,campaigns_active,adsets,adsets_active,'
-          + 'ads,ads_active,amount_spent,sync_error,synced_at,business_name')
-    .order('spend_today', { ascending: false, nullsFirst: false });
-  if (error) {
-    // Таблиці ще немає — це найчастіший стан у перші дні, і він не
-    // помилка. Решту причин показуємо як є.
-    box.innerHTML = /fb_accounts|does not exist|schema cache/i.test(error.message)
-      ? '<p class="set-hint">Not set up yet — run FB_SYNC.sql, deploy the fb-sync function, then press Sync now.</p>'
-      : `<p class="set-hint">Could not read: ${fbEsc(error.message)}</p>`;
-    fbAccRows = [];
-    return;
-  }
-  fbAccRows = data || [];
-  fbAccPaint();
-};
-
-window.fbAccPaint = function () {
-  const box = document.getElementById('fb-acc-list');
-  if (!box) return;
-  if (!fbAccRows.length) {
-    box.innerHTML = '<p class="set-hint">Nothing pulled yet. Add a token above, then press Sync now.</p>';
-    return;
-  }
-  const q = (document.getElementById('fb-acc-filter')?.value || '').toLowerCase().trim();
-  const shown = (!q ? fbAccRows : fbAccRows.filter(r =>
-    [r.account_id, r.name, r.status, r.card, r.business_name]
-      .some(v => String(v || '').toLowerCase().includes(q))))
-    .slice()
-    .sort((a, b) => {
-      const ra = FB_ACC_RANK[a.status] ?? 2, rb = FB_ACC_RANK[b.status] ?? 2;
-      if (ra !== rb) return ra - rb;
-      return (Number(b.spend_today) || 0) - (Number(a.spend_today) || 0);
-    });
-  if (!shown.length) { box.innerHTML = '<p class="set-hint">Nothing matches that.</p>'; return; }
-
-  /* Живих / усього. Одне число без другого брехливе в обидва боки:
-     «3 кампанії» не каже, чи решта сорока вимкнена вручну чи їх
-     просто немає. */
-  const pair = (live, all) => live == null && all == null ? '—'
-    : (live == null ? '?' : live) + '/' + (all == null ? '?' : all);
-
-  box.innerHTML = shown.map(r => {
-    const st = String(r.status || 'unknown');
-    const why = r.disable_reason ? ' · ' + fbEsc(r.disable_reason) : '';
-    return `<div class="fb-row">
-      <div class="fb-main">
-        <span class="fb-dot" style="background:${FB_ACC_TONE[st] || FB_ACC_TONE.unknown}"></span>
-        <span class="fb-label">${fbEsc(r.name || r.account_id)}</span>
-        <span class="fb-bm">${fbEsc(r.account_id)}${r.card ? ' · ' + fbEsc(r.card) : ''}</span>
-      </div>
-      <div class="fb-nums">
-        <span class="fb-spend">${fbEsc(fbMoney(r.spend_today, r.currency))}</span>
-        <span class="fb-unit">today</span>
-      </div>
-      <div class="fb-meta">
-        ${fbEsc(FB_ACC_WORD[st] || st)}${why}
-        · camp ${pair(r.campaigns_active, r.campaigns)}
-        · sets ${pair(r.adsets_active, r.adsets)}
-        · ads ${pair(r.ads_active, r.ads)}
-        ${r.synced_at ? ' · ' + fbEsc(fbAgo(r.synced_at)) : ''}
-        ${r.sync_error ? `<span class="fb-warn"> · ${fbEsc(r.sync_error)}</span>` : ''}
-      </div>
-    </div>`;
-  }).join('');
-};
-
-/* ── запустити зараз ──
-   Той самий виклик, що й у розкладу, тільки від вашого імені: функція
-   перевіряє ваш JWT в Supabase Auth і синхронізує ТІЛЬКИ ваші токени.
-   Попросити чужі не вийде — межі ставить перевірений uid, а не тіло
-   запиту. */
-window.fbSync = async function () {
-  if (fbSyncing) return;
-  const btn = document.getElementById('fb-sync-btn');
-  const out = document.getElementById('fb-sync-status');
-  const say = (t, tone) => { if (out) { out.innerHTML = t; out.style.color = tone || 'var(--text-muted)'; } };
-
+window.fbSync = async function (say) {
+  if (fbSyncing) return null;
+  // Нікуди писати — і не пишемо. Виклик від цього не ламається.
+  const tell = typeof say === 'function' ? say : () => {};
   fbSyncing = true;
-  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
-  say('Asking Facebook — this takes up to a minute…');
+  tell('Asking Facebook — this takes up to a minute…');
 
   try {
     const { data: sess } = await sb.auth.getSession();
@@ -14147,34 +14035,35 @@ window.fbSync = async function () {
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
 
-    await fbAccLoad();
-    await fbLoad();
+    // Стан токенів міг змінитись під time прогону — перечитуємо, якщо
+    // список токенів зараз на екрані.
+    if (typeof fbLoad === 'function') await fbLoad();
 
-    if (!j.tokens) { say('No tokens to sync — add one above first.', 'var(--warn)'); return; }
+    if (!j.tokens) { tell('No tokens to sync — add one in Settings first.', 'var(--warn)'); return j; }
     const bits = [`${j.accounts} ad account(s) from ${j.tokens} token(s)`];
     if (j.changed) bits.push(`${j.changed} changed state`);
     if (j.failed) bits.push(`${j.failed} came back incomplete`);
     if (j.throttled) bits.push('hit the Facebook rate limit — the rest comes in with the next hourly run');
     if (j.more) bits.push('ran out of time, more left');
-    const tone = j.throttled || j.failed ? 'var(--warn)' : 'var(--ok)';
-    say(fbEsc(bits.join(' · '))
+    tell(fbEsc(bits.join(' · '))
       + (j.problems && j.problems.length
           ? '<br><span class="opacity-70">' + j.problems.map(fbEsc).join('<br>') + '</span>' : ''),
-      tone);
+      j.throttled || j.failed ? 'var(--warn)' : 'var(--ok)');
+    return j;
   } catch (e) {
     /* «Failed to fetch» означає рівно одне: браузер не зміг виконати
        запит. ЧОМУ — він не знає й не скаже, бо відповідь без
        CORS-заголовків для нього просто не існує. Тому причину не
        вигадуємо, а перелічуємо ті три, що виглядають однаково. */
     const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
-    say(e.code === 'missing' || net
+    tell(e.code === 'missing' || net
       ? 'The fb-sync function did not answer. Either it is not deployed yet '
         + '(<span class="font-mono">supabase functions deploy fb-sync</span>), '
         + 'or it fails on start-up, or JWT verification is on for it.'
       : 'Facebook sync failed: ' + fbEsc(e.message), 'var(--bad)');
+    return null;
   } finally {
     fbSyncing = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Sync now'; }
   }
 };
 </script>
@@ -14231,6 +14120,44 @@ let cabSort = { key: 'state', dir: 1 };
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabAll = [];
+
+/* Назви токенів за їх id. Потрібні не заради краси: у назві токена вже
+   записано те, чого Facebook не знає й ніколи не скаже. */
+let cabTokens = {};
+
+/* Який зріз списку показувати: '' — увесь, 'fb' — тільки те, що бачить
+   токен, 'old' — тільки решта. Вибір запамʼятовуємо: людина, яка
+   поставила Live, завтра теж хоче Live, а не дві секції знову. */
+let cabSrc = '';
+try { cabSrc = localStorage.getItem('cab_src') || ''; } catch (e) {}
+
+const cabEsc = v => String(v == null ? '' : v)
+  .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+window.cabSetSrc = function (v) {
+  cabSrc = ['', 'fb', 'old'].includes(v) ? v : '';
+  try { localStorage.setItem('cab_src', cabSrc); } catch (e) {}
+  cabSel = null;
+  cabRender();
+};
+
+/* Те, що можна вивести з назви токена. Формат назви твій:
+   Агент_Номербраузера_idBM. Facebook про агента й браузер не знає
+   нічого — а ти вже вписав їх, коли додавав токен, тож питати вдруге
+   немає сенсу.
+
+   БМ беремо все-таки в Facebook: він каже це сам і точно. Третя
+   частина назви — запасний варіант, якщо Graph не віддав business. */
+function cabFromToken(fb) {
+  const label = fb ? String(cabTokens[fb.token_id] || '') : '';
+  const parts = label.split('_').map(x => x.trim());
+  return {
+    label,
+    agent:   parts[0] || '',
+    browser: parts[1] || '',
+    bm: (fb && fb.business_id) || parts[2] || ''
+  };
+}
 
 /* Стан кабінета словами Facebook. unknown потрапляє в issue навмисно:
    незнайомий код — привід подивитись, а не привід малювати зелене. */
@@ -14345,13 +14272,18 @@ async function cabFbLoad() {
     const { data, error } = await sb.from('fb_accounts')
       .select('account_id,name,status,disable_reason,currency,card,spend_today,team_name,'
             + 'campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
-            + 'amount_spent,sync_error,synced_at,business_name');
+            + 'amount_spent,sync_error,synced_at,business_name,business_id,token_id');
     if (error) throw error;
     /* Команду відсіюємо тут, а не запитом. RLS і так віддає лише свої
        рядки, а team_name у токена може бути порожнім — тоді фільтр у
        запиті сховав би геть усе, і виглядало б це як «нічого не
        приїхало», а не як «не проставлена команда». */
     cabFb = (data || []).filter(r => !r.team_name || r.team_name === currentTeam);
+    /* Назви токенів окремим запитом. Сам токен звідти не приїде й
+       приїхати не може: права на цей стовпчик забрано в усіх. */
+    const t = await sb.from('fb_tokens').select('id,label');
+    cabTokens = {};
+    (t.data || []).forEach(x => cabTokens[x.id] = x.label);
   } catch (e) {
     cabFb = [];
     cabFbErr = /fb_accounts|does not exist|schema cache/i.test(e.message || '')
@@ -14365,11 +14297,19 @@ async function cabFbLoad() {
 window.cabSync = async function () {
   const btn = document.getElementById('cab-sync');
   if (!btn || typeof fbSync !== 'function') return;
+  const out = document.getElementById('cab-sync-status');
+  // Куди писати результат, вирішує той, хто кличе: сама fbSync про
+  // розмітку нічого не знає й знати не мусить.
+  const say = (html, tone) => {
+    if (!out) return;
+    out.innerHTML = html;
+    out.style.color = tone || 'var(--text-muted)';
+  };
   btn.disabled = true;
   const was = btn.textContent;
   btn.textContent = 'Syncing…';
   try {
-    await fbSync();
+    await fbSync(say);
     await cabFbLoad();
     cabRender();
   } finally {
@@ -14490,7 +14430,7 @@ function cabSortBy(k) {
 function cabMake(row, fb, id, f) {
   const x = f.map[id] || { spend: 0, first: '', last: '', byDay: {} };
   const state = cabStateOf(row, f, fb);
-  return { row, fb, id, x, state,
+  return { row, fb, id, x, state, tok: cabFromToken(fb),
            silent: (state === 'silent' && x.last) ? cabDayDiff(x.last, f.lastDay) : 0,
            age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
 }
@@ -14565,15 +14505,39 @@ function cabRender() {
   const inFilter = c => !cabFilter ? true
     : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
     : c.state === cabFilter;
+  /* Зріз за джерелом. Це окремий вимір від стану: «показати лише те,
+     що підтверджує Facebook» і «показати лише забанені» — різні
+     питання, і звалювати їх в одну стрічку плиток означало б зробити
+     обидва незрозумілими. */
+  const inSrc = c => cabSrc === 'fb' ? !!c.fb : cabSrc === 'old' ? !c.fb : true;
   let shown = all.filter(c =>
-    inFilter(c) &&
+    inFilter(c) && inSrc(c) &&
     (!q || [c.id, c.row.provider_name, c.row.status_note,
             c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,
+            c.tok.agent, c.tok.browser, c.tok.bm, c.tok.label,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q))));
 
+  // Підсвічуємо активний зріз і показуємо, скільки в кожному.
+  const nFb = all.filter(c => c.fb).length;
+  [['', all.length], ['fb', nFb], ['old', all.length - nFb]].forEach(([k, n]) => {
+    const b = document.getElementById('cab-src-' + (k || 'all'));
+    if (!b) return;
+    b.classList.toggle('is-on', cabSrc === k);
+    const c2 = b.querySelector('.cab-srcn');
+    if (c2) c2.textContent = n;
+  });
+
   if (!shown.length) {
-    list.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Nothing here</p>`;
+    /* «Nothing here» на порожньому зрізі — найгірша з відповідей:
+       людина бачить порожнечу й не знає, чи це фільтр, чи справді
+       нічого немає. */
+    const why = cabSrc === 'fb' && !nFb
+        ? 'No cabinet is covered by a token yet — press Sync now'
+      : cabSrc === 'old' && nFb === all.length
+        ? 'Every cabinet is covered by a token'
+      : 'Nothing here';
+    list.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     cabDetail(null);
     return;
   }
@@ -14602,7 +14566,7 @@ function cabSection(items, hasFb, bare) {
   // Типове сортування — за станом: зверху те, що вимагає дії.
   const rank = s2 => CAB_ORDER.indexOf(s2);
   const val = { state: c => rank(c.state), id: c => c.id,
-                agent: c => String(c.row.provider_name || ''),
+                agent: c => String(c.row.provider_name || c.tok.agent || ''),
                 today: c => (c.fb ? Number(c.fb.spend_today) || 0 : 0),
                 spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '' };
   const get = val[cabSort.key] || val.state;
@@ -14615,9 +14579,10 @@ function cabSection(items, hasFb, bare) {
   });
 
   // ── групування ──
-  const keyOf = c => cabGroup === 'agent'   ? (c.row.provider_name || '— no agent —')
+  const keyOf = c => cabGroup === 'agent'   ? (c.row.provider_name || c.tok.agent || '— no agent —')
                    : cabGroup === 'state'   ? CAB_STATE[c.state].label
-                   : cabGroup === 'profile' ? (c.row.profile || '— no profile —')
+                   : cabGroup === 'profile' ? (c.row.profile || c.tok.browser || '— no browser —')
+                   : cabGroup === 'bm'      ? (c.row.bm || c.tok.bm || '— no BM —')
                    : '';
   const groups = {};
   sorted.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
@@ -14676,13 +14641,21 @@ function cabRowHtml(c, hasFb) {
     <td>
       <span class="cab-id">${primary}</span>
       ${second ? `<span class="cab-chip">${second}</span>` : ''}
-      ${c.row.profile ? `<span class="cab-chip">${c.row.profile}</span>` : ''}
+      ${c.row.profile
+        ? `<span class="cab-chip">${cabEsc(c.row.profile)}</span>`
+        : c.tok.browser
+          ? `<span class="cab-chip is-auto" title="Browser from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.browser)}</span>`
+          : ''}
       <span class="cab-src ${c.fb ? 'is-live' : ''}" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       ${link ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
            class="cab-link" title="Open in Ads Manager">&#8599;</a>`
              : `<span class="cab-link is-off" title="Ads Manager link needs a numeric account id">&#8599;</span>`}
     </td>
-    <td class="cab-dim">${c.row.provider_name || '—'}</td>
+    <td class="cab-dim">${c.row.provider_name
+      ? cabEsc(c.row.provider_name)
+      : c.tok.agent
+        ? `<span class="cab-auto" title="Agent from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.agent)}</span>`
+        : '—'}</td>
     ${hasFb ? num(n && n.campaigns) + num(n && n.adsets) + num(n && n.ads)
             + `<td class="ta-r cab-num cab-today">${today}</td>` : ''}
     <td class="ta-r cab-num">${c.x.spend > 0 ? cabMoney(c.x.spend) : '<span class="cab-na">—</span>'}</td>
@@ -14755,13 +14728,31 @@ function cabDetail(c) {
     return;
   }
 
+  /* Що можна взяти з назви токена й від Facebook. Своє завжди
+     головніше: підставляємо це лише в ПОРОЖНІ поля, і то підказкою, а
+     не значенням — щоб було видно, що воно ще не збережене. */
+  const auto = { bm: c.tok.bm, profile: c.tok.browser };
   const field = e => cabCols[e.key]
     ? `<div class="mb-2">
-         <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">${e.label}</label>
+         <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">${
+           e.key === 'profile' && c.tok.browser ? 'Browser' : e.label}</label>
          <input value="${String(c.row[e.key] || '').replace(/"/g, '&quot;')}"
+           placeholder="${auto[e.key] ? cabEsc(auto[e.key]) + ' (from token)' : ''}"
            onchange="cabSaveField('${c.row.id}','${e.key}',this.value)"
            class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"></div>`
     : '';
+
+  /* Кнопка зʼявляється, лише коли є що заповнити. Кнопка, яка нічого не
+     робить, гірша за її відсутність: на неї тиснуть і не розуміють, чому
+     нічого не сталось. */
+  const fillable = [['provider_name', c.tok.agent], ['profile', c.tok.browser], ['bm', c.tok.bm]]
+    .filter(([k, v]) => v && !c.row[k] && (k === 'provider_name' || cabCols[k]))
+    .map(([k]) => k);
+  const fillBtn = !fillable.length ? '' : `<button onclick="cabFillFromToken('${c.row.id}')"
+      class="w-full mb-3 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition
+             text-violet-300 hover:text-white hover:bg-violet-600"
+      style="border:1px solid rgba(139,92,246,.35)"
+      title="${cabEsc(c.tok.label)}">Fill ${fillable.length} field(s) from the token name</button>`;
 
   /* Ручна прив'язка. Потрібна лише тоді, коли автоматика не впоралась:
      підпис кабінета в тебе свій, а Facebook знає його під номером.
@@ -14812,6 +14803,7 @@ function cabDetail(c) {
         Facebook says this one is ${esc(c.fb.status)} — the buttons above cannot undo that.</p>` : ''}
 
     ${linkBlock}
+    ${fillBtn}
     ${CAB_EXTRA.map(field).join('')}
 
     <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Note</label>
@@ -14837,6 +14829,12 @@ window.cabAdopt = async function (idEnc) {
   if (!c || !c.fb) return;
   const patch = { team_name: currentTeam, account_id: id };
   if (cabCols.fb_account_id) patch.fb_account_id = id;
+  /* Заводимо вже підписаним: агент і браузер лежать у назві токена,
+     БМ сказав Facebook. Змушувати переписувати це руками — єдиний
+     спосіб отримати тут одруківку. */
+  if (c.tok.agent) patch.provider_name = c.tok.agent;
+  if (c.tok.browser && cabCols.profile) patch.profile = c.tok.browser;
+  if (c.tok.bm && cabCols.bm) patch.bm = c.tok.bm;
   const { data, error } = await sb.from('accounts_mapping').insert(patch).select();
   if (error) return alert('Could not add: ' + error.message);
   if (data && data[0]) cabRows.push(data[0]);
@@ -14844,6 +14842,26 @@ window.cabAdopt = async function (idEnc) {
 };
 
 window.cabLinkTo = function (id, fbId) { return cabSaveField(id, 'fb_account_id', fbId); };
+
+/* Заповнити порожні поля з назви токена. Саме ПОРОЖНІ: те, що вписали
+   руками, завжди свіжіше за розбір назви, і затирати його не можна —
+   те саме правило, що й на статусі. */
+window.cabFillFromToken = async function (id) {
+  const c = cabAll.find(x => x.row && String(x.row.id) === String(id));
+  if (!c) return;
+  const patch = {};
+  [['provider_name', c.tok.agent], ['profile', c.tok.browser], ['bm', c.tok.bm]]
+    .forEach(([k, v]) => {
+      if (v && !c.row[k] && (k === 'provider_name' || cabCols[k])) patch[k] = v;
+    });
+  if (!Object.keys(patch).length) return;
+  const prev = {};
+  Object.keys(patch).forEach(k => prev[k] = c.row[k]);
+  Object.assign(c.row, patch);
+  cabRender();
+  const { error } = await sb.from('accounts_mapping').update(patch).eq('id', id);
+  if (error) { Object.assign(c.row, prev); cabRender(); alert('Could not save: ' + error.message); }
+};
 
 /* Зупинка всіх кампаній кабінета. Поки Marketing API не підключений,
    кнопка показує той самий діалог, що й буде в бою, і нічого не міняє —
