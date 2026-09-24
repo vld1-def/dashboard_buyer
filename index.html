@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 08:11">
+  <meta name="build" content="build 24.09 08:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3450,7 +3450,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 08:11</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 08:22</div>
     </div>
   </aside>
 
@@ -14440,11 +14440,15 @@ window.fbSync = async function (say, body) {
    просто немає: порожня колонка виглядала б як «нуль конверсій», а це
    інше твердження. */
 
+/* Пари «гео + плейсмент» тут немає, і це межа Facebook, а не наша: на
+   такий запит він відповідає #100 і перелічує, що не сходиться — разом
+   із action_type, якого ми не просили. Той зʼявляється сам, щойно в
+   полях є конверсії. Тобто або гео з плейсментом і без конверсій, або
+   конверсії й один розріз. Конверсії важливіші. */
 const FBR_BREAKDOWNS = [
   ['', 'By day'],
   ['country', 'By day + country'],
-  ['placement', 'By day + placement'],
-  ['country_placement', 'By day + country + placement']
+  ['placement', 'By day + placement']
 ];
 
 /* Колонки розрізу. Ключі збігаються з тим, що Facebook кладе в рядок,
@@ -14453,11 +14457,7 @@ const FBR_BD_COLS = {
   country: [['country', 'Country']],
   placement: [['publisher_platform', 'Publisher platform'],
               ['platform_position', 'Platform position'],
-              ['impression_device', 'Impression device']],
-  country_placement: [['country', 'Country'],
-                      ['publisher_platform', 'Publisher platform'],
-                      ['platform_position', 'Platform position'],
-                      ['impression_device', 'Impression device']]
+              ['impression_device', 'Impression device']]
 };
 
 /* Конверсії, які вміє приймати Form.html. label — що побачиш у
@@ -14501,10 +14501,10 @@ let fbrBusy = '';       // текст на time роботи; '' — вільн�
    кабінета перемальовується цілком, і повідомлення, записане прямо у
    вузол, зникало б рівно в ту мить, коли його дочитують. */
 let fbrMsg = { html: '', tone: '' };
-/* Розріз за замовчуванням — найширший. Саме його ти й вивантажуєш
-   руками: гео, платформа, плейсмент і пристрій усі є серед полів,
-   які шукає Form.html, тож звужувати його нема сенсу. */
-let fbrBd = 'country_placement';
+/* Гео за замовчуванням. З двох можливих розрізів він важливіший: у
+   Form.html гео входить у те, про що імпорт питає окремо, якщо у файлі
+   його немає, а плейсмент із пристроєм — ні. */
+let fbrBd = 'country';
 
 /* '' — брати само, '-' — не вивантажувати, будь-що інше — вибрана
    подія. «Брати само» і «не треба» навмисно різні значення: звести їх
@@ -14638,6 +14638,9 @@ function fbrBlock(c) {
     <button type="button" onclick="fbrRun('${enc}')" class="fbr-go"
       ${fbrBusy ? 'disabled' : ''}>${fbrBusy ? fbrEsc(fbrBusy) : 'Download CSV'}</button>
     <p class="fbr-hint">Period: <b>${fbrEsc(cabRangeLabel())}</b></p>
+    ${fbrBd ? `<p class="fbr-hint">Facebook gives geo and placement only in separate reports.
+      Take one now and the other later if you need both \u2014 but <b>do not import both for the
+      same days</b>: Form.html adds rows up, and the spend would count twice.</p>` : ''}
     <p id="fbr-msg" class="fbr-hint"${fbrMsg.tone ? ` style="color:${fbrMsg.tone}"` : ''}>${fbrMsg.html}</p>
   </div>`;
 }

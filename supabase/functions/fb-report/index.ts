@@ -105,15 +105,20 @@ const FIELDS = [
 
 /* Розрізи. Кожен окремо: Facebook дозволяє не будь-яку їх комбінацію,
    а звіт, який ляже на всі одразу, однаково ніхто не відкриє. */
+/* Розрізи. Кожен окремо — і це не обережність, а межа самого
+   Facebook: гео з плейсментом він в одному звіті не дає.
+
+   Я вважав, що дає, і поставив таку пару за замовчуванням. Graph
+   відповів #100 і перелічив, що саме не сходиться:
+   action_type, country, impression_device, platform_position,
+   publisher_platform. action_type ми не просили — він зʼявляється сам,
+   щойно в полях є actions, тобто конверсії. Виходить, вибір такий:
+   або гео з плейсментом і без конверсій, або конверсії й один із них.
+   Конверсії важливіші, тож пара прибрана зовсім. */
 const BREAKDOWNS: Record<string, string> = {
   '': '',
   country: 'country',
-  placement: 'publisher_platform,platform_position,impression_device',
-  /* Найширший — і саме він стоїть за замовчуванням, бо рівно його й
-     вивантажують руками. Його тут бракувало: у списку на сторінці він
-     був, у цій мапі — ні, тож типовий експорт падав на
-     «unknown breakdown» ще до першого запиту в Graph. */
-  country_placement: 'country,publisher_platform,platform_position,impression_device'
+  placement: 'publisher_platform,platform_position,impression_device'
 };
 
 Deno.serve(async (req) => {
