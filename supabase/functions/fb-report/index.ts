@@ -108,7 +108,12 @@ const FIELDS = [
 const BREAKDOWNS: Record<string, string> = {
   '': '',
   country: 'country',
-  placement: 'publisher_platform,platform_position,impression_device'
+  placement: 'publisher_platform,platform_position,impression_device',
+  /* Найширший — і саме він стоїть за замовчуванням, бо рівно його й
+     вивантажують руками. Його тут бракувало: у списку на сторінці він
+     був, у цій мапі — ні, тож типовий експорт падав на
+     «unknown breakdown» ще до першого запиту в Graph. */
+  country_placement: 'country,publisher_platform,platform_position,impression_device'
 };
 
 Deno.serve(async (req) => {
@@ -151,7 +156,16 @@ async function handle(req: Request): Promise<Response> {
     + '&account_id=eq.' + encodeURIComponent(accountId));
   const acc = accs[0];
   if (!acc) return reply({ error: 'no such ad account among yours — run Sync now first' }, 404);
-  if (!acc.token_id) return reply({ error: 'this cabinet has no token attached any more' }, 400);
+  /* Токен видалили в налаштуваннях — і зв'язок обірвався сам: у базі
+     token_id стоїть «при видаленні обнулити». Дані кабінета лишились,
+     на екрані він виглядає живим, а піти з ним у Facebook нема з чим.
+
+     Найчастіше це лікує Sync now: він переписує зв'язок для всіх
+     кабінетів, які бачить нинішній токен. Тому кажемо це прямо, а не
+     лишаємо людину з констатацією. */
+  if (!acc.token_id) return reply({
+    error: 'no token is linked to this cabinet any more — press Sync now on the Cabinets tab. '
+         + 'If the token was deleted, add it again in Settings first.' }, 400);
 
   const toks = await pgGet(base, hdr,
     'fb_tokens?select=id,label,token'
