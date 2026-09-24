@@ -362,6 +362,15 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
   const found: Found[] = [];
   const problems: string[] = [];
   let scanned = 0, hidden = 0;
+  /* Скільки постів обійшли й скільки коментарів прочитали за прогін.
+
+     Без цих двох чисел відповідь «scanned: 7, found: 0» означає
+     водночас «подивились і нового немає» і «дивитись не було на що»
+     — наприклад, коли жодне оголошення не веде на пост Сторінки. Це
+     різні стани, і плутати їх не можна саме тут: розклад ходить
+     мовчки, і єдине, з чого можна судити про його роботу, — оця
+     відповідь. */
+  let postsSeen = 0, commentsSeen = 0;
 
   /* Кеш на весь прогін, а не на кабінет: кабінети одного токена
      здебільшого вказують на ті самі Сторінки, і питати про них по
@@ -406,6 +415,7 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
          розклад, а не екран. */
       if (!listFailed && whyDenied(pageId, '', mine, '')) continue;
       looked++;
+      postsSeen++;
       try {
         const pg = await pageToken(String(tok.token), pageId, cache);
         const j = await graph('/' + story + '/comments', pg.token, {
@@ -413,6 +423,7 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
           filter: 'stream', limit: SCAN_PER_POST
         });
         const rows: Json[] = Array.isArray(j.data) ? j.data : [];
+        commentsSeen += rows.length;
         for (const c of rows) {
           const at = Date.parse(String(c.created_time || ''));
           if (!at || at > newest) newest = at || newest;
@@ -457,7 +468,8 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
   }
 
   const telegram = await tgSend(base, hdr, found);
-  return reply({ scanned, found: found.length, hidden, telegram,
+  return reply({ scanned, posts: postsSeen, comments: commentsSeen,
+                 found: found.length, hidden, telegram,
                  problems: problems.slice(0, 5) });
 }
 
