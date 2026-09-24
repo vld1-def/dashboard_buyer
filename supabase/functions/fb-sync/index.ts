@@ -555,7 +555,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   out.accounts = accs.length;
   if (!accs.length) {
     // Токен більше не бачить нічого. Рядки не видаляємо — позначаємо.
-    await markMissing(base, hdr, t.id, []);
+    await markMissing(base, hdr, t, [], alerts);
     await markToken(base, hdr, t.id, 'no-accounts',
       'No ad account is visible — check Add Assets on the system user');
     return out;
@@ -685,7 +685,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   } catch (e) {
     out.historyError = (e as Error).message;
   }
-  await markMissing(base, hdr, t.id, accs.map(a => String(a.account_id || '')));
+  await markMissing(base, hdr, t, accs.map(a => String(a.account_id || '')), alerts);
   await noteChanges(base, hdr, t.team_name || '', changes);
   await markToken(base, hdr, t.id, 'ok', `Sees ${accs.length} ad account(s)`);
   return out;
@@ -709,17 +709,57 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
    або ми вперлись у ліміт, ми не знаємо, що зникло, а що просто не
    приїхало, — і мовчазно позначити весь парк було б найгіршим, що ця
    функція може зробити. */
-async function markMissing(base: string, hdr: Json, tokenId: number,
-                           seen: string[]): Promise<void> {
+async function markMissing(base: string, hdr: Json, t: TokenRow,
+                           seen: string[], alerts: Alert[]): Promise<void> {
   try {
-    let q = 'fb_accounts?token_id=eq.' + tokenId + '&missing_since=is.null';
+    let q = 'fb_accounts?token_id=eq.' + t.id + '&missing_since=is.null';
     // Номери кабінетів — цифри, тож лапки й екранування тут ні до чого.
     const ids = seen.filter(x => /^\d+$/.test(x));
     if (ids.length) q += '&account_id=not.in.(' + ids.join(',') + ')';
-    await fetch(base + '/rest/v1/' + q, {
+
+    /* Спершу дивимось, КОГО саме зараз позначимо, і лише потім
+       позначаємо. Після PATCH цього вже не дізнатись: фільтр
+       missing_since=is.null більше їх не знайде, і сказати, що саме
+       зникло, буде нізвідки.
+
+       Саме тут була діра. Позначка ставилась мовчки: у базі все
+       правильно, а людина дізнавалась про зниклий кабінет тільки якщо
+       сама його шукала — і то не завжди, бо зріз «Live» такі рядки не
+       показує. Зникнення кабінета — новина того ж рівня, що й бан, і
+       має приходити так само. */
+    let rows: Json[] = [];
+    try { rows = await pgGet(base, hdr, q + '&select=account_id,name,status'); }
+    catch (_e) { /* не перелічили — позначку все одно ставимо */ }
+
+    const res = await fetch(base + '/rest/v1/' + q, {
       method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
       body: JSON.stringify({ missing_since: new Date().toISOString() })
     });
+    if (!res.ok || !rows.length) return;
+
+    rows.forEach((r: Json) => {
+      const name = String(r.name || r.account_id);
+      alerts.push({ owner: t.created_by, name, kind: 'bad',
+        text: name + ' — the token no longer sees this cabinet' });
+    });
+
+    /* Окремий kind. Стрічка станів рахує тільки kind='state', тож
+       зникнення її не збиває, але в історії кабінета й у тостах воно
+       зʼявляється — саме там, де його шукатимуть. */
+    if (t.team_name) {
+      try {
+        await fetch(base + '/rest/v1/account_events', {
+          method: 'POST', headers: { ...hdr, Prefer: 'return=minimal' },
+          body: JSON.stringify(rows.map((r: Json) => ({
+            team_name: t.team_name, account_id: String(r.account_id),
+            kind: 'gone', to_state: 'issue',
+            from_state: r.status ? (EV_WORD[String(r.status)] || 'issue') : null,
+            note: 'The token stopped seeing this cabinet. The numbers stay as last seen.',
+            source: 'fb'
+          })))
+        });
+      } catch (_e) { /* стрічка — надбудова */ }
+    }
   } catch (_e) { /* позначка — не привід завалити імпорт */ }
 }
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 08:22">
+  <meta name="build" content="build 24.09 09:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2806,6 +2806,18 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 }
 .fcm-blocked-row b { color: var(--text-main); font-weight: 900; }
 
+/* «Account зник, а фільтр його ховає». Клікабельне D бо єдина розумна
+   реакція на цей рядок одна: піти й подивитись. */
+.cab-gone-note {
+  margin-bottom: 8px; padding: 8px 12px; border-radius: 12px; cursor: pointer;
+  background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .28);
+  font-size: 10px; font-weight: 800; color: var(--warn);
+}
+.cab-gone-note span {
+  margin-left: 6px; text-decoration: underline; text-underline-offset: 2px;
+}
+.cab-gone-note:hover { background: rgba(245, 158, 11, .16); }
+
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
    прочитали б раз і забули, а тут воно перед очима щоразу. */
@@ -3450,7 +3462,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 08:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 09:33</div>
     </div>
   </aside>
 
@@ -15846,6 +15858,19 @@ function cabRender() {
 
   cabFbNote();
 
+  /* Accountи, які зникли з Facebook і яких ЦЕЙ зріз не показує.
+
+     Позначка missing_since робилась саме для того, щоб зникле не
+     зникало мовчки — а зріз «Live» рівно це й робив: такий кабінет
+     випадав з екрана без жодного сліду, і людина дізнавалась про
+     втрату тоді, коли сама його шукала. Фільтр не має скасовувати
+     попередження; тому рядок нижче показується поверх будь-якого
+     зрізу й веде туди, де вони видні. */
+  const goneHidden = all.filter(c => c.gone && !inSrc(c)).length;
+  const goneNote = goneHidden ? `<p class="cab-gone-note" onclick="cabSetSrc('')">
+      ${goneHidden} cabinet(s) disappeared from Facebook and this filter hides them.
+      <span>Show</span></p>` : '';
+
   /* Коли востаннє ходили в Facebook — просто на кнопці. Окремий рядок
      під нею читали б раз і забували, а тут воно перед очима щоразу,
      коли виникає питання «а це свіже?». */
@@ -15897,7 +15922,8 @@ function cabRender() {
       : cabSrc === 'old' && nFb === all.length
         ? 'Every cabinet is covered by a token'
       : 'Nothing here';
-    list.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
+    list.innerHTML = goneNote
+      + `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     cabDetail(null);
     return;
   }
@@ -15905,9 +15931,9 @@ function cabRender() {
   /* Ділимо за покриттям токеном. Поки токена немає жодного, ділити нема
      чого — тоді це одна таблиця без заголовків, як і було. */
   const split = cabFb.length > 0;
-  list.innerHTML = split
+  list.innerHTML = goneNote + (split
     ? cabSection(shown.filter(c => c.fb && !c.gone), true) + cabSection(shown.filter(c => !c.fb || c.gone), false)
-    : cabSection(shown, false, true);
+    : cabSection(shown, false, true));
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
 }
