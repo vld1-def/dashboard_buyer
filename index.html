@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 21:20">
+  <meta name="build" content="build 24.09 21:36">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3542,15 +3542,6 @@ body[data-route="domains"] #dm-detail {
   font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .8;
   text-decoration: none;
 }
-
-/* Сира відповідь діагностики. Моноширинний і з прокруткою: це текст,
-   який читають один раз і копіюють, а не елемент інтерфейсу. */
-.fb-probe {
-  margin-top: 8px; padding: 10px 12px; max-height: 320px; overflow: auto;
-  border-radius: 12px; background: rgba(0, 0, 0, .3); border: 1px solid var(--border);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
-}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -3669,7 +3660,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 21:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 21:36</div>
     </div>
   </aside>
 
@@ -12089,15 +12080,6 @@ document.addEventListener('keydown', e => {
             </div>
             <div id="fb-list" class="fb-list mt-2"></div>
 
-            <!-- Разова діагностика: які поля про ліміт, баланс і поріг
-                 оплати взагалі існують у вашого кабінета. Стоїть тут, бо
-                 працює через той самий токен. -->
-            <div class="set-addrow mt-2" data-setting="facebook limit ліміт баланс threshold поріг поля">
-              <button type="button" id="fb-probe-btn" onclick="fbProbe()" class="set-btn"
-                title="Asks Facebook which fields this ad account actually has — the answer comes from Graph, not from a guess">What does Facebook know about limits?</button>
-            </div>
-            <pre id="fb-probe-out" class="fb-probe hidden"></pre>
-
             <p class="set-hint opacity-60">
               The token is checked against Facebook the moment you add it — you see its permissions, expiry and how many
               ad accounts it can reach. Nobody can read it back afterwards, you included: the database grants no access to
@@ -14867,7 +14849,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.7';
+const FB_FN_WANT = '2026-09-24.8';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -14956,107 +14938,6 @@ window.fbSync = async function (say, body) {
     return null;
   } finally {
     fbSyncing = false;
-  }
-};
-
-
-/* ═══════════ ЩО FACEBOOK ЗНАЄ ПРО ЛІМІТИ ═══════════
-
-   Разова діагностика. Замість того щоб вгадувати назви полів і потім
-   зʼясовувати, що вгадали не те, питаємо Graph про сам вузол: він
-   віддає список усіх своїх полів із описами, а функція лишає ті, що
-   стосуються лімітів, балансу й оплати, і додає значення.
-
-   Відповідь показуємо сирою. Це не екран для щоденної роботи, а
-   підстава вирішити, що саме виводити далі — і для такого рішення
-   причесаний переказ гірший за точний текст. */
-window.fbProbe = async function () {
-  const box = document.getElementById('fb-probe-out');
-  const btn = document.getElementById('fb-probe-btn');
-  const show = (text, bad) => {
-    if (!box) return;
-    box.classList.remove('hidden');
-    box.textContent = text;
-    box.style.color = bad ? 'var(--bad)' : 'var(--text-muted)';
-  };
-  if (btn) btn.disabled = true;
-  show('Asking Facebook\u2026');
-  try {
-    const { data: sess } = await sb.auth.getSession();
-    const token = sess && sess.session && sess.session.access_token;
-    if (!token) throw new Error('not signed in');
-
-    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-sync', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
-                 'content-type': 'application/json' },
-      body: JSON.stringify({ probe: true })
-    });
-    if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
-
-    /* Перекличка токенів — найперше. Впав один — біда того застосунку,
-       впали всі — блок вище, на акаунті розробника. Без неї одна
-       відмова виглядає як вирок усьому, а це різні діагнози. */
-    const roll = (j.roll || []).map(r =>
-      (r.ok ? '  ok   ' : '  FAIL ') + r.token + (r.note ? '   ' + r.note : '')).join('\n');
-    const rollTxt = roll ? (j.roll.length + ' token(s):\n' + roll + '\n\n') : '';
-
-    /* Сходи — за перекличкою. Саме вони відповідають на питання
-       «де саме відмовили», на яке Facebook відповідати не хоче. */
-    const steps = (j.ladder || []).map(r =>
-      (r.ok ? '  ok   ' : '  FAIL ') + r.step + (r.note ? '\n         ' + r.note : '')).join('\n');
-    const top = rollTxt
-      + (j.token ? 'token: ' + j.token + (j.account_id ? '   act_' + j.account_id : '')
-                 + (j.name ? '   ' + j.name : '') + '\n\n' : '')
-      + (steps ? steps + '\n' : '');
-
-    /* Поіменне опитування. Офіційний список полів AdAccount їх не
-       містить, тож єдина чесна відповідь на «а чи є ліміт і поріг» —
-       спитати Facebook про кожну назву й записати, що він сказав. */
-    const wantedTxt = () => {
-      const w = j.wanted || [];
-      if (!w.length) return '';
-      return '\n\nasked for by name:\n' + w.map(r => (r.ok ? '  ok   ' : '  no   ')
-        + r.name.padEnd(30)
-        + (r.ok ? (r.value === null ? 'null' : typeof r.value === 'object'
-              ? JSON.stringify(r.value) : String(r.value))
-           : (r.note || ''))).join('\n');
-    };
-
-    if (j.error) return show(top + '\n' + j.error, true);
-    /* Метаданих не дали, але звичні поля приїхали — значить закрито
-       інтроспекцію, а не кабінет, і ліміт із балансом у нас усе одно є. */
-    if (!j.total_fields) {
-      const known = j.known
-        ? '\n\nthe fields we already use:\n'
-          + Object.entries(j.known).map(([k, v]) => '  ' + k.padEnd(20) + JSON.stringify(v)).join('\n')
-        : '';
-      return show(top + known + wantedTxt(), !j.known && !(j.wanted || []).length);
-    }
-    const head = top + '\n' + j.total_fields + ' fields on this node, ' + j.matched + ' look relevant\n\n';
-    const rows = (j.fields || []).map(f => {
-      const v = ('value' in f)
-        ? (f.value === null ? 'null' : typeof f.value === 'object'
-            ? JSON.stringify(f.value) : String(f.value))
-        : '\u2014 not readable \u2014';
-      return f.name.padEnd(32) + v + (f.about ? '\n' + ' '.repeat(4) + f.about : '');
-    }).join('\n');
-    const tail = ((j.unreadable && j.unreadable.length)
-        ? '\n\nrefused:\n' + j.unreadable.join('\n') : '')
-      /* Повний перелік назв — унизу й дрібним. Потрібен рівно на той
-         випадок, коли шукане поле не влучило у відбір: тоді видно, що
-         воно все-таки є, і його можна попросити окремо. */
-      + ((j.all && j.all.length) ? '\n\nall fields on this node:\n' + j.all.join(' ') : '');
-    show(head + (rows || 'nothing matched') + wantedTxt() + tail);
-  } catch (e) {
-    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
-    show(e.code === 'missing' || net
-      ? 'The fb-sync function did not answer \u2014 deploy it first: supabase functions deploy fb-sync'
-      : e.message, true);
-  } finally {
-    if (btn) btn.disabled = false;
   }
 };
 </script>

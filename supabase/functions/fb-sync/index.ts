@@ -130,7 +130,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-24.7';
+const FN_VERSION = '2026-09-24.8';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1131,173 +1131,6 @@ async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
   return { test: r, shared: false };
 }
 
-/* ═════ ДЕ ЛЕЖИТЬ ЛІМІТ І ПОРІГ ОПЛАТИ ═════
-
-   Питаємо у Facebook, а не згадуємо. Graph уміє розповісти про себе
-   сам: ?metadata=1 віддає список УСІХ полів вузла з описами й типами.
-   Це принципово краще за перебір назв навмання: перебір відповідає на
-   питання «чи існує те, що я вгадав», а метадані — на питання «що там
-   є взагалі». Другого питання я з пам'яті не закрию, а вгадування вже
-   раз коштувало нам хибного висновку.
-
-   Далі беремо значення знайдених полів. Партіями, і при відмові —
-   по одному: частина полів вимагає інших дозволів, і один такий
-   не має ховати решту.
-
-   Це РАЗОВА діагностика. Вона нічого не зберігає й нічого не змінює;
-   щойно стане зрозуміло, що звідки брати, потрібні поля переїдуть у
-   постійний ACC_FIELDS, а це піде геть. */
-/* Навмисно широко. Для пошуку зайвий рядок коштує погляду, а
-   пропущене поле не коштує нічого — його просто не існує для того,
-   хто читає. «spen», а не «spend»: amount_spent інакше не влучає. */
-const PROBE_RE = /limit|cap|balance|threshold|bill|prepay|fund|credit|spen|daily|budget|pay|charge|due|invoice|trust|tier/i;
-
-/* СХОДИ. Facebook на будь-яку відмову каже те саме: «API access
-   blocked. (#200)». Одне повідомлення на чотири різні біди — токен
-   мертвий, кабінетів не видно, конкретний кабінет закритий, метадані
-   не віддаються — це не діагноз, а натяк.
-
-   Тому йдемо знизу вгору й кажемо, де саме зупинились. Рядок «токен
-   живий, список кабінетів є, читати ЦЕЙ кабінет не дають» коштує
-   чотири запити й відповідає на питання, на яке сам Facebook
-   відповідати не хоче. */
-/* ПОЛЯ, ЗА ЯКІ ПИТАЮТЬ, А ЇХ У СПИСКУ НЕМАЄ.
-
-   Офіційний перелік полів AdAccount — 77 назв (facebook-python-business-sdk,
-   adobjects/adaccount.py). Серед них НЕМАЄ ні adtrust_dsl, ні жодного
-   поля зі словом threshold. Є натомість is_prepay_account,
-   min_daily_budget і funding_source_details.
-
-   Але «немає в SDK» не дорівнює «Graph не віддасть»: частина полів
-   існує й читається, просто не документована. Сперечатись про це
-   дешевше не виходить — тому питаємо Facebook напряму, поодинці, і
-   записуємо, що він відповів на кожне. Поодинці навмисно: у пакеті
-   одна невідома назва валить увесь запит і ховає решту. */
-const WANTED = [
-  'adtrust_dsl',                  // денна стеля, яку ставить сам Facebook
-  'is_prepay_account',            // передплачений кабінет чи картковий
-  'min_daily_budget',
-  'min_campaign_group_spend_cap',
-  'funding_source_details',
-  'next_bill_date',
-  'billing_threshold',            // те, що просять; у списку його нема
-  'threshold_amount',
-  'prepay_balance',
-  'prepay_account_balance'
-];
-
-type Wanted = { name: string; ok: boolean; value?: Json; note?: string };
-
-async function askWanted(t: TokenRow, actId: string): Promise<Wanted[]> {
-  const out: Wanted[] = [];
-  for (const n of WANTED) {
-    try {
-      const j = await graph('/act_' + actId, t.token, { fields: n });
-      out.push(n in j
-        ? { name: n, ok: true, value: j[n] }
-        : { name: n, ok: false, note: 'accepted the name but sent nothing back' });
-    } catch (e) {
-      out.push({ name: n, ok: false, note: (e as Error).message });
-    }
-  }
-  return out;
-}
-
-type Rung = { step: string; ok: boolean; note: string };
-
-async function probeAccount(t: TokenRow, actId: string, ladder: Rung[]): Promise<Json> {
-  const out: Json = { account_id: actId, token: t.label, ladder };
-
-  const rung = async (step: string, fn: () => Promise<Json>): Promise<Json | null> => {
-    try {
-      const j = await fn();
-      ladder.push({ step, ok: true, note: '' });
-      return j;
-    } catch (e) {
-      ladder.push({ step, ok: false, note: (e as Error).message });
-      return null;
-    }
-  };
-
-  // Сам кабінет: якщо навіть id з нього не читається, далі нема сенсу.
-  const basic = await rung('read this ad account (id, name)',
-    () => graph('/act_' + actId, t.token, { fields: 'id,name' }));
-  if (basic) out.name = basic.name;
-
-  /* БЕЗ fields. Саме через нього інтроспекція й мовчала: metadata=1
-     описує рівно ті поля, які попросили, а ми просили одне «id» — і
-     отримували опис одного поля замість переліку всіх. Сходи чесно
-     казали «ok», бо запит і справді проходив; порожнім був результат.
-
-     Без fields Graph віддає перелік усього вузла — заради чого цей
-     щабель і писався. */
-  const meta = await rung('ask it to describe its own fields (metadata)',
-    () => graph('/act_' + actId, t.token, { metadata: 1 }));
-  const fields: Json[] = Array.isArray(meta?.metadata?.fields) ? meta.metadata.fields : [];
-
-  /* Запит пройшов, а переліку немає — це теж відмова, просто тиха.
-     Лишити щабель зеленим означало б сказати «метадані є», коли їх
-     нема, і наступний, хто читатиме сходи, шукатиме біду не там. */
-  if (meta && !fields.length) {
-    const last = ladder[ladder.length - 1];
-    if (last && last.ok && /metadata/.test(last.step))
-      last.note = 'answered, but named no fields';
-  }
-
-  if (!fields.length) {
-    /* Метаданих немає — але це ще не кінець. Пробуємо ті поля, які
-       fb-sync і так просить щогодини: якщо вони приїдуть, значить
-       закрито саме інтроспекцію, а не кабінет. */
-    const known = ['spend_cap', 'amount_spent', 'balance', 'currency', 'account_status'];
-    const j = await rung('read the fields we already use (' + known.join(', ') + ')',
-      () => graph('/act_' + actId, t.token, { fields: known.join(',') }));
-    if (j) {
-      out.known = {};
-      known.forEach(n => { if (n in j) out.known[n] = j[n]; });
-    }
-    out.wanted = await askWanted(t, actId);
-    return out;
-  }
-  out.total_fields = fields.length;
-  /* Повний перелік назв теж віддаємо. Регулярка — моє припущення про
-     те, що тут доречне, і якщо воно хибне, відповідь мовчки збідніє.
-     Список назв дешевий і робить помилку припущення видимою. */
-  out.all = fields.map((f: Json) => String(f?.name || '')).filter(Boolean).sort();
-
-  const hits = fields
-    .map((f: Json) => ({ name: String(f?.name || ''),
-                         type: String(f?.type || ''),
-                         about: String(f?.description || '') }))
-    .filter(f => f.name && (PROBE_RE.test(f.name) || PROBE_RE.test(f.about)));
-  out.matched = hits.length;
-
-  /* Значення. Партія по 20: довгий список полів Graph іноді ріже, а
-     дрібними партіями видно, яка саме зіпсована. */
-  const value: Json = {};
-  const failed: string[] = [];
-  const ask = async (names: string[]) => {
-    const j = await graph('/act_' + actId, t.token, { fields: names.join(',') });
-    names.forEach(n => { if (n in j) value[n] = j[n]; });
-  };
-  for (let i = 0; i < hits.length; i += 20) {
-    const part = hits.slice(i, i + 20).map(f => f.name);
-    try { await ask(part); }
-    catch (_e) {
-      // Партія впала — перебираємо поодинці, щоб винне не сховало решту.
-      for (const n of part) {
-        try { await ask([n]); } catch (e2) { failed.push(n + ': ' + (e2 as Error).message); }
-      }
-    }
-  }
-
-  out.fields = hits.map(f => (f.name in value ? { ...f, value: value[f.name] } : f));
-  out.unreadable = failed.slice(0, 10);
-  /* Навіть коли перелік приїхав, питаємо окремо: метадані показують
-     те, що вузол про себе РОЗПОВІДАЄ, а не те, що він віддає. */
-  out.wanted = await askWanted(t, actId);
-  return out;
-}
-
 /* ── вхід ── */
 Deno.serve(async (req) => {
   // OPTIONS — найперше й без жодних умов: без CORS-заголовків на
@@ -1341,13 +1174,11 @@ async function handle(req: Request): Promise<Response> {
     if (!onlyOwner) return reply({ error: 'could not verify who is calling' }, 401);
   }
 
-  let wantTest = false, wantProbe = false, probeAcc = '';
+  let wantTest = false;
   try {
     const body = await req.json();
     onlyToken = Number(body?.token_id || 0) || 0;
     wantTest = body?.test === true;
-    wantProbe = body?.probe === true;
-    probeAcc = String(body?.account_id || '').replace(/\D/g, '');
   } catch (_e) { /* тіла може не бути */ }
 
   /* Тестове повідомлення — дія людини й тільки людини. З розкладу воно
@@ -1357,11 +1188,6 @@ async function handle(req: Request): Promise<Response> {
     if (cron) return reply({ error: 'the test message is for a person, not for the schedule' }, 400);
     return reply(await tgTest(base, hdr, onlyOwner));
   }
-
-  /* Діагностика — дія людини. З розкладу вона безглузда: читати
-     відповідь нікому, а кожна година тягнула б зайві запити до Graph. */
-  if (wantProbe && cron)
-    return reply({ error: 'the probe is for a person, not for the schedule' }, 400);
 
   let q = 'fb_tokens?select=id,label,token,created_by,team_name,status&order=id.asc';
   if (onlyOwner) q += '&created_by=eq.' + encodeURIComponent(onlyOwner);
@@ -1378,50 +1204,6 @@ async function handle(req: Request): Promise<Response> {
 
   if (!tokens.length) return reply({ cron, tokens: 0, accounts: 0, changed: 0,
     note: 'no tokens to sync' });
-
-  if (wantProbe) {
-    /* Спершу /me кожним токеном. Один впав — біда того застосунку;
-       впали всі — блок вище, на самому акаунті розробника. */
-    const roll: { token: string; ok: boolean; note: string }[] = [];
-    let live: TokenRow | null = null;
-    for (const tk of tokens) {
-      try {
-        const me = await graph('/me', tk.token, { fields: 'id' });
-        roll.push({ token: tk.label, ok: true, note: 'id ' + (me?.id || '?') });
-        if (!live) live = tk;
-      } catch (e) {
-        roll.push({ token: tk.label, ok: false, note: (e as Error).message });
-      }
-    }
-
-    if (!live) return reply({ roll, ladder: [], error:
-      'every token is refused at /me \u2014 the block sits on the app or on the '
-      + 'developer account behind them, not on a cabinet' });
-
-    const t = live;
-    const alive = roll.filter(r => r.ok).length;
-    const ladder: Rung[] = [{ step: 'token itself works (/me)', ok: true,
-      note: alive + ' of ' + roll.length + ' token(s) alive; going on with ' + t.label }];
-
-    let actId = probeAcc;
-    if (!actId) {
-      // Кабінет не назвали — беремо перший, який бачить цей токен.
-      try {
-        const accs = await listAccounts(t.token);
-        actId = String(accs[0]?.account_id || '').replace(/\D/g, '');
-        ladder.push({ step: 'list ad accounts (/me/adaccounts)', ok: true,
-                      note: accs.length + ' visible' });
-      } catch (e) {
-        ladder.push({ step: 'list ad accounts (/me/adaccounts)', ok: false,
-                      note: (e as Error).message });
-      }
-    }
-    if (!actId) return reply({ token: t.label, roll, ladder,
-      error: 'could not get an ad account to look at \u2014 see the steps above' });
-    const out = await probeAccount(t, actId, ladder);
-    out.roll = roll;
-    return reply(out);
-  }
 
   const deadline = Date.now() + DEADLINE_MS;
   const alerts: Alert[] = [];
