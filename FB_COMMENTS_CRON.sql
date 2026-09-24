@@ -115,12 +115,19 @@ select net.http_post(
 ) as request_id;
 
 
--- Другим запитом — що відповіла функція:
-select status_code,
-       convert_from(content, 'UTF8')::jsonb as answer
+-- Другим запитом — що відповіла функція.
+--
+-- Без жодних перетворень навмисно: у pg_net колонка content у різних
+-- версіях то text, то bytea, і будь-яке приведення типу працює рівно
+-- на одній із них. Читається воно й так, а запит, який залежить від
+-- версії розширення, у інструкції не має права стояти.
+-- error_msg і timed_out тут не для краси. Коли запит не дійшов зовсім,
+-- status_code і content порожні, і без цих двох колонок видно лише те,
+-- що «щось не так» — а причина лежить саме в них.
+select status_code, error_msg, timed_out, content, created
   from net._http_response
- order by id desc
- limit 1;
+ order by created desc
+ limit 3;
 
 --  ЩО МАЄ БУТИ
 --    scanned  — скільки кабінетів обійшли цього разу
@@ -134,8 +141,27 @@ select status_code,
 --  «the comment columns are missing» — не виконано блок alter table
 --  з FB_SYNC.sql.
 --
---  Порожня відповідь або status_code 000 — функція не відповіла:
---  перевірте, що вона задеплоєна.
+--  ЯКЩО status_code І content ПОРОЖНІ
+--  Відповіді не було зовсім, і дивитись треба в error_msg:
+--
+--    timed_out = true — не дочекались. У функції сто секунд, тож
+--      найчастіше це означає, що вона не запустилась, а не що довго
+--      працювала;
+--
+--    «Could not resolve host» — у сховищі крива адреса. Перевірте
+--      БЛОКОМ 1, що вона взагалі є, і подивіться на неї очима:
+--        select decrypted_secret from vault.decrypted_secrets
+--         where name = 'fb_comments_url';
+--
+--    «Connection refused» або 404 — функції за цією адресою немає:
+--      не задеплоєна або задеплоєна в інший проєкт.
+--
+--  І ОДРАЗУ ПЕРЕВІРТЕ ЩОГОДИННИЙ fb-sync. Він ходить на сьомій
+--  хвилині й пише в ту саму таблицю. Якщо в нього так само порожньо D
+--  справа не в коментарях: з бази не виходить ЖОДЕН запит, і
+--  щогодинна синхронізація теж давно не працює. Помітити це раніше
+--  було ніяк: кнопка Sync now у дашборді ходить із браузера, іншим
+--  шляхом, і від цього не залежить.
 
 
 -- ════════════════════════════════════════════════════════════
@@ -176,9 +202,9 @@ select cron.schedule(
 --
 --  ЯК ХОДИТЬ (останні прогони):
 --
---    select status_code, convert_from(content, 'UTF8')::jsonb
+--    select status_code, error_msg, timed_out, content, created
 --      from net._http_response
---     order by id desc
+--     order by created desc
 --     limit 10;
 --
 --  ЗУПИНИТИ:
