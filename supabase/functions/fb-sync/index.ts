@@ -119,6 +119,19 @@ async function graph(path: string, token: string, params: Json): Promise<Json> {
    Facebook рахує навіть відмовлені запити. */
 const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 80005, 80006, 80014]);
 
+/* ВЕРСІЯ ФУНКЦІЇ.
+
+   Сторінка оновлюється сама, щойно змерджено; Edge Function — ні, її
+   треба задеплоїти руками. Через це двічі виходило одне й те саме:
+   правку зроблено, сторінка нова, функція стара, і ми разом шукаємо
+   ваду, якої вже немає в коді.
+
+   Тепер функція називає свою версію в кожній відповіді, а сторінка
+   знає, якої чекає (build.py дістає це число просто звідси), і каже
+   вголос, коли вони розійшлись. Число міняється разом із будь-якою
+   правкою, що має бути видно зовні. */
+const FN_VERSION = '2026-09-24.1';
+
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
   constructor(msg: string, code: number, sub: number) {
@@ -1176,6 +1189,7 @@ async function handle(req: Request): Promise<Response> {
     : days + ' day(s)' + (noHistory ? ', ' + noHistory + ' cabinet(s) gave none' : '');
 
   return reply({
+    fn: FN_VERSION,
     cron, tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
     history,
