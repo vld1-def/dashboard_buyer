@@ -38,14 +38,6 @@ create table if not exists public.fb_accounts (
   amount_spent numeric,        -- за весь час
   spend_cap    numeric,        -- 0 = ліміту немає
   balance      numeric,
-
-  -- Денна стеля, яку Facebook ставить САМ (adtrust_dsl). В офіційному
-  -- переліку полів кабінета її немає, але Graph її віддає. null тут
-  -- означає «не сказав», а не «стелі немає».
-  daily_limit  numeric,
-  -- Передплачений кабінет чи картковий. Від цього залежить, що взагалі
-  -- значить баланс, який показує Ads Manager.
-  is_prepay    boolean,
   daily_budget numeric,        -- сума денних бюджетів того, що крутить
 
   -- Сьогодні — у часовому поясі кабінета, не вашому.
@@ -123,12 +115,7 @@ alter table public.fb_accounts
   -- час найновішого коментаря, який ми вже опрацювали; усе, що
   -- новіше, вважається новим.
   add column if not exists comments_scanned_at timestamptz,
-  add column if not exists comments_seen_at    timestamptz,
-  -- Денна стеля від Facebook і спосіб оплати. Без цього ALTER синк
-  -- працює далі, просто мовчки не пише ці два числа — і так і каже
-  -- рядком columns у відповіді.
-  add column if not exists daily_limit numeric,
-  add column if not exists is_prepay   boolean;
+  add column if not exists comments_seen_at    timestamptz;
 
 
 -- ════════════════════════════════════════════════════════════
