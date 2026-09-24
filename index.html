@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 17:30">
+  <meta name="build" content="build 24.09 18:00">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3476,7 +3476,11 @@ body[data-route="domains"] #dm-detail {
   background: var(--surface-2); border: 1px solid var(--border);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em;
 }
-.rp-cid:hover { border-color: var(--accent); }
+.rp-cid:hover { border-color: var(--accent); color: var(--text-main); }
+/* Стрілка після номера: чип не просто підсвічує знайдене, він кудись
+   веде, і це має бути видно до кліку, а не після. */
+.rp-cid:after { content: "\2197"; font-size: .8em; opacity: .45; }
+.rp-cid:hover:after { opacity: 1; }
 .rp-cid-t { font-style: normal; font-weight: 900; font-size: 9px; color: #c4b5fd; }
 .rp-cid-t.is-off { color: var(--text-muted); opacity: .6; }
 
@@ -3487,26 +3491,57 @@ body[data-route="domains"] #dm-detail {
 }
 .rp-link:hover { background: rgba(59, 130, 246, .26); color: #dbeafe; }
 
-/* Поповер тегів. У body, бо тіло звіту contenteditable: поле введення
-   всередині нього стало б частиною тексту, який редагують. */
-.rp-pop {
-  position: fixed; z-index: 9500; width: 240px; padding: 10px;
-  border-radius: 14px; background: var(--surface-1); border: 1px solid var(--border);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, .45);
+
+/* ═══════════ ПІДКАЗКА ПРО СИНТАКСИС ЗВІТУ ═══════════
+   Наведення, а не модалка: те, що читають раз на місяць, не варте
+   кліку, а те, що читають щодня, не має заважати. tabindex + :focus
+   дає те саме з клавіатури й на дотик, де наведення не буває. */
+
+.rp-help { position: relative; display: inline-flex; outline: none; }
+.rp-help-i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px; cursor: help;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-muted); font-size: 11px; font-weight: 900; font-style: italic;
+  transition: color .15s, border-color .15s;
 }
-.rp-pop-head {
-  margin: 0 0 6px; font-size: 10px; font-weight: 900; color: var(--text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.rp-help:hover .rp-help-i, .rp-help:focus .rp-help-i { color: var(--text-main); border-color: var(--accent); }
+
+.rp-help-box {
+  position: absolute; top: 28px; right: 0; z-index: 60; width: 330px;
+  display: none; padding: 12px 14px; border-radius: 16px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, .5);
+  text-transform: none; letter-spacing: 0;
 }
-.rp-pop-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.rp-pop-none { font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .6; }
-.rp-pop input {
-  width: 100%; padding: 6px 8px; border-radius: 10px;
-  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
-  color: var(--text-main); font-size: 11px; font-weight: 700; outline: none;
+.rp-help:hover .rp-help-box, .rp-help:focus .rp-help-box { display: block; }
+.rp-help-box > b {
+  display: block; margin-bottom: 8px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-main);
 }
-.rp-pop input:focus { border-color: var(--accent); }
+.rp-help-box i {
+  display: block; margin-bottom: 5px; font-style: normal;
+  font-size: 11px; font-weight: 600; line-height: 1.45; color: var(--text-muted);
+}
+.rp-help-box i b { color: var(--text-main); font-weight: 800; }
+/* Сам знак показуємо так, як він виглядатиме в рядку: підказка про
+   розмітку, набрана однаковим шрифтом, нічого не підказує. */
+.rp-help-box em {
+  display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 5px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal;
+  font-weight: 800; color: var(--text-main);
+}
+.rp-help-box em.is-ok   { color: #34D399; border-color: rgba(52, 211, 153, .35); }
+.rp-help-box em.is-bad  { color: #F87171; border-color: rgba(248, 113, 113, .35); }
+.rp-help-box em.is-warn { color: #FBBF24; border-color: rgba(251, 191, 36, .35); }
+.rp-help-box em.is-plan { color: #818CF8; border-color: rgba(129, 140, 248, .35); }
+.rp-help-box u {
+  display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .8;
+  text-decoration: none;
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -3625,7 +3660,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 17:30</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 18:00</div>
     </div>
   </aside>
 
@@ -4654,6 +4689,27 @@ body[data-route="domains"] #dm-detail {
     <div class="p-6 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5 font-black uppercase">
       <h2 class="text-xl italic tracking-tighter text-blue-500 font-black">Daily Reports</h2>
       <div class="flex items-center gap-2">
+        <!-- Що взагалі вміє поле звіту. Підказка, а не документація:
+             показується при наведенні й зникає сама. Усе, що тут
+             перелічено, працює в тексті звіту й доїжджає в Copy і PDF. -->
+        <span class="rp-help" tabindex="0">
+          <span class="rp-help-i">i</span>
+          <span class="rp-help-box">
+            <b>What the report understands</b>
+            <i><em class="is-ok">+</em> done — green line</i>
+            <i><em class="is-bad">−</em> problem — red line</i>
+            <i><em class="is-warn">!</em> watch out — amber line</i>
+            <i><em class="is-plan">&gt;</em> plan — blue line</i>
+            <i><em>| a | b |</em> table, one row per line</i>
+            <i><em>@img1</em> attached photo</i>
+            <i><em>Spy: https://…</em> link becomes a button named <b>Spy</b>;
+               without a name in front the domain is used</i>
+            <i><em>Mbank_KG_10708</em> a creative from your base becomes a chip
+               — click opens it in Creative Analyzer</i>
+            <i><em>+ tag</em> next to the date — a label for the day</i>
+            <u>Labels and link buttons go into Copy and PDF too.</u>
+          </span>
+        </span>
         <button onclick="exportReports()" title="Copy to clipboard" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-xl transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           Copy
@@ -6199,46 +6255,35 @@ function crAddTagFromInput() {
   crAddTag(currentCreativeID, v);
 }
 
-/* Поповер тегів креатива, викликаний із тексту звіту.
+/* Creative зі звіту — в Creative Analyzer.
 
-   Малюється в body, а не всередині звіту: тіло звіту
-   contenteditable, і будь-яке поле введення в ньому одразу стає
-   частиною тексту, який редагують. */
-let rpPopCid = '';
-function rpTagPop(ev, cid) {
-  rpPopClose();
-  rpPopCid = cid;
-  const box = document.createElement('div');
-  box.id = 'rp-tag-pop';
-  box.className = 'rp-pop';
-  const r = ev.target.getBoundingClientRect();
-  box.style.left = Math.min(r.left, window.innerWidth - 260) + 'px';
-  box.style.top = (r.bottom + 6) + 'px';
-  box.onclick = e => e.stopPropagation();
-  box.onmousedown = e => e.stopPropagation();
-  document.body.appendChild(box);
-  rpPopPaint();
-  document.getElementById('rp-tag-in')?.focus();
-  setTimeout(() => document.addEventListener('click', rpPopClose, { once: true }), 0);
-}
-function rpPopClose() {
-  document.getElementById('rp-tag-pop')?.remove();
-}
-function rpPopPaint() {
-  const box = document.getElementById('rp-tag-pop');
-  if (!box) return;
-  const cid = rpPopCid;
-  const list = crTagsOf(cid);
-  const q = String(cid).replace(/'/g, "\\'");
-  box.innerHTML = `<p class="rp-pop-head">${escapeHtml(cid)}</p>
-    <div class="rp-pop-chips">${list.length
-      ? list.map(t => `<span class="rp-chip">${escapeHtml(t)}<button
-          onclick="crRemoveTag('${q}','${t.replace(/'/g, "\\'")}');rpPopPaint();renderReports()">\u2715</button></span>`).join('')
-      : '<span class="rp-pop-none">no tag yet</span>'}</div>
-    <input id="rp-tag-in" list="cr-tag-all" placeholder="tag and Enter"
-      onkeydown="if(event.key==='Enter'){crAddTag('${q}',this.value);this.value='';rpPopPaint();renderReports();}
-                 if(event.key==='Escape')rpPopClose()">`;
-}
+   Тег ставиться там, де для цього вже все є: пошук, фільтри, історія,
+   картка з числами. Дублювати те саме віконцем у звіті означало б два
+   місця для однієї дії, які одного дня розійдуться.
+
+   Секції перемикає хеш, і намалювати картку в блок, який ще
+   route-off, не можна — тому дія чекає на перемальовку маршруту. */
+window.rpOpenCreative = function (cid) {
+  document.getElementById('report-modal')?.classList.add('hidden');
+
+  const go = () => {
+    const box = document.getElementById('creative-search');
+    if (box) box.value = cid;
+    /* Фільтри знімаємо: інакше креатив, який не підходить під учора
+       вибраний гео чи тег, відкриється в порожній список, і людина
+       вирішить, що його немає. */
+    ['creative-geo-filter', 'creative-device-filter', 'creative-tag-filter']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    if (typeof searchCreative === 'function') searchCreative();
+    if (typeof selectCreative === 'function') selectCreative(cid);
+    document.getElementById('creative-analyzer-section')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const now = String(location.hash || '').replace(/^#\/?/, '').split('/')[0];
+  if (now !== 'creatives') { location.hash = '#/creatives'; setTimeout(go, 80); }
+  else go();
+};
 
 // Чипи тегів на картці обраного креатива
 function crRenderTagUI() {
@@ -8065,8 +8110,9 @@ function parseReportBlocks(text, images) {
       const tags = (typeof crTagsOf === 'function' ? crTagsOf(tok) : []) || [];
       const q = tok.replace(/'/g, "\\'");
       return hide('<span class="rp-cid" onmousedown="event.preventDefault()"'
-        + ' onclick="event.stopPropagation();rpTagPop(event,\'' + q + '\')"'
-        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) : 'No tag yet') + ' \u2014 click to tag">'
+        + ' onclick="event.stopPropagation();rpOpenCreative(\'' + q + '\')"'
+        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) + ' \u2014 ' : '')
+        + 'open in Creative Analyzer">'
         + escapeHtml(tok)
         + (tags.length ? '<i class="rp-cid-t">' + escapeHtml(tags[0])
             + (tags.length > 1 ? ' +' + (tags.length - 1) : '') + '</i>' : '<i class="rp-cid-t is-off">+</i>')

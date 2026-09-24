@@ -1871,6 +1871,27 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     <div class="p-6 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5 font-black uppercase">
       <h2 class="text-xl italic tracking-tighter text-blue-500 font-black">Daily Reports</h2>
       <div class="flex items-center gap-2">
+        <!-- Що взагалі вміє поле звіту. Підказка, а не документація:
+             показується при наведенні й зникає сама. Усе, що тут
+             перелічено, працює в тексті звіту й доїжджає в Copy і PDF. -->
+        <span class="rp-help" tabindex="0">
+          <span class="rp-help-i">i</span>
+          <span class="rp-help-box">
+            <b>What the report understands</b>
+            <i><em class="is-ok">+</em> done — green line</i>
+            <i><em class="is-bad">−</em> problem — red line</i>
+            <i><em class="is-warn">!</em> watch out — amber line</i>
+            <i><em class="is-plan">&gt;</em> plan — blue line</i>
+            <i><em>| a | b |</em> table, one row per line</i>
+            <i><em>@img1</em> attached photo</i>
+            <i><em>Spy: https://…</em> link becomes a button named <b>Spy</b>;
+               without a name in front the domain is used</i>
+            <i><em>Mbank_KG_10708</em> a creative from your base becomes a chip
+               — click opens it in Creative Analyzer</i>
+            <i><em>+ tag</em> next to the date — a label for the day</i>
+            <u>Labels and link buttons go into Copy and PDF too.</u>
+          </span>
+        </span>
         <button onclick="exportReports()" title="Copy to clipboard" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-xl transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           Copy
@@ -3246,46 +3267,35 @@ function crAddTagFromInput() {
   crAddTag(currentCreativeID, v);
 }
 
-/* Поповер тегів креатива, викликаний із тексту звіту.
+/* Креатив зі звіту — в Creative Analyzer.
 
-   Малюється в body, а не всередині звіту: тіло звіту
-   contenteditable, і будь-яке поле введення в ньому одразу стає
-   частиною тексту, який редагують. */
-let rpPopCid = '';
-function rpTagPop(ev, cid) {
-  rpPopClose();
-  rpPopCid = cid;
-  const box = document.createElement('div');
-  box.id = 'rp-tag-pop';
-  box.className = 'rp-pop';
-  const r = ev.target.getBoundingClientRect();
-  box.style.left = Math.min(r.left, window.innerWidth - 260) + 'px';
-  box.style.top = (r.bottom + 6) + 'px';
-  box.onclick = e => e.stopPropagation();
-  box.onmousedown = e => e.stopPropagation();
-  document.body.appendChild(box);
-  rpPopPaint();
-  document.getElementById('rp-tag-in')?.focus();
-  setTimeout(() => document.addEventListener('click', rpPopClose, { once: true }), 0);
-}
-function rpPopClose() {
-  document.getElementById('rp-tag-pop')?.remove();
-}
-function rpPopPaint() {
-  const box = document.getElementById('rp-tag-pop');
-  if (!box) return;
-  const cid = rpPopCid;
-  const list = crTagsOf(cid);
-  const q = String(cid).replace(/'/g, "\\'");
-  box.innerHTML = `<p class="rp-pop-head">${escapeHtml(cid)}</p>
-    <div class="rp-pop-chips">${list.length
-      ? list.map(t => `<span class="rp-chip">${escapeHtml(t)}<button
-          onclick="crRemoveTag('${q}','${t.replace(/'/g, "\\'")}');rpPopPaint();renderReports()">\u2715</button></span>`).join('')
-      : '<span class="rp-pop-none">no tag yet</span>'}</div>
-    <input id="rp-tag-in" list="cr-tag-all" placeholder="tag and Enter"
-      onkeydown="if(event.key==='Enter'){crAddTag('${q}',this.value);this.value='';rpPopPaint();renderReports();}
-                 if(event.key==='Escape')rpPopClose()">`;
-}
+   Тег ставиться там, де для цього вже все є: пошук, фільтри, історія,
+   картка з числами. Дублювати те саме віконцем у звіті означало б два
+   місця для однієї дії, які одного дня розійдуться.
+
+   Секції перемикає хеш, і намалювати картку в блок, який ще
+   route-off, не можна — тому дія чекає на перемальовку маршруту. */
+window.rpOpenCreative = function (cid) {
+  document.getElementById('report-modal')?.classList.add('hidden');
+
+  const go = () => {
+    const box = document.getElementById('creative-search');
+    if (box) box.value = cid;
+    /* Фільтри знімаємо: інакше креатив, який не підходить під учора
+       вибраний гео чи тег, відкриється в порожній список, і людина
+       вирішить, що його немає. */
+    ['creative-geo-filter', 'creative-device-filter', 'creative-tag-filter']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    if (typeof searchCreative === 'function') searchCreative();
+    if (typeof selectCreative === 'function') selectCreative(cid);
+    document.getElementById('creative-analyzer-section')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const now = String(location.hash || '').replace(/^#\/?/, '').split('/')[0];
+  if (now !== 'creatives') { location.hash = '#/creatives'; setTimeout(go, 80); }
+  else go();
+};
 
 // Чипи тегів на картці обраного креатива
 function crRenderTagUI() {
@@ -4883,8 +4893,9 @@ function parseReportBlocks(text, images) {
       const tags = (typeof crTagsOf === 'function' ? crTagsOf(tok) : []) || [];
       const q = tok.replace(/'/g, "\\'");
       return hide('<span class="rp-cid" onmousedown="event.preventDefault()"'
-        + ' onclick="event.stopPropagation();rpTagPop(event,\'' + q + '\')"'
-        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) : 'No tag yet') + ' \u2014 click to tag">'
+        + ' onclick="event.stopPropagation();rpOpenCreative(\'' + q + '\')"'
+        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) + ' \u2014 ' : '')
+        + 'open in Creative Analyzer">'
         + escapeHtml(tok)
         + (tags.length ? '<i class="rp-cid-t">' + escapeHtml(tags[0])
             + (tags.length > 1 ? ' +' + (tags.length - 1) : '') + '</i>' : '<i class="rp-cid-t is-off">+</i>')
