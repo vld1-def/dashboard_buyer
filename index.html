@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.09 21:06">
+  <meta name="build" content="build 24.09 07:02">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2674,6 +2674,68 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    рядком нижче: зв'язок із конкретним рядком має бути видно одразу. */
 .fbr-warn { color: var(--warn); font-weight: 900; letter-spacing: .06em; }
 
+/* ─── Превʼю експорту ───
+   Файл, який пішов у теку завантажень, подивитись уже ніколи — його
+   відкривають один раз, в імпорті. Тому те саме показуємо на екрані,
+   на всю ширину: вузька панель кабінета для таблиці з чотирнадцяти
+   стовпчиків не годиться. */
+#fbr-prev {
+  position: fixed; inset: 0; z-index: 300; display: flex;
+  align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0, 0, 0, .62); backdrop-filter: blur(6px);
+}
+.fbr-prev-card {
+  display: flex; flex-direction: column; min-height: 0;
+  width: min(1200px, 100%); max-height: 100%;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 18px; padding: 16px;
+}
+.fbr-prev-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.fbr-prev-title { font-size: 12px; font-weight: 900; color: var(--text-main); font-family: ui-monospace, monospace; }
+.fbr-prev-sub {
+  margin-top: 2px; font-size: 10px; font-weight: 700; color: var(--text-muted);
+}
+.fbr-prev-head button {
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 22px; line-height: 1; cursor: pointer;
+}
+.fbr-prev-head button:hover { color: var(--bad); }
+
+.fbr-prev-scroll {
+  flex: 1 1 auto; min-height: 0; margin-top: 12px; overflow: auto;
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.fbr-prev-tbl { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
+.fbr-prev-tbl th, .fbr-prev-tbl td { padding: 5px 9px; border-bottom: 1px solid var(--border); }
+.fbr-prev-tbl thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2); color: var(--text-muted);
+  font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  text-align: left;
+}
+.fbr-prev-tbl tbody td { color: var(--text-main); font-weight: 600; }
+.fbr-prev-tbl tbody tr:hover td { background: rgba(255, 255, 255, .03); }
+/* Підсумок прилипає знизу: заради нього превʼю й відкривають — звірити
+   спенд із тим, що показує Ads Manager. */
+.fbr-prev-tbl tfoot td {
+  position: sticky; bottom: 0; background: var(--surface-2);
+  color: var(--text-main); font-weight: 900; border-top: 1px solid var(--border);
+  font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+}
+.fbr-prev-tbl .ta-r { text-align: right; font-variant-numeric: tabular-nums; }
+.fbr-prev-na { color: var(--text-muted); opacity: .5; }
+
+.fbr-prev-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.fbr-prev-acts button {
+  padding: 9px 18px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.fbr-prev-acts button:hover { color: var(--text-main); border-color: var(--accent); }
+.fbr-prev-acts button.is-go { border-color: var(--accent); color: var(--text-main); }
+.fbr-prev-acts button.is-go:hover { background: var(--accent); color: #fff; }
+
 /* ─── Коментарі під оголошеннями — D
    Стрічка в панелі кабінета, тож усе дрібне й із власною прокруткою:
    коментарів буває сотня, а панель одна. Схований коментар притлумлено
@@ -3371,7 +3433,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.09 21:06</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 07:02</div>
     </div>
   </aside>
 
@@ -14558,11 +14620,7 @@ function fbrBlock(c) {
 
     <button type="button" onclick="fbrRun('${enc}')" class="fbr-go"
       ${fbrBusy ? 'disabled' : ''}>${fbrBusy ? fbrEsc(fbrBusy) : 'Download CSV'}</button>
-    <p class="fbr-hint">Period comes from the filter above: <b>${fbrEsc(cabRangeLabel())}</b>.
-      Everything else is already set the way Form.html wants it — press Download.
-      Touch the lists above only if this cabinet counts something of its own.
-      Facebook builds the report on its side, so a month of ad-level rows takes a while;
-      if it refuses this breakdown, it says so below and the narrower ones work.</p>
+    <p class="fbr-hint">Period: <b>${fbrEsc(cabRangeLabel())}</b></p>
     <p id="fbr-msg" class="fbr-hint"${fbrMsg.tone ? ` style="color:${fbrMsg.tone}"` : ''}>${fbrMsg.html}</p>
   </div>`;
 }
@@ -14575,11 +14633,18 @@ const fbrSay = (html, tone) => {
   el.style.color = fbrMsg.tone;
 };
 
-/* ── значення однієї клітинки ── */
+/* ── значення однієї клітинки ──
+
+   Розбито надвоє навмисно. Переводи рядків ламають розбірник Form.html
+   (він ріже файл по рядках ще до того, як побачить лапки), і тому це
+   правило ЗНАЧЕННЯ, а не формату: воно має діяти й у превʼю, інакше на
+   екрані було б одне, а у файлі інше — і превʼю перестало б щось
+   означати. Лапки ж — суто CSV, у таблиці на екрані їм нема чого
+   робити. */
+const fbrText = v => String(v == null ? '' : v).replace(/[\r\n]+/g, ' ');
+
 function fbrCell(v) {
-  // Переводи рядків ламають розбірник Form.html — він ріже файл по них
-  // ще до того, як побачить лапки.
-  const s = String(v == null ? '' : v).replace(/[\r\n]+/g, ' ');
+  const s = fbrText(v);
   return /[",]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
@@ -14611,7 +14676,11 @@ function fbrAction(row, type) {
   return hit ? (Number(hit.value) || 0) : 0;
 }
 
-function fbrCsv(rows, cur, bd) {
+/* Те, що піде у файл, але ще не файл: заголовки, рядки й номери
+   стовпчиків із числами. Одна функція на превʼю і на CSV навмисно D
+   інакше на екрані рано чи пізно було б не те, що в файлі, і превʼю
+   перестало б щось означати. */
+function fbrTable(rows, cur, bd) {
   /* Валюта — у заголовку спенду. Form.html читає її саме звідти. */
   /* Номер кабінета, а не назва. Назва в дашборді своя, рукописна, і з
      фебешною збігається далеко не завжди — імпорт за нею не знаходив
@@ -14642,8 +14711,16 @@ function fbrCsv(rows, cur, bd) {
     take.push(r => fbrAction(r, type));
   });
 
-  const out = [head.map(fbrCell).join(',')];
-  rows.forEach(r => out.push(take.map(f => fbrCell(f(r))).join(',')));
+  /* Числові стовпчики: гроші, кліки й конверсії. Решта — текст, і
+     підбивати по ній підсумок нема сенсу. */
+  const num = [5, 6].concat(head.map((_, i) => i).slice(7 + (FBR_BD_COLS[bd] || []).length));
+
+  return { head, num, body: rows.map(r => take.map(f => fbrText(f(r)))) };
+}
+
+function fbrCsv(t) {
+  const out = [t.head.map(fbrCell).join(',')];
+  t.body.forEach(row => out.push(row.map(fbrCell).join(',')));
   // BOM — щоб Excel не з'їв кирилицю в назвах кампаній.
   return String.fromCharCode(0xFEFF) + out.join('\n');
 }
@@ -14671,6 +14748,82 @@ const FBR_MAX_CALLS = 40;
    поверталось би до того самого місця, і кнопка крутилась би доти,
    доки не закриють вкладку. */
 const FBR_MAX_WAIT = 150;   // ≈ 5 хвилин по 2 секунди
+
+/* ── превʼю ──
+
+   Файл, який лягає в теку завантажень, подивитись уже ніколи: його
+   відкривають один раз, в імпорті, і там будь-яка дивина виглядає як
+   дивина імпорту, а не експорту. Тому спершу показуємо те саме, що
+   піде у файл, на екрані D із підсумками, які можна звірити з Ads
+   Manager, не виходячи з дашборда.
+
+   Показуємо перші рядки, а не всі: тисяча рядків у вікні нікому не
+   потрібна, а перевіряють однаково перші. Скільки їх усього D сказано
+   поруч. */
+const FBR_PREV_ROWS = 40;
+let fbrPrev = null;
+
+const fbrNum = v => {
+  const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+
+window.fbrPrevClose = function () {
+  fbrPrev = null;
+  const el = document.getElementById('fbr-prev');
+  if (el) el.remove();
+};
+
+window.fbrPrevSave = function () {
+  if (!fbrPrev) return;
+  fbrDownload(fbrPrev.csv, fbrPrev.name);
+  fbrSay(fbrPrev.rows + ' row(s) saved as <span class="font-mono">' + fbrEsc(fbrPrev.name)
+    + '</span><br>Import it in Form.html the same way you import the Facebook one.', 'var(--ok)');
+  fbrPrevClose();
+};
+
+function fbrPaintPrev() {
+  document.getElementById('fbr-prev')?.remove();
+  if (!fbrPrev) return;
+  const t = fbrPrev.table;
+  const shown = t.body.slice(0, FBR_PREV_ROWS);
+
+  // Підсумки рахуємо по ВСІХ рядках, не лише по показаних: звіряють
+  // саме їх, і сума половини файлу не звірилась би ні з чим.
+  const totals = t.head.map((_, i) => t.num.includes(i)
+    ? t.body.reduce((a, r) => a + fbrNum(r[i]), 0) : null);
+  const money = i => i === 5;
+
+  const box = document.createElement('div');
+  box.id = 'fbr-prev';
+  box.innerHTML = `<div class="fbr-prev-card">
+      <div class="fbr-prev-head">
+        <div>
+          <p class="fbr-prev-title">${fbrEsc(fbrPrev.name)}</p>
+          <p class="fbr-prev-sub">${fbrPrev.rows} row(s) \u00b7 ${t.head.length} columns${
+            fbrPrev.cut ? ' \u00b7 <b style="color:var(--warn)">cut off, the report was longer</b>' : ''
+          }${fbrPrev.rows > shown.length ? ' \u00b7 showing the first ' + shown.length : ''}</p>
+        </div>
+        <button type="button" onclick="fbrPrevClose()" title="Close">&times;</button>
+      </div>
+      <div class="fbr-prev-scroll"><table class="fbr-prev-tbl">
+        <thead><tr>${t.head.map((h, i) =>
+          `<th class="${t.num.includes(i) ? 'ta-r' : ''}">${fbrEsc(h)}</th>`).join('')}</tr></thead>
+        <tbody>${shown.map(r => '<tr>' + r.map((v, i) =>
+          `<td class="${t.num.includes(i) ? 'ta-r' : ''}">${fbrEsc(v) || '<span class="fbr-prev-na">\u2014</span>'}</td>`
+          ).join('') + '</tr>').join('')}</tbody>
+        <tfoot><tr>${totals.map((v, i) => `<td class="${t.num.includes(i) ? 'ta-r' : ''}">${
+          v == null ? (i ? '' : 'total') : (money(i) ? v.toFixed(2) : Math.round(v).toLocaleString('en-US'))
+        }</td>`).join('')}</tr></tfoot>
+      </table></div>
+      <div class="fbr-prev-acts">
+        <button type="button" onclick="fbrPrevClose()">Close</button>
+        <button type="button" class="is-go" onclick="fbrPrevSave()">Download CSV</button>
+      </div>
+    </div>`;
+  box.addEventListener('click', e => { if (e.target === box) fbrPrevClose(); });
+  document.body.appendChild(box);
+}
 
 window.fbrRun = async function (idEnc) {
   if (fbrBusy) return;
@@ -14722,12 +14875,13 @@ window.fbrRun = async function (idEnc) {
 
     const name = (c.fb.account_id || id) + '_' + since + '_' + until
       + (fbrBd ? '_' + fbrBd : '') + '.csv';
-    fbrDownload(fbrCsv(rows, c.fb.currency, fbrBd), name);
-    fbrSay(rows.length + ' row(s) saved as <span class="font-mono">' + fbrEsc(name) + '</span>'
-      + (cut ? '<br><b>The report was longer than that</b> — this file is cut off. '
-             + 'Take a shorter period or a simpler breakdown.' : '')
-      + '<br>Import it in Form.html the same way you import the Facebook one.',
-      cut ? 'var(--warn)' : 'var(--ok)');
+    const table = fbrTable(rows, c.fb.currency, fbrBd);
+    fbrPrev = { table, csv: fbrCsv(table), name, rows: rows.length, cut };
+    fbrSay(cut
+      ? '<b>The report was longer than this</b> — what you see is cut off. '
+        + 'A shorter period or a simpler breakdown brings all of it.'
+      : '', cut ? 'var(--warn)' : '');
+    fbrPaintPrev();
   } catch (e) {
     fbrSay(fbrWhy(e), 'var(--bad)');
   } finally {
@@ -14930,8 +15084,10 @@ function fcmBlock(c) {
           ${x.likes ? '<span class="fcm-tag">♥ ' + x.likes + '</span>' : ''}
         </span>
         <span class="fcm-text">${fcmEsc(x.message) || '<i>no text — a photo or a sticker</i>'}</span>
-        <span class="fcm-ad" title="${fcmEsc(x.ad)}">${fcmEsc(x.ad)}${
-          x.ads > 1 ? ' +' + (x.ads - 1) : ''}</span>
+        <span class="fcm-ad" title="${fcmEsc(x.ad)}${
+            x.live ? '' : ' — this ad is not running any more, so nothing new will be written here'}">${
+          fcmEsc(x.ad)}${x.ads > 1 ? ' +' + (x.ads - 1) : ''}${
+          x.live ? '' : ' \u00b7 stopped'}</span>
       </span></label>`;
   }).join('');
 
@@ -15515,15 +15671,6 @@ function cabWhy(c) {
   return { mark: '\u270E', text: 'Guessed from reports — no token sees this one' };
 }
 
-// Пряме посилання в Ads Manager має сенс лише для числового ID кабінета.
-// У демо-даних ID виду ACC-1041 — там посилання свідомо не буде.
-function cabAdsLink(id) {
-  const digits = String(id || '').replace(/\D/g, '');
-  return digits.length >= 6
-    ? 'https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=' + digits
-    : '';
-}
-
 function cabSetGroup(v) { cabGroup = v; cabRender(); }
 function cabSetFilter(k) { cabFilter = (cabFilter === k) ? '' : k; cabSel = null; cabRender(); }
 
@@ -15797,7 +15944,6 @@ function cabSection(items, hasFb, bare) {
 
 function cabRowHtml(c, hasFb) {
   const S = CAB_STATE[c.state];
-  const link = cabAdsLink(c.fb ? c.fb.account_id : c.id);
   const n = cabCounts(c.fb);
   const why = cabWhy(c);
   const num = v => `<td class="ta-c cab-num">${v == null ? '<span class="cab-na">—</span>' : v}</td>`;
@@ -15834,9 +15980,7 @@ function cabRowHtml(c, hasFb) {
       <span class="cab-src ${c.fb && !c.gone ? 'is-live' : ''}" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       ${c.gone ? `<span class="cab-chip is-gone" title="The token stopped seeing this cabinet on ${
         cabEsc(String(c.fb.missing_since).slice(0, 10))} — the numbers below are the last ones it saw">gone</span>` : ''}
-      ${link ? `<a href="${link}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
-           class="cab-link" title="Open in Ads Manager">&#8599;</a>`
-             : `<span class="cab-link is-off" title="Ads Manager link needs a numeric account id">&#8599;</span>`}
+      ${c.fb && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
     </td>
     <td class="cab-dim">${c.row.provider_name
       ? cabEsc(c.row.provider_name)
@@ -15935,11 +16079,6 @@ function cabDetail(c) {
         ${cell('Ads', pair(c.fb.ads_active, c.fb.ads),
                cabByStatus(c.fb.ads_by_status))}
         ${cell('Card', esc(c.fb.card || '—'))}
-        ${cell('Budgets/day', c.fb.daily_budget != null
-            ? cabMoneyCur(c.fb.daily_budget, c.fb.currency) : '—',
-            'Not a limit: the daily budgets of the campaigns that are actually delivering, '
-          + 'added up. Zero means nothing live has a daily budget — lifetime budgets, or '
-          + 'nothing is delivering at all.')}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}
