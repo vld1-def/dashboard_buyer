@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 20:26">
+  <meta name="build" content="build 24.09 20:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3669,7 +3669,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:26</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:33</div>
     </div>
   </aside>
 
@@ -14867,7 +14867,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.4';
+const FB_FN_WANT = '2026-09-24.5';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -16230,6 +16230,18 @@ const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
 const CAB_CUR = { USD: '$', EUR: '\u20AC', GBP: '\u00A3', UAH: '\u20B4' };
 /* Валюту беремо з кабінета, а не з дашборда: долар на євровому
    кабінеті — це не округлення, це інше число. */
+/* Округлення до цілого доречне для спенду: там сотні й тисячі, а
+   копійки — шум. Для балансу навпаки: 2.09 PLN, стиснуті до «2 PLN»,
+   втрачають рівно те, заради чого на них дивляться. Тому тут копійки
+   показуємо — і тільки коли вони є. */
+function cabMoneyExact(n, cur) {
+  const x = Number(n) || 0;
+  const v = Number.isInteger(x) ? x.toLocaleString('en-US')
+    : x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = CAB_CUR[cur];
+  return sign ? sign + v : v + (cur ? ' ' + cur : '');
+}
+
 function cabMoneyCur(n, cur) {
   const v = Math.round(Number(n) || 0).toLocaleString('en-US');
   const sign = CAB_CUR[cur];
@@ -16993,19 +17005,23 @@ function cabCapCell(fb, cell) {
     return cell('Limit', '\u2014', 'Facebook did not say \u2014 usually means this token may not read it');
   if (!Number(fb.spend_cap))
     return cell('Limit', 'none', 'No spending limit is set on this cabinet');
-  return cell('Limit', cabMoneyCur(fb.spend_cap, fb.currency),
+  return cell('Limit', cabMoneyExact(fb.spend_cap, fb.currency),
               'The account spending limit set in Facebook');
 }
 
-/* БАЛАНС. Те саме число Facebook означає різне залежно від того, чим
-   кабінет платить: на картковому це борг (відкручено, ще не списано),
-   на передплаченому — залишок. Розрізнити їх з нашого боку нічим, тож
-   підказка чесно називає обидва читання замість вигадувати одне. */
+/* БАЛАНС, і одразу застереження, бо слово оманливе. Facebook зве цим
+   полем суму, яку вже нарахували й ще не списали — тобто БОРГ. Це не
+   передплачений залишок, який видно в Ads Manager: там своє число, і
+   воно з цим не збігається. Спутати їх легко й дорого — «баланс 2»
+   прочитається як «залишилось два», а насправді це «винні два».
+
+   Тому підказка каже прямо, чим це НЕ є. */
 function cabBalCell(fb, cell) {
   if (!('balance' in fb) || fb.balance == null)
     return cell('Balance', '\u2014', 'Facebook did not say');
-  return cell('Balance', cabMoneyCur(fb.balance, fb.currency),
-              'As Facebook reports it: owed on a card cabinet, left on a prepaid one');
+  return cell('Balance', cabMoneyExact(fb.balance, fb.currency),
+              'Billed and not yet paid \u2014 money owed. This is not the prepaid '
+              + 'balance shown in Ads Manager.');
 }
 
 function cabDetail(c) {

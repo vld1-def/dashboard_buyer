@@ -130,7 +130,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-24.4';
+const FN_VERSION = '2026-09-24.5';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1116,9 +1116,25 @@ async function probeAccount(t: TokenRow, actId: string, ladder: Rung[]): Promise
     () => graph('/act_' + actId, t.token, { fields: 'id,name' }));
   if (basic) out.name = basic.name;
 
+  /* БЕЗ fields. Саме через нього інтроспекція й мовчала: metadata=1
+     описує рівно ті поля, які попросили, а ми просили одне «id» — і
+     отримували опис одного поля замість переліку всіх. Сходи чесно
+     казали «ok», бо запит і справді проходив; порожнім був результат.
+
+     Без fields Graph віддає перелік усього вузла — заради чого цей
+     щабель і писався. */
   const meta = await rung('ask it to describe its own fields (metadata)',
-    () => graph('/act_' + actId, t.token, { metadata: 1, fields: 'id' }));
+    () => graph('/act_' + actId, t.token, { metadata: 1 }));
   const fields: Json[] = Array.isArray(meta?.metadata?.fields) ? meta.metadata.fields : [];
+
+  /* Запит пройшов, а переліку немає — це теж відмова, просто тиха.
+     Лишити щабель зеленим означало б сказати «метадані є», коли їх
+     нема, і наступний, хто читатиме сходи, шукатиме біду не там. */
+  if (meta && !fields.length) {
+    const last = ladder[ladder.length - 1];
+    if (last && last.ok && /metadata/.test(last.step))
+      last.note = 'answered, but named no fields';
+  }
 
   if (!fields.length) {
     /* Метаданих немає — але це ще не кінець. Пробуємо ті поля, які
