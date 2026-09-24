@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 20:20">
+  <meta name="build" content="build 24.09 20:26">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3669,7 +3669,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:26</div>
     </div>
   </aside>
 
@@ -16288,7 +16288,7 @@ async function cabInit() {
    не буде, поки не виконаєш ALTER. Решта працює. */
 const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_today,'
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
-  + 'amount_spent,sync_error,synced_at,business_name,token_id';
+  + 'amount_spent,spend_cap,balance,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
   + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
 
@@ -16980,6 +16980,34 @@ function cabWhyNot(fb) {
   return `<p class="${bad ? 'cab-fb-warn' : 'cab-fb-note'}">${n} ad(s) not running: ${cabEsc(rest)}</p>`;
 }
 
+/* ЛІМІТ. spend_cap — це стеля витрат кабінета, і нуль у ній означає
+   не «нуль грошей», а «стелі немає». Показати нуль як «$0» — найгірше,
+   що тут можна зробити: живий кабінет виглядав би вичерпаним. Тому
+   нуль ми пишемо словом.
+
+   Порожнє поле — теж не нуль: це «Facebook не сказав». Здебільшого
+   так буває, коли токен не має прав на цей кабінет, і сплутати його з
+   «ліміту немає» значить збрехати рівно навпаки. */
+function cabCapCell(fb, cell) {
+  if (!('spend_cap' in fb) || fb.spend_cap == null)
+    return cell('Limit', '\u2014', 'Facebook did not say \u2014 usually means this token may not read it');
+  if (!Number(fb.spend_cap))
+    return cell('Limit', 'none', 'No spending limit is set on this cabinet');
+  return cell('Limit', cabMoneyCur(fb.spend_cap, fb.currency),
+              'The account spending limit set in Facebook');
+}
+
+/* БАЛАНС. Те саме число Facebook означає різне залежно від того, чим
+   кабінет платить: на картковому це борг (відкручено, ще не списано),
+   на передплаченому — залишок. Розрізнити їх з нашого боку нічим, тож
+   підказка чесно називає обидва читання замість вигадувати одне. */
+function cabBalCell(fb, cell) {
+  if (!('balance' in fb) || fb.balance == null)
+    return cell('Balance', '\u2014', 'Facebook did not say');
+  return cell('Balance', cabMoneyCur(fb.balance, fb.currency),
+              'As Facebook reports it: owed on a card cabinet, left on a prepaid one');
+}
+
 function cabDetail(c) {
   const box = document.getElementById('cab-detail');
   if (!box) return;
@@ -17037,6 +17065,8 @@ function cabDetail(c) {
           cell('Card', esc(c.fb.card || '—')
             + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
             c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : '')}
+        ${cabCapCell(c.fb, cell)}
+        ${cabBalCell(c.fb, cell)}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}
