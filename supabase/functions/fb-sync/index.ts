@@ -306,8 +306,14 @@ function urlsFor(actId: string, tz: string): string[] {
     // числа коштував би стільки ж, скільки весь список.
     bulk('campaigns', 'daily_budget,lifetime_budget'),
     bulk('adsets', 'daily_budget,lifetime_budget'),
-    // campaign_id й adset_id — заради підрахунку ЖИВОГО (див. нижче).
-    bulk('ads', 'campaign_id,adset_id'),
+    /* campaign_id й adset_id — заради підрахунку ЖИВОГО (див. нижче).
+
+       effective_object_story_id — заради Сторінок. Він має вигляд
+       {page_id}_{post_id}, тобто номер Сторінки в ньому вже є, і
+       окремого запиту не треба: ми й так перелічуємо всі оголошення
+       кабінета щогодини. Одне поле в тій самій відповіді проти
+       окремого обходу парку — різниця в вартості на порядок. */
+    bulk('ads', 'campaign_id,adset_id,creative{effective_object_story_id}'),
     /* Витрати по днях — щоб на сторінці працював вибір періоду, а не
        саме лише «сьогодні». Одне число за добу й нічого більше:
        розріз по кампаніях — це вже експорт, інша вага й інша вкладка.
@@ -334,7 +340,14 @@ const total = (o: Json | null | undefined): number | null =>
 type Day = { day: string; spend: number | null;
              impressions: number | null; clicks: number | null };
 
-function readParts(parts: (Json | null)[]): { patch: Json; err: string; days: Day[] | null } {
+/* Скільки оголошень і скільки різних постів кабінета ведуть на цю
+   Сторінку. Пости рахуємо окремо від оголошень навмисно: один пост
+   часто крутять кілька оголошень, і «12 оголошень на 2 пости» — зовсім
+   інша картина, ніж «12 оголошень на 12 постів». */
+type PageUse = { ads: number; posts: Set<string> };
+
+function readParts(parts: (Json | null)[]):
+    { patch: Json; err: string; days: Day[] | null; pages: Map<string, PageUse> | null } {
   const patch: Json = {};
   let err = '';
 
@@ -365,8 +378,24 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string; days: Da
   const adsPart = parts[3];
   const liveCampaigns = new Set<string>();
   const liveAdsets = new Set<string>();
+  /* null означає «список оголошень не приїхав», порожня Map — «приїхав,
+     і Сторінок у ньому немає». Різниця не косметична: у першому випадку
+     чіпати збережене не можна, у другому старе треба прибрати. */
+  let pages: Map<string, PageUse> | null = null;
   if (adsPart && adsPart.code === 200) {
+    pages = new Map<string, PageUse>();
     (Array.isArray(adsPart.body?.data) ? adsPart.body.data : []).forEach((r: Json) => {
+      /* Сторінку рахуємо з УСІХ оголошень, не лише з активних: питання
+         «звідки взагалі крутить цей кабінет» не про те, що працює
+         просто зараз. Зупинене оголошення так само залишило коментарі
+         під своїм постом. */
+      const story = String(r?.creative?.effective_object_story_id || '');
+      if (story.includes('_')) {
+        const pid = story.split('_')[0];
+        const use = pages!.get(pid);
+        if (use) { use.ads++; use.posts.add(story); }
+        else pages!.set(pid, { ads: 1, posts: new Set([story]) });
+      }
       if (String(r.effective_status) !== 'ACTIVE') return;
       if (r.campaign_id) liveCampaigns.add(String(r.campaign_id));
       if (r.adset_id) liveAdsets.add(String(r.adset_id));
@@ -463,7 +492,7 @@ function readParts(parts: (Json | null)[]): { patch: Json; err: string; days: Da
       .filter((d: Day) => /^\d{4}-\d{2}-\d{2}$/.test(d.day));
   }
 
-  return { patch, err, days };
+  return { patch, err, days, pages };
 }
 
 /* ── PostgREST ──
@@ -577,6 +606,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   const now = new Date().toISOString();
   const rows: Json[] = [];
   const dayRows: Json[] = [];
+  // кабінет -> Сторінка -> скільки оголошень і постів
+  const pageUse = new Map<string, Map<string, PageUse>>();
   const changes: { account_id: string; from: string; to: string; note: string }[] = [];
 
   // Основа рядка — з того, що вже приїхало списком: стан, картка,
@@ -621,7 +652,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       break;
     }
     slice.forEach((x, k) => {
-      const { patch, err, days } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      const { patch, err, days, pages } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      if (pages) pageUse.set(x.id, pages);
       Object.assign(x.row, patch);
       if (err) { x.row.sync_error = err; out.failed++; }
       rows.push(x.row);
@@ -685,10 +717,77 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   } catch (e) {
     out.historyError = (e as Error).message;
   }
+  await savePages(base, hdr, t, pageUse, now);
   await markMissing(base, hdr, t, accs.map(a => String(a.account_id || '')), alerts);
   await noteChanges(base, hdr, t.team_name || '', changes);
   await markToken(base, hdr, t.id, 'ok', `Sees ${accs.length} ad account(s)`);
   return out;
+}
+
+/* ═════ СТОРІНКИ, З ЯКИХ КРУТЯТЬ ═════
+
+   Питання «а з яких Сторінок узагалі йде реклама» досі не мало де
+   з'явитись: номер Сторінки зашитий у кожному оголошенні, але щоб його
+   побачити, треба було відкрити оголошення в Ads Manager.
+
+   Тепер він приїжджає разом зі статусами, тим самим запитом, і
+   складається в окрему таблицю: Сторінка, кабінет, скільки оголошень і
+   постів. Одна Сторінка на десять кабінетів — це видно згори й лише
+   згори; бан такої Сторінки забирає всі десять одразу.
+
+   Назву й права беремо з /me/accounts — один запит на токен. Сторінки,
+   якої там немає, ми не бачимо: лишається номер і чесне «доступу
+   немає». Саме цим і корисне: список показує не тільки те, чим ви
+   керуєте, а й те, чим крутите НЕ керуючи. */
+async function savePages(base: string, hdr: Json, t: TokenRow,
+                         use: Map<string, Map<string, PageUse>>, now: string): Promise<void> {
+  if (!use.size) return;
+
+  /* Що з цих Сторінок системний користувач справді має. Відмова тут —
+     не привід нічого не записати: номери Сторінок ми знаємо й без
+     нього, а «доступу немає» — теж відповідь, і саме та, заради якої
+     на цей список дивляться. */
+  const mine = new Map<string, { name: string; tasks: string[] }>();
+  if ([...use.values()].some(m => m.size)) {
+    try {
+      const j = await graph('/me/accounts', t.token, { fields: 'id,name,tasks', limit: 200 });
+      (Array.isArray(j.data) ? j.data : []).forEach((x: Json) => mine.set(String(x.id), {
+        name: String(x.name || ''),
+        tasks: Array.isArray(x.tasks) ? x.tasks.map(String) : []
+      }));
+    } catch (_e) { /* без назв, але з номерами */ }
+  }
+
+  const rows: Json[] = [];
+  for (const [account, pages] of use) {
+    for (const [pageId, u] of pages) {
+      const has = mine.get(pageId);
+      rows.push({
+        created_by: t.created_by, team_name: t.team_name,
+        account_id: account, page_id: pageId,
+        page_name: has ? (has.name || null) : null,
+        can_moderate: has ? has.tasks.some(x => x === 'MODERATE' || x === 'MANAGE') : false,
+        ads: u.ads, posts: u.posts.size, seen_at: now
+      });
+    }
+  }
+  try {
+    if (rows.length)
+      await pgUpsert(base, hdr, 'fb_cabinet_pages', 'created_by,account_id,page_id', rows);
+    /* Прибираємо те, чого цього разу не було: оголошення перевели на
+       іншу Сторінку, і стара має зникнути зі списку, а не висіти в
+       ньому вічно. Видаляємо ТІЛЬКИ по кабінетах, які щойно обійшли —
+       ті, до яких не дійшли черги, не чіпаємо. */
+    const ids = [...use.keys()].filter(x => /^\d+$/.test(x));
+    if (ids.length) {
+      await fetch(base + '/rest/v1/fb_cabinet_pages'
+        + '?created_by=eq.' + encodeURIComponent(t.created_by)
+        + '&account_id=in.(' + ids.join(',') + ')'
+        + '&seen_at=lt.' + encodeURIComponent(now), {
+        method: 'DELETE', headers: { ...hdr, Prefer: 'return=minimal' }
+      });
+    }
+  } catch (_e) { /* список Сторінок — надбудова, не привід валити імпорт */ }
 }
 
 /* ── кабінет, який зник ──
