@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 17:58">
+  <meta name="build" content="build 24.09 18:00">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3490,6 +3490,58 @@ body[data-route="domains"] #dm-detail {
   color: #93c5fd; font-weight: 800; text-decoration: none;
 }
 .rp-link:hover { background: rgba(59, 130, 246, .26); color: #dbeafe; }
+
+
+/* ═══════════ ПІДКАЗКА ПРО СИНТАКСИС ЗВІТУ ═══════════
+   Наведення, а не модалка: те, що читають раз на місяць, не варте
+   кліку, а те, що читають щодня, не має заважати. tabindex + :focus
+   дає те саме з клавіатури й на дотик, де наведення не буває. */
+
+.rp-help { position: relative; display: inline-flex; outline: none; }
+.rp-help-i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px; cursor: help;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-muted); font-size: 11px; font-weight: 900; font-style: italic;
+  transition: color .15s, border-color .15s;
+}
+.rp-help:hover .rp-help-i, .rp-help:focus .rp-help-i { color: var(--text-main); border-color: var(--accent); }
+
+.rp-help-box {
+  position: absolute; top: 28px; right: 0; z-index: 60; width: 330px;
+  display: none; padding: 12px 14px; border-radius: 16px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, .5);
+  text-transform: none; letter-spacing: 0;
+}
+.rp-help:hover .rp-help-box, .rp-help:focus .rp-help-box { display: block; }
+.rp-help-box > b {
+  display: block; margin-bottom: 8px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-main);
+}
+.rp-help-box i {
+  display: block; margin-bottom: 5px; font-style: normal;
+  font-size: 11px; font-weight: 600; line-height: 1.45; color: var(--text-muted);
+}
+.rp-help-box i b { color: var(--text-main); font-weight: 800; }
+/* Сам знак показуємо так, як він виглядатиме в рядку: підказка про
+   розмітку, набрана однаковим шрифтом, нічого не підказує. */
+.rp-help-box em {
+  display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 5px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal;
+  font-weight: 800; color: var(--text-main);
+}
+.rp-help-box em.is-ok   { color: #34D399; border-color: rgba(52, 211, 153, .35); }
+.rp-help-box em.is-bad  { color: #F87171; border-color: rgba(248, 113, 113, .35); }
+.rp-help-box em.is-warn { color: #FBBF24; border-color: rgba(251, 191, 36, .35); }
+.rp-help-box em.is-plan { color: #818CF8; border-color: rgba(129, 140, 248, .35); }
+.rp-help-box u {
+  display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .8;
+  text-decoration: none;
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -3608,7 +3660,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 17:58</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 18:00</div>
     </div>
   </aside>
 
@@ -4637,6 +4689,27 @@ body[data-route="domains"] #dm-detail {
     <div class="p-6 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5 font-black uppercase">
       <h2 class="text-xl italic tracking-tighter text-blue-500 font-black">Daily Reports</h2>
       <div class="flex items-center gap-2">
+        <!-- Що взагалі вміє поле звіту. Підказка, а не документація:
+             показується при наведенні й зникає сама. Усе, що тут
+             перелічено, працює в тексті звіту й доїжджає в Copy і PDF. -->
+        <span class="rp-help" tabindex="0">
+          <span class="rp-help-i">i</span>
+          <span class="rp-help-box">
+            <b>What the report understands</b>
+            <i><em class="is-ok">+</em> done — green line</i>
+            <i><em class="is-bad">−</em> problem — red line</i>
+            <i><em class="is-warn">!</em> watch out — amber line</i>
+            <i><em class="is-plan">&gt;</em> plan — blue line</i>
+            <i><em>| a | b |</em> table, one row per line</i>
+            <i><em>@img1</em> attached photo</i>
+            <i><em>Spy: https://…</em> link becomes a button named <b>Spy</b>;
+               without a name in front the domain is used</i>
+            <i><em>Mbank_KG_10708</em> a creative from your base becomes a chip
+               — click opens it in Creative Analyzer</i>
+            <i><em>+ tag</em> next to the date — a label for the day</i>
+            <u>Labels and link buttons go into Copy and PDF too.</u>
+          </span>
+        </span>
         <button onclick="exportReports()" title="Copy to clipboard" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-xl transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           Copy
