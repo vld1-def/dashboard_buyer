@@ -3246,46 +3246,35 @@ function crAddTagFromInput() {
   crAddTag(currentCreativeID, v);
 }
 
-/* Поповер тегів креатива, викликаний із тексту звіту.
+/* Креатив зі звіту — в Creative Analyzer.
 
-   Малюється в body, а не всередині звіту: тіло звіту
-   contenteditable, і будь-яке поле введення в ньому одразу стає
-   частиною тексту, який редагують. */
-let rpPopCid = '';
-function rpTagPop(ev, cid) {
-  rpPopClose();
-  rpPopCid = cid;
-  const box = document.createElement('div');
-  box.id = 'rp-tag-pop';
-  box.className = 'rp-pop';
-  const r = ev.target.getBoundingClientRect();
-  box.style.left = Math.min(r.left, window.innerWidth - 260) + 'px';
-  box.style.top = (r.bottom + 6) + 'px';
-  box.onclick = e => e.stopPropagation();
-  box.onmousedown = e => e.stopPropagation();
-  document.body.appendChild(box);
-  rpPopPaint();
-  document.getElementById('rp-tag-in')?.focus();
-  setTimeout(() => document.addEventListener('click', rpPopClose, { once: true }), 0);
-}
-function rpPopClose() {
-  document.getElementById('rp-tag-pop')?.remove();
-}
-function rpPopPaint() {
-  const box = document.getElementById('rp-tag-pop');
-  if (!box) return;
-  const cid = rpPopCid;
-  const list = crTagsOf(cid);
-  const q = String(cid).replace(/'/g, "\\'");
-  box.innerHTML = `<p class="rp-pop-head">${escapeHtml(cid)}</p>
-    <div class="rp-pop-chips">${list.length
-      ? list.map(t => `<span class="rp-chip">${escapeHtml(t)}<button
-          onclick="crRemoveTag('${q}','${t.replace(/'/g, "\\'")}');rpPopPaint();renderReports()">\u2715</button></span>`).join('')
-      : '<span class="rp-pop-none">no tag yet</span>'}</div>
-    <input id="rp-tag-in" list="cr-tag-all" placeholder="tag and Enter"
-      onkeydown="if(event.key==='Enter'){crAddTag('${q}',this.value);this.value='';rpPopPaint();renderReports();}
-                 if(event.key==='Escape')rpPopClose()">`;
-}
+   Тег ставиться там, де для цього вже все є: пошук, фільтри, історія,
+   картка з числами. Дублювати те саме віконцем у звіті означало б два
+   місця для однієї дії, які одного дня розійдуться.
+
+   Секції перемикає хеш, і намалювати картку в блок, який ще
+   route-off, не можна — тому дія чекає на перемальовку маршруту. */
+window.rpOpenCreative = function (cid) {
+  document.getElementById('report-modal')?.classList.add('hidden');
+
+  const go = () => {
+    const box = document.getElementById('creative-search');
+    if (box) box.value = cid;
+    /* Фільтри знімаємо: інакше креатив, який не підходить під учора
+       вибраний гео чи тег, відкриється в порожній список, і людина
+       вирішить, що його немає. */
+    ['creative-geo-filter', 'creative-device-filter', 'creative-tag-filter']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    if (typeof searchCreative === 'function') searchCreative();
+    if (typeof selectCreative === 'function') selectCreative(cid);
+    document.getElementById('creative-analyzer-section')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const now = String(location.hash || '').replace(/^#\/?/, '').split('/')[0];
+  if (now !== 'creatives') { location.hash = '#/creatives'; setTimeout(go, 80); }
+  else go();
+};
 
 // Чипи тегів на картці обраного креатива
 function crRenderTagUI() {
@@ -4883,8 +4872,9 @@ function parseReportBlocks(text, images) {
       const tags = (typeof crTagsOf === 'function' ? crTagsOf(tok) : []) || [];
       const q = tok.replace(/'/g, "\\'");
       return hide('<span class="rp-cid" onmousedown="event.preventDefault()"'
-        + ' onclick="event.stopPropagation();rpTagPop(event,\'' + q + '\')"'
-        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) : 'No tag yet') + ' \u2014 click to tag">'
+        + ' onclick="event.stopPropagation();rpOpenCreative(\'' + q + '\')"'
+        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) + ' \u2014 ' : '')
+        + 'open in Creative Analyzer">'
         + escapeHtml(tok)
         + (tags.length ? '<i class="rp-cid-t">' + escapeHtml(tags[0])
             + (tags.length > 1 ? ' +' + (tags.length - 1) : '') + '</i>' : '<i class="rp-cid-t is-off">+</i>')

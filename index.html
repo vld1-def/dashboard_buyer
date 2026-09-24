@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 17:30">
+  <meta name="build" content="build 24.09 17:58">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3476,7 +3476,11 @@ body[data-route="domains"] #dm-detail {
   background: var(--surface-2); border: 1px solid var(--border);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em;
 }
-.rp-cid:hover { border-color: var(--accent); }
+.rp-cid:hover { border-color: var(--accent); color: var(--text-main); }
+/* Стрілка після номера: чип не просто підсвічує знайдене, він кудись
+   веде, і це має бути видно до кліку, а не після. */
+.rp-cid:after { content: "\2197"; font-size: .8em; opacity: .45; }
+.rp-cid:hover:after { opacity: 1; }
 .rp-cid-t { font-style: normal; font-weight: 900; font-size: 9px; color: #c4b5fd; }
 .rp-cid-t.is-off { color: var(--text-muted); opacity: .6; }
 
@@ -3486,27 +3490,6 @@ body[data-route="domains"] #dm-detail {
   color: #93c5fd; font-weight: 800; text-decoration: none;
 }
 .rp-link:hover { background: rgba(59, 130, 246, .26); color: #dbeafe; }
-
-/* Поповер тегів. У body, бо тіло звіту contenteditable: поле введення
-   всередині нього стало б частиною тексту, який редагують. */
-.rp-pop {
-  position: fixed; z-index: 9500; width: 240px; padding: 10px;
-  border-radius: 14px; background: var(--surface-1); border: 1px solid var(--border);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, .45);
-}
-.rp-pop-head {
-  margin: 0 0 6px; font-size: 10px; font-weight: 900; color: var(--text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.rp-pop-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.rp-pop-none { font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .6; }
-.rp-pop input {
-  width: 100%; padding: 6px 8px; border-radius: 10px;
-  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
-  color: var(--text-main); font-size: 11px; font-weight: 700; outline: none;
-}
-.rp-pop input:focus { border-color: var(--accent); }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -3625,7 +3608,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 17:30</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 17:58</div>
     </div>
   </aside>
 
@@ -6199,46 +6182,35 @@ function crAddTagFromInput() {
   crAddTag(currentCreativeID, v);
 }
 
-/* Поповер тегів креатива, викликаний із тексту звіту.
+/* Creative зі звіту — в Creative Analyzer.
 
-   Малюється в body, а не всередині звіту: тіло звіту
-   contenteditable, і будь-яке поле введення в ньому одразу стає
-   частиною тексту, який редагують. */
-let rpPopCid = '';
-function rpTagPop(ev, cid) {
-  rpPopClose();
-  rpPopCid = cid;
-  const box = document.createElement('div');
-  box.id = 'rp-tag-pop';
-  box.className = 'rp-pop';
-  const r = ev.target.getBoundingClientRect();
-  box.style.left = Math.min(r.left, window.innerWidth - 260) + 'px';
-  box.style.top = (r.bottom + 6) + 'px';
-  box.onclick = e => e.stopPropagation();
-  box.onmousedown = e => e.stopPropagation();
-  document.body.appendChild(box);
-  rpPopPaint();
-  document.getElementById('rp-tag-in')?.focus();
-  setTimeout(() => document.addEventListener('click', rpPopClose, { once: true }), 0);
-}
-function rpPopClose() {
-  document.getElementById('rp-tag-pop')?.remove();
-}
-function rpPopPaint() {
-  const box = document.getElementById('rp-tag-pop');
-  if (!box) return;
-  const cid = rpPopCid;
-  const list = crTagsOf(cid);
-  const q = String(cid).replace(/'/g, "\\'");
-  box.innerHTML = `<p class="rp-pop-head">${escapeHtml(cid)}</p>
-    <div class="rp-pop-chips">${list.length
-      ? list.map(t => `<span class="rp-chip">${escapeHtml(t)}<button
-          onclick="crRemoveTag('${q}','${t.replace(/'/g, "\\'")}');rpPopPaint();renderReports()">\u2715</button></span>`).join('')
-      : '<span class="rp-pop-none">no tag yet</span>'}</div>
-    <input id="rp-tag-in" list="cr-tag-all" placeholder="tag and Enter"
-      onkeydown="if(event.key==='Enter'){crAddTag('${q}',this.value);this.value='';rpPopPaint();renderReports();}
-                 if(event.key==='Escape')rpPopClose()">`;
-}
+   Тег ставиться там, де для цього вже все є: пошук, фільтри, історія,
+   картка з числами. Дублювати те саме віконцем у звіті означало б два
+   місця для однієї дії, які одного дня розійдуться.
+
+   Секції перемикає хеш, і намалювати картку в блок, який ще
+   route-off, не можна — тому дія чекає на перемальовку маршруту. */
+window.rpOpenCreative = function (cid) {
+  document.getElementById('report-modal')?.classList.add('hidden');
+
+  const go = () => {
+    const box = document.getElementById('creative-search');
+    if (box) box.value = cid;
+    /* Фільтри знімаємо: інакше креатив, який не підходить під учора
+       вибраний гео чи тег, відкриється в порожній список, і людина
+       вирішить, що його немає. */
+    ['creative-geo-filter', 'creative-device-filter', 'creative-tag-filter']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    if (typeof searchCreative === 'function') searchCreative();
+    if (typeof selectCreative === 'function') selectCreative(cid);
+    document.getElementById('creative-analyzer-section')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const now = String(location.hash || '').replace(/^#\/?/, '').split('/')[0];
+  if (now !== 'creatives') { location.hash = '#/creatives'; setTimeout(go, 80); }
+  else go();
+};
 
 // Чипи тегів на картці обраного креатива
 function crRenderTagUI() {
@@ -8065,8 +8037,9 @@ function parseReportBlocks(text, images) {
       const tags = (typeof crTagsOf === 'function' ? crTagsOf(tok) : []) || [];
       const q = tok.replace(/'/g, "\\'");
       return hide('<span class="rp-cid" onmousedown="event.preventDefault()"'
-        + ' onclick="event.stopPropagation();rpTagPop(event,\'' + q + '\')"'
-        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) : 'No tag yet') + ' \u2014 click to tag">'
+        + ' onclick="event.stopPropagation();rpOpenCreative(\'' + q + '\')"'
+        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) + ' \u2014 ' : '')
+        + 'open in Creative Analyzer">'
         + escapeHtml(tok)
         + (tags.length ? '<i class="rp-cid-t">' + escapeHtml(tags[0])
             + (tags.length > 1 ? ' +' + (tags.length - 1) : '') + '</i>' : '<i class="rp-cid-t is-off">+</i>')
