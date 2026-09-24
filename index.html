@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 13:07">
+  <meta name="build" content="build 24.09 13:19">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2808,22 +2808,15 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 
 /* «Account зник, а фільтр його ховає». Клікабельне D бо єдина розумна
    реакція на цей рядок одна: піти й подивитись. */
-.cab-gone-note {
   margin-bottom: 8px; padding: 8px 12px; border-radius: 12px; cursor: pointer;
   background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .28);
   font-size: 10px; font-weight: 800; color: var(--warn);
 }
-.cab-gone-note span {
   margin-left: 6px; text-decoration: underline; text-underline-offset: 2px;
 }
-.cab-gone-note:hover { background: rgba(245, 158, 11, .16); }
-/* Коли чужі кабінети вже показані, рядок перестає бути попередженням і
-   стає підписом: тривожити другий раз тим самим нема за що. */
-.cab-gone-note.is-open {
   margin: 10px 0 0; padding: 0; background: none; border: 0;
   font-size: 9px; font-weight: 700; color: var(--text-muted); opacity: .7;
 }
-.cab-gone-note.is-open:hover { opacity: 1; background: none; }
 
 /* ─── Сторінка кабінета ───
    Окремим блоком під списком це займало пів екрана й відповідало на
@@ -2898,11 +2891,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px;
 }
 
-.cab-sec { display: flex; align-items: baseline; gap: 8px; padding: 14px 2px 6px; }
-.cab-sec-name { font-size: 11px; font-weight: 900; letter-spacing: .1em;
                 text-transform: uppercase; color: var(--text-muted); }
-.cab-sec-name.is-live { color: var(--ok); }
-.cab-sec-sub { font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .7; }
 
 /* Блок «що каже Facebook» у бічній панелі. Відділений рамкою
    навмисно: це єдине місце на панелі, де числа не твої й не зі
@@ -3527,7 +3516,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 13:07</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 13:19</div>
     </div>
   </aside>
 
@@ -15458,11 +15447,23 @@ function fcmBlock(c) {
      Людина (accounts_mapping) — те, чого не знає ніхто інший: чий це
        агент, який профіль, логін, і «живий, але ми його відклали».
 
-   СПИСОК ДІЛИТЬСЯ НАДВОЄ, і це не косметика. Зверху — кабінети, які
-   бачить токен: там статус справжній. Нижче — ті, яких токен не бачить:
-   там усе по-старому, стан угадується з мовчання. Змішувати їх в одну
-   таблицю означало б показувати два різні за надійністю числа під одним
-   заголовком, і через тиждень ніхто б не пам'ятав, яке з них чого варте. */
+   У СПИСКУ РІВНО ТЕ, ЩО ТОКЕН БАЧИТЬ ЗАРАЗ — і нічого більше.
+
+   Довго тут було інакше: рядки народжувались із accounts_mapping, тож
+   у таблиці сиділи кабінети, про які ми не знали нічого, крім того, що
+   колись хтось вписав їх руками. Стан у них угадувався з мовчання
+   звітів, чисел усередині не існувало, і єдине, що вони робили —
+   розбавляли список рядками, яким не можна вірити.
+
+   Тепер accounts_mapping рядків НЕ породжує. Вона лишилась там, де
+   справді потрібна: у ній записано те, чого Facebook не знає й не
+   скаже — чий це агент, який профіль, логін, картка, нотатка. Це
+   додається до живого кабінета, а не вигадує власний.
+
+   Зниклого (missing_since) тут теж немає: його числа заморожені на
+   останньому, що встиг побачити токен, і серед живих вони брехали б
+   свіжістю. Мовчазним зникнення не стає — про нього кричить Telegram
+   і стрічка подій, яка живе на цій самій сторінці. */
 
 const CAB_STATE = {
   running: { label: 'Running',   dot: '#22C55E', tone: 'text-emerald-400', soft: 'rgba(34,197,94,.14)',  bd: 'rgba(34,197,94,.30)' },
@@ -15495,6 +15496,9 @@ let cabSort = { key: 'state', dir: 1 };
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
+/* Твої рядки з accounts_mapping, яким не знайшлось живого кабінета.
+   Потрібні рівно в одному місці — у селекті ручної прив'язки. */
+let cabFree = [];
 
 /* Витрати за вибраний період: номер кабінета — сума. Окремо від
    cabFb, бо це інша таблиця й інша доля: fb_spend_daily могло ще не
@@ -15506,29 +15510,8 @@ let cabDays = {}, cabDaysErr = '';
    записано те, чого Facebook не знає й ніколи не скаже. */
 let cabTokens = {};
 
-/* Ця сторінка — про кабінети, які бачить токен. Решта, заведена колись
-   руками й нічим не підтверджена, за замовчуванням не показується: вона
-   не оновлюється, нічого про себе не знає, і єдине, що робить у списку
-   — розбавляє його рядками, яким не можна вірити.
-
-   «Бачить токен» означає «бачив хоч раз»: кабінет, який зник, лишається
-   тут із позначкою gone. Саме заради цього й ставиться missing_since —
-   щоб зникле не зникало ще й з екрана.
-
-   Ховати мовчки не можна, тому над таблицею стоїть рядок із кількістю
-   схованих і кнопкою. Вибір запамʼятовується. */
-let cabShowOld = false;
-try { cabShowOld = localStorage.getItem('cab_show_old') === '1'; } catch (e) {}
-
 const cabEsc = v => String(v == null ? '' : v)
   .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-
-window.cabToggleOld = function (on) {
-  cabShowOld = on === undefined ? !cabShowOld : !!on;
-  try { localStorage.setItem('cab_show_old', cabShowOld ? '1' : '0'); } catch (e) {}
-  cabSel = null;
-  cabRender();
-};
 
 /* ── за який період дивимось витрати ──
 
@@ -16059,10 +16042,7 @@ function cabWhy(c) {
   const st = String(c.row.status || 'active').toLowerCase();
   if (st === 'ban' || st === 'problem')
     return { mark: '\u270E', text: 'Set by hand' + (c.fb ? ', Facebook says ' + c.fb.status : '') };
-  if (c.gone) return { mark: '\u270E', text: 'The token no longer sees this cabinet \u2014 '
-    + 'everything here is the last thing it saw, on ' + String(c.fb.missing_since).slice(0, 10) };
-  if (c.fb) return { mark: '\u27F3', text: 'Facebook: ' + (c.fb.status || '') };
-  return { mark: '\u270E', text: 'Guessed from reports — no token sees this one' };
+  return { mark: '\u27F3', text: 'Facebook: ' + (c.fb.status || '') };
 }
 
 function cabSetGroup(v) { cabGroup = v; cabRender(); }
@@ -16103,11 +16083,7 @@ function cabSortBy(k) {
 function cabMake(row, fb, id, f) {
   const x = f.map[id] || { spend: 0, first: '', last: '', byDay: {} };
   const state = cabStateOf(row, f, fb);
-  /* Токен перестав його бачити — дані заморожені на останньому відомому.
-     Показувати такий рядок серед живих означало б видавати вчорашнє за
-     сьогоднішнє, тож він переїжджає до тих, кого токен не бачить. */
-  const gone = !!(fb && fb.missing_since);
-  return { row, fb, gone, id, x, state, tok: cabFromToken(fb),
+  return { row, fb, id, x, state, tok: cabFromToken(fb),
            silent: (state === 'silent' && x.last) ? cabDayDiff(x.last, f.lastDay) : 0,
            age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
 }
@@ -16119,27 +16095,34 @@ function cabRender() {
 
   const f = cabFacts();
 
-  // ── злиття джерел ──
-  const taken = new Set();
-  cabAll = cabRows.map(r => {
-    const id = String(r.account_id || '').trim();
+  /* ── злиття джерел ──
+
+     Рядки народжує ТІЛЬКИ Facebook. accounts_mapping до них
+     приклеюється: спершу покажчик «номер кабінета — твій рядок», далі
+     кожен живий кабінет забирає свій.
+
+     Номер для грошей беремо з ТВОГО рядка, коли він є: daily_stats
+     ведеться за твоїм підписом, а не за номером Facebook, і підмінити
+     одне іншим означало б загубити історію витрат усім, у кого підпис
+     не збігається з номером. */
+  const mineBy = new Map();
+  cabRows.forEach(r => {
     const fb = cabFbFor(r);
-    if (fb) taken.add(String(fb.account_id));
-    return cabMake(r, fb, id, f);
+    if (fb) mineBy.set(String(fb.account_id), r);
   });
-  /* Accountи, які бачить токен, а у твоєму списку їх немає. Це не
-     помилка й не вимагає дії: видали системному юзеру — і він тут же
-     з'явився. Раніше кожен такий доводилось заводити руками, і саме
-     через це список і розходився з дійсністю. */
-  cabFb.forEach(a2 => {
-    const id = String(a2.account_id);
-    // Уже зчепили — або такий підпис у списку вже є. Друге майже
-    // неможливе після точного збігу вище, але два рядки з однаковим
-    // id ламали б вибір у бічній панелі, а це надто дорога ціна за
-    // рядок коду, якого тут немає.
-    if (taken.has(id) || cabAll.some(c => c.id === id)) return;
-    cabAll.push(cabMake({ account_id: id, _new: true }, a2, id, f));
-  });
+  cabAll = cabFb
+    // Зниклий кабінет — не живий кабінет.
+    .filter(a2 => !a2.missing_since)
+    .map(a2 => {
+      const row = mineBy.get(String(a2.account_id));
+      const id = row ? String(row.account_id || '').trim() : String(a2.account_id);
+      return cabMake(row || { account_id: String(a2.account_id), _new: true }, a2, id, f);
+    });
+  /* Твої рядки, які не зчепились із жодним живим кабінетом. Самі по
+     собі вони більше не показуються, але прив'язати їх руками треба
+     вміти: інакше агент і нотатка, записані під власним підписом,
+     ніколи не доїдуть до кабінета. */
+  cabFree = cabRows.filter(r => !cabFbFor(r));
   const all = cabAll;
 
   // ── плитки-лічильники, вони ж фільтр ──
@@ -16185,36 +16168,14 @@ function cabRender() {
   const inFilter = c => !cabFilter ? true
     : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
     : c.state === cabFilter;
-  /* Account належить цій сторінці, якщо токен бачить його ЗАРАЗ.
-     Зниклий (gone) — це теж старий кабінет: його дані заморожені на
-     останньому, що встиг побачити токен, і серед живих вони брешуть
-     свіжістю. Про саме зникнення повідомляє Telegram і стрічка подій,
-     тож мовчазним воно не стає. */
-  const inSrc = c => cabShowOld ? true : (!!c.fb && !c.gone);
   const inText = c => !q || [c.id, c.row.provider_name, c.row.status_note,
             c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,
             c.tok.agent, c.tok.browser, c.tok.bm, c.tok.label,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q));
-  let shown = all.filter(c => inFilter(c) && inSrc(c) && inText(c));
+  let shown = all.filter(c => inFilter(c) && inText(c));
 
   cabFbNote();
-
-  /* Скільки кабінетів заховано й чому. Ховати мовчки не можна: людина
-     мусить знати, що список неповний, і мати змогу подивитись одним
-     рухом. */
-  /* Рахуємо по тому ж зрізу, що й таблицю. Інакше рядок обіцяв би
-     показати пʼять, фільтр пропускав би одного, і число під заголовком
-     сперечалося б із тим, що під ним видно. */
-  const nOld = all.filter(c => inFilter(c) && inText(c) && (!c.fb || c.gone)).length;
-  const oldNote = !nOld ? '' : cabShowOld
-    ? `<p class="cab-gone-note is-open" onclick="cabToggleOld(false)">
-        ${nOld} cabinet(s) below are not seen by any token right now —
-        the numbers there are frozen or come from reports, not from Facebook.
-        <span>Hide</span></p>`
-    : `<p class="cab-gone-note" onclick="cabToggleOld(true)">
-        ${nOld} cabinet(s) are hidden: no token sees them right now.
-        <span>Show</span></p>`;
 
   /* Коли востаннє ходили в Facebook — просто на кнопці. Окремий рядок
      під нею читали б раз і забували, а тут воно перед очима щоразу,
@@ -16256,34 +16217,20 @@ function cabRender() {
       : !cabFb.length
         ? 'No token sees any cabinet yet — add one in Settings, then press Sync now'
       : 'Nothing here';
-    list.innerHTML = oldNote
-      + `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
+    list.innerHTML =
+      `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     cabDetail(null);
     return;
   }
 
-  /* Дві секції потрібні лише тоді, коли показуємо й чужих: у них різні
-     набори колонок, бо про кабінет без токена ми не знаємо нічого
-     всередині. Поки список однорідний — одна таблиця без заголовка. */
-  const mine = shown.filter(c => c.fb);
-  const theirs = shown.filter(c => !c.fb);
-  const body = theirs.length
-    ? cabSection(mine, true) + cabSection(theirs, false)
-    : cabSection(mine, true, true);
-  /* Закрито — рядок згори: список неповний, і знати про це треба
-     ДО того, як у ньому щось шукають. Відкрито — донизу: своє він уже
-     сказав, а «Hide» над таблицею лише відсуває її вниз щоразу. */
-  list.innerHTML = cabShowOld ? body + oldNote : oldNote + body;
+  list.innerHTML = cabSection(shown);
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
 }
 
-/* Одна секція = заголовок + таблиця. Колонки в секціях РІЗНІ, і це
-   головне, заради чого список поділено: скільки живих кампаній у
-   кабінета, якого не бачить жоден токен, не знає ніхто. Показувати там
-   стовпчик із прочерками означало б робити вигляд, що відповідь десь є
-   і ми її просто не дістали. */
-function cabSection(items, hasFb, bare) {
+/* Таблиця. Набір колонок один — секцій більше немає, бо ділити стало
+   нічого: усе в списку однаково живе й однаково повне. */
+function cabSection(items) {
   if (!items.length) return '';
 
   const arrow = k => cabSort.key === k ? (cabSort.dir < 0 ? ' ↓' : ' ↑') : '';
@@ -16313,28 +16260,17 @@ function cabSection(items, hasFb, bare) {
   const groups = {};
   sorted.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
 
-  const COLS = hasFb ? 11 : 7;
-  /* «Live» лише тоді, коли живе справді все. Один заморожений рядок
-     під таким заголовком — і заголовок починає брехати за нього. */
-  const anyGone = items.some(c => c.gone);
-  const head = `<div class="cab-sec">
-      <span class="cab-sec-name ${hasFb && !anyGone ? 'is-live' : ''}">${
-        hasFb ? (anyGone ? 'From Facebook' : 'Live from Facebook') : 'No token sees these'}</span>
-      <span class="cab-sec-sub">${items.length} · ${
-        hasFb ? (cabFbAt() ? 'updated ' + cabAgo(cabFbAt()) : 'never synced')
-              : 'state guessed from reports'}</span>
-    </div>`;
+  const COLS = 11;
 
-  return (bare ? '' : head) + `<table class="cab-tbl">
+  return `<table class="cab-tbl">
     <thead><tr>
       ${th('state', 'State')}
       ${th('id', 'Account')}
       ${th('agent', 'Agent')}
-      ${hasFb ? `
       <th class="ta-c" title="Campaigns that actually deliver: switched on AND with a live ad inside">Camp</th>
       <th class="ta-c" title="Ad sets that actually deliver: switched on AND with a live ad inside">Sets</th>
       <th class="ta-c" title="Ads running right now">Ads</th>
-      ${th('today', cabEsc(cabRangeLabel()), 'ta-r')}` : ''}
+      ${th('today', cabEsc(cabRangeLabel()), 'ta-r')}
       ${th('spend', 'Spend', 'ta-r')}
       ${th('age', 'Days', 'ta-r')}
       ${th('last', 'Last spend', 'ta-r')}
@@ -16345,12 +16281,12 @@ function cabSection(items, hasFb, bare) {
           <span class="cab-grp-name">${g}</span>
           <span class="cab-grp-sub">${list2.length} · ${list2.filter(i => i.state === 'running').length} running ·
             ${cabMoney(list2.reduce((a2, i) => a2 + i.x.spend, 0))}</span></td></tr>` : '';
-      return gh + list2.map(c => cabRowHtml(c, hasFb)).join('');
+      return gh + list2.map(cabRowHtml).join('');
     }).join('')}
     </tbody></table>`;
 }
 
-function cabRowHtml(c, hasFb) {
+function cabRowHtml(c) {
   const S = CAB_STATE[c.state];
   const n = cabCounts(c.fb);
   const why = cabWhy(c);
@@ -16369,9 +16305,8 @@ function cabRowHtml(c, hasFb) {
   /* Прочерк тут означає рівно «нуль за цей період», і нічого більше.
      Коли ми взагалі не знаємо — історії ще немає — показуємо знак
      питання: це різні відповіді, і плутати їх не можна. */
-  const inRange = c.fb ? cabSpendIn(c.fb) : null;
-  const today = !c.fb ? '<span class="cab-na">—</span>'
-    : inRange == null ? '<span class="cab-na" title="No spend history yet — see the note above the tiles">?</span>'
+  const inRange = cabSpendIn(c.fb);
+  const today = inRange == null ? '<span class="cab-na" title="No spend history yet — see the note above the tiles">?</span>'
     : inRange > 0 ? cabMoneyCur(inRange, c.fb.currency)
     : '<span class="cab-na">—</span>';
   return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
@@ -16385,9 +16320,7 @@ function cabRowHtml(c, hasFb) {
         : c.tok.browser
           ? `<span class="cab-chip is-auto" title="Browser from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.browser)}</span>`
           : ''}
-      <span class="cab-src ${c.fb && !c.gone ? 'is-live' : ''}" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
-      ${c.gone ? `<span class="cab-chip is-gone" title="The token stopped seeing this cabinet on ${
-        cabEsc(String(c.fb.missing_since).slice(0, 10))} — the numbers below are the last ones it saw">gone</span>` : ''}
+      <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       ${(() => { const w = cabIssueWhy(c); return w
         ? `<span class="cab-chip is-gone" title="${cabEsc(w.tip)}">${cabEsc(w.text)}</span>` : ''; })()}
       ${c.fb && String(c.fb.status) === 'unknown' ? `<span class="cab-chip is-auto" title="Facebook returned a status code this dashboard does not know yet. It is not treated as a problem \u2014 the state below comes from the money.">status unknown</span>` : ''}
@@ -16402,10 +16335,10 @@ function cabRowHtml(c, hasFb) {
       : c.tok.agent
         ? `<span class="cab-auto" title="Agent from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.agent)}</span>`
         : '—'}</td>
-    ${hasFb ? numTip(n && n.campaigns, [cabOnTip(c.fb, 'campaigns'), cabByStatus(c.fb.campaigns_by_status)].filter(Boolean).join(' \u2014 '))
-            + numTip(n && n.adsets, [cabOnTip(c.fb, 'adsets'), cabByStatus(c.fb.adsets_by_status)].filter(Boolean).join(' \u2014 '))
-            + numTip(n && n.ads, cabByStatus(c.fb.ads_by_status))
-            + `<td class="ta-r cab-num cab-today">${today}</td>` : ''}
+    ${numTip(n && n.campaigns, [cabOnTip(c.fb, 'campaigns'), cabByStatus(c.fb.campaigns_by_status)].filter(Boolean).join(' \u2014 '))}
+    ${numTip(n && n.adsets, [cabOnTip(c.fb, 'adsets'), cabByStatus(c.fb.adsets_by_status)].filter(Boolean).join(' \u2014 '))}
+    ${numTip(n && n.ads, cabByStatus(c.fb.ads_by_status))}
+    <td class="ta-r cab-num cab-today">${today}</td>
     <td class="ta-r cab-num">${c.x.spend > 0 ? cabMoney(c.x.spend) : '<span class="cab-na">—</span>'}</td>
     <td class="ta-r cab-num">${c.age || '<span class="cab-na">—</span>'}</td>
     <td class="ta-r cab-dim">${c.x.last || '—'}</td>
@@ -16475,7 +16408,7 @@ function cabDetail(c) {
     </div>`;
 
   // ── що каже Facebook ──
-  const fbBlock = !c.fb ? '' : `<div class="cab-fb">
+  const fbBlock = `<div class="cab-fb">
       <p class="cab-fb-head">Facebook<span>${cabFbAt() ? cabAgo(cabFbAt()) : 'never synced'}</span></p>
       <div class="grid grid-cols-2 gap-2">
         ${(() => {
@@ -16513,6 +16446,20 @@ function cabDetail(c) {
      існує. Заводимо його одним натисканням, а не змушуємо йти в іншу
      вкладку й переписувати номер руками. */
   if (c.row._new) {
+    /* Твої рядки, які не дістались жодного живого кабінета. Здебільшого
+       це той самий кабінет під власним підписом, який автоматика не
+       впізнала: підпис свій, а Facebook знає його під номером. Завести
+       новий рядок замість того, щоб причепити старий, означало б
+       залишити агента й нотатку висіти в порожнечі. */
+    const link = (!cabFree.length || !cabCols.fb_account_id) ? ''
+      : `<label class="block text-[9px] font-black uppercase tracking-widest mb-1 mt-3"
+              style="color:var(--text-muted)">Or link a row you already have</label>
+         <select onchange="cabLinkTo(this.value, '${esc(c.fb.account_id)}')"
+           class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500">
+           <option value="">${cabFree.length} row(s) not linked to any cabinet</option>
+           ${cabFree.map(r => `<option value="${esc(r.id)}">${
+             esc(r.account_id)}${r.provider_name ? ' \u00b7 ' + esc(r.provider_name) : ''}</option>`).join('')}
+         </select>`;
     box.innerHTML = `<div class="card p-4 rounded-2xl">
       ${head}${fbBlock}
       <p class="text-[10px] font-bold mt-3 mb-2" style="color:var(--text-muted)">
@@ -16521,6 +16468,7 @@ function cabDetail(c) {
       <button onclick="cabAdopt('${enc}')"
         class="w-full px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
                bg-violet-600 text-white hover:brightness-110">Add to my list</button>
+      ${link}
     </div>`;
     return;
   }
@@ -16551,28 +16499,6 @@ function cabDetail(c) {
       style="border:1px solid rgba(139,92,246,.35)"
       title="${cabEsc(c.tok.label)}">Fill ${fillable.length} field(s) from the token name</button>`;
 
-  /* Ручна прив'язка. Потрібна лише тоді, коли автоматика не впоралась:
-     підпис кабінета в тебе свій, а Facebook знає його під номером.
-     Показуємо тільки там, де є що прив'язувати, — інакше це просто ще
-     один порожній селект на панелі. */
-  /* Що можна прив'язати. «Вільний» тут означає «не причеплений до
-     ЖОДНОГО твого рядка» — синтетичні рядки, які сторінка намалювала з
-     самого Facebook, не рахуються. Інакше вийшло б навпаки до потреби:
-     кабінет, що приїхав із токена сам, ніколи не можна було б зчепити з
-     твоїм записом, а це і є найчастіший випадок. */
-  const free = cabFb.filter(x => !cabAll.some(y =>
-    y.fb && !y.row._new && String(y.fb.account_id) === String(x.account_id)));
-  const linkBlock = (c.fb || !cabFb.length || !free.length) ? ''
-    : cabCols.fb_account_id
-      ? `<label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Facebook cabinet</label>
-         <select onchange="cabLinkTo('${c.row.id}',this.value)"
-           class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500 mb-3">
-           <option value="">— not linked —</option>
-           ${free.map(x => `<option value="${esc(x.account_id)}">${esc(x.name || x.account_id)} · ${esc(x.account_id)}</option>`).join('')}
-         </select>`
-      : `<p class="text-[10px] font-bold mb-3" style="color:var(--text-muted)">
-           ${free.length} cabinet(s) from the token match nothing here. To link them by hand, add the column:
-           <span class="font-mono">alter table public.accounts_mapping add column if not exists fb_account_id text;</span></p>`;
 
   box.innerHTML = `<div class="card p-4 rounded-2xl">
     ${head}
@@ -16599,7 +16525,6 @@ function cabDetail(c) {
     ${c.fb && CAB_FB_STATE[String(c.fb.status || '')] ? `<p class="cab-fb-warn mb-3">
         Facebook says this one is ${esc(c.fb.status)} — the buttons above cannot undo that.</p>` : ''}
 
-    ${linkBlock}
     ${fillBtn}
     ${CAB_EXTRA.map(field).join('')}
 
