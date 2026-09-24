@@ -319,8 +319,14 @@ async function listComments(token: string, posts: Map<string, Post>,
     seen++;
     const pageId = pageOf(story);
     /* Відмову, яку ми вже вміємо пояснити, не повторюємо в Facebook:
-       він відповість тим самим, а часу це коштує. */
-    const known = whyDenied(pageId, mine.get(pageId)?.name || '', mine, listFailed);
+       він відповість тим самим, а часу це коштує.
+
+       Але тільки коли список Сторінок у нас справді є. Якщо /me/accounts
+       не відповів, ми не знаємо нічого — і зробити з незнання висновок
+       «доступу немає» означало б не спробувати там, де все працювало б.
+       Це різні речі, і плутати їх не можна: у токена може бракувати
+       pages_show_list і водночас вистачати прав на самі коментарі. */
+    const known = listFailed ? '' : whyDenied(pageId, '', mine, '');
     if (known) { note(pageId, mine.get(pageId)?.name || '', known); continue; }
     try {
       const pg = await pageToken(token, pageId, cache);
