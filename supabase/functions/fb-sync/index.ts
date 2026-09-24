@@ -130,7 +130,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-24.4';
+const FN_VERSION = '2026-09-24.6';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1095,6 +1095,48 @@ const PROBE_RE = /limit|cap|balance|threshold|bill|prepay|fund|credit|spen|daily
    живий, список кабінетів є, читати ЦЕЙ кабінет не дають» коштує
    чотири запити й відповідає на питання, на яке сам Facebook
    відповідати не хоче. */
+/* ПОЛЯ, ЗА ЯКІ ПИТАЮТЬ, А ЇХ У СПИСКУ НЕМАЄ.
+
+   Офіційний перелік полів AdAccount — 77 назв (facebook-python-business-sdk,
+   adobjects/adaccount.py). Серед них НЕМАЄ ні adtrust_dsl, ні жодного
+   поля зі словом threshold. Є натомість is_prepay_account,
+   min_daily_budget і funding_source_details.
+
+   Але «немає в SDK» не дорівнює «Graph не віддасть»: частина полів
+   існує й читається, просто не документована. Сперечатись про це
+   дешевше не виходить — тому питаємо Facebook напряму, поодинці, і
+   записуємо, що він відповів на кожне. Поодинці навмисно: у пакеті
+   одна невідома назва валить увесь запит і ховає решту. */
+const WANTED = [
+  'adtrust_dsl',                  // денна стеля, яку ставить сам Facebook
+  'is_prepay_account',            // передплачений кабінет чи картковий
+  'min_daily_budget',
+  'min_campaign_group_spend_cap',
+  'funding_source_details',
+  'next_bill_date',
+  'billing_threshold',            // те, що просять; у списку його нема
+  'threshold_amount',
+  'prepay_balance',
+  'prepay_account_balance'
+];
+
+type Wanted = { name: string; ok: boolean; value?: Json; note?: string };
+
+async function askWanted(t: TokenRow, actId: string): Promise<Wanted[]> {
+  const out: Wanted[] = [];
+  for (const n of WANTED) {
+    try {
+      const j = await graph('/act_' + actId, t.token, { fields: n });
+      out.push(n in j
+        ? { name: n, ok: true, value: j[n] }
+        : { name: n, ok: false, note: 'accepted the name but sent nothing back' });
+    } catch (e) {
+      out.push({ name: n, ok: false, note: (e as Error).message });
+    }
+  }
+  return out;
+}
+
 type Rung = { step: string; ok: boolean; note: string };
 
 async function probeAccount(t: TokenRow, actId: string, ladder: Rung[]): Promise<Json> {
@@ -1116,9 +1158,25 @@ async function probeAccount(t: TokenRow, actId: string, ladder: Rung[]): Promise
     () => graph('/act_' + actId, t.token, { fields: 'id,name' }));
   if (basic) out.name = basic.name;
 
+  /* БЕЗ fields. Саме через нього інтроспекція й мовчала: metadata=1
+     описує рівно ті поля, які попросили, а ми просили одне «id» — і
+     отримували опис одного поля замість переліку всіх. Сходи чесно
+     казали «ok», бо запит і справді проходив; порожнім був результат.
+
+     Без fields Graph віддає перелік усього вузла — заради чого цей
+     щабель і писався. */
   const meta = await rung('ask it to describe its own fields (metadata)',
-    () => graph('/act_' + actId, t.token, { metadata: 1, fields: 'id' }));
+    () => graph('/act_' + actId, t.token, { metadata: 1 }));
   const fields: Json[] = Array.isArray(meta?.metadata?.fields) ? meta.metadata.fields : [];
+
+  /* Запит пройшов, а переліку немає — це теж відмова, просто тиха.
+     Лишити щабель зеленим означало б сказати «метадані є», коли їх
+     нема, і наступний, хто читатиме сходи, шукатиме біду не там. */
+  if (meta && !fields.length) {
+    const last = ladder[ladder.length - 1];
+    if (last && last.ok && /metadata/.test(last.step))
+      last.note = 'answered, but named no fields';
+  }
 
   if (!fields.length) {
     /* Метаданих немає — але це ще не кінець. Пробуємо ті поля, які
@@ -1131,6 +1189,7 @@ async function probeAccount(t: TokenRow, actId: string, ladder: Rung[]): Promise
       out.known = {};
       known.forEach(n => { if (n in j) out.known[n] = j[n]; });
     }
+    out.wanted = await askWanted(t, actId);
     return out;
   }
   out.total_fields = fields.length;
@@ -1167,6 +1226,9 @@ async function probeAccount(t: TokenRow, actId: string, ladder: Rung[]): Promise
 
   out.fields = hits.map(f => (f.name in value ? { ...f, value: value[f.name] } : f));
   out.unreadable = failed.slice(0, 10);
+  /* Навіть коли перелік приїхав, питаємо окремо: метадані показують
+     те, що вузол про себе РОЗПОВІДАЄ, а не те, що він віддає. */
+  out.wanted = await askWanted(t, actId);
   return out;
 }
 

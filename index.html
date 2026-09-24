@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 20:20">
+  <meta name="build" content="build 24.09 20:45">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3669,7 +3669,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:45</div>
     </div>
   </aside>
 
@@ -14867,7 +14867,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.4';
+const FB_FN_WANT = '2026-09-24.6';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -15009,6 +15009,19 @@ window.fbProbe = async function () {
                  + (j.name ? '   ' + j.name : '') + '\n\n' : '')
       + (steps ? steps + '\n' : '');
 
+    /* Поіменне опитування. Офіційний список полів AdAccount їх не
+       містить, тож єдина чесна відповідь на «а чи є ліміт і поріг» —
+       спитати Facebook про кожну назву й записати, що він сказав. */
+    const wantedTxt = () => {
+      const w = j.wanted || [];
+      if (!w.length) return '';
+      return '\n\nasked for by name:\n' + w.map(r => (r.ok ? '  ok   ' : '  no   ')
+        + r.name.padEnd(30)
+        + (r.ok ? (r.value === null ? 'null' : typeof r.value === 'object'
+              ? JSON.stringify(r.value) : String(r.value))
+           : (r.note || ''))).join('\n');
+    };
+
     if (j.error) return show(top + '\n' + j.error, true);
     /* Метаданих не дали, але звичні поля приїхали — значить закрито
        інтроспекцію, а не кабінет, і ліміт із балансом у нас усе одно є. */
@@ -15017,7 +15030,7 @@ window.fbProbe = async function () {
         ? '\n\nthe fields we already use:\n'
           + Object.entries(j.known).map(([k, v]) => '  ' + k.padEnd(20) + JSON.stringify(v)).join('\n')
         : '';
-      return show(top + known, !j.known);
+      return show(top + known + wantedTxt(), !j.known && !(j.wanted || []).length);
     }
     const head = top + '\n' + j.total_fields + ' fields on this node, ' + j.matched + ' look relevant\n\n';
     const rows = (j.fields || []).map(f => {
@@ -15033,7 +15046,7 @@ window.fbProbe = async function () {
          випадок, коли шукане поле не влучило у відбір: тоді видно, що
          воно все-таки є, і його можна попросити окремо. */
       + ((j.all && j.all.length) ? '\n\nall fields on this node:\n' + j.all.join(' ') : '');
-    show(head + (rows || 'nothing matched') + tail);
+    show(head + (rows || 'nothing matched') + wantedTxt() + tail);
   } catch (e) {
     const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
     show(e.code === 'missing' || net
@@ -16230,6 +16243,18 @@ const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
 const CAB_CUR = { USD: '$', EUR: '\u20AC', GBP: '\u00A3', UAH: '\u20B4' };
 /* Валюту беремо з кабінета, а не з дашборда: долар на євровому
    кабінеті — це не округлення, це інше число. */
+/* Округлення до цілого доречне для спенду: там сотні й тисячі, а
+   копійки — шум. Для балансу навпаки: 2.09 PLN, стиснуті до «2 PLN»,
+   втрачають рівно те, заради чого на них дивляться. Тому тут копійки
+   показуємо — і тільки коли вони є. */
+function cabMoneyExact(n, cur) {
+  const x = Number(n) || 0;
+  const v = Number.isInteger(x) ? x.toLocaleString('en-US')
+    : x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = CAB_CUR[cur];
+  return sign ? sign + v : v + (cur ? ' ' + cur : '');
+}
+
 function cabMoneyCur(n, cur) {
   const v = Math.round(Number(n) || 0).toLocaleString('en-US');
   const sign = CAB_CUR[cur];
@@ -16288,7 +16313,7 @@ async function cabInit() {
    не буде, поки не виконаєш ALTER. Решта працює. */
 const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_today,'
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
-  + 'amount_spent,sync_error,synced_at,business_name,token_id';
+  + 'amount_spent,spend_cap,balance,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
   + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
 
@@ -16980,6 +17005,38 @@ function cabWhyNot(fb) {
   return `<p class="${bad ? 'cab-fb-warn' : 'cab-fb-note'}">${n} ad(s) not running: ${cabEsc(rest)}</p>`;
 }
 
+/* ЛІМІТ. spend_cap — це стеля витрат кабінета, і нуль у ній означає
+   не «нуль грошей», а «стелі немає». Показати нуль як «$0» — найгірше,
+   що тут можна зробити: живий кабінет виглядав би вичерпаним. Тому
+   нуль ми пишемо словом.
+
+   Порожнє поле — теж не нуль: це «Facebook не сказав». Здебільшого
+   так буває, коли токен не має прав на цей кабінет, і сплутати його з
+   «ліміту немає» значить збрехати рівно навпаки. */
+function cabCapCell(fb, cell) {
+  if (!('spend_cap' in fb) || fb.spend_cap == null)
+    return cell('Limit', '\u2014', 'Facebook did not say \u2014 usually means this token may not read it');
+  if (!Number(fb.spend_cap))
+    return cell('Limit', 'none', 'No spending limit is set on this cabinet');
+  return cell('Limit', cabMoneyExact(fb.spend_cap, fb.currency),
+              'The account spending limit set in Facebook');
+}
+
+/* БАЛАНС, і одразу застереження, бо слово оманливе. Facebook зве цим
+   полем суму, яку вже нарахували й ще не списали — тобто БОРГ. Це не
+   передплачений залишок, який видно в Ads Manager: там своє число, і
+   воно з цим не збігається. Спутати їх легко й дорого — «баланс 2»
+   прочитається як «залишилось два», а насправді це «винні два».
+
+   Тому підказка каже прямо, чим це НЕ є. */
+function cabBalCell(fb, cell) {
+  if (!('balance' in fb) || fb.balance == null)
+    return cell('Balance', '\u2014', 'Facebook did not say');
+  return cell('Balance', cabMoneyExact(fb.balance, fb.currency),
+              'Billed and not yet paid \u2014 money owed. This is not the prepaid '
+              + 'balance shown in Ads Manager.');
+}
+
 function cabDetail(c) {
   const box = document.getElementById('cab-detail');
   if (!box) return;
@@ -17037,6 +17094,8 @@ function cabDetail(c) {
           cell('Card', esc(c.fb.card || '—')
             + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
             c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : '')}
+        ${cabCapCell(c.fb, cell)}
+        ${cabBalCell(c.fb, cell)}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}
