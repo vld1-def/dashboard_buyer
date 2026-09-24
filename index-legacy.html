@@ -2305,6 +2305,7 @@ async function sbFetchAll(table, build) {
 
   await loadCreativeStars();
   await loadCreativeTags();
+  await loadReportTags();
   crPopulateTagFilter();
 
   if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
@@ -3170,6 +3171,45 @@ function crSidebarRow(c, qEsc, gEsc, dEsc) {
 // жив у них, його довелось би дублювати всюди, а нові імпорти приходили б
 // без нього. Так само, як зірочки, лежить у team_settings — міграція не
 // потрібна, а обсяг мізерний: унікальних крео близько сотні на команду.
+/* ═══════════ МІТКИ ЗВІТІВ ═══════════
+
+   Тег креатива і мітка дня — різні речі, і зводити їх в один словник
+   не можна: «Mbank_KG» описує крео й живе з ним місяцями, а «залив» чи
+   «проблема» описують ДЕНЬ і до креатива стосунку не мають.
+
+   Тому два сховища. Теги креативів лишаються там, де були
+   (team_settings.creative_tags), а мітки звітів лягають поруч під
+   своїм ключем. Колонки в daily_reports не заводимо: у звітів своєї
+   схеми тут узагалі немає, вони читаються select('*'), і додавати
+   ALTER заради списку рядків означало б вимагати похід у SQL перед
+   тим, як щось запрацює. */
+let rpTags = {};          // { report_id: [мітки] }
+
+async function loadReportTags() {
+  try { rpTags = JSON.parse(await getTeamSetting('report_tags') || '{}') || {}; }
+  catch (e) { rpTags = {}; }
+}
+async function saveReportTags() {
+  try { await setTeamSetting('report_tags', JSON.stringify(rpTags)); }
+  catch (e) { console.warn('Не вдалось зберегти мітки звіту:', e.message); }
+}
+const rpTagsOf = id => rpTags[id] || [];
+const rpAllTags = () => [...new Set(Object.values(rpTags).flat())].sort((a, b) => a.localeCompare(b, 'uk'));
+
+function rpAddTag(id, tag) {
+  const t = String(tag || '').trim();
+  if (!id || !t) return;
+  const list = rpTagsOf(id);
+  if (list.some(x => x.toLowerCase() === t.toLowerCase())) return;
+  rpTags[id] = [...list, t];
+  saveReportTags(); renderReports();
+}
+function rpRemoveTag(id, tag) {
+  rpTags[id] = rpTagsOf(id).filter(x => x !== tag);
+  if (!rpTags[id].length) delete rpTags[id];
+  saveReportTags(); renderReports();
+}
+
 let crTags = {};          // { cid: [теги] }
 let crGroupTags = false;  // режим «папок»
 
@@ -3204,6 +3244,47 @@ function crAddTagFromInput() {
   if (!el || !el.value.trim() || !currentCreativeID) return;
   const v = el.value; el.value = '';
   crAddTag(currentCreativeID, v);
+}
+
+/* Поповер тегів креатива, викликаний із тексту звіту.
+
+   Малюється в body, а не всередині звіту: тіло звіту
+   contenteditable, і будь-яке поле введення в ньому одразу стає
+   частиною тексту, який редагують. */
+let rpPopCid = '';
+function rpTagPop(ev, cid) {
+  rpPopClose();
+  rpPopCid = cid;
+  const box = document.createElement('div');
+  box.id = 'rp-tag-pop';
+  box.className = 'rp-pop';
+  const r = ev.target.getBoundingClientRect();
+  box.style.left = Math.min(r.left, window.innerWidth - 260) + 'px';
+  box.style.top = (r.bottom + 6) + 'px';
+  box.onclick = e => e.stopPropagation();
+  box.onmousedown = e => e.stopPropagation();
+  document.body.appendChild(box);
+  rpPopPaint();
+  document.getElementById('rp-tag-in')?.focus();
+  setTimeout(() => document.addEventListener('click', rpPopClose, { once: true }), 0);
+}
+function rpPopClose() {
+  document.getElementById('rp-tag-pop')?.remove();
+}
+function rpPopPaint() {
+  const box = document.getElementById('rp-tag-pop');
+  if (!box) return;
+  const cid = rpPopCid;
+  const list = crTagsOf(cid);
+  const q = String(cid).replace(/'/g, "\\'");
+  box.innerHTML = `<p class="rp-pop-head">${escapeHtml(cid)}</p>
+    <div class="rp-pop-chips">${list.length
+      ? list.map(t => `<span class="rp-chip">${escapeHtml(t)}<button
+          onclick="crRemoveTag('${q}','${t.replace(/'/g, "\\'")}');rpPopPaint();renderReports()">\u2715</button></span>`).join('')
+      : '<span class="rp-pop-none">no tag yet</span>'}</div>
+    <input id="rp-tag-in" list="cr-tag-all" placeholder="tag and Enter"
+      onkeydown="if(event.key==='Enter'){crAddTag('${q}',this.value);this.value='';rpPopPaint();renderReports();}
+                 if(event.key==='Escape')rpPopClose()">`;
 }
 
 // Чипи тегів на картці обраного креатива
@@ -4622,13 +4703,20 @@ function renderReports() {
     return;
   }
 
-  container.innerHTML = filtered.sort((a,b) => new Date(b.date) - new Date(a.date)).map(r => `
+  container.innerHTML = `<datalist id="rp-tag-all">${
+      rpAllTags().map(t => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>`
+    + filtered.sort((a,b) => new Date(b.date) - new Date(a.date)).map(r => `
     <div class="p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
       <div onclick="toggleReportVisibility('${r.id}')" class="flex justify-between items-center cursor-pointer hover:bg-white/5 p-1 rounded-xl transition text-muted-dynamic">
         <div class="flex items-center gap-2">
           <span id="report-arrow-${r.id}" class="text-[8px] text-blue-500 transition-transform duration-200" style="transform: rotate(-90deg)">▼</span>
           <span class="text-[10px] font-black uppercase text-blue-500 tracking-widest">${normalizeDate(r.date)}</span>
           ${r.images && r.images.length ? `<span class="img-count-badge">🖼 ${r.images.length}</span>` : ''}
+          <span class="rp-tags" onclick="event.stopPropagation()">${
+            rpTagsOf(r.id).map(t => `<span class="rp-chip">${escapeHtml(t)}<button
+              onclick="rpRemoveTag('${r.id}','${t.replace(/'/g, "\\'")}')">\u2715</button></span>`).join('')
+          }<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
+              onkeydown="if(event.key==='Enter'){rpAddTag('${r.id}',this.value);this.value='';}"></span>
           <span id="report-status-${r.id}" class="status-icon flex items-center ml-2"></span>
         </div>
         <div class="flex items-center gap-1" onclick="event.stopPropagation()">
@@ -4744,18 +4832,73 @@ function closeTaskDetails() {
   currentEditingTaskId = null;
 }
     // --- 2. ПАРСЕР СМАРТ-БЛОКІВ ДЛЯ ЗВІТІВ ---
+/* ═══════════ ЩО ЗНАХОДИМО В ТЕКСТІ ЗВІТУ ═══════════
+
+   Три різні речі, і шукати їх треба ОДНИМ проходом. Якщо ганяти три
+   заміни поспіль, друга полізе в розмітку, яку зробила перша: у
+   посиланні є текст, схожий на номер креатива, а в обробнику картинки
+   лежить URL. Тому спершу всі збіги ховаємо за заглушками, а розмітку
+   підставляємо в самому кінці.
+
+   Підпис до посилання беремо з тексту ПЕРЕД ним, коли там стоїть
+   двокрапка: «Spy: https://…» дає кнопку «Spy». Немає підпису —
+   підписуємо доменом. Голий URL у звіті однаково ніхто не читає, а
+   довжиною він ламає рядок. */
+const RP_URL = /https?:\/\/[^\s<>"']+/gi;
+
+function rpLinkLabel(before, url) {
+  const m = /([^\s|>+!-][^|]{0,24}?)\s*:\s*$/.exec(before || '');
+  if (m) return m[1].trim();
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch (e) { return 'link'; }
+}
+
+// Номери креативів, які справді існують. Порожньо — нічого й не
+// підсвічуємо: вигадувати креативи з будь-якого слова гірше, ніж не
+// підсвітити жодного.
+function rpKnownCids() {
+  const src = (typeof creativesRawData !== 'undefined' && creativesRawData) ? creativesRawData : [];
+  return new Set(src.map(c => String(c.cid || '').trim()).filter(x => x.length >= 4));
+}
+
 function parseReportBlocks(text, images) {
   if (!text) return "";
+  const cids = rpKnownCids();
 
   function injectImgTags(str, imgs) {
-    return escapeHtml(str).replace(/@img(\d+)/gi, (match, num) => {
+    const slots = [];
+    const hide = html => { slots.push(html); return '\u0000' + (slots.length - 1) + '\u0000'; };
+
+    // 1. Посилання — до екранування, бо працюємо з сирим текстом.
+    let raw = String(str).replace(RP_URL, (url, at) => {
+      const label = rpLinkLabel(str.slice(0, at), url);
+      return hide('<a class="rp-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener"'
+        + ' title="' + escapeHtml(url) + '" onclick="event.stopPropagation()"'
+        + ' onmousedown="event.stopPropagation()">' + escapeHtml(label) + '</a>');
+    });
+
+    // 2. Креативи, які є в базі.
+    if (cids.size) raw = raw.replace(/(?<![\u0000\w.-])[A-Za-z0-9][\w.-]{3,}(?![\u0000\w.-])/g, tok => {
+      if (!cids.has(tok)) return tok;
+      const tags = (typeof crTagsOf === 'function' ? crTagsOf(tok) : []) || [];
+      const q = tok.replace(/'/g, "\\'");
+      return hide('<span class="rp-cid" onmousedown="event.preventDefault()"'
+        + ' onclick="event.stopPropagation();rpTagPop(event,\'' + q + '\')"'
+        + ' title="' + (tags.length ? escapeHtml(tags.join(', ')) : 'No tag yet') + ' \u2014 click to tag">'
+        + escapeHtml(tok)
+        + (tags.length ? '<i class="rp-cid-t">' + escapeHtml(tags[0])
+            + (tags.length > 1 ? ' +' + (tags.length - 1) : '') + '</i>' : '<i class="rp-cid-t is-off">+</i>')
+        + '</span>');
+    });
+
+    return escapeHtml(raw).replace(/@img(\d+)/gi, (match, num) => {
       const idx = parseInt(num) - 1;
       const url = imgs && imgs[idx] ? imgs[idx] : null;
       if (url) {
         return `<span class="img-tag" onmouseenter="showImgPreview(event,'${url}','@img${num}')" onmouseleave="hideImgPreview()" onmousedown="event.preventDefault()" onclick="event.stopPropagation();openImgLightbox('${url}','@img${num}')">🖼 @img${num}</span>`;
       }
       return `<span class="img-tag img-tag-empty" title="No photo attached">📎 @img${num}</span>`;
-    });
+    }).replace(/\u0000(\d+)\u0000/g, (m, i) => slots[Number(i)] || '');
   }
 
   function renderLine(l, imgs) {
@@ -6129,7 +6272,8 @@ function exportReports() {
   const lines = [`📋 Daily Reports — ${monthLabel}`, '━'.repeat(40), ''];
   sorted.forEach(r => {
     const dateStr = normalizeDate(r.date);
-    lines.push(`📅 ${dateStr}`);
+    const tg = rpTagsOf(r.id);
+    lines.push(`📅 ${dateStr}${tg.length ? '  [' + tg.join('] [') + ']' : ''}`);
     const content = (r.comment || '').split('\n').map(l => {
       const t = l.trim();
       if (t.startsWith('+')) return `  ✅ ${t.substring(1).trim()}`;
@@ -6167,13 +6311,21 @@ function exportReportsPDF() {
     ? new Date(currentMonthFilter + '-01').toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' })
     : 'Весь час';
 
+  /* Те саме, що на екрані: посилання стає підписаною кнопкою. У
+     друкованому вигляді кнопка без адреси марна, тому adress
+     дописується дрібним через CSS (a[href]:after) — на екрані його
+     не видно, на папері видно. */
+  function links(t) {
+    return t.replace(RP_URL, (url, at) =>
+      '<a class="rp-link" href="' + esc(url) + '">' + esc(rpLinkLabel(t.slice(0, at), url)) + '</a>');
+  }
   function lineToHtml(t) {
     if (!t) return '';
-    if (t.startsWith('+')) return `<div class="line success"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
-    if (t.startsWith('-')) return `<div class="line danger"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
-    if (t.startsWith('!')) return `<div class="line warning"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
-    if (t.startsWith('>')) return `<div class="line plan"><span class="bar"></span>${esc(t.slice(1).trim())}</div>`;
-    return `<div class="line normal">${esc(t)}</div>`;
+    if (t.startsWith('+')) return `<div class="line success"><span class="bar"></span>${links(esc(t.slice(1).trim()))}</div>`;
+    if (t.startsWith('-')) return `<div class="line danger"><span class="bar"></span>${links(esc(t.slice(1).trim()))}</div>`;
+    if (t.startsWith('!')) return `<div class="line warning"><span class="bar"></span>${links(esc(t.slice(1).trim()))}</div>`;
+    if (t.startsWith('>')) return `<div class="line plan"><span class="bar"></span>${links(esc(t.slice(1).trim()))}</div>`;
+    return `<div class="line normal">${links(esc(t))}</div>`;
   }
 
   function esc(s) {
@@ -6189,7 +6341,8 @@ function exportReportsPDF() {
     return `
       <div class="report">
         <div class="report-header">
-          <span class="report-date">${date}</span>
+          <span class="report-date">${date}${rpTagsOf(r.id).map(t =>
+            `<span class="rp-tag">${esc(t)}</span>`).join('')}</span>
           <span class="report-time">${time}</span>
         </div>
         <div class="report-body">${lines}${photos}</div>
@@ -6211,6 +6364,14 @@ function exportReportsPDF() {
     .report { margin-bottom: 20px; break-inside: avoid; }
     .report-header { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 8px 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
     .report-date { font-weight: 800; font-size: 11px; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .rp-tag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+      background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe;
+      font-size: 9px; font-weight: 800; letter-spacing: .4px; }
+    .rp-link { display: inline-block; padding: 1px 8px; margin: 0 2px; border-radius: 6px;
+      background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+      font-weight: 700; text-decoration: none; }
+    /* На папері кнопка без адреси марна — дописуємо її саме для друку. */
+    @media print { .rp-link:after { content: " (" attr(href) ")"; font-weight: 400; color: #64748b; } }
     .report-time { font-size: 10px; color: #94a3b8; }
     .report-body { padding: 0 4px; }
     .line { padding: 5px 10px; border-radius: 5px; margin-bottom: 3px; line-height: 1.5; position: relative; }
