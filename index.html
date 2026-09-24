@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 09:46">
+  <meta name="build" content="build 24.09 11:24">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2817,6 +2817,70 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   margin-left: 6px; text-decoration: underline; text-underline-offset: 2px;
 }
 .cab-gone-note:hover { background: rgba(245, 158, 11, .16); }
+/* Коли чужі кабінети вже показані, рядок перестає бути попередженням і
+   стає підписом: тривожити другий раз тим самим нема за що. */
+.cab-gone-note.is-open {
+  background: var(--surface-2); border-color: var(--border); color: var(--text-muted);
+}
+.cab-gone-note.is-open:hover { background: var(--surface-3); }
+
+/* ─── Сторінки, з яких крутять ───
+   Картки, а не рядки таблиці, навмисно: тут немає колонки, за якою
+   хочеться сортувати очима. Питання інше — «скільки кабінетів висить
+   на одній Сторінці», а на нього відповідає розмір і порядок карток,
+   не числа в стовпчик.
+
+   Сторінка, до якої немає доступу, притлумлена й обведена попереджально:
+   крутити з неї можна, а прибрати під нею коментарі — ні, і дізнатись
+   про це краще зараз, ніж коли під оголошенням уже висить спам. */
+.fp-wrap { margin-top: 18px; }
+.fp-head {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px;
+  font-size: 10px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-main);
+}
+.fp-head span {
+  font-size: 9px; font-weight: 700; letter-spacing: .06em; text-transform: none;
+  color: var(--text-muted);
+}
+.fp-note { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.fp-note.is-bad { color: var(--bad); }
+
+.fp-grid {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+.fp-card {
+  padding: 10px 12px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.fp-card.is-closed {
+  background: rgba(245, 158, 11, .06); border-color: rgba(245, 158, 11, .22);
+}
+.fp-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.fp-name {
+  font-size: 11px; font-weight: 900; color: var(--text-main);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fp-link { color: var(--text-muted); text-decoration: none; font-size: 12px; }
+.fp-link:hover { color: var(--accent); }
+.fp-tag {
+  margin-top: 3px; font-size: 8px; font-weight: 900;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--warn);
+}
+.fp-tag.is-ok { color: var(--ok); }
+.fp-nums {
+  margin-top: 5px; font-size: 9px; font-weight: 700; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.fp-cabs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px; }
+.fp-cabs span {
+  max-width: 100%; padding: 1px 6px; border-radius: 6px;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  font-size: 8px; font-weight: 800; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fp-cabs .fp-more { background: transparent; border-color: transparent; }
 
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
@@ -3462,7 +3526,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 09:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 11:24</div>
     </div>
   </aside>
 
@@ -4274,17 +4338,11 @@ body[data-route="domains"] #dm-detail {
         <option value="bm">Group: BM</option>
         <option value="">No grouping</option>
       </select>
-      <!-- Зріз за джерелом. Окремий вимір від стану, тому й окремий
-           перемикач, а не ще дві плитки в тій самій стрічці. Вибір
-           запам'ятовується між заходами. -->
-      <div class="cab-srcsel">
-        <button type="button" id="cab-src-all" onclick="cabSetSrc('')"
-          title="Every cabinet">All <span class="cab-srcn"></span></button>
-        <button type="button" id="cab-src-fb" onclick="cabSetSrc('fb')"
-          title="Only cabinets a token sees — state confirmed by Facebook">Live <span class="cab-srcn"></span></button>
-        <button type="button" id="cab-src-old" onclick="cabSetSrc('old')"
-          title="Only cabinets no token sees — state guessed from reports">Old <span class="cab-srcn"></span></button>
-      </div>
+      <!-- Перемикача зрізу тут більше немає. Сторінка показує кабінети,
+           які бачить токен, і тільки їх; решта ховається, а рядок над
+           таблицею каже, скільки їх і як подивитись. Три кнопки замість
+           цього змушували щоразу вибирати те, що й так має бути за
+           замовчуванням. -->
       <!-- Period, за який рахуємо витрати. Малюється з cabinets.js:
            вибір і його підпис мають жити в одному місці, інакше
            заголовок стовпчика колись розійдеться з тим, що в ньому. -->
@@ -4316,6 +4374,11 @@ body[data-route="domains"] #dm-detail {
     <div id="cab-list" class="flex-1 min-w-0 space-y-1.5"></div>
     <div id="cab-detail" class="hidden w-[330px] shrink-0"></div>
   </div>
+
+  <!-- Сторінки, з яких крутять ці кабінети. Під таблицею, а не над:
+       спершу те, за чим приходять щодня, потім те, на що дивляться,
+       коли виникло питання «а звідки воно взагалі йде». -->
+  <div id="cab-pages"></div>
 </div>
 
 <!-- ═══════════ DOMAINS ═══════════ -->
@@ -14941,6 +15004,114 @@ window.fbrRun = async function (idEnc) {
 </script>
 
 <script>
+/* ═══════════ СТОРІНКИ, З ЯКИХ КРУТЯТЬ ═══════════
+
+   Питання «а з яких Сторінок узагалі йде реклама» досі не мало де
+   з'явитись. Номер Сторінки зашитий у кожному оголошенні, але щоб його
+   побачити, доводилось відкривати оголошення в Ads Manager — по
+   одному.
+
+   ЧОМУ ЦЕ ВАЖЛИВО ЗГОРИ. Одна Сторінка на десять кабінетів — звичайна
+   річ, і небезпечна вона саме тим, що непомітна: у рядку кабінета
+   видно його власний стан, а те, що всі десять тримаються на одній
+   Сторінці, не видно ніде. Ban такої Сторінки забирає всі десять
+   одразу. Тому картки відсортовані за кількістю кабінетів: найширша
+   зверху.
+
+   ДРУГЕ ПИТАННЯ, на яке відповідає цей список, — чи можна під цією
+   Сторінкою прибирати коментарі. Крутити з чужої Сторінки Facebook
+   дозволяє, модерувати — ні, і дізнаватись про це в мить, коли під
+   оголошенням уже висить спам, пізно. */
+
+let fpRows = [], fpErr = '';
+
+const fpEsc = v => String(v == null ? '' : v)
+  .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+const FP_NO_TABLE = /relation .* does not exist|42P01/i;
+
+async function fpLoad() {
+  fpErr = '';
+  try {
+    const res = await sb.from('fb_cabinet_pages')
+      .select('account_id,page_id,page_name,can_moderate,ads,posts,team_name');
+    if (res.error) throw res.error;
+    /* Команду відсіюємо тут, а не запитом: RLS і так віддає лише свої
+       рядки, а team_name у токена буває порожнім — фільтр у запиті
+       сховав би тоді геть усе. Те саме правило, що й у кабінетах. */
+    fpRows = (res.data || []).filter(r => !r.team_name || r.team_name === currentTeam);
+  } catch (e) {
+    fpRows = [];
+    fpErr = FP_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+/* Малюється з cabRender: список кабінетів і список Сторінок — та сама
+   картина з двох боків, і розʼїхатись вони не мають права. */
+function fpPaint() {
+  const host = document.getElementById('cab-pages');
+  if (!host) return;
+
+  if (fpErr === 'not-set-up') {
+    host.innerHTML = `<div class="fp-wrap"><p class="fp-head">Pages</p>
+      <p class="fp-note">Not set up yet — run the <span class="font-mono">fb_cabinet_pages</span>
+      block from <span class="font-mono">FB_SYNC.sql</span>, redeploy
+      <span class="font-mono">fb-sync</span>, then press Sync now.</p></div>`;
+    return;
+  }
+  if (fpErr) {
+    host.innerHTML = `<div class="fp-wrap"><p class="fp-head">Pages</p>
+      <p class="fp-note is-bad">Could not read: ${fpEsc(fpErr)}</p></div>`;
+    return;
+  }
+  if (!fpRows.length) { host.innerHTML = ''; return; }
+
+  // Як звуться кабінети на цій сторінці — беремо звідти ж, звідки таблиця.
+  const label = {};
+  (typeof cabAll !== 'undefined' ? cabAll : []).forEach(c => {
+    label[c.id] = (c.fb && c.fb.name) || c.row.provider_name || c.id;
+  });
+
+  const by = new Map();
+  fpRows.forEach(r => {
+    const id = String(r.page_id);
+    const p = by.get(id) || { id, name: '', mod: false, ads: 0, posts: 0, cabs: [] };
+    if (r.page_name) p.name = r.page_name;
+    if (r.can_moderate) p.mod = true;
+    p.ads += Number(r.ads) || 0;
+    p.posts += Number(r.posts) || 0;
+    p.cabs.push(String(r.account_id));
+    by.set(id, p);
+  });
+
+  /* Найширша зверху: концентрація — це і є та річ, заради якої на
+     список дивляться. За однакової кількості кабінетів попереду та, з
+     якої крутять більше. */
+  const pages = [...by.values()].sort((a, b) => b.cabs.length - a.cabs.length || b.ads - a.ads);
+  const noMod = pages.filter(p => !p.mod).length;
+
+  const card = p => `<div class="fp-card ${p.mod ? '' : 'is-closed'}">
+      <div class="fp-top">
+        <span class="fp-name" title="${fpEsc(p.name || p.id)}">${fpEsc(p.name || '#' + p.id)}</span>
+        <a href="https://facebook.com/${fpEsc(p.id)}" target="_blank" rel="noopener"
+           class="fp-link" title="Open this Page">&#8599;</a>
+      </div>
+      <p class="fp-tag ${p.mod ? 'is-ok' : ''}">${p.mod ? 'can moderate' : 'no access'}</p>
+      <p class="fp-nums">${p.cabs.length} cabinet(s) · ${p.ads} ad(s) · ${p.posts} post(s)</p>
+      <p class="fp-cabs">${p.cabs.slice(0, 8).map(id =>
+          `<span title="${fpEsc(id)}">${fpEsc(label[id] || id)}</span>`).join('')}${
+        p.cabs.length > 8 ? `<span class="fp-more">+${p.cabs.length - 8}</span>` : ''}</p>
+    </div>`;
+
+  host.innerHTML = `<div class="fp-wrap">
+    <p class="fp-head">Pages<span>${pages.length} behind these cabinets${
+      noMod ? ' · ' + noMod + ' you cannot moderate' : ''}</span></p>
+    <div class="fp-grid">${pages.map(card).join('')}</div>
+  </div>`;
+}
+</script>
+
+<script>
 /* ═══════════ КОМЕНТАРІ ПІД ОГОЛОШЕННЯМИ ═══════════
 
    Просили «автоматично чистити коментарі — або дати дозвіл чистити
@@ -15267,18 +15438,26 @@ let cabDays = {}, cabDaysErr = '';
    записано те, чого Facebook не знає й ніколи не скаже. */
 let cabTokens = {};
 
-/* Який зріз списку показувати: '' — увесь, 'fb' — тільки те, що бачить
-   токен, 'old' — тільки решта. Вибір запамʼятовуємо: людина, яка
-   поставила Live, завтра теж хоче Live, а не дві секції знову. */
-let cabSrc = '';
-try { cabSrc = localStorage.getItem('cab_src') || ''; } catch (e) {}
+/* Ця сторінка — про кабінети, які бачить токен. Решта, заведена колись
+   руками й нічим не підтверджена, за замовчуванням не показується: вона
+   не оновлюється, нічого про себе не знає, і єдине, що робить у списку
+   — розбавляє його рядками, яким не можна вірити.
+
+   «Бачить токен» означає «бачив хоч раз»: кабінет, який зник, лишається
+   тут із позначкою gone. Саме заради цього й ставиться missing_since —
+   щоб зникле не зникало ще й з екрана.
+
+   Ховати мовчки не можна, тому над таблицею стоїть рядок із кількістю
+   схованих і кнопкою. Вибір запамʼятовується. */
+let cabShowOld = false;
+try { cabShowOld = localStorage.getItem('cab_show_old') === '1'; } catch (e) {}
 
 const cabEsc = v => String(v == null ? '' : v)
   .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
-window.cabSetSrc = function (v) {
-  cabSrc = ['', 'fb', 'old'].includes(v) ? v : '';
-  try { localStorage.setItem('cab_src', cabSrc); } catch (e) {}
+window.cabToggleOld = function (on) {
+  cabShowOld = on === undefined ? !cabShowOld : !!on;
+  try { localStorage.setItem('cab_show_old', cabShowOld ? '1' : '0'); } catch (e) {}
   cabSel = null;
   cabRender();
 };
@@ -15523,6 +15702,7 @@ async function cabInit() {
   cabCols.fb_account_id = 'fb_account_id' in sample;
   await cabFbLoad();
   await cabDaysLoad();
+  if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
   seen();
@@ -15683,6 +15863,7 @@ window.cabSync = async function () {
     await fbSync(say);
     await cabFbLoad();
     await cabDaysLoad();
+    if (typeof fpLoad === 'function') await fpLoad();
     cabRender();
   } finally {
     btn.disabled = false;
@@ -15877,12 +16058,10 @@ function cabRender() {
   const inFilter = c => !cabFilter ? true
     : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
     : c.state === cabFilter;
-  /* Зріз за джерелом. Це окремий вимір від стану: «показати лише те,
-     що підтверджує Facebook» і «показати лише забанені» — різні
-     питання, і звалювати їх в одну стрічку плиток означало б зробити
-     обидва незрозумілими. */
-  const inSrc = c => cabSrc === 'fb' ? (!!c.fb && !c.gone)
-                   : cabSrc === 'old' ? (!c.fb || c.gone) : true;
+  /* Account належить цій сторінці, якщо його бачив токен — зараз або
+     колись. Зниклі лишаються: вони мають позначку gone і саме тому
+     мусять бути на очах. */
+  const inSrc = c => cabShowOld ? true : !!c.fb;
   let shown = all.filter(c =>
     inFilter(c) && inSrc(c) &&
     (!q || [c.id, c.row.provider_name, c.row.status_note,
@@ -15893,18 +16072,18 @@ function cabRender() {
 
   cabFbNote();
 
-  /* Accountи, які зникли з Facebook і яких ЦЕЙ зріз не показує.
-
-     Позначка missing_since робилась саме для того, щоб зникле не
-     зникало мовчки — а зріз «Live» рівно це й робив: такий кабінет
-     випадав з екрана без жодного сліду, і людина дізнавалась про
-     втрату тоді, коли сама його шукала. Фільтр не має скасовувати
-     попередження; тому рядок нижче показується поверх будь-якого
-     зрізу й веде туди, де вони видні. */
-  const goneHidden = all.filter(c => c.gone && !inSrc(c)).length;
-  const goneNote = goneHidden ? `<p class="cab-gone-note" onclick="cabSetSrc('')">
-      ${goneHidden} cabinet(s) disappeared from Facebook and this filter hides them.
-      <span>Show</span></p>` : '';
+  /* Скільки кабінетів заховано й чому. Ховати мовчки не можна: людина
+     мусить знати, що список неповний, і мати змогу подивитись одним
+     рухом. */
+  const nOld = all.filter(c => !c.fb).length;
+  const oldNote = !nOld ? '' : cabShowOld
+    ? `<p class="cab-gone-note is-open" onclick="cabToggleOld(false)">
+        ${nOld} cabinet(s) below are in your list but no token sees them —
+        the numbers there come from reports, not from Facebook.
+        <span>Hide</span></p>`
+    : `<p class="cab-gone-note" onclick="cabToggleOld(true)">
+        ${nOld} cabinet(s) from your list are hidden: no token sees them.
+        <span>Show</span></p>`;
 
   /* Коли востаннє ходили в Facebook — просто на кнопці. Окремий рядок
      під нею читали б раз і забували, а тут воно перед очима щоразу,
@@ -15936,15 +16115,6 @@ function cabRender() {
         </span>` : '');
   }
 
-  // Підсвічуємо активний зріз і показуємо, скільки в кожному.
-  const nFb = all.filter(c => c.fb && !c.gone).length;
-  [['', all.length], ['fb', nFb], ['old', all.length - nFb]].forEach(([k, n]) => {
-    const b = document.getElementById('cab-src-' + (k || 'all'));
-    if (!b) return;
-    b.classList.toggle('is-on', cabSrc === k);
-    const c2 = b.querySelector('.cab-srcn');
-    if (c2) c2.textContent = n;
-  });
 
   if (!shown.length) {
     /* «Nothing here» на порожньому зрізі — найгірша з відповідей:
@@ -15952,25 +16122,28 @@ function cabRender() {
        нічого немає. */
     const why = cabFbErr
         ? 'Facebook data could not be read — see the note above the tiles'
-      : cabSrc === 'fb' && !nFb
-        ? 'No cabinet is covered by a token yet — press Sync now'
-      : cabSrc === 'old' && nFb === all.length
-        ? 'Every cabinet is covered by a token'
+      : !cabFb.length
+        ? 'No token sees any cabinet yet — add one in Settings, then press Sync now'
       : 'Nothing here';
-    list.innerHTML = goneNote
+    list.innerHTML = oldNote
       + `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     cabDetail(null);
     return;
   }
 
-  /* Ділимо за покриттям токеном. Поки токена немає жодного, ділити нема
-     чого — тоді це одна таблиця без заголовків, як і було. */
-  const split = cabFb.length > 0;
-  list.innerHTML = goneNote + (split
-    ? cabSection(shown.filter(c => c.fb && !c.gone), true) + cabSection(shown.filter(c => !c.fb || c.gone), false)
-    : cabSection(shown, false, true));
+  /* Дві секції потрібні лише тоді, коли показуємо й чужих: у них різні
+     набори колонок, бо про кабінет без токена ми не знаємо нічого
+     всередині. Поки список однорідний — одна таблиця без заголовка. */
+  const mine = shown.filter(c => c.fb);
+  const theirs = shown.filter(c => !c.fb);
+  list.innerHTML = oldNote + (theirs.length
+    ? cabSection(mine, true) + cabSection(theirs, false)
+    : cabSection(mine, true, true));
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
+  /* Сторінки малюємо тут же: список кабінетів і список Сторінок — та
+     сама картина з двох боків, і розʼїхатись вони не мають права. */
+  if (typeof fpPaint === 'function') fpPaint();
 }
 
 /* Одна секція = заголовок + таблиця. Колонки в секціях РІЗНІ, і це

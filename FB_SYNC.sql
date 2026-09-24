@@ -164,6 +164,52 @@ create policy "own_select" on public.fb_spend_daily for select to authenticated
 grant select on public.fb_spend_daily to authenticated;
 
 
+-- ════════════════════════════════════════════════════════════
+--  fb_cabinet_pages — з яких Сторінок крутять кабінети
+-- ════════════════════════════════════════════════════════════
+--  Номер Сторінки зашитий у кожному оголошенні
+--  (effective_object_story_id має вигляд {page_id}_{post_id}), тож
+--  імпорт бере його з тієї самої відповіді, що й статуси — окремих
+--  запитів до Facebook це не коштує.
+--
+--  Рядок = пара «кабінет + Сторінка». Одна Сторінка на десять
+--  кабінетів видно тільки згори, а саме це й важливо: бан такої
+--  Сторінки забирає всі десять одразу.
+--
+--  can_moderate — чи має системний користувач цю Сторінку із задачею
+--  модерації. false тут не помилка: крутити з чужої Сторінки можна,
+--  а чистити під нею коментарі — ні.
+-- ════════════════════════════════════════════════════════════
+
+create table if not exists public.fb_cabinet_pages (
+  created_by uuid not null references auth.users(id) on delete cascade,
+  account_id text not null,
+  page_id    text not null,
+
+  page_name    text,      -- порожньо, якщо Сторінки не видно системному юзеру
+  can_moderate boolean,
+
+  ads   int,              -- скільки оголошень кабінета ведуть на цю Сторінку
+  posts int,              -- скільки РІЗНИХ постів: один пост часто крутять кілька
+
+  team_name text,
+  seen_at   timestamptz,
+
+  primary key (created_by, account_id, page_id)
+);
+
+create index if not exists fb_cabinet_pages_page_idx
+  on public.fb_cabinet_pages (created_by, page_id);
+
+alter table public.fb_cabinet_pages enable row level security;
+
+drop policy if exists "own_select" on public.fb_cabinet_pages;
+create policy "own_select" on public.fb_cabinet_pages for select to authenticated
+  using (created_by = auth.uid());
+
+grant select on public.fb_cabinet_pages to authenticated;
+
+
 -- ────────────────────────────────────────────────────────────
 --  ЗВ'ЯЗОК ІЗ ВАШОЮ НАЗВОЮ КАБІНЕТА
 --  Сторінка зводить їх сама — по збігу номера або назви. Колонка
