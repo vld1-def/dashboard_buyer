@@ -158,6 +158,56 @@ async function pageToken(userToken: string, pageId: string,
 
 const pageOf = (storyId: string) => storyId.split('_')[0] || '';
 
+/* Завдання на Сторінці, яких достатньо, щоб чіпати коментарі. Facebook
+   віддає їх списком у /me/accounts; MODERATE — саме те, що дає ховати
+   й видаляти, MANAGE включає його в себе. */
+const MOD_TASKS = ['MODERATE', 'MANAGE'];
+
+/* ── чому Facebook відмовив ──
+
+   Помилка #10 приходить стіною з трьох посилань на App Review і
+   виглядає як вирок застосунку. Насправді в дев'яти випадках із десяти
+   це інше: Сторінку просто не видали системному користувачеві, і для
+   Facebook він тоді сторонній — звідси й пропозиція оформити «Page
+   Public Content Access», тобто доступ до ЧУЖИХ сторінок.
+
+   Ми знаємо більше за нього: у нас є список Сторінок, які системний
+   користувач справді має. Тому відповідаємо по суті, а не переказуємо
+   посилання. */
+function whyDenied(pageId: string, name: string,
+                   mine: Map<string, { name: string; tasks: string[] }>,
+                   listFailed: string): string {
+  const has = mine.get(pageId);
+  if (listFailed) return 'Facebook will not even list the Pages of this system user ('
+    + listFailed + '). That is an app-level permission: pages_show_list and '
+    + 'pages_read_engagement have to be granted to the app the token belongs to.';
+  if (!has) return 'Page ' + (name || pageId) + ' is not assigned to this system user. '
+    + 'Business Manager \u2192 System users \u2192 your user \u2192 Add assets \u2192 Pages, '
+    + 'and give it the Moderate content task.';
+  if (!has.tasks.some(t => MOD_TASKS.includes(t))) return 'Page "' + has.name
+    + '" is assigned to this system user, but only with: ' + (has.tasks.join(', ') || 'no task')
+    + '. Moderating comments needs the Moderate content task — change it in Business Manager.';
+  return '';
+}
+
+/* Сторінки, які системний користувач має, і з якими завданнями. Один
+   запит на весь виклик: це й діагноз, і відповідь на питання «а чому
+   не працює». */
+async function myPages(token: string):
+    Promise<{ mine: Map<string, { name: string; tasks: string[] }>; failed: string }> {
+  const mine = new Map<string, { name: string; tasks: string[] }>();
+  try {
+    const j = await graph('/me/accounts', token, { fields: 'id,name,tasks', limit: 200 });
+    (Array.isArray(j.data) ? j.data : []).forEach((x: Json) => mine.set(String(x.id), {
+      name: String(x.name || x.id),
+      tasks: Array.isArray(x.tasks) ? x.tasks.map(String) : []
+    }));
+    return { mine, failed: '' };
+  } catch (e) {
+    return { mine, failed: (e as Error).message };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: CORS });
   try {
@@ -248,14 +298,32 @@ async function listComments(token: string, posts: Map<string, Post>,
 
   const deadline = Date.now() + DEADLINE_MS;
   const out: Json[] = [];
-  const problems: string[] = [];
   let seen = 0;
+
+  /* Спершу питаємо, які Сторінки системний користувач узагалі має D
+     один запит на весь виклик. Без цього кожна відмова виглядала б
+     однаково, і п'ять постів однієї Сторінки давали б п'ять однакових
+     стін тексту замість одного зрозумілого рядка. */
+  const { mine, failed: listFailed } = await myPages(token);
+
+  // Біди рахуємо по СТОРІНКАХ, а не по постах: причина в них одна.
+  const bad = new Map<string, { page: string; why: string; posts: number }>();
+  const note = (pageId: string, name: string, why: string) => {
+    const had = bad.get(pageId);
+    if (had) { had.posts++; return; }
+    bad.set(pageId, { page: name || pageId, why, posts: 1 });
+  };
 
   for (const [story, post] of posts) {
     if (seen >= POSTS_MAX || Date.now() > deadline) break;
     seen++;
+    const pageId = pageOf(story);
+    /* Відмову, яку ми вже вміємо пояснити, не повторюємо в Facebook:
+       він відповість тим самим, а часу це коштує. */
+    const known = whyDenied(pageId, mine.get(pageId)?.name || '', mine, listFailed);
+    if (known) { note(pageId, mine.get(pageId)?.name || '', known); continue; }
     try {
-      const pg = await pageToken(token, pageOf(story), cache);
+      const pg = await pageToken(token, pageId, cache);
       const j = await graph('/' + story + '/comments', pg.token, {
         // filter=stream — разом із відповідями: спам часто саме там.
         fields: 'id,message,created_time,is_hidden,like_count,permalink_url,from{name,id}',
@@ -281,7 +349,14 @@ async function listComments(token: string, posts: Map<string, Post>,
       }));
     } catch (e) {
       // Один пост без прав не має ховати коментарі з усіх інших.
-      problems.push((e as Error).message);
+      const why = (e as Error).message;
+      note(pageId, mine.get(pageId)?.name || '',
+        /#10|pages_read_engagement|Page Public/i.test(why)
+          ? whyDenied(pageId, mine.get(pageId)?.name || '', mine, listFailed)
+            || 'Facebook refused this Page even though it is assigned with the right task. '
+             + 'Usually that means the app behind the token has not been granted '
+             + 'pages_read_engagement — check it in the app settings.'
+          : why);
     }
   }
 
@@ -291,7 +366,10 @@ async function listComments(token: string, posts: Map<string, Post>,
     posts: posts.size,
     looked: seen,
     more: seen < posts.size,
-    problems: problems.slice(0, 5)
+    /* Скільки Сторінок системний користувач має взагалі — число, яке
+       відповідає на питання швидше за будь-який текст. */
+    pages_seen: mine.size,
+    blocked: [...bad.values()]
   });
 }
 
