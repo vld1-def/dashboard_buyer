@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 16:24">
+  <meta name="build" content="build 24.09 16:44">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2635,20 +2635,28 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-syncago:empty { display: none; }
 
 /* ─── Скільки відкручено ───
-   Число, заради якого на цю сторінку заходять уранці. Стоїть над
-   плитками, бо плитки — це навігація, а це відповідь. */
+   Кнопка в тому ж ряду, що й групування й період: це елемент керування,
+   а не заголовок. Число крупніше за решту підписів, бо заради нього на
+   кнопку й дивляться; валюта й період поруч дрібним. */
 .cab-sum {
-  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+  display: inline-flex; align-items: baseline; gap: 7px;
+  padding: 6px 12px; border-radius: 12px; cursor: pointer;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  transition: border-color .15s, background .15s;
 }
+.cab-sum:hover { border-color: var(--accent); background: var(--surface-2); }
 .cab-sum-n {
-  font-size: 22px; font-weight: 900; letter-spacing: -.02em;
-  color: var(--text-main); font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 900; letter-spacing: -.01em;
+  color: var(--text-main); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .cab-sum-k {
-  font-size: 10px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
-  color: var(--text-muted);
+  font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap;
 }
-.cab-sum-sub { font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .75; }
+/* Приблизність позначаємо знаком, а не дрібним шрифтом у підказці:
+   зведене з чотирьох валют число мусить сказати про себе саме — і
+   сказати там, де на нього дивляться. */
+.cab-sum-approx { color: var(--text-muted); font-weight: 900; }
 
 /* Вибір періоду. Ті самі сегменти, що й у зрізі за джерелом — це
    сусідні перемикачі однієї ваги, і виглядати вони мають однаково.
@@ -3556,7 +3564,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 16:24</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 16:44</div>
     </div>
   </aside>
 
@@ -4360,6 +4368,10 @@ body[data-route="domains"] #dm-detail {
       <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Where each account lives and whether it is running</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
+      <!-- Скільки відкручено за вибраний період. Кнопка, а не підпис:
+           натиснув — і замість зведеного в долари числа видно, з яких
+           валют воно складене. -->
+      <button type="button" id="cab-sum" class="cab-sum" onclick="cabSumToggle()"></button>
       <select id="cab-group" onchange="cabSetGroup(this.value)"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
         <option value="agent">Group: agent</option>
@@ -4390,11 +4402,6 @@ body[data-route="domains"] #dm-detail {
 
   <!-- Результат синхронізації. Порожній, поки нічого не запускали —
        місця не займає. -->
-
-  <!-- Скільки відкручено за вибраний період. Над плитками, а не серед
-       них: плитки — це фільтр, тобто навігація, а це число, заради
-       якого сюди заходять. -->
-  <div id="cab-sum"></div>
 
   <div id="cab-tiles" class="mb-4"></div>
 
@@ -15861,6 +15868,9 @@ async function cabInit() {
   // Зайшов сюди — значить побачив: банер і лічильник гасимо на КОЖНОМУ
   // заході, не лише на першому. «Прочитано» має означати прочитано.
   const seen = () => { if (typeof evDismiss === 'function') evDismiss(); };
+  /* Курс тягнемо, не чекаючи на нього: таблиця має зʼявитись одразу, а
+     число в кнопці перерахується саме, щойно курс приїде. */
+  fxLoad();
   if (cabLoaded) { cabRender(); seen(); return; }
   host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
   try {
@@ -16179,42 +16189,131 @@ function cabMake(row, fb, id, f) {
            age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
 }
 
-/* СКІЛЬКИ ВІДКРУЧЕНО за вибраний період.
+/* ═════ СКІЛЬКИ ВІДКРУЧЕНО ═════
 
-   Валюти не зводимо в одну: долар на євровому кабінеті — це не
-   округлення, це інше число. Те саме правило вже стоїть у рядку
-   кабінета, і порушити його саме в підсумку означало б зробити
-   найпомітніше число на сторінці найбрехливішим.
+   Парк буває в різних валютах, і доти сума показувалась як «$136 ·
+   €120 · 400 PLN» <<EM>> чесно, але на це не можна глянути й зрозуміти,
+   багато це чи мало. Тому зводимо в долари.
 
-   Рахуємо по тому, що ВИДНО. Фільтр «Banned» із загальнопарковою сумою
-   під ним відповідав би на питання, якого ніхто не ставив; а щоб сума
-   під фільтром не здавалась усім парком, поруч стоїть друге число. */
+   Курс беремо з ECB (frankfurter.app, без ключа), раз на добу, і
+   кладемо в localStorage: дашборд <<EM>> статичний сайт, і ходити по курс
+   на кожну перемальовку таблиці було б і повільно, і без потреби.
+
+   Зведене число ЗАВЖДИ з позначкою «≈». Курс учорашній, банк списав
+   за своїм, і видавати таке за точну суму означало б зробити
+   найпомітніше число на сторінці єдиним, якому не можна вірити.
+   Натиснув на кнопку <<EM>> бачиш, із чого воно складене, без жодних
+   перерахунків. Курс не приїхав <<EM>> показуємо розкладку, а не вигадуємо
+   число. */
+
+const FX_KEY = 'fx_usd';
+const FX_TTL = 22 * 3600 * 1000;   // трохи менше доби: курс ECB оновлюється раз на day
+let fxRates = null, fxAt = '', fxTried = false;
+
+try {
+  const raw = JSON.parse(localStorage.getItem(FX_KEY) || 'null');
+  if (raw && raw.rates && Date.parse(raw.at) > Date.now() - FX_TTL) {
+    fxRates = raw.rates; fxAt = raw.day || '';
+  }
+} catch (e) {}
+
+/* Дві безкоштовні служби з однаковою формою відповіді: { rates: { PLN:
+   3.9, ... } } <<EM>> скільки одиниць валюти за один долар. Друга потрібна
+   не для надійності курсу, а для надійності відповіді: коли перша
+   мовчить, число все одно має зʼявитись. */
+const FX_SRC = [
+  ['https://api.frankfurter.app/latest?from=USD', j => [j.rates, String(j.date || '')]],
+  ['https://open.er-api.com/v6/latest/USD', j => [j.rates, String(j.time_last_update_utc || '').slice(5, 16)]]
+];
+
+async function fxLoad() {
+  if (fxRates || fxTried) return;
+  fxTried = true;                    // одна спроба на завантаження сторінки
+  for (const [url, pick] of FX_SRC) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const [rates, day] = pick(await res.json());
+      // Перевіряємо саме те, чим будемо ділити: об'єкт із числами.
+      if (!rates || typeof rates !== 'object') continue;
+      const ok = Object.values(rates).filter(v => Number.isFinite(Number(v)) && Number(v) > 0);
+      if (ok.length < 5) continue;
+      fxRates = rates; fxAt = day;
+      try {
+        localStorage.setItem(FX_KEY, JSON.stringify({ at: new Date().toISOString(), day, rates }));
+      } catch (e) {}
+      cabRender();
+      return;
+    } catch (e) { /* наступне джерело */ }
+  }
+}
+
+// Скільки це в доларах. null означає «не знаємо курсу» — і це не нуль.
+function fxToUsd(v, cur) {
+  const c = String(cur || 'USD').toUpperCase();
+  if (c === 'USD') return v;
+  const r = fxRates && Number(fxRates[c]);
+  return (Number.isFinite(r) && r > 0) ? v / r : null;
+}
+
+let cabSumRaw = false;
+try { cabSumRaw = localStorage.getItem('cab_sum_raw') === '1'; } catch (e) {}
+window.cabSumToggle = function () {
+  cabSumRaw = !cabSumRaw;
+  try { localStorage.setItem('cab_sum_raw', cabSumRaw ? '1' : '0'); } catch (e) {}
+  cabRender();
+};
+
 function cabSumPaint(shown, all) {
   const box = document.getElementById('cab-sum');
   if (!box) return;
 
-  const sums = list => {
-    const m = new Map();
-    list.forEach(c => {
-      const v = Number(cabSpendIn(c.fb));
-      if (!Number.isFinite(v) || v <= 0) return;
-      const cur = String(c.fb.currency || '');
-      m.set(cur, (m.get(cur) || 0) + v);
+  // Сума по валютах. Рахуємо по тому, що ВИДНО: під фільтром «Banned»
+  // загальнопаркове число відповідало б на питання, якого не ставили.
+  const by = new Map();
+  shown.forEach(c => {
+    const v = Number(cabSpendIn(c.fb));
+    if (!Number.isFinite(v) || v <= 0) return;
+    const cur = String(c.fb.currency || 'USD').toUpperCase();
+    by.set(cur, (by.get(cur) || 0) + v);
+  });
+
+  const parts = [...by.entries()].sort((a, b) => b[1] - a[1]);
+  const split = () => parts.map(([cur, v]) => cabMoneyCur(v, cur)).join(' \u00b7 ');
+
+  let txt, approx = false, tip;
+  if (!parts.length) {
+    txt = cabMoneyCur(0, 'USD');
+  } else if (cabSumRaw) {
+    txt = split();
+    tip = 'Split by currency. Click to convert to dollars.';
+  } else {
+    let usd = 0;
+    const lost = [];
+    parts.forEach(([cur, v]) => {
+      const x = fxToUsd(v, cur);
+      if (x == null) lost.push([cur, v]); else { usd += x; if (cur !== 'USD') approx = true; }
     });
-    return m;
-  };
-  const money = m => [...m.entries()].sort((a, b) => b[1] - a[1])
-    .map(([cur, v]) => cabMoneyCur(v, cur)).join(' \u00b7 ');
+    // Валюта, курсу якої немає, до долара НЕ додається: вигадане число
+    // гірше за видиме «плюс стільки-то злотих».
+    /* «$0 + 360 PLN» читається як «нуль доларів», хоча доларів тут
+       просто немає. Коли перевести не вдалось нічого, показуємо те, що
+       є, без порожнього доданка. */
+    const rest = lost.map(([cur, v]) => cabMoneyCur(v, cur));
+    txt = (usd > 0 || !rest.length)
+      ? [cabMoneyCur(usd, 'USD')].concat(rest).join(' + ')
+      : rest.join(' + ');
+    tip = (approx ? 'Converted to dollars at the ECB rate' + (fxAt ? ' of ' + fxAt : '')
+                  : 'All in dollars, nothing converted')
+        + (lost.length ? '. No rate for ' + lost.map(x => x[0]).join(', ') + ', left as is' : '')
+        + '. Click to see it split by currency.';
+  }
 
-  const here = money(sums(shown));
-  const whole = shown.length === all.length ? '' : money(sums(all));
-  const running = shown.filter(c => c.state === 'running').length;
-
-  box.innerHTML = `
-    <span class="cab-sum-n">${here || '\u2014'}</span>
-    <span class="cab-sum-k">${cabEsc(cabRangeLabel())}</span>
-    <span class="cab-sum-sub">${shown.length} cabinet(s) \u00b7 ${running} running${
-      whole && whole !== here ? ' \u00b7 ' + whole + ' across the whole park' : ''}</span>`;
+  const whole = shown.length !== all.length ? all.length : 0;
+  box.title = (tip || '') + (whole ? ' Showing ' + shown.length + ' of ' + whole + ' cabinet(s).' : '');
+  box.innerHTML = `${approx ? '<span class="cab-sum-approx">\u2248</span>' : ''}
+    <span class="cab-sum-n">${cabEsc(txt)}</span>
+    <span class="cab-sum-k">${cabEsc(cabRangeLabel())}${whole ? ' \u00b7 ' + shown.length + '/' + whole : ''}</span>`;
 }
 
 function cabRender() {
