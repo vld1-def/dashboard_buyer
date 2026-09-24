@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 19:53">
+  <meta name="build" content="build 24.09 20:05">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3669,7 +3669,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 19:53</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:05</div>
     </div>
   </aside>
 
@@ -14867,7 +14867,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.2';
+const FB_FN_WANT = '2026-09-24.3';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -14993,9 +14993,24 @@ window.fbProbe = async function () {
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
 
-    if (j.error) return show(j.error, true);
-    const head = 'act_' + j.account_id + '  \u00b7  token: ' + (j.token || '')
-      + '\n' + j.total_fields + ' fields on this node, ' + j.matched + ' look relevant\n\n';
+    /* Сходи — найперше й завжди. Саме вони відповідають на питання
+       «де саме відмовили», на яке Facebook відповідати не хоче. */
+    const steps = (j.ladder || []).map(r =>
+      (r.ok ? '  ok   ' : '  FAIL ') + r.step + (r.note ? '\n         ' + r.note : '')).join('\n');
+    const top = 'token: ' + (j.token || '') + (j.account_id ? '   act_' + j.account_id : '')
+      + (j.name ? '   ' + j.name : '') + '\n\n' + steps + '\n';
+
+    if (j.error) return show(top + '\n' + j.error, true);
+    /* Метаданих не дали, але звичні поля приїхали — значить закрито
+       інтроспекцію, а не кабінет, і ліміт із балансом у нас усе одно є. */
+    if (!j.total_fields) {
+      const known = j.known
+        ? '\n\nthe fields we already use:\n'
+          + Object.entries(j.known).map(([k, v]) => '  ' + k.padEnd(20) + JSON.stringify(v)).join('\n')
+        : '';
+      return show(top + known, !j.known);
+    }
+    const head = top + '\n' + j.total_fields + ' fields on this node, ' + j.matched + ' look relevant\n\n';
     const rows = (j.fields || []).map(f => {
       const v = ('value' in f)
         ? (f.value === null ? 'null' : typeof f.value === 'object'

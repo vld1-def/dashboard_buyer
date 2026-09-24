@@ -130,7 +130,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-24.2';
+const FN_VERSION = '2026-09-24.3';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1086,15 +1086,52 @@ async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
    хто читає. «spen», а не «spend»: amount_spent інакше не влучає. */
 const PROBE_RE = /limit|cap|balance|threshold|bill|prepay|fund|credit|spen|daily|budget|pay|charge|due|invoice|trust|tier/i;
 
-async function probeAccount(t: TokenRow, actId: string): Promise<Json> {
-  const out: Json = { account_id: actId, token: t.label };
+/* СХОДИ. Facebook на будь-яку відмову каже те саме: «API access
+   blocked. (#200)». Одне повідомлення на чотири різні біди — токен
+   мертвий, кабінетів не видно, конкретний кабінет закритий, метадані
+   не віддаються — це не діагноз, а натяк.
 
-  let fields: Json[] = [];
-  try {
-    const meta = await graph('/act_' + actId, t.token, { metadata: 1, fields: 'id' });
-    fields = Array.isArray(meta?.metadata?.fields) ? meta.metadata.fields : [];
-  } catch (e) {
-    return { ...out, error: (e as Error).message };
+   Тому йдемо знизу вгору й кажемо, де саме зупинились. Рядок «токен
+   живий, список кабінетів є, читати ЦЕЙ кабінет не дають» коштує
+   чотири запити й відповідає на питання, на яке сам Facebook
+   відповідати не хоче. */
+type Rung = { step: string; ok: boolean; note: string };
+
+async function probeAccount(t: TokenRow, actId: string, ladder: Rung[]): Promise<Json> {
+  const out: Json = { account_id: actId, token: t.label, ladder };
+
+  const rung = async (step: string, fn: () => Promise<Json>): Promise<Json | null> => {
+    try {
+      const j = await fn();
+      ladder.push({ step, ok: true, note: '' });
+      return j;
+    } catch (e) {
+      ladder.push({ step, ok: false, note: (e as Error).message });
+      return null;
+    }
+  };
+
+  // Сам кабінет: якщо навіть id з нього не читається, далі нема сенсу.
+  const basic = await rung('read this ad account (id, name)',
+    () => graph('/act_' + actId, t.token, { fields: 'id,name' }));
+  if (basic) out.name = basic.name;
+
+  const meta = await rung('ask it to describe its own fields (metadata)',
+    () => graph('/act_' + actId, t.token, { metadata: 1, fields: 'id' }));
+  const fields: Json[] = Array.isArray(meta?.metadata?.fields) ? meta.metadata.fields : [];
+
+  if (!fields.length) {
+    /* Метаданих немає — але це ще не кінець. Пробуємо ті поля, які
+       fb-sync і так просить щогодини: якщо вони приїдуть, значить
+       закрито саме інтроспекцію, а не кабінет. */
+    const known = ['spend_cap', 'amount_spent', 'balance', 'currency', 'account_status'];
+    const j = await rung('read the fields we already use (' + known.join(', ') + ')',
+      () => graph('/act_' + actId, t.token, { fields: known.join(',') }));
+    if (j) {
+      out.known = {};
+      known.forEach(n => { if (n in j) out.known[n] = j[n]; });
+    }
+    return out;
   }
   out.total_fields = fields.length;
   /* Повний перелік назв теж віддаємо. Регулярка — моє припущення про
@@ -1216,16 +1253,33 @@ async function handle(req: Request): Promise<Response> {
 
   if (wantProbe) {
     const t = tokens[0];
+    const ladder: Rung[] = [];
+
+    // Перший щабель: чи взагалі живий токен.
+    let me: Json | null = null;
+    try {
+      me = await graph('/me', t.token, { fields: 'id' });
+      ladder.push({ step: 'token itself works (/me)', ok: true, note: 'id ' + (me?.id || '?') });
+    } catch (e) {
+      ladder.push({ step: 'token itself works (/me)', ok: false, note: (e as Error).message });
+    }
+
     let actId = probeAcc;
     if (!actId) {
       // Кабінет не назвали — беремо перший, який бачить цей токен.
       try {
         const accs = await listAccounts(t.token);
         actId = String(accs[0]?.account_id || '').replace(/\D/g, '');
-      } catch (e) { return reply({ error: (e as Error).message }, 502); }
+        ladder.push({ step: 'list ad accounts (/me/adaccounts)', ok: true,
+                      note: accs.length + ' visible' });
+      } catch (e) {
+        ladder.push({ step: 'list ad accounts (/me/adaccounts)', ok: false,
+                      note: (e as Error).message });
+      }
     }
-    if (!actId) return reply({ error: 'this token sees no ad account to look at' }, 400);
-    return reply(await probeAccount(t, actId));
+    if (!actId) return reply({ token: t.label, ladder,
+      error: 'could not get an ad account to look at — see the steps above' });
+    return reply(await probeAccount(t, actId, ladder));
   }
 
   const deadline = Date.now() + DEADLINE_MS;
