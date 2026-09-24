@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 20:33">
+  <meta name="build" content="build 24.09 20:45">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3669,7 +3669,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:33</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:45</div>
     </div>
   </aside>
 
@@ -14867,7 +14867,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.5';
+const FB_FN_WANT = '2026-09-24.6';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -15009,6 +15009,19 @@ window.fbProbe = async function () {
                  + (j.name ? '   ' + j.name : '') + '\n\n' : '')
       + (steps ? steps + '\n' : '');
 
+    /* Поіменне опитування. Офіційний список полів AdAccount їх не
+       містить, тож єдина чесна відповідь на «а чи є ліміт і поріг» —
+       спитати Facebook про кожну назву й записати, що він сказав. */
+    const wantedTxt = () => {
+      const w = j.wanted || [];
+      if (!w.length) return '';
+      return '\n\nasked for by name:\n' + w.map(r => (r.ok ? '  ok   ' : '  no   ')
+        + r.name.padEnd(30)
+        + (r.ok ? (r.value === null ? 'null' : typeof r.value === 'object'
+              ? JSON.stringify(r.value) : String(r.value))
+           : (r.note || ''))).join('\n');
+    };
+
     if (j.error) return show(top + '\n' + j.error, true);
     /* Метаданих не дали, але звичні поля приїхали — значить закрито
        інтроспекцію, а не кабінет, і ліміт із балансом у нас усе одно є. */
@@ -15017,7 +15030,7 @@ window.fbProbe = async function () {
         ? '\n\nthe fields we already use:\n'
           + Object.entries(j.known).map(([k, v]) => '  ' + k.padEnd(20) + JSON.stringify(v)).join('\n')
         : '';
-      return show(top + known, !j.known);
+      return show(top + known + wantedTxt(), !j.known && !(j.wanted || []).length);
     }
     const head = top + '\n' + j.total_fields + ' fields on this node, ' + j.matched + ' look relevant\n\n';
     const rows = (j.fields || []).map(f => {
@@ -15033,7 +15046,7 @@ window.fbProbe = async function () {
          випадок, коли шукане поле не влучило у відбір: тоді видно, що
          воно все-таки є, і його можна попросити окремо. */
       + ((j.all && j.all.length) ? '\n\nall fields on this node:\n' + j.all.join(' ') : '');
-    show(head + (rows || 'nothing matched') + tail);
+    show(head + (rows || 'nothing matched') + wantedTxt() + tail);
   } catch (e) {
     const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
     show(e.code === 'missing' || net
