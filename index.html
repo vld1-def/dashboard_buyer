@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 12:14">
+  <meta name="build" content="build 24.09 13:07">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3366,6 +3366,49 @@ body[data-route="domains"] #dm-detail {
   @keyframes evIn { from { opacity: 0; transform: translateY(-8px); } }
   .ev-feed { animation: evIn .22s ease both; }
 }
+
+/* ─── Питання (замість confirm браузера) ───
+   Те саме вікно, що й решта сторінки: та сама картка, ті самі кнопки.
+   Розмито тло, а не затемнено начорно: видно, що сторінка на місці й
+   нікуди не поділась — питання не аварія. */
+
+.askwrap {
+  position: fixed; inset: 0; z-index: 9000;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(6, 6, 12, .62); backdrop-filter: blur(3px);
+  animation: ask-in .12s ease-out;
+}
+@keyframes ask-in { from { opacity: 0 } to { opacity: 1 } }
+.askbox {
+  width: 100%; max-width: 380px; padding: 18px;
+  border-radius: 20px; background: var(--surface-1); border: 1px solid var(--border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+}
+.ask-title {
+  margin: 0 0 8px; font-size: 12px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--text-main);
+}
+.ask-body p {
+  margin: 0 0 8px; font-size: 11px; font-weight: 700; line-height: 1.55;
+  color: var(--text-muted);
+}
+.ask-body p:last-child { margin-bottom: 0; }
+.ask-row { display: flex; gap: 8px; margin-top: 16px; }
+.ask-row button {
+  flex: 1; padding: 9px 12px; border-radius: 12px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+  transition: background .15s, color .15s;
+}
+.ask-row button:hover { background: var(--surface-3); color: var(--text-main); }
+.ask-yes { background: #7C3AED !important; border-color: #7C3AED !important; color: #fff !important; }
+.ask-yes:hover { filter: brightness(1.12); }
+/* Незворотне — червоним. Colour тут єдине, що встигають прочитати. */
+.ask-yes.is-bad { background: #DC2626 !important; border-color: #DC2626 !important; }
+
+/* Валюта поруч із карткою: тим самим шрифтом, але притлумлена — вона
+   уточнює суму, а не є сумою. */
+.cab-cur { color: var(--text-muted); font-weight: 900; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -3484,7 +3527,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 12:14</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 13:07</div>
     </div>
   </aside>
 
@@ -4319,7 +4362,6 @@ body[data-route="domains"] #dm-detail {
 
   <!-- Результат синхронізації. Порожній, поки нічого не запускали —
        місця не займає. -->
-  <p id="cab-sync-status" class="cab-syncmsg"></p>
 
   <div id="cab-tiles" class="mb-4"></div>
 
@@ -10916,6 +10958,91 @@ window.toast = function (msg, kind, ms) {
     window.toast(s, RE_ERR.test(s) ? 'error' : RE_WARN.test(s) ? 'warn' : '');
   };
 })();
+
+/* ═══════════ ПИТАННЯ ═══════════
+
+   alert() ми перехопили давно, а confirm() лишався системним вікном
+   браузера — і саме воно й стрічалось у найважливіші моменти: додати
+   токен, зупинити всі кампанії, видалити коментар. Вікно з написом
+   «dashboard.github.io каже:» поруч із рештою сторінки виглядає так,
+   ніби щось зламалось, а не так, ніби в тебе питають.
+
+   confirm() підмінити наскрізно, як alert(), не вийде: він синхронний,
+   а намалювати своє вікно й дочекатись відповіді можна лише через
+   Promise. Тому виклики переписані на `await ask(...)` — їх дев'ять,
+   і всі вже стояли в async-функціях.
+
+   ask() лишається блокуючим у тому сенсі, що має значення: доки не
+   відповіси, код далі не піде. Esc — те саме, що «ні». */
+
+window.ask = function (opts) {
+  const o = typeof opts === 'string' ? { body: opts } : (opts || {});
+  const esc = v => String(v == null ? '' : v)
+    .replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+  // Переноси рядків у тексті питання — це абзаци, а не випадковість:
+  // у старих confirm() ними відділяли наслідок дії від самої дії.
+  const para = t => String(t || '').split(/\n{2,}/)
+    .map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
+
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.className = 'askwrap';
+    wrap.innerHTML = `<div class="askbox" role="dialog" aria-modal="true">
+        ${o.title ? `<p class="ask-title">${esc(o.title)}</p>` : ''}
+        <div class="ask-body">${para(o.body)}</div>
+        <div class="ask-row">
+          ${o.only ? '' : `<button type="button" class="ask-no">${esc(o.cancel || 'Cancel')}</button>`}
+          <button type="button" class="ask-yes ${o.danger ? 'is-bad' : ''}">${
+            esc(o.ok || (o.only ? 'Close' : 'Yes'))}</button>
+        </div></div>`;
+
+    let done = false;
+    const close = v => {
+      if (done) return;
+      done = true;
+      document.removeEventListener('keydown', key, true);
+      wrap.remove();
+      resolve(v);
+    };
+    const key = e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+    };
+
+    wrap.querySelector('.ask-yes').onclick = () => close(true);
+    const no = wrap.querySelector('.ask-no');
+    if (no) no.onclick = () => close(false);
+    // Клік повз вікно = відмова. Для питання це безпечний бік.
+    wrap.onclick = e => { if (e.target === wrap) close(false); };
+    document.addEventListener('keydown', key, true);
+
+    document.body.appendChild(wrap);
+    wrap.querySelector('.ask-yes').focus();
+  });
+};
+
+/* Довге повідомлення, на яке не треба відповідати: одна кнопка. Тост
+   для такого затісний — там, де три абзаци, вони мусять стояти, поки
+   їх не дочитають. */
+window.tell = (title, body) => window.ask({ title, body, only: true });
+
+/* ═══════════ ХІД РОБОТИ ═══════════
+   Синхронізація каже про себе кілька разів поспіль: «йду», «взяв
+   стільки-то», «готово». Чотири окремі тости на це — стіна, тому
+   один тост переписується на місці й гасне разом із результатом. */
+window.toastStep = function () {
+  let el = null;
+  const put = (html, kind, ms) => {
+    if (el && !el.dataset.gone) el.remove();
+    el = html ? window.toast(html, kind, ms) : null;
+  };
+  return {
+    // Проміжний крок живе, поки не скажуть інше: ms = 0.
+    say: (html, kind) => put(html, kind, 0),
+    // Останній — звичайний тост, який сам згасне.
+    done: (html, kind) => put(html, kind)
+  };
+};
 </script>
 
 <script>
@@ -11308,7 +11435,8 @@ async function mcTake() {
 }
 
 async function mcDelete(month) {
-  if (!confirm(`Delete the snapshot for ${month}?`)) return;
+  if (!await ask({ title: 'Delete the snapshot?', danger: true, ok: 'Delete',
+    body: `The saved numbers for ${month} will be gone.` })) return;
   try {
     await sb.from('team_settings').delete()
       .eq('team_name', currentTeam).eq('key', MC_KEY(month));
@@ -14024,7 +14152,8 @@ async function tgConnect() {
 }
 
 async function tgUnlink() {
-  if (!confirm('Stop sending domain alerts to your Telegram?')) return;
+  if (!await ask({ title: 'Disconnect Telegram?', danger: true, ok: 'Disconnect',
+    body: 'Domain alerts will stop arriving in your Telegram.' })) return;
   const mine = await tgMine();
   if (mine.error || !mine.uid) return;
   const { error } = await sb.from('tg_links')
@@ -14299,20 +14428,21 @@ window.fbShow = function (id) {
   const r = fbRows.find(x => x.id === id);
   if (!r) return;
   const accs = Array.isArray(r.accounts) ? r.accounts : [];
-  alert(`${r.label}\n\n`
-    + `Permissions: ${(r.scopes || []).join(', ') || '—'}\n`
+  tell(r.label,
+      `Permissions: ${(r.scopes || []).join(', ') || '—'}\n`
     + `Checked: ${r.checked_at ? new Date(r.checked_at).toLocaleString() : '—'}\n\n`
     + (accs.length
-        ? 'Ad accounts:\n' + accs.map(a => `  ${a.id}  ${a.name}${a.status === 'active' ? '' : '  (inactive)'}`).join('\n')
+        ? 'Ad accounts:\n' + accs.map(a => `${a.id}  ${a.name}${a.status === 'active' ? '' : '  (inactive)'}`).join('\n')
         : 'No ad accounts visible.\n\nMost common cause: the system user has no Ad Accounts assigned in Business Settings → Add Assets.'));
 };
 
 window.fbDrop = async function (id) {
   const r = fbRows.find(x => x.id === id);
-  if (!confirm(`Remove "${r ? r.label : id}"?\n\n`
-    + 'This deletes the token from the database but does NOT revoke it at Facebook. '
-    + 'If it could have leaked, revoke it there too: '
-    + 'Business Settings → System Users → Revoke.')) return;
+  if (!await ask({ title: 'Remove the token?', danger: true, ok: 'Remove',
+    body: `Remove “${r ? r.label : id}”?\n\n`
+      + 'This deletes the token from the database but does NOT revoke it at Facebook. '
+      + 'If it could have leaked, revoke it there too: '
+      + 'Business Settings → System Users → Revoke.' })) return;
   const { error } = await sb.from('fb_tokens').delete().eq('id', id);
   if (error) return alert('Could not remove: ' + error.message);
   fbLoad();
@@ -14346,13 +14476,12 @@ window.fbAdd = async function () {
   const warn = info.status !== 'ok'
     ? `\n\nStatus: ${info.note}`
     : nice.length ? `\n\nWill work, but without ${nice.join(', ')} the dashboard cannot pause campaigns.` : '';
-  const ok = confirm(`Found:\n\n`
-    + `Permissions: ${(info.scopes || []).join(', ') || '—'}\n`
-    + `Expires: ${info.expires_at ? new Date(info.expires_at).toLocaleString() : 'never'}\n`
-    + `Ad accounts: ${info.accounts.length}\n`
-    + (info.bm ? `BM: ${info.bm.name || ''} (${info.bm.id})\n` : '')
-    + warn
-    + `\n\nSave?`);
+  const ok = await ask({ title: 'Save this token?', ok: 'Save',
+    body: `Permissions: ${(info.scopes || []).join(', ') || '—'}\n`
+      + `Expires: ${info.expires_at ? new Date(info.expires_at).toLocaleString() : 'never'}\n`
+      + `Ad accounts: ${info.accounts.length}\n`
+      + (info.bm ? `BM: ${info.bm.name || ''} (${info.bm.id})` : '')
+      + warn });
   if (!ok) return say('');
 
   const { data: u } = await sb.auth.getUser();
@@ -15197,10 +15326,10 @@ window.fcmAct = async function (idEnc, action) {
   const picked = (fcmList || []).filter(c => fcmSel.includes(c.id));
   if (!picked.length) return;
 
-  if (action === 'delete' && !confirm(
-      'Delete ' + picked.length + ' comment(s) for good?\n\n'
-    + 'There is no way back. If you only want them out of sight, use Hide — '
-    + 'the author still sees their own comment and does not come back to repost it.')) return;
+  if (action === 'delete' && !await ask({ title: 'Delete for good?', danger: true, ok: 'Delete',
+      body: 'Delete ' + picked.length + ' comment(s)?\n\n'
+        + 'There is no way back. If you only want them out of sight, use Hide — '
+        + 'the author still sees their own comment and does not come back to repost it.' })) return;
 
   const byStory = new Map();
   picked.forEach(c => {
@@ -15782,35 +15911,49 @@ function cabSpendIn(fb) {
    просто зникали мовчки. Порожній екран без причини — найгірше, що
    сторінка може показати: незрозуміло навіть, це зламалось чи так і
    має бути. */
+/* Останнє, що вже сказали. cabFbNote() кличеться з КОЖНОГО
+   перемальовування — без цього те саме повідомлення вилітало б
+   тостом на кожен клік по фільтру. */
+let cabNoteSaid = '';
+
 function cabFbNote() {
-  const out = document.getElementById('cab-sync-status');
-  if (!out) return;
+  const say = (html, kind) => {
+    if (html === cabNoteSaid) return;
+    cabNoteSaid = html;
+    if (html) toast(html, kind);
+  };
   if (cabFbErr === 'not-set-up') {
-    out.innerHTML = 'Facebook data is not set up yet — run <span class="font-mono">FB_SYNC.sql</span>, '
-      + 'deploy <span class="font-mono">fb-sync</span>, then press Sync now.';
-    out.style.color = 'var(--text-muted)';
+    say('Facebook data is not set up yet — run <span class="font-mono">FB_SYNC.sql</span>, '
+      + 'deploy <span class="font-mono">fb-sync</span>, then press Sync now.', 'warn');
   } else if (cabFbErr) {
-    out.innerHTML = 'Could not read Facebook data: ' + cabEsc(cabFbErr);
-    out.style.color = 'var(--bad)';
+    say('Could not read Facebook data: ' + cabEsc(cabFbErr), 'error');
   } else if (cabFbOld) {
-    out.innerHTML = 'Your database is a few columns behind this page, so some numbers are missing. '
+    say('Your database is a few columns behind this page, so some numbers are missing. '
       + 'Run the <span class="font-mono">alter table</span> block from '
-      + '<span class="font-mono">FB_SYNC.sql</span>. Everything else works.';
-    out.style.color = 'var(--warn)';
+      + '<span class="font-mono">FB_SYNC.sql</span>. Everything else works.', 'warn');
   } else if (cabDaysErr === 'not-set-up') {
     /* Той самий урок, що й з колонками: пусті клітинки без пояснення
        читаються як «кабінет нічого не крутить», а це протилежне
        правді. Кажемо, чого бракує і що з цим робити. */
-    out.innerHTML = 'Spend history is not set up yet, so only <b>Today</b> has numbers. '
+    say('Spend history is not set up yet, so only <b>Today</b> has numbers. '
       + 'Run the <span class="font-mono">fb_spend_daily</span> block from '
       + '<span class="font-mono">FB_SYNC.sql</span>, redeploy '
-      + '<span class="font-mono">fb-sync</span>, then press Sync now.';
-    out.style.color = 'var(--warn)';
+      + '<span class="font-mono">fb-sync</span>, then press Sync now.', 'warn');
   } else if (cabDaysErr) {
-    out.innerHTML = 'Could not read spend history: ' + cabEsc(cabDaysErr);
-    out.style.color = 'var(--bad)';
+    say('Could not read spend history: ' + cabEsc(cabDaysErr), 'error');
+  } else {
+    // Усе налагодилось — забуваємо сказане, щоб наступна поломка
+    // не змовчала лише через те, що вона та сама, що й минулого разу.
+    cabNoteSaid = '';
   }
 }
+
+/* Старий код казав колір, тости говорять видами. Перекладач між ними
+   один на всю сторінку: інакше кожен виклик вирішував би сам, і
+   «червоне» означало б різне в різних місцях. */
+const cabKind = tone => tone === 'var(--bad)' ? 'error'
+                      : tone === 'var(--warn)' ? 'warn'
+                      : tone === 'var(--ok)' ? 'ok' : '';
 
 /* Кнопка «Sync now» на цій сторінці. Сама синхронізація живе у fbtok.js
    разом із токенами — тут лише виклик і перемальовка: дублювати запит
@@ -15818,14 +15961,14 @@ function cabFbNote() {
 window.cabSync = async function () {
   const btn = document.getElementById('cab-sync');
   if (!btn || typeof fbSync !== 'function') return;
-  const out = document.getElementById('cab-sync-status');
   // Куди писати результат, вирішує той, хто кличе: сама fbSync про
   // розмітку нічого не знає й знати не мусить.
-  const say = (html, tone) => {
-    if (!out) return;
-    out.innerHTML = html;
-    out.style.color = tone || 'var(--text-muted)';
-  };
+  const step = toastStep();
+  /* Останнє сказане тримаємо окремо: fbSync повідомляє про хід роботи
+     живим тостом, а коли все скінчилось, той самий текст має лишитись
+     на екрані вже звичайним — і згаснути сам. */
+  let last = { html: '', kind: '' };
+  const say = (html, tone) => { last = { html, kind: cabKind(tone) }; step.say(html, last.kind); };
   btn.disabled = true;
   // Кнопка тепер має два вузли: підпис і time. Міняємо лише підпис.
   const lbl = btn.querySelector('span') || btn;
@@ -15836,6 +15979,10 @@ window.cabSync = async function () {
     await cabFbLoad();
     await cabDaysLoad();
     if (typeof fpLoad === 'function') await fpLoad();
+    /* Останнє, що сказала fbSync, лишаємо на екрані — але вже як
+       звичайний тост, який згасне сам. Живий тост, забутий увімкненим,
+       висів би до перезавантаження. */
+    step.done(last.html, last.kind);
     cabRender();
   } finally {
     btn.disabled = false;
@@ -16346,7 +16493,13 @@ function cabDetail(c) {
                cabByStatus(c.fb.adsets_by_status))}
         ${cell('Ads', pair(c.fb.ads_active, c.fb.ads),
                cabByStatus(c.fb.ads_by_status))}
-        ${cell('Card', esc(c.fb.card || '—'))}
+        ${/* Валюта стоїть поруч із карткою навмисно: обидва рядки про
+              те, ЧИМ платить кабінет. Окремою клітинкою вона з'їдала б
+              місце заради трьох літер, які й так потрібні лише поруч із
+              сумою. */
+          cell('Card', esc(c.fb.card || '—')
+            + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
+            c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : '')}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}
@@ -16532,17 +16685,16 @@ async function cabStopAll(idEnc) {
   const n = cabCounts(c.fb);
   const what = n && n.campaigns != null ? `${n.campaigns} active campaign(s)` : 'every active campaign';
   const name = c.fb.name || id;
-  if (!confirm(`Stop ${what} in ${name}?\n\n`
-    + 'They will be paused in Facebook. Turning them back on is a separate, deliberate step '
-    + '— there is no button for it here.')) return;
+  if (!await ask({ title: 'Stop everything?', danger: true, ok: 'Stop them',
+    body: `Stop ${what} in ${name}?\n\n`
+      + 'They will be paused in Facebook. Turning them back on is a separate, deliberate step '
+      + '— there is no button for it here.' })) return;
 
-  const out = document.getElementById('cab-sync-status');
-  const say = (html, tone) => {
-    if (!out) return;
-    out.innerHTML = html;
-    out.style.color = tone || 'var(--text-muted)';
-  };
-  say(`Pausing campaigns in ${cabEsc(name)}…`);
+  /* Поки зупиняємо — живий тост; усе, що йде далі, це вже
+     результат, і він має згаснути сам. */
+  const step = toastStep();
+  const say = (html, tone) => step.done(html, cabKind(tone));
+  step.say(`Pausing campaigns in ${cabEsc(name)}…`);
 
   let j;
   try {
@@ -17416,7 +17568,8 @@ async function dmSweep(shown, say) {
 /* Чому серверної перевірки може не бути — окремою кнопкою, а не в
    тості: читати це треба один раз, а перевіряти щодня. */
 function dmCheckHelp() {
-  alert('The server check runs in a Supabase Edge Function. If it does not answer, '
+  tell('Why the server check may be silent',
+    'The server check runs in a Supabase Edge Function. If it does not answer, '
     + 'the browser cannot say why — a reply without CORS headers does not exist for it.\n\n'
     + 'Check in this order:\n\n'
     + '1. Supabase → Edge Functions → check-domains → Logs.\n'
@@ -17826,7 +17979,8 @@ async function dmDelete(idEnc) {
   const id = decodeURIComponent(idEnc);
   const row = dmRows.find(r => String(r.id) === String(id));
   if (!row) return;
-  if (!confirm(`Remove ${row.domain} from the list?\n\nThis only deletes the row here — the domain itself is not touched.`)) return;
+  if (!await ask({ title: 'Remove from the list?', danger: true, ok: 'Remove',
+    body: `Remove ${row.domain}?\n\nThis only deletes the row here — the domain itself is not touched.` })) return;
   const { error } = await sb.from('domains').delete().eq('id', id);
   if (error) { alert('Could not delete: ' + error.message); return; }
   dmRows = dmRows.filter(r => String(r.id) !== String(id));
@@ -18298,7 +18452,8 @@ window.dmCheckHelp = dmCheckHelp;
   };
 
   window.expDelete = async function (id) {
-    if (!confirm('Delete this expense?')) return;
+    if (!await ask({ title: 'Delete the expense?', danger: true, ok: 'Delete',
+      body: 'This row will be gone from the list.' })) return;
     try { await sb.from('expenses').delete().eq('id', id); }
     catch (e) { return alert('Could not delete: ' + (e.message || e)); }
     expLoad();
@@ -18362,7 +18517,8 @@ window.dmCheckHelp = dmCheckHelp;
   window.sheetsRemove = async function () {
     const cur = sheets[sheetsIdx];
     if (!cur) return;
-    if (!confirm(`Remove “${cur.name}” from the list? The sheet itself stays in Google.`)) return;
+    if (!await ask({ title: 'Remove the sheet?', danger: true, ok: 'Remove',
+      body: `Remove “${cur.name}” from the list?\n\nThe sheet itself stays in Google.` })) return;
     sheets.splice(sheetsIdx, 1);
     sheetsIdx = Math.max(0, sheetsIdx - 1);
     await sheetsSave();
