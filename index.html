@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 14:30">
+  <meta name="build" content="build 24.09 16:24">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2608,6 +2608,48 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-srcsel #cab-src-fb.is-on { color: var(--ok); }
 .cab-srcn { opacity: .5; margin-left: 4px; font-variant-numeric: tabular-nums; }
 
+/* ─── Sync now ───
+   Кнопка з двох частин: дія і відповідь на питання «а це свіже?».
+   Розділені рискою й проміжком, бо це різні речі: підпис не міняється
+   ніколи, time — щохвилини. Раніше класу .cab-syncago не існувало
+   взагалі, тож time прилипав до слова без пробілу й успадковував розмір
+   підпису. */
+.cab-sync {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: 12px; cursor: pointer;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  color: var(--text-main); transition: border-color .15s, background .15s;
+}
+.cab-sync:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+.cab-sync:disabled { opacity: .45; cursor: default; }
+.cab-sync-lbl {
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+}
+.cab-syncago {
+  padding-left: 8px; border-left: 1px solid var(--border);
+  font-size: 9px; font-weight: 700; color: var(--text-muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* Нема що сказати про свіжість — нема й риски: розділювач у порожнечу
+   виглядає як недомальована кнопка. */
+.cab-syncago:empty { display: none; }
+
+/* ─── Скільки відкручено ───
+   Число, заради якого на цю сторінку заходять уранці. Стоїть над
+   плитками, бо плитки — це навігація, а це відповідь. */
+.cab-sum {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.cab-sum-n {
+  font-size: 22px; font-weight: 900; letter-spacing: -.02em;
+  color: var(--text-main); font-variant-numeric: tabular-nums;
+}
+.cab-sum-k {
+  font-size: 10px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.cab-sum-sub { font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .75; }
+
 /* Вибір періоду. Ті самі сегменти, що й у зрізі за джерелом — це
    сусідні перемикачі однієї ваги, і виглядати вони мають однаково.
    Ручні дати зʼявляються лише в режимі Custom: два порожні поля
@@ -2890,8 +2932,6 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .flt-row {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px;
 }
-
-                text-transform: uppercase; color: var(--text-muted); }
 
 /* Блок «що каже Facebook» у бічній панелі. Відділений рамкою
    навмисно: це єдине місце на панелі, де числа не твої й не зі
@@ -3516,7 +3556,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 14:30</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 16:24</div>
     </div>
   </aside>
 
@@ -4342,15 +4382,19 @@ body[data-route="domains"] #dm-detail {
       <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
            ходять сюди. У налаштуваннях така сама лишається навмисно: щойно додав
            токен — хочеться натиснути відразу, не йдучи нікуди. -->
-      <button type="button" id="cab-sync" onclick="cabSync()"
-        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none transition hover:border-violet-500 disabled:opacity-40"
-        title="Ask Facebook right now instead of waiting for the hourly run"><span>Sync now</span><span
-          id="cab-sync-ago" class="cab-syncago"></span></button>
+      <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
+        title="Ask Facebook right now instead of waiting for the hourly run"><span
+          class="cab-sync-lbl">Sync now</span><span id="cab-sync-ago" class="cab-syncago"></span></button>
     </div>
   </div>
 
   <!-- Результат синхронізації. Порожній, поки нічого не запускали —
        місця не займає. -->
+
+  <!-- Скільки відкручено за вибраний період. Над плитками, а не серед
+       них: плитки — це фільтр, тобто навігація, а це число, заради
+       якого сюди заходять. -->
+  <div id="cab-sum"></div>
 
   <div id="cab-tiles" class="mb-4"></div>
 
@@ -15576,8 +15620,13 @@ try {
   if (raw && raw.key) cabRange = { key: raw.key, since: raw.since || '', until: raw.until || '' };
 } catch (e) {}
 
+/* Пресети «7 days» і «30 days» прибрано на прохання: дивляться сюди
+   майже завжди за сьогодні, а довші відрізки лишились у Custom, де їх
+   можна взяти точніше. Ключі 7d/30d у cabRangeDates навмисно лишаються
+   робочими — у когось вони вже збережені в браузері, і ламати збережене
+   заради двох кнопок не варто. */
 const CAB_RANGES = [
-  ['today', 'Today'], ['yest', 'Yesterday'], ['7d', '7 days'], ['30d', '30 days']
+  ['today', 'Today'], ['yest', 'Yesterday']
 ];
 
 const cabDay = n => {
@@ -16130,6 +16179,44 @@ function cabMake(row, fb, id, f) {
            age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
 }
 
+/* СКІЛЬКИ ВІДКРУЧЕНО за вибраний період.
+
+   Валюти не зводимо в одну: долар на євровому кабінеті — це не
+   округлення, це інше число. Те саме правило вже стоїть у рядку
+   кабінета, і порушити його саме в підсумку означало б зробити
+   найпомітніше число на сторінці найбрехливішим.
+
+   Рахуємо по тому, що ВИДНО. Фільтр «Banned» із загальнопарковою сумою
+   під ним відповідав би на питання, якого ніхто не ставив; а щоб сума
+   під фільтром не здавалась усім парком, поруч стоїть друге число. */
+function cabSumPaint(shown, all) {
+  const box = document.getElementById('cab-sum');
+  if (!box) return;
+
+  const sums = list => {
+    const m = new Map();
+    list.forEach(c => {
+      const v = Number(cabSpendIn(c.fb));
+      if (!Number.isFinite(v) || v <= 0) return;
+      const cur = String(c.fb.currency || '');
+      m.set(cur, (m.get(cur) || 0) + v);
+    });
+    return m;
+  };
+  const money = m => [...m.entries()].sort((a, b) => b[1] - a[1])
+    .map(([cur, v]) => cabMoneyCur(v, cur)).join(' \u00b7 ');
+
+  const here = money(sums(shown));
+  const whole = shown.length === all.length ? '' : money(sums(all));
+  const running = shown.filter(c => c.state === 'running').length;
+
+  box.innerHTML = `
+    <span class="cab-sum-n">${here || '\u2014'}</span>
+    <span class="cab-sum-k">${cabEsc(cabRangeLabel())}</span>
+    <span class="cab-sum-sub">${shown.length} cabinet(s) \u00b7 ${running} running${
+      whole && whole !== here ? ' \u00b7 ' + whole + ' across the whole park' : ''}</span>`;
+}
+
 function cabRender() {
   const list = document.getElementById('cab-list');
   const tiles = document.getElementById('cab-tiles');
@@ -16259,12 +16346,14 @@ function cabRender() {
       : !cabFb.length
         ? 'No token sees any cabinet yet — add one in Settings, then press Sync now'
       : 'Nothing here';
+    cabSumPaint(shown, all);
     list.innerHTML =
       `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     cabDetail(null);
     return;
   }
 
+  cabSumPaint(shown, all);
   list.innerHTML = cabSection(shown);
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
