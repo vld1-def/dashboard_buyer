@@ -130,7 +130,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-24.3';
+const FN_VERSION = '2026-09-24.4';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1252,17 +1252,28 @@ async function handle(req: Request): Promise<Response> {
     note: 'no tokens to sync' });
 
   if (wantProbe) {
-    const t = tokens[0];
-    const ladder: Rung[] = [];
-
-    // Перший щабель: чи взагалі живий токен.
-    let me: Json | null = null;
-    try {
-      me = await graph('/me', t.token, { fields: 'id' });
-      ladder.push({ step: 'token itself works (/me)', ok: true, note: 'id ' + (me?.id || '?') });
-    } catch (e) {
-      ladder.push({ step: 'token itself works (/me)', ok: false, note: (e as Error).message });
+    /* Спершу /me кожним токеном. Один впав — біда того застосунку;
+       впали всі — блок вище, на самому акаунті розробника. */
+    const roll: { token: string; ok: boolean; note: string }[] = [];
+    let live: TokenRow | null = null;
+    for (const tk of tokens) {
+      try {
+        const me = await graph('/me', tk.token, { fields: 'id' });
+        roll.push({ token: tk.label, ok: true, note: 'id ' + (me?.id || '?') });
+        if (!live) live = tk;
+      } catch (e) {
+        roll.push({ token: tk.label, ok: false, note: (e as Error).message });
+      }
     }
+
+    if (!live) return reply({ roll, ladder: [], error:
+      'every token is refused at /me \u2014 the block sits on the app or on the '
+      + 'developer account behind them, not on a cabinet' });
+
+    const t = live;
+    const alive = roll.filter(r => r.ok).length;
+    const ladder: Rung[] = [{ step: 'token itself works (/me)', ok: true,
+      note: alive + ' of ' + roll.length + ' token(s) alive; going on with ' + t.label }];
 
     let actId = probeAcc;
     if (!actId) {
@@ -1277,9 +1288,11 @@ async function handle(req: Request): Promise<Response> {
                       note: (e as Error).message });
       }
     }
-    if (!actId) return reply({ token: t.label, ladder,
-      error: 'could not get an ad account to look at — see the steps above' });
-    return reply(await probeAccount(t, actId, ladder));
+    if (!actId) return reply({ token: t.label, roll, ladder,
+      error: 'could not get an ad account to look at \u2014 see the steps above' });
+    const out = await probeAccount(t, actId, ladder);
+    out.roll = roll;
+    return reply(out);
   }
 
   const deadline = Date.now() + DEADLINE_MS;
