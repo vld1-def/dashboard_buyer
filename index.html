@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 09:46">
+  <meta name="build" content="build 24.09 11:16">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2817,6 +2817,12 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   margin-left: 6px; text-decoration: underline; text-underline-offset: 2px;
 }
 .cab-gone-note:hover { background: rgba(245, 158, 11, .16); }
+/* Коли чужі кабінети вже показані, рядок перестає бути попередженням і
+   стає підписом: тривожити другий раз тим самим нема за що. */
+.cab-gone-note.is-open {
+  background: var(--surface-2); border-color: var(--border); color: var(--text-muted);
+}
+.cab-gone-note.is-open:hover { background: var(--surface-3); }
 
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
@@ -3462,7 +3468,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 09:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 11:16</div>
     </div>
   </aside>
 
@@ -4274,17 +4280,11 @@ body[data-route="domains"] #dm-detail {
         <option value="bm">Group: BM</option>
         <option value="">No grouping</option>
       </select>
-      <!-- Зріз за джерелом. Окремий вимір від стану, тому й окремий
-           перемикач, а не ще дві плитки в тій самій стрічці. Вибір
-           запам'ятовується між заходами. -->
-      <div class="cab-srcsel">
-        <button type="button" id="cab-src-all" onclick="cabSetSrc('')"
-          title="Every cabinet">All <span class="cab-srcn"></span></button>
-        <button type="button" id="cab-src-fb" onclick="cabSetSrc('fb')"
-          title="Only cabinets a token sees — state confirmed by Facebook">Live <span class="cab-srcn"></span></button>
-        <button type="button" id="cab-src-old" onclick="cabSetSrc('old')"
-          title="Only cabinets no token sees — state guessed from reports">Old <span class="cab-srcn"></span></button>
-      </div>
+      <!-- Перемикача зрізу тут більше немає. Сторінка показує кабінети,
+           які бачить токен, і тільки їх; решта ховається, а рядок над
+           таблицею каже, скільки їх і як подивитись. Три кнопки замість
+           цього змушували щоразу вибирати те, що й так має бути за
+           замовчуванням. -->
       <!-- Period, за який рахуємо витрати. Малюється з cabinets.js:
            вибір і його підпис мають жити в одному місці, інакше
            заголовок стовпчика колись розійдеться з тим, що в ньому. -->
@@ -15267,18 +15267,26 @@ let cabDays = {}, cabDaysErr = '';
    записано те, чого Facebook не знає й ніколи не скаже. */
 let cabTokens = {};
 
-/* Який зріз списку показувати: '' — увесь, 'fb' — тільки те, що бачить
-   токен, 'old' — тільки решта. Вибір запамʼятовуємо: людина, яка
-   поставила Live, завтра теж хоче Live, а не дві секції знову. */
-let cabSrc = '';
-try { cabSrc = localStorage.getItem('cab_src') || ''; } catch (e) {}
+/* Ця сторінка — про кабінети, які бачить токен. Решта, заведена колись
+   руками й нічим не підтверджена, за замовчуванням не показується: вона
+   не оновлюється, нічого про себе не знає, і єдине, що робить у списку
+   — розбавляє його рядками, яким не можна вірити.
+
+   «Бачить токен» означає «бачив хоч раз»: кабінет, який зник, лишається
+   тут із позначкою gone. Саме заради цього й ставиться missing_since —
+   щоб зникле не зникало ще й з екрана.
+
+   Ховати мовчки не можна, тому над таблицею стоїть рядок із кількістю
+   схованих і кнопкою. Вибір запамʼятовується. */
+let cabShowOld = false;
+try { cabShowOld = localStorage.getItem('cab_show_old') === '1'; } catch (e) {}
 
 const cabEsc = v => String(v == null ? '' : v)
   .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
-window.cabSetSrc = function (v) {
-  cabSrc = ['', 'fb', 'old'].includes(v) ? v : '';
-  try { localStorage.setItem('cab_src', cabSrc); } catch (e) {}
+window.cabToggleOld = function (on) {
+  cabShowOld = on === undefined ? !cabShowOld : !!on;
+  try { localStorage.setItem('cab_show_old', cabShowOld ? '1' : '0'); } catch (e) {}
   cabSel = null;
   cabRender();
 };
@@ -15877,12 +15885,10 @@ function cabRender() {
   const inFilter = c => !cabFilter ? true
     : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
     : c.state === cabFilter;
-  /* Зріз за джерелом. Це окремий вимір від стану: «показати лише те,
-     що підтверджує Facebook» і «показати лише забанені» — різні
-     питання, і звалювати їх в одну стрічку плиток означало б зробити
-     обидва незрозумілими. */
-  const inSrc = c => cabSrc === 'fb' ? (!!c.fb && !c.gone)
-                   : cabSrc === 'old' ? (!c.fb || c.gone) : true;
+  /* Account належить цій сторінці, якщо його бачив токен — зараз або
+     колись. Зниклі лишаються: вони мають позначку gone і саме тому
+     мусять бути на очах. */
+  const inSrc = c => cabShowOld ? true : !!c.fb;
   let shown = all.filter(c =>
     inFilter(c) && inSrc(c) &&
     (!q || [c.id, c.row.provider_name, c.row.status_note,
@@ -15893,18 +15899,18 @@ function cabRender() {
 
   cabFbNote();
 
-  /* Accountи, які зникли з Facebook і яких ЦЕЙ зріз не показує.
-
-     Позначка missing_since робилась саме для того, щоб зникле не
-     зникало мовчки — а зріз «Live» рівно це й робив: такий кабінет
-     випадав з екрана без жодного сліду, і людина дізнавалась про
-     втрату тоді, коли сама його шукала. Фільтр не має скасовувати
-     попередження; тому рядок нижче показується поверх будь-якого
-     зрізу й веде туди, де вони видні. */
-  const goneHidden = all.filter(c => c.gone && !inSrc(c)).length;
-  const goneNote = goneHidden ? `<p class="cab-gone-note" onclick="cabSetSrc('')">
-      ${goneHidden} cabinet(s) disappeared from Facebook and this filter hides them.
-      <span>Show</span></p>` : '';
+  /* Скільки кабінетів заховано й чому. Ховати мовчки не можна: людина
+     мусить знати, що список неповний, і мати змогу подивитись одним
+     рухом. */
+  const nOld = all.filter(c => !c.fb).length;
+  const oldNote = !nOld ? '' : cabShowOld
+    ? `<p class="cab-gone-note is-open" onclick="cabToggleOld(false)">
+        ${nOld} cabinet(s) below are in your list but no token sees them —
+        the numbers there come from reports, not from Facebook.
+        <span>Hide</span></p>`
+    : `<p class="cab-gone-note" onclick="cabToggleOld(true)">
+        ${nOld} cabinet(s) from your list are hidden: no token sees them.
+        <span>Show</span></p>`;
 
   /* Коли востаннє ходили в Facebook — просто на кнопці. Окремий рядок
      під нею читали б раз і забували, а тут воно перед очима щоразу,
@@ -15936,15 +15942,6 @@ function cabRender() {
         </span>` : '');
   }
 
-  // Підсвічуємо активний зріз і показуємо, скільки в кожному.
-  const nFb = all.filter(c => c.fb && !c.gone).length;
-  [['', all.length], ['fb', nFb], ['old', all.length - nFb]].forEach(([k, n]) => {
-    const b = document.getElementById('cab-src-' + (k || 'all'));
-    if (!b) return;
-    b.classList.toggle('is-on', cabSrc === k);
-    const c2 = b.querySelector('.cab-srcn');
-    if (c2) c2.textContent = n;
-  });
 
   if (!shown.length) {
     /* «Nothing here» на порожньому зрізі — найгірша з відповідей:
@@ -15952,23 +15949,23 @@ function cabRender() {
        нічого немає. */
     const why = cabFbErr
         ? 'Facebook data could not be read — see the note above the tiles'
-      : cabSrc === 'fb' && !nFb
-        ? 'No cabinet is covered by a token yet — press Sync now'
-      : cabSrc === 'old' && nFb === all.length
-        ? 'Every cabinet is covered by a token'
+      : !cabFb.length
+        ? 'No token sees any cabinet yet — add one in Settings, then press Sync now'
       : 'Nothing here';
-    list.innerHTML = goneNote
+    list.innerHTML = oldNote
       + `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     cabDetail(null);
     return;
   }
 
-  /* Ділимо за покриттям токеном. Поки токена немає жодного, ділити нема
-     чого — тоді це одна таблиця без заголовків, як і було. */
-  const split = cabFb.length > 0;
-  list.innerHTML = goneNote + (split
-    ? cabSection(shown.filter(c => c.fb && !c.gone), true) + cabSection(shown.filter(c => !c.fb || c.gone), false)
-    : cabSection(shown, false, true));
+  /* Дві секції потрібні лише тоді, коли показуємо й чужих: у них різні
+     набори колонок, бо про кабінет без токена ми не знаємо нічого
+     всередині. Поки список однорідний — одна таблиця без заголовка. */
+  const mine = shown.filter(c => c.fb);
+  const theirs = shown.filter(c => !c.fb);
+  list.innerHTML = oldNote + (theirs.length
+    ? cabSection(mine, true) + cabSection(theirs, false)
+    : cabSection(mine, true, true));
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
 }
