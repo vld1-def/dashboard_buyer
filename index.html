@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 14:06">
+  <meta name="build" content="build 24.09 14:16">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3516,7 +3516,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 14:06</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 14:16</div>
     </div>
   </aside>
 
@@ -10905,7 +10905,16 @@ function rbExportCSV(){
    де потрібна відповідь користувача, стоїть confirm() — його не чіпаємо,
    він має лишитись блокуючим. */
 
-window.toast = function (msg, kind, ms) {
+/* raw = «це вже готова розмітка, не чіпай». Потрібне, бо частина
+   повідомлень збирається з розміткою свідомо: перелік проблем окремими
+   рядками, шрифт mono на назві таблиці. Коли тости замінили абзац під
+   кнопкою Sync, ця розмітка почала виводитись як текст — на екрані
+   стояло буквальне «<br><span class="opacity-70">».
+
+   Типово все-таки екрануємо: через window.alert і стрічку подій сюди
+   потрапляють дані з бази, і довіряти їм не можна. Перемикач явний,
+   щоб ця різниця була видна в місці виклику, а не вгадувалась. */
+window.toast = function (msg, kind, ms, raw) {
   let wrap = document.getElementById('toast-wrap');
   if (!wrap) {
     wrap = document.createElement('div');
@@ -10915,8 +10924,13 @@ window.toast = function (msg, kind, ms) {
   const el = document.createElement('div');
   el.className = 'toast' + (kind ? ' is-' + kind : '');
   const title = kind === 'error' ? 'Error' : kind === 'ok' ? 'Done' : kind === 'warn' ? 'Check' : '';
-  el.innerHTML = (title ? `<span class="tt">${title}</span>` : '') +
-    String(msg == null ? '' : msg).replace(/</g, '&lt;');
+  const text = String(msg == null ? '' : msg);
+  el.innerHTML = (title ? `<span class="tt">${title}</span>` : '')
+    + (raw ? text
+           // Переноси рядків у звичайному тексті теж мають бути видні:
+           // у HTML вони інакше злипаються в одну стрічку.
+           : text.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]))
+                 .replace(/\n/g, '<br>'));
 
   const kill = () => {
     if (el.dataset.gone) return;
@@ -11021,15 +11035,15 @@ window.tell = (title, body) => window.ask({ title, body, only: true });
    один тост переписується на місці й гасне разом із результатом. */
 window.toastStep = function () {
   let el = null;
-  const put = (html, kind, ms) => {
+  const put = (html, kind, ms, raw) => {
     if (el && !el.dataset.gone) el.remove();
-    el = html ? window.toast(html, kind, ms) : null;
+    el = html ? window.toast(html, kind, ms, raw) : null;
   };
   return {
     // Проміжний крок живе, поки не скажуть інше: ms = 0.
-    say: (html, kind) => put(html, kind, 0),
+    say: (html, kind, raw) => put(html, kind, 0, raw),
     // Останній — звичайний тост, який сам згасне.
-    done: (html, kind) => put(html, kind)
+    done: (html, kind, raw) => put(html, kind, undefined, raw)
   };
 };
 </script>
@@ -14562,10 +14576,19 @@ window.fbSync = async function (say, body) {
        випадку, коли казати справді нема чого. */
     if (j.telegram && j.telegram !== 'nothing to report')
       bits.push('telegram: ' + j.telegram);
+    /* Проблеми окремими рядками, але не стіною: у людини буває
+       десяток токенів, і якщо відвалились усі, десять однакових рядків
+       у кутку нічого не додають до перших трьох. */
+    const probs = j.problems || [];
+    const SHOW = 3;
     tell(fbEsc(bits.join(' · '))
-      + (j.problems && j.problems.length
-          ? '<br><span class="opacity-70">' + j.problems.map(fbEsc).join('<br>') + '</span>' : ''),
-      j.throttled || j.failed ? 'var(--warn)' : 'var(--ok)');
+      + (probs.length
+          ? '<br><span class="opacity-70">' + probs.slice(0, SHOW).map(fbEsc).join('<br>')
+            + (probs.length > SHOW
+                ? '<br>\u2026and ' + (probs.length - SHOW) + ' more like this' : '')
+            + '</span>'
+          : ''),
+      j.throttled || j.failed || probs.length ? 'var(--warn)' : 'var(--ok)');
     return j;
   } catch (e) {
     /* «Failed to fetch» означає рівно одне: браузер не зміг виконати
@@ -15910,7 +15933,7 @@ function cabFbNote() {
   const say = (html, kind) => {
     if (html === cabNoteSaid) return;
     cabNoteSaid = html;
-    if (html) toast(html, kind);
+    if (html) toast(html, kind, undefined, true);
   };
   if (cabFbErr === 'not-set-up') {
     say('Facebook data is not set up yet — run <span class="font-mono">FB_SYNC.sql</span>, '
@@ -15958,7 +15981,7 @@ window.cabSync = async function () {
      живим тостом, а коли все скінчилось, той самий текст має лишитись
      на екрані вже звичайним — і згаснути сам. */
   let last = { html: '', kind: '' };
-  const say = (html, tone) => { last = { html, kind: cabKind(tone) }; step.say(html, last.kind); };
+  const say = (html, tone) => { last = { html, kind: cabKind(tone) }; step.say(html, last.kind, true); };
   btn.disabled = true;
   // Кнопка тепер має два вузли: підпис і time. Міняємо лише підпис.
   const lbl = btn.querySelector('span') || btn;
@@ -15972,7 +15995,7 @@ window.cabSync = async function () {
     /* Останнє, що сказала fbSync, лишаємо на екрані — але вже як
        звичайний тост, який згасне сам. Живий тост, забутий увімкненим,
        висів би до перезавантаження. */
-    step.done(last.html, last.kind);
+    step.done(last.html, last.kind, true);
     cabRender();
   } finally {
     btn.disabled = false;
@@ -16625,8 +16648,8 @@ async function cabStopAll(idEnc) {
   /* Поки зупиняємо — живий тост; усе, що йде далі, це вже
      результат, і він має згаснути сам. */
   const step = toastStep();
-  const say = (html, tone) => step.done(html, cabKind(tone));
-  step.say(`Pausing campaigns in ${cabEsc(name)}…`);
+  const say = (html, tone) => step.done(html, cabKind(tone), true);
+  step.say(`Pausing campaigns in ${cabEsc(name)}…`, '', true);
 
   let j;
   try {

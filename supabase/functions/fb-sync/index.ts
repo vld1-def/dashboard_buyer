@@ -128,10 +128,22 @@ class GraphError extends Error {
   }
 }
 
+/* Номер помилки додаємо до тексту, якщо його там ще немає.
+
+   error_user_msg написаний для людини й номера не містить: Facebook
+   віддає «API access blocked.» і на цьому все. Таке повідомлення
+   неможливо ні знайти в документації, ні відрізнити від сусіднього —
+   а різниця між «заблокували застосунок», «заблокували БМ» і
+   «перевищено ліміт» саме в номері й живе. message натомість номер
+   зазвичай має, але написаний гірше. Тож беремо краще з двох і
+   дописуємо номер. */
 function graphError(e: Json): GraphError {
   const code = Number(e?.code || 0);
-  const msg = String(e?.error_user_msg || e?.message || 'Graph API error');
-  return new GraphError(msg, code, Number(e?.error_subcode || 0));
+  const sub = Number(e?.error_subcode || 0);
+  let msg = String(e?.error_user_msg || e?.message || 'Graph API error');
+  if (code && !msg.includes('#' + code))
+    msg += ' (#' + code + (sub ? '/' + sub : '') + ')';
+  return new GraphError(msg, code, sub);
 }
 
 /* Пакетний запит. Відповідь — масив у тому самому порядку, що й
