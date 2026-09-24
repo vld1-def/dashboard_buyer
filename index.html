@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 20:05">
+  <meta name="build" content="build 24.09 20:20">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2856,7 +2856,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 }
 .fcm-blocked-row b { color: var(--text-main); font-weight: 900; }
 
-/* «Account зник, а фільтр його ховає». Клікабельне D бо єдина розумна
+/* «Account зник, а фільтр його ховає». Клікабельне — бо єдина розумна
    реакція на цей рядок одна: піти й подивитись. */
   margin-bottom: 8px; padding: 8px 12px; border-radius: 12px; cursor: pointer;
   background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .28);
@@ -3669,7 +3669,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:20</div>
     </div>
   </aside>
 
@@ -14867,7 +14867,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.3';
+const FB_FN_WANT = '2026-09-24.4';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -14993,12 +14993,21 @@ window.fbProbe = async function () {
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
 
-    /* Сходи — найперше й завжди. Саме вони відповідають на питання
+    /* Перекличка токенів — найперше. Впав один — біда того застосунку,
+       впали всі — блок вище, на акаунті розробника. Без неї одна
+       відмова виглядає як вирок усьому, а це різні діагнози. */
+    const roll = (j.roll || []).map(r =>
+      (r.ok ? '  ok   ' : '  FAIL ') + r.token + (r.note ? '   ' + r.note : '')).join('\n');
+    const rollTxt = roll ? (j.roll.length + ' token(s):\n' + roll + '\n\n') : '';
+
+    /* Сходи — за перекличкою. Саме вони відповідають на питання
        «де саме відмовили», на яке Facebook відповідати не хоче. */
     const steps = (j.ladder || []).map(r =>
       (r.ok ? '  ok   ' : '  FAIL ') + r.step + (r.note ? '\n         ' + r.note : '')).join('\n');
-    const top = 'token: ' + (j.token || '') + (j.account_id ? '   act_' + j.account_id : '')
-      + (j.name ? '   ' + j.name : '') + '\n\n' + steps + '\n';
+    const top = rollTxt
+      + (j.token ? 'token: ' + j.token + (j.account_id ? '   act_' + j.account_id : '')
+                 + (j.name ? '   ' + j.name : '') + '\n\n' : '')
+      + (steps ? steps + '\n' : '');
 
     if (j.error) return show(top + '\n' + j.error, true);
     /* Метаданих не дали, але звичні поля приїхали — значить закрито
