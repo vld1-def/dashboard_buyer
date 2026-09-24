@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 11:24">
+  <meta name="build" content="build 24.09 11:48">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2890,6 +2890,9 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-syncago:empty { display: none; }
 /* Account, якого токен більше не бачить. */
 .cab-chip.is-gone { color: var(--warn); border-color: var(--warn); opacity: .8; }
+/* Чекає на перевірку Facebook. Синій, а не жовтий: це не проблема, а
+   черга, і дія тут одна — не робити нічого. */
+.cab-chip.is-review { color: #38BDF8; border-color: rgba(56,189,248,.45); }
 .cab-syncmsg:not(:empty) { margin-bottom: 10px; }
 .cab-today { color: var(--text-main); }
 
@@ -3526,7 +3529,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 11:24</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 11:48</div>
     </div>
   </aside>
 
@@ -14538,7 +14541,7 @@ window.fbSync = async function (say, body) {
    полях є конверсії. Тобто або гео з плейсментом і без конверсій, або
    конверсії й один розріз. Конверсії важливіші. */
 const FBR_BREAKDOWNS = [
-  ['', 'By day'],
+  ['', 'By day'],   // те, що потрібне Form.html у 99 випадках зі 100
   ['country', 'By day + country'],
   ['placement', 'By day + placement']
 ];
@@ -14593,10 +14596,19 @@ let fbrBusy = '';       // текст на time роботи; '' — вільн�
    кабінета перемальовується цілком, і повідомлення, записане прямо у
    вузол, зникало б рівно в ту мить, коли його дочитують. */
 let fbrMsg = { html: '', tone: '' };
-/* Гео за замовчуванням. З двох можливих розрізів він важливіший: у
-   Form.html гео входить у те, про що імпорт питає окремо, якщо у файлі
-   його немає, а плейсмент із пристроєм — ні. */
-let fbrBd = 'country';
+/* Без розрізу за замовчуванням — і це не економія, а те, як
+   влаштований імпорт на тому кінці.
+
+   Form.html дістає гео з НАЗВИ КАМПАНІЇ: у PWA за шаблоном виду
+   *_{geo}_{ktid}, в APP — за шаблоном профілю. Стовпець Country він
+   читає лише тоді, коли в шаблоні немає {geo} — тобто майже ніколи.
+
+   Розріз по країнах при цьому множить рядки: одна кампанія на пʼять
+   countries дає пʼять рядків замість одного, і всі пʼять Form зведе до
+   того самого гео з назви. Файл важчий, звіт довший, Facebook частіше
+   ріже його по ліміту — і все це заради стовпця, який ніхто не
+   відкриє. */
+let fbrBd = '';
 
 /* '' — брати само, '-' — не вивантажувати, будь-що інше — вибрана
    подія. «Брати само» і «не треба» навмисно різні значення: звести їх
@@ -14730,6 +14742,9 @@ function fbrBlock(c) {
     <button type="button" onclick="fbrRun('${enc}')" class="fbr-go"
       ${fbrBusy ? 'disabled' : ''}>${fbrBusy ? fbrEsc(fbrBusy) : 'Download CSV'}</button>
     <p class="fbr-hint">Period: <b>${fbrEsc(cabRangeLabel())}</b></p>
+    ${fbrBd === 'country' ? `<p class="fbr-hint">Form.html takes geo from the <b>campaign
+      name</b>, not from this column \u2014 so this split only multiplies rows. Pick it only if
+      your campaign-name pattern has no <span class="font-mono">{geo}</span> in it.</p>` : ''}
     ${fbrBd ? `<p class="fbr-hint">Facebook gives geo and placement only in separate reports.
       Take one now and the other later if you need both \u2014 but <b>do not import both for the
       same days</b>: Form.html adds rows up, and the spend would count twice.</p>` : ''}
@@ -14789,7 +14804,7 @@ function fbrAction(row, type) {
 }
 
 /* Те, що піде у файл, але ще не файл: заголовки, рядки й номери
-   стовпчиків із числами. Одна функція на превʼю і на CSV навмисно D
+   стовпчиків із числами. Одна функція на превʼю і на CSV навмисно —
    інакше на екрані рано чи пізно було б не те, що в файлі, і превʼю
    перестало б щось означати. */
 function fbrTable(rows, cur, bd) {
@@ -14866,11 +14881,11 @@ const FBR_MAX_WAIT = 150;   // ≈ 5 хвилин по 2 секунди
    Файл, який лягає в теку завантажень, подивитись уже ніколи: його
    відкривають один раз, в імпорті, і там будь-яка дивина виглядає як
    дивина імпорту, а не експорту. Тому спершу показуємо те саме, що
-   піде у файл, на екрані D із підсумками, які можна звірити з Ads
+   піде у файл, на екрані — із підсумками, які можна звірити з Ads
    Manager, не виходячи з дашборда.
 
    Показуємо перші рядки, а не всі: тисяча рядків у вікні нікому не
-   потрібна, а перевіряють однаково перші. Скільки їх усього D сказано
+   потрібна, а перевіряють однаково перші. Скільки їх усього — сказано
    поруч. */
 const FBR_PREV_ROWS = 40;
 let fbrPrev = null;
@@ -15402,15 +15417,16 @@ const CAB_STATE = {
   silent:  { label: 'Silent',    dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.14)', bd: 'rgba(245,158,11,.32)' },
   issue:   { label: 'Issue',     dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.10)', bd: 'rgba(245,158,11,.25)' },
   banned:  { label: 'Banned',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.14)',  bd: 'rgba(239,68,68,.32)' },
+  review:  { label: 'In review', dot: '#38BDF8', tone: 'text-sky-400',     soft: 'rgba(56,189,248,.12)', bd: 'rgba(56,189,248,.30)' },
   idle:    { label: 'Never ran', dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' }
 };
 // Порядок = що першим потрапляє на очі. Зверху те, що вимагає дії.
-const CAB_ORDER = ['banned', 'silent', 'issue', 'running', 'idle'];
+const CAB_ORDER = ['banned', 'silent', 'issue', 'review', 'running', 'idle'];
 /* «Working» — те, з чим справді працюєш. Навмисне НЕ тільки running:
    silent і issue якраз і є ті, що вимагають уваги, ховати їх за
    замовчуванням було б рівно навпаки до сенсу сторінки. Ховаємо лише
    мертвий вантаж — бани й ті, що не крутили жодного разу. */
-const CAB_WORKING = ['running', 'silent', 'issue'];
+const CAB_WORKING = ['running', 'silent', 'issue', 'review'];
 // Колонки «де це було» можуть ще не існувати в базі — сторінка працює й без них.
 const CAB_EXTRA = [
   { key: 'bm',      label: 'Business Manager' },
@@ -15646,6 +15662,11 @@ const CAB_ST_BAD = ['DISAPPROVED', 'WITH_ISSUES', 'PENDING_BILLING_INFO'];
 const CAB_ST_GONE = ['ARCHIVED', 'DELETED'];
 
 const cabStWord = k => CAB_ST_WORD[k] || String(k).toLowerCase().replace(/_/g, ' ');
+
+/* Скільки оголошень чекає на перевірці Facebook. Число тут потрібне
+   саме числом, а не словом: «одне з тридцяти» і «тридцять з тридцяти»
+   — це різні ранки. */
+const cabPending = fb => Number(fb && fb.ads_by_status && fb.ads_by_status.PENDING_REVIEW) || 0;
 
 /* Розбивка рядком, від більшого до меншого. Без ACTIVE, коли поруч уже
    стоїть «3/180»: повторювати ту саму трійку двічі — зайвий шум. */
@@ -15911,6 +15932,14 @@ function cabStateOf(row, f, fb) {
   if (st === 'ban') return 'banned';
   if (byFb === 'issue') return 'issue';
   if (st === 'problem') return 'issue';
+  /* Щойно запущений кабінет: усередині вже щось є, але Facebook не
+     пропустив ще жодного оголошення. Досі це виглядало як «Never ran»
+     — тобто як мертвий, хоча чекати тут саме й правильно, і єдина
+     дія — не робити нічого. Вимагаємо нуль доставлених: кілька
+     оголошень на перевірці є майже в кожного, хто щось міняв сьогодні,
+     і перефарбовувати через них робочий кабінет означало б зробити
+     цей стан шумом. */
+  if (fb && cabPending(fb) > 0 && Number(fb.ads_active) === 0) return 'review';
   /* Facebook каже, що сьогодні вже відкручено — значить крутить, і не
      важливо, що вечірній імпорт ще не приїхав. Саме через це до токена
      робочий кабінет цілий day виглядав тихим. */
@@ -16058,31 +16087,35 @@ function cabRender() {
   const inFilter = c => !cabFilter ? true
     : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
     : c.state === cabFilter;
-  /* Account належить цій сторінці, якщо його бачив токен — зараз або
-     колись. Зниклі лишаються: вони мають позначку gone і саме тому
-     мусять бути на очах. */
-  const inSrc = c => cabShowOld ? true : !!c.fb;
-  let shown = all.filter(c =>
-    inFilter(c) && inSrc(c) &&
-    (!q || [c.id, c.row.provider_name, c.row.status_note,
+  /* Account належить цій сторінці, якщо токен бачить його ЗАРАЗ.
+     Зниклий (gone) — це теж старий кабінет: його дані заморожені на
+     останньому, що встиг побачити токен, і серед живих вони брешуть
+     свіжістю. Про саме зникнення повідомляє Telegram і стрічка подій,
+     тож мовчазним воно не стає. */
+  const inSrc = c => cabShowOld ? true : (!!c.fb && !c.gone);
+  const inText = c => !q || [c.id, c.row.provider_name, c.row.status_note,
             c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,
             c.tok.agent, c.tok.browser, c.tok.bm, c.tok.label,
             ...CAB_EXTRA.map(e => c.row[e.key])]
-           .some(v => String(v || '').toLowerCase().includes(q))));
+           .some(v => String(v || '').toLowerCase().includes(q));
+  let shown = all.filter(c => inFilter(c) && inSrc(c) && inText(c));
 
   cabFbNote();
 
   /* Скільки кабінетів заховано й чому. Ховати мовчки не можна: людина
      мусить знати, що список неповний, і мати змогу подивитись одним
      рухом. */
-  const nOld = all.filter(c => !c.fb).length;
+  /* Рахуємо по тому ж зрізу, що й таблицю. Інакше рядок обіцяв би
+     показати пʼять, фільтр пропускав би одного, і число під заголовком
+     сперечалося б із тим, що під ним видно. */
+  const nOld = all.filter(c => inFilter(c) && inText(c) && (!c.fb || c.gone)).length;
   const oldNote = !nOld ? '' : cabShowOld
     ? `<p class="cab-gone-note is-open" onclick="cabToggleOld(false)">
-        ${nOld} cabinet(s) below are in your list but no token sees them —
-        the numbers there come from reports, not from Facebook.
+        ${nOld} cabinet(s) below are not seen by any token right now —
+        the numbers there are frozen or come from reports, not from Facebook.
         <span>Hide</span></p>`
     : `<p class="cab-gone-note" onclick="cabToggleOld(true)">
-        ${nOld} cabinet(s) from your list are hidden: no token sees them.
+        ${nOld} cabinet(s) are hidden: no token sees them right now.
         <span>Show</span></p>`;
 
   /* Коли востаннє ходили в Facebook — просто на кнопці. Окремий рядок
@@ -16182,9 +16215,12 @@ function cabSection(items, hasFb, bare) {
   sorted.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
 
   const COLS = hasFb ? 11 : 7;
+  /* «Live» лише тоді, коли живе справді все. Один заморожений рядок
+     під таким заголовком — і заголовок починає брехати за нього. */
+  const anyGone = items.some(c => c.gone);
   const head = `<div class="cab-sec">
-      <span class="cab-sec-name ${hasFb ? 'is-live' : ''}">${
-        hasFb ? 'Live from Facebook' : 'No token sees these'}</span>
+      <span class="cab-sec-name ${hasFb && !anyGone ? 'is-live' : ''}">${
+        hasFb ? (anyGone ? 'From Facebook' : 'Live from Facebook') : 'No token sees these'}</span>
       <span class="cab-sec-sub">${items.length} · ${
         hasFb ? (cabFbAt() ? 'updated ' + cabAgo(cabFbAt()) : 'never synced')
               : 'state guessed from reports'}</span>
@@ -16253,6 +16289,10 @@ function cabRowHtml(c, hasFb) {
       <span class="cab-src ${c.fb && !c.gone ? 'is-live' : ''}" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       ${c.gone ? `<span class="cab-chip is-gone" title="The token stopped seeing this cabinet on ${
         cabEsc(String(c.fb.missing_since).slice(0, 10))} — the numbers below are the last ones it saw">gone</span>` : ''}
+      ${cabPending(c.fb) ? `<span class="cab-chip is-review" title="Facebook has not finished checking ${
+        cabPending(c.fb)} ad(s) yet. Nothing to do but wait — it usually takes minutes, sometimes hours.">${
+        cabPending(c.fb)} in review</span>` : ''}
+      ${c.fb && String(c.fb.status) === 'review' ? `<span class="cab-chip is-gone" title="Facebook put the ad account ITSELF under review, not just its ads. Payments and delivery can stop while it lasts.">account in review</span>` : ''}
       ${c.fb && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
     </td>
     <td class="cab-dim">${c.row.provider_name
