@@ -552,11 +552,16 @@ async function noteChanges(base: string, hdr: Json, team: string,
 
 /* ── один токен ── */
 type TokenRow = { id: number; label: string; token: string;
-                  created_by: string; team_name: string | null };
+                  created_by: string; team_name: string | null;
+                  // Яким ми його бачили минулого разу.
+                  status?: string | null };
 
 type Outcome = { accounts: number; failed: number; changed: number;
                  error: string; throttled: boolean;
-                 days: number; noHistory: number; historyError: string };
+                 days: number; noHistory: number; historyError: string;
+                 // Чому не вдалось прочитати попередній стан кабінетів.
+                 // Порожньо — порівняння працює, сповіщення живі.
+                 knownError: string };
 
 /* Привід написати людині. owner — хто саме має це прочитати: кабінети
    належать конкретним баєрам, і сповіщення ходять так само. */
@@ -565,7 +570,7 @@ type Alert = { owner: string; name: string; kind: 'bad' | 'good'; text: string }
 async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
-                        days: 0, noHistory: 0, historyError: '' };
+                        days: 0, noHistory: 0, historyError: '', knownError: '' };
 
   let accs: Json[];
   try {
@@ -577,7 +582,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     // Токен протух або його відкликали — це стан самого токена, і його
     // місце у fb_tokens, поруч із рештою діагностики. Інакше людина
     // бачила б порожній список кабінетів і гадала чому.
-    await markToken(base, hdr, t.id, g.code === 190 ? 'expired' : 'error', g.message);
+    await markToken(base, hdr, t, g.code === 190 ? 'expired' : 'error', g.message, alerts);
     return out;
   }
 
@@ -585,23 +590,40 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   if (!accs.length) {
     // Токен більше не бачить нічого. Рядки не видаляємо — позначаємо.
     await markMissing(base, hdr, t, [], alerts);
-    await markToken(base, hdr, t.id, 'no-accounts',
-      'No ad account is visible — check Add Assets on the system user');
+    await markToken(base, hdr, t, 'no-accounts',
+      'No ad account is visible — check Add Assets on the system user', alerts);
     return out;
   }
 
-  // Що ми знали про ці кабінети до цього прогону — щоб помітити зміну
-  // стану. Одним запитом на токен, а не по рядку.
+  /* Що ми знали про ці кабінети до цього прогону — щоб помітити зміну
+     стану. Одним запитом на токен, а не по рядку.
+
+     ТУТ БУВ БАГ, і він коштував усіх сповіщень. У фільтрі стояло
+     `created_by=<uuid>` без оператора, а PostgREST чекає
+     `created_by=eq.<uuid>` — і на кожному прогоні відповідав 400.
+     Помилку ловив порожній catch, known лишався порожнім, кожен
+     кабінет виглядав побаченим уперше (`if (!was) return`), і жодна
+     зміна стану нікуди не йшла: ні бани, ні відхилення, ні події в
+     account_events. Тест зв'язку при цьому працював, бо йде іншим
+     шляхом — звідси й «начебто все налаштовано, а не приходить».
+
+     Тому далі мовчазного catch тут немає: причину віддаємо назовні. */
   const known = new Map<string, { status: string; rejected: number }>();
   try {
     const prev = await pgGet(base, hdr,
-      'fb_accounts?select=account_id,status,ads_by_status&created_by='
+      'fb_accounts?select=account_id,status,ads_by_status&created_by=eq.'
       + encodeURIComponent(t.created_by));
     prev.forEach((r: Json) => known.set(String(r.account_id), {
       status: String(r.status || ''),
       rejected: Number(r.ads_by_status?.DISAPPROVED) || 0
     }));
-  } catch (_e) { /* перший прогін: знати нічого */ }
+  } catch (e) {
+    /* Перший прогін — це порожня відповідь, а не помилка. Усе інше
+       означає, що порівнювати ми більше не вміємо, і сказати про це
+       треба вголос: мовчазна втрата порівняння і є те, як зникають
+       сповіщення. */
+    out.knownError = (e as Error).message;
+  }
 
   const now = new Date().toISOString();
   const rows: Json[] = [];
@@ -720,7 +742,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   await savePages(base, hdr, t, pageUse, now);
   await markMissing(base, hdr, t, accs.map(a => String(a.account_id || '')), alerts);
   await noteChanges(base, hdr, t.team_name || '', changes);
-  await markToken(base, hdr, t.id, 'ok', `Sees ${accs.length} ad account(s)`);
+  await markToken(base, hdr, t, 'ok', `Sees ${accs.length} ad account(s)`, alerts);
   return out;
 }
 
@@ -864,10 +886,27 @@ async function markMissing(base: string, hdr: Json, t: TokenRow,
 
 /* Стан самого токена тримаємо свіжим: саме сюди дивляться, коли імпорт
    раптом привіз порожнечу. */
-async function markToken(base: string, hdr: Json, id: number,
-                         status: string, note: string): Promise<void> {
+/* Токен, який перестав працювати, — це тиша всіх тиш: поки він
+   мертвий, жодне інше сповіщення вже не прийде, бо приходити нема з
+   чого. Кабінети при цьому виглядають так само, як учора, і саме тому
+   про сам токен треба сказати окремо й одразу.
+
+   Говоримо лише про ЗМІНУ: щогодинне «токен усе ще протух» читають
+   двічі, а потім вимикають бота. Перша поява токена теж не подія —
+   він щойно доданий, і його стан людина бачить на екрані. */
+async function markToken(base: string, hdr: Json, t: TokenRow,
+                         status: string, note: string,
+                         alerts?: Alert[]): Promise<void> {
+  const was = String(t.status || '');
+  if (alerts && was && was !== status) {
+    const bad = status !== 'ok';
+    alerts.push({ owner: t.created_by, name: t.label, kind: bad ? 'bad' : 'good',
+      text: bad
+        ? 'Token \u00ab' + t.label + '\u00bb — ' + status + (note ? ' (' + note + ')' : '')
+        : 'Token \u00ab' + t.label + '\u00bb works again' });
+  }
   try {
-    await fetch(base + '/rest/v1/fb_tokens?id=eq.' + id, {
+    await fetch(base + '/rest/v1/fb_tokens?id=eq.' + t.id, {
       method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
       body: JSON.stringify({ status, status_note: note, checked_at: new Date().toISOString() })
     });
@@ -1059,7 +1098,7 @@ async function handle(req: Request): Promise<Response> {
     return reply(await tgTest(base, hdr, onlyOwner));
   }
 
-  let q = 'fb_tokens?select=id,label,token,created_by,team_name&order=id.asc';
+  let q = 'fb_tokens?select=id,label,token,created_by,team_name,status&order=id.asc';
   if (onlyOwner) q += '&created_by=eq.' + encodeURIComponent(onlyOwner);
   if (onlyToken) q += '&id=eq.' + onlyToken;
 
@@ -1098,6 +1137,12 @@ async function handle(req: Request): Promise<Response> {
     days += r.days; noHistory += r.noHistory;
     if (r.historyError && !historyError) historyError = r.historyError;
     if (r.error) problems.push(t.label + ': ' + r.error);
+    /* Порівняння зі станом минулого прогону відвалилось. Це не «трохи
+       гірше»: без нього сповіщення не мають із чого взятись, і саме
+       так вони одного разу вже зникли мовчки. */
+    if (r.knownError)
+      problems.push(t.label + ': cannot compare with the previous run, so no alerts '
+        + 'can be raised for it — ' + r.knownError);
     if (r.throttled) {
       // Ліміт Facebook рахує навіть відмовлені запити. Далі по списку
       // буде те саме — краще вийти й доробити наступною годиною.
