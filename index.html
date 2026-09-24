@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 09:33">
+  <meta name="build" content="build 24.09 09:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3462,7 +3462,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 09:33</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 09:46</div>
     </div>
   </aside>
 
@@ -6663,6 +6663,7 @@ function openSettingsModal() {
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
   if (typeof setSubTabInit === 'function') setSubTabInit();
   if (typeof fbLoad === 'function') fbLoad();
+  if (typeof fcLoadAutoHide === 'function') fcLoadAutoHide();
 }
 
 async function loadTeamLeadToggles() {
@@ -11622,6 +11623,22 @@ document.addEventListener('keydown', e => {
             </p>
           </div>
 
+<div class="set-group">
+            <h3 class="set-gtitle">Comments under ads</h3>
+            <p class="set-gsub">The scheduled run walks the cabinets, finds comments written since it last looked, and sends them to Telegram.</p>
+
+            <label class="set-row set-toggle" data-setting="comments autohide коментарі ховати">
+              <span class="set-label">Hide new comments automatically</span>
+              <span class="toggle-switch"><input type="checkbox" id="fc-autohide" onchange="fcSaveAutoHide()"><span class="toggle-slider"></span></span></label>
+
+            <p class="set-hint">Hiding is reversible: only its author keeps seeing the comment, and they are not told.
+              You can put it back from the cabinet panel at any time. <b>Deleting is never automatic</b> &mdash; that stays a
+              button you press yourself, because there is no way back from it.</p>
+            <p class="set-hint opacity-60">The first pass over a cabinet hides nothing and reports nothing: it only notes the
+              time. Otherwise turning this on would bury you in comments from six months ago and hide half a year of
+              conversation in one go.</p>
+          </div>
+
           </div>
 
           <div id="isub-pane-tg" class="set-subpane">
@@ -15024,6 +15041,24 @@ async function fcmLoad(id) {
   }
   if (fcmFor === id) cabRefresh();
 }
+
+/* Вимикач автоприховування. Командний, бо рішення «ховати все
+   підряд» стосується всієї команди, а не того, хто першим відкрив
+   налаштування. Немає запису — ховаємо: зняти приховування можна
+   однією кнопкою, а непоміченого спаму під оголошенням не повернеш. */
+window.fcLoadAutoHide = async function () {
+  const el = document.getElementById('fc-autohide');
+  if (!el) return;
+  let on = true;
+  try { on = (await getTeamSetting('fb_comments_autohide')) !== '0'; } catch (e) {}
+  el.checked = on;
+};
+
+window.fcSaveAutoHide = async function () {
+  const el = document.getElementById('fc-autohide');
+  if (!el) return;
+  await setTeamSetting('fb_comments_autohide', el.checked ? '1' : '0');
+};
 
 window.fcmToggle = function (idEnc) {
   const id = decodeURIComponent(idEnc);

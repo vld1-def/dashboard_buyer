@@ -109,7 +109,13 @@ alter table public.fb_accounts
   add column if not exists adsets_on     int,
   add column if not exists ads_on        int,
   add column if not exists daily_budget  numeric,
-  add column if not exists missing_since timestamptz;
+  add column if not exists missing_since timestamptz,
+  -- Обхід коментарів. scanned_at — коли востаннє дивились (за ним
+  -- вибирається черга: першими ті, кого давно не бачили). seen_at D
+  -- час найновішого коментаря, який ми вже опрацювали; усе, що
+  -- новіше, вважається новим.
+  add column if not exists comments_scanned_at timestamptz,
+  add column if not exists comments_seen_at    timestamptz;
 
 
 -- ════════════════════════════════════════════════════════════
