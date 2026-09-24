@@ -130,7 +130,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-24.8';
+const FN_VERSION = '2026-09-24.9';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -259,31 +259,14 @@ function shiftDay(day: string, n: number): string {
 const ACC_FIELDS = [
   'account_id', 'name', 'account_status', 'disable_reason', 'currency',
   'timezone_name', 'amount_spent', 'spend_cap', 'balance',
-  'is_prepay_account',
   'funding_source_details', 'business{id,name}'
 ].join(',');
 
-/* ДЕННА СТЕЛЯ, яку Facebook ставить САМ, — те, що зазвичай і мають на
-   увазі під «лімітом кабінета». В офіційному переліку полів AdAccount
-   її немає: там 77 назв (facebook-python-business-sdk, adaccount.py),
-   і adtrust_dsl серед них не значиться. Але Graph її віддає — саме це
-   число показують розширення, вичитуючи його з коду сторінки Ads
-   Manager.
-
-   Тому просимо оптимістично й готові почути «немає такого поля».
-   Ціна невдалої спроби — один зайвий запит на токен за годину; ціна
-   відмови від спроби — не мати ліміту взагалі.
-
-   ОКРЕМО ВІД РЕШТИ навмисно. Одна невідома назва валить УВЕСЬ запит
-   помилкою 100, а разом із ним — і всі кабінети токена. Тому невідоме
-   живе в окремому списку, який можна зняти цілком. */
-const ACC_EXTRA = ['adtrust_dsl'];
-
-async function pageAccounts(token: string, fields: string): Promise<Json[]> {
+async function listAccounts(token: string): Promise<Json[]> {
   const out: Json[] = [];
   let after = '';
   for (let page = 0; page < 20; page++) {
-    const params: Json = { fields, limit: 100 };
+    const params: Json = { fields: ACC_FIELDS, limit: 100 };
     if (after) params.after = after;
     const j = await graph('/me/adaccounts', token, params);
     const rows = Array.isArray(j.data) ? j.data : [];
@@ -292,18 +275,6 @@ async function pageAccounts(token: string, fields: string): Promise<Json[]> {
     if (!after || rows.length < 100) break;
   }
   return out;
-}
-
-async function listAccounts(token: string): Promise<Json[]> {
-  try {
-    return await pageAccounts(token, ACC_FIELDS + ',' + ACC_EXTRA.join(','));
-  } catch (e) {
-    /* Код 100 — «такого поля немає». Тільки він означає, що винен
-       наш список; будь-яка інша помилка (права, блок, мережа) до
-       полів стосунку не має, і ховати її повтором не можна. */
-    if ((e as GraphError)?.code !== 100) throw e;
-    return await pageAccounts(token, ACC_FIELDS);
-  }
 }
 
 /* ── крок 2: що всередині кожного кабінета ──
@@ -559,39 +530,6 @@ async function pgGet(base: string, hdr: Json, path: string): Promise<Json[]> {
   return await res.json();
 }
 
-/* НОВІ КОЛОНКИ І СТАРА БАЗА.
-
-   Функція розгортається окремо від бази, і порядок цих двох дій ніхто
-   не гарантує: ALTER із FB_SYNC.sql може бути ще не виконаний. А
-   PostgREST на одну невідому колонку відкидає ВЕСЬ пакет — і разом із
-   нею втрачається все інше, що ми щойно дізнались про кабінети.
-
-   Тому пишемо оптимістично, а на скаргу саме про колонку знімаємо
-   нові поля й повторюємо один раз. Зайвий запит раз на годину проти
-   втрати всього синку — обмін очевидний.
-
-   Мовчки це робити не можна: інакше «ліміту немає в базі» виглядало б
-   як «Facebook його не дав». Тому повертаємо, що саме зняли. */
-const PG_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
-
-async function pgUpsertSoft(base: string, hdr: Json, table: string, onConflict: string,
-                            rows: Json[], fresh: string[]): Promise<string> {
-  try {
-    await pgUpsert(base, hdr, table, onConflict, rows);
-    return '';
-  } catch (e) {
-    const msg = (e as Error).message;
-    if (!PG_NO_COLUMN.test(msg)) throw e;
-    const lean = rows.map(r => {
-      const c: Json = { ...r };
-      fresh.forEach(k => delete c[k]);
-      return c;
-    });
-    await pgUpsert(base, hdr, table, onConflict, lean);
-    return fresh.join(', ');
-  }
-}
-
 async function pgUpsert(base: string, hdr: Json, table: string,
                         onConflict: string, rows: Json[]): Promise<void> {
   if (!rows.length) return;
@@ -648,7 +586,7 @@ type Outcome = { accounts: number; failed: number; changed: number;
                  days: number; noHistory: number; historyError: string;
                  // Чому не вдалось прочитати попередній стан кабінетів.
                  // Порожньо — порівняння працює, сповіщення живі.
-                 knownError: string; droppedCols: string };
+                 knownError: string };
 
 /* Привід написати людині. owner — хто саме має це прочитати: кабінети
    належать конкретним баєрам, і сповіщення ходять так само. */
@@ -657,7 +595,7 @@ type Alert = { owner: string; name: string; kind: 'bad' | 'good'; text: string }
 async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
-                        days: 0, noHistory: 0, historyError: '', knownError: '', droppedCols: '' };
+                        days: 0, noHistory: 0, historyError: '', knownError: '' };
 
   let accs: Json[];
   try {
@@ -737,9 +675,6 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
         card: fsd.display_string || null, card_type: fsd.type || null,
         amount_spent: cents(a.amount_spent), spend_cap: cents(a.spend_cap),
         balance: cents(a.balance),
-        // Стеля не приїхала — це «не знаємо», а не «стелі немає».
-        daily_limit: cents(a.adtrust_dsl),
-        is_prepay: typeof a.is_prepay_account === 'boolean' ? a.is_prepay_account : null,
         // Побачили — значить не зник. Знімаємо позначку, якщо вона була.
         missing_since: null,
         sync_error: null, synced_at: now
@@ -818,8 +753,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     }
   });
 
-  out.droppedCols = await pgUpsertSoft(base, hdr, 'fb_accounts',
-    'created_by,account_id', rows, ['daily_limit', 'is_prepay']);
+  await pgUpsert(base, hdr, 'fb_accounts', 'created_by,account_id', rows);
   /* Історія — окремою таблицею й окремим ризиком. Її може ще не бути
      (ALTER з FB_SYNC.sql не виконано), і це не привід втратити все
      інше, що ми щойно дізнались про кабінети. Але й мовчати не
@@ -1211,7 +1145,6 @@ async function handle(req: Request): Promise<Response> {
   let days = 0, noHistory = 0, historyError = '';
   const problems: string[] = [];
   let throttled = false;
-  let droppedCols = '';
 
   for (const t of tokens) {
     if (Date.now() > deadline) break;
@@ -1235,10 +1168,6 @@ async function handle(req: Request): Promise<Response> {
     if (r.knownError)
       problems.push(t.label + ': cannot compare with the previous run, so no alerts '
         + 'can be raised for it — ' + r.knownError);
-    /* Колонки для ліміту ще немає в базі. Мовчати не можна: порожня
-       клітинка «Daily limit» інакше читалась би як «Facebook не дав»,
-       і шукали б винного не там. */
-    if (r.droppedCols && !droppedCols) droppedCols = r.droppedCols;
     if (r.throttled) {
       // Ліміт Facebook рахує навіть відмовлені запити. Далі по списку
       // буде те саме — краще вийти й доробити наступною годиною.
@@ -1259,17 +1188,11 @@ async function handle(req: Request): Promise<Response> {
         : historyError)
     : days + ' day(s)' + (noHistory ? ', ' + noHistory + ' cabinet(s) gave none' : '');
 
-  /* Те саме про нові колонки — одним рядком і в тому ж місці. */
-  const columns = droppedCols
-    ? 'not stored yet (' + droppedCols + ') \u2014 run the fb_accounts ALTER from FB_SYNC.sql'
-    : '';
-
   return reply({
     fn: FN_VERSION,
     cron, tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
     history,
-    columns,
     telegram,
     problems: problems.slice(0, 10)
   });
