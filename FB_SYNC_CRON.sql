@@ -64,6 +64,48 @@ select vault.create_secret(
   'fb_sync_url',
   'Імпорт з Facebook: адреса функції');
 
+-- ────────────────────────────────────────────────────────────
+--  ПЕРЕВІРТЕ АДРЕСУ ОЧИМА. Цей запит нічого не міняє.
+--
+--  «Couldn't resolve host name» у відповідях pg_net береться саме
+--  звідси: у сховищі лежить адреса, якої не існує. Найчастіше тому,
+--  що ВАШ-ПРОЄКТ так і лишився ВАШ-ПРОЄКТ.
+--
+--  Біда в тому, що помітити це ніяк: vault.create_secret приймає
+--  будь-який рядок, розклад щогодини стукає в нікуди, а кнопка
+--  Sync now у дашборді працює, бо ходить із браузера іншим шляхом.
+-- ────────────────────────────────────────────────────────────
+
+select name, decrypted_secret as "адреса",
+  case
+    when decrypted_secret like '%ВАШ-ПРОЄКТ%'
+      then 'заглушку не замінили — адреси насправді немає'
+    when decrypted_secret !~ '^https://[a-z0-9-]+\.supabase\.co/functions/v1/'
+      then 'не схоже на адресу функції Supabase — звірте з Project Settings — API'
+    else 'виглядає правильно'
+  end as "стан"
+  from vault.decrypted_secrets
+ where name in ('fb_sync_url', 'fb_comments_url');
+
+
+-- ────────────────────────────────────────────────────────────
+--  ЯКЩО АДРЕСА КРИВА — виправити, не створюючи заново:
+--
+--    select vault.update_secret(
+--      id, 'https://ВАШ-ПРОЄКТ.supabase.co/functions/v1/fb-sync')
+--      from vault.secrets where name = 'fb_sync_url';
+--
+--    select vault.update_secret(
+--      id, 'https://ВАШ-ПРОЄКТ.supabase.co/functions/v1/fb-comments')
+--      from vault.secrets where name = 'fb_comments_url';
+--
+--  ВАШ-ПРОЄКТ береться з Project Settings — API — Project URL: там
+--  буде https://abcdefgh.supabase.co, потрібна частина abcdefgh.
+--
+--  Після цього запустіть пробний запуск ще раз — error_msg має
+--  зникнути, а status_code стати 200.
+-- ────────────────────────────────────────────────────────────
+
 
 -- ════════════════════════════════════════════════════════════
 --  ▶ БЛОК 3 — спільний секрет
