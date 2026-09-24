@@ -367,7 +367,8 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
      здебільшого вказують на ті самі Сторінки, і питати про них по
      колу означало б витратити дедлайн на те саме. */
   const cache = new Map<string, { token: string; name: string }>();
-  const pagesOf = new Map<number, Map<string, { name: string; tasks: string[] }>>();
+  const pagesOf = new Map<number, { mine: Map<string, { name: string; tasks: string[] }>;
+                                    failed: string }>();
 
   for (const acc of accs) {
     if (Date.now() > deadline) break;
@@ -378,11 +379,8 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
     const mayHide = scopes.includes('pages_manage_engagement')
                  && (autoHide.get(String(acc.team_name)) ?? true);
 
-    if (!pagesOf.has(Number(tok.id))) {
-      const { mine } = await myPages(String(tok.token));
-      pagesOf.set(Number(tok.id), mine);
-    }
-    const mine = pagesOf.get(Number(tok.id))!;
+    if (!pagesOf.has(Number(tok.id))) pagesOf.set(Number(tok.id), await myPages(String(tok.token)));
+    const { mine, failed: listFailed } = pagesOf.get(Number(tok.id))!;
 
     let posts: Map<string, Post>;
     try {
@@ -400,7 +398,13 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
     for (const [story, post] of posts) {
       if (looked >= SCAN_POSTS || Date.now() > deadline) break;
       const pageId = pageOf(story);
-      if (whyDenied(pageId, '', mine, '')) continue;   // Сторінка закрита — мовчки далі
+      /* Пропускаємо наперед лише те, про що ЗНАЄМО, що воно закрите.
+         Якщо списку Сторінок дістати не вдалось, mine порожній — і
+         висновок «жодна не наша» був би висновком із незнання: обхід
+         тихо не робив би нічого. Та сама помилка, що вже була в
+         listComments; тут вона коштувала б дорожче, бо мовчить
+         розклад, а не екран. */
+      if (!listFailed && whyDenied(pageId, '', mine, '')) continue;
       looked++;
       try {
         const pg = await pageToken(String(tok.token), pageId, cache);
