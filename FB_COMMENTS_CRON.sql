@@ -115,12 +115,16 @@ select net.http_post(
 ) as request_id;
 
 
--- Другим запитом — що відповіла функція:
-select status_code,
-       convert_from(content, 'UTF8')::jsonb as answer
+-- Другим запитом — що відповіла функція.
+--
+-- Без жодних перетворень навмисно: у pg_net колонка content у різних
+-- версіях то text, то bytea, і будь-яке приведення типу працює рівно
+-- на одній із них. Читається воно й так, а запит, який залежить від
+-- версії розширення, у інструкції не має права стояти.
+select status_code, content, created
   from net._http_response
- order by id desc
- limit 1;
+ order by created desc
+ limit 3;
 
 --  ЩО МАЄ БУТИ
 --    scanned  — скільки кабінетів обійшли цього разу
@@ -176,9 +180,9 @@ select cron.schedule(
 --
 --  ЯК ХОДИТЬ (останні прогони):
 --
---    select status_code, convert_from(content, 'UTF8')::jsonb
+--    select status_code, content, created
 --      from net._http_response
---     order by id desc
+--     order by created desc
 --     limit 10;
 --
 --  ЗУПИНИТИ:
