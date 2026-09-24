@@ -3,17 +3,23 @@
    Друге місце в проєкті, яке щось МІНЯЄ поза дашбордом, і, як і
    fb-pause, воно живе окремо саме тому.
 
-   ЧОМУ НЕМАЄ ВХОДУ ЗА РОЗКЛАДОМ І НЕ БУДЕ. Просили «автоматично
-   чистити». Автоматично видаляти чужі повідомлення не можна: під
-   оголошенням лежить не лише спам, а й питання від людей, які збирались
-   купити, і відповіді самої команди. Автоматика, яка видаляє все
-   підряд, одного ранку зітре саме те, заради чого коментарі й читають,
-   і дізнаєшся ти про це ніколи — видалене не лишає сліду.
+   РОЗКЛАД Є, АЛЕ НЕ ДЛЯ ВСЬОГО. Вхід за спільним секретом веде рівно
+   до однієї дії — scan: обійти кабінети, знайти нові коментарі,
+   СХОВАТИ їх і написати в Telegram. Видалення з розкладу недосяжне
+   взагалі, і це не обережність заради обережності:
 
-   Тому тут рівно те, про що просили в другій половині фрази: доступ,
-   щоб видаляти самому, з дашборда, бачачи текст. Коли захочеш саме
-   автоматику — вона має бути за ПРАВИЛАМИ (слова, посилання, згадки),
-   і правила ці мусиш написати ти, а не я вгадати.
+     hide   оборотне. Помилились — зняли, і коментар повернувся на
+            місце. Автор навіть не знає, що його ховали, тож і писати
+            зі злості вдруге не піде.
+     delete не оборотне ніяк. Під оголошенням лежить не лише спам: там
+            питання людей, які збирались купити, і відповіді самої
+            команди. Автоматика, яка видаляє, одного ранку зітре саме
+            те, заради чого коментарі й читають, а дізнатись про це
+            буде нізвідки.
+
+   Тому ховає машина, а видаляє людина. Коли знадобиться автоматичне
+   видалення — воно має ходити за ПРАВИЛАМИ (слова, посилання), і
+   правила ці пишеш ти, а не я вгадую.
 
    ДВА РІВНІ ЖОРСТКОСТІ, і плутати їх не варто:
      hide   — коментар бачить лише його автор. Оборотно.
@@ -52,6 +58,27 @@ const PER_POST = 50;
 const POSTS_MAX = 25;
 
 const DEADLINE_MS = 100_000;
+
+/* Скільки роботи беремо за один прогін розкладу. Обхід коментарів
+   коштує дорожче за все інше в проєкті: запит на кабінет заради списку
+   оголошень, запит на Сторінку заради токена, запит на кожен пост — і
+   все це помножене на парк.
+
+   Тому беремо не «всіх», а тих, кого найдовше не дивились: порядок за
+   comments_scanned_at. Кожен прогін просувається по колу, і за кілька
+   годин обходить парк цілком, не впираючись у дедлайн і не ганяючи по
+   тих самих кабінетах. */
+const SCAN_ACCOUNTS = 12;
+const SCAN_POSTS = 8;
+const SCAN_PER_POST = 25;
+
+/* Спільний секрет звіряємо по всій довжині, а не до першої розбіжності. */
+function sameSecret(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 type Json = Record<string, any>;
 
@@ -208,6 +235,232 @@ async function myPages(token: string):
   }
 }
 
+/* ═════ ХТО ПРО ЦЕ ДІЗНАЄТЬСЯ ═════
+
+   Новий коментар під оголошенням — новина того ж рівня, що й зміна
+   стану кабінета, і ходить вона тим самим маршрутом: секрет у
+   функції, адресат у tg_links, повідомлення тільки власнику кабінета.
+
+   Текст коментаря кладемо в повідомлення цілком (у межах розумного):
+   рішення «лишити чи видалити» приймається саме по тексту, і змушувати
+   заради нього відкривати дашборд означало б, що сповіщення не
+   працює. */
+
+const TG_LIMIT = 3900;
+const TG_MAX = 12;
+
+async function tgPost(token: string, chat: string, text: string): Promise<boolean> {
+  try {
+    const res = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      // Без parse_mode навмисно: у коментарях трапляється будь-що, а
+      // розмітка Telegram спотикається й відповідає 400.
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
+    });
+    return res.ok;
+  } catch (_e) { return false; }
+}
+
+/* hidden  — чи коментар ЗАРАЗ не на людях (байдуже, хто його сховав);
+   byUs    — чи це зробили ми саме цього разу.
+   Перше вирішує, яку позначку ставити рядку, друге — що писати в
+   заголовку. Звести їх в одне поле означало б збрехати в одному з двох
+   місць: або назвати своїм те, що сховали раніше, або показати як
+   відкрите те, що вже приховане. */
+type Found = { owner: string; cab: string; ad: string; from: string;
+               text: string; hidden: boolean; byUs: boolean };
+
+function tgText(list: Found[]): string {
+  const hid = list.filter(f => f.byUs).length;
+  const head = list.length + ' new comment(s)'
+    + (hid ? ', ' + hid + ' hidden automatically' : '') + '\n\n';
+  const one = (f: Found) => (f.hidden ? '\u{1F648} ' : '\u{1F4AC} ')
+    + f.cab + (f.ad ? ' \u00b7 ' + f.ad : '') + '\n'
+    + (f.from ? f.from + ': ' : '')
+    + (f.text.length > 300 ? f.text.slice(0, 300) + '\u2026' : f.text || '(no text)');
+  const lines = list.slice(0, TG_MAX).map(one);
+  const tail = () => {
+    const rest = list.length - lines.length;
+    return rest > 0 ? '\n\n\u2026and ' + rest + ' more. The rest is in the dashboard.' : '';
+  };
+  while (lines.length > 1 && (head + lines.join('\n\n') + tail()).length > TG_LIMIT) lines.pop();
+  return head + lines.join('\n\n') + tail();
+}
+
+async function tgSend(base: string, hdr: Json, found: Found[]): Promise<string> {
+  if (!found.length) return 'nothing new';
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!token) return 'not configured';
+
+  const byOwner = new Map<string, Found[]>();
+  found.forEach(f => {
+    if (!f.owner) return;
+    const l = byOwner.get(f.owner);
+    if (l) l.push(f); else byOwner.set(f.owner, [f]);
+  });
+  if (!byOwner.size) return 'nobody to notify';
+
+  let links: Json[] = [];
+  try { links = await pgGet(base, hdr, 'tg_links?select=user_id,chat_id&chat_id=not.is.null'); }
+  catch (_e) { return 'no tg_links table'; }
+  const chats = new Map(links.map(l => [String(l.user_id), String(l.chat_id)]));
+
+  let sent = 0, unlinked = 0, failed = 0;
+  for (const [owner, list] of byOwner) {
+    const chat = chats.get(owner);
+    if (!chat) { unlinked++; continue; }
+    if (await tgPost(token, chat, tgText(list))) sent++; else failed++;
+  }
+  return sent + ' sent' + (unlinked ? ', ' + unlinked + ' not linked' : '')
+       + (failed ? ', ' + failed + ' failed' : '');
+}
+
+/* Чи ховати автоматично. Вимикач командний і лежить у team_settings:
+   рішення «ховати все підряд» стосується всієї команди, а не того, хто
+   першим відкрив налаштування.
+
+   Немає запису — ховаємо. Це свідомий вибір за замовчуванням: під
+   оголошенням, яке щойно запустили, першим зазвичай зʼявляється не
+   питання покупця. Зняти приховування завжди можна однією кнопкою,
+   а от непоміченого спаму під оголошенням не повернеш. */
+async function autoHideBy(base: string, hdr: Json): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>();
+  try {
+    const rows = await pgGet(base, hdr,
+      'team_settings?select=team_name,value&key=eq.fb_comments_autohide');
+    rows.forEach((r: Json) => out.set(String(r.team_name), String(r.value) !== '0'));
+  } catch (_e) { /* таблиці може не бути — тоді всюди за замовчуванням */ }
+  return out;
+}
+
+/* ═════ ОБХІД ЗА РОЗКЛАДОМ ═════ */
+async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Response> {
+  let q = 'fb_accounts?select=account_id,name,team_name,token_id,created_by,comments_seen_at'
+        + '&missing_since=is.null&token_id=not.is.null'
+        + '&order=comments_scanned_at.asc.nullsfirst&limit=' + SCAN_ACCOUNTS;
+  if (onlyOwner) q += '&created_by=eq.' + encodeURIComponent(onlyOwner);
+
+  let accs: Json[];
+  try {
+    accs = await pgGet(base, hdr, q);
+  } catch (e) {
+    const msg = (e as Error).message;
+    return reply({ error: /comments_scanned_at|does not exist|column/i.test(msg)
+      ? 'the comment columns are missing — run the alter block from FB_SYNC.sql'
+      : msg }, 500);
+  }
+  if (!accs.length) return reply({ scanned: 0, note: 'no cabinet to look at' });
+
+  const ids = [...new Set(accs.map(a => Number(a.token_id)).filter(Boolean))];
+  let toks: Json[] = [];
+  try { toks = await pgGet(base, hdr, 'fb_tokens?select=id,token,scopes&id=in.(' + ids.join(',') + ')'); }
+  catch (e) { return reply({ error: (e as Error).message }, 500); }
+  const byToken = new Map(toks.map(t => [Number(t.id), t]));
+
+  const autoHide = await autoHideBy(base, hdr);
+  const deadline = Date.now() + DEADLINE_MS;
+  const found: Found[] = [];
+  const problems: string[] = [];
+  let scanned = 0, hidden = 0;
+
+  /* Кеш на весь прогін, а не на кабінет: кабінети одного токена
+     здебільшого вказують на ті самі Сторінки, і питати про них по
+     колу означало б витратити дедлайн на те саме. */
+  const cache = new Map<string, { token: string; name: string }>();
+  const pagesOf = new Map<number, { mine: Map<string, { name: string; tasks: string[] }>;
+                                    failed: string }>();
+
+  for (const acc of accs) {
+    if (Date.now() > deadline) break;
+    const tok = byToken.get(Number(acc.token_id));
+    if (!tok) continue;
+    const scopes: string[] = Array.isArray(tok.scopes) ? tok.scopes : [];
+    if (!scopes.includes('pages_read_engagement')) continue;
+    const mayHide = scopes.includes('pages_manage_engagement')
+                 && (autoHide.get(String(acc.team_name)) ?? true);
+
+    if (!pagesOf.has(Number(tok.id))) pagesOf.set(Number(tok.id), await myPages(String(tok.token)));
+    const { mine, failed: listFailed } = pagesOf.get(Number(tok.id))!;
+
+    let posts: Map<string, Post>;
+    try {
+      posts = await ourPosts(String(tok.token), String(acc.account_id));
+    } catch (e) {
+      problems.push(String(acc.name || acc.account_id) + ': ' + (e as Error).message);
+      continue;
+    }
+    scanned++;
+
+    const since = acc.comments_seen_at ? Date.parse(String(acc.comments_seen_at)) : 0;
+    let newest = since;
+    let looked = 0;
+
+    for (const [story, post] of posts) {
+      if (looked >= SCAN_POSTS || Date.now() > deadline) break;
+      const pageId = pageOf(story);
+      /* Пропускаємо наперед лише те, про що ЗНАЄМО, що воно закрите.
+         Якщо списку Сторінок дістати не вдалось, mine порожній — і
+         висновок «жодна не наша» був би висновком із незнання: обхід
+         тихо не робив би нічого. Та сама помилка, що вже була в
+         listComments; тут вона коштувала б дорожче, бо мовчить
+         розклад, а не екран. */
+      if (!listFailed && whyDenied(pageId, '', mine, '')) continue;
+      looked++;
+      try {
+        const pg = await pageToken(String(tok.token), pageId, cache);
+        const j = await graph('/' + story + '/comments', pg.token, {
+          fields: 'id,message,created_time,is_hidden,from{name}',
+          filter: 'stream', limit: SCAN_PER_POST
+        });
+        const rows: Json[] = Array.isArray(j.data) ? j.data : [];
+        for (const c of rows) {
+          const at = Date.parse(String(c.created_time || ''));
+          if (!at || at > newest) newest = at || newest;
+          /* Перший прогін по кабінету нічого не ховає й ні про що не
+             пише. Інакше ввімкнення функції означало б сотню
+             повідомлень про коментарі піврічної давнини і сховану
+             піврічну переписку. Замість цього ставимо позначку часу
+             й починаємо з наступного разу. */
+          if (!since || !at || at <= since) continue;
+          let didHide = false;
+          if (mayHide && !c.is_hidden) {
+            try {
+              await graph('/' + String(c.id), pg.token, { is_hidden: true }, 'POST');
+              didHide = true;
+              hidden++;
+            } catch (_e) { /* не сховали — скажемо про сам коментар */ }
+          }
+          /* «Сховано» означає «зараз не на людях», а не «сховали саме
+             ми»: коментар міг бути схований минулого разу або руками.
+             Читачу повідомлення важливо перше, а не друге. */
+          found.push({ owner: String(acc.created_by), cab: String(acc.name || acc.account_id),
+                       ad: post.names[0] || '', from: String(c.from?.name || ''),
+                       text: String(c.message || ''),
+                       hidden: didHide || !!c.is_hidden, byUs: didHide });
+        }
+      } catch (e) {
+        problems.push(String(acc.name || acc.account_id) + ': ' + (e as Error).message);
+      }
+    }
+
+    try {
+      await fetch(base + '/rest/v1/fb_accounts?created_by=eq.'
+        + encodeURIComponent(String(acc.created_by))
+        + '&account_id=eq.' + encodeURIComponent(String(acc.account_id)), {
+        method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          comments_scanned_at: new Date().toISOString(),
+          comments_seen_at: new Date(newest || Date.now()).toISOString()
+        })
+      });
+    } catch (_e) { /* позначку не поставили — наступний прогін повторить */ }
+  }
+
+  const telegram = await tgSend(base, hdr, found);
+  return reply({ scanned, found: found.length, hidden, telegram,
+                 problems: problems.slice(0, 5) });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: CORS });
   try {
@@ -224,20 +477,45 @@ async function handle(req: Request): Promise<Response> {
     || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
   if (!svc) return reply({ error: 'SERVICE_ROLE_KEY is not set in the function secrets' }, 400);
 
+  const hdr: Json = { apikey: svc, Authorization: 'Bearer ' + svc,
+                      'content-type': 'application/json' };
+
+  let body: Json = {};
+  try { body = await req.json(); } catch (_e) { /* тіла може не бути */ }
+  const action = String(body?.action || 'list');
+
+  /* ── ОБХІД ──
+
+     Єдина дія, доступна з розкладу, і єдина, яка нічого не видаляє.
+     Вхід тут інший, ніж нижче: о третій ночі нікого не залогінено, і
+     токена людини взяти нізвідки — замість нього спільний секрет.
+
+     З браузера цю ж дію можна покликати своїм токеном: тоді обходимо
+     ТІЛЬКИ кабінети того, хто прийшов. Межу ставить перевірений uid, а
+     не те, що попросили в тілі запиту. */
+  if (action === 'scan') {
+    const cronKey = req.headers.get('x-cron-key') || '';
+    if (cronKey) {
+      const want = Deno.env.get('CRON_SECRET') || '';
+      if (!want) return reply({ error: 'scheduled run is not configured: set CRON_SECRET' }, 400);
+      if (!sameSecret(cronKey, want)) return reply({ error: 'bad cron key' }, 401);
+      return await scanAll(base, hdr, '');
+    }
+    const who = await whoAmI(base, anon, req.headers.get('Authorization') || '');
+    if (!who) return reply({ error: 'could not verify who is calling' }, 401);
+    return await scanAll(base, hdr, who);
+  }
+
+  /* ── ОДИН КАБІНЕТ ──
+     Усе інше — тільки з токеном людини. Спільний секрет сюди не веде:
+     серед цих дій є delete, а вона незворотна. */
   const auth = req.headers.get('Authorization') || '';
   if (!auth) return reply({ error: 'no authorization header' }, 401);
   const me = await whoAmI(base, anon, auth);
   if (!me) return reply({ error: 'could not verify who is calling' }, 401);
 
-  let body: Json = {};
-  try { body = await req.json(); } catch (_e) { /* тіла може не бути */ }
-
-  const action = String(body?.action || 'list');
   const accountId = String(body?.account_id || '').replace(/\D/g, '');
   if (!accountId) return reply({ error: 'account_id is required' }, 400);
-
-  const hdr: Json = { apikey: svc, Authorization: 'Bearer ' + svc,
-                      'content-type': 'application/json' };
 
   const accs = await pgGet(base, hdr,
     'fb_accounts?select=account_id,name,team_name,token_id'
