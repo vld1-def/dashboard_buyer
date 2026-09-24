@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 20:45">
+  <meta name="build" content="build 24.09 21:20">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3669,7 +3669,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 20:45</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 21:20</div>
     </div>
   </aside>
 
@@ -14867,7 +14867,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.6';
+const FB_FN_WANT = '2026-09-24.7';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -14910,6 +14910,9 @@ window.fbSync = async function (say, body) {
        бути. Мовчати про це не можна, бо саме на неї спирається вибір
        періоду на вкладці Cabinets. */
     if (j.history) bits.push('spend history: ' + j.history);
+    /* Колонки для ліміту ще немає в базі. Без цього рядка порожній
+       «Daily limit» у картці читався б як «Facebook не дав». */
+    if (j.columns) bits.push('columns: ' + j.columns);
     /* Що сталося з Telegram. Функція рахувала це від самого початку й
        віддавала в відповіді, а сторінка мовчки викидала — тому
        «not configured» і «0 sent, 1 not linked» роками виглядали
@@ -16315,7 +16318,7 @@ const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_t
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
   + 'amount_spent,spend_cap,balance,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
-  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
+  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since,daily_limit,is_prepay';
 
 // Немає таблиці зовсім — не те саме, що немає кількох колонок.
 const CAB_NO_TABLE = /relation .* does not exist|42P01/i;
@@ -17037,6 +17040,35 @@ function cabBalCell(fb, cell) {
               + 'balance shown in Ads Manager.');
 }
 
+/* ДЕННА СТЕЛЯ від Facebook (adtrust_dsl). Саме її мають на увазі під
+   «лімітом кабінета», і саме її показують розширення.
+
+   Три стани, і плутати їх не можна. Число — стеля є. Нуль — стелі
+   немає, кабінет довірений. Порожньо — Facebook її не віддав: або
+   колонки ще немає в базі, або поля немає в цього кабінета. Останнє
+   найчастіше й означає «стелі немає», але вгадувати за Facebook ми
+   не будемо: не сказав значить не сказав. */
+function cabDslCell(fb, cell) {
+  if (!('daily_limit' in fb) || fb.daily_limit == null)
+    return cell('Daily limit', '\u2014',
+      'Facebook did not report a daily limit for this cabinet');
+  if (!Number(fb.daily_limit))
+    return cell('Daily limit', 'none', 'No daily limit \u2014 a trusted cabinet');
+  return cell('Daily limit', cabMoneyExact(fb.daily_limit, fb.currency),
+    'The daily spending limit Facebook itself puts on this cabinet');
+}
+
+/* ЧИМ ПЛАТИТЬ. Від цього залежить, як читати все інше про гроші: на
+   передплаченому кабінеті в Ads Manager видно залишок, на картковому
+   борг, і це різні числа з різним знаком сенсу. */
+function cabPayCell(fb, cell) {
+  if (!('is_prepay' in fb) || fb.is_prepay == null)
+    return cell('Billing', '\u2014', 'Facebook did not say how this cabinet pays');
+  return fb.is_prepay
+    ? cell('Billing', 'Prepaid', 'Topped up in advance \u2014 Ads Manager shows the funds left')
+    : cell('Billing', 'Card', 'Charged afterwards \u2014 Ads Manager shows what is owed');
+}
+
 function cabDetail(c) {
   const box = document.getElementById('cab-detail');
   if (!box) return;
@@ -17094,8 +17126,10 @@ function cabDetail(c) {
           cell('Card', esc(c.fb.card || '—')
             + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
             c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : '')}
-        ${cabCapCell(c.fb, cell)}
+        ${cabPayCell(c.fb, cell)}
         ${cabBalCell(c.fb, cell)}
+        ${cabCapCell(c.fb, cell)}
+        ${cabDslCell(c.fb, cell)}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}
