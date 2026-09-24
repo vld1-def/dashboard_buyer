@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 07:02">
+  <meta name="build" content="build 24.09 08:11">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2789,6 +2789,23 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .fcm-acts button.is-bad:hover:not(:disabled) { background: var(--bad); color: #fff; border-color: var(--bad); }
 .fcm-acts button:disabled { opacity: .35; cursor: default; }
 
+/* Чому Сторінка закрита. Попередження, а не аварія: решта коментарів
+   однаково показується, і фарбувати це в червоне означало б сказати,
+   що зламалось усе. */
+.fcm-blocked {
+  margin: 2px 0 8px; padding: 8px 10px; border-radius: 12px;
+  background: rgba(245, 158, 11, .08); border: 1px solid rgba(245, 158, 11, .22);
+}
+.fcm-blocked-head {
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--warn); margin-bottom: 5px;
+}
+.fcm-blocked-row {
+  font-size: 9px; font-weight: 600; line-height: 1.5; color: var(--text-muted);
+  margin-top: 5px; overflow-wrap: anywhere;
+}
+.fcm-blocked-row b { color: var(--text-main); font-weight: 900; }
+
 .cab-syncmsg { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Час останньої перевірки — на самій кнопці. Окремий рядок під нею
    прочитали б раз і забули, а тут воно перед очима щоразу. */
@@ -3433,7 +3450,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 07:02</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 08:11</div>
     </div>
   </aside>
 
@@ -14920,6 +14937,11 @@ let fcmList = null;    // [] або null, поки їдуть
 let fcmErr = '';
 let fcmNote = '';      // «нема чого модерувати» тощо
 let fcmMore = false;   // постів більше, ніж ми встигли обійти
+/* Сторінки, до яких не пустило, і чому. Саме СТОРІНКИ: причина в них
+   одна на всі їхні пости, і п'ять однакових стін тексту замість одного
+   рядка — це не діагностика, це шум. */
+let fcmBlocked = [];
+let fcmPagesSeen = null;
 let fcmSeen = 0, fcmPosts = 0;
 let fcmSel = [];       // вибрані id
 let fcmBusy = '';
@@ -14965,6 +14987,8 @@ async function fcmLoad(id) {
   fcmErr = '';
   fcmNote = '';
   fcmMore = false;
+  fcmBlocked = [];
+  fcmPagesSeen = null;
   fcmSel = [];
   cabRefresh();
   try {
@@ -14974,10 +14998,11 @@ async function fcmLoad(id) {
     fcmMore = !!j.more;
     fcmSeen = Number(j.looked) || 0;
     fcmPosts = Number(j.posts) || 0;
-    /* Пости, до яких не пустило, — не привід сховати решту, але й
+    fcmBlocked = Array.isArray(j.blocked) ? j.blocked : [];
+    fcmPagesSeen = j.pages_seen == null ? null : Number(j.pages_seen);
+    /* Сторінки, до яких не пустило, — не привід сховати решту, але й
        мовчати про них не можна: інакше «коментарів немає» означало б
        водночас «їх справді немає» і «нам не дали подивитись». */
-    if (j.problems && j.problems.length) fcmErr = j.problems.map(fcmEsc).join('<br>');
   } catch (e) {
     fcmList = [];
     fcmErr = fcmWhy(e);
@@ -15069,6 +15094,16 @@ function fcmBlock(c) {
   const head = `<p class="fbr-head">Comments
       <button type="button" onclick="fcmToggle('${enc}')" title="Close">&times;</button></p>`;
 
+  /* Чому не видно частини коментарів. Одна Сторінка — один рядок, із
+     кількістю постів за ним: причина спільна, і повторювати її стільки
+     разів, скільки постів, означало б ховати її ж. */
+  const blocked = !fcmBlocked.length ? '' : `<div class="fcm-blocked">
+      <p class="fcm-blocked-head">${fcmBlocked.length} page(s) closed to this token${
+        fcmPagesSeen != null ? ' \u00b7 the system user has ' + fcmPagesSeen + ' page(s) in total' : ''}</p>
+      ${fcmBlocked.map(b => `<p class="fcm-blocked-row"><b>${fcmEsc(b.page)}</b>${
+        b.posts > 1 ? ' (' + b.posts + ' posts)' : ''}<br>${fcmEsc(b.why)}</p>`).join('')}
+    </div>`;
+
   if (fcmList === null) return `<div class="fbr">${head}
     <p class="fbr-hint">Asking Facebook… this walks every ad of the cabinet, so it takes a moment.</p></div>`;
 
@@ -15103,6 +15138,7 @@ function fcmBlock(c) {
 
   return `<div class="fbr">${head}
     ${fcmErr ? `<p class="fbr-hint is-bad">${fcmErr}</p>` : ''}
+    ${blocked}
     ${!fcmList.length
       ? `<p class="fbr-hint">${fcmEsc(fcmNote) || 'Nothing has been written under these ads yet.'}</p>`
       : `<label class="fcm-all"><input type="checkbox" ${
