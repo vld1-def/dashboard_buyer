@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 14:16">
+  <meta name="build" content="build 24.09 14:30">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3516,7 +3516,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 14:16</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 14:30</div>
     </div>
   </aside>
 
@@ -14528,6 +14528,10 @@ window.fbAdd = async function () {
 
 let fbSyncing = false;
 
+/* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
+   читаючи її з коду самої функції. */
+const FB_FN_WANT = '2026-09-24.1';
+
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
   // Нікуди писати — і не пишемо. Виклик від цього не ламається.
@@ -14581,6 +14585,14 @@ window.fbSync = async function (say, body) {
        у кутку нічого не додають до перших трьох. */
     const probs = j.problems || [];
     const SHOW = 3;
+    /* Задеплоєна функція старша за сторінку. Сказати про це треба
+       ПЕРШИМ рядком: інакше шукатимуть ваду в правці, якої на сервері
+       ще немає. Порожній j.fn — теж старша, просто настільки, що вона
+       ще не вміла називати себе. */
+    if (FB_FN_WANT && j.fn !== FB_FN_WANT)
+      probs.unshift('The deployed fb-sync is older than this page ('
+        + (j.fn ? fbEsc(j.fn) : 'no version') + ' vs ' + fbEsc(FB_FN_WANT)
+        + '). Run: supabase functions deploy fb-sync');
     tell(fbEsc(bits.join(' · '))
       + (probs.length
           ? '<br><span class="opacity-70">' + probs.slice(0, SHOW).map(fbEsc).join('<br>')
