@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 21:46">
+  <meta name="build" content="build 24.09 22:56">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3660,7 +3660,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 21:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 22:56</div>
     </div>
   </aside>
 
@@ -5499,6 +5499,31 @@ function cfMoney(v) {
 
 // Підпис над точкою: місця мало, але $1K замість $1 234 — надто грубо.
 // Тому до 10K лишаємо один знак після коми.
+/* СКІЛЬКИ МІСЦЯ ПРОСИТЬ КРАЙНІЙ ПІДПИС.
+
+   Підпис над точкою центрований по ній, а перша й остання точки
+   стоять рівно на межі області побудови. Половина числа тому виходить
+   за межу й зрізається краєм полотна. clamp: true тут не рятує — він
+   притискає ЯКІР, а не сам напис.
+
+   Тому міряємо текст тим самим шрифтом, яким його малюватимуть, і
+   лишаємо збоку його половину. Прибити константою не можна: «$8» і
+   «-$128.4K» просять різного, і будь-яке одне число або зріже довге,
+   або лишить діру біля короткого. */
+function cfEdgePad(ctx, texts) {
+  const was = ctx.font;
+  const fam = (getComputedStyle(document.body).fontFamily || 'sans-serif');
+  ctx.font = '700 10px ' + fam;
+  let w = 0;
+  texts.forEach(t => {
+    if (t == null || t === '') return;
+    w = Math.max(w, ctx.measureText(String(t)).width);
+  });
+  ctx.font = was;
+  // +2 — щоб літера не впиралась у край впритул.
+  return w ? Math.ceil(w / 2) + 2 : 0;
+}
+
 function cfMoneyTight(v) {
   const a = Math.abs(v), sign = v < 0 ? '-' : '';
   if (a >= 1e6) return `${sign}$${(a / 1e6).toFixed(1)}M`;
@@ -5563,6 +5588,8 @@ function renderTrend(data) {
       };
 
   let datasets, stats = null;
+  // Береги під крайні підписи. У режимі гео підписів немає — беруться типові.
+  let padL = 2, padR = 8;
 
   if (!isGeo) {
     const m = {};
@@ -5571,6 +5598,14 @@ function renderTrend(data) {
     stats = sd.map(d => m[d]);
 
     const profits = stats.map(v => Math.round(v.rev - v.s));
+
+    /* Міряємо обидва набори, а не лише видимий: легенда перемикає їх
+       на льоту, і берег, розрахований під один, зрізав би інший. */
+    const spends = stats.map(v => Math.round(v.s));
+    const edge = (arr, i) => (arr.length ? cfMoneyTight(Number(arr[i])) : '');
+    padL = Math.max(padL, cfEdgePad(ctx, [edge(spends, 0), edge(profits, 0)]));
+    padR = Math.max(padR, cfEdgePad(ctx,
+      [edge(spends, spends.length - 1), edge(profits, profits.length - 1)]));
 
     // Підписи над точками: поки видно spend — його суми; якщо spend вимкнули
     // в легенді, а net profit лишили — тоді суми профіту.
@@ -5664,7 +5699,7 @@ function renderTrend(data) {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 18, bottom: 0, left: 2, right: 8 } },
+      layout: { padding: { top: 18, bottom: 0, left: padL, right: padR } },
       plugins: {
         legend: {
           position: 'top',
