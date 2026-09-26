@@ -173,6 +173,21 @@ select {
 .rec-select:hover { background-color: rgba(59,130,246,.15) !important; }
 .rec-select:focus { background-color: rgba(59,130,246,.25) !important; outline: 1px solid #3b82f6; }
 .rec-select.saved { animation: recFlash .8s ease; }
+/* Клітинка воронки: те саме на вигляд, що й список, але це input із
+   datalist — у нього можна друкувати, і список фільтрується на льоту. */
+.rec-list {
+  width: 100%; background: transparent !important; border: 0 !important;
+  color: #e2e8f0 !important; font-size: .8rem !important;
+  padding: 5px 20px 5px 8px !important;
+  border-radius: 6px; outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.28)'%3E%3Cpath stroke-linecap='round' stroke-width='3' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important; background-position: right 4px center !important;
+  background-size: .7em !important;
+}
+.rec-list::-webkit-calendar-picker-indicator { opacity: 0; }  /* свою стрілку вже намалювали */
+.rec-list:hover { background-color: rgba(59,130,246,.15) !important; }
+.rec-list:focus { background-color: rgba(59,130,246,.25) !important; outline: 1px solid #3b82f6; }
+.rec-list.saved { animation: recFlash .8s ease; }
 /* Мітка таймзони біля акаунта */
 /* Чекбокси вибору рядків у «Базі» */
 .ag-chk { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; padding: 0 !important;
@@ -664,6 +679,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         <div id="rec-pager" class="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-white/5 bg-black/20"></div>
       </div>
       <p class="text-[10px] text-slate-500 text-center font-bold">Click any cell to edit — changes save automatically when you leave the field. Click a header to sort.</p>
+
+      <!-- Один спільний список воронок на всю таблицю. Наповнюємо його
+           в мить, коли клітинка отримує фокус: порядок залежить від гео
+           саме того рядка, а тримати по списку на кожен рядок означало
+           б десятки тисяч <option> у документі. -->
+      <datalist id="rec-fun-dl"></datalist>
     </div>
 
     <!-- EXPENSES MODE -->
@@ -3269,6 +3290,57 @@ function recListValues(kind, colKey) {
   return all.sort((a, b) => a.localeCompare(b, 'uk'));
 }
 
+/* ВОРОНКА → ГЕО.
+   Довідник funnels_mapping знає про воронку тільки назву й ktid: гео
+   там немає й ніколи не було, і питати його вдруге немає сенсу — воно
+   вже є в самих записах. Тож гео воронки не питаємо, а бачимо: вона
+   крутилась у тих гео, з якими стоїть у рядках таблиці. А recRows — це
+   всі рядки команди, не сторінка, тож картина повна.
+
+   Кеш по (таблиця, кількість рядків): мапу перебудовуємо, коли рядків
+   стало більше чи менше або перемкнули таблицю, а не на кожен фокус у
+   клітинці — при трьох тисячах рядків це відчутно. */
+let recFunGeoCache = { table: '', n: -1, map: null };
+function recFunnelGeos() {
+  if (recFunGeoCache.map && recFunGeoCache.table === recCurrentTable
+      && recFunGeoCache.n === recRows.length) return recFunGeoCache.map;
+  const map = new Map();
+  recRows.forEach(r => {
+    const f = String(r.funnel ?? '').trim();
+    const g = String(r.geo ?? '').trim().toUpperCase();
+    if (!f || !g) return;
+    if (!map.has(f)) map.set(f, new Set());
+    map.get(f).add(g);
+  });
+  recFunGeoCache = { table: recCurrentTable, n: recRows.length, map };
+  return map;
+}
+
+/* Порядок воронок для однієї клітинки: спершу ті, що вже крутились у
+   гео цього ж рядка — у дев'яти випадках з десяти потрібна саме вона, —
+   далі решта, згрупована за своїм гео за алфавітом, а в самому кінці
+   ті, про чиє гео ми не знаємо нічого (є в довіднику, але в записах ще
+   не зустрічались).
+
+   Гео кожної воронки лишається підписом праворуч, і за ним теж працює
+   пошук: набрав KG — у списку лишились воронки KG. Через це він і
+   datalist, а не select: select шукає лише за початком рядка, а назви
+   воронок починаються з бренду, не з гео. */
+function recFunnelOptions(rowGeo) {
+  const geos = recFunnelGeos();
+  const mine = String(rowGeo || '').trim().toUpperCase();
+  const of = f => [...(geos.get(f) || [])].sort();
+  return recListValues('funnels', 'funnel').map(f => {
+    const g = of(f);
+    const rank = !g.length ? 2 : (mine && g.includes(mine) ? 0 : 1);
+    // Підпис одразу з готовим «немає гео»: інакше кожне місце, що малює
+    // цей список, домальовувало б заглушку по-своєму.
+    return { v: f, hint: g.join(', ') || 'no geo yet', rank,
+             key: rank === 0 ? mine : (g[0] || '') };
+  }).sort((a, b) => a.rank - b.rank || a.key.localeCompare(b.key)
+                    || a.v.localeCompare(b.v, 'uk'));
+}
+
 // Мітка таймзони поряд з акаунтом — видно, за яким днем рахується рядок
 function recTzBadge(acc) {
   const tz = (mappingDB.timezones || {})[String(acc || '').trim()];
@@ -3311,7 +3383,18 @@ function recRender() {
         else if (v == null) v = '';
         const align = (c.type === 'money' || c.type === 'int') ? 'text-right' : '';
 
-        // Воронка / агент / оффер — випадаючі списки з відомих значень
+        /* Воронка — окремо від оффера й агента: список довгий, і саме
+           в ньому потрібен пошук. Значення можна й вписати: воронку,
+           якої ще немає в довіднику, інакше в рядок не поставиш. */
+        if (c.key === 'funnel') {
+          const cur = String(r[c.key] ?? '').trim();
+          const at = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+          return `<td class="p-1"><input class="rec-list" list="rec-fun-dl" autocomplete="off"
+            data-id="${r.id}" data-col="${c.key}" data-geo="${at(r.geo)}"
+            data-orig="${at(cur)}" value="${at(cur)}" placeholder="—"></td>`;
+        }
+
+        // Агент / оффер — випадаючі списки з відомих значень
         if (c.list) {
           const cur = String(r[c.key] ?? '').trim();
           const opts = recListValues(c.list, c.key);
@@ -3403,11 +3486,18 @@ function recBulkColChanged() {
   if (col.list) {
     // datalist, а не select: підказує відомі значення, але дозволяє вписати нове —
     // інакше воронку, якої ще немає в списку, масово не проставиш
-    const opts = recListValues(col.list, col.key);
+    const at = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    /* Для воронки — той самий порядок і ті самі підписи гео, що й у
+       клітинці. Рядка тут немає, тож «гео цього рядка» теж немає:
+       лишається групування за власним гео воронки. */
+    const opts = col.key === 'funnel'
+      ? recFunnelOptions('')
+      : recListValues(col.list, col.key).map(v => ({ v, hint: '' }));
     wrap.innerHTML = `<input id="rec-bulk-value" list="rec-bulk-dl" placeholder="pick one or type it"
         class="!w-44 !py-1.5 !text-[11px] !font-bold">
       <datalist id="rec-bulk-dl">
-        ${opts.map(o => `<option value="${String(o).replace(/"/g, '&quot;')}"></option>`).join('')}
+        ${opts.map(o => `<option value="${at(o.v)}">${tx(o.hint)}</option>`).join('')}
       </datalist>`;
   } else {
     const type = (col.type === 'money' || col.type === 'int') ? 'number' : (col.type === 'date' ? 'date' : 'text');
@@ -3485,16 +3575,33 @@ function recSortBy(key) {
 }
 
 
+/* Список воронок наповнюємо саме тут, на фокусі: порядок залежить від
+   гео цього рядка, а рядків у таблиці — сотні. Один список на всіх,
+   який щоразу перебудовується, коштує дешевше за сотню готових. */
+document.addEventListener('focusin', (e) => {
+  const inp = e.target.closest && e.target.closest('.rec-list');
+  const dl = document.getElementById('rec-fun-dl');
+  if (!inp || !dl) return;
+  const at = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  dl.innerHTML = recFunnelOptions(inp.dataset.geo)
+    .map(o => `<option value="${at(o.v)}">${tx(o.hint)}</option>`).join('');
+});
+
 // Збереження вибору у випадаючих клітинках «Бази»
 document.addEventListener('change', async (e) => {
-  const sel = e.target.closest && e.target.closest('.rec-select');
+  const sel = e.target.closest && (e.target.closest('.rec-select') || e.target.closest('.rec-list'));
   if (!sel) return;
   const { id, col } = sel.dataset;
-  const value = sel.value;
+  const value = String(sel.value ?? '').trim();
+  // Для клітинки з пошуком change прилітає й тоді, коли значення
+  // зрештою те саме (набрав і повернув назад) — писати нема чого.
+  if (sel.dataset.orig !== undefined && String(sel.dataset.orig) === value) return;
   const { error } = await sb.from(recCurrentTable).update({ [col]: value }).eq('id', id);
   if (error) { alert('Could not save: ' + error.message); return; }
   const row = recRows.find(r => String(r.id) === String(id));
   if (row) row[col] = value;
+  if (sel.dataset.orig !== undefined) sel.dataset.orig = value;
   sel.classList.add('saved');
   setTimeout(() => sel.classList.remove('saved'), 800);
   recRefreshTotals();
