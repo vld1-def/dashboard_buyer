@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.09 12:29">
+  <meta name="build" content="build 26.09 17:11">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1861,29 +1861,37 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
 #geo-sidebar-col { display: flex; flex-direction: column; }
 #geo-list { flex: 1 1 auto; min-height: 0; }
 
-/* Сторінка витрат теж на всю висоту: список тягнеться, а не впирається в 420px */
-@media (min-height: 700px) {
-  body[data-route="expenses"] .app-content {
-    height: calc(100vh / var(--zoom));
-    display: flex; flex-direction: column; gap: 10px;
-    padding-bottom: 92px; overflow: hidden;
-  }
-  body[data-route="expenses"] #dashboard-content {
-    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
-  }
-  body[data-route="expenses"] #expenses-section {
-    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
-  }
-  body[data-route="expenses"] .exp-cols { flex: 1 1 auto; min-height: 0; }
-  /* Списку віддаємо всю висоту, формі — рівно стільки, скільки просить:
-     вона коротка і тягнутись їй нема чим. */
-  body[data-route="expenses"] #exp-list-card {
-    max-height: 100%; display: flex; flex-direction: column;
-  }
-  body[data-route="expenses"] #exp-add { max-height: 100%; overflow-y: auto; }
-  body[data-route="expenses"] .exp-head,
-  body[data-route="expenses"] .exp-foot { flex: 0 0 auto; }
-  body[data-route="expenses"] .exp-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
+/* СПИСОК ВИТРАТ — НА ВСЮ ВИСОТУ ЕКРАНА.
+   Висоту самої сторінки тримає спільний каркас вище; тут лише роздаємо
+   її всередині. align-items у .exp-cols обовʼязково stretch: при
+   flex-start (як у базовому правилі) картка списку заввишки зі свої
+   рядки, тобто при трьох витратах — смужка на 150px посеред екрана.
+   Форма справді тягнутись не має — їй лишаємо flex-start окремо, бо
+   тягнути порожнечу під кнопкою «Save» нема сенсу.
+
+   Порядок усередині картки: шапка і підсумок стоять, гортається тільки
+   .exp-wrap — і його стелю в 420px тут треба знімати, інакше список
+   впирався б у неї, а під ним знову лежала б порожнеча. */
+body[data-route="expenses"] #dashboard-content > #expenses-section {
+  display: flex; flex-direction: column; overflow: hidden;
+}
+body[data-route="expenses"] .exp-cols {
+  flex: 1 1 auto; min-height: 0; align-items: stretch;
+}
+body[data-route="expenses"] #exp-list-card {
+  min-height: 0; display: flex; flex-direction: column;
+}
+body[data-route="expenses"] #exp-add {
+  align-self: flex-start; max-height: 100%; overflow-y: auto;
+}
+body[data-route="expenses"] .exp-head,
+body[data-route="expenses"] .exp-foot { flex: 0 0 auto; }
+body[data-route="expenses"] .exp-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
+
+@media (max-width: 1100px) {
+  /* У стовпчику тягнутись по висоті нема куди — обидві картки йдуть
+     природною висотою, а гортання лишається всередині списку. */
+  body[data-route="expenses"] #exp-add { align-self: stretch; }
 }
 
 /* Цифри однакової ширини — щоб суми не «стрибали» при оновленні */
@@ -2450,15 +2458,40 @@ body.sb-compact .sb-build { display: none; }
   #stale-bar { flex-direction: column; align-items: stretch; text-align: center; padding: 12px; }
 }
 
-/* Сторінка одного блоку (Geo Breakdown, Placements, Heatmap…): решта
-   дашборда сховані роутером, і картка лишалась заввишки зі свій вміст.
-   Коли даних мало або немає взагалі, це виглядало як зламана сторінка —
-   вузька смужка вгорі й екран порожнечі під нею. Тепер єдиний видимий
-   блок займає висоту контенту, як і належить сторінці.
-   54px — топбар і відступи; ділення на --zoom, бо 100vh у зумленому
-   body дає лише 90% екрана. */
+/* ─── КАРКАС ВИСОТИ ДЛЯ ВСІХ СТОРІНОК, КРІМ ДАШБОРДА ───
+   Сторінка не гортається — гортається блок усередині неї. Це стосується
+   кожного роута, а не тих, кому колись не поталанило.
+
+   Раніше тут стояв один min-height у «100vh − 54px»: він лікував
+   протилежну болячку (єдиний видимий блок лишався вузькою смужкою
+   вгорі, а під ним був екран порожнечі). Але .app-content має ще 116px
+   власних відступів — 12 зверху і 104 знизу під плаваючий док, — тож
+   блок заввишки 100vh−54px виходив на шість десятків пікселів вищий
+   за вікно, і сторінка гортались. Далі кожна сторінка лікувала це
+   власним height: calc(): звіти й кабінети — мінус 116, домени —
+   мінус 42 (де арифметика теж не сходилась), а гео, хітмап, креативи
+   й лайв-таблиця не лікувались ніяк.
+
+   Тепер висоту тримає одне місце: .app-content має сталу висоту й не
+   гортається, #dashboard-content тягнеться, єдиний видимий блок займає
+   залишок і гортає свій вміст усередині себе. Сторінкам лишається
+   описувати лише те, що в них усередині. Ділення на --zoom — бо 100vh
+   у зумленому body дає лише 90% екрана. */
+body[data-route]:not([data-route="dash"]) .app-content {
+  height: calc(100vh / var(--zoom));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 92px;   /* під плаваючий док: він лишає лише ~8px запасу */
+}
+body[data-route]:not([data-route="dash"]) #dashboard-content {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
+}
 body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) {
-  min-height: calc(100vh / var(--zoom) - 54px);
+  flex: 1 1 auto;
+  min-height: 0;          /* без цього flex-дитина не стискається і скрол не вмикається */
+  overflow: auto;         /* смугу бере на себе блок, а не сторінка */
 }
 
 /* ── Report Builder на всю висоту ────────────────────────────────────
@@ -2471,15 +2504,11 @@ body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) 
    плаваючий док. Ділення на --zoom, бо 100vh у зумленому body дає
    лише 90% екрана. */
 body[data-route="reports"] #dashboard-content > #report-builder-section {
-  height: calc(100vh / var(--zoom) - 116px);
-  /* Правило вище дає сторінковим блокам min-height у -54px, і воно більше
-     за цю height, тобто мовчки перемагало б її. Перебити його класами не
-     вийде — там їх три, тож беремо другим id у селекторі. */
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  /* overflow НЕ ставимо: вище вже стоїть visible, щоб випадайка колонок
-     не зрізалась краєм картки. Скрол бере на себе сама таблиця. */
+  /* Скрол бере на себе сама таблиця, а картка лишається видимою наскрізь:
+     інакше випадайка вибору колонок зрізалась би її краєм. */
+  overflow: visible;
 }
 body[data-route="reports"] #report-builder-section > .p-5 { flex: none; }
 body[data-route="reports"] #rb-table-wrap {
@@ -2569,31 +2598,31 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-tr:hover > td { background: var(--surface-2); }
 .cab-tr.is-sel > td { background: rgba(139,92,246,.14); }
 .cab-state { font-size: 11.5px; font-weight: 800; }
-/* СТОВПЧИК «ACCOUNT». Досі все в ньому йшло одним потоком услід за
+/* СТОВПЧИК «ACCOUNT». Усе в ньому йшло одним потоком услід за
    номером, а номери різної довжини — тож профіль, браузер і значок
-   джерела починались у кожному рядку на іншому місці. Читати такий
-   стовпчик очима згори вниз неможливо: погляд щоразу шукає, де воно
-   цього разу.
+   джерела починались у кожному рядку на іншому місці, і читати
+   стовпчик очима згори вниз було неможливо.
 
-   Тому значок джерела стоїть ПЕРШИМ — він однакової ширини й тому сам
-   собою тримає вертикаль, а стоїть впритул до стовпчика стану, про
-   який і говорить. За ним номер у колонці сталої ширини (tabular-nums,
-   щоб цифри не гуляли), і вже за номером — мітки, які тепер у всіх
-   рядках починаються на одній вертикалі.
+   Вирівнюють два inline-block зі сталою шириною: значок джерела
+   (він перший — однакової ширини й стоїть поруч зі стовпчиком стану,
+   про який і говорить) і сам номер. Мітки після них починаються в
+   усіх рядках на одній вертикалі.
 
-   17ch — під шістнадцятизначний номер кабінета Facebook плюс запас. */
-.cab-acc { display: flex; align-items: center; gap: 6px; }
+   САМЕ inline-block, а не flex на комірці. Колонка має width:1%,
+   тобто «стиснись до вмісту», і флекс-контейнер своєї природної
+   ширини таблиці не віддає — стовпчик схлопувався до 23 пікселів
+   разом із усім, що в ньому. Inline-block цю ширину віддає.
+
+   Ширину слота рахує cabinets.js із найдовшого номера, що справді є в
+   таблиці, і кладе у --cab-id-w. Стала ширина теж вирівнювала б, але в
+   команді з короткими номерами лишала б півтори сотні пікселів
+   порожнечі в кожному рядку. 17ch — запасне значення, якщо змінної
+   раптом немає: під шістнадцятизначний номер Facebook плюс запас. */
 .cab-id {
+  display: inline-block; min-width: var(--cab-id-w, 17ch);
   font-size: 13.5px; font-weight: 900;
   font-variant-numeric: tabular-nums;
-  flex: 0 0 auto; min-width: 17ch;
 }
-.cab-tags {
-  display: flex; align-items: center; gap: 6px;
-  flex: 1 1 auto; min-width: 0; overflow: hidden;
-}
-/* Проміжок тепер дає flex; власний відступ мітки його б подвоїв. */
-.cab-tags .cab-chip { margin-left: 0; }
 .cab-dim { color: var(--text-muted); font-weight: 600; }
 .cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cab-na { color: var(--text-muted); opacity: .35; }
@@ -2627,7 +2656,10 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   background: var(--surface-3);
   border: 1px solid var(--border);
 }
-.cab-src { flex: 0 0 auto; font-size: 11px; color: var(--text-muted); opacity: .5; }
+.cab-src {
+  display: inline-block; width: 15px; text-align: center;
+  font-size: 11px; color: var(--text-muted); opacity: .5;
+}
 /* ⟳ проти ✎ — це не прикраса, а єдине, що на рядку відрізняє
    статус, який щогодини підтвердив Facebook, від того, який хтось
    клацнув три місяці тому. Тому живий — помітніший. */
@@ -3048,10 +3080,10 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 /* Сторінка кабінетів росте на всю висоту, скролиться сам список —
    так само, як зроблено в Report Builder. */
 body[data-route="cabinets"] #dashboard-content > #cabinets-section {
-  height: calc(100vh / var(--zoom) - 116px);
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Гортаються список і панель, кожне окремо, — не картка цілком. */
+  overflow: hidden;
 }
 body[data-route="cabinets"] #cabinets-section > .flex.gap-4 {
   flex: 1 1 auto;
@@ -3088,12 +3120,12 @@ body[data-route="cabinets"] #cab-detail {
 
 /* Домени — той самий каркас, що й кабінети: таблиця тягнеться, панель
    фіксована, обидві скролять усередині себе, а не сторінкою. */
-body[data-route="domains"] #domains-section {
-  height: calc(100vh / var(--zoom) - 42px);
+body[data-route="domains"] #dashboard-content > #domains-section {
   display: flex;
   flex-direction: column;
+  overflow: hidden;       /* як у кабінетах: гортають список і панель */
 }
-body[data-route="domains"] #domains-section > .flex.gap-4 {
+body[data-route="domains"] #dashboard-content > #domains-section > .flex.gap-4 {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -3697,7 +3729,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:29</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 17:11</div>
     </div>
   </aside>
 
@@ -5746,43 +5778,26 @@ function renderTrend(data) {
           borderWidth: 1,
           padding: 12,
           displayColors: false,
-          /* У режимі гео на day припадає до десяти ліній, і кожна
-             малювала свій шестирядковий блок. Шістдесят рядків — це не
-             підказка, а стіна, крізь яку не видно того одного гео,
-             заради якого туди й дивились.
-
-             Лишаємо тільки ті, де в цей day справді був спенд: нуль у
-             гео означає «нічого не крутили», і рядок про це не несе
-             жодної інформації. */
+          /* Показуємо тільки ті гео, де в цей day був спенд. Нуль
+             означає «нічого не крутили», і блок про нього — шість
+             рядків нулів, які лише відсувають потрібне. Коли не
+             крутило жодне, під фільтр не проходить ніхто, і тултіпа
+             немає зовсім — саме так і треба. */
           filter(item) {
             if (!isGeo) return true;
             const v = (item.dataset.allStats || [])[item.dataIndex];
             return !!v && v.s > 0;
           },
           callbacks: {
-            /* Порожній day — коли жодне гео не крутило. Кажемо це
-               одним рядком: порожня рамка виглядала б як поломка. */
-            beforeBody(items) {
-              return (isGeo && !items.length) ? ' \u2014 no spend this day \u2014' : '';
-            },
             label(c) {
               const v = isGeo ? (c.dataset.allStats || [])[c.dataIndex]
                               : (c.datasetIndex === 0 ? stats[c.dataIndex] : null);
               if (!v) return null;
-              /* Гео — один рядок на країну. Розгорнута картка доречна,
-                 коли рядок один (TOTAL); коли їх десять, вона й є та
-                 сама стіна. */
-              if (isGeo) {
-                const profit = v.rev - v.s;
-                return ` ${c.dataset.label}  ${cfMoneyTight(Math.round(v.s))}`
-                     + `   ${profit >= 0 ? '+' : '\u2212'}${cfMoneyTight(Math.abs(Math.round(profit)))}`
-                     + `   ${v.r} reg  ${v.d} dep`;
-              }
               const profit = v.rev - v.s;
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
-              const head = ' \u{1F4CD} TOTAL';
+              const head = isGeo ? ` \u{1F4CD} ${c.dataset.label}` : ' \u{1F4CD} TOTAL';
               return [
                 head,
                 ` 💰 Spend: $${Math.round(v.s).toLocaleString()}`,
@@ -10729,31 +10744,65 @@ RB_FILTERS.forEach(f => { rbSel[f.k] = new Set(); rbOpts[f.k] = []; });
 
 function rbHas(k, v){ return rbSel[k].size === 0 || rbSel[k].has(v); }
 
-function rbFiltered(){
+/* Як дістати з рядка значення кожного фільтра. Опис один — ним
+   користується і сам відбір, і перелік варіантів у списках; доки він
+   спільний, звужені списки не можуть розійтися з тим, що звіт справді
+   покаже. */
+const RB_VAL = {
+  geo:   r => (r.geo||'').toUpperCase(),
+  acc:   r => String(r.account||''),
+  agent: r => String(r.agent||''),
+  fun:   r => String(r.funnel||''),
+  offer: r => String(r.offer||''),
+  dev:   r => normalizeDevice(r.device||''),
+  plat:  r => prettyPlatform(r.platform),
+  plc:   r => prettyPlacement(r.placement),
+};
+// Device, платформа й плейсмент живуть лише в creatives_stats
+const RB_CR_ONLY = new Set(['dev','plat','plc']);
+
+/* creatives_stats у тих самих назвах полів, що й daily_stats. Кеш — бо
+   тепер цей набір потрібен не раз на рендер, а по разу на кожен із
+   восьми фільтрів, і розкладати десятки тисяч рядків вісім разів
+   поспіль не варто. Ключ — сам масив: щойно дані перезавантажились,
+   це вже інший масив, і кеш сам собою прострочується. */
+let rbCrCache = { src: null, rows: null };
+function rbCrRows(){
+  const src = window.creativesRawData || [];
+  if (rbCrCache.src === src) return rbCrCache.rows;
+  rbCrCache = { src, rows: src.map(c=>({...c, deposits:c.deps,
+    offer:c.offer||'DEFAULT', agent:c.agent||'—'})) };
+  return rbCrCache.rows;
+}
+
+/* Рядки під поточними умовами.
+   skip — фільтр, який НЕ застосовуємо. Потрібен, щоб перелічити його
+   власні варіанти: якби фільтр звужував і сам себе, після вибору KG у
+   списку гео лишився б один KG.
+   forceCr — брати creatives_stats навіть тоді, коли решта умов його не
+   вимагає: інакше списку девайсів нізвідки було б узятись. */
+function rbRows(skip, forceCr){
   const from=document.getElementById('rb-from').value, to=document.getElementById('rb-to').value;
   const q=(document.getElementById('rb-q').value||'').toLowerCase();
 
   // Device/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
-  const needCr = rbSel.dev.size || rbSel.plat.size || rbSel.plc.size || rbNeedsCreatives();
-  const src = needCr
-    ? (window.creativesRawData||[]).map(c=>({...c, deposits:c.deps, offer:c.offer||'DEFAULT', agent:c.agent||'—'}))
-    : (rawData||[]);
+  const needCr = forceCr || rbNeedsCreatives()
+    || [...RB_CR_ONLY].some(k => k !== skip && rbSel[k].size);
+  const src = needCr ? rbCrRows() : (rawData||[]);
 
   return src.filter(r=>{
     if(from && r.date < from) return false;
     if(to && r.date > to) return false;
-    if(!rbHas('geo',   (r.geo||'').toUpperCase())) return false;
-    if(!rbHas('acc',   String(r.account||''))) return false;
-    if(!rbHas('agent', String(r.agent||''))) return false;
-    if(!rbHas('fun',   String(r.funnel||''))) return false;
-    if(!rbHas('offer', String(r.offer||''))) return false;
-    if(!rbHas('dev',   normalizeDevice(r.device||''))) return false;
-    if(!rbHas('plat',  prettyPlatform(r.platform))) return false;
-    if(!rbHas('plc',   prettyPlacement(r.placement))) return false;
+    for(const k in RB_VAL){
+      if(k === skip || !rbSel[k].size) continue;
+      if(!rbSel[k].has(RB_VAL[k](r))) return false;
+    }
     if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.date}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
+
+function rbFiltered(){ return rbRows(null, false); }
 
 const rbEsc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
@@ -10829,8 +10878,18 @@ function rbmsToggle(ev, k){
   const wasOpen=pop && !pop.classList.contains('hidden');
   rbmsCloseAll();
   if(pop && !wasOpen){
+    /* Перелічуємо варіанти саме тут, на відкриванні, а не десь після
+       кожного кліку: вибір у сусідніх фільтрах, дати й пошук могли
+       змінитись відтоді, як цей список малювали. Заодно нічого не
+       перебудовується під рукою в того списку, що вже відкритий, —
+       разом із набраним у ньому пошуком. */
+    rbPopulateOpts();
+    const list=pop.querySelector('.rbms-list');
+    const qi=pop.querySelector('.rbms-q');
+    if(qi) qi.value='';
+    if(list) list.innerHTML=rbmsRows(k,'');
     pop.classList.remove('hidden');
-    pop.querySelector('.rbms-q')?.focus();
+    qi?.focus();
   }
 }
 
@@ -10856,25 +10915,39 @@ function rbInitOnce(){
     rbmsCloseAll();
   });
 }
-function rbPopulateFilters(){
-  const d=rawData||[], cr=window.creativesRawData||[];
+/* ФІЛЬТРИ ПРАЦЮЮТЬ МІЖ СОБОЮ.
+   Кожен список показує тільки те, що взагалі може трапитись за решти
+   умов: вибрав KG — у офферах лишились оффери KG, а не весь парк, і
+   вибрати наперед порожній перетин уже неможливо. Раніше всі вісім
+   списків бралися з повного набору даних, і вибір із двох фільтрів
+   часто давав звіт без жодного рядка.
+
+   Свій власний вибір фільтр при цьому не враховує (skip у rbRows),
+   інакше після вибору KG у списку гео лишився б один KG. А вибране
+   лишається в списку завжди, навіть коли звужений набір його вже не
+   містить: галочку мусить бути чим зняти. */
+function rbPopulateOpts(){
   const uniq=arr=>[...new Set(arr.filter(Boolean))].sort();
-  const plain=vals=>vals.map(v=>({v, label:v}));
 
-  rbOpts.geo   = plain(uniq(d.map(r=>(r.geo||'').toUpperCase())));
-  rbOpts.acc   = plain(uniq(d.map(r=>String(r.account||''))));
-  rbOpts.agent = plain(uniq(d.map(r=>String(r.agent||''))));
-  rbOpts.fun   = plain(uniq(d.map(r=>String(r.funnel||''))));
-  rbOpts.offer = plain(uniq(d.map(r=>String(r.offer||''))));
-  rbOpts.dev   = uniq(cr.map(r=>normalizeDevice(r.device||''))).map(v=>({v, label:DEVICE_LABELS[v]||v}));
-  rbOpts.plat  = plain(uniq(cr.map(r=>prettyPlatform(r.platform))));
-  rbOpts.plc   = plain(uniq(cr.map(r=>prettyPlacement(r.placement))));
-
-  // Значення, яких уже немає в даних, знімаємо з вибраних
+  /* З вибраного знімаємо лише те, чого в даних немає ЗОВСІМ — не те,
+     що просто випало з поточного звуження. Інакше фільтри гасили б
+     один одного: вибір у сусідньому знімав би галочки тут, ті в свою
+     чергу розширювали б сусідній, і набір поїхав би сам собою. */
   RB_FILTERS.forEach(f=>{
-    const ok=new Set(rbOpts[f.k].map(o=>o.v));
+    const src = RB_CR_ONLY.has(f.k) ? rbCrRows() : (rawData||[]);
+    const ok = new Set(src.map(RB_VAL[f.k]));
     [...rbSel[f.k]].forEach(v=>{ if(!ok.has(v)) rbSel[f.k].delete(v); });
   });
+
+  RB_FILTERS.forEach(f=>{
+    const rows = rbRows(f.k, RB_CR_ONLY.has(f.k));
+    const vals = uniq(rows.map(RB_VAL[f.k]).concat([...rbSel[f.k]]));
+    rbOpts[f.k] = vals.map(v=>({ v, label: f.k==='dev' ? (DEVICE_LABELS[v]||v) : v }));
+  });
+}
+
+function rbPopulateFilters(){
+  rbPopulateOpts();
   rbmsRenderAll();
 }
 function rbRenderGroupChips(){
@@ -16775,7 +16848,16 @@ function cabSection(items) {
 
   const COLS = 11;
 
-  return `<table class="cab-tbl">
+  /* Ширину колонки номера рахуємо з того, що в ній справді лежить.
+     Стала ширина вирівнює, але в команді з короткими номерами лишала б
+     півтори сотні пікселів порожнечі в кожному рядку. Мінімум у 6 —
+     щоб зовсім короткі номери не злипались із мітками; стеля у 22 —
+     щоб один довгий підпис новоствореного кабінета не розсунув
+     стовпчик на пів таблиці. */
+  const idW = Math.min(22, Math.max(6, ...sorted.map(c =>
+    String(c.row._new ? (c.fb.name || c.id) : c.id).length)));
+
+  return `<table class="cab-tbl" style="--cab-id-w:${idW}ch">
     <thead><tr>
       ${th('state', 'State')}
       ${th('id', 'Account')}
@@ -16825,10 +16907,9 @@ function cabRowHtml(c) {
   return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
       onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
-    <td class="cab-acc">
+    <td>
       <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       <span class="cab-id">${primary}</span>
-      <span class="cab-tags">
       ${second ? `<span class="cab-chip">${second}</span>` : ''}
       ${c.row.profile
         ? `<span class="cab-chip">${cabEsc(c.row.profile)}</span>`
@@ -16843,7 +16924,6 @@ function cabRowHtml(c) {
         cabPending(c.fb)} in review</span>` : ''}
       ${c.fb && String(c.fb.status) === 'review' ? `<span class="cab-chip is-gone" title="Facebook put the ad account ITSELF under review, not just its ads. Payments and delivery can stop while it lasts.">account in review</span>` : ''}
       ${c.fb && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
-      </span>
     </td>
     <td class="cab-dim">${c.row.provider_name
       ? cabEsc(c.row.provider_name)
