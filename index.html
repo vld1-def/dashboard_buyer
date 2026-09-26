@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.09 12:23">
+  <meta name="build" content="build 26.09 12:29">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1710,6 +1710,36 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
   padding: 14px 16px; border-bottom: 1px solid var(--border);
 }
 .exp-wrap { max-height: 420px; overflow-y: auto; }
+
+/* ДВІ КОЛОНКИ ВИТРАТ. Форма додавання жила зверху й займала повну
+   ширину заради трьох полів, а список — те, заради чого сюди й
+   заходять — починався під нею й одразу тікав за нижній край.
+
+   Тепер як у кабінетах: головне ліворуч на всю висоту, а те, чим із ним
+   працюють, — сталою смугою праворуч. Смуга не зникає: додавати витрати
+   тут доводиться щодня, і ховати форму за кнопкою означало б додати
+   клік до кожної.
+
+   Ширина задана ТУТ, а не класом w-[330px] у розмітці — з тієї самої
+   причини, що й у панелі кабінетів: довільні значення Tailwind існують
+   лише якщо їх знайшов збирач, і варто класу не потрапити в збірку, як
+   смуга роздувається до найдовшого свого рядка й накриває таблицю. */
+.exp-cols { display: flex; gap: 14px; align-items: flex-start; }
+#exp-list-card { flex: 1 1 auto; min-width: 0; }
+#exp-add { flex: 0 0 330px; width: 330px; }
+/* Поля в колонку: у смузі на 330px три поля поруч стають нечитними. */
+.exp-form { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+
+@media (max-width: 1100px) {
+  /* На вузькому екрані смуга праворуч просто нема куди — складаємось
+     назад у стовпчик, і список лишається першим.
+
+     align-items тут обовʼязковий: у стовпчику flex-start означає «по
+     ширині вмісту», і картки з'їхались би у вузькі колонки посеред
+     порожнього екрана. */
+  .exp-cols { flex-direction: column; align-items: stretch; }
+  #exp-add { flex: 0 0 auto; width: auto; }
+}
 #exp-table { width: 100%; border-collapse: collapse; }
 #exp-table th {
   position: sticky; top: 0; background: var(--surface-2); z-index: 1;
@@ -1842,12 +1872,15 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
     flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   }
   body[data-route="expenses"] #expenses-section {
-    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px;
-  }
-  body[data-route="expenses"] #expenses-section > .card:first-child { flex: 0 0 auto; }
-  body[data-route="expenses"] #expenses-section > .card:last-child {
     flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   }
+  body[data-route="expenses"] .exp-cols { flex: 1 1 auto; min-height: 0; }
+  /* Списку віддаємо всю висоту, формі — рівно стільки, скільки просить:
+     вона коротка і тягнутись їй нема чим. */
+  body[data-route="expenses"] #exp-list-card {
+    max-height: 100%; display: flex; flex-direction: column;
+  }
+  body[data-route="expenses"] #exp-add { max-height: 100%; overflow-y: auto; }
   body[data-route="expenses"] .exp-head,
   body[data-route="expenses"] .exp-foot { flex: 0 0 auto; }
   body[data-route="expenses"] .exp-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
@@ -3664,7 +3697,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:23</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:29</div>
     </div>
   </aside>
 
@@ -4049,43 +4082,49 @@ body[data-route="domains"] #dm-detail {
         </div>
 
         <!-- ═══════ ВИТРАТИ ═══════ -->
-        <div id="expenses-section" class="route-off space-y-4">
-          <div class="card p-5">
-            <h2>Add an expense</h2>
-            <p class="panel-sub">Anything outside ad spend</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
-              <input type="date" id="exp-date">
-              <input type="number" id="exp-amount" placeholder="Amount ($)" min="0" step="0.01">
-              <input type="text" id="exp-desc" placeholder="Note — e.g. FB top-up">
-            </div>
-            <!-- Категорій усього п'ять, тож рядок кнопок замість випадайки:
-                 один клік замість двох, і видно всі варіанти одразу. А ще в
-                 <option> не можна покласти SVG — лише текст, тому з
-                 випадайкою іконки були б неможливі в принципі. -->
-            <div id="exp-cats" class="exp-cats"></div>
-            <input type="hidden" id="exp-category" value="accounts">
-            <button onclick="expAdd()" class="exp-save">+ Save expense</button>
-          </div>
-
-          <div class="card overflow-hidden">
-            <div class="exp-head">
-              <div>
-                <h2>Expenses this month</h2>
-                <p class="panel-sub">Counted in Net Profit</p>
+        <!-- Список ліворуч, форма додавання — постійною смугою праворуч,
+             як панель у кабінетах. Раніше форма стояла зверху на всю
+             ширину заради трьох полів, а список — те, заради чого сюди
+             заходять — починався під нею. -->
+        <div id="expenses-section" class="route-off">
+          <div class="exp-cols">
+            <div class="card overflow-hidden" id="exp-list-card">
+              <div class="exp-head">
+                <div>
+                  <h2>Expenses this month</h2>
+                  <p class="panel-sub">Counted in Net Profit</p>
+                </div>
+                <select id="exp-month" onchange="expLoad()" class="rev-select"></select>
               </div>
-              <select id="exp-month" onchange="expLoad()" class="rev-select"></select>
+              <div class="exp-wrap custom-scrollbar">
+                <table id="exp-table">
+                  <thead>
+                    <tr><th>Date</th><th>Category</th><th>Note</th><th class="text-right">Amount</th><th></th></tr>
+                  </thead>
+                  <tbody id="exp-body"></tbody>
+                </table>
+              </div>
+              <div class="exp-foot">
+                <span>Month total</span>
+                <span id="exp-total">$0.00</span>
+              </div>
             </div>
-            <div class="exp-wrap custom-scrollbar">
-              <table id="exp-table">
-                <thead>
-                  <tr><th>Date</th><th>Category</th><th>Note</th><th class="text-right">Amount</th><th></th></tr>
-                </thead>
-                <tbody id="exp-body"></tbody>
-              </table>
-            </div>
-            <div class="exp-foot">
-              <span>Month total</span>
-              <span id="exp-total">$0.00</span>
+
+            <div class="card p-5" id="exp-add">
+              <h2>Add an expense</h2>
+              <p class="panel-sub">Anything outside ad spend</p>
+              <div class="exp-form">
+                <input type="date" id="exp-date">
+                <input type="number" id="exp-amount" placeholder="Amount ($)" min="0" step="0.01">
+                <input type="text" id="exp-desc" placeholder="Note — e.g. FB top-up">
+              </div>
+              <!-- Категорій усього п'ять, тож рядок кнопок замість випадайки:
+                   один клік замість двох, і видно всі варіанти одразу. А ще в
+                   <option> не можна покласти SVG — лише текст, тому з
+                   випадайкою іконки були б неможливі в принципі. -->
+              <div id="exp-cats" class="exp-cats"></div>
+              <input type="hidden" id="exp-category" value="accounts">
+              <button onclick="expAdd()" class="exp-save">+ Save expense</button>
             </div>
           </div>
         </div>
