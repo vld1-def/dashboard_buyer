@@ -592,6 +592,34 @@ type Outcome = { accounts: number; failed: number; changed: number;
    належать конкретним баєрам, і сповіщення ходять так само. */
 type Alert = { owner: string; name: string; kind: 'bad' | 'good'; text: string };
 
+/* ЯК ПІДПИСАТИ КАБІНЕТ У СПОВІЩЕННІ.
+   Назва кабінета у Facebook — це назва профілю («Cara Simon»), і в
+   Telegram вона ні про що не говорить: у роботі кабінет шукають за
+   номером і за браузером, у якому він відкривається. Тож підписуємо
+   саме ними: «1149896616961527 · br 2992».
+
+   Про браузер Facebook не знає нічого — він лежить другою частиною
+   назви токена (Агент_Браузер_idBM), як і в дашборді. Назва не в
+   такому форматі — лишається один номер: краще без браузера, ніж
+   назва профілю замість нього.
+
+   Слово br у підписі стоїть навмисно: і номер кабінета, і номер
+   браузера — цифри, і без нього «1149896616961527 · 2992» читалось би
+   як два невідомо чиї числа.
+
+   Назву профілю не викидаємо: вона лишається в історії змін
+   (fb_account_events), де її читають поруч із причиною, і в самому
+   дашборді. Прибираємо її тільки з тексту сповіщень. */
+function tokenBrowser(t: TokenRow): string {
+  const parts = String(t.label || '').split('_');
+  return parts.length > 1 ? parts[1].trim() : '';
+}
+function cabTag(r: Json, t: TokenRow): string {
+  const id = String(r.account_id || '').trim();
+  const br = tokenBrowser(t);
+  return (id || String(r.name || '') || 'unknown') + (br ? ' \u00b7 br ' + br : '');
+}
+
 async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
@@ -721,7 +749,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   rows.forEach(r => {
     const was = known.get(String(r.account_id));
     if (!was) return;   // перший раз бачимо — порівнювати нема з чим
-    const name = String(r.name || r.account_id);
+    const name = cabTag(r, t);
 
     if (was.status !== r.status) {
       out.changed++;
@@ -884,7 +912,7 @@ async function markMissing(base: string, hdr: Json, t: TokenRow,
     if (!res.ok || !rows.length) return;
 
     rows.forEach((r: Json) => {
-      const name = String(r.name || r.account_id);
+      const name = cabTag(r, t);
       alerts.push({ owner: t.created_by, name, kind: 'bad',
         text: name + ' — the token no longer sees this cabinet' });
     });

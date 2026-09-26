@@ -270,6 +270,19 @@ async function tgPost(token: string, chat: string, text: string): Promise<boolea
 type Found = { owner: string; cab: string; ad: string; from: string;
                text: string; hidden: boolean; byUs: boolean };
 
+/* Підпис кабінета в повідомленні — номер і браузер, а не назва профілю
+   у Facebook: у роботі кабінет шукають саме за ними. Браузер лежить
+   другою частиною назви токена (Агент_Браузер_idBM) — Facebook про
+   нього не знає. Те саме правило й тим самим виглядом, що у fb-sync.
+   Слово br навмисно: обидва числа — цифри, і без нього підпис читався
+   б як два невідомо чиї числа. */
+function cabTag(acc: Json, tok: Json | undefined): string {
+  const parts = String((tok || {}).label || '').split('_');
+  const br = parts.length > 1 ? parts[1].trim() : '';
+  const id = String(acc.account_id || '').trim();
+  return (id || String(acc.name || '') || 'unknown') + (br ? ' \u00b7 br ' + br : '');
+}
+
 function tgText(list: Found[]): string {
   const hid = list.filter(f => f.byUs).length;
   const head = list.length + ' new comment(s)'
@@ -353,7 +366,8 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
 
   const ids = [...new Set(accs.map(a => Number(a.token_id)).filter(Boolean))];
   let toks: Json[] = [];
-  try { toks = await pgGet(base, hdr, 'fb_tokens?select=id,token,scopes&id=in.(' + ids.join(',') + ')'); }
+  // label потрібен для підпису кабінета: у ньому лежить браузер
+  try { toks = await pgGet(base, hdr, 'fb_tokens?select=id,label,token,scopes&id=in.(' + ids.join(',') + ')'); }
   catch (e) { return reply({ error: (e as Error).message }, 500); }
   const byToken = new Map(toks.map(t => [Number(t.id), t]));
 
@@ -395,7 +409,7 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
     try {
       posts = await ourPosts(String(tok.token), String(acc.account_id));
     } catch (e) {
-      problems.push(String(acc.name || acc.account_id) + ': ' + (e as Error).message);
+      problems.push(cabTag(acc, tok) + ': ' + (e as Error).message);
       continue;
     }
     scanned++;
@@ -444,13 +458,13 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
           /* «Сховано» означає «зараз не на людях», а не «сховали саме
              ми»: коментар міг бути схований минулого разу або руками.
              Читачу повідомлення важливо перше, а не друге. */
-          found.push({ owner: String(acc.created_by), cab: String(acc.name || acc.account_id),
+          found.push({ owner: String(acc.created_by), cab: cabTag(acc, tok),
                        ad: post.names[0] || '', from: String(c.from?.name || ''),
                        text: String(c.message || ''),
                        hidden: didHide || !!c.is_hidden, byUs: didHide });
         }
       } catch (e) {
-        problems.push(String(acc.name || acc.account_id) + ': ' + (e as Error).message);
+        problems.push(cabTag(acc, tok) + ': ' + (e as Error).message);
       }
     }
 
