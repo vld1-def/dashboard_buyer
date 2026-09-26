@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.09 17:25">
+  <meta name="build" content="build 26.09 17:36">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2105,11 +2105,42 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
   font-weight: 700; color: var(--text-muted);
 }
 
+/* ДВІ КОЛОНКИ В ОДНІЙ ГРУПІ НАЛАШТУВАНЬ.
+   Для списків, які читають поруч, а не один за одним: групування й
+   фільтри звіту — це двадцять рядків, і в стовпчик вони перетворюють
+   розділ на кілометр гортання.
+   align-items: start обовʼязковий — інакше коротша колонка розтягнеться
+   на висоту довшої, і її рядки роз'їдуться порожнечею. */
+.set-cols2 {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 4px 16px; align-items: start;
+}
+.set-col { min-width: 0; }
+.set-chead {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 2px 7px; margin-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.set-ctitle {
+  font-size: 10px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted); margin: 0;
+}
+@media (max-width: 860px) {
+  /* У вузькому вікні дві колонки по 330px не влазять — складаємось
+     у стовпчик, підзаголовки лишаються роздільниками. */
+  .set-cols2 { grid-template-columns: 1fr; gap: 0; }
+  .set-col + .set-col { margin-top: 14px; }
+}
+
 /* Режим пошуку: показуємо всі розділи одразу, ховаємо порожні */
 .set-panes.searching .set-pane { display: block; }
 .set-panes.searching .set-pane.no-hit { display: none; }
 .set-panes.searching .set-group.no-hit { display: none; }
 .set-row.no-hit { display: none; }
+/* Колонка, у якій пошук нічого не лишив, ховається разом зі своїм
+   підзаголовком: інакше поруч із знайденим висіла б порожня «Filters»
+   з кнопками, які нічим не керують. Групу цілком ховає setFilter. */
+.set-panes.searching .set-col:not(:has(.set-row:not(.no-hit))) { display: none; }
 
 @media (max-width: 720px) {
   .set-body { flex-direction: column; }
@@ -3729,7 +3760,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 17:25</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 17:36</div>
     </div>
   </aside>
 
@@ -12174,32 +12205,39 @@ document.addEventListener('keydown', e => {
             <div id="dock-hide-list"></div>
           </div>
 
+          <!-- Групування й фільтри — про те саме: що лишається в шапці
+               звіту. Тримаємо їх одним блоком у дві колонки, бо поруч їх
+               і порівнюють; двадцять рядків у стовпчик — це чотири
+               екрани гортання в розділі, де решта груп по вісім. -->
           <div class="set-group">
             <div class="set-ghead">
               <div>
-                <h3 class="set-gtitle">Report Builder: grouping</h3>
-                <p class="set-gsub">Which grouping chips stay in the report header. Switched off, a chip is gone from the header — and if the report was grouped by it, that level is dropped. One always stays.</p>
-              </div>
-              <div class="set-bulk">
-                <button type="button" onclick="setBulk('#rb-dims-list', true)">All on</button>
-                <button type="button" onclick="setBulk('#rb-dims-list', false)">All off</button>
+                <h3 class="set-gtitle">Report Builder</h3>
+                <p class="set-gsub">What stays in the report header. A grouping chip switched off leaves the header — and the report stops grouping by it; one always stays. A filter switched off leaves too, and whatever was picked in it is cleared: a hidden filter must not keep narrowing the report.</p>
               </div>
             </div>
-            <div id="rb-dims-list"></div>
-          </div>
-
-          <div class="set-group">
-            <div class="set-ghead">
-              <div>
-                <h3 class="set-gtitle">Report Builder: filters</h3>
-                <p class="set-gsub">Which filter dropdowns stay in the report header. Switching one off also clears what was picked in it — a hidden filter must not keep narrowing the report.</p>
+            <div class="set-cols2">
+              <div class="set-col">
+                <div class="set-chead">
+                  <h4 class="set-ctitle">Grouping</h4>
+                  <div class="set-bulk">
+                    <button type="button" onclick="setBulk('#rb-dims-list', true)">All on</button>
+                    <button type="button" onclick="setBulk('#rb-dims-list', false)">All off</button>
+                  </div>
+                </div>
+                <div id="rb-dims-list"></div>
               </div>
-              <div class="set-bulk">
-                <button type="button" onclick="setBulk('#rb-filters-list', true)">All on</button>
-                <button type="button" onclick="setBulk('#rb-filters-list', false)">All off</button>
+              <div class="set-col">
+                <div class="set-chead">
+                  <h4 class="set-ctitle">Filters</h4>
+                  <div class="set-bulk">
+                    <button type="button" onclick="setBulk('#rb-filters-list', true)">All on</button>
+                    <button type="button" onclick="setBulk('#rb-filters-list', false)">All off</button>
+                  </div>
+                </div>
+                <div id="rb-filters-list"></div>
               </div>
             </div>
-            <div id="rb-filters-list"></div>
           </div>
         </section>
 
