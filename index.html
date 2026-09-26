@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.09 12:02">
+  <meta name="build" content="build 26.09 12:11">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -987,6 +987,12 @@ header h1 span { font-size: .85rem !important; }
 #device-geo-content {
   max-height: 420px; overflow-y: auto; padding-right: 6px;
 }
+/* Placementи — та сама біда, що колись була в Costs: плиток більше,
+   ніж влазить у 420px, і решта ховається під внутрішній скрол. Скрол
+   усередині картки, яка й сама стоїть на сторінці зі скролом — тобто
+   два вкладені один в одного, і про другий ніхто не здогадується.
+   Тому тут теж знімаємо стелю: блок росте під вміст. */
+#device-geo-content.dg-plc { max-height: none; overflow: visible; }
 /* Report Builder — випадайка стовпчиків не має обрізатись карткою */
 #report-builder-section { overflow: visible !important; }
 #rb-cols-menu { max-height: 60vh; overflow-y: auto; }
@@ -1624,7 +1630,6 @@ body.hub-open .app-content { padding-bottom: 14px; }
 #live-table-section > .overflow-x-auto { max-height: 400px !important; }
 #live-table-section > .p-6 { padding: 14px !important; }
 #rb-table-wrap { max-height: 400px !important; }
-#placements-content { max-height: 300px !important; }
 #creative-analyzer-section [class*="max-h-["] { max-height: 320px !important; }
 
 /* Заголовки секцій нижчі: у макеті це один рядок, а не блок на три */
@@ -3628,10 +3633,6 @@ body[data-route="domains"] #dm-detail {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
         <span class="sb-lbl">Geo Breakdown</span>
       </button>
-      <button class="sb-item" data-nav="placements" onclick="navGo('placements')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 20V9"/></svg>
-        <span class="sb-lbl">Placements</span>
-      </button>
       <button class="sb-item" data-nav="live" onclick="navGo('live')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
         <span class="sb-lbl">Live Data</span>
@@ -3688,7 +3689,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:02</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:11</div>
     </div>
   </aside>
 
@@ -4374,16 +4375,6 @@ body[data-route="domains"] #dm-detail {
         <div id="device-geo-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
 
-      <!-- Placements -->
-      <div id="placements-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-indigo-500 mb-6">
-        <div class="flex items-center justify-between mb-5">
-          <div>
-            <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Placements</h2>
-            <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Where ads actually run</p>
-          </div>
-        </div>
-        <div id="placements-content" class="overflow-x-auto custom-scrollbar" style="max-height:440px;overflow-y:auto"></div>
-      </div>
       <!-- Live Table -->
      <!-- Live Table Section -->
 <div id="live-table-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5">
@@ -5193,7 +5184,6 @@ async function sbFetchAll(table, build) {
   if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
   if (typeof renderCreativeSidebar === 'function') renderCreativeSidebar("");
   if (typeof renderDeviceGeoWidget === 'function') renderDeviceGeoWidget();
-  if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
   if (typeof cabRefresh === 'function') cabRefresh();
   if (typeof evBoot === 'function') evBoot();
 
@@ -5272,7 +5262,6 @@ async function sbFetchAll(table, build) {
   if (typeof renderDeviceGeoWidget === 'function') {
     renderDeviceGeoWidget();
   }
-  if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
   if (typeof cabRefresh === 'function') cabRefresh();
   if (typeof evBoot === 'function') evBoot();
 
@@ -5746,16 +5735,43 @@ function renderTrend(data) {
           borderWidth: 1,
           padding: 12,
           displayColors: false,
+          /* У режимі гео на day припадає до десяти ліній, і кожна
+             малювала свій шестирядковий блок. Шістдесят рядків — це не
+             підказка, а стіна, крізь яку не видно того одного гео,
+             заради якого туди й дивились.
+
+             Лишаємо тільки ті, де в цей day справді був спенд: нуль у
+             гео означає «нічого не крутили», і рядок про це не несе
+             жодної інформації. */
+          filter(item) {
+            if (!isGeo) return true;
+            const v = (item.dataset.allStats || [])[item.dataIndex];
+            return !!v && v.s > 0;
+          },
           callbacks: {
+            /* Порожній day — коли жодне гео не крутило. Кажемо це
+               одним рядком: порожня рамка виглядала б як поломка. */
+            beforeBody(items) {
+              return (isGeo && !items.length) ? ' \u2014 no spend this day \u2014' : '';
+            },
             label(c) {
               const v = isGeo ? (c.dataset.allStats || [])[c.dataIndex]
                               : (c.datasetIndex === 0 ? stats[c.dataIndex] : null);
               if (!v) return null;
+              /* Гео — один рядок на країну. Розгорнута картка доречна,
+                 коли рядок один (TOTAL); коли їх десять, вона й є та
+                 сама стіна. */
+              if (isGeo) {
+                const profit = v.rev - v.s;
+                return ` ${c.dataset.label}  ${cfMoneyTight(Math.round(v.s))}`
+                     + `   ${profit >= 0 ? '+' : '\u2212'}${cfMoneyTight(Math.abs(Math.round(profit)))}`
+                     + `   ${v.r} reg  ${v.d} dep`;
+              }
               const profit = v.rev - v.s;
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
-              const head = isGeo ? ` 📍 ${c.dataset.label}` : ' 📍 TOTAL';
+              const head = ' \u{1F4CD} TOTAL';
               return [
                 head,
                 ` 💰 Spend: $${Math.round(v.s).toLocaleString()}`,
@@ -7026,7 +7042,7 @@ async function loadTeamLeadToggles() {
   const fresh = await getTeamSetting('tl_access');
   if (fresh) { try { acc = JSON.parse(fresh); } catch (e) {} }
   // Дозволено лише те, що явно === true (нові блоки не вмикаються самі)
-  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements'].forEach(k => {
+  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report'].forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
     if (el) el.checked = acc[k] === true;
   });
@@ -7746,7 +7762,7 @@ async function siteLogout() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements','cabinets','domains','expenses'];
+  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','cabinets','domains','expenses'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -7817,7 +7833,6 @@ async function initTeamLeadMode() {
     'table':      'live-table-section',
     'device-geo': 'device-geo-section',
     'report':     'report-builder-section',
-    'placements': 'placements-section',
     'cabinets':   'cabinets-section',
     'domains':    'domains-section',
     'expenses':   'expenses-section'
@@ -7882,7 +7897,6 @@ async function loadSettings() {
     'toggle-table': 'live-table-section',
     'toggle-heatmap': 'weekly-analysis-section',
     'toggle-report': 'report-builder-section',
-    'toggle-placements': 'placements-section',
     'toggle-cabinets': 'cabinets-section',
     'toggle-domains': 'domains-section',
     'toggle-expenses': 'expenses-section'
@@ -10295,76 +10309,6 @@ function renderGeoPlacementWidget(crData, el) {
   }).join('');
 }
 
-// ===== Окремий блок: Placements (зведення по всіх гео) =====
-function renderPlacementsWidget() {
-  const el = document.getElementById('placements-content');
-  if (!el) return;
-  const crData = (window.creativesRawData||[]).filter(c => c.date && c.date.startsWith(currentMonthFilter));
-  const has = crData.some(c => (c.placement && String(c.placement).trim()) || (c.platform && String(c.platform).trim()));
-  if (!has) {
-    el.innerHTML = `<div class="text-center py-10 opacity-30 text-xs uppercase font-black">
-      No data — add Platform and Placement columns to the FB report</div>`;
-    return;
-  }
-
-  // Групуємо по платформі, всередині — плейсменти
-  const byPlat = {};
-  crData.forEach(c => {
-    const plat = prettyPlatform(c.platform) || '—';
-    const plc  = prettyPlacement(c.placement) || '—';
-    if (!byPlat[plat]) byPlat[plat] = { tot:{cl:0,i:0,r:0,d:0,s:0}, kids:{} };
-    const K = byPlat[plat];
-    if (!K.kids[plc]) K.kids[plc] = {cl:0,i:0,r:0,d:0,s:0};
-    const add = (o) => {
-      o.cl += Number(c.clicks)||0; o.i += Number(c.installs)||0;
-      o.r  += Number(c.regs)||0;   o.d += Number(c.deps)||0; o.s += Number(c.spend)||0;
-    };
-    add(K.kids[plc]); add(K.tot);
-  });
-
-  const plats = Object.entries(byPlat).sort((a,b)=>b[1].tot.s-a[1].tot.s);
-  const maxS = Math.max(...plats.map(([,v])=>v.tot.s), 1);
-  const money = v => '$' + Math.round(v).toLocaleString();
-  const cell = (v,cls) => `<td class="p-2.5 border-b border-white/5 text-center text-[11px] ${cls} font-mono">${Number(v).toLocaleString()}</td>`;
-  const cost = (s,n) => `<td class="p-2.5 border-b border-white/5 text-right text-[11px] text-slate-400 font-mono">${n?'$'+(s/n).toFixed(2):'—'}</td>`;
-
-  el.innerHTML = `
-    <table class="w-full text-left border-separate border-spacing-0">
-      <thead><tr class="text-[9px] font-black uppercase tracking-widest text-slate-500">
-        <th class="p-2.5 border-b border-white/10">Platform / placement</th>
-        <th class="p-2.5 border-b border-white/10 text-right">Spend</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Clicks</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Inst</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPI</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Regs</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPL</th>
-        <th class="p-2.5 border-b border-white/10 text-center text-green-500">Deps</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPA</th>
-      </tr></thead><tbody>
-      ${plats.map(([plat,v])=>{
-        const kids = Object.entries(v.kids).sort((a,b)=>b[1].s-a[1].s);
-        const head = `<tr class="bg-white/[0.03]">
-          <td class="p-2.5 border-b border-white/5 relative">
-            <div class="absolute left-0 top-1/2 -translate-y-1/2 h-7 rounded bg-indigo-500/15" style="width:${v.tot.s/maxS*100}%"></div>
-            <span class="relative text-[12px] font-black text-white">${plat}</span>
-          </td>
-          <td class="p-2.5 border-b border-white/5 text-right text-[12px] font-black font-mono text-white">${money(v.tot.s)}</td>
-          ${cell(v.tot.cl,'text-slate-300 font-black')}${cell(v.tot.i,'text-cyan-300 font-black')}
-          ${cost(v.tot.s,v.tot.i)}${cell(v.tot.r,'text-blue-400 font-black')}
-          ${cost(v.tot.s,v.tot.r)}${cell(v.tot.d,'text-green-500 font-black')}${cost(v.tot.s,v.tot.d)}
-        </tr>`;
-        const rows = kids.map(([plc,m])=>`<tr class="hover:bg-white/[0.03]">
-          <td class="p-2.5 border-b border-white/5 pl-7 text-[11px] font-bold text-slate-400">↳ ${plc}</td>
-          <td class="p-2.5 border-b border-white/5 text-right text-[11px] font-bold font-mono text-slate-200">${money(m.s)}</td>
-          ${cell(m.cl,'text-slate-500')}${cell(m.i,'text-cyan-300/80')}${cost(m.s,m.i)}
-          ${cell(m.r,'text-blue-400/80')}${cost(m.s,m.r)}${cell(m.d,'text-green-500/90 font-black')}${cost(m.s,m.d)}
-        </tr>`).join('');
-        return head + (kids.length > 1 || kids[0]?.[0] !== '—' ? rows : '');
-      }).join('')}
-      </tbody></table>`;
-}
-
-// Функція перемикання ГЕО всередині дня
 function toggleDayHeatmap(dayIndex) {
   const rows = document.querySelectorAll(`.heat-geo-details-${dayIndex}`);
   const arrow = document.getElementById(`heat-arrow-${dayIndex}`);
@@ -10385,7 +10329,10 @@ let dgMode = 'device';   // 'device' | 'placement' | 'cost'
 function dgSetMode(m){
   dgMode = m;
   const dgBox = document.getElementById('device-geo-content');
-  if (dgBox) dgBox.classList.toggle('dg-cost', m === 'cost');
+  if (dgBox) {
+    dgBox.classList.toggle('dg-cost', m === 'cost');
+    dgBox.classList.toggle('dg-plc', m === 'placement');
+  }
   // Полотна зникнуть разом із innerHTML, а самі Chart-и лишаться живими
   // в Chart.instances і будуть смикатись на кожному resize — гасимо їх тут.
   if (m !== 'cost' && typeof gcDestroy === 'function') gcDestroy();
@@ -10758,6 +10705,10 @@ const RB_FILTERS = [
   { k:'acc',   label:'All accounts' },
   { k:'agent', label:'All agents' },
   { k:'fun',   label:'All funnels' },
+  // Оффер уже був виміром групування (RB_DIMS), а фільтра по ньому не
+  // було — тобто розбити звіт по офферах можна було, а лишити один
+  // оффер ні. Тепер можна і те, і те.
+  { k:'offer', label:'All offers' },
   { k:'dev',   label:'All devices' },
   { k:'plat',  label:'All platforms' },
   { k:'plc',   label:'All placements' },
@@ -10784,6 +10735,7 @@ function rbFiltered(){
     if(!rbHas('acc',   String(r.account||''))) return false;
     if(!rbHas('agent', String(r.agent||''))) return false;
     if(!rbHas('fun',   String(r.funnel||''))) return false;
+    if(!rbHas('offer', String(r.offer||''))) return false;
     if(!rbHas('dev',   normalizeDevice(r.device||''))) return false;
     if(!rbHas('plat',  prettyPlatform(r.platform))) return false;
     if(!rbHas('plc',   prettyPlacement(r.placement))) return false;
@@ -10902,6 +10854,7 @@ function rbPopulateFilters(){
   rbOpts.acc   = plain(uniq(d.map(r=>String(r.account||''))));
   rbOpts.agent = plain(uniq(d.map(r=>String(r.agent||''))));
   rbOpts.fun   = plain(uniq(d.map(r=>String(r.funnel||''))));
+  rbOpts.offer = plain(uniq(d.map(r=>String(r.offer||''))));
   rbOpts.dev   = uniq(cr.map(r=>normalizeDevice(r.device||''))).map(v=>({v, label:DEVICE_LABELS[v]||v}));
   rbOpts.plat  = plain(uniq(cr.map(r=>prettyPlatform(r.platform))));
   rbOpts.plc   = plain(uniq(cr.map(r=>prettyPlacement(r.placement))));
@@ -11967,10 +11920,6 @@ document.addEventListener('keydown', e => {
                 <span class="set-label"><span class="set-ico">&#128241;</span>Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-device-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="placements плейсмент">
-                <span class="set-label"><span class="set-ico">&#128208;</span>Placements</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-placements" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
-              </label>
               <label class="set-row set-toggle" data-setting="live data feed таблиця">
                 <span class="set-label"><span class="set-ico">&#128203;</span>Live Data</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-table" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
@@ -12090,8 +12039,6 @@ document.addEventListener('keydown', e => {
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій"><span class="set-label">Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="placements плейсмент"><span class="set-label">Placements</span>
-                <span class="toggle-switch"><input type="checkbox" id="tl-show-placements" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="live data feed таблиця"><span class="set-label">Live Data</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-table" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
@@ -14906,7 +14853,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.9';
+const FB_FN_WANT = '2026-09-26.1';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -18493,7 +18440,6 @@ window.dmCheckHelp = dmCheckHelp;
     'heatmap':    { section: 'weekly-analysis-section' },
     'creatives':  { section: 'creative-analyzer-section' },
     'geo':        { section: 'device-geo-section' },
-    'placements': { section: 'placements-section' },
     'live':       { section: 'live-table-section' },
     'cabinets':   { section: 'cabinets-section' },
     'domains':    { section: 'domains-section' },
@@ -19205,7 +19151,6 @@ window.dmCheckHelp = dmCheckHelp;
     ['Heatmap',        'nav:heatmap',    'Page'],
     ['Creatives',      'nav:creatives',  'Page'],
     ['Geo Breakdown',  'nav:geo',         'Page'],
-    ['Placements',     'nav:placements',         'Page'],
     ['Live Data',      'nav:live',         'Page'],
     ['Cabinets',       'nav:cabinets',   'Page'],
     ['Domains',        'nav:domains',    'Page'],
