@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 22:56">
+  <meta name="build" content="build 26.09 12:29">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -51,13 +51,6 @@
       color-scheme: dark;
   }
   
-  .light { 
-    --bg-color: #f1f5f9; 
-    --glass-bg: rgba(255, 255, 255, 0.6); 
-    --glass-border: rgba(15, 23, 42, 0.08);
-    --text-main: #1e293b; 
-    --text-muted: #64748b; 
-  }
   html.dark {
   color-scheme: dark;
   }
@@ -827,7 +820,6 @@ body::before {
   50%  { transform: translate3d(-3.5%,2.5%,0) scale(1.09); }
   100% { transform: translate3d(2.5%,-2.5%,0) scale(1.05); }
 }
-.light body::before { opacity:.5; }
 
 /* 2. Картки — РІДКІШЕ скло: прозоріші, глибший blur */
 .card {
@@ -840,11 +832,6 @@ body::before {
     inset 0 1px 0 rgba(255,255,255,.12),
     inset 0 -1px 0 rgba(0,0,0,.20) !important;
   position: relative;
-}
-.light .card {
-  background: linear-gradient(150deg, rgba(255,255,255,.60), rgba(255,255,255,.38)) !important;
-  border-color: rgba(15,23,42,.09) !important;
-  box-shadow: 0 10px 36px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.9) !important;
 }
 /* кромка «край скла» */
 .card::after {
@@ -931,7 +918,6 @@ header h1 span { font-size: .85rem !important; }
   overflow: visible;               /* ← нічого не обрізається */
   flex-wrap: nowrap;
 }
-.light #app-dock { background: linear-gradient(150deg, rgba(255,255,255,.8), rgba(255,255,255,.6)); }
 #app-dock .dk {
   width: 48px; height: 48px; flex: 0 0 48px; border-radius: 16px;
   display: grid; place-items: center; color: #94a3b8; cursor: pointer;
@@ -987,6 +973,12 @@ header h1 span { font-size: .85rem !important; }
 #device-geo-content {
   max-height: 420px; overflow-y: auto; padding-right: 6px;
 }
+/* Placementи — та сама біда, що колись була в Costs: плиток більше,
+   ніж влазить у 420px, і решта ховається під внутрішній скрол. Скрол
+   усередині картки, яка й сама стоїть на сторінці зі скролом — тобто
+   два вкладені один в одного, і про другий ніхто не здогадується.
+   Тому тут теж знімаємо стелю: блок росте під вміст. */
+#device-geo-content.dg-plc { max-height: none; overflow: visible; }
 /* Report Builder — випадайка стовпчиків не має обрізатись карткою */
 #report-builder-section { overflow: visible !important; }
 #rb-cols-menu { max-height: 60vh; overflow-y: auto; }
@@ -1148,19 +1140,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   color-scheme: dark;
 }
 
-html.light, .light {
-  --bg:          #F4F4F6;
-  --bg-soft:     #FFFFFF;
-  --surface:     #FFFFFF;
-  --surface-2:   #F6F6F8;
-  --surface-3:   #EDEDF1;
-  --border:      rgba(9,9,11,.09);
-  --border-2:    rgba(9,9,11,.16);
-  --text-main:   #17171B;
-  --text-muted:  #6C6C76;
-  color-scheme: light;
-}
-html.light { color-scheme: light; }
 
 body {
   background: var(--bg) !important;
@@ -1189,6 +1168,26 @@ body {
 }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .app-content { padding: 12px 14px 104px; }
+
+/* ─────────── Скрол — тільки всередині ───────────
+
+   Досі гортався весь документ. Сайдбар тримався на sticky й лишався на
+   місці, а от усе, що стоїть угорі контенту, — фільтри, вкладки, шапки
+   таблиць — їхало вгору й зникало. На довгому звіті це означало
+   мотати назад щоразу, коли треба змінити період.
+
+   Тепер вікно не гортається взагалі: прокручується рівно та колонка, у
+   якій лежить вміст. Сайдбар і все, що над контентом, стоять завжди.
+
+   overscroll-behavior: contain — щоб, догортавши до низу блоку, не
+   почати тягнути за собою сторінку (на тачпаді це виглядає як ривок).
+
+   Ділення на --zoom — з тієї ж причини, що й у сайдбара: під
+   body { zoom: .9 } сто vh дають на екрані лише дев'яносто. */
+html, body { height: 100%; overflow: hidden; }
+.app-shell { height: calc(100vh / var(--zoom)); overflow: hidden; }
+.app-main { height: 100%; min-height: 0; overflow: hidden; }
+.app-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
 .sb-brand {
   display: flex; align-items: center; gap: 10px;
@@ -1223,7 +1222,6 @@ body {
   border: 1px solid transparent; cursor: pointer;
 }
 .sb-item:hover { background: rgba(255,255,255,.045); color: var(--text-main); }
-.light .sb-item:hover { background: rgba(9,9,11,.05); }
 .sb-item.is-active {
   background: var(--surface-2); color: var(--text-main);
   border-color: var(--border);
@@ -1390,7 +1388,6 @@ select option { background: var(--surface-2); color: var(--text-main); }
 }
 #live-table-section tbody td { padding: 11px 16px !important; font-size: 12px; }
 #live-table-section tbody tr:hover td { background: rgba(255,255,255,.025); }
-.light #live-table-section tbody tr:hover td { background: rgba(9,9,11,.03); }
 
 /* ─────────── Скролбари ─────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1529,18 +1526,6 @@ input[type="date"]::-webkit-datetime-edit-day-field,
 input[type="date"]::-webkit-datetime-edit-year-field { color: var(--text-main); }
 ::-webkit-calendar-picker-indicator { filter: none; opacity: .55; }
 
-/* Світла тема: поля з успадкованим text-white лишались би нечитними */
-html.light input.text-white, html.light select.text-white,
-html.light input[class*="text-white"], html.light select[class*="text-white"] {
-  color: var(--text-main) !important;
-}
-html.light select option { background: #fff; color: #17171B; }
-/* Світлі акценти, розраховані на темний фон, на білому зникають */
-html.light .text-violet-300, html.light .text-violet-400 { color: #6D28D9 !important; }
-html.light .text-emerald-400 { color: #059669 !important; }
-html.light .text-rose-400 { color: #E11D48 !important; }
-html.light .text-cyan-400  { color: #0891B2 !important; }
-
 /* ─────────── Data Hub: Form.html усередині сторінки ─────────── */
 #datahub-panel {
   display: flex; flex-direction: column; overflow: hidden;
@@ -1624,7 +1609,6 @@ body.hub-open .app-content { padding-bottom: 14px; }
 #live-table-section > .overflow-x-auto { max-height: 400px !important; }
 #live-table-section > .p-6 { padding: 14px !important; }
 #rb-table-wrap { max-height: 400px !important; }
-#placements-content { max-height: 300px !important; }
 #creative-analyzer-section [class*="max-h-["] { max-height: 320px !important; }
 
 /* Заголовки секцій нижчі: у макеті це один рядок, а не блок на три */
@@ -1726,6 +1710,36 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
   padding: 14px 16px; border-bottom: 1px solid var(--border);
 }
 .exp-wrap { max-height: 420px; overflow-y: auto; }
+
+/* ДВІ КОЛОНКИ ВИТРАТ. Форма додавання жила зверху й займала повну
+   ширину заради трьох полів, а список — те, заради чого сюди й
+   заходять — починався під нею й одразу тікав за нижній край.
+
+   Тепер як у кабінетах: головне ліворуч на всю висоту, а те, чим із ним
+   працюють, — сталою смугою праворуч. Смуга не зникає: додавати витрати
+   тут доводиться щодня, і ховати форму за кнопкою означало б додати
+   клік до кожної.
+
+   Ширина задана ТУТ, а не класом w-[330px] у розмітці — з тієї самої
+   причини, що й у панелі кабінетів: довільні значення Tailwind існують
+   лише якщо їх знайшов збирач, і варто класу не потрапити в збірку, як
+   смуга роздувається до найдовшого свого рядка й накриває таблицю. */
+.exp-cols { display: flex; gap: 14px; align-items: flex-start; }
+#exp-list-card { flex: 1 1 auto; min-width: 0; }
+#exp-add { flex: 0 0 330px; width: 330px; }
+/* Поля в колонку: у смузі на 330px три поля поруч стають нечитними. */
+.exp-form { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+
+@media (max-width: 1100px) {
+  /* На вузькому екрані смуга праворуч просто нема куди — складаємось
+     назад у стовпчик, і список лишається першим.
+
+     align-items тут обовʼязковий: у стовпчику flex-start означає «по
+     ширині вмісту», і картки з'їхались би у вузькі колонки посеред
+     порожнього екрана. */
+  .exp-cols { flex-direction: column; align-items: stretch; }
+  #exp-add { flex: 0 0 auto; width: auto; }
+}
 #exp-table { width: 100%; border-collapse: collapse; }
 #exp-table th {
   position: sticky; top: 0; background: var(--surface-2); z-index: 1;
@@ -1858,12 +1872,15 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
     flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   }
   body[data-route="expenses"] #expenses-section {
-    flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px;
-  }
-  body[data-route="expenses"] #expenses-section > .card:first-child { flex: 0 0 auto; }
-  body[data-route="expenses"] #expenses-section > .card:last-child {
     flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
   }
+  body[data-route="expenses"] .exp-cols { flex: 1 1 auto; min-height: 0; }
+  /* Списку віддаємо всю висоту, формі — рівно стільки, скільки просить:
+     вона коротка і тягнутись їй нема чим. */
+  body[data-route="expenses"] #exp-list-card {
+    max-height: 100%; display: flex; flex-direction: column;
+  }
+  body[data-route="expenses"] #exp-add { max-height: 100%; overflow-y: auto; }
   body[data-route="expenses"] .exp-head,
   body[data-route="expenses"] .exp-foot { flex: 0 0 auto; }
   body[data-route="expenses"] .exp-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
@@ -1904,7 +1921,11 @@ body { font-variant-numeric: tabular-nums; }
    SVG має власні width/height, тож нульовий кегль його не чіпає. */
 body.sb-compact { --sb-w: 64px; }
 
-body.sb-compact .sb-brand { padding: 0; justify-content: center; }
+/* gap у нуль — із тієї ж причини, що й у пошуку нижче: підпис поруч
+   із лого має max-width:0, але лишається елементом flex, і проміжок
+   у 10px між ним та лого нікуди не дівається. Лого через це стояло
+   на п'ять пікселів лівіше за центр смуги. */
+body.sb-compact .sb-brand { padding: 0; justify-content: center; gap: 0; }
 /* Прозорість і ширину задано вище, поруч із рештою підписів. */
 
 body.sb-compact .sb-scroll { padding: 10px 8px 8px; }
@@ -2548,7 +2569,31 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-tr:hover > td { background: var(--surface-2); }
 .cab-tr.is-sel > td { background: rgba(139,92,246,.14); }
 .cab-state { font-size: 11.5px; font-weight: 800; }
-.cab-id { font-size: 13.5px; font-weight: 900; }
+/* СТОВПЧИК «ACCOUNT». Досі все в ньому йшло одним потоком услід за
+   номером, а номери різної довжини — тож профіль, браузер і значок
+   джерела починались у кожному рядку на іншому місці. Читати такий
+   стовпчик очима згори вниз неможливо: погляд щоразу шукає, де воно
+   цього разу.
+
+   Тому значок джерела стоїть ПЕРШИМ — він однакової ширини й тому сам
+   собою тримає вертикаль, а стоїть впритул до стовпчика стану, про
+   який і говорить. За ним номер у колонці сталої ширини (tabular-nums,
+   щоб цифри не гуляли), і вже за номером — мітки, які тепер у всіх
+   рядках починаються на одній вертикалі.
+
+   17ch — під шістнадцятизначний номер кабінета Facebook плюс запас. */
+.cab-acc { display: flex; align-items: center; gap: 6px; }
+.cab-id {
+  font-size: 13.5px; font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; min-width: 17ch;
+}
+.cab-tags {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+}
+/* Проміжок тепер дає flex; власний відступ мітки його б подвоїв. */
+.cab-tags .cab-chip { margin-left: 0; }
 .cab-dim { color: var(--text-muted); font-weight: 600; }
 .cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cab-na { color: var(--text-muted); opacity: .35; }
@@ -2582,7 +2627,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   background: var(--surface-3);
   border: 1px solid var(--border);
 }
-.cab-src { margin-left: 6px; font-size: 11px; color: var(--text-muted); opacity: .5; }
+.cab-src { flex: 0 0 auto; font-size: 11px; color: var(--text-muted); opacity: .5; }
 /* ⟳ проти ✎ — це не прикраса, а єдине, що на рядку відрізняє
    статус, який щогодини підтвердив Facebook, від того, який хтось
    клацнув три місяці тому. Тому живий — помітніший. */
@@ -3600,10 +3645,6 @@ body[data-route="domains"] #dm-detail {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
         <span class="sb-lbl">Geo Breakdown</span>
       </button>
-      <button class="sb-item" data-nav="placements" onclick="navGo('placements')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 20V9"/></svg>
-        <span class="sb-lbl">Placements</span>
-      </button>
       <button class="sb-item" data-nav="live" onclick="navGo('live')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
         <span class="sb-lbl">Live Data</span>
@@ -3650,17 +3691,13 @@ body[data-route="domains"] #dm-detail {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/><path d="M4 4v16"/></svg>
         <span class="sb-lbl">Collapse</span>
       </button>
-      <button class="sb-item" onclick="toggleTheme()">
-        <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-        <span class="sb-lbl">Theme</span>
-      </button>
       <button class="sb-item admin-only" onclick="openSettingsModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88V10a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
         <span class="sb-lbl">Settings</span>
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 22:56</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:29</div>
     </div>
   </aside>
 
@@ -3894,7 +3931,9 @@ body[data-route="domains"] #dm-detail {
       <!-- Місячний таргет -->
       <div id="milestone-container">
         <p class="ms-cap">Monthly Spend Target <span id="header-month-display"></span></p>
-        <div class="flex justify-between items-end gap-3 mb-2">
+        <!-- mb-1 замість mb-2: рівно чотири пікселі менше, і зняті вони
+             з порожнечі між числом і смугою, а не з самого тексту. -->
+        <div class="flex justify-between items-end gap-3 mb-1">
           <h3 id="monthly-spend-label">$0 / $40,000</h3>
           <span id="next-rank-info" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">Left: $40,000</span>
         </div>
@@ -3948,7 +3987,7 @@ body[data-route="domains"] #dm-detail {
           <!-- DEPOSITS -->
           <div class="kpi-card" style="--accent:#22C55E;--glow:rgba(34,197,94,.14)">
             <div class="kpi-head">
-              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v14M6 11l6 6 6-6M4 21h16"/></svg></span>
+              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v.01M18 14v.01"/></svg></span>
               <span class="kpi-label">Total Deposits</span>
             </div>
             <p id="kpi-deposits" class="kpi-value">0</p>
@@ -4043,43 +4082,49 @@ body[data-route="domains"] #dm-detail {
         </div>
 
         <!-- ═══════ ВИТРАТИ ═══════ -->
-        <div id="expenses-section" class="route-off space-y-4">
-          <div class="card p-5">
-            <h2>Add an expense</h2>
-            <p class="panel-sub">Anything outside ad spend</p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
-              <input type="date" id="exp-date">
-              <input type="number" id="exp-amount" placeholder="Amount ($)" min="0" step="0.01">
-              <input type="text" id="exp-desc" placeholder="Note — e.g. FB top-up">
-            </div>
-            <!-- Категорій усього п'ять, тож рядок кнопок замість випадайки:
-                 один клік замість двох, і видно всі варіанти одразу. А ще в
-                 <option> не можна покласти SVG — лише текст, тому з
-                 випадайкою іконки були б неможливі в принципі. -->
-            <div id="exp-cats" class="exp-cats"></div>
-            <input type="hidden" id="exp-category" value="accounts">
-            <button onclick="expAdd()" class="exp-save">+ Save expense</button>
-          </div>
-
-          <div class="card overflow-hidden">
-            <div class="exp-head">
-              <div>
-                <h2>Expenses this month</h2>
-                <p class="panel-sub">Counted in Net Profit</p>
+        <!-- Список ліворуч, форма додавання — постійною смугою праворуч,
+             як панель у кабінетах. Раніше форма стояла зверху на всю
+             ширину заради трьох полів, а список — те, заради чого сюди
+             заходять — починався під нею. -->
+        <div id="expenses-section" class="route-off">
+          <div class="exp-cols">
+            <div class="card overflow-hidden" id="exp-list-card">
+              <div class="exp-head">
+                <div>
+                  <h2>Expenses this month</h2>
+                  <p class="panel-sub">Counted in Net Profit</p>
+                </div>
+                <select id="exp-month" onchange="expLoad()" class="rev-select"></select>
               </div>
-              <select id="exp-month" onchange="expLoad()" class="rev-select"></select>
+              <div class="exp-wrap custom-scrollbar">
+                <table id="exp-table">
+                  <thead>
+                    <tr><th>Date</th><th>Category</th><th>Note</th><th class="text-right">Amount</th><th></th></tr>
+                  </thead>
+                  <tbody id="exp-body"></tbody>
+                </table>
+              </div>
+              <div class="exp-foot">
+                <span>Month total</span>
+                <span id="exp-total">$0.00</span>
+              </div>
             </div>
-            <div class="exp-wrap custom-scrollbar">
-              <table id="exp-table">
-                <thead>
-                  <tr><th>Date</th><th>Category</th><th>Note</th><th class="text-right">Amount</th><th></th></tr>
-                </thead>
-                <tbody id="exp-body"></tbody>
-              </table>
-            </div>
-            <div class="exp-foot">
-              <span>Month total</span>
-              <span id="exp-total">$0.00</span>
+
+            <div class="card p-5" id="exp-add">
+              <h2>Add an expense</h2>
+              <p class="panel-sub">Anything outside ad spend</p>
+              <div class="exp-form">
+                <input type="date" id="exp-date">
+                <input type="number" id="exp-amount" placeholder="Amount ($)" min="0" step="0.01">
+                <input type="text" id="exp-desc" placeholder="Note — e.g. FB top-up">
+              </div>
+              <!-- Категорій усього п'ять, тож рядок кнопок замість випадайки:
+                   один клік замість двох, і видно всі варіанти одразу. А ще в
+                   <option> не можна покласти SVG — лише текст, тому з
+                   випадайкою іконки були б неможливі в принципі. -->
+              <div id="exp-cats" class="exp-cats"></div>
+              <input type="hidden" id="exp-category" value="accounts">
+              <button onclick="expAdd()" class="exp-save">+ Save expense</button>
             </div>
           </div>
         </div>
@@ -4344,16 +4389,6 @@ body[data-route="domains"] #dm-detail {
         <div id="device-geo-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
 
-      <!-- Placements -->
-      <div id="placements-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-indigo-500 mb-6">
-        <div class="flex items-center justify-between mb-5">
-          <div>
-            <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Placements</h2>
-            <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Where ads actually run</p>
-          </div>
-        </div>
-        <div id="placements-content" class="overflow-x-auto custom-scrollbar" style="max-height:440px;overflow-y:auto"></div>
-      </div>
       <!-- Live Table -->
      <!-- Live Table Section -->
 <div id="live-table-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5">
@@ -5163,7 +5198,6 @@ async function sbFetchAll(table, build) {
   if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
   if (typeof renderCreativeSidebar === 'function') renderCreativeSidebar("");
   if (typeof renderDeviceGeoWidget === 'function') renderDeviceGeoWidget();
-  if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
   if (typeof cabRefresh === 'function') cabRefresh();
   if (typeof evBoot === 'function') evBoot();
 
@@ -5242,7 +5276,6 @@ async function sbFetchAll(table, build) {
   if (typeof renderDeviceGeoWidget === 'function') {
     renderDeviceGeoWidget();
   }
-  if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
   if (typeof cabRefresh === 'function') cabRefresh();
   if (typeof evBoot === 'function') evBoot();
 
@@ -5407,8 +5440,7 @@ const cfCrosshair = {
     c.save();
     c.setLineDash([4, 4]);
     c.lineWidth = 1;
-    c.strokeStyle = document.documentElement.classList.contains('light')
-      ? 'rgba(9,9,11,.35)' : 'rgba(255,255,255,.38)';
+    c.strokeStyle = 'rgba(255,255,255,.38)';
     c.beginPath();
     c.moveTo(x, top);
     c.lineTo(x, bottom);
@@ -5454,8 +5486,7 @@ function cfGradient(chart, color) {
 // Colour тла картки: у темній темі мішаємо до нього, у світлій — до білого.
 function cfSurface() {
   const v = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim();
-  return /^#[0-9a-f]{6}$/i.test(v) ? v
-       : (document.documentElement.classList.contains('light') ? '#FFFFFF' : '#0E0E12');
+  return /^#[0-9a-f]{6}$/i.test(v) ? v : '#0E0E12';
 }
 
 // Лінійне змішування двох hex-кольорів: t = 0 лишає перший, t = 1 дає другий.
@@ -5562,8 +5593,7 @@ function renderTrend(data) {
 
   const muted = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8A8A95';
   const textMain = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#E9E9EC';
-  const gridC = document.documentElement.classList.contains('light')
-    ? 'rgba(9,9,11,.07)' : 'rgba(255,255,255,.055)';
+  const gridC = 'rgba(255,255,255,.055)';
 
   const shape = (color, perPoint) => isBar
     ? {
@@ -5716,16 +5746,43 @@ function renderTrend(data) {
           borderWidth: 1,
           padding: 12,
           displayColors: false,
+          /* У режимі гео на day припадає до десяти ліній, і кожна
+             малювала свій шестирядковий блок. Шістдесят рядків — це не
+             підказка, а стіна, крізь яку не видно того одного гео,
+             заради якого туди й дивились.
+
+             Лишаємо тільки ті, де в цей day справді був спенд: нуль у
+             гео означає «нічого не крутили», і рядок про це не несе
+             жодної інформації. */
+          filter(item) {
+            if (!isGeo) return true;
+            const v = (item.dataset.allStats || [])[item.dataIndex];
+            return !!v && v.s > 0;
+          },
           callbacks: {
+            /* Порожній day — коли жодне гео не крутило. Кажемо це
+               одним рядком: порожня рамка виглядала б як поломка. */
+            beforeBody(items) {
+              return (isGeo && !items.length) ? ' \u2014 no spend this day \u2014' : '';
+            },
             label(c) {
               const v = isGeo ? (c.dataset.allStats || [])[c.dataIndex]
                               : (c.datasetIndex === 0 ? stats[c.dataIndex] : null);
               if (!v) return null;
+              /* Гео — один рядок на країну. Розгорнута картка доречна,
+                 коли рядок один (TOTAL); коли їх десять, вона й є та
+                 сама стіна. */
+              if (isGeo) {
+                const profit = v.rev - v.s;
+                return ` ${c.dataset.label}  ${cfMoneyTight(Math.round(v.s))}`
+                     + `   ${profit >= 0 ? '+' : '\u2212'}${cfMoneyTight(Math.abs(Math.round(profit)))}`
+                     + `   ${v.r} reg  ${v.d} dep`;
+              }
               const profit = v.rev - v.s;
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
-              const head = isGeo ? ` 📍 ${c.dataset.label}` : ' 📍 TOTAL';
+              const head = ' \u{1F4CD} TOTAL';
               return [
                 head,
                 ` 💰 Spend: $${Math.round(v.s).toLocaleString()}`,
@@ -6996,7 +7053,7 @@ async function loadTeamLeadToggles() {
   const fresh = await getTeamSetting('tl_access');
   if (fresh) { try { acc = JSON.parse(fresh); } catch (e) {} }
   // Дозволено лише те, що явно === true (нові блоки не вмикаються самі)
-  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements'].forEach(k => {
+  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report'].forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
     if (el) el.checked = acc[k] === true;
   });
@@ -7716,7 +7773,7 @@ async function siteLogout() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements','cabinets','domains','expenses'];
+  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','cabinets','domains','expenses'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -7787,7 +7844,6 @@ async function initTeamLeadMode() {
     'table':      'live-table-section',
     'device-geo': 'device-geo-section',
     'report':     'report-builder-section',
-    'placements': 'placements-section',
     'cabinets':   'cabinets-section',
     'domains':    'domains-section',
     'expenses':   'expenses-section'
@@ -7847,13 +7903,11 @@ async function loadSettings() {
   function updateVisibility() {
   // Мапа: ID чекбокса -> ID секції в DOM (Feature 8 added, Feature 10 removed ai)
   const config = {
-    'toggle-geo': 'geo-sidebar-col',
     'toggle-creatives': 'creative-analyzer-section',
     'toggle-device-geo': 'device-geo-section',
     'toggle-table': 'live-table-section',
     'toggle-heatmap': 'weekly-analysis-section',
     'toggle-report': 'report-builder-section',
-    'toggle-placements': 'placements-section',
     'toggle-cabinets': 'cabinets-section',
     'toggle-domains': 'domains-section',
     'toggle-expenses': 'expenses-section'
@@ -7872,26 +7926,24 @@ async function loadSettings() {
     }
   }
 
-  // СПЕЦІАЛЬНА ЛОГІКА: Якщо ГЕО приховано, розтягуємо графік на всю ширину
-  const geoVisible = document.getElementById('toggle-geo').checked;
+  /* ГЕО більше не вимикається: перемикач прибрано, блок є завжди.
+     Знімаємо hidden явно — у кого він колись був вимкнений, той стан
+     лежить у localStorage, і без цього рядка блок не повернувся б. */
+  const geoCol = document.getElementById('geo-sidebar-col');
+  if (geoCol) geoCol.classList.remove('hidden');
   const chartCol = document.getElementById('chart-main-col');
-  
   if (chartCol) {
-    if (!geoVisible) {
-      // Розтягуємо на всі 4 колонки
-      chartCol.classList.remove('lg:col-span-3');
-      chartCol.classList.add('lg:col-span-4');
-    } else {
-      // Повертаємо до 3 колонок, щоб було місце для ГЕО
-      chartCol.classList.remove('lg:col-span-4');
-      chartCol.classList.add('lg:col-span-3');
-    }
+    chartCol.classList.remove('lg:col-span-4');
+    chartCol.classList.add('lg:col-span-3');
   }
-  
-  // Зберігаємо стан налаштувань у пам'ять браузера
+
+  /* Зберігаємо стан у пам'ять браузера. Перевірка на існування
+     обов'язкова: варто прибрати один перемикач із розмітки й забути
+     про цей рядок — і падає ВСЯ функція, а з нею й усі інші блоки. */
   const settings = {};
   Object.keys(config).forEach(id => {
-    settings[id] = document.getElementById(id).checked;
+    const el = document.getElementById(id);
+    if (el) settings[id] = el.checked;
   });
   localStorage.setItem('dashboard_visibility', JSON.stringify(settings));
   applyTeamLeadSections();
@@ -9496,12 +9548,14 @@ function openImgLightbox(url, label) {
   lb.querySelector('img').src = url;
   lb.querySelector('.lb-label').textContent = label;
   lb.classList.add('visible');
-  document.body.style.overflow = 'hidden';
+  const __sc = document.querySelector('.app-content');
+  if (__sc) __sc.style.overflow = 'hidden';
 }
 
 function closeImgLightbox() {
   document.getElementById('img-lightbox').classList.remove('visible');
-  document.body.style.overflow = '';
+  const __sc = document.querySelector('.app-content');
+  if (__sc) __sc.style.overflow = '';
 }
 
 function positionTooltip(e, tip) {
@@ -9970,8 +10024,7 @@ function renderGeoCostTab(geo) {
     </div>`).join('');
 
   const textMain = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#E9E9EC';
-  const light    = document.documentElement.classList.contains('light');
-  const gridCol  = light ? 'rgba(9,9,11,.08)' : 'rgba(255,255,255,.06)';
+  const gridCol  = 'rgba(255,255,255,.06)';
   const labels   = days.map(d => d.slice(8));   // тільки число місяця
 
   GM_METRICS.forEach(m => {
@@ -10000,7 +10053,7 @@ function renderGeoCostTab(geo) {
       return;
     }
 
-    const barCol = light ? cfMix(m.color, '#0F172A', 0.22) : m.color;
+    const barCol = m.color;
     const max = Math.max.apply(null, have);
 
     window.gmCharts.push(new Chart(cv.getContext('2d'), {
@@ -10134,8 +10187,7 @@ function renderGeoCostWidget(crData, el) {
     </div>`).join('');
 
   const textMain = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#E9E9EC';
-  const light    = document.documentElement.classList.contains('light');
-  const gridCol  = light ? 'rgba(9,9,11,.08)' : 'rgba(255,255,255,.06)';
+  const gridCol  = 'rgba(255,255,255,.06)';
 
   GC_METRICS.forEach(m => {
     // Дешевше — вище: перший рядок графіка це найкраща ціна в місяці.
@@ -10148,7 +10200,7 @@ function renderGeoCostWidget(crData, el) {
     const note = document.getElementById('gc-none-' + m.key);
     if (note) note.textContent = skipped.length ? 'No ' + m.unit + ': ' + skipped.join(', ') : '';
 
-    const barCol = light ? cfMix(m.color, '#0F172A', 0.22) : m.color;
+    const barCol = m.color;
     const cv = document.getElementById('gc-' + m.key);
     if (!cv) return;
     if (!rows.length) {
@@ -10164,7 +10216,7 @@ function renderGeoCostWidget(crData, el) {
           data: rows.map(r => r[1]),
           // На білому тлі ті самі кольори блякнуть до ледь помітних —
           // у світлій темі підводимо їх до темного і ллємо щільніше.
-          backgroundColor: cfAlpha(barCol, light ? 0.72 : 0.5),
+          backgroundColor: cfAlpha(barCol, 0.5),
           borderColor: barCol,
           borderWidth: 1,
           borderRadius: 4,
@@ -10268,76 +10320,6 @@ function renderGeoPlacementWidget(crData, el) {
   }).join('');
 }
 
-// ===== Окремий блок: Placements (зведення по всіх гео) =====
-function renderPlacementsWidget() {
-  const el = document.getElementById('placements-content');
-  if (!el) return;
-  const crData = (window.creativesRawData||[]).filter(c => c.date && c.date.startsWith(currentMonthFilter));
-  const has = crData.some(c => (c.placement && String(c.placement).trim()) || (c.platform && String(c.platform).trim()));
-  if (!has) {
-    el.innerHTML = `<div class="text-center py-10 opacity-30 text-xs uppercase font-black">
-      No data — add Platform and Placement columns to the FB report</div>`;
-    return;
-  }
-
-  // Групуємо по платформі, всередині — плейсменти
-  const byPlat = {};
-  crData.forEach(c => {
-    const plat = prettyPlatform(c.platform) || '—';
-    const plc  = prettyPlacement(c.placement) || '—';
-    if (!byPlat[plat]) byPlat[plat] = { tot:{cl:0,i:0,r:0,d:0,s:0}, kids:{} };
-    const K = byPlat[plat];
-    if (!K.kids[plc]) K.kids[plc] = {cl:0,i:0,r:0,d:0,s:0};
-    const add = (o) => {
-      o.cl += Number(c.clicks)||0; o.i += Number(c.installs)||0;
-      o.r  += Number(c.regs)||0;   o.d += Number(c.deps)||0; o.s += Number(c.spend)||0;
-    };
-    add(K.kids[plc]); add(K.tot);
-  });
-
-  const plats = Object.entries(byPlat).sort((a,b)=>b[1].tot.s-a[1].tot.s);
-  const maxS = Math.max(...plats.map(([,v])=>v.tot.s), 1);
-  const money = v => '$' + Math.round(v).toLocaleString();
-  const cell = (v,cls) => `<td class="p-2.5 border-b border-white/5 text-center text-[11px] ${cls} font-mono">${Number(v).toLocaleString()}</td>`;
-  const cost = (s,n) => `<td class="p-2.5 border-b border-white/5 text-right text-[11px] text-slate-400 font-mono">${n?'$'+(s/n).toFixed(2):'—'}</td>`;
-
-  el.innerHTML = `
-    <table class="w-full text-left border-separate border-spacing-0">
-      <thead><tr class="text-[9px] font-black uppercase tracking-widest text-slate-500">
-        <th class="p-2.5 border-b border-white/10">Platform / placement</th>
-        <th class="p-2.5 border-b border-white/10 text-right">Spend</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Clicks</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Inst</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPI</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Regs</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPL</th>
-        <th class="p-2.5 border-b border-white/10 text-center text-green-500">Deps</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPA</th>
-      </tr></thead><tbody>
-      ${plats.map(([plat,v])=>{
-        const kids = Object.entries(v.kids).sort((a,b)=>b[1].s-a[1].s);
-        const head = `<tr class="bg-white/[0.03]">
-          <td class="p-2.5 border-b border-white/5 relative">
-            <div class="absolute left-0 top-1/2 -translate-y-1/2 h-7 rounded bg-indigo-500/15" style="width:${v.tot.s/maxS*100}%"></div>
-            <span class="relative text-[12px] font-black text-white">${plat}</span>
-          </td>
-          <td class="p-2.5 border-b border-white/5 text-right text-[12px] font-black font-mono text-white">${money(v.tot.s)}</td>
-          ${cell(v.tot.cl,'text-slate-300 font-black')}${cell(v.tot.i,'text-cyan-300 font-black')}
-          ${cost(v.tot.s,v.tot.i)}${cell(v.tot.r,'text-blue-400 font-black')}
-          ${cost(v.tot.s,v.tot.r)}${cell(v.tot.d,'text-green-500 font-black')}${cost(v.tot.s,v.tot.d)}
-        </tr>`;
-        const rows = kids.map(([plc,m])=>`<tr class="hover:bg-white/[0.03]">
-          <td class="p-2.5 border-b border-white/5 pl-7 text-[11px] font-bold text-slate-400">↳ ${plc}</td>
-          <td class="p-2.5 border-b border-white/5 text-right text-[11px] font-bold font-mono text-slate-200">${money(m.s)}</td>
-          ${cell(m.cl,'text-slate-500')}${cell(m.i,'text-cyan-300/80')}${cost(m.s,m.i)}
-          ${cell(m.r,'text-blue-400/80')}${cost(m.s,m.r)}${cell(m.d,'text-green-500/90 font-black')}${cost(m.s,m.d)}
-        </tr>`).join('');
-        return head + (kids.length > 1 || kids[0]?.[0] !== '—' ? rows : '');
-      }).join('')}
-      </tbody></table>`;
-}
-
-// Функція перемикання ГЕО всередині дня
 function toggleDayHeatmap(dayIndex) {
   const rows = document.querySelectorAll(`.heat-geo-details-${dayIndex}`);
   const arrow = document.getElementById(`heat-arrow-${dayIndex}`);
@@ -10358,7 +10340,10 @@ let dgMode = 'device';   // 'device' | 'placement' | 'cost'
 function dgSetMode(m){
   dgMode = m;
   const dgBox = document.getElementById('device-geo-content');
-  if (dgBox) dgBox.classList.toggle('dg-cost', m === 'cost');
+  if (dgBox) {
+    dgBox.classList.toggle('dg-cost', m === 'cost');
+    dgBox.classList.toggle('dg-plc', m === 'placement');
+  }
   // Полотна зникнуть разом із innerHTML, а самі Chart-и лишаться живими
   // в Chart.instances і будуть смикатись на кожному resize — гасимо їх тут.
   if (m !== 'cost' && typeof gcDestroy === 'function') gcDestroy();
@@ -10731,6 +10716,10 @@ const RB_FILTERS = [
   { k:'acc',   label:'All accounts' },
   { k:'agent', label:'All agents' },
   { k:'fun',   label:'All funnels' },
+  // Оффер уже був виміром групування (RB_DIMS), а фільтра по ньому не
+  // було — тобто розбити звіт по офферах можна було, а лишити один
+  // оффер ні. Тепер можна і те, і те.
+  { k:'offer', label:'All offers' },
   { k:'dev',   label:'All devices' },
   { k:'plat',  label:'All platforms' },
   { k:'plc',   label:'All placements' },
@@ -10757,6 +10746,7 @@ function rbFiltered(){
     if(!rbHas('acc',   String(r.account||''))) return false;
     if(!rbHas('agent', String(r.agent||''))) return false;
     if(!rbHas('fun',   String(r.funnel||''))) return false;
+    if(!rbHas('offer', String(r.offer||''))) return false;
     if(!rbHas('dev',   normalizeDevice(r.device||''))) return false;
     if(!rbHas('plat',  prettyPlatform(r.platform))) return false;
     if(!rbHas('plc',   prettyPlacement(r.placement))) return false;
@@ -10875,6 +10865,7 @@ function rbPopulateFilters(){
   rbOpts.acc   = plain(uniq(d.map(r=>String(r.account||''))));
   rbOpts.agent = plain(uniq(d.map(r=>String(r.agent||''))));
   rbOpts.fun   = plain(uniq(d.map(r=>String(r.funnel||''))));
+  rbOpts.offer = plain(uniq(d.map(r=>String(r.offer||''))));
   rbOpts.dev   = uniq(cr.map(r=>normalizeDevice(r.device||''))).map(v=>({v, label:DEVICE_LABELS[v]||v}));
   rbOpts.plat  = plain(uniq(cr.map(r=>prettyPlatform(r.platform))));
   rbOpts.plc   = plain(uniq(cr.map(r=>prettyPlacement(r.placement))));
@@ -11940,10 +11931,6 @@ document.addEventListener('keydown', e => {
                 <span class="set-label"><span class="set-ico">&#128241;</span>Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-device-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="placements плейсмент">
-                <span class="set-label"><span class="set-ico">&#128208;</span>Placements</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-placements" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
-              </label>
               <label class="set-row set-toggle" data-setting="live data feed таблиця">
                 <span class="set-label"><span class="set-ico">&#128203;</span>Live Data</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-table" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
@@ -11971,12 +11958,7 @@ document.addEventListener('keydown', e => {
             <h3 class="set-gtitle">Dashboard widgets</h3>
             <p class="set-gsub">Blocks on the Dashboard page itself, not pages of their own.</p>
             <div id="grp-dash">
-              <label class="set-row set-toggle" data-setting="geo performance гео колонка">
-                <span class="set-label"><span class="set-ico">&#128506;</span>Geo Performance</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
-              </label>
             </div>
-            <p class="set-gsub" style="margin-top:6px">With it off, the chart beside it stretches to full width.</p>
           </div>
 
           <div class="set-group">
@@ -12068,8 +12050,6 @@ document.addEventListener('keydown', e => {
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій"><span class="set-label">Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="placements плейсмент"><span class="set-label">Placements</span>
-                <span class="toggle-switch"><input type="checkbox" id="tl-show-placements" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="live data feed таблиця"><span class="set-label">Live Data</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-table" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
@@ -14884,7 +14864,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-24.9';
+const FB_FN_WANT = '2026-09-26.1';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -16845,15 +16825,16 @@ function cabRowHtml(c) {
   return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
       onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
-    <td>
+    <td class="cab-acc">
+      <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       <span class="cab-id">${primary}</span>
+      <span class="cab-tags">
       ${second ? `<span class="cab-chip">${second}</span>` : ''}
       ${c.row.profile
         ? `<span class="cab-chip">${cabEsc(c.row.profile)}</span>`
         : c.tok.browser
           ? `<span class="cab-chip is-auto" title="Browser from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.browser)}</span>`
           : ''}
-      <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       ${(() => { const w = cabIssueWhy(c); return w
         ? `<span class="cab-chip is-gone" title="${cabEsc(w.tip)}">${cabEsc(w.text)}</span>` : ''; })()}
       ${c.fb && String(c.fb.status) === 'unknown' ? `<span class="cab-chip is-auto" title="Facebook returned a status code this dashboard does not know yet. It is not treated as a problem \u2014 the state below comes from the money.">status unknown</span>` : ''}
@@ -16862,6 +16843,7 @@ function cabRowHtml(c) {
         cabPending(c.fb)} in review</span>` : ''}
       ${c.fb && String(c.fb.status) === 'review' ? `<span class="cab-chip is-gone" title="Facebook put the ad account ITSELF under review, not just its ads. Payments and delivery can stop while it lasts.">account in review</span>` : ''}
       ${c.fb && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
+      </span>
     </td>
     <td class="cab-dim">${c.row.provider_name
       ? cabEsc(c.row.provider_name)
@@ -18469,7 +18451,6 @@ window.dmCheckHelp = dmCheckHelp;
     'heatmap':    { section: 'weekly-analysis-section' },
     'creatives':  { section: 'creative-analyzer-section' },
     'geo':        { section: 'device-geo-section' },
-    'placements': { section: 'placements-section' },
     'live':       { section: 'live-table-section' },
     'cabinets':   { section: 'cabinets-section' },
     'domains':    { section: 'domains-section' },
@@ -18657,7 +18638,13 @@ window.dmCheckHelp = dmCheckHelp;
     if (name === 'domains' && typeof dmInit === 'function') dmInit();
 
     document.body.classList.remove('sb-open');
-    if (scroll) window.scrollTo({ top: 0 });
+    /* Гортається тепер колонка контенту, а не вікно: window.scrollTo
+       після переходу не робив би нічого, і кожна сторінка відкривалась
+       би там, де ти кинув попередню. */
+    if (scroll) {
+      const box = document.querySelector('.app-content');
+      if (box) box.scrollTop = 0; else window.scrollTo({ top: 0 });
+    }
   }
 
   function setActiveNav(name, arg) {
@@ -19011,29 +18998,6 @@ window.dmCheckHelp = dmCheckHelp;
     if (open) { open.style.display = ''; open.href = cur.url; }
   }
 
-  /* ─────────── Тема ─────────── */
-  const SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
-  const MOON = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>';
-
-  window.toggleTheme = function () {
-    const html = document.documentElement;
-    const light = html.classList.toggle('light');
-    html.classList.toggle('dark', !light);
-    localStorage.setItem('ui_theme', light ? 'light' : 'dark');
-    const ico = document.getElementById('theme-icon');
-    if (ico) ico.innerHTML = light ? MOON : SUN;
-    if (window.chart1) { try { window.chart1.update(); } catch (e) {} }
-  };
-
-  (function initTheme() {
-    if (localStorage.getItem('ui_theme') === 'light') {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
-      const ico = document.getElementById('theme-icon');
-      if (ico) ico.innerHTML = MOON;
-    }
-  })();
-
   /* ─────────── Зріз KPI за моделлю виплат ───────────
      У payouts кожне гео+офер має свою модель: CPA (ставка за депозит)
      або спендова (% від спенда). Клік по картці Total Spend показує
@@ -19181,7 +19145,6 @@ window.dmCheckHelp = dmCheckHelp;
     ['Heatmap',        'nav:heatmap',    'Page'],
     ['Creatives',      'nav:creatives',  'Page'],
     ['Geo Breakdown',  'nav:geo',         'Page'],
-    ['Placements',     'nav:placements',         'Page'],
     ['Live Data',      'nav:live',         'Page'],
     ['Cabinets',       'nav:cabinets',   'Page'],
     ['Domains',        'nav:domains',    'Page'],
@@ -19203,8 +19166,7 @@ window.dmCheckHelp = dmCheckHelp;
     ['Records',        'hub:records',                    'Data Hub'],
     ['Expenses',       'hub:expenses',                   'Data Hub'],
     ['Sources',        'hub:providers',                  'Data Hub'],
-    ['Google Sheets',  'fn:sheetsOpen',                  'Sheets'],
-    ['Toggle theme',   'fn:toggleTheme',                 'Appearance']
+    ['Google Sheets',  'fn:sheetsOpen',                  'Sheets']
   ];
   let cmdSel = 0, cmdShown = CMDS;
 

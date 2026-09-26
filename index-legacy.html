@@ -20,13 +20,6 @@
       color-scheme: dark;
   }
   
-  .light { 
-    --bg-color: #f1f5f9; 
-    --glass-bg: rgba(255, 255, 255, 0.6); 
-    --glass-border: rgba(15, 23, 42, 0.08);
-    --text-main: #1e293b; 
-    --text-muted: #64748b; 
-  }
   html.dark {
   color-scheme: dark;
   }
@@ -796,7 +789,6 @@ body::before {
   50%  { transform: translate3d(-3.5%,2.5%,0) scale(1.09); }
   100% { transform: translate3d(2.5%,-2.5%,0) scale(1.05); }
 }
-.light body::before { opacity:.5; }
 
 /* 2. Картки — РІДКІШЕ скло: прозоріші, глибший blur */
 .card {
@@ -809,11 +801,6 @@ body::before {
     inset 0 1px 0 rgba(255,255,255,.12),
     inset 0 -1px 0 rgba(0,0,0,.20) !important;
   position: relative;
-}
-.light .card {
-  background: linear-gradient(150deg, rgba(255,255,255,.60), rgba(255,255,255,.38)) !important;
-  border-color: rgba(15,23,42,.09) !important;
-  box-shadow: 0 10px 36px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.9) !important;
 }
 /* кромка «край скла» */
 .card::after {
@@ -900,7 +887,6 @@ header h1 span { font-size: .85rem !important; }
   overflow: visible;               /* ← нічого не обрізається */
   flex-wrap: nowrap;
 }
-.light #app-dock { background: linear-gradient(150deg, rgba(255,255,255,.8), rgba(255,255,255,.6)); }
 #app-dock .dk {
   width: 48px; height: 48px; flex: 0 0 48px; border-radius: 16px;
   display: grid; place-items: center; color: #94a3b8; cursor: pointer;
@@ -956,6 +942,12 @@ header h1 span { font-size: .85rem !important; }
 #device-geo-content {
   max-height: 420px; overflow-y: auto; padding-right: 6px;
 }
+/* Плейсменти — та сама біда, що колись була в Costs: плиток більше,
+   ніж влазить у 420px, і решта ховається під внутрішній скрол. Скрол
+   усередині картки, яка й сама стоїть на сторінці зі скролом — тобто
+   два вкладені один в одного, і про другий ніхто не здогадується.
+   Тому тут теж знімаємо стелю: блок росте під вміст. */
+#device-geo-content.dg-plc { max-height: none; overflow: visible; }
 /* Report Builder — випадайка стовпчиків не має обрізатись карткою */
 #report-builder-section { overflow: visible !important; }
 #rb-cols-menu { max-height: 60vh; overflow-y: auto; }
@@ -1652,16 +1644,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         <div id="device-geo-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
 
-      <!-- Placements -->
-      <div id="placements-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-indigo-500 mb-6">
-        <div class="flex items-center justify-between mb-5">
-          <div>
-            <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Placements</h2>
-            <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Where ads actually run</p>
-          </div>
-        </div>
-        <div id="placements-content" class="overflow-x-auto custom-scrollbar" style="max-height:440px;overflow-y:auto"></div>
-      </div>
       <!-- Live Table -->
      <!-- Live Table Section -->
 <div id="live-table-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5">
@@ -2332,7 +2314,6 @@ async function sbFetchAll(table, build) {
   if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
   if (typeof renderCreativeSidebar === 'function') renderCreativeSidebar("");
   if (typeof renderDeviceGeoWidget === 'function') renderDeviceGeoWidget();
-  if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
 
   document.getElementById('creative-placeholder')?.classList.add('hidden');
 }
@@ -2409,7 +2390,6 @@ async function sbFetchAll(table, build) {
   if (typeof renderDeviceGeoWidget === 'function') {
     renderDeviceGeoWidget();
   }
-  if (typeof renderPlacementsWidget === 'function') renderPlacementsWidget();
 
   // Окремо запускаємо теплову карту, щоб вона врахувала нові дати
   if (typeof applyWeeklyFilter === 'function') {
@@ -3969,7 +3949,7 @@ async function loadTeamLeadToggles() {
   const fresh = await getTeamSetting('tl_access');
   if (fresh) { try { acc = JSON.parse(fresh); } catch (e) {} }
   // Дозволено лише те, що явно === true (нові блоки не вмикаються самі)
-  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','placements'].forEach(k => {
+  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report'].forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
     if (el) el.checked = acc[k] === true;
   });
@@ -4542,8 +4522,7 @@ async function initTeamLeadMode() {
     'heatmap':    'weekly-analysis-section',
     'table':      'live-table-section',
     'device-geo': 'device-geo-section',
-    'report':     'report-builder-section',
-    'placements': 'placements-section'
+    'report':     'report-builder-section'
   };
   // ЗАБОРОНЕНО ЗА ЗАМОВЧУВАННЯМ: показуємо лише те, що явно дозволено (=== true).
   // Інакше кожен новий блок автоматично ставав би видимим для тімліда.
@@ -4600,13 +4579,11 @@ async function loadSettings() {
   function updateVisibility() {
   // Мапа: ID чекбокса -> ID секції в DOM (Feature 8 added, Feature 10 removed ai)
   const config = {
-    'toggle-geo': 'geo-sidebar-col',
     'toggle-creatives': 'creative-analyzer-section',
     'toggle-device-geo': 'device-geo-section',
     'toggle-table': 'live-table-section',
     'toggle-heatmap': 'weekly-analysis-section',
     'toggle-report': 'report-builder-section',
-    'toggle-placements': 'placements-section'
   };
 
   for (const [checkId, sectionId] of Object.entries(config)) {
@@ -4622,26 +4599,24 @@ async function loadSettings() {
     }
   }
 
-  // СПЕЦІАЛЬНА ЛОГІКА: Якщо ГЕО приховано, розтягуємо графік на всю ширину
-  const geoVisible = document.getElementById('toggle-geo').checked;
+  /* ГЕО більше не вимикається: перемикач прибрано, блок є завжди.
+     Знімаємо hidden явно — у кого він колись був вимкнений, той стан
+     лежить у localStorage, і без цього рядка блок не повернувся б. */
+  const geoCol = document.getElementById('geo-sidebar-col');
+  if (geoCol) geoCol.classList.remove('hidden');
   const chartCol = document.getElementById('chart-main-col');
-  
   if (chartCol) {
-    if (!geoVisible) {
-      // Розтягуємо на всі 4 колонки
-      chartCol.classList.remove('lg:col-span-3');
-      chartCol.classList.add('lg:col-span-4');
-    } else {
-      // Повертаємо до 3 колонок, щоб було місце для ГЕО
-      chartCol.classList.remove('lg:col-span-4');
-      chartCol.classList.add('lg:col-span-3');
-    }
+    chartCol.classList.remove('lg:col-span-4');
+    chartCol.classList.add('lg:col-span-3');
   }
-  
-  // Зберігаємо стан налаштувань у пам'ять браузера
+
+  /* Зберігаємо стан у пам'ять браузера. Перевірка на існування
+     обов'язкова: варто прибрати один перемикач із розмітки й забути
+     про цей рядок — і падає ВСЯ функція, а з нею й усі інші блоки. */
   const settings = {};
   Object.keys(config).forEach(id => {
-    settings[id] = document.getElementById(id).checked;
+    const el = document.getElementById(id);
+    if (el) settings[id] = el.checked;
   });
   localStorage.setItem('dashboard_visibility', JSON.stringify(settings));
   applyTeamLeadSections();
@@ -6241,12 +6216,14 @@ function openImgLightbox(url, label) {
   lb.querySelector('img').src = url;
   lb.querySelector('.lb-label').textContent = label;
   lb.classList.add('visible');
-  document.body.style.overflow = 'hidden';
+  const __sc = document.querySelector('.app-content');
+  if (__sc) __sc.style.overflow = 'hidden';
 }
 
 function closeImgLightbox() {
   document.getElementById('img-lightbox').classList.remove('visible');
-  document.body.style.overflow = '';
+  const __sc = document.querySelector('.app-content');
+  if (__sc) __sc.style.overflow = '';
 }
 
 function positionTooltip(e, tip) {
@@ -6690,76 +6667,6 @@ function renderGeoPlacementWidget(crData, el) {
   }).join('');
 }
 
-// ===== Окремий блок: Placements (зведення по всіх гео) =====
-function renderPlacementsWidget() {
-  const el = document.getElementById('placements-content');
-  if (!el) return;
-  const crData = (window.creativesRawData||[]).filter(c => c.date && c.date.startsWith(currentMonthFilter));
-  const has = crData.some(c => (c.placement && String(c.placement).trim()) || (c.platform && String(c.platform).trim()));
-  if (!has) {
-    el.innerHTML = `<div class="text-center py-10 opacity-30 text-xs uppercase font-black">
-      No data — add Platform and Placement columns to the FB report</div>`;
-    return;
-  }
-
-  // Групуємо по платформі, всередині — плейсменти
-  const byPlat = {};
-  crData.forEach(c => {
-    const plat = prettyPlatform(c.platform) || '—';
-    const plc  = prettyPlacement(c.placement) || '—';
-    if (!byPlat[plat]) byPlat[plat] = { tot:{cl:0,i:0,r:0,d:0,s:0}, kids:{} };
-    const K = byPlat[plat];
-    if (!K.kids[plc]) K.kids[plc] = {cl:0,i:0,r:0,d:0,s:0};
-    const add = (o) => {
-      o.cl += Number(c.clicks)||0; o.i += Number(c.installs)||0;
-      o.r  += Number(c.regs)||0;   o.d += Number(c.deps)||0; o.s += Number(c.spend)||0;
-    };
-    add(K.kids[plc]); add(K.tot);
-  });
-
-  const plats = Object.entries(byPlat).sort((a,b)=>b[1].tot.s-a[1].tot.s);
-  const maxS = Math.max(...plats.map(([,v])=>v.tot.s), 1);
-  const money = v => '$' + Math.round(v).toLocaleString();
-  const cell = (v,cls) => `<td class="p-2.5 border-b border-white/5 text-center text-[11px] ${cls} font-mono">${Number(v).toLocaleString()}</td>`;
-  const cost = (s,n) => `<td class="p-2.5 border-b border-white/5 text-right text-[11px] text-slate-400 font-mono">${n?'$'+(s/n).toFixed(2):'—'}</td>`;
-
-  el.innerHTML = `
-    <table class="w-full text-left border-separate border-spacing-0">
-      <thead><tr class="text-[9px] font-black uppercase tracking-widest text-slate-500">
-        <th class="p-2.5 border-b border-white/10">Platform / placement</th>
-        <th class="p-2.5 border-b border-white/10 text-right">Spend</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Clicks</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Inst</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPI</th>
-        <th class="p-2.5 border-b border-white/10 text-center">Regs</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPL</th>
-        <th class="p-2.5 border-b border-white/10 text-center text-green-500">Deps</th>
-        <th class="p-2.5 border-b border-white/10 text-right">CPA</th>
-      </tr></thead><tbody>
-      ${plats.map(([plat,v])=>{
-        const kids = Object.entries(v.kids).sort((a,b)=>b[1].s-a[1].s);
-        const head = `<tr class="bg-white/[0.03]">
-          <td class="p-2.5 border-b border-white/5 relative">
-            <div class="absolute left-0 top-1/2 -translate-y-1/2 h-7 rounded bg-indigo-500/15" style="width:${v.tot.s/maxS*100}%"></div>
-            <span class="relative text-[12px] font-black text-white">${plat}</span>
-          </td>
-          <td class="p-2.5 border-b border-white/5 text-right text-[12px] font-black font-mono text-white">${money(v.tot.s)}</td>
-          ${cell(v.tot.cl,'text-slate-300 font-black')}${cell(v.tot.i,'text-cyan-300 font-black')}
-          ${cost(v.tot.s,v.tot.i)}${cell(v.tot.r,'text-blue-400 font-black')}
-          ${cost(v.tot.s,v.tot.r)}${cell(v.tot.d,'text-green-500 font-black')}${cost(v.tot.s,v.tot.d)}
-        </tr>`;
-        const rows = kids.map(([plc,m])=>`<tr class="hover:bg-white/[0.03]">
-          <td class="p-2.5 border-b border-white/5 pl-7 text-[11px] font-bold text-slate-400">↳ ${plc}</td>
-          <td class="p-2.5 border-b border-white/5 text-right text-[11px] font-bold font-mono text-slate-200">${money(m.s)}</td>
-          ${cell(m.cl,'text-slate-500')}${cell(m.i,'text-cyan-300/80')}${cost(m.s,m.i)}
-          ${cell(m.r,'text-blue-400/80')}${cost(m.s,m.r)}${cell(m.d,'text-green-500/90 font-black')}${cost(m.s,m.d)}
-        </tr>`).join('');
-        return head + (kids.length > 1 || kids[0]?.[0] !== '—' ? rows : '');
-      }).join('')}
-      </tbody></table>`;
-}
-
-// Функція перемикання ГЕО всередині дня
 function toggleDayHeatmap(dayIndex) {
   const rows = document.querySelectorAll(`.heat-geo-details-${dayIndex}`);
   const arrow = document.getElementById(`heat-arrow-${dayIndex}`);
@@ -7129,6 +7036,10 @@ const RB_FILTERS = [
   { k:'acc',   label:'All accounts' },
   { k:'agent', label:'All agents' },
   { k:'fun',   label:'All funnels' },
+  // Оффер уже був виміром групування (RB_DIMS), а фільтра по ньому не
+  // було — тобто розбити звіт по офферах можна було, а лишити один
+  // оффер ні. Тепер можна і те, і те.
+  { k:'offer', label:'All offers' },
   { k:'dev',   label:'All devices' },
   { k:'plat',  label:'All platforms' },
   { k:'plc',   label:'All placements' },
@@ -7155,6 +7066,7 @@ function rbFiltered(){
     if(!rbHas('acc',   String(r.account||''))) return false;
     if(!rbHas('agent', String(r.agent||''))) return false;
     if(!rbHas('fun',   String(r.funnel||''))) return false;
+    if(!rbHas('offer', String(r.offer||''))) return false;
     if(!rbHas('dev',   normalizeDevice(r.device||''))) return false;
     if(!rbHas('plat',  prettyPlatform(r.platform))) return false;
     if(!rbHas('plc',   prettyPlacement(r.placement))) return false;
@@ -7273,6 +7185,7 @@ function rbPopulateFilters(){
   rbOpts.acc   = plain(uniq(d.map(r=>String(r.account||''))));
   rbOpts.agent = plain(uniq(d.map(r=>String(r.agent||''))));
   rbOpts.fun   = plain(uniq(d.map(r=>String(r.funnel||''))));
+  rbOpts.offer = plain(uniq(d.map(r=>String(r.offer||''))));
   rbOpts.dev   = uniq(cr.map(r=>normalizeDevice(r.device||''))).map(v=>({v, label:DEVICE_LABELS[v]||v}));
   rbOpts.plat  = plain(uniq(cr.map(r=>prettyPlatform(r.platform))));
   rbOpts.plc   = plain(uniq(cr.map(r=>prettyPlacement(r.placement))));
@@ -7773,10 +7686,6 @@ function rbExportCSV(){
         <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pt-1 pb-1.5">Кнопки в меню</p>
         <div id="dock-hide-list" class="space-y-0.5 mb-3 pb-3 border-b border-white/5"></div>
         <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 px-3 pb-1.5">Блоки на дашборді</p>
-        <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
-          <div class="flex items-center gap-2.5"><span class="text-base">🗺</span><span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Geo Performance</span></div>
-          <label class="toggle-switch"><input type="checkbox" id="toggle-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></label>
-        </label>
         <label class="flex items-center justify-between cursor-pointer group px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
           <div class="flex items-center gap-2.5"><span class="text-base">📅</span><span class="text-xs font-bold text-slate-300 group-hover:text-white transition">Weekly Analysis</span></div>
           <label class="toggle-switch"><input type="checkbox" id="toggle-heatmap" checked onchange="updateVisibility()"><span class="toggle-slider"></span></label>

@@ -1618,10 +1618,26 @@ function apParseMask(mask, parts, adName, country) {
    окремо: мовчки залити пів-імпорту з гео «??» — найгірше, що тут може
    статись, і про це треба сказати вголос. */
 let pwaMissed = 0;
-function parsePwaCampaign(campName) {
-  const r = apParseMask(pwaMask, String(campName || '').split('_'), '', '');
-  if (!r || !r.geo) { pwaMissed++; return { geo: '??', ktid: '0' }; }
-  return { geo: String(r.geo).toUpperCase().trim(), ktid: String(r.ktid || '0').trim() };
+/* ДВІ РЕЧІ, ЯКИХ ТУТ БРАКУВАЛО, І ЧЕРЕЗ ЯКІ ГЕО «НЕ ВПІЗНАВАЛОСЬ».
+
+   Перша: колонка Country. APP-режим давно бере її як запасний варіант,
+   коли в назві кампанії гео немає, — а PWA передавав у розбір порожній
+   рядок і не брав звідти нічого. Кампанія не лягла під шаблон — і гео
+   ставало «??», хоча країна лежала в сусідньому стовпчику того самого
+   звіту.
+
+   Друга: нормалізація. У назвах трапляється і «UA», і «Ukraine», і
+   «ua» — без toGeoCode це три різні гео, і жодне з трьох не збігається
+   з тим, під яким лежить решта даних. APP через нього проганяє, PWA
+   не проганяв. */
+function parsePwaCampaign(campName, country) {
+  const r = apParseMask(pwaMask, String(campName || '').split('_'), '', country || '');
+  const geo = toGeoCode((r && r.geo) || country || '');
+  /* Промах шаблону рахуємо окремо від гео: колонка Country могла
+     врятувати гео, але ktid із назви однаково не дістали, і мовчати про
+     це не можна. */
+  if (!r) pwaMissed++;
+  return { geo: geo || '??', ktid: (r && String(r.ktid || '').trim()) || '0' };
 }
 
 // Розбір назви APP-кампанії
@@ -2012,7 +2028,8 @@ function renderAgentReport(noAgent, hidden) {
   // заливаються, виглядають як справжні, і тільки гео скрізь «??».
   if (pwaMissed) parts.push(`<div class="flex gap-2 items-start text-rose-300">
     <span>&#9888;&#65039;</span><div><b>${pwaMissed}</b> campaign names did not match the PWA pattern
-    <span class="font-mono text-rose-200">${pwaMask}</span> — their geo was written as <b>??</b> and KTID as <b>0</b>.
+    <span class="font-mono text-rose-200">${pwaMask}</span> — their KTID became <b>0</b>.
+    Geo was taken from the <b>Country</b> column where the report had one; where it did not, geo is <b>??</b>.
     Fix the pattern in <b>Settings &rarr; PWA</b> and import again.</div></div>`);
   el.innerHTML = parts.join('');
   el.classList.remove('hidden');
@@ -2303,7 +2320,7 @@ async function processCampaignData(map, lines) {
       geo = toGeoCode(a.geo) || '??';
     } else {
       // PWA: Mbank_KG_10708-4d07_30/07_L5 — позиції задані шаблоном
-      const w = parsePwaCampaign(campName);
+      const w = parsePwaCampaign(campName, country);
       geo = w.geo;
       ktid = w.ktid;
       accName = row[map.acc];

@@ -130,7 +130,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-24.9';
+const FN_VERSION = '2026-09-26.1';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -733,10 +733,10 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       const worse = r.status !== 'active';
       alerts.push({ owner: t.created_by, name,
         kind: worse ? 'bad' : 'good',
-        text: worse
+        text: (worse
           ? name + ' — ' + String(r.status)
             + (r.disable_reason ? ' (' + r.disable_reason + ')' : '')
-          : name + ' — back to active' });
+          : name + ' — back to active') + stillRunning(r) });
     }
 
     /* Нові відхилення. Саме НОВІ: писати щогодини «у тебе 120
@@ -749,7 +749,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     if (r.status === 'active' && nowRej > was.rejected) {
       alerts.push({ owner: t.created_by, name, kind: 'bad',
         text: name + ' — +' + (nowRej - was.rejected)
-            + ' rejected ad(s), ' + nowRej + ' in total' });
+            + ' rejected ad(s), ' + nowRej + ' in total' + stillRunning(r) });
     }
   });
 
@@ -957,6 +957,27 @@ async function markToken(base: string, hdr: Json, t: TokenRow,
 
 const TG_MAX = 20;     // скільки кабінетів перелічуємо поіменно
 const TG_LIMIT = 3900; // межа Telegram — 4096, лишаємо запас
+
+/* СКІЛЬКИ ЩЕ КРУТИТЬСЯ.
+
+   «+3 відхилених» саме собою не каже головного: чи кабінет ще працює.
+   Три відхилених із сорока — робочий момент; три з трьох — кабінет
+   став, і бігти треба зараз. Досі, щоб дізнатись різницю, треба було
+   лишити телефон і відкрити дашборд.
+
+   Нуль пишемо словами й окремо: рядок «0 ad(s) still running» серед
+   інших чисел прочитується як ще одна цифра, а це не цифра, це тривога. */
+function stillRunning(r: Json): string {
+  /* null і нуль тут — протилежні речі, а Number(null) дає нуль. Без
+     цієї перевірки «ми не знаємо, скільки крутиться» пішло б у
+     Telegram як «не крутиться нічого» — хибна тривога о третій ночі. */
+  const raw = r?.ads_active;
+  if (raw == null) return '';
+  const live = Number(raw);
+  if (!Number.isFinite(live)) return '';
+  return live > 0 ? '  \u00b7 ' + live + ' still running'
+                  : '  \u00b7 NOTHING running now';
+}
 
 function tgText(list: Alert[]): string {
   const bad = list.filter(a => a.kind === 'bad');
