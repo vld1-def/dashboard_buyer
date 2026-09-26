@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.09 17:11">
+  <meta name="build" content="build 26.09 17:25">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3729,7 +3729,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 17:11</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 17:25</div>
     </div>
   </aside>
 
@@ -7107,7 +7107,12 @@ function switchSettingsTab(tab) {
     document.getElementById(`spanel-${t}`)?.classList.toggle('hidden', t !== tab);
     document.getElementById(`stab-${t}`)?.classList.toggle('active-stab', t === tab);
   });
-  if (tab === 'layout' && typeof renderDockSettings === 'function') renderDockSettings();
+  if (tab === 'layout') {
+    if (typeof renderDockSettings === 'function') renderDockSettings();
+    // Списки Report Builder малюються кодом; перемальовуємо на вході,
+    // щоб розділ показував поточний стан, а не той, що був при завантаженні.
+    if (typeof rbRenderHideSettings === 'function') rbRenderHideSettings();
+  }
 }
 
 // Пошук по всіх розділах одразу: у режимі запиту показуємо всі панелі,
@@ -10693,6 +10698,10 @@ const RB_DIMS = [
   { key:'device',    label:'Device' },
   { key:'platform',  label:'Platform' },
   { key:'placement', label:'Placement' },
+  // Creative — те саме поле cid, що й у Creative Analyzer. Живе в
+  // creatives_stats, тож і групування, і фільтр по ньому переводять
+  // звіт на цю таблицю (див. rbNeedsCreatives і RB_CR_ONLY).
+  { key:'creative',  label:'Creative' },
 ];
 const RB_COLS = [
   { key:'spend',    label:'Spend',    fmt:v=>'$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) },
@@ -10707,6 +10716,27 @@ const RB_COLS = [
   { key:'profit',   label:'Profit',   fmt:v=>(v<0?'-':'')+'$'+Math.abs(Math.round(v)).toLocaleString(), calc:a=>a.rev-a.spend },
   { key:'roi',      label:'ROI',      fmt:v=>Math.round(v)+'%', calc:a=>a.spend?(a.rev-a.spend)/a.spend*100:0 },
 ];
+/* ── ЩО ПОКАЗУВАТИ В ШАПЦІ ЗВІТУ ──
+   Вимірів групування одинадцять, фільтрів девʼять, а щодня людина
+   тикає в три. Решта лише розсуває шапку й забирає висоту в таблиці,
+   тож непотрібне ховається в налаштуваннях (Layout → Report Builder).
+
+   Вибір персональний і миттєвий, тому localStorage, а не база: це
+   налаштування конкретного екрана, а не команди — так само, як
+   схованка в доці.
+
+   Зберігаємо саме приховані, а не показані: інакше кожен новий вимір
+   чи фільтр приїжджав би до старих користувачів уже вимкненим, і про
+   нього ніхто б не дізнався. */
+const RB_HID_DIM_KEY = 'rb_dims_off_v1';
+const RB_HID_FLT_KEY = 'rb_filters_off_v1';
+const rbHidLoad = k => { try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch(e){ return new Set(); } };
+const rbHidSave = (k, set) => { try { localStorage.setItem(k, JSON.stringify([...set])); } catch(e){} };
+let rbDimsOff = rbHidLoad(RB_HID_DIM_KEY);
+let rbFiltOff = rbHidLoad(RB_HID_FLT_KEY);
+const rbVisDims = () => RB_DIMS.filter(d=>!rbDimsOff.has(d.key));
+const rbVisFilters = () => RB_FILTERS.filter(f=>!rbFiltOff.has(f.k));
+
 let rbGroups = ['geo'];
 // Групування рівнями: перший вимір — батьківський рядок, наступні розкриваються
 // всередині нього. Вимикається — і таблиця стає такою ж плоскою, як була
@@ -10738,6 +10768,9 @@ const RB_FILTERS = [
   { k:'dev',   label:'All devices' },
   { k:'plat',  label:'All platforms' },
   { k:'plc',   label:'All placements' },
+  // Creative останній: список у нього найдовший, і відкривають його рідше,
+  // ніж гео чи акаунт.
+  { k:'crea',  label:'All creatives' },
 ];
 const rbSel = {}, rbOpts = {};
 RB_FILTERS.forEach(f => { rbSel[f.k] = new Set(); rbOpts[f.k] = []; });
@@ -10757,9 +10790,10 @@ const RB_VAL = {
   dev:   r => normalizeDevice(r.device||''),
   plat:  r => prettyPlatform(r.platform),
   plc:   r => prettyPlacement(r.placement),
+  crea:  r => String(r.cid||'').trim(),
 };
-// Device, платформа й плейсмент живуть лише в creatives_stats
-const RB_CR_ONLY = new Set(['dev','plat','plc']);
+// Device, платформа, плейсмент і креатив живуть лише в creatives_stats
+const RB_CR_ONLY = new Set(['dev','plat','plc','crea']);
 
 /* creatives_stats у тих самих назвах полів, що й daily_stats. Кеш — бо
    тепер цей набір потрібен не раз на рендер, а по разу на кожен із
@@ -10797,7 +10831,7 @@ function rbRows(skip, forceCr){
       if(k === skip || !rbSel[k].size) continue;
       if(!rbSel[k].has(RB_VAL[k](r))) return false;
     }
-    if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.date}`.toLowerCase().includes(q)) return false;
+    if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.cid||''} ${r.date}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
@@ -10817,7 +10851,7 @@ function rbmsRenderAll(){
   const box=document.getElementById('rb-filters');
   if(!box) return;
   const open=new Set([...box.querySelectorAll('.rbms')].filter(e=>!e.querySelector('.rbms-pop').classList.contains('hidden')).map(e=>e.dataset.k));
-  box.innerHTML = RB_FILTERS.map(f=>`
+  box.innerHTML = rbVisFilters().map(f=>`
     <div class="rbms ${rbSel[f.k].size?'on':''}" data-k="${f.k}">
       <button class="rbms-btn" onclick="rbmsToggle(event,'${f.k}')">
         <span class="rbms-t">${rbEsc(rbmsTitle(f))}</span>
@@ -10899,11 +10933,12 @@ function rbDimVal(r,dim){
   if(dim==='device'){ const d=normalizeDevice(r.device||''); return d ? (DEVICE_LABELS[d]||d) : '—'; }
   if(dim==='platform') return prettyPlatform(r.platform) || '—';
   if(dim==='placement') return placementLabel(r);   // "Instagram · Feed"
+  if(dim==='creative') return String(r.cid||'').trim() || '—';
   return String(r[dim] ?? '—') || '—';
 }
 // Групування по девайсу/платформі/плейсменту теж потребує creatives_stats
 function rbNeedsCreatives(){
-  return rbGroups.includes('device') || rbGroups.includes('placement') || rbGroups.includes('platform');
+  return ['device','placement','platform','creative'].some(k=>rbGroups.includes(k));
 }
 function rbInitOnce(){
   if(rbInited || !document.getElementById('rb-groups')) return;
@@ -10951,7 +10986,7 @@ function rbPopulateFilters(){
   rbmsRenderAll();
 }
 function rbRenderGroupChips(){
-  document.getElementById('rb-groups').innerHTML = RB_DIMS.map(d=>{
+  document.getElementById('rb-groups').innerHTML = rbVisDims().map(d=>{
     const idx=rbGroups.indexOf(d.key);
     const on=idx>=0;
     return `<button onclick="rbToggleGroup('${d.key}')" class="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition border
@@ -11015,6 +11050,74 @@ function rbToggleCol(k,on){
   localStorage.setItem('rb_cols', JSON.stringify(rbVisibleCols));
   rbRender();
 }
+
+/* ── Схованка шапки звіту: списки в налаштуваннях ──────────────────────
+   Рядки малюємо кодом, а не в розмітці, бо виміри й фільтри описані
+   масивами: доданий вимір мусить одразу з'явитись у налаштуваннях, а не
+   чекати, поки хтось не забуде дописати йому рядок руками.
+   Стилі — ті самі .set-*, що й у решти налаштувань. */
+function rbHidRow(label, key, on, fn, words){
+  return `<label class="set-row set-toggle" data-setting="report builder ${words}">
+      <span class="set-label" style="opacity:${on ? '1' : '.45'}">${label}</span>
+      <span class="toggle-switch"><input type="checkbox" ${on?'checked':''}
+        onchange="${fn}('${key}', this.checked)"><span class="toggle-slider"></span></span>
+    </label>`;
+}
+function rbRenderHideSettings(){
+  const dims=document.getElementById('rb-dims-list');
+  if(dims) dims.innerHTML = RB_DIMS.map(d=>rbHidRow(d.label, d.key,
+    !rbDimsOff.has(d.key), 'rbSetDimShown',
+    `grouping звіт групування ${d.key} ${d.label.toLowerCase()}`)).join('');
+  const flt=document.getElementById('rb-filters-list');
+  // Підпис фільтра — «All accounts»; у списку налаштувань доречніше саме
+  // «Accounts», бо це назва фільтра, а не текст на кнопці.
+  const short = t => { const v=String(t).replace(/^All\s+/,''); return v.charAt(0).toUpperCase()+v.slice(1); };
+  if(flt) flt.innerHTML = RB_FILTERS.map(f=>rbHidRow(short(f.label), f.k,
+    !rbFiltOff.has(f.k), 'rbSetFilterShown',
+    `filter звіт фільтр ${f.k} ${f.label.toLowerCase()}`)).join('');
+}
+
+function rbSetDimShown(k, on){
+  /* Останній вимір лишається: групувати звіт хоч якось треба, і порожня
+     шапка виглядала б як поломка, а не як налаштування. Галочку
+     повертаємо назад руками — інакше вона лишилась би знятою при
+     увімкненому вимірі. */
+  if(!on && rbVisDims().length<=1){
+    rbRenderHideSettings();
+    if(typeof toast==='function') toast('At least one grouping stays', 'warn');
+    return;
+  }
+  on ? rbDimsOff.delete(k) : rbDimsOff.add(k);
+  rbHidSave(RB_HID_DIM_KEY, rbDimsOff);
+  // Прихований вимір не може лишатись у групуванні: чипа немає, зняти
+  // його було б нічим, а звіт тихо групувався б по ньому й далі.
+  if(!on && rbGroups.includes(k)){
+    rbGroups = rbGroups.filter(g=>g!==k);
+    if(!rbGroups.length) rbGroups = [rbVisDims()[0].key];
+    rbOpen.clear();
+  }
+  rbRenderHideSettings();
+  if(document.getElementById('rb-groups')){ rbRenderGroupChips(); rbRender(); }
+}
+
+function rbSetFilterShown(k, on){
+  on ? rbFiltOff.delete(k) : rbFiltOff.add(k);
+  rbHidSave(RB_HID_FLT_KEY, rbFiltOff);
+  /* Прихований фільтр не має фільтрувати. Інакше вибір лишався б у
+     силі, а звіт віддавав би частину даних без жодної позначки чому —
+     найгірший з можливих станів. */
+  if(!on && rbSel[k] && rbSel[k].size){
+    rbSel[k].clear();
+    if(document.getElementById('rb-filters')) rbRender();
+  }
+  rbRenderHideSettings();
+  if(document.getElementById('rb-filters')) rbmsRenderAll();
+}
+
+/* Списки в налаштуваннях не залежать від того, чи заходив хтось у звіт,
+   тож малюємо їх одразу після завантаження сторінки. Далі вони
+   перемальовуються самі — з кожного перемикача. */
+document.addEventListener('DOMContentLoaded', rbRenderHideSettings);
 function rbSetMode(m){
   rbMode=m;
   ['list','day','month'].forEach(x=>{
@@ -12069,6 +12172,34 @@ document.addEventListener('keydown', e => {
             <h3 class="set-gtitle">Menu buttons</h3>
             <p class="set-gsub">Which buttons stay in the bottom dock.</p>
             <div id="dock-hide-list"></div>
+          </div>
+
+          <div class="set-group">
+            <div class="set-ghead">
+              <div>
+                <h3 class="set-gtitle">Report Builder: grouping</h3>
+                <p class="set-gsub">Which grouping chips stay in the report header. Switched off, a chip is gone from the header — and if the report was grouped by it, that level is dropped. One always stays.</p>
+              </div>
+              <div class="set-bulk">
+                <button type="button" onclick="setBulk('#rb-dims-list', true)">All on</button>
+                <button type="button" onclick="setBulk('#rb-dims-list', false)">All off</button>
+              </div>
+            </div>
+            <div id="rb-dims-list"></div>
+          </div>
+
+          <div class="set-group">
+            <div class="set-ghead">
+              <div>
+                <h3 class="set-gtitle">Report Builder: filters</h3>
+                <p class="set-gsub">Which filter dropdowns stay in the report header. Switching one off also clears what was picked in it — a hidden filter must not keep narrowing the report.</p>
+              </div>
+              <div class="set-bulk">
+                <button type="button" onclick="setBulk('#rb-filters-list', true)">All on</button>
+                <button type="button" onclick="setBulk('#rb-filters-list', false)">All off</button>
+              </div>
+            </div>
+            <div id="rb-filters-list"></div>
           </div>
         </section>
 
