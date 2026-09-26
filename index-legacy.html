@@ -7049,31 +7049,65 @@ RB_FILTERS.forEach(f => { rbSel[f.k] = new Set(); rbOpts[f.k] = []; });
 
 function rbHas(k, v){ return rbSel[k].size === 0 || rbSel[k].has(v); }
 
-function rbFiltered(){
+/* Як дістати з рядка значення кожного фільтра. Опис один — ним
+   користується і сам відбір, і перелік варіантів у списках; доки він
+   спільний, звужені списки не можуть розійтися з тим, що звіт справді
+   покаже. */
+const RB_VAL = {
+  geo:   r => (r.geo||'').toUpperCase(),
+  acc:   r => String(r.account||''),
+  agent: r => String(r.agent||''),
+  fun:   r => String(r.funnel||''),
+  offer: r => String(r.offer||''),
+  dev:   r => normalizeDevice(r.device||''),
+  plat:  r => prettyPlatform(r.platform),
+  plc:   r => prettyPlacement(r.placement),
+};
+// Девайс, платформа й плейсмент живуть лише в creatives_stats
+const RB_CR_ONLY = new Set(['dev','plat','plc']);
+
+/* creatives_stats у тих самих назвах полів, що й daily_stats. Кеш — бо
+   тепер цей набір потрібен не раз на рендер, а по разу на кожен із
+   восьми фільтрів, і розкладати десятки тисяч рядків вісім разів
+   поспіль не варто. Ключ — сам масив: щойно дані перезавантажились,
+   це вже інший масив, і кеш сам собою прострочується. */
+let rbCrCache = { src: null, rows: null };
+function rbCrRows(){
+  const src = window.creativesRawData || [];
+  if (rbCrCache.src === src) return rbCrCache.rows;
+  rbCrCache = { src, rows: src.map(c=>({...c, deposits:c.deps,
+    offer:c.offer||'DEFAULT', agent:c.agent||'—'})) };
+  return rbCrCache.rows;
+}
+
+/* Рядки під поточними умовами.
+   skip — фільтр, який НЕ застосовуємо. Потрібен, щоб перелічити його
+   власні варіанти: якби фільтр звужував і сам себе, після вибору KG у
+   списку гео лишився б один KG.
+   forceCr — брати creatives_stats навіть тоді, коли решта умов його не
+   вимагає: інакше списку девайсів нізвідки було б узятись. */
+function rbRows(skip, forceCr){
   const from=document.getElementById('rb-from').value, to=document.getElementById('rb-to').value;
   const q=(document.getElementById('rb-q').value||'').toLowerCase();
 
   // Девайс/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
-  const needCr = rbSel.dev.size || rbSel.plat.size || rbSel.plc.size || rbNeedsCreatives();
-  const src = needCr
-    ? (window.creativesRawData||[]).map(c=>({...c, deposits:c.deps, offer:c.offer||'DEFAULT', agent:c.agent||'—'}))
-    : (rawData||[]);
+  const needCr = forceCr || rbNeedsCreatives()
+    || [...RB_CR_ONLY].some(k => k !== skip && rbSel[k].size);
+  const src = needCr ? rbCrRows() : (rawData||[]);
 
   return src.filter(r=>{
     if(from && r.date < from) return false;
     if(to && r.date > to) return false;
-    if(!rbHas('geo',   (r.geo||'').toUpperCase())) return false;
-    if(!rbHas('acc',   String(r.account||''))) return false;
-    if(!rbHas('agent', String(r.agent||''))) return false;
-    if(!rbHas('fun',   String(r.funnel||''))) return false;
-    if(!rbHas('offer', String(r.offer||''))) return false;
-    if(!rbHas('dev',   normalizeDevice(r.device||''))) return false;
-    if(!rbHas('plat',  prettyPlatform(r.platform))) return false;
-    if(!rbHas('plc',   prettyPlacement(r.placement))) return false;
+    for(const k in RB_VAL){
+      if(k === skip || !rbSel[k].size) continue;
+      if(!rbSel[k].has(RB_VAL[k](r))) return false;
+    }
     if(q && !`${r.account} ${r.geo} ${r.funnel} ${r.offer} ${r.agent} ${r.date}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
+
+function rbFiltered(){ return rbRows(null, false); }
 
 const rbEsc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
@@ -7149,8 +7183,18 @@ function rbmsToggle(ev, k){
   const wasOpen=pop && !pop.classList.contains('hidden');
   rbmsCloseAll();
   if(pop && !wasOpen){
+    /* Перелічуємо варіанти саме тут, на відкриванні, а не десь після
+       кожного кліку: вибір у сусідніх фільтрах, дати й пошук могли
+       змінитись відтоді, як цей список малювали. Заодно нічого не
+       перебудовується під рукою в того списку, що вже відкритий, —
+       разом із набраним у ньому пошуком. */
+    rbPopulateOpts();
+    const list=pop.querySelector('.rbms-list');
+    const qi=pop.querySelector('.rbms-q');
+    if(qi) qi.value='';
+    if(list) list.innerHTML=rbmsRows(k,'');
     pop.classList.remove('hidden');
-    pop.querySelector('.rbms-q')?.focus();
+    qi?.focus();
   }
 }
 
@@ -7176,25 +7220,39 @@ function rbInitOnce(){
     rbmsCloseAll();
   });
 }
-function rbPopulateFilters(){
-  const d=rawData||[], cr=window.creativesRawData||[];
+/* ФІЛЬТРИ ПРАЦЮЮТЬ МІЖ СОБОЮ.
+   Кожен список показує тільки те, що взагалі може трапитись за решти
+   умов: вибрав KG — у офферах лишились оффери KG, а не весь парк, і
+   вибрати наперед порожній перетин уже неможливо. Раніше всі вісім
+   списків бралися з повного набору даних, і вибір із двох фільтрів
+   часто давав звіт без жодного рядка.
+
+   Свій власний вибір фільтр при цьому не враховує (skip у rbRows),
+   інакше після вибору KG у списку гео лишився б один KG. А вибране
+   лишається в списку завжди, навіть коли звужений набір його вже не
+   містить: галочку мусить бути чим зняти. */
+function rbPopulateOpts(){
   const uniq=arr=>[...new Set(arr.filter(Boolean))].sort();
-  const plain=vals=>vals.map(v=>({v, label:v}));
 
-  rbOpts.geo   = plain(uniq(d.map(r=>(r.geo||'').toUpperCase())));
-  rbOpts.acc   = plain(uniq(d.map(r=>String(r.account||''))));
-  rbOpts.agent = plain(uniq(d.map(r=>String(r.agent||''))));
-  rbOpts.fun   = plain(uniq(d.map(r=>String(r.funnel||''))));
-  rbOpts.offer = plain(uniq(d.map(r=>String(r.offer||''))));
-  rbOpts.dev   = uniq(cr.map(r=>normalizeDevice(r.device||''))).map(v=>({v, label:DEVICE_LABELS[v]||v}));
-  rbOpts.plat  = plain(uniq(cr.map(r=>prettyPlatform(r.platform))));
-  rbOpts.plc   = plain(uniq(cr.map(r=>prettyPlacement(r.placement))));
-
-  // Значення, яких уже немає в даних, знімаємо з вибраних
+  /* З вибраного знімаємо лише те, чого в даних немає ЗОВСІМ — не те,
+     що просто випало з поточного звуження. Інакше фільтри гасили б
+     один одного: вибір у сусідньому знімав би галочки тут, ті в свою
+     чергу розширювали б сусідній, і набір поїхав би сам собою. */
   RB_FILTERS.forEach(f=>{
-    const ok=new Set(rbOpts[f.k].map(o=>o.v));
+    const src = RB_CR_ONLY.has(f.k) ? rbCrRows() : (rawData||[]);
+    const ok = new Set(src.map(RB_VAL[f.k]));
     [...rbSel[f.k]].forEach(v=>{ if(!ok.has(v)) rbSel[f.k].delete(v); });
   });
+
+  RB_FILTERS.forEach(f=>{
+    const rows = rbRows(f.k, RB_CR_ONLY.has(f.k));
+    const vals = uniq(rows.map(RB_VAL[f.k]).concat([...rbSel[f.k]]));
+    rbOpts[f.k] = vals.map(v=>({ v, label: f.k==='dev' ? (DEVICE_LABELS[v]||v) : v }));
+  });
+}
+
+function rbPopulateFilters(){
+  rbPopulateOpts();
   rbmsRenderAll();
 }
 function rbRenderGroupChips(){
