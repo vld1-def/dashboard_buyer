@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.09 22:56">
+  <meta name="build" content="build 26.09 12:02">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1904,7 +1904,11 @@ body { font-variant-numeric: tabular-nums; }
    SVG має власні width/height, тож нульовий кегль його не чіпає. */
 body.sb-compact { --sb-w: 64px; }
 
-body.sb-compact .sb-brand { padding: 0; justify-content: center; }
+/* gap у нуль — із тієї ж причини, що й у пошуку нижче: підпис поруч
+   із лого має max-width:0, але лишається елементом flex, і проміжок
+   у 10px між ним та лого нікуди не дівається. Лого через це стояло
+   на п'ять пікселів лівіше за центр смуги. */
+body.sb-compact .sb-brand { padding: 0; justify-content: center; gap: 0; }
 /* Прозорість і ширину задано вище, поруч із рештою підписів. */
 
 body.sb-compact .sb-scroll { padding: 10px 8px 8px; }
@@ -2548,7 +2552,31 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-tr:hover > td { background: var(--surface-2); }
 .cab-tr.is-sel > td { background: rgba(139,92,246,.14); }
 .cab-state { font-size: 11.5px; font-weight: 800; }
-.cab-id { font-size: 13.5px; font-weight: 900; }
+/* СТОВПЧИК «ACCOUNT». Досі все в ньому йшло одним потоком услід за
+   номером, а номери різної довжини — тож профіль, браузер і значок
+   джерела починались у кожному рядку на іншому місці. Читати такий
+   стовпчик очима згори вниз неможливо: погляд щоразу шукає, де воно
+   цього разу.
+
+   Тому значок джерела стоїть ПЕРШИМ — він однакової ширини й тому сам
+   собою тримає вертикаль, а стоїть впритул до стовпчика стану, про
+   який і говорить. За ним номер у колонці сталої ширини (tabular-nums,
+   щоб цифри не гуляли), і вже за номером — мітки, які тепер у всіх
+   рядках починаються на одній вертикалі.
+
+   17ch — під шістнадцятизначний номер кабінета Facebook плюс запас. */
+.cab-acc { display: flex; align-items: center; gap: 6px; }
+.cab-id {
+  font-size: 13.5px; font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; min-width: 17ch;
+}
+.cab-tags {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+}
+/* Проміжок тепер дає flex; власний відступ мітки його б подвоїв. */
+.cab-tags .cab-chip { margin-left: 0; }
 .cab-dim { color: var(--text-muted); font-weight: 600; }
 .cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cab-na { color: var(--text-muted); opacity: .35; }
@@ -2582,7 +2610,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   background: var(--surface-3);
   border: 1px solid var(--border);
 }
-.cab-src { margin-left: 6px; font-size: 11px; color: var(--text-muted); opacity: .5; }
+.cab-src { flex: 0 0 auto; font-size: 11px; color: var(--text-muted); opacity: .5; }
 /* ⟳ проти ✎ — це не прикраса, а єдине, що на рядку відрізняє
    статус, який щогодини підтвердив Facebook, від того, який хтось
    клацнув три місяці тому. Тому живий — помітніший. */
@@ -3660,7 +3688,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.09 22:56</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:02</div>
     </div>
   </aside>
 
@@ -3894,7 +3922,9 @@ body[data-route="domains"] #dm-detail {
       <!-- Місячний таргет -->
       <div id="milestone-container">
         <p class="ms-cap">Monthly Spend Target <span id="header-month-display"></span></p>
-        <div class="flex justify-between items-end gap-3 mb-2">
+        <!-- mb-1 замість mb-2: рівно чотири пікселі менше, і зняті вони
+             з порожнечі між числом і смугою, а не з самого тексту. -->
+        <div class="flex justify-between items-end gap-3 mb-1">
           <h3 id="monthly-spend-label">$0 / $40,000</h3>
           <span id="next-rank-info" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">Left: $40,000</span>
         </div>
@@ -3948,7 +3978,7 @@ body[data-route="domains"] #dm-detail {
           <!-- DEPOSITS -->
           <div class="kpi-card" style="--accent:#22C55E;--glow:rgba(34,197,94,.14)">
             <div class="kpi-head">
-              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v14M6 11l6 6 6-6M4 21h16"/></svg></span>
+              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v.01M18 14v.01"/></svg></span>
               <span class="kpi-label">Total Deposits</span>
             </div>
             <p id="kpi-deposits" class="kpi-value">0</p>
@@ -7847,7 +7877,6 @@ async function loadSettings() {
   function updateVisibility() {
   // Мапа: ID чекбокса -> ID секції в DOM (Feature 8 added, Feature 10 removed ai)
   const config = {
-    'toggle-geo': 'geo-sidebar-col',
     'toggle-creatives': 'creative-analyzer-section',
     'toggle-device-geo': 'device-geo-section',
     'toggle-table': 'live-table-section',
@@ -7872,26 +7901,24 @@ async function loadSettings() {
     }
   }
 
-  // СПЕЦІАЛЬНА ЛОГІКА: Якщо ГЕО приховано, розтягуємо графік на всю ширину
-  const geoVisible = document.getElementById('toggle-geo').checked;
+  /* ГЕО більше не вимикається: перемикач прибрано, блок є завжди.
+     Знімаємо hidden явно — у кого він колись був вимкнений, той стан
+     лежить у localStorage, і без цього рядка блок не повернувся б. */
+  const geoCol = document.getElementById('geo-sidebar-col');
+  if (geoCol) geoCol.classList.remove('hidden');
   const chartCol = document.getElementById('chart-main-col');
-  
   if (chartCol) {
-    if (!geoVisible) {
-      // Розтягуємо на всі 4 колонки
-      chartCol.classList.remove('lg:col-span-3');
-      chartCol.classList.add('lg:col-span-4');
-    } else {
-      // Повертаємо до 3 колонок, щоб було місце для ГЕО
-      chartCol.classList.remove('lg:col-span-4');
-      chartCol.classList.add('lg:col-span-3');
-    }
+    chartCol.classList.remove('lg:col-span-4');
+    chartCol.classList.add('lg:col-span-3');
   }
-  
-  // Зберігаємо стан налаштувань у пам'ять браузера
+
+  /* Зберігаємо стан у пам'ять браузера. Перевірка на існування
+     обов'язкова: варто прибрати один перемикач із розмітки й забути
+     про цей рядок — і падає ВСЯ функція, а з нею й усі інші блоки. */
   const settings = {};
   Object.keys(config).forEach(id => {
-    settings[id] = document.getElementById(id).checked;
+    const el = document.getElementById(id);
+    if (el) settings[id] = el.checked;
   });
   localStorage.setItem('dashboard_visibility', JSON.stringify(settings));
   applyTeamLeadSections();
@@ -11971,12 +11998,7 @@ document.addEventListener('keydown', e => {
             <h3 class="set-gtitle">Dashboard widgets</h3>
             <p class="set-gsub">Blocks on the Dashboard page itself, not pages of their own.</p>
             <div id="grp-dash">
-              <label class="set-row set-toggle" data-setting="geo performance гео колонка">
-                <span class="set-label"><span class="set-ico">&#128506;</span>Geo Performance</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
-              </label>
             </div>
-            <p class="set-gsub" style="margin-top:6px">With it off, the chart beside it stretches to full width.</p>
           </div>
 
           <div class="set-group">
@@ -16845,15 +16867,16 @@ function cabRowHtml(c) {
   return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
       onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
-    <td>
+    <td class="cab-acc">
+      <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       <span class="cab-id">${primary}</span>
+      <span class="cab-tags">
       ${second ? `<span class="cab-chip">${second}</span>` : ''}
       ${c.row.profile
         ? `<span class="cab-chip">${cabEsc(c.row.profile)}</span>`
         : c.tok.browser
           ? `<span class="cab-chip is-auto" title="Browser from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.browser)}</span>`
           : ''}
-      <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       ${(() => { const w = cabIssueWhy(c); return w
         ? `<span class="cab-chip is-gone" title="${cabEsc(w.tip)}">${cabEsc(w.text)}</span>` : ''; })()}
       ${c.fb && String(c.fb.status) === 'unknown' ? `<span class="cab-chip is-auto" title="Facebook returned a status code this dashboard does not know yet. It is not treated as a problem \u2014 the state below comes from the money.">status unknown</span>` : ''}
@@ -16862,6 +16885,7 @@ function cabRowHtml(c) {
         cabPending(c.fb)} in review</span>` : ''}
       ${c.fb && String(c.fb.status) === 'review' ? `<span class="cab-chip is-gone" title="Facebook put the ad account ITSELF under review, not just its ads. Payments and delivery can stop while it lasts.">account in review</span>` : ''}
       ${c.fb && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
+      </span>
     </td>
     <td class="cab-dim">${c.row.provider_name
       ? cabEsc(c.row.provider_name)
