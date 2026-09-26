@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.09 12:21">
+  <meta name="build" content="build 26.09 12:23">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1168,6 +1168,26 @@ body {
 }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .app-content { padding: 12px 14px 104px; }
+
+/* ─────────── Скрол — тільки всередині ───────────
+
+   Досі гортався весь документ. Сайдбар тримався на sticky й лишався на
+   місці, а от усе, що стоїть угорі контенту, — фільтри, вкладки, шапки
+   таблиць — їхало вгору й зникало. На довгому звіті це означало
+   мотати назад щоразу, коли треба змінити період.
+
+   Тепер вікно не гортається взагалі: прокручується рівно та колонка, у
+   якій лежить вміст. Сайдбар і все, що над контентом, стоять завжди.
+
+   overscroll-behavior: contain — щоб, догортавши до низу блоку, не
+   почати тягнути за собою сторінку (на тачпаді це виглядає як ривок).
+
+   Ділення на --zoom — з тієї ж причини, що й у сайдбара: під
+   body { zoom: .9 } сто vh дають на екрані лише дев'яносто. */
+html, body { height: 100%; overflow: hidden; }
+.app-shell { height: calc(100vh / var(--zoom)); overflow: hidden; }
+.app-main { height: 100%; min-height: 0; overflow: hidden; }
+.app-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
 .sb-brand {
   display: flex; align-items: center; gap: 10px;
@@ -3644,7 +3664,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:21</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 12:23</div>
     </div>
   </aside>
 
@@ -9489,12 +9509,14 @@ function openImgLightbox(url, label) {
   lb.querySelector('img').src = url;
   lb.querySelector('.lb-label').textContent = label;
   lb.classList.add('visible');
-  document.body.style.overflow = 'hidden';
+  const __sc = document.querySelector('.app-content');
+  if (__sc) __sc.style.overflow = 'hidden';
 }
 
 function closeImgLightbox() {
   document.getElementById('img-lightbox').classList.remove('visible');
-  document.body.style.overflow = '';
+  const __sc = document.querySelector('.app-content');
+  if (__sc) __sc.style.overflow = '';
 }
 
 function positionTooltip(e, tip) {
@@ -18577,7 +18599,13 @@ window.dmCheckHelp = dmCheckHelp;
     if (name === 'domains' && typeof dmInit === 'function') dmInit();
 
     document.body.classList.remove('sb-open');
-    if (scroll) window.scrollTo({ top: 0 });
+    /* Гортається тепер колонка контенту, а не вікно: window.scrollTo
+       після переходу не робив би нічого, і кожна сторінка відкривалась
+       би там, де ти кинув попередню. */
+    if (scroll) {
+      const box = document.querySelector('.app-content');
+      if (box) box.scrollTop = 0; else window.scrollTo({ top: 0 });
+    }
   }
 
   function setActiveNav(name, arg) {
