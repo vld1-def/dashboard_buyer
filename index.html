@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 27.09 22:51">
+  <meta name="build" content="build 27.09 23:16">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3186,6 +3186,58 @@ body[data-route="domains"] #dm-detail {
 .cab-tr.is-frozen .cab-dim { opacity: .55; }
 .cab-tr.is-frozen .cab-id { text-decoration: line-through; text-decoration-color: rgba(168,85,247,.5); }
 
+/* ═══════════ ЩО ВСЕРЕДИНІ КАБІНЕТА ═══════════
+   Блок під таблицею: кампанії, адсети, оголошення з числами. Висоту
+   ділить із таблицею — своя третина екрана й власний скрол, щоб
+   таблиця кабінетів не поїхала під нього цілком. */
+#cab-inside {
+  flex: 0 0 auto; max-height: 42%;
+  display: flex; flex-direction: column; min-height: 0;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.cd-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; flex: 0 0 auto; margin-bottom: 8px;
+}
+.cd-h { font-size: 12px; font-weight: 900; color: var(--text-main); margin: 0; }
+.cd-s { font-size: 10px; color: var(--text-muted); margin: 2px 0 0; }
+.cd-tabs { display: flex; gap: 5px; flex: 0 0 auto; }
+.cd-tab {
+  padding: 5px 11px; border-radius: 9px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.cd-tab:hover { color: var(--text-main); }
+.cd-tab.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+.cd-wrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.cd-tbl { width: 100%; border-collapse: collapse; }
+.cd-tbl th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface-2);
+  padding: 6px 8px; text-align: left;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.cd-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
+.cd-tbl tr:hover td { background: var(--surface-2); }
+.cd-name {
+  font-weight: 700; color: var(--text-main);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cd-num { font-variant-numeric: tabular-nums; color: var(--text-main); }
+.cd-spend { font-weight: 800; }
+.cd-na { color: var(--text-muted); opacity: .5; }
+/* Нескінченність — це «гроші пішли, результату немає». Помітно, бо саме
+   ці рядки й вимикають правила. */
+.cd-inf { color: #F87171; font-weight: 800; }
+.cd-off {
+  padding: 3px 9px; border-radius: 8px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.cd-off:hover { color: #F87171; border-color: rgba(239,68,68,.45); }
+.cd-off[disabled] { opacity: .45; }
+.cd-empty { font-size: 11px; color: var(--text-muted); font-style: italic; margin: 6px 0; }
+
 /* Кнопка «Rules» у шапці кабінетів. Виглядає як решта кнопок панелі,
    а увімкненою світиться, бо панель праворуч може бути й закритою — і
    тоді незрозуміло, чи вона взагалі є. */
@@ -4022,7 +4074,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.09 22:51</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.09 23:16</div>
     </div>
   </aside>
 
@@ -4926,6 +4978,11 @@ input.ui-in[type="range"] { padding: 0; }
 </div>
     </div>
   </div>
+
+  <!-- Що всередині вибраного кабінета: кампанії, адсети, оголошення з
+       їхніми сьогоднішніми числами. Під таблицею, а не в панелі
+       праворуч, бо тут потрібні стовпчики, а не вузька смуга. -->
+  <div id="cab-inside" class="hidden"></div>
 
   <!-- Сторінки, з яких крутять ці кабінети. Під таблицею, а не над:
        спершу те, за чим приходять щодня, потім те, на що дивляться,
@@ -17682,6 +17739,10 @@ function cabWhyNot(fb) {
 function cabDetail(c) {
   const box = document.getElementById('cab-detail');
   if (!box) return;
+  /* Разом із карткою кабінета показуємо і його нутро — кампанії з
+     числами. Окремого кліку для цього немає навмисно: питання «що
+     всередині» виникає рівно тоді, коли кабінет вибрали. */
+  if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else cdHide(); }
   if (!c) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   box.classList.remove('hidden');
   const S = CAB_STATE[c.state];
@@ -20012,6 +20073,223 @@ window.rlCheck = async function () {
     if (note) note.textContent = 'Could not check: ' + e.message;
     if (typeof toast === 'function') toast('Could not check: ' + e.message, 'error');
   }
+};
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   ЩО ВСЕРЕДИНІ КАБІНЕТА — кампанії, адсети, оголошення з цифрами
+
+   Досі сторінка кабінетів відповідала на питання «чи крутить» і «скільки
+   всього». На питання «а що саме з'їдає гроші» відповіді не було ніде:
+   числа по кожному оголошенню вже лежали в базі (їх складає fb-sync для
+   правил), але подивитись на них можна було тільки запитом у Supabase.
+
+   Тому цей блок і читає той самий знімок, яким користуються правила.
+   Одні й ті самі числа в обох місцях — інакше «правило вимкнуло, а я
+   тут бачив інше» стало б питанням без відповіді.
+
+   ЛІДИ РАХУЄМО ЗА ТИМИ Ж ГАЛОЧКАМИ, що й правила (налаштування
+   fb_rules.leadActions). Якби тут був свій список, ціна ліда на екрані
+   й ціна ліда в правилі розійшлись би — і повірити не можна було б
+   жодній.
+   ══════════════════════════════════════════════════════════════════ */
+
+const CD_LEAD_DEFAULT = ['lead', 'onsite_conversion.lead_grouped',
+                         'offsite_conversion.fb_pixel_lead', 'mobile_app_install'];
+const CD_LEVELS = [
+  { k: 'campaign', label: 'Campaigns' },
+  { k: 'adset',    label: 'Ad sets' },
+  { k: 'ad',       label: 'Ads' }
+];
+
+let cdAcc = '', cdRows = [], cdLevel = 'campaign', cdLeads = CD_LEAD_DEFAULT.slice();
+let cdErr = '', cdBusy = false, cdSeen = 0;
+
+const cdEsc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const cdMoney = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100)
+  .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+window.cdHide = function () {
+  cdAcc = ''; cdRows = []; cdErr = '';
+  document.getElementById('cab-inside')?.classList.add('hidden');
+};
+
+window.cdOpen = async function (account) {
+  const box = document.getElementById('cab-inside');
+  if (!box) return;
+  const id = String(account || '').trim();
+  if (!id) return cdHide();
+  box.classList.remove('hidden');
+  if (id !== cdAcc) { cdRows = []; cdErr = ''; }
+  cdAcc = id;
+  cdPaint();
+
+  /* Галочки лідів лежать у налаштуваннях правил. Читаємо їх щоразу, а не
+     один раз: людина могла щойно змінити їх у панелі поруч. */
+  try {
+    const raw = await getTeamSetting('fb_rules');
+    const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+    if (Array.isArray(v.leadActions) && v.leadActions.length) cdLeads = v.leadActions;
+  } catch (e) { /* немає налаштування — беремо звичні типи */ }
+
+  try {
+    const { data, error } = await sb.from('fb_ad_today')
+      .select('ad_id,name,adset_id,adset_name,campaign_id,campaign_name,'
+            + 'spend,impressions,clicks,link_clicks,actions,seen_at')
+      .eq('account_id', id)
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    cdRows = data || [];
+    cdErr = '';
+    cdSeen = cdRows.reduce((a, r) => Math.max(a, Date.parse(r.seen_at || '') || 0), 0);
+  } catch (e) {
+    cdRows = [];
+    cdErr = /fb_ad_today|does not exist|schema cache/i.test(e.message)
+      ? 'no-table' : e.message;
+  }
+  if (cdAcc === id) cdPaint();
+};
+
+window.cdSetLevel = function (k) { cdLevel = k; cdPaint(); };
+
+/* Згортаємо оголошення до рівня, який вибрали. Числа складаються — так
+   само, як це робить правило на тому ж рівні: якщо тут показати інше,
+   ніж побачить правило, екран почне брехати. */
+function cdGroup() {
+  const leadsOf = (r) => (Array.isArray(r.actions) ? r.actions : [])
+    .reduce((a, x) => a + (cdLeads.includes(String(x.action_type)) ? (Number(x.value) || 0) : 0), 0);
+  const key = (r) => cdLevel === 'ad' ? String(r.ad_id)
+    : cdLevel === 'adset' ? String(r.adset_id || '') : String(r.campaign_id || '');
+  const name = (r) => cdLevel === 'ad' ? (r.name || r.ad_id)
+    : cdLevel === 'adset' ? (r.adset_name || r.adset_id || '—')
+    : (r.campaign_name || r.campaign_id || '—');
+
+  const by = new Map();
+  cdRows.forEach(r => {
+    const k = key(r);
+    if (!k) return;
+    let e = by.get(k);
+    if (!e) {
+      e = { id: k, name: name(r), ads: 0, spend: 0, clicks: 0, imps: 0, leads: 0 };
+      by.set(k, e);
+    }
+    e.ads++;
+    e.spend += Number(r.spend) || 0;
+    e.clicks += Number(r.link_clicks) || 0;
+    e.imps += Number(r.impressions) || 0;
+    e.leads += leadsOf(r);
+  });
+  return [...by.values()].sort((a, b) => b.spend - a.spend);
+}
+
+function cdPaint() {
+  const box = document.getElementById('cab-inside');
+  if (!box) return;
+  const tabs = CD_LEVELS.map(l => `<button type="button"
+      class="cd-tab ${cdLevel === l.k ? 'is-on' : ''}" onclick="cdSetLevel('${l.k}')">${l.label}</button>`).join('');
+
+  /* Коли числа зняті. Без цього «спенд $0» читається як «не крутить»,
+     хоч це може бути просто знімок, якого ще не зробили. */
+  const age = cdSeen ? Math.round((Date.now() - cdSeen) / 60000) : null;
+  const when = age == null ? ''
+    : age < 2 ? 'just synced' : age + ' min ago';
+
+  const head = `<div class="cd-head">
+      <div>
+        <h3 class="cd-h">Inside ${cdEsc(cdAcc)}</h3>
+        <p class="cd-s">Today’s numbers from the last sync${when ? ' · ' + when : ''}${
+          cdRows.length ? ' · ' + cdRows.length + ' active ad(s)' : ''}</p>
+      </div>
+      <div class="cd-tabs">${tabs}</div>
+    </div>`;
+
+  if (cdErr === 'no-table') {
+    box.innerHTML = head + '<p class="cd-empty">The snapshot table does not exist yet — run '
+      + 'block 1 of FB_RULES.sql, then press Sync now.</p>';
+    return;
+  }
+  if (cdErr) { box.innerHTML = head + '<p class="cd-empty">Could not read: ' + cdEsc(cdErr) + '</p>'; return; }
+  if (!cdRows.length) {
+    box.innerHTML = head + '<p class="cd-empty">Nothing active in the snapshot. '
+      + 'Either this cabinet is not running anything, or the sync has not filled it yet — press Sync now.</p>';
+    return;
+  }
+
+  const rows = cdGroup();
+  /* Ціна за клік і за лід — нескінченність, коли витрати є, а результату
+     немає. Прочерк тут означав би «нуль», а це різні речі: саме ці рядки
+     й вимикають правила. */
+  const per = (spend, n) => n > 0 ? cdMoney(spend / n)
+    : (spend > 0 ? '<span class="cd-inf" title="Money spent, nothing back yet">∞</span>'
+                 : '<span class="cd-na">—</span>');
+  const kind = cdLevel === 'ad' ? 'ad' : cdLevel === 'adset' ? 'ad set' : 'campaign';
+
+  box.innerHTML = head + `<div class="cd-wrap custom-scrollbar">
+    <table class="cd-tbl">
+      <thead><tr>
+        <th>${cdEsc(CD_LEVELS.find(l => l.k === cdLevel).label)}</th>
+        ${cdLevel !== 'ad' ? '<th class="ta-c" title="How many active ads inside">Ads</th>' : ''}
+        <th class="ta-r">Spend</th>
+        <th class="ta-r" title="Link clicks">Clicks</th>
+        <th class="ta-r">Per click</th>
+        <th class="ta-r">Leads</th>
+        <th class="ta-r">Per lead</th>
+        <th></th>
+      </tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td class="cd-name" title="${cdEsc(r.id)}">${cdEsc(r.name)}</td>
+        ${cdLevel !== 'ad' ? `<td class="ta-c cd-num">${r.ads}</td>` : ''}
+        <td class="ta-r cd-num cd-spend">${cdMoney(r.spend)}</td>
+        <td class="ta-r cd-num">${r.clicks}</td>
+        <td class="ta-r cd-num">${per(r.spend, r.clicks)}</td>
+        <td class="ta-r cd-num">${r.leads}</td>
+        <td class="ta-r cd-num">${per(r.spend, r.leads)}</td>
+        <td class="ta-r"><button type="button" class="cd-off" ${cdBusy ? 'disabled' : ''}
+          onclick="cdPause('${r.id}', '${cdEsc(kind)}', '${encodeURIComponent(r.name)}')"
+          title="Switch this ${kind} off in Facebook">Stop</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+/* Вимкнути одну сутність руками. Ходить у ту саму функцію, що й кнопка
+   «зупинити кабінет», — єдине місце в проєкті, яке щось міняє у
+   Facebook від імені людини. Вмикати назад вона не вміє навмисно. */
+window.cdPause = async function (id, kind, nameEnc) {
+  const name = decodeURIComponent(nameEnc);
+  const go = typeof ask === 'function'
+    ? await ask({ title: 'Switch it off?', danger: true, ok: 'Switch off',
+        body: `Switch off the ${kind} “${name}” in Facebook?\n\n`
+            + 'Everything under it stops too. Turning it back on is done by hand, '
+            + 'in Ads Manager — neither this button nor the rules will do it for you.' })
+    : confirm('Switch off ' + kind + ' "' + name + '"?');
+  if (!go) return;
+
+  cdBusy = true; cdPaint();
+  try {
+    const { data: s } = await sb.auth.getSession();
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json',
+                 Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+      body: JSON.stringify({ account_id: cdAcc, ids: [id] })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+    if (typeof toast === 'function') {
+      if (j.paused) toast('Switched off: ' + name);
+      else toast('Not switched off: ' + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not switch off: ' + e.message, 'error');
+  }
+  cdBusy = false;
+  /* Знімок ще не знає про вимкнення — воно приїде наступною
+     синхронізацією. Тому просто перемальовуємо: показувати «вимкнено»
+     на підставі власної надії було б тим самим, що показувати
+     неперевірене число. */
+  cdPaint();
 };
 </script>
 

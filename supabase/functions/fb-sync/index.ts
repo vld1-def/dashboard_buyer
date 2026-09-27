@@ -371,7 +371,12 @@ function urlsFor(actId: string, tz: string): string[] {
        правил, і воно міняється без нового походу в Facebook. */
     act + '/ads?effective_status=' + encodeURIComponent(JSON.stringify(['ACTIVE']))
       + '&limit=' + LIST_LIMIT
+      /* Назви батьків беремо тут же. Окремих запитів це не коштує —
+         розширення поля всередині того самого підзапиту, — а без них
+         розбір по кампаніях показував би id, і в Telegram замість
+         кампанії стояла б назва випадкового оголошення під нею. */
       + '&fields=' + encodeURIComponent('name,adset_id,campaign_id,'
+        + 'adset{name},campaign{name},'
         + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
   ];
 }
@@ -389,7 +394,9 @@ type Day = { day: string; spend: number | null;
    звідки його читають правила. Нічого зайвого: назва (щоб у
    повідомленні було видно, що саме вимкнули), батьки (щоб правило
    могло скластись до адсета чи кампанії) і числа. */
-type AdSnap = { ad_id: string; name: string; adset_id: string; campaign_id: string;
+type AdSnap = { ad_id: string; name: string;
+                adset_id: string; adset_name: string;
+                campaign_id: string; campaign_name: string;
                 spend: number; imps: number; clicks: number; link_clicks: number;
                 actions: Json[] };
 
@@ -558,7 +565,8 @@ function readParts(parts: (Json | null)[]):
       const row = ((r.insights?.data || [])[0]) || {};
       return {
         ad_id: String(r.id || ''), name: String(r.name || ''),
-        adset_id: String(r.adset_id || ''), campaign_id: String(r.campaign_id || ''),
+        adset_id: String(r.adset_id || ''), adset_name: String(r.adset?.name || ''),
+        campaign_id: String(r.campaign_id || ''), campaign_name: String(r.campaign?.name || ''),
         spend: Number(row.spend) || 0,
         imps: Number(row.impressions) || 0,
         clicks: Number(row.clicks) || 0,
@@ -795,7 +803,9 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
         snapSeen.push(x.id);
         live.forEach(a => snapRows.push({
           created_by: t.created_by, team_name: t.team_name, account_id: x.id,
-          ad_id: a.ad_id, name: a.name, adset_id: a.adset_id, campaign_id: a.campaign_id,
+          ad_id: a.ad_id, name: a.name,
+          adset_id: a.adset_id, adset_name: a.adset_name || null,
+          campaign_id: a.campaign_id, campaign_name: a.campaign_name || null,
           spend: a.spend, impressions: a.imps, clicks: a.clicks,
           link_clicks: a.link_clicks, actions: a.actions, seen_at: now
         }));

@@ -59,7 +59,9 @@ create table if not exists public.fb_ad_today (
   account_id   text not null,
   name         text,
   adset_id     text,
+  adset_name   text,
   campaign_id  text,
+  campaign_name text,
   spend        numeric,
   impressions  bigint,
   clicks       bigint,
@@ -70,6 +72,13 @@ create table if not exists public.fb_ad_today (
 );
 
 create index if not exists fb_ad_today_acc_idx on public.fb_ad_today (account_id, seen_at desc);
+
+-- Назви кампанії й адсета. Окремим блоком, бо таблиця могла зʼявитись
+-- раніше за них: Postgres на повторний add column if not exists не
+-- лається, тож виконати це можна і на новій, і на вже наявній.
+alter table public.fb_ad_today
+  add column if not exists adset_name    text,
+  add column if not exists campaign_name text;
 
 alter table public.fb_ad_today enable row level security;
 
