@@ -966,6 +966,79 @@ async function markToken(base: string, hdr: Json, t: TokenRow,
   } catch (_e) { /* не привід валити імпорт */ }
 }
 
+/* ═══════════ ТЕМП РОЗКЛАДУ ═══════════
+
+   Розклад стукає щопівгодини, а вирішує, чи працювати цього разу, ця
+   функція. Так інтервал міняється в налаштуваннях дашборда — без SQL і
+   без пароля до бази: вдень частіше, вночі рідше, бо вночі й міняється
+   менше, а ліміти Facebook спільні на застосунок і витрачати їх на
+   сон немає сенсу.
+
+   Кнопка Sync now сюди не заходить і не пропускається НІКОЛИ: людина
+   натиснула — значить їй треба зараз, а не «за розкладом».
+
+   Коли команд кілька і кожна просить свій темп, беремо найкоротший
+   інтервал: прогін усе одно обходить усі токени разом, і та команда,
+   що просила частіше, інакше не отримала б нічого. */
+const PACE = { day: 30, night: 60, from: 0, to: 8, tz: 180 };  // хвилини, години, зсув у хвилинах
+// Скільки дозволяємо прийти раніше. Розклад стукає у фіксовані хвилини,
+// і без цього запасу прогін із інтервалом 30 попадав би на 29.8 хвилини,
+// пропускався і виходив раз на годину замість двох.
+const PACE_GRACE_MS = 3 * 60_000;
+
+function paceNum(v: unknown, lo: number, hi: number, fallback: number): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= lo && n <= hi ? n : fallback;
+}
+
+async function syncPace(base: string, hdr: Json): Promise<typeof PACE> {
+  let rows: Json[] = [];
+  try { rows = await pgGet(base, hdr, 'team_settings?select=value&key=eq.fb_sync_pace'); }
+  catch (_e) { /* налаштування немає — лишаємось на значеннях за замовчуванням */ }
+  const out = { ...PACE };
+  let first = true;
+  rows.forEach(r => {
+    let v: Json = {};
+    try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
+    catch (_e) { return; }
+    const day = paceNum(v.day, 5, 1440, PACE.day);
+    const night = paceNum(v.night, 5, 1440, PACE.night);
+    out.day = first ? day : Math.min(out.day, day);
+    out.night = first ? night : Math.min(out.night, night);
+    // Нічне вікно беремо з першого рядка, який його має: воно про час
+    // доби, а не про темп, і мінімум із двох вікон нічого не означає.
+    if (first) {
+      out.from = paceNum(v.from, 0, 23, PACE.from);
+      out.to = paceNum(v.to, 0, 23, PACE.to);
+      out.tz = paceNum(v.tz, -720, 840, PACE.tz);
+    }
+    first = false;
+  });
+  return out;
+}
+
+/* Чи зараз ніч за налаштованим вікном. Вікно може перетинати
+   полуніч (22 → 6), і тоді порівняння «більше і менше» не працює —
+   потрібне саме «або». */
+function paceIsNight(p: typeof PACE, now: Date): boolean {
+  if (p.from === p.to) return false;          // вікно нульової довжини — ночі немає
+  const h = new Date(now.getTime() + p.tz * 60_000).getUTCHours();
+  return p.from < p.to ? (h >= p.from && h < p.to) : (h >= p.from || h < p.to);
+}
+
+/* Коли останній раз ходили в Facebook. Окремої таблиці для цього не
+   заводимо: checked_at у fb_tokens проставляється кожному токену на
+   кожному прогоні, тож найсвіжіший із них і є час останнього прогону.
+   Немає жодного — значить не ходили ніколи, і треба йти. */
+async function lastRunAt(base: string, hdr: Json): Promise<number> {
+  try {
+    const rows = await pgGet(base, hdr,
+      'fb_tokens?select=checked_at&checked_at=not.is.null&order=checked_at.desc&limit=1');
+    const at = Date.parse(String((rows[0] || {}).checked_at || ''));
+    return Number.isFinite(at) ? at : 0;
+  } catch (_e) { return 0; }
+}
+
 /* ═══════════ TELEGRAM ═══════════
 
    Пишемо, ТІЛЬКИ коли є що сказати. Щогодинне «все гаразд» перестають
@@ -1170,6 +1243,24 @@ async function handle(req: Request): Promise<Response> {
   if (wantTest) {
     if (cron) return reply({ error: 'the test message is for a person, not for the schedule' }, 400);
     return reply(await tgTest(base, hdr, onlyOwner));
+  }
+
+  /* Розклад стукає частіше, ніж треба працювати. Пропускаємо зайвий
+     стук тут — до того, як піти по токени й у Facebook: інакше «раз на
+     годину вночі» коштувало б рівно стільки ж запитів, скільки й
+     щопівгодинний прогін. */
+  if (cron) {
+    const pace = await syncPace(base, hdr);
+    const night = paceIsNight(pace, new Date());
+    const everyMs = (night ? pace.night : pace.day) * 60_000;
+    const since = Date.now() - await lastRunAt(base, hdr);
+    if (since + PACE_GRACE_MS < everyMs) {
+      return reply({ fn: FN_VERSION, cron: true, skipped: 'too soon',
+        pace: { every_min: everyMs / 60_000, night, day: pace.day, night_min: pace.night,
+                window: pace.from + '-' + pace.to, tz_min: pace.tz },
+        since_min: Math.round(since / 60_000),
+        note: 'the schedule ticks more often than the configured pace' });
+    }
   }
 
   let q = 'fb_tokens?select=id,label,token,created_by,team_name,status&order=id.asc';
