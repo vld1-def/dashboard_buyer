@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.09 17:36">
+  <meta name="build" content="build 27.09 21:13">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1793,6 +1793,18 @@ body.route-dash #geo-sidebar-col { min-height: 0; }
   padding: 10px 12px; margin-bottom: 6px;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
 }
+/* Мертвий токен лишається читабельним, але видно, що він не в грі. */
+.fb-row.is-dead { opacity: .62; border-style: dashed; }
+/* Рядок, за яким згорнуті мертві токени. Виглядає як підпис, а не як
+   кнопка дії: натискати його щодня ніхто не мусить. */
+.fb-fold {
+  display: block; width: 100%; text-align: left;
+  margin-top: 2px; padding: 7px 12px; border-radius: 10px;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-muted); background: transparent;
+  border: 1px dashed var(--border);
+}
+.fb-fold:hover { color: var(--text-main); border-color: var(--border-2); }
 .fb-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
 /* Кружечок кольором стану: зелений — працює, жовтий — бракує прав,
    червоний — протух чи відкликаний. Це перше, на що дивишся. */
@@ -3166,6 +3178,14 @@ body[data-route="domains"] #dm-detail {
   overflow: auto;
 }
 
+/* Account, якого токен уже не бачить. Числа в ньому справжні, але
+   заморожені на мить, коли його бачили останній раз, — тож вони
+   притлумлені. Не приховані: саме по них і приходять сюди, коли треба
+   згадати, скільки той кабінет відкрутив. */
+.cab-tr.is-frozen .cab-num,
+.cab-tr.is-frozen .cab-dim { opacity: .55; }
+.cab-tr.is-frozen .cab-id { text-decoration: line-through; text-decoration-color: rgba(168,85,247,.5); }
+
 /* ─── Легкі появи ─────────────────────────────────────────────────────
    Анімуємо ТІЛЬКИ opacity і transform: обидві властивості композитор
    рахує на відеокарті, без перерахунку розкладки. Нічого важкого —
@@ -3760,7 +3780,7 @@ body[data-route="domains"] #dm-detail {
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.09 17:36</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.09 21:13</div>
     </div>
   </aside>
 
@@ -7090,6 +7110,7 @@ function openSettingsModal() {
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
   if (typeof setSubTabInit === 'function') setSubTabInit();
   if (typeof fbLoad === 'function') fbLoad();
+  if (typeof fbPaceLoad === 'function') fbPaceLoad();
   if (typeof fcLoadAutoHide === 'function') fcLoadAutoHide();
 }
 
@@ -12351,6 +12372,39 @@ document.addEventListener('keydown', e => {
           </div>
 
 <div class="set-group">
+            <h3 class="set-gtitle">Sync schedule</h3>
+            <p class="set-gsub">How often the dashboard walks the cabinets. The schedule itself ticks every 30 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
+            <div class="set-row" data-setting="sync pace interval синхронізація темп інтервал">
+              <label class="set-label" for="fb-pace-day">Daytime, every</label>
+              <select id="fb-pace-day" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="120">2 hours</option>
+                <option value="240">4 hours</option>
+              </select>
+            </div>
+            <div class="set-row" data-setting="sync pace night ніч синхронізація">
+              <label class="set-label" for="fb-pace-night">At night, every</label>
+              <select id="fb-pace-night" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="120">2 hours</option>
+                <option value="240">4 hours</option>
+              </select>
+            </div>
+            <div class="set-row" data-setting="night window вікно ночі години">
+              <span class="set-label">Night lasts from / to</span>
+              <span class="flex items-center gap-2">
+                <input type="number" id="fb-pace-from" min="0" max="23" onchange="fbPaceSave()" class="set-input" style="width:64px">
+                <span class="set-hint" style="margin:0">—</span>
+                <input type="number" id="fb-pace-to" min="0" max="23" onchange="fbPaceSave()" class="set-input" style="width:64px">
+                <span class="set-hint" style="margin:0" id="fb-pace-tz"></span>
+              </span>
+            </div>
+            <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. Anything under 30 minutes needs the schedule itself changed (see the alter_job note at the bottom of FB_SYNC_CRON.sql); Facebook counts even refused requests against the limit, so faster is not always more data.</p>
+          </div>
+
+<div class="set-group">
             <h3 class="set-gtitle">Comments under ads</h3>
             <p class="set-gsub">The scheduled run walks the cabinets, finds comments written since it last looked, and sends them to Telegram.</p>
 
@@ -14933,6 +14987,53 @@ async function fbInspect(token) {
   return { scopes, expires_at: expires, accounts, bm, app_id: d.app_id || null, status, note };
 }
 
+/* ── ТЕМП СИНХРОНІЗАЦІЇ ──
+   Розклад у базі стукає щопівгодини й нічого не знає про наші
+   побажання; вирішує сама функція fb-sync, зчитуючи оце налаштування.
+   Через це темп міняється тут, а не в SQL — і людині не потрібен
+   доступ до бази, щоб уночі ходити рідше.
+
+   Зсув часу пишемо разом із вікном: «ніч з 0 до 8» без нього
+   означало б ніч по Гринвічу, тобто не ту, про яку думали. */
+const FB_PACE_DEF = { day: 30, night: 60, from: 0, to: 8 };
+
+window.fbPaceLoad = async function () {
+  const dEl = document.getElementById('fb-pace-day');
+  if (!dEl) return;
+  let v = {};
+  try {
+    const raw = await getTeamSetting('fb_sync_pace');
+    v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+  } catch (e) { v = {}; }
+  const pick = (id, val) => { const el = document.getElementById(id); if (el) el.value = String(val); };
+  pick('fb-pace-day', v.day || FB_PACE_DEF.day);
+  pick('fb-pace-night', v.night || FB_PACE_DEF.night);
+  pick('fb-pace-from', v.from == null ? FB_PACE_DEF.from : v.from);
+  pick('fb-pace-to', v.to == null ? FB_PACE_DEF.to : v.to);
+  const tz = document.getElementById('fb-pace-tz');
+  // Показуємо, за чиїм годинником міряється ніч: інакше «з 0 до 8»
+  // читається як «десь із нуля до восьми», і виглядає, ніби воно бреше.
+  if (tz) tz.textContent = 'your clock, UTC'
+    + (-new Date().getTimezoneOffset() >= 0 ? '+' : '\u2212')
+    + Math.abs(-new Date().getTimezoneOffset() / 60);
+};
+
+window.fbPaceSave = async function () {
+  const num = (id, lo, hi, fb) => {
+    const n = Number(document.getElementById(id)?.value);
+    return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n) : fb;
+  };
+  const pace = {
+    day:   num('fb-pace-day', 5, 1440, FB_PACE_DEF.day),
+    night: num('fb-pace-night', 5, 1440, FB_PACE_DEF.night),
+    from:  num('fb-pace-from', 0, 23, FB_PACE_DEF.from),
+    to:    num('fb-pace-to', 0, 23, FB_PACE_DEF.to),
+    tz:    -new Date().getTimezoneOffset()
+  };
+  await setTeamSetting('fb_sync_pace', JSON.stringify(pace));
+  if (typeof setSaved === 'function') setSaved();
+};
+
 /* ── список ── */
 
 const FB_TONE = { ok: 'var(--ok)', expired: 'var(--bad)', error: 'var(--bad)',
@@ -14969,6 +15070,19 @@ function fbCount() {
   el.classList.toggle('hidden', !fbRows.length);
 }
 
+/* ── МЕРТВІ ТОКЕНИ ЗГОРТАЄМО ──
+   Токен, який Facebook уже не приймає, з парку не зникає: він
+   лишається в списку назавжди й відтісняє робочі вниз. Але й видаляти
+   його за людину не можна — у ньому лежить назва, за якою підписані
+   агент, браузер і БМ у кабінетах.
+
+   Тому: робочі зверху, мертві — за одним рядком «show». Не приховані,
+   а згорнуті: клікнув і бачиш усе, разом із кнопкою Remove.
+   Під пошуком не згортаємо нічого — шукають і мертвий так само. */
+const FB_DEAD = ['error', 'expired'];
+let fbShowDead = false;
+window.fbToggleDead = function () { fbShowDead = !fbShowDead; fbPaint(); };
+
 window.fbPaint = function () {
   const box = document.getElementById('fb-list');
   if (!box) return;
@@ -14979,12 +15093,21 @@ window.fbPaint = function () {
       .some(v => String(v || '').toLowerCase().includes(q)));
   if (!shown.length) { box.innerHTML = '<p class="set-hint">Nothing matches that.</p>'; return; }
 
-  box.innerHTML = shown.map(r => {
+  const dead = q ? [] : shown.filter(r => FB_DEAD.includes(String(r.status)));
+  const live = q ? shown : shown.filter(r => !FB_DEAD.includes(String(r.status)));
+  const fold = !dead.length ? '' : `
+    <button type="button" class="fb-fold" onclick="fbToggleDead()">
+      ${fbShowDead ? '\u2212' : '+'} ${dead.length} token(s) Facebook no longer accepts${
+        fbShowDead ? '' : ' \u2014 show'}</button>`;
+  const rows = live.concat(fbShowDead ? dead : []);
+
+  box.innerHTML = (live.length ? '' : '<p class="set-hint">All tokens here have lost access.</p>')
+    + rows.map(r => {
     const accs = Array.isArray(r.accounts) ? r.accounts.length : 0;
     const exp = r.expires_at
       ? new Date(r.expires_at).toLocaleDateString()
       : 'never expires';
-    return `<div class="fb-row">
+    return `<div class="fb-row ${FB_DEAD.includes(String(r.status)) ? 'is-dead' : ''}">
       <div class="fb-main">
         <span class="fb-dot" style="background:${FB_TONE[r.status] || FB_TONE.unknown}"></span>
         <span class="fb-label">${fbEsc(r.label)}</span>
@@ -15000,7 +15123,7 @@ window.fbPaint = function () {
         <button type="button" class="set-btn" onclick="fbDrop(${r.id})">Remove</button>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + fold;
 };
 
 window.fbShow = function (id) {
@@ -16089,10 +16212,14 @@ const CAB_STATE = {
   issue:   { label: 'Issue',     dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.10)', bd: 'rgba(245,158,11,.25)' },
   banned:  { label: 'Banned',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.14)',  bd: 'rgba(239,68,68,.32)' },
   review:  { label: 'In review', dot: '#38BDF8', tone: 'text-sky-400',     soft: 'rgba(56,189,248,.12)', bd: 'rgba(56,189,248,.30)' },
-  idle:    { label: 'Never ran', dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' }
+  idle:    { label: 'Never ran', dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' },
+  /* Токен більше не бачить цей кабінет. Це не «нема кабінета» — це
+     «нема очей»: числа лишились останніми відомими, і саме заради них
+     рядок і потрібен. */
+  notoken: { label: 'No token',   dot: '#A855F7', tone: 'text-fuchsia-400', soft: 'rgba(168,85,247,.12)', bd: 'rgba(168,85,247,.30)' }
 };
 // Порядок = що першим потрапляє на очі. Зверху те, що вимагає дії.
-const CAB_ORDER = ['banned', 'silent', 'issue', 'review', 'running', 'idle'];
+const CAB_ORDER = ['banned', 'notoken', 'silent', 'issue', 'review', 'running', 'idle'];
 /* «Working» — те, з чим справді працюєш. Навмисне НЕ тільки running:
    silent і issue якраз і є ті, що вимагають уваги, ховати їх за
    замовчуванням було б рівно навпаки до сенсу сторінки. Ховаємо лише
@@ -16510,6 +16637,11 @@ function cabSpendIn(fb) {
   if (!fb) return null;
   const id = String(fb.account_id || '');
   if (!cabDaysErr) return cabDays[id] || 0;
+  /* Запасний шлях, коли історії ще немає: сьогоднішнє число беремо з
+     самого fb_accounts. Але в кабінета, якого токен уже не бачить, воно
+     заморожене — і видати його за «сьогодні» означало б додати вчорашні
+     гроші до сьогоднішньої суми. Ми цього не знаємо, отже null. */
+  if (fb.missing_since) return null;
   return cabRange.key === 'today' ? (Number(fb.spend_today) || 0) : null;
 }
 
@@ -16633,6 +16765,11 @@ function cabFacts() {
    доброго життя: автоматика, яка знімає мітку людини, одного разу вже
    стерла висновок, якого сама зробити не вміла. */
 function cabStateOf(row, f, fb) {
+  /* Перше й найважливіше: чи ми взагалі ще бачимо цей кабінет. Поки
+     токен його не бачить, усе інше в рядку — вчорашня газета, і стан
+     мусить казати саме це, а не показувати «Running» за замороженим
+     спендом. */
+  if (fb && fb.missing_since) return 'notoken';
   const byFb = fb ? CAB_FB_STATE[String(fb.status || 'unknown')] : '';
   if (byFb === 'banned') return 'banned';
   const st = String(row.status || 'active').toLowerCase();
@@ -16660,6 +16797,15 @@ function cabStateOf(row, f, fb) {
    Без цього «Banned» від Facebook і «Banned», який хтось клацнув рік
    тому, виглядають однаково, а варті вони різного. */
 function cabWhy(c) {
+  if (c.fb && c.fb.missing_since) {
+    const last = String(c.fb.status || '') || 'nothing';
+    return { mark: '\u2716',
+      text: 'No token sees this cabinet since ' + String(c.fb.missing_since).slice(0, 16).replace('T', ' ')
+          + '. Facebook last said: ' + last
+          + (c.fb.disable_reason ? ' \u00b7 ' + c.fb.disable_reason : '')
+          + '. The numbers below are frozen at that moment \u2014 nothing about this cabinet updates '
+          + 'any more. Its spend history and your own notes stay as they are.' };
+  }
   const byFb = c.fb ? CAB_FB_STATE[String(c.fb.status || 'unknown')] : '';
   if (byFb && (c.state === 'banned' || c.state === 'issue')) {
     const why = c.fb.disable_reason ? ' · ' + c.fb.disable_reason : '';
@@ -16711,6 +16857,10 @@ function cabMake(row, fb, id, f) {
   const state = cabStateOf(row, f, fb);
   return { row, fb, id, x, state, tok: cabFromToken(fb),
            silent: (state === 'silent' && x.last) ? cabDayDiff(x.last, f.lastDay) : 0,
+           // скільки днів як токен його не бачить — щоб стояло в підписі стану
+           lost: (fb && fb.missing_since)
+             ? cabDayDiff(String(fb.missing_since).slice(0, 10), f.lastDay || new Date().toISOString().slice(0, 10))
+             : 0,
            age: x.first ? cabDayDiff(x.first, x.last) + 1 : 0 };
 }
 
@@ -16863,9 +17013,17 @@ function cabRender() {
     const fb = cabFbFor(r);
     if (fb) mineBy.set(String(fb.account_id), r);
   });
+  /* ЗНИКЛИЙ КАБІНЕТ ЛИШАЄТЬСЯ В СПИСКУ.
+     Тут стояв .filter(a2 => !a2.missing_since) — і кабінет, у якого
+     токен втратив доступ, зникав з екрана разом зі своїм спендом.
+     У базі рядок при цьому цілий (fb-sync навмисне його не видаляє),
+     але побачити його було нізвідки: ні скільки він відкрутив, ні що
+     Facebook казав про нього останнім. Виглядало як видалення.
+
+     Тепер він у списку, зі станом «No token», і його числа підписані
+     як заморожені. У «Working» він не потрапляє — цим і тримається
+     обіцянка, що робочий зріз показує тільки живе. */
   cabAll = cabFb
-    // Зниклий кабінет — не живий кабінет.
-    .filter(a2 => !a2.missing_since)
     .map(a2 => {
       const row = mineBy.get(String(a2.account_id));
       const id = row ? String(row.account_id || '').trim() : String(a2.account_id);
@@ -17060,7 +17218,9 @@ function cabRowHtml(c) {
   const numTip = (v, tip) => !tip ? num(v)
     : `<td class="ta-c cab-num has-tip" title="${cabEsc(tip)}">${
         v == null ? '<span class="cab-na">—</span>' : v}</td>`;
-  const label = c.state === 'silent' ? `${S.label} · ${c.silent}d` : S.label;
+  const label = c.state === 'silent' ? `${S.label} · ${c.silent}d`
+    : (c.state === 'notoken' && c.lost > 0) ? `${S.label} · ${c.lost}d`
+    : S.label;
   /* Account, якого немає у твоєму списку, підписуємо його назвою з
      Facebook: голий номер нічого не каже, а назва — каже. */
   const primary = c.row._new ? (c.fb.name || c.id) : c.id;
@@ -17073,7 +17233,7 @@ function cabRowHtml(c) {
   const today = inRange == null ? '<span class="cab-na" title="No spend history yet — see the note above the tiles">?</span>'
     : inRange > 0 ? cabMoneyCur(inRange, c.fb.currency)
     : '<span class="cab-na">—</span>';
-  return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''}"
+  return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''} ${c.state === 'notoken' ? 'is-frozen' : ''}"
       onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
     <td>
@@ -17092,7 +17252,8 @@ function cabRowHtml(c) {
         cabPending(c.fb)} ad(s) yet. Nothing to do but wait — it usually takes minutes, sometimes hours.">${
         cabPending(c.fb)} in review</span>` : ''}
       ${c.fb && String(c.fb.status) === 'review' ? `<span class="cab-chip is-gone" title="Facebook put the ad account ITSELF under review, not just its ads. Payments and delivery can stop while it lasts.">account in review</span>` : ''}
-      ${c.fb && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
+      ${c.fb && c.fb.missing_since ? `<span class="cab-chip is-gone" title="${cabEsc(why.text)}">frozen</span>` : ''}
+      ${c.fb && !c.fb.missing_since && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
     </td>
     <td class="cab-dim">${c.row.provider_name
       ? cabEsc(c.row.provider_name)
