@@ -135,9 +135,20 @@ async function handle(req: Request): Promise<Response> {
   if (!me.id) return reply({ error: 'could not verify who is calling' }, 401);
 
   let accountId = '';
+  /* ids — точкова зупинка: одна кампанія, адсет чи оголошення, вибрані
+     руками в розборі кабінета. Без них функція працює як раніше й
+     глушить кабінет цілком.
+
+     Стеля на 200 — щоб «вимкни це» не перетворилось на «вимкни все»
+     через випадково зібраний масив. */
+  let wantIds: string[] = [];
   try {
     const body = await req.json();
     accountId = String(body?.account_id || '').replace(/\D/g, '');
+    wantIds = (Array.isArray(body?.ids) ? body.ids : [])
+      .map((x: unknown) => String(x).trim())
+      .filter((x: string) => /^\d+$/.test(x))
+      .slice(0, 200);
   } catch (_e) { /* тіла може не бути */ }
   if (!accountId) return reply({ error: 'account_id is required' }, 400);
 
@@ -180,6 +191,43 @@ async function handle(req: Request): Promise<Response> {
          + 'Add that permission to the system user and re-add the token.' }, 400);
 
   let live: Json[];
+  if (wantIds.length) {
+    /* ЧУЖОГО НЕ ЧІПАЄМО. Номер кампанії — публічне число, і повірити
+       тілу запиту означало б дати будь-кому глушити будь-що. Тому
+       звіряємо зі знімком ЦЬОГО кабінета під ЦИМ uid: вимкнути можна
+       рівно те, що ми самі бачили всередині твого кабінета.
+
+       Побічно це ще й страхує від помилки в назві: id, якого в знімку
+       немає, до Facebook навіть не поїде. */
+    let snap: Json[] = [];
+    try {
+      snap = await pgGet(base, hdr, 'fb_ad_today'
+        + '?select=ad_id,name,adset_id,adset_name,campaign_id,campaign_name'
+        + '&created_by=eq.' + encodeURIComponent(me.id)
+        + '&account_id=eq.' + encodeURIComponent(accountId));
+    } catch (e) {
+      const msg = (e as Error).message;
+      return reply({ error: /fb_ad_today|does not exist|42P01/i.test(msg)
+        ? 'the snapshot table does not exist yet — run block 1 of FB_RULES.sql'
+        : msg }, 400);
+    }
+    const names = new Map<string, string>();
+    snap.forEach(r => {
+      const put = (id: unknown, nm: unknown) => {
+        const k = String(id || '');
+        if (k && !names.has(k)) names.set(k, String(nm || k));
+      };
+      put(r.ad_id, r.name);
+      put(r.adset_id, r.adset_name);
+      put(r.campaign_id, r.campaign_name);
+    });
+    const allowed = wantIds.filter(id => names.has(id));
+    const refused = wantIds.filter(id => !names.has(id));
+    if (!allowed.length) return reply({ paused: 0, failed: 0, total: 0,
+      problems: refused.slice(0, 5).map(id => id + ': not in the snapshot of this cabinet'),
+      note: 'nothing to switch off: press Sync now, then try again' }, 400);
+    live = allowed.map(id => ({ id, name: names.get(id) }));
+  } else {
   try {
     live = await activeCampaigns(tok.token, accountId);
   } catch (e) {
@@ -187,6 +235,7 @@ async function handle(req: Request): Promise<Response> {
   }
   if (!live.length) return reply({ paused: 0, failed: 0, total: 0,
     note: 'nothing was running in this cabinet' });
+  }
 
   const deadline = Date.now() + DEADLINE_MS;
   const done: string[] = [];
@@ -225,7 +274,8 @@ async function handle(req: Request): Promise<Response> {
         body: JSON.stringify([{
           team_name: acc.team_name, account_id: accountId,
           kind: 'pause', to_state: 'paused',
-          note: done.length + ' campaign(s) paused'
+          note: done.length + (wantIds.length ? ' item(s) switched off by hand'
+                                              : ' campaign(s) paused')
               + (me.email ? ' by ' + me.email : '')
               + (bad.length ? ', ' + bad.length + ' failed' : ''),
           source: 'fb'
