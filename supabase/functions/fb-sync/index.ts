@@ -51,7 +51,7 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 
 // Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 5 запитів
 // на кабінет виходить 10 кабінетів за виклик.
-const PER_ACC = 5;
+const PER_ACC = 6;
 const BATCH_MAX = 50;   // 10 кабінетів за виклик
 
 /* Скільки днів витрат забираємо щоразу. Вікно ковзне, записуємо
@@ -353,6 +353,26 @@ function urlsFor(actId: string, tz: string): string[] {
       + '&time_increment=1&limit=' + (HISTORY_DAYS + 10)
       + '&time_range=' + encodeURIComponent(JSON.stringify({
           since: shiftDay(todayIn(tz), -(HISTORY_DAYS - 1)), until: todayIn(tz) })),
+    /* ЦИФРИ ПО КОЖНОМУ АКТИВНОМУ ОГОЛОШЕННЮ — для правил автопаузи.
+
+       Раніше по них ходила окрема функція, своїм розкладом: на сорока
+       кабінетах це були ще сто двадцять запитів на годину поверх наших,
+       і за ті самі дані. Тепер це один підзапит у тому самому пакеті, а
+       fb-rules читає готове з бази й до Facebook іде ЛИШЕ щоб вимкнути.
+
+       Окремим підзапитом, а не полем у списку вище, навмисно: там
+       перелічуються всі оголошення кабінета заради Сторінок і статусів,
+       і insights на п'ятисотенному списку Facebook час від часу
+       відмовляє цілком («please reduce the amount of data»). Тоді разом
+       із цифрами загубились би й підрахунки живого. Тут відмова коштує
+       тільки правилам, і рівно на один прогін.
+
+       actions лишаємо сирими: що саме вважати лідом — налаштування
+       правил, і воно міняється без нового походу в Facebook. */
+    act + '/ads?effective_status=' + encodeURIComponent(JSON.stringify(['ACTIVE']))
+      + '&limit=' + LIST_LIMIT
+      + '&fields=' + encodeURIComponent('name,adset_id,campaign_id,'
+        + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
   ];
 }
 
@@ -365,6 +385,14 @@ const total = (o: Json | null | undefined): number | null =>
 type Day = { day: string; spend: number | null;
              impressions: number | null; clicks: number | null };
 
+/* Знімок одного активного оголошення на зараз. Лежить у fb_ad_today,
+   звідки його читають правила. Нічого зайвого: назва (щоб у
+   повідомленні було видно, що саме вимкнули), батьки (щоб правило
+   могло скластись до адсета чи кампанії) і числа. */
+type AdSnap = { ad_id: string; name: string; adset_id: string; campaign_id: string;
+                spend: number; imps: number; clicks: number; link_clicks: number;
+                actions: Json[] };
+
 /* Скільки оголошень і скільки різних постів кабінета ведуть на цю
    Сторінку. Пости рахуємо окремо від оголошень навмисно: один пост
    часто крутять кілька оголошень, і «12 оголошень на 2 пости» — зовсім
@@ -372,7 +400,8 @@ type Day = { day: string; spend: number | null;
 type PageUse = { ads: number; posts: Set<string> };
 
 function readParts(parts: (Json | null)[]):
-    { patch: Json; err: string; days: Day[] | null; pages: Map<string, PageUse> | null } {
+    { patch: Json; err: string; days: Day[] | null;
+      pages: Map<string, PageUse> | null; live: AdSnap[] | null } {
   const patch: Json = {};
   let err = '';
 
@@ -517,7 +546,29 @@ function readParts(parts: (Json | null)[]):
       .filter((d: Day) => /^\d{4}-\d{2}-\d{2}$/.test(d.day));
   }
 
-  return { patch, err, days, pages };
+  /* Знімок активних оголошень. null означає «не приїхало» — і тоді в
+     базі мусить лишитись минулий знімок, а не порожнеча: правила самі
+     побачать за часом, що він застарів, і не діятимуть. Порожній масив
+     — інша річ: кабінет справді нічого не крутить, і старі рядки треба
+     прибрати, бо інакше правило вимикало б уже вимкнене. */
+  const livePart = parts[5];
+  let live: AdSnap[] | null = null;
+  if (livePart && livePart.code === 200) {
+    live = (Array.isArray(livePart.body?.data) ? livePart.body.data : []).map((r: Json) => {
+      const row = ((r.insights?.data || [])[0]) || {};
+      return {
+        ad_id: String(r.id || ''), name: String(r.name || ''),
+        adset_id: String(r.adset_id || ''), campaign_id: String(r.campaign_id || ''),
+        spend: Number(row.spend) || 0,
+        imps: Number(row.impressions) || 0,
+        clicks: Number(row.clicks) || 0,
+        link_clicks: Number(row.inline_link_clicks) || 0,
+        actions: Array.isArray(row.actions) ? row.actions : []
+      };
+    }).filter((a: AdSnap) => a.ad_id);
+  }
+
+  return { patch, err, days, pages, live };
 }
 
 /* ── PostgREST ──
@@ -586,7 +637,10 @@ type Outcome = { accounts: number; failed: number; changed: number;
                  days: number; noHistory: number; historyError: string;
                  // Чому не вдалось прочитати попередній стан кабінетів.
                  // Порожньо — порівняння працює, сповіщення живі.
-                 knownError: string };
+                 knownError: string;
+                 // Скільки активних оголошень склали в знімок для правил
+                 // і що завадило, якщо завадило.
+                 snapshot: number; snapshotError: string };
 
 /* Привід написати людині. owner — хто саме має це прочитати: кабінети
    належать конкретним баєрам, і сповіщення ходять так само. */
@@ -623,7 +677,8 @@ function cabTag(r: Json, t: TokenRow): string {
 async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
-                        days: 0, noHistory: 0, historyError: '', knownError: '' };
+                        days: 0, noHistory: 0, historyError: '', knownError: '',
+                        snapshot: 0, snapshotError: '' };
 
   let accs: Json[];
   try {
@@ -681,6 +736,13 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   const now = new Date().toISOString();
   const rows: Json[] = [];
   const dayRows: Json[] = [];
+  /* Знімок активних оголошень для правил: рядки й перелік кабінетів,
+     по яких він цього разу приїхав. Друге потрібне саме тому, що
+     видаляти старе можна ТІЛЬКИ там, де ми справді подивились: інакше
+     кабінет, до якого не дійшла черга, лишився б без знімка, і правила
+     вважали б, що в ньому нічого не крутиться. */
+  const snapRows: Json[] = [];
+  const snapSeen: string[] = [];
   // кабінет -> Сторінка -> скільки оголошень і постів
   const pageUse = new Map<string, Map<string, PageUse>>();
   const changes: { account_id: string; from: string; to: string; note: string }[] = [];
@@ -727,8 +789,17 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       break;
     }
     slice.forEach((x, k) => {
-      const { patch, err, days, pages } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      const { patch, err, days, pages, live } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
       if (pages) pageUse.set(x.id, pages);
+      if (live) {
+        snapSeen.push(x.id);
+        live.forEach(a => snapRows.push({
+          created_by: t.created_by, team_name: t.team_name, account_id: x.id,
+          ad_id: a.ad_id, name: a.name, adset_id: a.adset_id, campaign_id: a.campaign_id,
+          spend: a.spend, impressions: a.imps, clicks: a.clicks,
+          link_clicks: a.link_clicks, actions: a.actions, seen_at: now
+        }));
+      }
       Object.assign(x.row, patch);
       if (err) { x.row.sync_error = err; out.failed++; }
       rows.push(x.row);
@@ -792,6 +863,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   } catch (e) {
     out.historyError = (e as Error).message;
   }
+  await saveSnap(base, hdr, t, snapRows, snapSeen, now, out);
   await savePages(base, hdr, t, pageUse, now);
   await markMissing(base, hdr, t, accs.map(a => String(a.account_id || '')), alerts);
   await noteChanges(base, hdr, t.team_name || '', changes);
@@ -863,6 +935,41 @@ async function savePages(base: string, hdr: Json, t: TokenRow,
       });
     }
   } catch (_e) { /* список Сторінок — надбудова, не привід валити імпорт */ }
+}
+
+/* ── знімок активних оголошень ──
+
+   Пишемо його тут, а не в fb-rules, бо дані вже в руках: другий похід у
+   Facebook за тим самим — це просто подвійна витрата лімітів.
+
+   Таблиці може ще не бути (FB_RULES.sql не виконано) — і це не привід
+   валити імпорт: кабінети важливіші за правила. Причина їде у відповідь
+   функції, а сторінка Rules прямо каже, чого бракує.
+
+   Прибираємо те, чого цього разу не було: оголошення вимкнули або
+   видалили, і в знімку йому місця немає — інакше правило вимикало б
+   уже вимкнене й писало про це в Telegram. Видаляємо ТІЛЬКИ по
+   кабінетах, які щойно обійшли. */
+async function saveSnap(base: string, hdr: Json, t: TokenRow, rows: Json[],
+                        seen: string[], now: string, out: Outcome): Promise<void> {
+  if (!seen.length) return;
+  try {
+    if (rows.length)
+      await pgUpsert(base, hdr, 'fb_ad_today', 'created_by,ad_id', rows);
+    const ids = seen.filter(x => /^\d+$/.test(x));
+    if (ids.length) {
+      const res = await fetch(base + '/rest/v1/fb_ad_today'
+        + '?created_by=eq.' + encodeURIComponent(t.created_by)
+        + '&account_id=in.(' + ids.join(',') + ')'
+        + '&seen_at=lt.' + encodeURIComponent(now), {
+        method: 'DELETE', headers: { ...hdr, Prefer: 'return=minimal' }
+      });
+      if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
+    }
+    out.snapshot = rows.length;
+  } catch (e) {
+    out.snapshotError = (e as Error).message;
+  }
 }
 
 /* ── кабінет, який зник ──
@@ -1283,6 +1390,7 @@ async function handle(req: Request): Promise<Response> {
   const alerts: Alert[] = [];
   let accounts = 0, failed = 0, changed = 0, done = 0;
   let days = 0, noHistory = 0, historyError = '';
+  let snapshot = 0, snapshotError = '';
   const problems: string[] = [];
   let throttled = false;
 
@@ -1300,6 +1408,8 @@ async function handle(req: Request): Promise<Response> {
     done++;
     accounts += r.accounts; failed += r.failed; changed += r.changed;
     days += r.days; noHistory += r.noHistory;
+    snapshot += r.snapshot;
+    if (r.snapshotError && !snapshotError) snapshotError = r.snapshotError;
     if (r.historyError && !historyError) historyError = r.historyError;
     if (r.error) problems.push(t.label + ': ' + r.error);
     /* Порівняння зі станом минулого прогону відвалилось. Це не «трохи
@@ -1333,6 +1443,13 @@ async function handle(req: Request): Promise<Response> {
     cron, tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
     history,
+    /* Знімок для правил. Мовчати про його відсутність не можна: без
+       нього правила нічого не бачать, а виглядало б це як «правила не
+       працюють», і шукали б у геть іншому місці. */
+    snapshot: snapshotError
+      ? (/fb_ad_today|does not exist|42P01/i.test(snapshotError)
+          ? 'no table yet — run FB_RULES.sql' : snapshotError)
+      : snapshot + ' active ad(s)',
     telegram,
     problems: problems.slice(0, 10)
   });

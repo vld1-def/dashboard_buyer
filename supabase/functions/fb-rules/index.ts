@@ -24,6 +24,15 @@
    насправді ллє. Усе, що ми рахуємо, приходить у тій самій відповіді,
    що й спенд, тобто одного віку з ним.
 
+   ЗВІДКИ ЦІ ЦИФРИ БЕРУТЬСЯ. Не звідси. Їх складає fb-sync у fb_ad_today
+   тим самим пакетом, яким обходить кабінети: список оголошень він тягнув
+   і до правил — заради статусів і Сторінок, — тож цифри доїхали одним
+   підзапитом, а не окремим обходом парку. Ця функція читає готове.
+
+   Отже до Facebook вона іде РІВНО один раз і рівно щоб вимкнути. Свіжість
+   знімка перевіряє сама: застарів — не діє й каже про це, бо вимикати за
+   годинними числами означало б гасити те, що вже виправили.
+
    Розгортання:
      supabase functions deploy fb-rules
      (секрети: RULES_CRON_SECRET, TG_BOT_TOKEN — див. FB_RULES.sql)
@@ -39,6 +48,15 @@ const FN_VERSION = 'rules-1';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
+/* Наскільки старим може бути знімок, щоб на нього ще можна було
+   спиратись. fb-sync освіжає його щопівгодини вдень і раз на годину
+   вночі, тож 90 хвилин — це «синхронізація пропустила один прогін»,
+   а не «дані вчорашні». Старіше — не діємо: вимкнути оголошення за
+   годинними числами означає гасити те, що людина вже виправила. */
+const SNAP_MAX_AGE_MS = 90 * 60_000;
+// Окремою функцією, щоб це рішення можна було перевірити тестом, а не
+// вірити йому на слово: воно вирішує, діяти чи не діяти взагалі.
+function snapTooOld(ageMs: number): boolean { return !(ageMs <= SNAP_MAX_AGE_MS); }
 const BATCH_MAX = 50;       // стеля пакета Graph
 
 type Json = Record<string, any>;
@@ -61,29 +79,6 @@ async function whoAmI(base: string, anon: string, auth: string): Promise<string>
   if (!res.ok) return '';
   const u = await res.json().catch(() => ({}));
   return String(u?.id || '');
-}
-
-/* Токен — у тілі POST, не в адресі: адреси з токеном осідають у логах
-   проксі та в Referer. Graph приймає GET методом POST (method=GET). */
-async function graph(path: string, token: string, params: Json, verb = 'GET'): Promise<Json> {
-  const body = new URLSearchParams({ access_token: token });
-  if (verb === 'GET') body.set('method', 'GET');
-  for (const [k, v] of Object.entries(params)) if (v != null) body.set(k, String(v));
-  const res = await fetch(GRAPH + path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: body.toString()
-  });
-  const j = await res.json().catch(() => ({}));
-  if (j && j.error) {
-    const e = j.error;
-    const code = Number(e?.code || 0);
-    let msg = String(e?.error_user_msg || e?.message || 'Graph API error');
-    if (code && !msg.includes('#' + code)) msg += ' (#' + code + ')';
-    throw new Error(msg);
-  }
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return j;
 }
 
 async function pgGet(base: string, hdr: Json, path: string): Promise<Json[]> {
@@ -221,12 +216,12 @@ function addAgg(to: Agg, from: Agg): void {
   to.linkClicks += from.linkClicks; to.leads += from.leads;
 }
 
-/* Один запит на кабінет: список активних оголошень разом із їхніми
-   сьогоднішніми числами. Рівні адсета й кампанії складаємо з тих самих
-   оголошень, а не питаємо окремо — це втричі менше запитів до Facebook,
-   а ліміти в нього спільні на застосунок. */
-function insightsOf(ins: Json, leadActions: string[]): Agg {
-  const row = (ins && Array.isArray(ins.data) ? ins.data[0] : null) || {};
+/* Рядок знімка → числа, якими міряють правила.
+
+   Ліди складаємо тут, а не при записі: що саме вважати лідом — це
+   налаштування, і людина міняє його галочкою. Якби ми записували вже
+   порахуване, кожна така галочка вимагала б нового походу в Facebook. */
+function aggOf(row: Json, leadActions: string[]): Agg {
   const acts: Json[] = Array.isArray(row.actions) ? row.actions : [];
   let leads = 0;
   acts.forEach(a => {
@@ -236,26 +231,28 @@ function insightsOf(ins: Json, leadActions: string[]): Agg {
     spend: Number(row.spend) || 0,
     imps: Number(row.impressions) || 0,
     clicks: Number(row.clicks) || 0,
-    linkClicks: Number(row.inline_link_clicks) || 0,
+    linkClicks: Number(row.link_clicks) || 0,
     leads
   };
 }
 
-async function liveAds(token: string, account: string, leadActions: string[]): Promise<Ent[]> {
-  const j = await graph('/act_' + account + '/ads', token, {
-    // effective_status фільтрує на боці Facebook: вимикати вимкнене
-    // немає сенсу, а тягнути його — витрачати ліміт.
-    effective_status: JSON.stringify(['ACTIVE']),
-    limit: ADS_LIMIT,
-    fields: 'id,name,adset_id,campaign_id,'
-          + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'
+/* Знімок активних оголошень кабінета — з бази, не з Facebook.
+   Порожньо означає «кабінет нічого не крутить»: fb-sync прибирає з
+   знімка все, що вимкнули. */
+async function snapOf(base: string, hdr: Json, account: string, leadActions: string[]):
+    Promise<{ ents: Ent[]; age: number }> {
+  const rows = await pgGet(base, hdr, 'fb_ad_today'
+    + '?select=ad_id,name,adset_id,campaign_id,spend,impressions,clicks,link_clicks,actions,seen_at'
+    + '&account_id=eq.' + encodeURIComponent(account) + '&limit=' + ADS_LIMIT);
+  let newest = 0;
+  const ents = rows.map(r => {
+    const at = Date.parse(String(r.seen_at || ''));
+    if (Number.isFinite(at) && at > newest) newest = at;
+    return { id: String(r.ad_id), name: String(r.name || ''), level: 'ad', account,
+             adset: String(r.adset_id || ''), campaign: String(r.campaign_id || ''),
+             agg: aggOf(r, leadActions) };
   });
-  const rows: Json[] = Array.isArray(j.data) ? j.data : [];
-  return rows.map(a => ({
-    id: String(a.id), name: String(a.name || ''), level: 'ad', account,
-    adset: String(a.adset_id || ''), campaign: String(a.campaign_id || ''),
-    agg: insightsOf(a.insights, leadActions)
-  }));
+  return { ents, age: newest ? Date.now() - newest : Infinity };
 }
 
 /* Сутності того рівня, на якому працює правило. Назву для адсета й
@@ -485,7 +482,7 @@ Deno.serve(async (req) => {
   const deadline = Date.now() + DEADLINE_MS;
   const problems: string[] = [];
   const hits: Hit[] = [];
-  let scanned = 0, cabinets = 0;
+  let scanned = 0, cabinets = 0, stale = 0;
 
   for (const t of tokens) {
     if (Date.now() > deadline) { problems.push('ran out of time'); break; }
@@ -507,8 +504,25 @@ Deno.serve(async (req) => {
       cabinets++;
 
       let ads: Ent[];
-      try { ads = await liveAds(String(t.token), account, leads); }
-      catch (e) { problems.push(account + ': ' + (e as Error).message); continue; }
+      try {
+        const snap = await snapOf(base, hdr, account, leads);
+        if (snapTooOld(snap.age)) {
+          /* Не діємо й кажемо чому. Мовчання тут було б найгіршим:
+             виглядало б як «правила не працюють», а шукали б причину
+             в правилах, а не в синхронізації. */
+          stale++;
+          problems.push(account + ': the snapshot is '
+            + (snap.age === Infinity ? 'missing' : Math.round(snap.age / 60000) + ' min old')
+            + ' — press Sync now on Cabinets, or check the fb-sync schedule');
+          continue;
+        }
+        ads = snap.ents;
+      } catch (e) {
+        const msg = (e as Error).message;
+        problems.push(account + ': ' + (/fb_ad_today|does not exist|42P01/i.test(msg)
+          ? 'no snapshot table yet — run FB_RULES.sql' : msg));
+        continue;
+      }
       scanned += ads.length;
 
       for (const r of mine) {
@@ -539,6 +553,9 @@ Deno.serve(async (req) => {
 
   return reply({
     fn: FN_VERSION, cron, rules: use.length, cabinets, ads: scanned,
+    // Кабінети, які пропустили через застарілий знімок — щоб «нічого не
+    // вимкнулось» не читалось як «правила не спрацювали».
+    stale,
     paused: hits.filter(h => !h.dry && h.ok).length,
     would_pause: hits.filter(h => h.dry).length,
     failed: hits.filter(h => !h.dry && !h.ok).length,
