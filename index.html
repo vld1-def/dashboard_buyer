@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 14:05">
+  <meta name="build" content="build 28.09 14:16">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3157,6 +3157,93 @@ body[data-route="cabinets"] #cab-detail {
 }
 #team-first-run.hidden { display: none; }
 #team-first-run > .card { width: 100%; max-width: 380px; }
+
+/* ═══════════ ЕКРАН ЗАВАНТАЖЕННЯ ═══════════
+
+   До нього сторінка показувала себе недобудованою: каркас уже
+   намальований, у шапці «Loading…», у смузі прогресу чуже число
+   ($40,000 за замовчуванням), а посеред колонки крутилось коліщатко.
+   Виглядало це не як завантаження, а як поламані дані — тим паче що
+   числа-заглушки читаються як справжні.
+
+   Тому накриваємо все матовим склом: видно, що сторінка є й вона
+   жива, але читати з неї поки нічого. Блюр тут не прикраса — він
+   прибирає саме ту ваду, через яку заглушку можна було сплутати з
+   даними.
+
+   z-index навмисно НИЖЧИЙ за екран входу (999) і за перший запуск
+   (998): обидва вони непрозорі на весь екран, тож просто накривають
+   скло собою. Ховати й повертати його вручну не треба — а отже,
+   немає й шансу забути повернути. */
+#boot {
+  position: fixed; inset: 0; z-index: 990;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(26px) saturate(115%);
+  -webkit-backdrop-filter: blur(26px) saturate(115%);
+  transition: opacity .38s ease, backdrop-filter .38s ease;
+}
+
+/* Без підтримки backdrop-filter розмивати нічим — тоді краще чесно
+   закрити фон, ніж лишити напівпрозорий серпанок поверх заглушок. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #boot { background: var(--bg); }
+}
+
+/* Зникає плавно, і лише після цього йде з дерева — щоб не перехоплювати
+   кліки по вже готовому дашборду. */
+#boot.is-done { opacity: 0; backdrop-filter: blur(0); pointer-events: none; }
+
+.boot-box {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; width: 100%; max-width: 260px; text-align: center;
+}
+
+.boot-logo {
+  width: 54px; height: 54px; border-radius: 17px;
+  display: grid; place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--info));
+  box-shadow: 0 10px 34px color-mix(in srgb, var(--accent) 38%, transparent);
+  animation: boot-breathe 2.4s ease-in-out infinite;
+}
+.boot-logo svg { width: 27px; height: 27px; }
+
+/* Дихання, а не обертання: коліщатко, що крутиться, однаково виглядає
+   і коли все йде добре, і коли все зависло. */
+@keyframes boot-breathe {
+  0%, 100% { transform: scale(1);    box-shadow: 0 10px 34px color-mix(in srgb, var(--accent) 38%, transparent); }
+  50%      { transform: scale(1.06); box-shadow: 0 14px 42px color-mix(in srgb, var(--accent) 55%, transparent); }
+}
+
+.boot-name {
+  margin: 0; font-size: 13px; font-weight: 900;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--text-main);
+}
+
+.boot-bar {
+  width: 100%; height: 3px; border-radius: 3px; overflow: hidden;
+  background: var(--border-2);
+}
+#boot-fill {
+  height: 100%; width: 6%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--info), var(--accent));
+  transition: width .45s cubic-bezier(.3, .9, .3, 1);
+}
+
+/* Смуга показує справжні кроки завантаження, а не таймер. Тому підпис
+   під нею потрібен: «щось іде» без «що саме» не відрізнити від «зависло». */
+#boot-step {
+  margin: 0; min-height: 13px;
+  font-size: 9px; font-weight: 800; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-logo { animation: none; }
+  #boot, #boot-fill { transition: none; }
+}
 @media (max-width: 1100px) {
   #cab-detail, #dm-detail { flex: 0 0 280px; width: 280px; }
 }
@@ -4169,6 +4256,89 @@ input.ui-in[type="range"] { padding: 0; }
     
   </script>
 <div id="top-loader" style="width: 0%;"></div>
+<!-- ═══════════ ЕКРАН ЗАВАНТАЖЕННЯ ═══════════
+
+     Стоїть у розмітці, а не створюється скриптом, і саме тому працює:
+     window.onload спрацьовує ПІСЛЯ всіх ресурсів, тож намальований з
+     JS лоадер з'явився б аж тоді, коли ховати вже нічого. А приховати
+     треба саме проміжок до нього — той, де каркас уже видно, а чисел
+     у ньому ще немає.
+
+     Кроки тут справжні: смугу рухає сам процес завантаження, а не
+     таймер. Підроблений прогрес показує 90% і на живій сторінці, і на
+     мертвій — тобто не показує нічого. -->
+<div id="boot">
+  <div class="boot-box">
+    <div class="boot-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+    </div>
+    <p class="boot-name">Dashboard</p>
+    <div class="boot-bar"><div id="boot-fill"></div></div>
+    <p id="boot-step">Starting</p>
+  </div>
+</div>
+<script>
+/* Визначаємо одразу, а не в onload: до onload ще треба дожити, і саме
+   на шляху туди ці функції потрібні. */
+(function () {
+  var box = document.getElementById('boot'), gone = false;
+
+  window.bootStep = function (label, pct) {
+    if (gone || !box) return;
+    var s = document.getElementById('boot-step'), f = document.getElementById('boot-fill');
+    if (s && label) s.textContent = label;
+    if (f && pct)   f.style.width = pct + '%';
+    arm();                       // крок зроблено — відлік починається заново
+  };
+
+  window.bootDone = function () {
+    if (gone || !box) return;
+    // Спершу добиваємо смугу до кінця, і лише потім ставимо прапорець:
+    // після нього bootStep уже нічого не робить.
+    bootStep(null, 100);
+    gone = true;
+    clearTimeout(t);
+    box.classList.add('is-done');
+    // Прибираємо з дерева після згасання: невидиме скло на весь екран
+    // ловило б кліки по дашборду під собою.
+    setTimeout(function () { box.remove(); }, 420);
+  };
+
+  /* Запобіжник. Що завгодно може не відповісти — Supabase, CDN, мережа
+     в метро, — і тоді людина лишиться перед матовим склом без жодного
+     способу його прибрати. Напівпорожній дашборд гірший за дашборд із
+     даними, але кращий за глуху стіну.
+
+     Рахуємо ПРОСТІЙ, а не загальний time: кожен крок відлік обнуляє.
+     Інакше повільне, але живе завантаження ми б обривали посеред
+     роботи — а саме воно й буває на поганій мережі, тобто там, де
+     скло потрібне найбільше.
+
+     І не рахуємо зовсім, поки чекаємо на людину: форма входу й екран
+     першого запуску лежать ПОВЕРХ скла, тож із того боку нічого не
+     «зависло» — там просто нічого не ввели. Зняти скло тоді означало б
+     зняти його непомітно, і після входу дашборд добудовувався б у
+     людини на очах. */
+  var t = null;
+  function waiting() {
+    return ['login-overlay', 'team-first-run'].some(function (id) {
+      var el = document.getElementById(id);
+      return el && getComputedStyle(el).display !== 'none';
+    });
+  }
+  function arm() {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      if (gone) return;
+      if (waiting()) return arm();
+      bootStep('Taking longer than usual', 100);
+      bootDone();
+    }, 20000);
+  }
+  arm();
+})();
+</script>
+
 <div class="app-shell">
 
   <!-- ════════════ SIDEBAR ════════════ -->
@@ -4264,7 +4434,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 14:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 14:16</div>
     </div>
   </aside>
 
@@ -5668,7 +5838,11 @@ input.ui-in[type="range"] { padding: 0; }
   // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
 window.onload = async () => {
   console.log("🚀 Запуск дашборду для команди:", currentTeam);
-  try { await initTeamLeadMode(); } catch(e) { if (e.message === 'teamlead_denied') return; }
+  // Кроки екрана завантаження. Смугу рухає сам процес, тож вона й
+  // зупиняється там, де справді стало: видно не «скільки лишилось», а
+  // на чому саме зупинилось.
+  window.bootStep?.('Checking access', 12);
+  try { await initTeamLeadMode(); } catch(e) { if (e.message === 'teamlead_denied') { window.bootDone?.(); return; } }
 
   const authed = await checkSiteAuth();
   if (!authed) return;
@@ -5682,28 +5856,40 @@ window.onload = async () => {
 
   try {
     // 1. Спочатку завантажуємо базові налаштування (таргет, видимість)
+    window.bootStep?.('Settings', 22);
     loadSettings();
     
     // 2. Отримуємо виплати (важливо для KPI)
+    window.bootStep?.('Payouts', 34);
     await refreshPayoutsFromSQL();
     
     // 3. Завантажуємо список команд (щоб працювало меню)
+    window.bootStep?.('Teams', 46);
     await refreshTeamsList();
     
     // 4. ОСНОВНЕ ЗАВАНТАЖЕННЯ ДАНИХ
+    window.bootStep?.('Loading data', 58);
     await loadData();
     
     // 5. Завантажуємо додаткові модулі
+    window.bootStep?.('Tasks and reports', 88);
     refreshTasks();
     refreshReports();
     loadQuickLinks();
     loadExpenses();
     loadDriveFolderSetting();
+
+    // Дашборд уже намальований: loadData показує його й малює картки з
+    // графіками до цього рядка. Знімаємо скло саме тут, а не раніше —
+    // інакше людина побачила б, як вміст доїжджає на місце.
+    window.bootDone?.();
     
   } catch (err) {
     console.error("Помилка ініціалізації:", err);
     // Якщо все впало, пробуємо хоча б прибрати лоадер
     document.getElementById('loader')?.classList.add('hidden');
+    // І скло теж: за ним лишилась би помилка, якої не видно.
+    window.bootDone?.();
   }
 };
 

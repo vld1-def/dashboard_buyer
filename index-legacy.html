@@ -2106,35 +2106,51 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
 window.onload = async () => {
   console.log("🚀 Запуск дашборду для команди:", currentTeam);
-  try { await initTeamLeadMode(); } catch(e) { if (e.message === 'teamlead_denied') return; }
+  // Кроки екрана завантаження. Смугу рухає сам процес, тож вона й
+  // зупиняється там, де справді стало: видно не «скільки лишилось», а
+  // на чому саме зупинилось.
+  window.bootStep?.('Checking access', 12);
+  try { await initTeamLeadMode(); } catch(e) { if (e.message === 'teamlead_denied') { window.bootDone?.(); return; } }
 
   const authed = await checkSiteAuth();
   if (!authed) return;
 
   try {
     // 1. Спочатку завантажуємо базові налаштування (таргет, видимість)
+    window.bootStep?.('Settings', 22);
     loadSettings();
     
     // 2. Отримуємо виплати (важливо для KPI)
+    window.bootStep?.('Payouts', 34);
     await refreshPayoutsFromSQL();
     
     // 3. Завантажуємо список команд (щоб працювало меню)
+    window.bootStep?.('Teams', 46);
     await refreshTeamsList();
     
     // 4. ОСНОВНЕ ЗАВАНТАЖЕННЯ ДАНИХ
+    window.bootStep?.('Loading data', 58);
     await loadData();
     
     // 5. Завантажуємо додаткові модулі
+    window.bootStep?.('Tasks and reports', 88);
     refreshTasks();
     refreshReports();
     loadQuickLinks();
     loadExpenses();
     loadDriveFolderSetting();
+
+    // Дашборд уже намальований: loadData показує його й малює картки з
+    // графіками до цього рядка. Знімаємо скло саме тут, а не раніше —
+    // інакше людина побачила б, як вміст доїжджає на місце.
+    window.bootDone?.();
     
   } catch (err) {
     console.error("Помилка ініціалізації:", err);
     // Якщо все впало, пробуємо хоча б прибрати лоадер
     document.getElementById('loader')?.classList.add('hidden');
+    // І скло теж: за ним лишилась би помилка, якої не видно.
+    window.bootDone?.();
   }
 };
 
