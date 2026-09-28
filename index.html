@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 10:25">
+  <meta name="build" content="build 28.09 10:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4175,7 +4175,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:25</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:32</div>
     </div>
   </aside>
 
@@ -4679,13 +4679,17 @@ input.ui-in[type="range"] { padding: 0; }
               <select id="creative-geo-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
                 <option value="">All Geo</option>
               </select>
-              <select id="creative-device-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
-                <option value="">All Devices</option>
-                <option value="ios_phone">iPhone</option>
-                <option value="ios_tablet">iPad</option>
-                <option value="android_phone">Android Phone</option>
-                <option value="android_tablet">Android Tablet</option>
-                <option value="desktop">Desktop</option>
+              <!-- Формат, а не девайс. Device різав РЯДКИ: той самий креатив
+                   лився і на iPhone, і на Android, тож фільтр не прибирав
+                   креативи зі списку, а міняв їхні числа — і «нічого не
+                   знайдено» означало «на цьому девайсі не лилось». Формат
+                   же — властивість самого креатива, і питання «як заходить
+                   відео проти статики» ставлять куди частіше. -->
+              <select id="creative-format-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
+                <option value="">All formats</option>
+                <option value="video">Video</option>
+                <option value="static">Static</option>
+                <option value="__none">Format not set</option>
               </select>
               <select id="creative-tag-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-violet-500 text-dynamic">
                 <option value="">All tags</option>
@@ -4743,9 +4747,13 @@ input.ui-in[type="range"] { padding: 0; }
     <button onclick="resetCreativeScope()" class="text-[10px] font-black bg-white/5 px-3 py-1.5 rounded-xl uppercase hover:bg-white/10 transition border border-white/5 text-white">Reset Filter</button>
   </div>
 
-  <!-- Tags креатива: до якого слота / формату він належить -->
+  <!-- Tags креатива: до якого слота він належить -->
   <div class="flex items-center gap-2 flex-wrap mb-5 -mt-3">
-    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Tags</span>
+    <!-- Формат ставиться тут, бо це така сама наша мітка, як тег чи
+         зірочка: Facebook її не знає, і в creatives_stats її немає. -->
+    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Format</span>
+    <div id="cr-fmt-btns" class="flex items-center gap-1"></div>
+    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-2">Tags</span>
     <div id="cr-tag-chips" class="flex items-center gap-1.5 flex-wrap"></div>
     <input id="cr-tag-input" list="cr-tag-all" placeholder="+ tag"
            onkeydown="if(event.key==='Enter'){event.preventDefault();crAddTagFromInput();}"
@@ -5736,6 +5744,7 @@ async function sbFetchAll(table, build) {
 
   await loadCreativeStars();
   await loadCreativeTags();
+  await loadCreativeFormats();
   await loadReportTags();
   crPopulateTagFilter();
 
@@ -5771,8 +5780,8 @@ async function sbFetchAll(table, build) {
   if (typeof renderCreativeSidebar === 'function') {
     const q = document.getElementById('creative-search')?.value.toLowerCase() || '';
     const g = document.getElementById('creative-geo-filter')?.value.toLowerCase() || '';
-    const dv = document.getElementById('creative-device-filter')?.value || '';
-    renderCreativeSidebar(q, g, dv);
+    const fmt = document.getElementById('creative-format-filter')?.value || '';
+    renderCreativeSidebar(q, g, fmt);
     if (currentCreativeID) showCreativeStats();
   }
 
@@ -6653,7 +6662,7 @@ function renderTable(data) {
   }
 
 // Feature 11: deviceFilter param; Feature 12: auto-reset on creative switch
-function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
+function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
   const sidebar = document.getElementById('creative-list-sidebar');
   if (!sidebar) return;
 
@@ -6665,13 +6674,11 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
     if (!crInDate(d, dr)) return;          // крео, що не лився в ці дні, у список не потрапляє
     const cid = d.cid || "Unknown";
     const geo = (d.geo || "").toLowerCase();
-    const dev = normalizeDevice(d.device || '');
 
     const matchesGeo = !geoFilter || geo === geoFilter.toLowerCase();
     const matchesSearch = !query || cid.toLowerCase().includes(query.toLowerCase());
-    const matchesDevice = !deviceFilter || dev === deviceFilter;
 
-    if (matchesGeo && matchesSearch && matchesDevice) {
+    if (matchesGeo && matchesSearch) {
       if (!grouped[cid]) grouped[cid] = { cid, s: 0, cl: 0, ins: 0, r: 0, dp: 0 };
       grouped[cid].s  += Number(d.spend)    || 0;
       grouped[cid].cl += Number(d.clicks)   || 0;
@@ -6716,6 +6723,12 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
   // Starred only
   if (crStarOnly) list = list.filter(c => crStars.has(c.cid));
 
+  /* Формат ріже вже зведений список, а не рядки: відео чи статика — це
+     про креатив цілком. «Format not set» окремим пунктом — щоб було
+     видно, що лишилось розмітити. */
+  if (formatFilter === '__none') list = list.filter(c => !crFormatOf(c.cid).v);
+  else if (formatFilter) list = list.filter(c => crFormatOf(c.cid).v === formatFilter);
+
   // Фільтр по тегу: «— no tag —» окремим пунктом, щоб швидко знаходити нерозібране
   const tagF = document.getElementById('creative-tag-filter')?.value || '';
   if (tagF === '__none') list = list.filter(c => !crTagsOf(c.cid).length);
@@ -6731,7 +6744,7 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
 
   const qEsc = query.replace(/'/g, "\\'");
   const gEsc = geoFilter.replace(/'/g, "\\'");
-  const dEsc = deviceFilter.replace(/'/g, "\\'");
+  const fEsc = formatFilter.replace(/'/g, "\\'");
 
   // Режим «папок»: той самий список, але розкладений по тегах, і над кожною
   // групою — підсумок. Питання зазвичай не «який крео», а «який слот заходить».
@@ -6754,31 +6767,41 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
             <span class="text-slate-600">· ${g.length}</span></span>
           <span class="text-[10px] font-bold text-slate-500 shrink-0">$${Math.round(sum.s)} · ${sum.dp} dep · CPA ${cpa}</span>
         </div>
-        ${g.map(c => crSidebarRow(c, qEsc, gEsc, dEsc)).join('')}
+        ${g.map(c => crSidebarRow(c, qEsc, gEsc, fEsc)).join('')}
       </div>`;
     }).join('');
     document.getElementById('creative-placeholder')?.classList.add('hidden');
     return;
   }
 
-  sidebar.innerHTML = list.map(c => crSidebarRow(c, qEsc, gEsc, dEsc)).join('');
+  sidebar.innerHTML = list.map(c => crSidebarRow(c, qEsc, gEsc, fEsc)).join('');
   document.getElementById('creative-placeholder')?.classList.add('hidden');
 }
 
 // Один рядок списку креативів — винесено, щоб звичайний режим і режим папок
 // малювали однаково
-function crSidebarRow(c, qEsc, gEsc, dEsc) {
+function crSidebarRow(c, qEsc, gEsc, fEsc) {
   {
     const isActive = currentCreativeID === c.cid;
     const cidEsc = String(c.cid).replace(/'/g, "\\'");
     const starred = crStars.has(c.cid);
     // Feature 12: reset activeCrAcc/activeCrGeo when switching to a different creative
     return `
-      <div onclick="if(currentCreativeID !== '${cidEsc}') { activeCrAcc=null; activeCrGeo=null; } currentCreativeID='${cidEsc}'; showCreativeStats(); renderCreativeSidebar('${qEsc}', '${gEsc}', '${dEsc}');"
+      <div onclick="if(currentCreativeID !== '${cidEsc}') { activeCrAcc=null; activeCrGeo=null; } currentCreativeID='${cidEsc}'; showCreativeStats(); renderCreativeSidebar('${qEsc}', '${gEsc}', '${fEsc}');"
               class="w-full flex justify-between items-center gap-1.5 p-3 rounded-xl border border-white/5 transition-all text-left uppercase group cursor-pointer
               ${isActive ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'hover:bg-white/5 text-slate-400'}">
         <button onclick="crToggleStar(event,'${cidEsc}')" title="${starred?'Remove star':'Add star'}"
                 class="flex-shrink-0 text-[13px] leading-none transition ${starred?'text-amber-400':'opacity-25 hover:opacity-70'}">${starred?'★':'☆'}</button>
+        ${(() => {
+          /* Позначка в списку — щоб було видно, що саме вгадалось, не
+             відкриваючи кожен креатив. Бліда — здогадка. */
+          const f = crFormatOf(c.cid);
+          if (!f.v) return '';
+          return `<span title="${f.guess ? 'Guessed format' : 'Format'}: ${f.v}"
+            class="flex-shrink-0 text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded ${
+              f.guess ? 'bg-white/5 text-slate-500' : 'bg-blue-500/20 text-blue-300'}">${
+              f.v === 'video' ? 'VID' : 'STA'}</span>`;
+        })()}
         <span class="text-[10px] font-black truncate flex-1">${c.cid}${crTagsOf(c.cid).length
           ? `<span class="ml-1.5 normal-case font-bold text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 align-middle">${crTagsOf(c.cid)[0]}${crTagsOf(c.cid).length>1?' +'+(crTagsOf(c.cid).length-1):''}</span>`
           : ''}</span>
@@ -6850,6 +6873,50 @@ async function saveCreativeTags() {
   catch (e) { console.warn('Could not save the tags:', e.message); }
 }
 const crTagsOf = cid => crTags[cid] || [];
+
+/* ФОРМАТ КРЕАТИВА — відео чи статика.
+
+   У creatives_stats такого поля немає й не буде: там рядки про покази,
+   а формат — властивість самого креатива. Тому тримаємо його там само,
+   де зірочки й теги: у team_settings, мапою cid → 'video' | 'static'.
+   Ніякої нової таблиці й жодного запиту у Facebook.
+
+   ЩОБ ВОНО ПРАЦЮВАЛО З ПЕРШОГО ДНЯ, а не після того, як хтось розмітить
+   руками кілька сотень креативів, формат ще й вгадується — спершу за
+   тегами (їх і заводили «до якого слота / формату»), потім за назвою.
+   Здогадка чесно позначена здогадкою: поставлене руками завжди
+   головніше, і одним кліком її можна виправити. */
+let crFmt = {};
+const CR_FMT_VIDEO  = /(^|[^a-z])(video|vid|mp4|mov|reels?|ugc)([^a-z]|$)|відео|видео/i;
+const CR_FMT_STATIC = /(^|[^a-z])(static|img|image|banner|jpe?g|png|pic)([^a-z]|$)|статик|статика/i;
+
+async function loadCreativeFormats() {
+  try { crFmt = JSON.parse(await getTeamSetting('creative_format') || '{}') || {}; }
+  catch (e) { crFmt = {}; }
+}
+async function saveCreativeFormats() {
+  try { await setTeamSetting('creative_format', JSON.stringify(crFmt)); }
+  catch (e) { console.warn('Не вдалось зберегти формати:', e.message); }
+}
+
+/* Повертає { v, guess }: v — 'video' | 'static' | '', guess — чи це
+   здогадка. Порожнє означає «не знаємо», і це не те саме, що статика. */
+function crFormatOf(cid) {
+  const set = crFmt[cid];
+  if (set === 'video' || set === 'static') return { v: set, guess: false };
+  const hay = [String(cid || ''), ...crTagsOf(cid)].join(' ');
+  if (CR_FMT_VIDEO.test(hay))  return { v: 'video',  guess: true };
+  if (CR_FMT_STATIC.test(hay)) return { v: 'static', guess: true };
+  return { v: '', guess: false };
+}
+
+/* Натиснули той самий формат ще раз — зняли: помилково поставлену
+   мітку треба вміти прибрати, інакше вона застрягне назавжди. */
+window.crSetFormat = function (cid, v) {
+  if (!cid) return;
+  if (crFmt[cid] === v) delete crFmt[cid]; else crFmt[cid] = v;
+  saveCreativeFormats(); crRenderTagUI(); searchCreative();
+};
 function crAllTags() {
   return [...new Set(Object.values(crTags).flat())].sort((a, b) => a.localeCompare(b, 'uk'));
 }
@@ -6891,7 +6958,7 @@ window.rpOpenCreative = function (cid) {
     /* Фільтри знімаємо: інакше креатив, який не підходить під учора
        вибраний гео чи тег, відкриється в порожній список, і людина
        вирішить, що його немає. */
-    ['creative-geo-filter', 'creative-device-filter', 'creative-tag-filter']
+    ['creative-geo-filter', 'creative-format-filter', 'creative-tag-filter']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     if (typeof searchCreative === 'function') searchCreative();
     if (typeof selectCreative === 'function') selectCreative(cid);
@@ -6905,7 +6972,32 @@ window.rpOpenCreative = function (cid) {
 };
 
 // Чипи тегів на картці обраного креатива
+/* Дві кнопки: Video і Static. Підсвічена — поставлена руками, бліда з
+   підписом «guessed» — вгадана за тегом чи назвою. Різниця видна
+   навмисно: вгадане має читатись як вгадане, а не як факт, і
+   виправляється воно одним кліком. */
+function crRenderFormatUI() {
+  const box = document.getElementById('cr-fmt-btns');
+  if (!box) return;
+  if (!currentCreativeID) { box.innerHTML = ''; return; }
+  const cid = String(currentCreativeID).replace(/'/g, "\\'");
+  const f = crFormatOf(currentCreativeID);
+  box.innerHTML = [['video', 'Video'], ['static', 'Static']].map(([k, label]) => {
+    const on = f.v === k;
+    const cls = on && !f.guess
+      ? 'bg-blue-500/25 border-blue-500/50 text-blue-200'
+      : on ? 'bg-blue-500/10 border-blue-500/25 text-blue-300/70'
+           : 'bg-white/5 border-white/10 text-slate-500 hover:text-white';
+    return `<button onclick="crSetFormat('${cid}','${k}')"
+      title="${on && f.guess ? 'Guessed from the name or a tag — click to confirm or change'
+                             : on ? 'Set by hand — click again to clear' : 'Mark as ' + label}"
+      class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg border transition ${cls}">${
+        label}${on && f.guess ? ' ?' : ''}</button>`;
+  }).join('');
+}
+
 function crRenderTagUI() {
+  crRenderFormatUI();
   const box = document.getElementById('cr-tag-chips');
   const dl = document.getElementById('cr-tag-all');
   if (dl) dl.innerHTML = crAllTags().map(t => `<option value="${t}"></option>`).join('');
@@ -7036,14 +7128,12 @@ function crSyncDateBtn() {
 
 // Рядки поточного креатива з урахуванням активних фільтрів акаунта/гео/девайса
 function crCurrentRows() {
-  const dev = document.getElementById('creative-device-filter')?.value || '';
   const dr = crDateRange();
   return (window.creativesRawData || []).filter(d =>
     crInDate(d, dr) &&
     (d.cid || '').toLowerCase() === (currentCreativeID || '').toLowerCase() &&
     (!activeCrAcc || d.account === activeCrAcc) &&
-    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo) &&
-    (!dev || normalizeDevice(d.device || '') === dev)
+    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo)
   );
 }
 
@@ -7118,15 +7208,13 @@ const crRelErr = n => n > 0 ? 1 / Math.sqrt(n) : 1;
 function crRenderAccountsPanel() {
   const el = document.getElementById('cr-panel-accounts');
   if (!el) return;
-  const dev = document.getElementById('creative-device-filter')?.value || '';
   const dr = crDateRange();
   // Беремо ВСІ кабінети цього креатива — фільтр по акаунту тут навмисно
   // ігнорується, інакше порівнювати не було б з чим
   const rows = (window.creativesRawData || []).filter(d =>
     crInDate(d, dr) &&
     (d.cid || '').toLowerCase() === (currentCreativeID || '').toLowerCase() &&
-    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo) &&
-    (!dev || normalizeDevice(d.device || '') === dev));
+    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo));
 
   const m = {};
   rows.forEach(r => {
@@ -7430,12 +7518,13 @@ function selectCreative(cid) {
       crInDate(d, dr) && d.cid.toLowerCase() === currentCreativeID.toLowerCase());
     let allGeos = new Set(); filtered.forEach(i => { if(i.geo && i.geo !== "??") allGeos.add(i.geo.toUpperCase()); });
     if (allGeos.size === 1 && activeCrGeo === null) activeCrGeo = Array.from(allGeos)[0];
-    // Feature 11: apply device filter from dropdown
-    const activeDeviceFilter = (document.getElementById('creative-device-filter')?.value || '');
+    /* Фільтра по девайсу тут більше немає: він різав рядки цього ж
+       креатива, тобто мовчки міняв його метрики. Формат натомість
+       вирішує, чи креатив узагалі в списку, і цифри всередині не
+       чіпає. */
     let disp = filtered;
     if(activeCrAcc) disp = disp.filter(d => d.account === activeCrAcc);
     if(activeCrGeo) disp = disp.filter(d => (d.geo||"").toUpperCase() === activeCrGeo);
-    if(activeDeviceFilter) disp = disp.filter(d => normalizeDevice(d.device||'') === activeDeviceFilter);
     let s=0, r=0, d=0, cl=0, ins=0; disp.forEach(i => { s += i.spend||0; r += i.regs||0; d += i.deps||0; cl += i.clicks||0; ins += i.installs||0; });
     const cpl = r > 0 ? s/r : 0;
     const cpc = cl > 0 ? s/cl : 0;
@@ -9524,9 +9613,9 @@ window.onclick = function(event) {
 function searchCreative() {
   const query = document.getElementById('creative-search').value.toLowerCase();
   const geoFilter = document.getElementById('creative-geo-filter').value.toLowerCase();
-  const deviceFilter = (document.getElementById('creative-device-filter')?.value || '').toLowerCase();
+  const formatFilter = document.getElementById('creative-format-filter')?.value || '';
   crSyncDateBtn();
-  renderCreativeSidebar(query, geoFilter, deviceFilter);
+  renderCreativeSidebar(query, geoFilter, formatFilter);
   // Фільтри (насамперед період) міняють і цифри всередині обраного креатива,
   // тому картку теж перемальовуємо — інакше список уже за новий період,
   // а метрики праворуч лишаються від старого.
