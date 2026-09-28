@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 14:16">
+  <meta name="build" content="build 28.09 14:42">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4434,7 +4434,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 14:16</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 14:42</div>
     </div>
   </aside>
 
@@ -21424,6 +21424,9 @@ function tmActiveTeam() {
 }
 
 window.tmOpen = async function () {
+  // Спершу дочекатись ролі, і лише тоді вирішувати, що показувати:
+  // інакше на свіжому завантаженні тут завжди читалось би 'buyer'.
+  await window.tmReady();
   if (tmRole !== 'lead' && tmRole !== 'admin') {
     const box = document.getElementById('tm-list');
     if (box) box.innerHTML = '<p class="tm-empty">This page is for team leads. '
@@ -21809,13 +21812,31 @@ function tmWhoPaint() {
 
    Нічого, крім видимості пункту, ця відповідь не вирішує: дані все одно
    віддає база, і віддає рівно те, що дозволено політиками. */
-let tmAsking = false;
-async function tmBoot() {
-  if (tmAsking) return;
-  tmAsking = true;
-  try { await tmWhoAmI(); } catch (e) { /* немає ролей — лишаємось баєром */ }
-  tmAsking = false;
+/* Роль приїжджає ЗАПИТОМ, а сторінку відкривають одразу — і між цими
+   двома моментами tmRole ще дорівнює 'buyer'. Тому тримаємо не прапорець
+   «запит іде», а сам проміс: кожен, кому потрібна роль, чекає на нього,
+   замість читати змінну, яку ще не заповнили.
+
+   Саме на цьому обпеклись: тімлід із закладкою на #/team бачив «This page
+   is for team leads». Маршрут застосовувався до відповіді, tmOpen читав
+   'buyer' і малював відмову — а коли роль нарешті приїжджала, ми були вже
+   на потрібному маршруті, навігація не спрацьовувала вдруге, і відмова
+   так і лишалась на екрані. Адміна, що заходив на #/team напряму, це
+   стосувалось так само. */
+let tmAsking = null;   // проміс запиту, що зараз іде
+let tmReady  = null;   // останній запит — його й чекають
+
+function tmBoot() {
+  if (tmAsking) return tmAsking;
+  tmAsking = (async () => {
+    try { await tmWhoAmI(); } catch (e) { /* немає ролей — лишаємось баєром */ }
+  })();
+  tmReady = tmAsking;
+  tmAsking.finally(() => { tmAsking = null; });
+  return tmReady;
 }
+window.tmReady = () => tmReady || tmBoot();
+
 try { sb.auth.onAuthStateChange(() => { tmBoot(); }); } catch (e) {}
 tmBoot();
 </script>
