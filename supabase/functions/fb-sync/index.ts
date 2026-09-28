@@ -371,12 +371,16 @@ function urlsFor(actId: string, tz: string): string[] {
        правил, і воно міняється без нового походу в Facebook. */
     act + '/ads?effective_status=' + encodeURIComponent(JSON.stringify(['ACTIVE']))
       + '&limit=' + LIST_LIMIT
-      /* Назви батьків беремо тут же. Окремих запитів це не коштує —
-         розширення поля всередині того самого підзапиту, — а без них
-         розбір по кампаніях показував би id, і в Telegram замість
-         кампанії стояла б назва випадкового оголошення під нею. */
+      /* Назви батьків і ціль адсета беремо тут же. Окремих запитів це не
+         коштує — розширення поля всередині того самого підзапиту, — а без
+         назв розбір по кампаніях показував би id, і в Telegram замість
+         кампанії стояла б назва випадкового оголошення під нею.
+
+         optimization_goal і подія пікселя потрібні екрану кабінета: без
+         них стовпчик «Result» довелось би вгадувати, а вгадане число
+         гірше за чесний прочерк. */
       + '&fields=' + encodeURIComponent('name,adset_id,campaign_id,'
-        + 'adset{name},campaign{name},'
+        + 'adset{name,optimization_goal,promoted_object{custom_event_type}},campaign{name},'
         + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
   ];
 }
@@ -397,6 +401,7 @@ type Day = { day: string; spend: number | null;
 type AdSnap = { ad_id: string; name: string;
                 adset_id: string; adset_name: string;
                 campaign_id: string; campaign_name: string;
+                goal: string; event: string;
                 spend: number; imps: number; clicks: number; link_clicks: number;
                 actions: Json[] };
 
@@ -567,6 +572,8 @@ function readParts(parts: (Json | null)[]):
         ad_id: String(r.id || ''), name: String(r.name || ''),
         adset_id: String(r.adset_id || ''), adset_name: String(r.adset?.name || ''),
         campaign_id: String(r.campaign_id || ''), campaign_name: String(r.campaign?.name || ''),
+        goal: String(r.adset?.optimization_goal || ''),
+        event: String(r.adset?.promoted_object?.custom_event_type || ''),
         spend: Number(row.spend) || 0,
         imps: Number(row.impressions) || 0,
         clicks: Number(row.clicks) || 0,
@@ -806,6 +813,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
           ad_id: a.ad_id, name: a.name,
           adset_id: a.adset_id, adset_name: a.adset_name || null,
           campaign_id: a.campaign_id, campaign_name: a.campaign_name || null,
+          optimization_goal: a.goal || null, custom_event_type: a.event || null,
           spend: a.spend, impressions: a.imps, clicks: a.clicks,
           link_clicks: a.link_clicks, actions: a.actions, seen_at: now
         }));
