@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 27.09 23:16">
+  <meta name="build" content="build 28.09 07:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3191,8 +3191,10 @@ body[data-route="domains"] #dm-detail {
    ділить із таблицею — своя третина екрана й власний скрол, щоб
    таблиця кабінетів не поїхала під нього цілком. */
 #cab-inside {
-  flex: 0 0 auto; max-height: 42%;
-  display: flex; flex-direction: column; min-height: 0;
+  flex: 0 0 auto; max-height: 52%;
+  /* min-width: 0 — щоб широка таблиця всередині тягнула свою смугу
+     прокрутки, а не розсувала сторінку. */
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
 }
 .cd-head {
@@ -3209,8 +3211,8 @@ body[data-route="domains"] #dm-detail {
 }
 .cd-tab:hover { color: var(--text-main); }
 .cd-tab.is-on { background: var(--accent); border-color: transparent; color: #fff; }
-.cd-wrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.cd-tbl { width: 100%; border-collapse: collapse; }
+.cd-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.cd-tbl { width: 100%; border-collapse: collapse; min-width: 1020px; }
 .cd-tbl th {
   position: sticky; top: 0; z-index: 2; background: var(--surface-2);
   padding: 6px 8px; text-align: left;
@@ -3219,10 +3221,45 @@ body[data-route="domains"] #dm-detail {
 }
 .cd-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
 .cd-tbl tr:hover td { background: var(--surface-2); }
+/* Назва прилипає до лівого краю: стовпчиків тепер тринадцять, і без
+   цього, догортавши до «Cost per reg», не видно, чий це рядок. */
+.cd-tbl th:first-child, .cd-tbl td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--surface);
+}
+.cd-tbl th:first-child { z-index: 3; background: var(--surface-2); }
+.cd-tbl tr:hover td:first-child { background: var(--surface-2); }
 .cd-name {
   font-weight: 700; color: var(--text-main);
-  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Глибина в дереві — відступом, а не рамками: рядків багато, і кожна
+   зайва лінія робить таблицю схожою на сітку, а не на список. */
+.cd-d1 .cd-name { padding-left: 24px; }
+.cd-d2 .cd-name { padding-left: 46px; }
+.cd-d1 .cd-name, .cd-d2 .cd-name { font-weight: 600; }
+.cd-d2 .cd-name { color: var(--text-muted); }
+/* Трикутник малюємо рамкою, а не символом: «▸» є не в кожному шрифті, і
+   там, де його немає, у назві зʼявляється порожній прямокутник. */
+.cd-twist {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px;
+  background: none; border: 0; padding: 0;
+}
+.cd-twist::before {
+  content: ''; border: 4px solid transparent; border-left-color: var(--text-muted);
+  margin-left: 4px; transition: transform .12s ease;
+}
+.cd-twist.is-on::before { transform: rotate(90deg); border-left-color: var(--accent); }
+.cd-twist:hover::before { border-left-color: var(--text-main); }
+.cd-can { cursor: pointer; }
+.cd-leaf { pointer-events: none; }
+.cd-leaf::before { content: none; }
+.cd-cnt {
+  margin-left: 7px; font-size: 9px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-muted); text-transform: uppercase;
+}
+/* Назви ще немає — показуємо id, але так, щоб це не читалось як назва. */
+.cd-noname { color: var(--text-muted); font-weight: 600; font-style: italic; }
 .cd-num { font-variant-numeric: tabular-nums; color: var(--text-main); }
 .cd-spend { font-weight: 800; }
 .cd-na { color: var(--text-muted); opacity: .5; }
@@ -4074,7 +4111,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.09 23:16</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 07:46</div>
     </div>
   </aside>
 
@@ -20078,16 +20115,21 @@ window.rlCheck = async function () {
 
 <script>
 /* ══════════════════════════════════════════════════════════════════
-   ЩО ВСЕРЕДИНІ КАБІНЕТА — кампанії, адсети, оголошення з цифрами
+   ЩО ВСЕРЕДИНІ КАБІНЕТА — дерево кампанія → адсет → оголошення
 
-   Досі сторінка кабінетів відповідала на питання «чи крутить» і «скільки
-   всього». На питання «а що саме з'їдає гроші» відповіді не було ніде:
-   числа по кожному оголошенню вже лежали в базі (їх складає fb-sync для
-   правил), але подивитись на них можна було тільки запитом у Supabase.
+   Досі сторінка кабінетів відповідала на питання «чи крутить» і
+   «скільки всього». На питання «а що саме з'їдає гроші» відповіді не
+   було ніде: числа по кожному оголошенню вже лежали в базі (їх складає
+   fb-sync для правил), але подивитись на них можна було тільки запитом
+   у Supabase.
 
    Тому цей блок і читає той самий знімок, яким користуються правила.
    Одні й ті самі числа в обох місцях — інакше «правило вимкнуло, а я
    тут бачив інше» стало б питанням без відповіді.
+
+   ДЕРЕВО, А НЕ ТРИ ОКРЕМІ ВКЛАДКИ. Кампанія, під нею адсети, під ними
+   оголошення — так, як у репорт-білдері. Вкладки змушували тримати в
+   голові, до чого належить рядок; дерево показує це саме.
 
    ЛІДИ РАХУЄМО ЗА ТИМИ Ж ГАЛОЧКАМИ, що й правила (налаштування
    fb_rules.leadActions). Якби тут був свій список, ціна ліда на екрані
@@ -20097,14 +20139,41 @@ window.rlCheck = async function () {
 
 const CD_LEAD_DEFAULT = ['lead', 'onsite_conversion.lead_grouped',
                          'offsite_conversion.fb_pixel_lead', 'mobile_app_install'];
-const CD_LEVELS = [
-  { k: 'campaign', label: 'Campaigns' },
-  { k: 'adset',    label: 'Ad sets' },
-  { k: 'ad',       label: 'Ads' }
-];
 
-let cdAcc = '', cdRows = [], cdLevel = 'campaign', cdLeads = CD_LEAD_DEFAULT.slice();
-let cdErr = '', cdBusy = false, cdSeen = 0;
+/* РЕЗУЛЬТАТ — це не «якась подія», а та сама, на яку оптимізується
+   адсет. Facebook показує в Ads Manager саме її, тож і ми беремо ціль
+   адсета (optimization_goal), а для конверсій — подію пікселя
+   (promoted_object.custom_event_type). Обидва поля приїжджають тим
+   самим підзапитом fb-sync, окремих звернень це не коштує.
+
+   Без цього стовпчик «Result» довелось би вгадувати — і на кабінеті з
+   реєстраціями він показував би ліди, тобто просто брехав. */
+const CD_GOAL = {
+  LEAD_GENERATION: 'lead', QUALITY_LEAD: 'lead',
+  LINK_CLICKS: 'link_click', LANDING_PAGE_VIEWS: 'landing_page_view',
+  APP_INSTALLS: 'mobile_app_install',
+  APP_INSTALLS_AND_OFFSITE_CONVERSIONS: 'mobile_app_install',
+  THRUPLAY: 'video_view', TWO_SECOND_CONTINUOUS_VIDEO_VIEWS: 'video_view',
+  POST_ENGAGEMENT: 'post_engagement', PAGE_LIKES: 'like',
+  EVENT_RESPONSES: 'rsvp', VALUE: 'purchase',
+  CONVERSATIONS: 'messaging_conversation_started_7d',
+  REPLIES: 'messaging_conversation_started_7d',
+  IMPRESSIONS: 'impressions', REACH: 'impressions'
+  /* OFFSITE_CONVERSIONS тут навмисно немає: за неї відповідає подія
+     пікселя нижче — саме вона й відрізняє реєстрацію від покупки. */
+};
+const CD_EVENT = {
+  LEAD: 'lead', COMPLETE_REGISTRATION: 'complete_registration',
+  PURCHASE: 'purchase', ADD_TO_CART: 'add_to_cart',
+  INITIATED_CHECKOUT: 'initiate_checkout', ADD_PAYMENT_INFO: 'add_payment_info',
+  SUBSCRIBE: 'subscribe', START_TRIAL: 'start_trial', DONATE: 'donate',
+  CONTENT_VIEW: 'view_content', SEARCH: 'search', CONTACT: 'contact',
+  SUBMIT_APPLICATION: 'submit_application', SCHEDULE: 'schedule'
+};
+const CD_REG = 'complete_registration';
+
+let cdAcc = '', cdRows = [], cdLeads = CD_LEAD_DEFAULT.slice();
+let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
 
 const cdEsc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -20112,7 +20181,7 @@ const cdMoney = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100)
   .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 window.cdHide = function () {
-  cdAcc = ''; cdRows = []; cdErr = '';
+  cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set();
   document.getElementById('cab-inside')?.classList.add('hidden');
 };
 
@@ -20122,7 +20191,7 @@ window.cdOpen = async function (account) {
   const id = String(account || '').trim();
   if (!id) return cdHide();
   box.classList.remove('hidden');
-  if (id !== cdAcc) { cdRows = []; cdErr = ''; }
+  if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); }
   cdAcc = id;
   cdPaint();
 
@@ -20137,6 +20206,7 @@ window.cdOpen = async function (account) {
   try {
     const { data, error } = await sb.from('fb_ad_today')
       .select('ad_id,name,adset_id,adset_name,campaign_id,campaign_name,'
+            + 'optimization_goal,custom_event_type,'
             + 'spend,impressions,clicks,link_clicks,actions,seen_at')
       .eq('account_id', id)
       .limit(1000);
@@ -20152,43 +20222,107 @@ window.cdOpen = async function (account) {
   if (cdAcc === id) cdPaint();
 };
 
-window.cdSetLevel = function (k) { cdLevel = k; cdPaint(); };
+window.cdToggle = function (k) {
+  if (cdOpenIds.has(k)) cdOpenIds.delete(k); else cdOpenIds.add(k);
+  cdPaint();
+};
 
-/* Згортаємо оголошення до рівня, який вибрали. Числа складаються — так
-   само, як це робить правило на тому ж рівні: якщо тут показати інше,
-   ніж побачить правило, екран почне брехати. */
-function cdGroup() {
-  const leadsOf = (r) => (Array.isArray(r.actions) ? r.actions : [])
-    .reduce((a, x) => a + (cdLeads.includes(String(x.action_type)) ? (Number(x.value) || 0) : 0), 0);
-  const key = (r) => cdLevel === 'ad' ? String(r.ad_id)
-    : cdLevel === 'adset' ? String(r.adset_id || '') : String(r.campaign_id || '');
-  const name = (r) => cdLevel === 'ad' ? (r.name || r.ad_id)
-    : cdLevel === 'adset' ? (r.adset_name || r.adset_id || '—')
-    : (r.campaign_name || r.campaign_id || '—');
-
-  const by = new Map();
-  cdRows.forEach(r => {
-    const k = key(r);
-    if (!k) return;
-    let e = by.get(k);
-    if (!e) {
-      e = { id: k, name: name(r), ads: 0, spend: 0, clicks: 0, imps: 0, leads: 0 };
-      by.set(k, e);
-    }
-    e.ads++;
-    e.spend += Number(r.spend) || 0;
-    e.clicks += Number(r.link_clicks) || 0;
-    e.imps += Number(r.impressions) || 0;
-    e.leads += leadsOf(r);
+/* Expand все / згорнути все. На кабінеті з тридцятьма кампаніями
+   розкривати по одній — робота, а не перегляд. */
+window.cdAll = function (open) {
+  cdOpenIds = new Set();
+  if (open) cdRows.forEach(r => {
+    cdOpenIds.add('campaign:' + (r.campaign_id || ''));
+    cdOpenIds.add('ad set:' + (r.adset_id || ''));
   });
-  return [...by.values()].sort((a, b) => b.spend - a.spend);
+  cdPaint();
+};
+
+/* Одна подія, а не сума всіх схожих. Facebook на ту саму реєстрацію
+   часто віддає і complete_registration, і offsite_conversion.fb_pixel_
+   complete_registration; склавши їх, ми показали б подвійне число. Тому
+   беремо найточніший збіг і тільки його. */
+function cdPick(actions, suf) {
+  if (!suf || !Array.isArray(actions)) return null;
+  let best = null, rank = 99;
+  actions.forEach(x => {
+    const t = String(x.action_type || '');
+    const r = t === suf ? 0
+      : t === 'offsite_conversion.fb_pixel_' + suf ? 1
+      : t === 'onsite_conversion.' + suf ? 2
+      : (t.endsWith('.' + suf) || t.endsWith('_' + suf)) ? 3 : 99;
+    if (r < rank) { rank = r; best = Number(x.value) || 0; }
+  });
+  return rank === 99 ? null : best;
+}
+
+/* На що оптимізується це оголошення. Порожньо — значить fb-sync ще не
+   привезла ціль (стара версія функції або стара колонка в базі), і
+   тоді «Result» покаже прочерк: вигадане число тут гірше за чесне
+   «не знаю». */
+function cdSuffix(r) {
+  const g = String(r.optimization_goal || '').toUpperCase();
+  if (CD_GOAL[g]) return CD_GOAL[g];
+  return CD_EVENT[String(r.custom_event_type || '').toUpperCase()] || '';
+}
+
+function cdMetrics(r) {
+  const acts = Array.isArray(r.actions) ? r.actions : [];
+  const suf = cdSuffix(r);
+  const imps = Number(r.impressions) || 0;
+  return {
+    spend: Number(r.spend) || 0,
+    imps,
+    clicks: Number(r.link_clicks) || 0,
+    leads: acts.reduce((a, x) =>
+      a + (cdLeads.includes(String(x.action_type)) ? (Number(x.value) || 0) : 0), 0),
+    regs: cdPick(acts, CD_REG) || 0,
+    result: !suf ? null : suf === 'impressions' ? imps : (cdPick(acts, suf) || 0),
+    goal: String(r.optimization_goal || r.custom_event_type || '')
+  };
+}
+
+/* Дерево кампанія → адсет → оголошення. Числа батька — сума дітей, і
+   рахуються вони тут, а не в SQL: правило на рівні кампанії складає їх
+   так само, тож розійтись вони не можуть. */
+function cdNode(id, name, kind) {
+  return { id: String(id || ''), name: name || '', kind,
+           spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
+           result: 0, hasResult: false, goals: new Set(), ads: 0, kids: [] };
+}
+function cdAdd(n, m) {
+  n.spend += m.spend; n.imps += m.imps; n.clicks += m.clicks;
+  n.leads += m.leads; n.regs += m.regs; n.ads++;
+  if (m.result != null) { n.result += m.result; n.hasResult = true; }
+  if (m.goal) n.goals.add(m.goal);
+}
+
+function cdTree() {
+  const camps = new Map();
+  cdRows.forEach(r => {
+    const m = cdMetrics(r);
+    const cid = String(r.campaign_id || ''), sid = String(r.adset_id || '');
+    let c = camps.get(cid);
+    if (!c) { c = cdNode(cid, r.campaign_name, 'campaign'); c.by = new Map(); camps.set(cid, c); }
+    let s = c.by.get(sid);
+    if (!s) { s = cdNode(sid, r.adset_name, 'ad set'); c.by.set(sid, s); c.kids.push(s); }
+    const a = cdNode(r.ad_id, r.name, 'ad');
+    cdAdd(a, m); cdAdd(s, m); cdAdd(c, m);
+    a.ads = 0;
+    s.kids.push(a);
+  });
+  const bySpend = (a, b) => b.spend - a.spend;
+  const list = [...camps.values()].sort(bySpend);
+  list.forEach(c => {
+    c.kids.sort(bySpend);
+    c.kids.forEach(s => s.kids.sort(bySpend));
+  });
+  return list;
 }
 
 function cdPaint() {
   const box = document.getElementById('cab-inside');
   if (!box) return;
-  const tabs = CD_LEVELS.map(l => `<button type="button"
-      class="cd-tab ${cdLevel === l.k ? 'is-on' : ''}" onclick="cdSetLevel('${l.k}')">${l.label}</button>`).join('');
 
   /* Коли числа зняті. Без цього «спенд $0» читається як «не крутить»,
      хоч це може бути просто знімок, якого ще не зробили. */
@@ -20202,7 +20336,10 @@ function cdPaint() {
         <p class="cd-s">Today’s numbers from the last sync${when ? ' · ' + when : ''}${
           cdRows.length ? ' · ' + cdRows.length + ' active ad(s)' : ''}</p>
       </div>
-      <div class="cd-tabs">${tabs}</div>
+      <div class="cd-tabs">
+        <button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
+        <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>
+      </div>
     </div>`;
 
   if (cdErr === 'no-table') {
@@ -20217,40 +20354,97 @@ function cdPaint() {
     return;
   }
 
-  const rows = cdGroup();
-  /* Ціна за клік і за лід — нескінченність, коли витрати є, а результату
-     немає. Прочерк тут означав би «нуль», а це різні речі: саме ці рядки
-     й вимикають правила. */
-  const per = (spend, n) => n > 0 ? cdMoney(spend / n)
-    : (spend > 0 ? '<span class="cd-inf" title="Money spent, nothing back yet">∞</span>'
-                 : '<span class="cd-na">—</span>');
-  const kind = cdLevel === 'ad' ? 'ad' : cdLevel === 'adset' ? 'ad set' : 'campaign';
+  const body = [];
+  cdTree().forEach(c => {
+    body.push(cdRow(c, 0));
+    if (!cdOpenIds.has('campaign:' + c.id)) return;
+    c.kids.forEach(s => {
+      body.push(cdRow(s, 1));
+      if (!cdOpenIds.has('ad set:' + s.id)) return;
+      s.kids.forEach(a => body.push(cdRow(a, 2)));
+    });
+  });
 
   box.innerHTML = head + `<div class="cd-wrap custom-scrollbar">
     <table class="cd-tbl">
       <thead><tr>
-        <th>${cdEsc(CD_LEVELS.find(l => l.k === cdLevel).label)}</th>
-        ${cdLevel !== 'ad' ? '<th class="ta-c" title="How many active ads inside">Ads</th>' : ''}
+        <th>Campaign / ad set / ad</th>
         <th class="ta-r">Spend</th>
-        <th class="ta-r" title="Link clicks">Clicks</th>
-        <th class="ta-r">Per click</th>
-        <th class="ta-r">Leads</th>
-        <th class="ta-r">Per lead</th>
+        <th class="ta-r" title="What the ad set optimizes for">Result</th>
+        <th class="ta-r">Cost per result</th>
+        <th class="ta-r" title="Cost per 1000 impressions">CPM</th>
+        <th class="ta-r" title="Link clicks ÷ impressions">CTR</th>
+        <th class="ta-r">Link clicks</th>
+        <th class="ta-r" title="Cost per link click">CPC</th>
+        <th class="ta-r">Lead</th>
+        <th class="ta-r">Cost per lead</th>
+        <th class="ta-r" title="Completed registrations">Reg</th>
+        <th class="ta-r">Cost per reg</th>
         <th></th>
       </tr></thead>
-      <tbody>${rows.map(r => `<tr>
-        <td class="cd-name" title="${cdEsc(r.id)}">${cdEsc(r.name)}</td>
-        ${cdLevel !== 'ad' ? `<td class="ta-c cd-num">${r.ads}</td>` : ''}
-        <td class="ta-r cd-num cd-spend">${cdMoney(r.spend)}</td>
-        <td class="ta-r cd-num">${r.clicks}</td>
-        <td class="ta-r cd-num">${per(r.spend, r.clicks)}</td>
-        <td class="ta-r cd-num">${r.leads}</td>
-        <td class="ta-r cd-num">${per(r.spend, r.leads)}</td>
-        <td class="ta-r"><button type="button" class="cd-off" ${cdBusy ? 'disabled' : ''}
-          onclick="cdPause('${r.id}', '${cdEsc(kind)}', '${encodeURIComponent(r.name)}')"
-          title="Switch this ${kind} off in Facebook">Stop</button></td>
-      </tr>`).join('')}</tbody>
+      <tbody>${body.join('')}</tbody>
     </table></div>`;
+}
+
+/* Ціна — нескінченність, коли витрати є, а результату немає. Прочерк
+   тут означав би «нуль», а це різні речі: саме ці рядки й вимикають
+   правила. */
+const cdPer = (spend, n) => n > 0 ? cdMoney(spend / n)
+  : (spend > 0 ? '<span class="cd-inf" title="Money spent, nothing back yet">∞</span>'
+               : '<span class="cd-na">—</span>');
+const cdNone = '<span class="cd-na">—</span>';
+
+function cdRow(n, depth) {
+  const key = n.kind + ':' + n.id;
+  const kids = n.kids.length > 0;
+  const open = cdOpenIds.has(key);
+  /* Розкриває вся назва, а не сам трикутник: цілитись у чотирнадцять
+     пікселів на рядку, де й так тісно, — заняття, а не клік. */
+  const twist = `<span class="cd-twist${kids ? (open ? ' is-on' : '') : ' cd-leaf'}"></span>`;
+  const hit = kids
+    ? ` onclick="cdToggle('${cdEsc(key).replace(/'/g, '&#39;')}')"` : '';
+
+  /* Назви немає — значить знімок старий: fb-sync привозить її разом із
+     числами. Показуємо id, але видно, що це id, а не назва: мовчки
+     підсунути номер замість назви — те саме, що показати нуль замість
+     «не знаю». */
+  const named = String(n.name || '').trim();
+  const label = named
+    ? `<span class="cd-lbl">${cdEsc(named)}</span>`
+    : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
+  const count = n.kind === 'ad' ? ''
+    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
+
+  const goals = [...n.goals];
+  const goalTip = !goals.length ? 'The sync has not brought the goal yet'
+    : goals.length === 1 ? 'Goal: ' + goals[0]
+    : 'Mixed goals: ' + goals.join(', ');
+  const result = n.hasResult ? String(n.result) : cdNone;
+  const perResult = n.hasResult ? cdPer(n.spend, n.result) : cdNone;
+
+  const cpm = n.imps > 0 ? cdMoney(n.spend / n.imps * 1000) : cdNone;
+  const ctr = n.imps > 0
+    ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
+
+  return `<tr class="cd-r cd-d${depth}">
+    <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
+        title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
+        >${twist}${label}${count}</td>
+    <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
+    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${result}</td>
+    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${perResult}</td>
+    <td class="ta-r cd-num">${cpm}</td>
+    <td class="ta-r cd-num">${ctr}</td>
+    <td class="ta-r cd-num">${n.clicks}</td>
+    <td class="ta-r cd-num">${cdPer(n.spend, n.clicks)}</td>
+    <td class="ta-r cd-num">${n.leads}</td>
+    <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
+    <td class="ta-r cd-num">${n.regs}</td>
+    <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
+    <td class="ta-r"><button type="button" class="cd-off" ${cdBusy ? 'disabled' : ''}
+      onclick="cdPause('${cdEsc(n.id)}', '${n.kind}', '${encodeURIComponent(named || n.id)}')"
+      title="Switch this ${n.kind} off in Facebook">Stop</button></td>
+  </tr>`;
 }
 
 /* Вимкнути одну сутність руками. Ходить у ту саму функцію, що й кнопка
