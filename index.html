@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 09:31">
+  <meta name="build" content="build 28.09 09:45">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3191,10 +3191,9 @@ body[data-route="domains"] #dm-detail {
    ділить із таблицею — своя третина екрана й власний скрол, щоб
    таблиця кабінетів не поїхала під нього цілком. */
 #cab-inside {
-  flex: 0 0 auto; max-height: 52%;
   /* min-width: 0 — щоб широка таблиця всередині тягнула свою смугу
      прокрутки, а не розсувала сторінку. */
-  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0;
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
 }
 .cd-head {
@@ -3211,7 +3210,11 @@ body[data-route="domains"] #dm-detail {
 }
 .cd-tab:hover { color: var(--text-main); }
 .cd-tab.is-on { background: var(--accent); border-color: transparent; color: #fff; }
-.cd-wrap { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* Висота стеля, а не «скільки вийде». Пів екрана таблиці там, де
+   людина зайшла по експорт, — це не показ даних, а перешкода. Стелі
+   вистачає на пʼять кампаній, а коли одну розгорнули — на неї з
+   дітьми; далі всередині зʼявляється своя смуга. */
+.cd-wrap { flex: 1 1 auto; min-height: 0; max-height: 320px; overflow: auto; }
 .cd-tbl { width: 100%; border-collapse: collapse; min-width: 1180px; }
 .cd-tbl th {
   position: sticky; top: 0; z-index: 2; background: var(--surface-2);
@@ -3258,6 +3261,15 @@ body[data-route="domains"] #dm-detail {
   margin-left: 7px; font-size: 9px; font-weight: 800; letter-spacing: .04em;
   color: var(--text-muted); text-transform: uppercase;
 }
+/* У списку оголошень батьків більше нема над рядком — тож пишемо їх у
+   рядку: без них «Mostbet_KG_1» не має адреси. */
+.cd-where { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--text-muted); }
+.cab-inside-btn {
+  width: 100%; margin-top: 8px; padding: 6px 10px; border-radius: 10px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.cab-inside-btn:hover { color: var(--text-main); border-color: var(--accent); }
 /* Назви ще немає — показуємо id, але так, щоб це не читалось як назва. */
 .cd-noname { color: var(--text-muted); font-weight: 600; font-style: italic; }
 .cd-num { font-variant-numeric: tabular-nums; color: var(--text-main); }
@@ -3300,6 +3312,7 @@ body[data-route="domains"] #dm-detail {
 .bil-wait { margin-top: 7px; font-size: 10px; font-style: italic; color: var(--text-muted); }
 .bil-ok  { font-size: 10px; font-weight: 700; color: #4ADE80; margin: 2px 0; word-break: break-word; }
 .bil-bad { font-size: 10px; font-weight: 700; color: #F87171; margin: 2px 0; word-break: break-word; }
+.bil-note { font-size: 9.5px; color: var(--text-muted); margin: 1px 0 3px; word-break: break-word; }
 .bil-raw {
   margin-top: 5px; max-height: 190px; overflow: auto;
   background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 6px 8px;
@@ -4151,7 +4164,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 09:31</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 09:45</div>
     </div>
   </aside>
 
@@ -17820,6 +17833,9 @@ function cabDetail(c) {
      числами. Окремого кліку для цього немає навмисно: питання «що
      всередині» виникає рівно тоді, коли кабінет вибрали. */
   if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else cdHide(); }
+  /* Саме нутро не відкривається від вибору кабінета — див. cabdrill.js.
+     Сюди заходять і просто по експорт, а таблиця на пів екрана в такі
+     хвилини тільки заважає. */
   /* Відповідь про списання стосується одного кабінета. Лишити її при
      переході на інший означало б показати чужі числа під його назвою. */
   if (typeof bilReset === 'function') bilReset();
@@ -17883,6 +17899,12 @@ function cabDetail(c) {
       ${typeof fpForCab === 'function' ? fpForCab(c) : ''}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
+      ${/* Кампанії й оголошення цього кабінета — кнопкою, а не самі
+            собою: вибір кабінета не мусить нічого вантажити. */
+        typeof cdToggleOpen === 'function' ? `<button type="button" class="cab-inside-btn"
+          id="cab-inside-btn" onclick="cdToggleOpen('${enc}')"
+          title="Campaigns, ad sets and ads of this cabinet with today\u2019s numbers">${
+            typeof cdBtnLabel === 'function' ? cdBtnLabel() : 'Campaigns & ads'}</button>` : ''}
       ${/* Чи віддає Facebook списання з картки — питання, на яке не
             відповісти з документації: одному кабінету віддасть, сусідньому
             відмовить. Тому кнопка, а не таблиця: один запит, нічого не
@@ -20251,6 +20273,32 @@ const cdState = (k) => CD_STATE.find(x => x.k === String(k || '').toUpperCase())
 let cdAcc = '', cdRows = [], cdLeads = CD_LEAD_DEFAULT.slice();
 let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
 
+/* Саме по собі нутро не відкривається. Account відкривають не тільки
+   заради нього: частіше — щоб скачати експорт або дописати нотатку, а
+   таблиця на пів екрана в такі хвилини просто заважає. Тому вибір
+   кабінета більше нічого не вантажить — ні запиту, ні малювання, — а
+   показує його кнопка в картці.
+
+   Раз відкривши, людина зазвичай дивиться так і наступний кабінет,
+   тому вибір лишається до кінця сеансу. */
+let cdWanted = false;
+
+/* Дерево чи просто список оголошень. Дерево відповідає на «де саме
+   гроші», список — на «яке оголошення найдорожче»; це різні питання, і
+   вигравати має те, яке зараз. */
+let cdFlat = false;
+
+window.cdIsOpen = () => cdWanted;
+window.cdBtnLabel = () => cdWanted ? 'Hide campaigns & ads' : 'Campaigns & ads';
+
+window.cdToggleOpen = function (accEnc) {
+  cdWanted = !cdWanted;
+  const b = document.getElementById('cab-inside-btn');
+  if (b) b.textContent = cdBtnLabel();
+  if (cdWanted) cdOpen(decodeURIComponent(accEnc || ''));
+  else cdHide();
+};
+
 const cdEsc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const cdMoney = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100)
@@ -20265,7 +20313,7 @@ window.cdOpen = async function (account) {
   const box = document.getElementById('cab-inside');
   if (!box) return;
   const id = String(account || '').trim();
-  if (!id) return cdHide();
+  if (!id || !cdWanted) return cdHide();
   box.classList.remove('hidden');
   if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); }
   cdAcc = id;
@@ -20297,6 +20345,8 @@ window.cdOpen = async function (account) {
   }
   if (cdAcc === id) cdPaint();
 };
+
+window.cdSetFlat = function (v) { cdFlat = !!v; cdPaint(); };
 
 window.cdToggle = function (k) {
   if (cdOpenIds.has(k)) cdOpenIds.delete(k); else cdOpenIds.add(k);
@@ -20409,6 +20459,19 @@ function cdBad() {
   return bad ? ' · <span class="cd-warn">' + bad + ' not running</span>' : '';
 }
 
+/* Просто оголошення, без батьків. Сортуємо так само за спендом: у
+   списку це єдиний спосіб відповісти на «що найдорожче», а батьків
+   лишаємо підписом, щоб рядок не втратив адресу. */
+function cdAds() {
+  return cdRows.map(r => {
+    const n = cdNode(r.ad_id, r.name, 'ad');
+    cdAdd(n, cdMetrics(r));
+    n.ads = 0;
+    n.where = [r.campaign_name, r.adset_name].filter(Boolean).join(' · ');
+    return n;
+  }).sort((a, b) => b.spend - a.spend);
+}
+
 function cdPaint() {
   const box = document.getElementById('cab-inside');
   if (!box) return;
@@ -20426,8 +20489,12 @@ function cdPaint() {
           cdRows.length ? ' · ' + cdRows.length + ' switched-on ad(s)' : ''}${cdBad()}</p>
       </div>
       <div class="cd-tabs">
-        <button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
-        <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>
+        <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
+          onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Tree</button>
+        <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
+          onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
+        ${cdFlat ? '' : `<button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
+        <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>`}
       </div>
     </div>`;
 
@@ -20444,7 +20511,8 @@ function cdPaint() {
   }
 
   const body = [];
-  cdTree().forEach(c => {
+  if (cdFlat) cdAds().forEach(a => body.push(cdRow(a, 0)));
+  else cdTree().forEach(c => {
     body.push(cdRow(c, 0));
     if (!cdOpenIds.has('campaign:' + c.id)) return;
     c.kids.forEach(s => {
@@ -20457,7 +20525,7 @@ function cdPaint() {
   box.innerHTML = head + `<div class="cd-wrap custom-scrollbar">
     <table class="cd-tbl">
       <thead><tr>
-        <th>Campaign / ad set / ad</th>
+        <th>${cdFlat ? 'Ad' : 'Campaign / ad set / ad'}</th>
         <th title="Switched on is not the same as running">Status</th>
         <th class="ta-r">Spend</th>
         <th class="ta-r" title="What the ad set optimizes for">Result</th>
@@ -20540,7 +20608,8 @@ function cdRow(n, depth) {
   const label = named
     ? `<span class="cd-lbl">${cdEsc(named)}</span>`
     : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
-  const count = n.kind === 'ad' ? ''
+  const count = n.kind === 'ad'
+    ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
     : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
 
   const goals = [...n.goals];
@@ -20669,15 +20738,22 @@ window.bilCheck = async function (accEnc) {
 function bilSum(o) {
   if (!o) return '';
   if (o.error) return `<p class="bil-bad">${bilEsc(o.error)}</p>`;
-  const line = (name, p) => {
+  const line = ([name, p]) => {
     if (!p) return '';
-    if (!p.ok) return `<p class="bil-bad"><b>${name}</b>: ${
-      bilEsc(p.message || 'refused')}${p.sub ? ' (sub ' + p.sub + ')' : ''}</p>`;
-    return `<p class="bil-ok"><b>${name}</b>: ${
+    if (!p.ok) return `<p class="bil-bad"><b>${bilEsc(name)}</b>: ${
+      bilEsc(p.message || p.note || 'refused')}${p.sub ? ' (sub ' + p.sub + ')' : ''}</p>`;
+    /* Перелік того, що вузол приймає, — і є відповідь на питання. Тому
+       показуємо його окремо й повністю, а не ховаємо в «answered». */
+    if (p.edges) return `<p class="bil-ok"><b>${bilEsc(name)}</b>: ${
+      p.fieldCount} field(s), ${p.edges.length} edge(s)</p>`
+      + `<p class="bil-note">billing-ish fields: ${
+          p.fields && p.fields.length ? bilEsc(p.fields.join(', ')) : 'none'}</p>`
+      + `<p class="bil-note">edges: ${bilEsc((p.edges || []).join(', ')) || 'none'}</p>`;
+    return `<p class="bil-ok"><b>${bilEsc(name)}</b>: ${
       p.count == null ? 'answered' : p.count + ' row(s)'}${
       p.fields && p.fields.length ? ' · ' + bilEsc(p.fields.join(', ')) : ' · empty'}</p>`;
   };
-  return line('transactions', o.transactions) + line('account', o.account);
+  return Object.entries(o.checks || {}).map(line).join('');
 }
 
 window.bilPaint = function () {
