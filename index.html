@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 09:45">
+  <meta name="build" content="build 28.09 10:03">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4164,7 +4164,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 09:45</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:03</div>
     </div>
   </aside>
 
@@ -17902,9 +17902,9 @@ function cabDetail(c) {
       ${/* Кампанії й оголошення цього кабінета — кнопкою, а не самі
             собою: вибір кабінета не мусить нічого вантажити. */
         typeof cdToggleOpen === 'function' ? `<button type="button" class="cab-inside-btn"
-          id="cab-inside-btn" onclick="cdToggleOpen('${enc}')"
+          id="cab-inside-btn" data-acc="${esc(c.id)}" onclick="cdToggleOpen('${enc}')"
           title="Campaigns, ad sets and ads of this cabinet with today\u2019s numbers">${
-            typeof cdBtnLabel === 'function' ? cdBtnLabel() : 'Campaigns & ads'}</button>` : ''}
+            typeof cdBtnLabel === 'function' ? cdBtnLabel(c.id) : 'Campaigns & ads'}</button>` : ''}
       ${/* Чи віддає Facebook списання з картки — питання, на яке не
             відповісти з документації: одному кабінету віддасть, сусідньому
             відмовить. Тому кнопка, а не таблиця: один запит, нічого не
@@ -20279,24 +20279,38 @@ let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
    кабінета більше нічого не вантажить — ні запиту, ні малювання, — а
    показує його кнопка в картці.
 
-   Раз відкривши, людина зазвичай дивиться так і наступний кабінет,
-   тому вибір лишається до кінця сеансу. */
-let cdWanted = false;
+   ВІДКРИТО — ЦЕ ПРО КОНКРЕТНИЙ КАБІНЕТ, а не про сторінку взагалі. Тому
+   ніякого окремого «хочу бачити» тут немає: відкритий кабінет і є
+   cdAcc. Спершу цей прапорець був — мовляв, раз відкривши, людина
+   дивитиметься так і наступний кабінет, — і вийшло найгірше: клік по
+   кабінету то розгортав таблицю на пів екрана, то ні, залежно від
+   невидимого стану. Правило мусить бути одне й просте: клік по
+   кабінету НІКОЛИ не відкриває нутро, відкриває тільки кнопка, і
+   тільки для того кабінета, на якому її натиснули. */
 
 /* Дерево чи просто список оголошень. Дерево відповідає на «де саме
    гроші», список — на «яке оголошення найдорожче»; це різні питання, і
    вигравати має те, яке зараз. */
 let cdFlat = false;
 
-window.cdIsOpen = () => cdWanted;
-window.cdBtnLabel = () => cdWanted ? 'Hide campaigns & ads' : 'Campaigns & ads';
+window.cdIsOpen = (acc) => !!cdAcc && String(acc || '') === cdAcc;
+window.cdBtnLabel = (acc) => cdIsOpen(acc) ? 'Hide campaigns & ads' : 'Campaigns & ads';
+
+/* Підпис кнопки живе поруч зі станом, а не там, де її намалювали:
+   інакше рано чи пізно вони розійдуться, і кнопка «Hide» ховатиме те,
+   чого вже немає. */
+function cdBtnSync() {
+  const b = document.getElementById('cab-inside-btn');
+  if (b) b.textContent = cdBtnLabel(b.dataset.acc || '');
+}
 
 window.cdToggleOpen = function (accEnc) {
-  cdWanted = !cdWanted;
-  const b = document.getElementById('cab-inside-btn');
-  if (b) b.textContent = cdBtnLabel();
-  if (cdWanted) cdOpen(decodeURIComponent(accEnc || ''));
-  else cdHide();
+  const acc = decodeURIComponent(accEnc || '').trim();
+  if (!acc) return;
+  if (cdIsOpen(acc)) return cdHide();
+  /* Повертаємо саму обіцянку: так кнопку можна дочекатись — і в тесті,
+     і там, де після відкриття треба щось зробити. */
+  return cdLoad(acc);
 };
 
 const cdEsc = (v) => String(v == null ? '' : v)
@@ -20306,17 +20320,30 @@ const cdMoney = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100)
 
 window.cdHide = function () {
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set();
-  document.getElementById('cab-inside')?.classList.add('hidden');
+  const box = document.getElementById('cab-inside');
+  /* Вміст прибираємо, а не лише ховаємо: лишений у розмітці, він
+     наступного разу встигає блимнути числами минулого кабінета. */
+  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+  cdBtnSync();
 };
 
-window.cdOpen = async function (account) {
+/* Картку кабінета перемальовують і без нас — збереглось поле, приїхала
+   синхронізація. Нутро при цьому має лишатись як було, якщо кабінет той
+   самий, і зникати, якщо вибрали інший. */
+window.cdOpen = function (account) {
+  if (String(account || '').trim() !== cdAcc) cdHide();
+  else cdBtnSync();
+};
+
+async function cdLoad(account) {
   const box = document.getElementById('cab-inside');
   if (!box) return;
   const id = String(account || '').trim();
-  if (!id || !cdWanted) return cdHide();
+  if (!id) return cdHide();
   box.classList.remove('hidden');
   if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); }
   cdAcc = id;
+  cdBtnSync();
   cdPaint();
 
   /* Галочки лідів лежать у налаштуваннях правил. Читаємо їх щоразу, а не
@@ -20344,7 +20371,7 @@ window.cdOpen = async function (account) {
       ? 'no-table' : e.message;
   }
   if (cdAcc === id) cdPaint();
-};
+}
 
 window.cdSetFlat = function (v) { cdFlat = !!v; cdPaint(); };
 
