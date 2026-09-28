@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 12:59">
+  <meta name="build" content="build 28.09 13:12">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3381,6 +3381,12 @@ body[data-route="domains"] #dm-detail {
 .tm-bar-t i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
 .tm-bar-v { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--text-muted);
             font-weight: 800; }
+/* Легенда графіка. Своя, а не Chart.js: там вона з'їдає висоту, якої в
+   смузі на 180 пікселів і так немає. */
+.tm-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+.tm-leg { display: inline-flex; align-items: center; gap: 5px;
+          font-size: 9.5px; font-weight: 800; color: var(--text-muted); }
+.tm-leg i { width: 8px; height: 8px; border-radius: 3px; flex: 0 0 8px; }
 .tm-list { margin: 0; padding-left: 15px; font-size: 10.5px; color: var(--text-main); }
 .tm-list li { margin-bottom: 3px; }
 .tm-list span { color: var(--text-muted); }
@@ -4237,7 +4243,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 12:59</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 13:12</div>
     </div>
   </aside>
 
@@ -5261,9 +5267,24 @@ input.ui-in[type="range"] { padding: 0; }
     </div>
   </div>
 
-  <!-- Що горить. Стоїть над списком, бо це те, заради чого сюди
-       заходять; сам список відповідає вже на друге питання — «у кого». -->
+  <!-- Що горить. Стоїть над усім, бо це те, заради чого сюди заходять;
+       картки й список відповідають уже на друге питання — «у кого». -->
   <div id="team-fire" class="mb-4"></div>
+
+  <!-- Ті самі картки, що на дашборді баєра, і навмисно той самий клас
+       kpi-card: людина ходить між сторінками, і число в такій самій
+       рамці мусить означати таке саме. -->
+  <div id="team-kpi" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4"></div>
+
+  <!-- Spend по днях, лінія на баєра. Таблиця показує, ХТО скільки
+       витратив; графік — коли це почалось, а це вже інше питання. -->
+  <div id="team-chart-wrap" class="card p-4 rounded-2xl mb-4 hidden">
+    <div class="flex items-center justify-between mb-2">
+      <p class="tm-h" style="margin:0">Spend by day</p>
+      <div id="team-legend" class="tm-legend"></div>
+    </div>
+    <div style="height:180px"><canvas id="team-chart"></canvas></div>
+  </div>
 
   <div class="flex gap-4 items-start">
     <div id="team-list" class="flex-1 min-w-0"></div>
@@ -21289,6 +21310,112 @@ function tmFire() {
       n} ${tmEsc(label)}</span>`).join('') + '</div>';
 }
 
+/* Картки команди — ті самі, що в баєра на дашборді, і клас у них той
+   самий (kpi-card). Людина ходить між сторінками, і число в такій самій
+   рамці мусить означати таке саме; свій окремий вигляд тут означав би,
+   що це інша величина. */
+const TM_KPI = [
+  { k: 'spend', label: 'Team spend', accent: '#8B5CF6', glow: 'rgba(139,92,246,.16)',
+    ico: '<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/>' },
+  { k: 'regs', label: 'Registrations', accent: '#3B82F6', glow: 'rgba(59,130,246,.14)',
+    ico: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>' },
+  { k: 'deps', label: 'Deposits', accent: '#22C55E', glow: 'rgba(34,197,94,.14)',
+    ico: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>' },
+  { k: 'cpd', label: 'Cost per dep', accent: '#F59E0B', glow: 'rgba(245,158,11,.14)',
+    ico: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>' }
+];
+
+function tmKpi(rows, people) {
+  const box = document.getElementById('team-kpi');
+  if (!box) return;
+  /* Суму беремо з УСІХ рядків, разом із незапідписаними: гроші пішли,
+     хоч ми й не знаємо чиї, і ховати їх із суми означало б занизити
+     спенд команди. А от людей рахуємо тільки відомих — «ще один баєр»
+     із порожнього created_by не з'являється. */
+  const sum = rows.reduce((a, r) => ({
+    spend: a.spend + r.spend, regs: a.regs + r.regs, deps: a.deps + r.deps
+  }), { spend: 0, regs: 0, deps: 0 });
+
+  const value = (k) => k === 'spend' ? tmMoney(sum.spend)
+    : k === 'regs' ? String(sum.regs)
+    : k === 'deps' ? String(sum.deps)
+    /* Ціна депозиту без депозитів — не нуль: нуль читався б як
+       «безкоштовно», а це рівно навпаки. */
+    : tmPer(sum.spend, sum.deps);
+
+  const foot = (k) => k === 'spend'
+      ? (people || []).length + ' buyer(s) with spend'
+    : k === 'regs' ? tmPer(sum.spend, sum.regs) + ' each'
+    : k === 'deps' ? (sum.regs ? Math.round(sum.deps / sum.regs * 100) + '% of registrations' : '')
+    : '';
+
+  box.innerHTML = TM_KPI.map(c => `
+    <div class="kpi-card" style="--accent:${c.accent};--glow:${c.glow}">
+      <div class="kpi-head">
+        <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-linecap="round" stroke-linejoin="round">${c.ico}</svg></span>
+        <span class="kpi-label">${c.label}</span>
+      </div>
+      <p class="kpi-value">${value(c.k)}</p>
+      <p class="kpi-foot">${foot(c.k)}</p>
+    </div>`).join('');
+}
+
+/* Spend по днях, лінія на баєра. Таблиця каже, ХТО скільки витратив;
+   графік — коли це почалось і в кого стрибнуло. Це різні питання, тож
+   одне одного вони не заміняють.
+
+   Малюємо тільки коли днів більше одного: лінія з однієї точки — це не
+   графік, а крапка, і місце вона займає як графік. */
+const TM_COLORS = ['#8B5CF6', '#3B82F6', '#22C55E', '#F59E0B', '#EC4899', '#14B8A6'];
+let tmChart = null;
+
+function tmDrawChart(people) {
+  const wrap = document.getElementById('team-chart-wrap');
+  const cv = document.getElementById('team-chart');
+  if (!wrap || !cv || typeof Chart === 'undefined') return;
+
+  const [a, b] = tmDates();
+  const days = [...new Set(tmRows
+    .filter(r => String(r.date || '') >= a && String(r.date || '') <= b)
+    .map(r => String(r.date || '')).filter(Boolean))].sort();
+
+  if (days.length < 2 || !people.length) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+
+  const top = people.slice(0, TM_COLORS.length);
+  const sets = top.map((p, i) => {
+    const byDay = new Map();
+    tmRows.forEach(r => {
+      const d = String(r.date || '');
+      if (d < a || d > b) return;
+      if (String(r.created_by || '') !== p.uid) return;
+      byDay.set(d, (byDay.get(d) || 0) + (Number(r.spend) || 0));
+    });
+    return { label: tmName(p.uid).text, data: days.map(d => byDay.get(d) || 0),
+             borderColor: TM_COLORS[i], backgroundColor: TM_COLORS[i],
+             borderWidth: 2, pointRadius: 0, tension: .3 };
+  });
+
+  document.getElementById('team-legend').innerHTML = top.map((p, i) =>
+    `<span class="tm-leg"><i style="background:${TM_COLORS[i]}"></i>${
+      tmEsc(tmName(p.uid).text)}</span>`).join('');
+
+  if (tmChart) { try { tmChart.destroy(); } catch (e) {} }
+  tmChart = new Chart(cv, {
+    type: 'line',
+    data: { labels: days.map(d => d.slice(5)), datasets: sets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, datalabels: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+        y: { grid: { color: 'rgba(148,163,184,.08)' }, ticks: { font: { size: 9 } } }
+      }
+    }
+  });
+}
+
 function tmPaint() {
   const list = document.getElementById('team-list');
   if (!list) return;
@@ -21318,6 +21445,8 @@ function tmPaint() {
   const people = rows.filter(r => r.uid);
 
   document.getElementById('team-fire').innerHTML = tmFire();
+  tmKpi(rows, people);
+  tmDrawChart(people);
 
   if (!rows.length) {
     list.innerHTML = '<p class="tm-empty">No spend in this period.</p>';

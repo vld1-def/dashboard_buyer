@@ -54,13 +54,54 @@ create table if not exists public.team_members (
   -- Як підписувати людину на екрані. Порожньо — покажемо пошту.
   name       text,
   role       text not null default 'buyer',
-  created_at timestamptz not null default now(),
-  constraint team_members_role_ok check (role in ('buyer', 'lead', 'admin'))
+  created_at timestamptz not null default now()
 );
+
+--  ⚠️ ТАБЛИЦЯ МОГЛА ІСНУВАТИ РАНІШЕ. create table if not exists у такому
+--  разі НІЧОГО не робить — і колонок не додає. Саме так і сталось:
+--  «column "name" of relation "team_members" does not exist».
+--
+--  Тому далі колонки додаються поіменно, як це зроблено і в FB_SYNC.sql.
+--  Виконати можна і на новій таблиці, і на вже наявній: повторний
+--  add column if not exists Postgres не турбує.
+
+alter table public.team_members
+  add column if not exists user_id    uuid references auth.users(id) on delete cascade,
+  add column if not exists team_name  text,
+  add column if not exists name       text,
+  add column if not exists role       text,
+  add column if not exists created_at timestamptz not null default now();
+
+--  Роль без значення читається як «ніхто»: краще одразу зробити з неї
+--  звичайного баєра, ніж лишити null і гадати.
+update public.team_members set role = 'buyer' where role is null;
+alter table public.team_members alter column role set default 'buyer';
+
+--  on conflict (user_id) нижче вимагає унікальності саме по user_id. У
+--  нової таблиці це первинний ключ, у старої могло бути інакше — тому
+--  індекс створюємо окремо. Якщо ключ уже такий, зайвим це не буде.
+create unique index if not exists team_members_user_uidx on public.team_members (user_id);
+
+--  Обмеження додаємо як not valid: старі рядки могли мати будь-що в
+--  role, і перевіряти їх заднім числом означало б впасти на тому, чого
+--  ми не писали. Нові рядки воно перевіряє повністю.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'team_members_role_ok') then
+    alter table public.team_members
+      add constraint team_members_role_ok check (role in ('buyer', 'lead', 'admin')) not valid;
+  end if;
+end $$;
 
 create index if not exists team_members_team_idx on public.team_members (team_name);
 
 alter table public.team_members enable row level security;
+
+--  Подивитись, що вийшло. Якщо таблиця вже була чиясь — тут це й буде
+--  видно, до того як щось у неї писати.
+-- select column_name, data_type from information_schema.columns
+--  where table_schema = 'public' and table_name = 'team_members'
+--  order by ordinal_position;
 
 
 -- ════════════════════════════════════════════════════════════
