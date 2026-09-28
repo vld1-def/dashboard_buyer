@@ -225,7 +225,42 @@ end $$;
 --
 --  Баєрів заводити не обов'язково: без рядка людина й так бачить своє.
 --  Але варто — інакше в таблиці тімліда замість імені стоятиме uuid.
+--
+--  ⚠️ ЩО САМЕ ЗА UUID. Це id КОРИСТУВАЧА з auth.users — тієї людини,
+--  яка заходитиме в дашборд своїм логіном. Не номер кабінета, не
+--  команда і не ваш власний id.
+--
+--  Немає ще акаунта? У дашборді реєстрації немає, тільки вхід — тож
+--  користувача створюють у Supabase: Authentication → Users → Add user
+--  (пошта й пароль). Після цього він з'явиться в auth.users.
+--
+--  ЗРУЧНІШЕ — ЗА ПОШТОЮ, а не копіюванням uuid: варто переставити один
+--  символ, і рядок мовчки ляже на неіснуючого користувача. Варіант
+--  нижче сам знаходить id за поштою, а якщо пошти немає в auth.users —
+--  просто нічого не вставить, і це одразу видно по «0 rows».
 -- ════════════════════════════════════════════════════════════
+
+--  ▸ ВАРІАНТ 1 — за поштою (рекомендую)
+
+-- insert into public.team_members (user_id, team_name, name, role)
+-- select u.id, v.team_name, v.name, v.role
+--   from auth.users u
+--   join (values
+--     ('lead@example.com',   'IMPROVE', 'Ім''я',  'lead'),
+--     ('buyer1@example.com', 'IMPROVE', 'Олег',  'buyer'),
+--     ('buyer2@example.com', 'IMPROVE', 'Ірина', 'buyer')
+--   ) as v(email, team_name, name, role) on lower(u.email) = lower(v.email)
+-- on conflict (user_id) do update
+--   set role = excluded.role, name = excluded.name, team_name = excluded.team_name;
+
+--  Перевірити, що всіх знайшло: скільки рядків — стільки й людей.
+-- select tm.role, tm.name, tm.team_name, u.email
+--   from public.team_members tm join auth.users u on u.id = tm.user_id
+--  order by tm.role, tm.name;
+
+
+--  ▸ ВАРІАНТ 2 — якщо все-таки хочете вручну.
+--     Де взяти: select id, email from auth.users order by created_at;
 
 -- insert into public.team_members (user_id, team_name, name, role) values
 --   ('UUID-ТІМЛІДА', 'IMPROVE', 'Ім''я',  'lead'),
