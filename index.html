@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 10:03">
+  <meta name="build" content="build 28.09 10:40">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3190,12 +3190,22 @@ body[data-route="domains"] #dm-detail {
    Блок під таблицею: кампанії, адсети, оголошення з числами. Висоту
    ділить із таблицею — своя третина екрана й власний скрол, щоб
    таблиця кабінетів не поїхала під нього цілком. */
+/* Смуга з кнопкою — у самому низу блока кабінетів. Лінія на ній, бо
+   саме вона тепер відділяє нижній шматок; нутро приростає під нею. */
+#cab-inside-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
 #cab-inside {
   /* min-width: 0 — щоб широка таблиця всередині тягнула свою смугу
      прокрутки, а не розсувала сторінку. */
   flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0;
-  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+  margin-top: 10px;
 }
+/* display на id б'є .hidden від Tailwind — саме через це блок колись
+   «ховався», лишаючись на екрані. Тому ховання прописане поіменно, як
+   і в решті панелей цього файлу. */
+#cab-inside.hidden, #cab-inside-bar.hidden { display: none; }
 .cd-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 12px; flex: 0 0 auto; margin-bottom: 8px;
@@ -3265,11 +3275,12 @@ body[data-route="domains"] #dm-detail {
    рядку: без них «Mostbet_KG_1» не має адреси. */
 .cd-where { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--text-muted); }
 .cab-inside-btn {
-  width: 100%; margin-top: 8px; padding: 6px 10px; border-radius: 10px;
+  padding: 6px 12px; border-radius: 10px; flex: 0 0 auto;
   font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
   background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
 }
 .cab-inside-btn:hover { color: var(--text-main); border-color: var(--accent); }
+.cab-inside-who { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Назви ще немає — показуємо id, але так, щоб це не читалось як назва. */
 .cd-noname { color: var(--text-muted); font-weight: 600; font-style: italic; }
 .cd-num { font-variant-numeric: tabular-nums; color: var(--text-main); }
@@ -3957,6 +3968,10 @@ input.ui-in[type="range"] { padding: 0; }
 /* Валюта поруч із карткою: тим самим шрифтом, але притлумлена — вона
    уточнює суму, а не є сумою. */
 .cab-cur { color: var(--text-muted); font-weight: 900; }
+/* «was» поруч із карткою: та сама приглушена подача, що й валюта, але
+   з відступом — інакше злипається з номером. */
+.cab-cur + .cab-cur, .cd-was { margin-left: 5px; }
+.cab-fb .cab-cur { margin-left: 5px; }
 
 /* ═══════════ МІТКИ Й ПОСИЛАННЯ У ЗВІТАХ ═══════════
    Три різні сутності, тому три різні кольори: мітка дня фіолетова,
@@ -4164,7 +4179,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:03</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:40</div>
     </div>
   </aside>
 
@@ -4668,13 +4683,17 @@ input.ui-in[type="range"] { padding: 0; }
               <select id="creative-geo-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
                 <option value="">All Geo</option>
               </select>
-              <select id="creative-device-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
-                <option value="">All Devices</option>
-                <option value="ios_phone">iPhone</option>
-                <option value="ios_tablet">iPad</option>
-                <option value="android_phone">Android Phone</option>
-                <option value="android_tablet">Android Tablet</option>
-                <option value="desktop">Desktop</option>
+              <!-- Формат, а не девайс. Device різав РЯДКИ: той самий креатив
+                   лився і на iPhone, і на Android, тож фільтр не прибирав
+                   креативи зі списку, а міняв їхні числа — і «нічого не
+                   знайдено» означало «на цьому девайсі не лилось». Формат
+                   же — властивість самого креатива, і питання «як заходить
+                   відео проти статики» ставлять куди частіше. -->
+              <select id="creative-format-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-blue-500 text-dynamic">
+                <option value="">All formats</option>
+                <option value="video">Video</option>
+                <option value="static">Static</option>
+                <option value="__none">Format not set</option>
               </select>
               <select id="creative-tag-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-violet-500 text-dynamic">
                 <option value="">All tags</option>
@@ -4732,9 +4751,13 @@ input.ui-in[type="range"] { padding: 0; }
     <button onclick="resetCreativeScope()" class="text-[10px] font-black bg-white/5 px-3 py-1.5 rounded-xl uppercase hover:bg-white/10 transition border border-white/5 text-white">Reset Filter</button>
   </div>
 
-  <!-- Tags креатива: до якого слота / формату він належить -->
+  <!-- Tags креатива: до якого слота він належить -->
   <div class="flex items-center gap-2 flex-wrap mb-5 -mt-3">
-    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Tags</span>
+    <!-- Формат ставиться тут, бо це така сама наша мітка, як тег чи
+         зірочка: Facebook її не знає, і в creatives_stats її немає. -->
+    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Format</span>
+    <div id="cr-fmt-btns" class="flex items-center gap-1"></div>
+    <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 ml-2">Tags</span>
     <div id="cr-tag-chips" class="flex items-center gap-1.5 flex-wrap"></div>
     <input id="cr-tag-input" list="cr-tag-all" placeholder="+ tag"
            onkeydown="if(event.key==='Enter'){event.preventDefault();crAddTagFromInput();}"
@@ -5071,7 +5094,12 @@ input.ui-in[type="range"] { padding: 0; }
 
   <!-- Що всередині вибраного кабінета: кампанії, адсети, оголошення з
        їхніми сьогоднішніми числами. Під таблицею, а не в панелі
-       праворуч, бо тут потрібні стовпчики, а не вузька смуга. -->
+       праворуч, бо тут потрібні стовпчики, а не вузька смуга.
+
+       Кнопка стоїть тут, у самому низу блока, а не в картці кабінета:
+       відкриває вона те, що зʼявиться просто під нею, і лінія, яка й
+       так відділяла цей шматок, тепер відділяє її разом із ним. -->
+  <div id="cab-inside-bar" class="hidden"></div>
   <div id="cab-inside" class="hidden"></div>
 
   <!-- Сторінки, з яких крутять ці кабінети. Під таблицею, а не над:
@@ -5720,6 +5748,7 @@ async function sbFetchAll(table, build) {
 
   await loadCreativeStars();
   await loadCreativeTags();
+  await loadCreativeFormats();
   await loadReportTags();
   crPopulateTagFilter();
 
@@ -5755,8 +5784,8 @@ async function sbFetchAll(table, build) {
   if (typeof renderCreativeSidebar === 'function') {
     const q = document.getElementById('creative-search')?.value.toLowerCase() || '';
     const g = document.getElementById('creative-geo-filter')?.value.toLowerCase() || '';
-    const dv = document.getElementById('creative-device-filter')?.value || '';
-    renderCreativeSidebar(q, g, dv);
+    const fmt = document.getElementById('creative-format-filter')?.value || '';
+    renderCreativeSidebar(q, g, fmt);
     if (currentCreativeID) showCreativeStats();
   }
 
@@ -6637,7 +6666,7 @@ function renderTable(data) {
   }
 
 // Feature 11: deviceFilter param; Feature 12: auto-reset on creative switch
-function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
+function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
   const sidebar = document.getElementById('creative-list-sidebar');
   if (!sidebar) return;
 
@@ -6649,13 +6678,11 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
     if (!crInDate(d, dr)) return;          // крео, що не лився в ці дні, у список не потрапляє
     const cid = d.cid || "Unknown";
     const geo = (d.geo || "").toLowerCase();
-    const dev = normalizeDevice(d.device || '');
 
     const matchesGeo = !geoFilter || geo === geoFilter.toLowerCase();
     const matchesSearch = !query || cid.toLowerCase().includes(query.toLowerCase());
-    const matchesDevice = !deviceFilter || dev === deviceFilter;
 
-    if (matchesGeo && matchesSearch && matchesDevice) {
+    if (matchesGeo && matchesSearch) {
       if (!grouped[cid]) grouped[cid] = { cid, s: 0, cl: 0, ins: 0, r: 0, dp: 0 };
       grouped[cid].s  += Number(d.spend)    || 0;
       grouped[cid].cl += Number(d.clicks)   || 0;
@@ -6700,6 +6727,12 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
   // Starred only
   if (crStarOnly) list = list.filter(c => crStars.has(c.cid));
 
+  /* Формат ріже вже зведений список, а не рядки: відео чи статика — це
+     про креатив цілком. «Format not set» окремим пунктом — щоб було
+     видно, що лишилось розмітити. */
+  if (formatFilter === '__none') list = list.filter(c => !crFormatOf(c.cid).v);
+  else if (formatFilter) list = list.filter(c => crFormatOf(c.cid).v === formatFilter);
+
   // Фільтр по тегу: «— no tag —» окремим пунктом, щоб швидко знаходити нерозібране
   const tagF = document.getElementById('creative-tag-filter')?.value || '';
   if (tagF === '__none') list = list.filter(c => !crTagsOf(c.cid).length);
@@ -6715,7 +6748,7 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
 
   const qEsc = query.replace(/'/g, "\\'");
   const gEsc = geoFilter.replace(/'/g, "\\'");
-  const dEsc = deviceFilter.replace(/'/g, "\\'");
+  const fEsc = formatFilter.replace(/'/g, "\\'");
 
   // Режим «папок»: той самий список, але розкладений по тегах, і над кожною
   // групою — підсумок. Питання зазвичай не «який крео», а «який слот заходить».
@@ -6738,31 +6771,41 @@ function renderCreativeSidebar(query = "", geoFilter = "", deviceFilter = "") {
             <span class="text-slate-600">· ${g.length}</span></span>
           <span class="text-[10px] font-bold text-slate-500 shrink-0">$${Math.round(sum.s)} · ${sum.dp} dep · CPA ${cpa}</span>
         </div>
-        ${g.map(c => crSidebarRow(c, qEsc, gEsc, dEsc)).join('')}
+        ${g.map(c => crSidebarRow(c, qEsc, gEsc, fEsc)).join('')}
       </div>`;
     }).join('');
     document.getElementById('creative-placeholder')?.classList.add('hidden');
     return;
   }
 
-  sidebar.innerHTML = list.map(c => crSidebarRow(c, qEsc, gEsc, dEsc)).join('');
+  sidebar.innerHTML = list.map(c => crSidebarRow(c, qEsc, gEsc, fEsc)).join('');
   document.getElementById('creative-placeholder')?.classList.add('hidden');
 }
 
 // Один рядок списку креативів — винесено, щоб звичайний режим і режим папок
 // малювали однаково
-function crSidebarRow(c, qEsc, gEsc, dEsc) {
+function crSidebarRow(c, qEsc, gEsc, fEsc) {
   {
     const isActive = currentCreativeID === c.cid;
     const cidEsc = String(c.cid).replace(/'/g, "\\'");
     const starred = crStars.has(c.cid);
     // Feature 12: reset activeCrAcc/activeCrGeo when switching to a different creative
     return `
-      <div onclick="if(currentCreativeID !== '${cidEsc}') { activeCrAcc=null; activeCrGeo=null; } currentCreativeID='${cidEsc}'; showCreativeStats(); renderCreativeSidebar('${qEsc}', '${gEsc}', '${dEsc}');"
+      <div onclick="if(currentCreativeID !== '${cidEsc}') { activeCrAcc=null; activeCrGeo=null; } currentCreativeID='${cidEsc}'; showCreativeStats(); renderCreativeSidebar('${qEsc}', '${gEsc}', '${fEsc}');"
               class="w-full flex justify-between items-center gap-1.5 p-3 rounded-xl border border-white/5 transition-all text-left uppercase group cursor-pointer
               ${isActive ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'hover:bg-white/5 text-slate-400'}">
         <button onclick="crToggleStar(event,'${cidEsc}')" title="${starred?'Remove star':'Add star'}"
                 class="flex-shrink-0 text-[13px] leading-none transition ${starred?'text-amber-400':'opacity-25 hover:opacity-70'}">${starred?'★':'☆'}</button>
+        ${(() => {
+          /* Позначка в списку — щоб було видно, що саме вгадалось, не
+             відкриваючи кожен креатив. Бліда — здогадка. */
+          const f = crFormatOf(c.cid);
+          if (!f.v) return '';
+          return `<span title="${f.guess ? 'Guessed format' : 'Format'}: ${f.v}"
+            class="flex-shrink-0 text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded ${
+              f.guess ? 'bg-white/5 text-slate-500' : 'bg-blue-500/20 text-blue-300'}">${
+              f.v === 'video' ? 'VID' : 'STA'}</span>`;
+        })()}
         <span class="text-[10px] font-black truncate flex-1">${c.cid}${crTagsOf(c.cid).length
           ? `<span class="ml-1.5 normal-case font-bold text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 align-middle">${crTagsOf(c.cid)[0]}${crTagsOf(c.cid).length>1?' +'+(crTagsOf(c.cid).length-1):''}</span>`
           : ''}</span>
@@ -6834,6 +6877,50 @@ async function saveCreativeTags() {
   catch (e) { console.warn('Could not save the tags:', e.message); }
 }
 const crTagsOf = cid => crTags[cid] || [];
+
+/* ФОРМАТ КРЕАТИВА — відео чи статика.
+
+   У creatives_stats такого поля немає й не буде: там рядки про покази,
+   а формат — властивість самого креатива. Тому тримаємо його там само,
+   де зірочки й теги: у team_settings, мапою cid → 'video' | 'static'.
+   Ніякої нової таблиці й жодного запиту у Facebook.
+
+   ЩОБ ВОНО ПРАЦЮВАЛО З ПЕРШОГО ДНЯ, а не після того, як хтось розмітить
+   руками кілька сотень креативів, формат ще й вгадується — спершу за
+   тегами (їх і заводили «до якого слота / формату»), потім за назвою.
+   Здогадка чесно позначена здогадкою: поставлене руками завжди
+   головніше, і одним кліком її можна виправити. */
+let crFmt = {};
+const CR_FMT_VIDEO  = /(^|[^a-z])(video|vid|mp4|mov|reels?|ugc)([^a-z]|$)|відео|видео/i;
+const CR_FMT_STATIC = /(^|[^a-z])(static|img|image|banner|jpe?g|png|pic)([^a-z]|$)|статик|статика/i;
+
+async function loadCreativeFormats() {
+  try { crFmt = JSON.parse(await getTeamSetting('creative_format') || '{}') || {}; }
+  catch (e) { crFmt = {}; }
+}
+async function saveCreativeFormats() {
+  try { await setTeamSetting('creative_format', JSON.stringify(crFmt)); }
+  catch (e) { console.warn('Не вдалось зберегти формати:', e.message); }
+}
+
+/* Повертає { v, guess }: v — 'video' | 'static' | '', guess — чи це
+   здогадка. Порожнє означає «не знаємо», і це не те саме, що статика. */
+function crFormatOf(cid) {
+  const set = crFmt[cid];
+  if (set === 'video' || set === 'static') return { v: set, guess: false };
+  const hay = [String(cid || ''), ...crTagsOf(cid)].join(' ');
+  if (CR_FMT_VIDEO.test(hay))  return { v: 'video',  guess: true };
+  if (CR_FMT_STATIC.test(hay)) return { v: 'static', guess: true };
+  return { v: '', guess: false };
+}
+
+/* Натиснули той самий формат ще раз — зняли: помилково поставлену
+   мітку треба вміти прибрати, інакше вона застрягне назавжди. */
+window.crSetFormat = function (cid, v) {
+  if (!cid) return;
+  if (crFmt[cid] === v) delete crFmt[cid]; else crFmt[cid] = v;
+  saveCreativeFormats(); crRenderTagUI(); searchCreative();
+};
 function crAllTags() {
   return [...new Set(Object.values(crTags).flat())].sort((a, b) => a.localeCompare(b, 'uk'));
 }
@@ -6875,7 +6962,7 @@ window.rpOpenCreative = function (cid) {
     /* Фільтри знімаємо: інакше креатив, який не підходить під учора
        вибраний гео чи тег, відкриється в порожній список, і людина
        вирішить, що його немає. */
-    ['creative-geo-filter', 'creative-device-filter', 'creative-tag-filter']
+    ['creative-geo-filter', 'creative-format-filter', 'creative-tag-filter']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     if (typeof searchCreative === 'function') searchCreative();
     if (typeof selectCreative === 'function') selectCreative(cid);
@@ -6889,7 +6976,32 @@ window.rpOpenCreative = function (cid) {
 };
 
 // Чипи тегів на картці обраного креатива
+/* Дві кнопки: Video і Static. Підсвічена — поставлена руками, бліда з
+   підписом «guessed» — вгадана за тегом чи назвою. Різниця видна
+   навмисно: вгадане має читатись як вгадане, а не як факт, і
+   виправляється воно одним кліком. */
+function crRenderFormatUI() {
+  const box = document.getElementById('cr-fmt-btns');
+  if (!box) return;
+  if (!currentCreativeID) { box.innerHTML = ''; return; }
+  const cid = String(currentCreativeID).replace(/'/g, "\\'");
+  const f = crFormatOf(currentCreativeID);
+  box.innerHTML = [['video', 'Video'], ['static', 'Static']].map(([k, label]) => {
+    const on = f.v === k;
+    const cls = on && !f.guess
+      ? 'bg-blue-500/25 border-blue-500/50 text-blue-200'
+      : on ? 'bg-blue-500/10 border-blue-500/25 text-blue-300/70'
+           : 'bg-white/5 border-white/10 text-slate-500 hover:text-white';
+    return `<button onclick="crSetFormat('${cid}','${k}')"
+      title="${on && f.guess ? 'Guessed from the name or a tag — click to confirm or change'
+                             : on ? 'Set by hand — click again to clear' : 'Mark as ' + label}"
+      class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg border transition ${cls}">${
+        label}${on && f.guess ? ' ?' : ''}</button>`;
+  }).join('');
+}
+
 function crRenderTagUI() {
+  crRenderFormatUI();
   const box = document.getElementById('cr-tag-chips');
   const dl = document.getElementById('cr-tag-all');
   if (dl) dl.innerHTML = crAllTags().map(t => `<option value="${t}"></option>`).join('');
@@ -7020,14 +7132,12 @@ function crSyncDateBtn() {
 
 // Рядки поточного креатива з урахуванням активних фільтрів акаунта/гео/девайса
 function crCurrentRows() {
-  const dev = document.getElementById('creative-device-filter')?.value || '';
   const dr = crDateRange();
   return (window.creativesRawData || []).filter(d =>
     crInDate(d, dr) &&
     (d.cid || '').toLowerCase() === (currentCreativeID || '').toLowerCase() &&
     (!activeCrAcc || d.account === activeCrAcc) &&
-    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo) &&
-    (!dev || normalizeDevice(d.device || '') === dev)
+    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo)
   );
 }
 
@@ -7102,15 +7212,13 @@ const crRelErr = n => n > 0 ? 1 / Math.sqrt(n) : 1;
 function crRenderAccountsPanel() {
   const el = document.getElementById('cr-panel-accounts');
   if (!el) return;
-  const dev = document.getElementById('creative-device-filter')?.value || '';
   const dr = crDateRange();
   // Беремо ВСІ кабінети цього креатива — фільтр по акаунту тут навмисно
   // ігнорується, інакше порівнювати не було б з чим
   const rows = (window.creativesRawData || []).filter(d =>
     crInDate(d, dr) &&
     (d.cid || '').toLowerCase() === (currentCreativeID || '').toLowerCase() &&
-    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo) &&
-    (!dev || normalizeDevice(d.device || '') === dev));
+    (!activeCrGeo || (d.geo || '').toUpperCase() === activeCrGeo));
 
   const m = {};
   rows.forEach(r => {
@@ -7414,12 +7522,13 @@ function selectCreative(cid) {
       crInDate(d, dr) && d.cid.toLowerCase() === currentCreativeID.toLowerCase());
     let allGeos = new Set(); filtered.forEach(i => { if(i.geo && i.geo !== "??") allGeos.add(i.geo.toUpperCase()); });
     if (allGeos.size === 1 && activeCrGeo === null) activeCrGeo = Array.from(allGeos)[0];
-    // Feature 11: apply device filter from dropdown
-    const activeDeviceFilter = (document.getElementById('creative-device-filter')?.value || '');
+    /* Фільтра по девайсу тут більше немає: він різав рядки цього ж
+       креатива, тобто мовчки міняв його метрики. Формат натомість
+       вирішує, чи креатив узагалі в списку, і цифри всередині не
+       чіпає. */
     let disp = filtered;
     if(activeCrAcc) disp = disp.filter(d => d.account === activeCrAcc);
     if(activeCrGeo) disp = disp.filter(d => (d.geo||"").toUpperCase() === activeCrGeo);
-    if(activeDeviceFilter) disp = disp.filter(d => normalizeDevice(d.device||'') === activeDeviceFilter);
     let s=0, r=0, d=0, cl=0, ins=0; disp.forEach(i => { s += i.spend||0; r += i.regs||0; d += i.deps||0; cl += i.clicks||0; ins += i.installs||0; });
     const cpl = r > 0 ? s/r : 0;
     const cpc = cl > 0 ? s/cl : 0;
@@ -9508,9 +9617,9 @@ window.onclick = function(event) {
 function searchCreative() {
   const query = document.getElementById('creative-search').value.toLowerCase();
   const geoFilter = document.getElementById('creative-geo-filter').value.toLowerCase();
-  const deviceFilter = (document.getElementById('creative-device-filter')?.value || '').toLowerCase();
+  const formatFilter = document.getElementById('creative-format-filter')?.value || '';
   crSyncDateBtn();
-  renderCreativeSidebar(query, geoFilter, deviceFilter);
+  renderCreativeSidebar(query, geoFilter, formatFilter);
   // Фільтри (насамперед період) міняють і цифри всередині обраного креатива,
   // тому картку теж перемальовуємо — інакше список уже за новий період,
   // а метрики праворуч лишаються від старого.
@@ -17039,6 +17148,16 @@ function cabMoneyCur(n, cur) {
   return sign ? sign + v : v + (cur ? ' ' + cur : '');
 }
 
+/* Те саме, але з копійками. Для спенду вони зайві — там ідеться про
+   сотні, — а от борг по картці буває й у 43 центи, і округлений до
+   нуля він читається як «нічого не винні», що прямо протилежне. */
+function cabMoneyCents(n, cur) {
+  const v = (Math.round((Number(n) || 0) * 100) / 100)
+    .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = CAB_CUR[cur];
+  return sign ? sign + v : v + (cur ? ' ' + cur : '');
+}
+
 async function cabInit() {
   const host = document.getElementById('cab-list');
   if (!host) return;
@@ -17093,7 +17212,7 @@ const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_t
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
   + 'amount_spent,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
-  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
+  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since,balance,card_last_seen';
 
 // Немає таблиці зовсім — не те саме, що немає кількох колонок.
 const CAB_NO_TABLE = /relation .* does not exist|42P01/i;
@@ -17832,7 +17951,7 @@ function cabDetail(c) {
   /* Разом із карткою кабінета показуємо і його нутро — кампанії з
      числами. Окремого кліку для цього немає навмисно: питання «що
      всередині» виникає рівно тоді, коли кабінет вибрали. */
-  if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else cdHide(); }
+  if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else { cdHide(); cdBar(''); } }
   /* Саме нутро не відкривається від вибору кабінета — див. cabdrill.js.
      Сюди заходять і просто по експорт, а таблиця на пів екрана в такі
      хвилини тільки заважає. */
@@ -17852,7 +17971,21 @@ function cabDetail(c) {
       <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
       <p class="text-[12px] font-black text-dynamic font-mono">${v}</p></div>`;
 
-  /* Живих зі скількох. Одне число без другого брехливе в обидва боки:
+  /* Чи показуємо картку з памʼяті, а не з цієї синхронізації. Порівнюємо
+   time, коли її бачили востаннє, з часом самої синхронізації: збіг —
+   значить приїхала щойно. Запас у дві хвилини на те, що великий парк
+   обходиться не миттєво і time у рядках може розійтись. */
+function cabCardOld(fb) {
+  if (!fb || !fb.card) return false;
+  const seen = Date.parse(fb.card_last_seen || '');
+  const sync = Date.parse(fb.synced_at || '');
+  if (!seen || !sync) return false;          // стара база — мовчимо, а не вигадуємо
+  if (seen >= sync - 120000) return false;
+  const d = new Date(seen);
+  return d.toISOString().slice(0, 10);
+}
+
+/* Живих зі скількох. Одне число без другого брехливе в обидва боки:
      «3 кампанії» не каже, чи решта сорока вимкнена свідомо, чи їх
      просто немає. */
   const pair = (live, all) => (live == null && all == null) ? '—'
@@ -17880,6 +18013,20 @@ function cabDetail(c) {
                       : (a === b ? a : a + ' — ' + b) + ', as Facebook counts the day for this cabinet');
         })()}
         ${cell('State', esc(c.fb.status || '—'))}
+        ${/* НАРАХОВАНО Й ЩЕ НЕ СПИСАНО. Facebook віддає це полем balance,
+              і воно вже лежало в базі — просто ніде не показувалось. Це
+              єдине, що він каже про гроші по картці: списань списком у
+              Marketing API немає (перевірено кнопкою нижче: ребер
+              transactions, invoices, adspaymentcycle не існує).
+
+              Нуль і «не знаємо» тут різні речі: нуль означає «щойно
+              списали, борг закрито», а прочерк — що поля не приїхало. */
+          cell('Not charged yet', c.fb.balance == null ? '—'
+                 : cabMoneyCents(c.fb.balance, c.fb.currency),
+               c.fb.balance == null
+                 ? 'Facebook did not send the balance for this cabinet'
+                 : 'Spent but not yet taken from the card. Facebook charges it '
+                   + 'when it reaches the billing threshold, or on the monthly date.')}
         ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns),
                cabByStatus(c.fb.campaigns_by_status))}
         ${cell('Ad sets', pair(c.fb.adsets_active, c.fb.adsets),
@@ -17890,21 +18037,29 @@ function cabDetail(c) {
               те, ЧИМ платить кабінет. Окремою клітинкою вона з'їдала б
               місце заради трьох літер, які й так потрібні лише поруч із
               сумою. */
-          cell('Card', esc(c.fb.card || '—')
-            + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
-            c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : '')}
+          (() => {
+            /* Картка, яку Facebook уже не віддає, — не прочерк. Він
+               перестає її показувати, щойно кабінет забанили або токен
+               втратив доступ, а питання «чим цей кабінет платив»
+               виникає саме тоді. fb-sync тепер памʼятає останню відому;
+               тут лишається не видати її за теперішню. */
+            const old = cabCardOld(c.fb);
+            return cell('Card', (c.fb.card
+                ? `<span${old ? ' style="opacity:.65"' : ''}>${esc(c.fb.card)}</span>${
+                    old ? '<span class="cab-cur">was</span>' : ''}`
+                : '—')
+              + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
+              (old ? 'Facebook no longer reports a card for this cabinet. This is the last '
+                   + 'one we saw' + (old === true ? '' : ', on ' + old) + '.\n\n'
+                 : '')
+              + (c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : ''));
+          })()}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}
       ${typeof fpForCab === 'function' ? fpForCab(c) : ''}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
-      ${/* Кампанії й оголошення цього кабінета — кнопкою, а не самі
-            собою: вибір кабінета не мусить нічого вантажити. */
-        typeof cdToggleOpen === 'function' ? `<button type="button" class="cab-inside-btn"
-          id="cab-inside-btn" data-acc="${esc(c.id)}" onclick="cdToggleOpen('${enc}')"
-          title="Campaigns, ad sets and ads of this cabinet with today\u2019s numbers">${
-            typeof cdBtnLabel === 'function' ? cdBtnLabel(c.id) : 'Campaigns & ads'}</button>` : ''}
       ${/* Чи віддає Facebook списання з картки — питання, на яке не
             відповісти з документації: одному кабінету віддасть, сусідньому
             відмовить. Тому кнопка, а не таблиця: один запит, нічого не
@@ -20296,12 +20451,28 @@ let cdFlat = false;
 window.cdIsOpen = (acc) => !!cdAcc && String(acc || '') === cdAcc;
 window.cdBtnLabel = (acc) => cdIsOpen(acc) ? 'Hide campaigns & ads' : 'Campaigns & ads';
 
-/* Підпис кнопки живе поруч зі станом, а не там, де її намалювали:
-   інакше рано чи пізно вони розійдуться, і кнопка «Hide» ховатиме те,
-   чого вже немає. */
+/* Кнопка живе внизу блока кабінетів, а не в картці: відкриває вона те,
+   що зʼявиться просто під нею. Малюємо її тут же, поруч зі станом —
+   інакше підпис рано чи пізно розійдеться зі справою, і «Hide»
+   ховатиме те, чого вже немає. */
+let cdFor = '';
+
+window.cdBar = function (account) {
+  const bar = document.getElementById('cab-inside-bar');
+  if (!bar) return;
+  cdFor = String(account || '').trim();
+  if (!cdFor) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hidden');
+  bar.innerHTML = `<button type="button" class="cab-inside-btn"
+      id="cab-inside-btn" onclick="cdToggleOpen('${encodeURIComponent(cdFor)}')"
+      title="Campaigns, ad sets and ads of this cabinet with today’s numbers">${
+        cdBtnLabel(cdFor)}</button>
+    <span class="cab-inside-who">${cdEsc(cdFor)}</span>`;
+};
+
 function cdBtnSync() {
   const b = document.getElementById('cab-inside-btn');
-  if (b) b.textContent = cdBtnLabel(b.dataset.acc || '');
+  if (b) b.textContent = cdBtnLabel(cdFor);
 }
 
 window.cdToggleOpen = function (accEnc) {
@@ -20320,6 +20491,8 @@ const cdMoney = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100)
 
 window.cdHide = function () {
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set();
+  /* Смугу з кнопкою не чіпаємо: кабінет вибраний, просто нутро
+     закрите. Прибирає її той, хто зняв вибір, — cdBar(''). */
   const box = document.getElementById('cab-inside');
   /* Вміст прибираємо, а не лише ховаємо: лишений у розмітці, він
      наступного разу встигає блимнути числами минулого кабінета. */
@@ -20331,7 +20504,9 @@ window.cdHide = function () {
    синхронізація. Нутро при цьому має лишатись як було, якщо кабінет той
    самий, і зникати, якщо вибрали інший. */
 window.cdOpen = function (account) {
-  if (String(account || '').trim() !== cdAcc) cdHide();
+  const id = String(account || '').trim();
+  cdBar(id);
+  if (id !== cdAcc) cdHide();
   else cdBtnSync();
 };
 
