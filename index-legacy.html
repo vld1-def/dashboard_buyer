@@ -1469,6 +1469,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <option value="static">Static</option>
                 <option value="__none">Format not set</option>
               </select>
+              <!-- Один раз пройтись по всіх нерозпізнаних. Само по собі це
+                   не запускається навмисно: кожен креатив — окремий похід
+                   у Drive, і робити сотню запитів від самого відкриття
+                   сторінки ми не будемо. -->
+              <button id="cr-fmt-detect" onclick="crDetectFormats()"
+                title="Look each creative up in Drive and take the format from the file itself"
+                class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white whitespace-nowrap">Detect</button>
               <select id="creative-tag-filter" onchange="searchCreative()" class="h-[34px] bg-gray-500/10 border border-gray-500/20 rounded-xl px-2.5 text-[11px] font-bold uppercase outline-none focus:border-violet-500 text-dynamic">
                 <option value="">All tags</option>
               </select>
@@ -3170,7 +3177,8 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
              відкриваючи кожен креатив. Бліда — здогадка. */
           const f = crFormatOf(c.cid);
           if (!f.v) return '';
-          return `<span title="${f.guess ? 'Guessed format' : 'Format'}: ${f.v}"
+          return `<span title="${f.guess ? 'Guessed from the name' : f.by === 'drive'
+                     ? 'From the file in Drive' : 'Set by hand'}: ${f.v}"
             class="flex-shrink-0 text-[8px] font-black uppercase tracking-widest px-1 py-0.5 rounded ${
               f.guess ? 'bg-white/5 text-slate-500' : 'bg-blue-500/20 text-blue-300'}">${
               f.v === 'video' ? 'VID' : 'STA'}</span>`;
@@ -3272,22 +3280,125 @@ async function saveCreativeFormats() {
   catch (e) { console.warn('Не вдалось зберегти формати:', e.message); }
 }
 
-/* Повертає { v, guess }: v — 'video' | 'static' | '', guess — чи це
-   здогадка. Порожнє означає «не знаємо», і це не те саме, що статика. */
+/* Значення в мапі буває двох видів: рядок (так писали спершу, і так
+   лишились уже збережені) або { v, by } — де by каже, звідки ми це
+   знаємо: 'hand' чи 'drive'. Читаємо обидва. */
+function crFmtRead(cid) {
+  const raw = crFmt[cid];
+  if (raw === 'video' || raw === 'static') return { v: raw, by: 'hand' };
+  if (raw && (raw.v === 'video' || raw.v === 'static')) {
+    return { v: raw.v, by: raw.by === 'drive' ? 'drive' : 'hand' };
+  }
+  return null;
+}
+
+/* Повертає { v, guess, by }: v — 'video' | 'static' | '', guess — чи це
+   здогадка. Порожнє означає «не знаємо», і це не те саме, що статика.
+
+   ПОРЯДОК ДЖЕРЕЛ. Спершу те, що поставили руками: людина бачила файл.
+   Потім Drive — там лежить сам креатив, і його mime-тип це вже не
+   здогадка, а факт. І лише насамкінець назва й теги: це справді
+   вгадування, тож і позначене як вгадане. */
 function crFormatOf(cid) {
-  const set = crFmt[cid];
-  if (set === 'video' || set === 'static') return { v: set, guess: false };
+  const set = crFmtRead(cid);
+  if (set) return { v: set.v, guess: false, by: set.by };
   const hay = [String(cid || ''), ...crTagsOf(cid)].join(' ');
-  if (CR_FMT_VIDEO.test(hay))  return { v: 'video',  guess: true };
-  if (CR_FMT_STATIC.test(hay)) return { v: 'static', guess: true };
-  return { v: '', guess: false };
+  if (CR_FMT_VIDEO.test(hay))  return { v: 'video',  guess: true, by: 'name' };
+  if (CR_FMT_STATIC.test(hay)) return { v: 'static', guess: true, by: 'name' };
+  return { v: '', guess: false, by: '' };
+}
+
+/* ЗВІДКИ ФОРМАТ БЕРЕТЬСЯ НАСПРАВДІ — з файлу в Drive.
+
+   Дашборд і так ходить туди за прев'ю і вже рахує там isVideo з
+   mime-типу — просто викидав це число одразу після показу картинки.
+   Тобто формат був відомий ТОЧНО, а фільтр тим часом вгадував за
+   назвою. Тепер відомий — значить записаний.
+
+   Поставлене руками не чіпаємо: людина могла виправити нас свідомо, і
+   мовчки перебити її файлом означало б повернути ту саму помилку
+   назад. */
+function crMimeFormat(mime) {
+  const m = String(mime || '').toLowerCase();
+  if (m.startsWith('video/')) return 'video';
+  if (m.startsWith('image/')) return 'static';
+  return '';
+}
+
+let crFmtDirty = false;
+function crNoteFormat(cid, mime) {
+  const v = crMimeFormat(mime);
+  if (!cid || !v) return false;
+  const was = crFmtRead(cid);
+  if (was && was.by === 'hand') return false;
+  if (was && was.v === v) return false;
+  crFmt[cid] = { v, by: 'drive' };
+  crFmtDirty = true;
+  return true;
+}
+/* mime-тип одного креатива — тим самим шляхом, що й прев'ю: або через
+   Drive API (якщо папку команди вказано), або через Apps Script. */
+async function crMimeOf(cid) {
+  if (teamDriveFolderId) {
+    const f = await driveFindCreative(cid);
+    return f ? f.mimeType : '';
+  }
+  const url = `${APPS_SCRIPT_URL}?name=${encodeURIComponent(cid)}`;
+  const data = await (await fetch(url)).json();
+  return data && data.found ? data.mimeType : '';
+}
+
+/* Пройтись по всьому, що ще не відоме точно. По черзі, а не пачкою:
+   Drive не любить сотні одночасних запитів, а поспіху тут немає —
+   кнопка показує, скільки лишилось. */
+let crDetectRunning = false;
+async function crDetectFormats() {
+  const btn = document.getElementById('cr-fmt-detect');
+  if (crDetectRunning) { crDetectRunning = false; return; }   // друге натискання — стоп
+
+  const cids = [...new Set((window.creativesRawData || []).map(d => d.cid).filter(Boolean))]
+    .filter(cid => !crFmtRead(cid));        // вгадане теж уточнюємо: файл точніший
+  if (!cids.length) {
+    if (typeof showToast === 'function') showToast('Nothing left to detect');
+    else if (btn) { btn.textContent = 'All known'; setTimeout(() => { btn.textContent = 'Detect'; }, 1500); }
+    return;
+  }
+
+  crDetectRunning = true;
+  let found = 0, miss = 0;
+  for (let i = 0; i < cids.length; i++) {
+    if (!crDetectRunning) break;
+    if (btn) btn.textContent = `Stop · ${i + 1}/${cids.length}`;
+    try {
+      if (crNoteFormat(cids[i], await crMimeOf(cids[i]))) found++; else miss++;
+    } catch (e) { miss++; }
+  }
+  crDetectRunning = false;
+  await crFlushFormats();
+  if (btn) {
+    btn.textContent = `+${found}`;
+    setTimeout(() => { btn.textContent = 'Detect'; }, 2500);
+  }
+  crRenderTagUI();
+  searchCreative();
+}
+
+async function crFlushFormats() {
+  if (!crFmtDirty) return;
+  crFmtDirty = false;
+  await saveCreativeFormats();
 }
 
 /* Натиснули той самий формат ще раз — зняли: помилково поставлену
-   мітку треба вміти прибрати, інакше вона застрягне назавжди. */
+   мітку треба вміти прибрати, інакше вона застрягне назавжди.
+
+   Порівнюємо через crFmtRead, бо в мапі лежать і рядки, і { v, by }:
+   інакше зняти те, що розпізнав Drive, було б неможливо. */
 window.crSetFormat = function (cid, v) {
   if (!cid) return;
-  if (crFmt[cid] === v) delete crFmt[cid]; else crFmt[cid] = v;
+  const was = crFmtRead(cid);
+  if (was && was.v === v && was.by === 'hand') delete crFmt[cid];
+  else crFmt[cid] = v;                       // рядок = поставлено руками
   saveCreativeFormats(); crRenderTagUI(); searchCreative();
 };
 function crAllTags() {
@@ -3361,9 +3472,11 @@ function crRenderFormatUI() {
       ? 'bg-blue-500/25 border-blue-500/50 text-blue-200'
       : on ? 'bg-blue-500/10 border-blue-500/25 text-blue-300/70'
            : 'bg-white/5 border-white/10 text-slate-500 hover:text-white';
-    return `<button onclick="crSetFormat('${cid}','${k}')"
-      title="${on && f.guess ? 'Guessed from the name or a tag — click to confirm or change'
-                             : on ? 'Set by hand — click again to clear' : 'Mark as ' + label}"
+    const why = !on ? 'Mark as ' + label
+      : f.by === 'drive' ? 'Taken from the file in Drive — click to override'
+      : f.by === 'name'  ? 'Guessed from the name or a tag — click to confirm or change'
+      : 'Set by hand — click again to clear';
+    return `<button onclick="crSetFormat('${cid}','${k}')" title="${why}"
       class="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg border transition ${cls}">${
         label}${on && f.guess ? ' ?' : ''}</button>`;
   }).join('');
@@ -4434,6 +4547,13 @@ async function loadCreativePreview(creativeName) {
     }
 
     const isVideo = data.mimeType && data.mimeType.startsWith('video/');
+    /* Формат щойно став відомий точно — записуємо його, а не лишаємо
+       фільтр вгадувати за назвою. */
+    if (crNoteFormat(creativeName, data.mimeType)) {
+      crFlushFormats();
+      if (typeof crRenderTagUI === 'function') crRenderTagUI();
+      if (typeof searchCreative === 'function') searchCreative();
+    }
     const thumbUrl = data.thumbnailUrl;
     const viewUrl = data.viewUrl;
 
