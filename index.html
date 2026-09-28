@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 10:32">
+  <meta name="build" content="build 28.09 10:40">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3968,6 +3968,10 @@ input.ui-in[type="range"] { padding: 0; }
 /* Валюта поруч із карткою: тим самим шрифтом, але притлумлена — вона
    уточнює суму, а не є сумою. */
 .cab-cur { color: var(--text-muted); font-weight: 900; }
+/* «was» поруч із карткою: та сама приглушена подача, що й валюта, але
+   з відступом — інакше злипається з номером. */
+.cab-cur + .cab-cur, .cd-was { margin-left: 5px; }
+.cab-fb .cab-cur { margin-left: 5px; }
 
 /* ═══════════ МІТКИ Й ПОСИЛАННЯ У ЗВІТАХ ═══════════
    Три різні сутності, тому три різні кольори: мітка дня фіолетова,
@@ -4175,7 +4179,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:32</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:40</div>
     </div>
   </aside>
 
@@ -17144,6 +17148,16 @@ function cabMoneyCur(n, cur) {
   return sign ? sign + v : v + (cur ? ' ' + cur : '');
 }
 
+/* Те саме, але з копійками. Для спенду вони зайві — там ідеться про
+   сотні, — а от борг по картці буває й у 43 центи, і округлений до
+   нуля він читається як «нічого не винні», що прямо протилежне. */
+function cabMoneyCents(n, cur) {
+  const v = (Math.round((Number(n) || 0) * 100) / 100)
+    .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = CAB_CUR[cur];
+  return sign ? sign + v : v + (cur ? ' ' + cur : '');
+}
+
 async function cabInit() {
   const host = document.getElementById('cab-list');
   if (!host) return;
@@ -17198,7 +17212,7 @@ const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_t
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
   + 'amount_spent,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
-  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since';
+  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since,balance,card_last_seen';
 
 // Немає таблиці зовсім — не те саме, що немає кількох колонок.
 const CAB_NO_TABLE = /relation .* does not exist|42P01/i;
@@ -17957,7 +17971,21 @@ function cabDetail(c) {
       <p class="text-[9px] font-black uppercase tracking-widest" style="color:var(--text-muted)">${k}</p>
       <p class="text-[12px] font-black text-dynamic font-mono">${v}</p></div>`;
 
-  /* Живих зі скількох. Одне число без другого брехливе в обидва боки:
+  /* Чи показуємо картку з памʼяті, а не з цієї синхронізації. Порівнюємо
+   time, коли її бачили востаннє, з часом самої синхронізації: збіг —
+   значить приїхала щойно. Запас у дві хвилини на те, що великий парк
+   обходиться не миттєво і time у рядках може розійтись. */
+function cabCardOld(fb) {
+  if (!fb || !fb.card) return false;
+  const seen = Date.parse(fb.card_last_seen || '');
+  const sync = Date.parse(fb.synced_at || '');
+  if (!seen || !sync) return false;          // стара база — мовчимо, а не вигадуємо
+  if (seen >= sync - 120000) return false;
+  const d = new Date(seen);
+  return d.toISOString().slice(0, 10);
+}
+
+/* Живих зі скількох. Одне число без другого брехливе в обидва боки:
      «3 кампанії» не каже, чи решта сорока вимкнена свідомо, чи їх
      просто немає. */
   const pair = (live, all) => (live == null && all == null) ? '—'
@@ -17994,7 +18022,7 @@ function cabDetail(c) {
               Нуль і «не знаємо» тут різні речі: нуль означає «щойно
               списали, борг закрито», а прочерк — що поля не приїхало. */
           cell('Not charged yet', c.fb.balance == null ? '—'
-                 : cabMoneyCur(c.fb.balance, c.fb.currency),
+                 : cabMoneyCents(c.fb.balance, c.fb.currency),
                c.fb.balance == null
                  ? 'Facebook did not send the balance for this cabinet'
                  : 'Spent but not yet taken from the card. Facebook charges it '
@@ -18009,9 +18037,23 @@ function cabDetail(c) {
               те, ЧИМ платить кабінет. Окремою клітинкою вона з'їдала б
               місце заради трьох літер, які й так потрібні лише поруч із
               сумою. */
-          cell('Card', esc(c.fb.card || '—')
-            + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
-            c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : '')}
+          (() => {
+            /* Картка, яку Facebook уже не віддає, — не прочерк. Він
+               перестає її показувати, щойно кабінет забанили або токен
+               втратив доступ, а питання «чим цей кабінет платив»
+               виникає саме тоді. fb-sync тепер памʼятає останню відому;
+               тут лишається не видати її за теперішню. */
+            const old = cabCardOld(c.fb);
+            return cell('Card', (c.fb.card
+                ? `<span${old ? ' style="opacity:.65"' : ''}>${esc(c.fb.card)}</span>${
+                    old ? '<span class="cab-cur">was</span>' : ''}`
+                : '—')
+              + (c.fb.currency ? ` <span class="cab-cur">${esc(c.fb.currency)}</span>` : ''),
+              (old ? 'Facebook no longer reports a card for this cabinet. This is the last '
+                   + 'one we saw' + (old === true ? '' : ', on ' + old) + '.\n\n'
+                 : '')
+              + (c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : ''));
+          })()}
       </div>
       ${cabDead(c.fb)}
       ${cabWhyNot(c.fb)}

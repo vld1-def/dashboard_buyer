@@ -33,6 +33,10 @@ create table if not exists public.fb_accounts (
   -- «Visa *1234». Біна тут немає: Marketing API перших шести цифр не віддає.
   card        text,
   card_type   text,
+  -- Коли картку бачили востаннє. Порожнє поле й «була ось така» — різні
+  -- речі: Facebook перестає віддавати картку, щойно кабінет забанили,
+  -- а питання «чим він платив» виникає саме тоді.
+  card_last_seen timestamptz,
 
   -- Гроші вже поділені на 100: Facebook віддає їх у центах.
   amount_spent numeric,        -- за весь час
@@ -115,7 +119,11 @@ alter table public.fb_accounts
   -- час найновішого коментаря, який ми вже опрацювали; усе, що
   -- новіше, вважається новим.
   add column if not exists comments_scanned_at timestamptz,
-  add column if not exists comments_seen_at    timestamptz;
+  add column if not exists comments_seen_at    timestamptz,
+  -- Коли картку бачили востаннє: щоб відрізнити «ось картка» від «ось
+  -- картка, яка БУЛА». Facebook перестає її віддавати, щойно кабінет
+  -- забанили, — і саме тоді вона потрібна.
+  add column if not exists card_last_seen      timestamptz;
 
 
 -- ════════════════════════════════════════════════════════════

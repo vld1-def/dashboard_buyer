@@ -221,6 +221,26 @@ function disableReason(v: unknown): string {
 /* Гроші Facebook віддає в мінімальних одиницях валюти — центах. Ділимо
    тут, щоб у базі лежали нормальні гроші, а не число, яке всі забудуть
    поділити. Порожнє лишаємо порожнім: 0 і «невідомо» — різні речі. */
+/* КАРТКУ НЕ ЗАБУВАЄМО. Facebook перестає віддавати
+   funding_source_details, щойно кабінет забанили або токен втратив до
+   нього доступ, — і на екрані замість «Visa ·1234» лишався прочерк.
+   Саме тоді картка й потрібна: питання «а чим цей кабінет платив»
+   виникає ПІСЛЯ того, як він помер.
+
+   Правило: приїхала картка — пишемо її й час. Не приїхала — лишаємо
+   ту, що знали, разом із часом, коли бачили. Прийшла ІНША (людина
+   перепривʼязала) — перезаписуємо, бо це вже факт, а не мовчання.
+
+   card_last_seen і є те, чим «ось картка» відрізняється від «ось
+   картка, яка була»: без нього екран видав би стару за теперішню. */
+type CardWas = { card: string; cardType: string; cardSeen: string } | undefined;
+
+function keepCard(fresh: string, type: string, was: CardWas, now: string): Json {
+  if (fresh) return { card: fresh, card_type: type || null, card_last_seen: now };
+  return { card: was?.card || null, card_type: was?.cardType || null,
+           card_last_seen: was?.cardSeen || null };
+}
+
 function cents(v: unknown): number | null {
   if (v == null || v === '') return null;
   const n = Number(v);
@@ -750,14 +770,22 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
      шляхом — звідси й «начебто все налаштовано, а не приходить».
 
      Тому далі мовчазного catch тут немає: причину віддаємо назовні. */
-  const known = new Map<string, { status: string; rejected: number }>();
+  const known = new Map<string, { status: string; rejected: number;
+                                  card: string; cardType: string; cardSeen: string }>();
   try {
     const prev = await pgGet(base, hdr,
-      'fb_accounts?select=account_id,status,ads_by_status&created_by=eq.'
-      + encodeURIComponent(t.created_by));
+      'fb_accounts?select=account_id,status,ads_by_status,card,card_type,card_last_seen'
+      + '&created_by=eq.' + encodeURIComponent(t.created_by));
     prev.forEach((r: Json) => known.set(String(r.account_id), {
       status: String(r.status || ''),
-      rejected: Number(r.ads_by_status?.DISAPPROVED) || 0
+      rejected: Number(r.ads_by_status?.DISAPPROVED) || 0,
+      /* Картку памʼятаємо навмисно — див. нижче, там, де складається
+         рядок. Це те саме, що й з кабінетом, який втратив токен: те, що
+         ми вже бачили, не мусить зникати від того, що Facebook цього
+         разу промовчав. */
+      card: String(r.card || ''),
+      cardType: String(r.card_type || ''),
+      cardSeen: String(r.card_last_seen || '')
     }));
   } catch (e) {
     /* Перший прогін — це порожня відповідь, а не помилка. Усе інше
@@ -796,7 +824,21 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
         disable_reason: disableReason(a.disable_reason) || null,
         currency: a.currency || null, timezone_name: a.timezone_name || null,
         business_id: a.business?.id || null, business_name: a.business?.name || null,
-        card: fsd.display_string || null, card_type: fsd.type || null,
+        /* КАРТКУ НЕ ЗАБУВАЄМО. Facebook перестає віддавати
+           funding_source_details, щойно кабінет забанили або токен
+           втратив до нього доступ, — і на екрані замість «Visa ·1234»
+           лишався прочерк. Саме тоді картка й потрібна: питання «а чим
+           цей кабінет платив» виникає ПІСЛЯ того, як він помер.
+
+           Тому порожнє не затирає відоме: приїхала картка — пишемо її
+           й час; не приїхала — лишаємо ту, що знали. Прийшла інша
+           (людина перепривʼязала) — перезаписуємо, бо це вже факт, а не
+           мовчання.
+
+           card_last_seen каже, коли ми її бачили востаннє: без цього не
+           відрізнити «ось картка» від «ось картка, яка була». */
+        ...keepCard(String(fsd.display_string || ''), String(fsd.type || ''),
+                    known.get(id), now),
         amount_spent: cents(a.amount_spent), spend_cap: cents(a.spend_cap),
         balance: cents(a.balance),
         // Побачили — значить не зник. Знімаємо позначку, якщо вона була.
