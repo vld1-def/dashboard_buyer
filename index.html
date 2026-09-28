@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 08:00">
+  <meta name="build" content="build 28.09 09:31">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3288,6 +3288,33 @@ body[data-route="domains"] #dm-detail {
 .cd-off[disabled] { opacity: .45; }
 .cd-empty { font-size: 11px; color: var(--text-muted); font-style: italic; margin: 6px 0; }
 
+/* Розвідка по списаннях. Виглядає як діагностика, бо це вона і є:
+   відповідь Facebook показуємо як є, разом із текстом відмови. */
+.bil-btn {
+  width: 100%; margin-top: 8px; padding: 6px 10px; border-radius: 10px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.bil-btn:hover { color: var(--text-main); border-color: var(--accent); }
+.bil-res { margin-top: 7px; }
+.bil-wait { margin-top: 7px; font-size: 10px; font-style: italic; color: var(--text-muted); }
+.bil-ok  { font-size: 10px; font-weight: 700; color: #4ADE80; margin: 2px 0; word-break: break-word; }
+.bil-bad { font-size: 10px; font-weight: 700; color: #F87171; margin: 2px 0; word-break: break-word; }
+.bil-raw {
+  margin-top: 5px; max-height: 190px; overflow: auto;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 6px 8px;
+}
+.bil-raw pre {
+  margin: 0; font-size: 9.5px; line-height: 1.45; color: var(--text-muted);
+  white-space: pre-wrap; word-break: break-word;
+}
+.bil-copy {
+  margin-top: 5px; padding: 3px 9px; border-radius: 8px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.bil-copy:hover { color: var(--text-main); }
+
 /* Кнопка «Rules» у шапці кабінетів. Виглядає як решта кнопок панелі,
    а увімкненою світиться, бо панель праворуч може бути й закритою — і
    тоді незрозуміло, чи вона взагалі є. */
@@ -4124,7 +4151,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 08:00</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 09:31</div>
     </div>
   </aside>
 
@@ -17793,6 +17820,9 @@ function cabDetail(c) {
      числами. Окремого кліку для цього немає навмисно: питання «що
      всередині» виникає рівно тоді, коли кабінет вибрали. */
   if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else cdHide(); }
+  /* Відповідь про списання стосується одного кабінета. Лишити її при
+     переході на інший означало б показати чужі числа під його назвою. */
+  if (typeof bilReset === 'function') bilReset();
   if (!c) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   box.classList.remove('hidden');
   const S = CAB_STATE[c.state];
@@ -17853,6 +17883,14 @@ function cabDetail(c) {
       ${typeof fpForCab === 'function' ? fpForCab(c) : ''}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
+      ${/* Чи віддає Facebook списання з картки — питання, на яке не
+            відповісти з документації: одному кабінету віддасть, сусідньому
+            відмовить. Тому кнопка, а не таблиця: один запит, нічого не
+            зберігаємо, видно як є. */
+        typeof bilCheck === 'function' ? `<button type="button" class="bil-btn"
+          onclick="bilCheck('${enc}')"
+          title="Ask Facebook whether it will show card charges for this cabinet: how much was taken, when, and whether it went through">Card charges: can we see them?</button>
+        <div id="cab-bill"></div>` : ''}
     </div>`;
 
   /* Account, який приїхав із токена, а в accounts_mapping його немає.
@@ -20575,6 +20613,99 @@ window.cdPause = async function (id, kind, nameEnc) {
      на підставі власної надії було б тим самим, що показувати
      неперевірене число. */
   cdPaint();
+};
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   РОЗВІДКА ПО СПИСАННЯХ З КАРТКИ
+
+   Питання, заради якого це є: скільки Facebook зняв, коли, і чим це
+   скінчилось — Paid, Failed чи холд. У дашборді цього немає ніде:
+   видно спенд (скільки відкручено) і картку (чим платить), а от чи
+   пройшов платіж — ні. А це різні речі: кабінет може крутити й при
+   цьому не могти списати.
+
+   ЧОМУ СПЕРШУ КНОПКА, А НЕ ТАБЛИЦЯ. Ребро act_X/transactions існує
+   давно, але віддається воно не всім і не завжди: залежить від того,
+   чий кабінет, як він платить і що дозволив застосунок. Побудувати
+   екран на ребрі, яке половині кабінетів відповідає відмовою, означало
+   б зробити ще одне місце, де порожньо читається як нуль.
+
+   Тому: одна кнопка, один запит, нічого не зберігаємо — і видно як є,
+   разом із текстом відмови. Саме текст відмови й каже, що робити далі.
+   ══════════════════════════════════════════════════════════════════ */
+
+let bilBusy = '', bilOut = null;
+
+const bilEsc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+window.bilReset = function () { bilOut = null; };
+
+window.bilCheck = async function (accEnc) {
+  const acc = decodeURIComponent(accEnc);
+  if (bilBusy) return;
+  bilBusy = acc; bilOut = null; bilPaint();
+  try {
+    const { data: s } = await sb.auth.getSession();
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json',
+                 Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+      body: JSON.stringify({ probe: 'billing', account_id: acc })
+    });
+    const j = await res.json().catch(() => ({}));
+    bilOut = res.ok ? j : { error: j.error || 'HTTP ' + res.status };
+  } catch (e) {
+    bilOut = { error: e.message };
+  }
+  bilBusy = '';
+  bilPaint();
+};
+
+/* Показуємо стисло — і повний текст лишаємо поруч, бо саме його треба
+   буде перечитати, коли Facebook відмовить незрозуміло. */
+function bilSum(o) {
+  if (!o) return '';
+  if (o.error) return `<p class="bil-bad">${bilEsc(o.error)}</p>`;
+  const line = (name, p) => {
+    if (!p) return '';
+    if (!p.ok) return `<p class="bil-bad"><b>${name}</b>: ${
+      bilEsc(p.message || 'refused')}${p.sub ? ' (sub ' + p.sub + ')' : ''}</p>`;
+    return `<p class="bil-ok"><b>${name}</b>: ${
+      p.count == null ? 'answered' : p.count + ' row(s)'}${
+      p.fields && p.fields.length ? ' · ' + bilEsc(p.fields.join(', ')) : ' · empty'}</p>`;
+  };
+  return line('transactions', o.transactions) + line('account', o.account);
+}
+
+window.bilPaint = function () {
+  const box = document.getElementById('cab-bill');
+  if (!box) return;
+  if (bilBusy) { box.innerHTML = '<p class="bil-wait">Asking Facebook…</p>'; return; }
+  if (!bilOut) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="bil-res">
+      ${bilSum(bilOut)}
+      <div class="bil-raw custom-scrollbar"><pre>${
+        bilEsc(JSON.stringify(bilOut, null, 1))}</pre></div>
+      <button type="button" class="bil-copy" onclick="bilCopy()">Copy answer</button>
+    </div>`;
+};
+
+window.bilCopy = async function () {
+  const text = JSON.stringify(bilOut, null, 1);
+  try {
+    await navigator.clipboard.writeText(text);
+    if (typeof toast === 'function') toast('Copied');
+  } catch (e) {
+    /* Буфера може не бути (не https, відмовили в дозволі). Тоді хоч
+       виділимо — скопіювати руками все одно можна. */
+    const pre = document.querySelector('#cab-bill pre');
+    if (pre) { const r = document.createRange(); r.selectNodeContents(pre);
+               const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+    if (typeof toast === 'function') toast('Select and copy by hand', 'error');
+  }
 };
 </script>
 

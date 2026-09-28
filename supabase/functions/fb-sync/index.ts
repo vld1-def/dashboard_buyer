@@ -1331,6 +1331,83 @@ async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
   return { test: r, shared: false };
 }
 
+/* ── ЧИ ВІДДАЄ FACEBOOK СПИСАННЯ З КАРТКИ ──
+
+   Питання просте: скільки і коли Facebook зняв грошей, і чим це
+   скінчилось — Paid, Failed чи холд. Відповідь на нього не можна
+   вгадати з документації: ребро act_X/transactions існує давно, але чи
+   віддасть його САМЕ ЦЕЙ токен на САМЕ ЦЬОМУ кабінеті — залежить від
+   того, чий кабінет, як він платить і що дозволив застосунок. Один
+   кабінет віддасть, сусідній відповість «(#200) Requires ...».
+
+   Тому спершу розвідка, а не таблиця в базі: один запит, нічого не
+   зберігаємо, показуємо як є. Будувати екран на ребрі, яке може
+   мовчати, означало б зробити ще одне місце, де порожньо читається як
+   нуль.
+
+   Тільки людина і тільки свій кабінет: з розкладу це безглуздо, а чужі
+   списання — не наша справа. */
+const PROBE_TXN = 'id,time,amount,status,charge_type,payment_option,'
+                + 'transaction_type,product_type,billing_start_time,billing_end_time,'
+                + 'provider_amount,app_amount,vat_invoice_id';
+const PROBE_ACC = 'funding_source_details,balance,amount_spent,spend_cap,currency,'
+                + 'account_status,adspaymentcycle{threshold_amount}';
+
+async function probeBilling(base: string, hdr: Json, owner: string,
+                            accountId: string): Promise<Json> {
+  const id = String(accountId || '').trim();
+  if (!/^\d+$/.test(id)) return { error: 'which cabinet? pass a numeric account_id' };
+
+  /* Свій — значить є в fb_accounts під цим uid. Номер кабінета число
+     публічне, і вірити тілу запиту означало б дати заглядати в чужі
+     рахунки. */
+  const accs = await pgGet(base, hdr, 'fb_accounts?select=account_id,token_id'
+    + '&created_by=eq.' + encodeURIComponent(owner)
+    + '&account_id=eq.' + encodeURIComponent(id));
+  const acc = accs[0];
+  if (!acc) return { error: 'no such ad account among yours — run Sync now first' };
+  if (!acc.token_id) return { error: 'no token is linked to this cabinet any more — press Sync now' };
+
+  const toks = await pgGet(base, hdr, 'fb_tokens?select=id,token&id=eq.'
+    + encodeURIComponent(String(acc.token_id)));
+  const token = String((toks[0] || {}).token || '');
+  if (!token) return { error: 'the token row is gone — add the token again in Settings' };
+
+  const act = 'act_' + id;
+  let parts: (Json | null)[];
+  try {
+    parts = await graphBatch(token, [
+      act + '/transactions?limit=10&fields=' + encodeURIComponent(PROBE_TXN),
+      act + '?fields=' + encodeURIComponent(PROBE_ACC)
+    ]);
+  } catch (e) {
+    const g = e as GraphError;
+    return { error: g.message, throttled: !!g.throttled };
+  }
+
+  /* Відповідь віддаємо як є, разом із кодом і текстом відмови. Саме
+     текст відмови й відповідає на питання, чи є доступ: «(#200)
+     Requires business_management» і «Unsupported get request» — це дві
+     різні відповіді й дві різні дії. */
+  const part = (i: number, want: string) => {
+    const p = parts[i];
+    if (!p) return { ok: false, note: 'no answer in the batch' };
+    const err = p.body?.error;
+    if (err) return { ok: false, code: p.code,
+                      message: String(err.message || ''),
+                      type: String(err.type || ''),
+                      sub: err.error_subcode == null ? null : Number(err.error_subcode) };
+    const data = want === 'list' ? (Array.isArray(p.body?.data) ? p.body.data : []) : p.body;
+    return { ok: true, code: p.code,
+             count: want === 'list' ? (data as Json[]).length : null,
+             fields: want === 'list'
+               ? Object.keys(((data as Json[])[0]) || {})
+               : Object.keys(data || {}),
+             rows: want === 'list' ? (data as Json[]).slice(0, 10) : data };
+  };
+  return { account_id: id, transactions: part(0, 'list'), account: part(1, 'one') };
+}
+
 /* ── вхід ── */
 Deno.serve(async (req) => {
   // OPTIONS — найперше й без жодних умов: без CORS-заголовків на
@@ -1375,11 +1452,22 @@ async function handle(req: Request): Promise<Response> {
   }
 
   let wantTest = false;
+  let wantProbe = '';
+  let probeAcc = '';
   try {
     const body = await req.json();
     onlyToken = Number(body?.token_id || 0) || 0;
     wantTest = body?.test === true;
+    wantProbe = String(body?.probe || '');
+    probeAcc = String(body?.account_id || '');
   } catch (_e) { /* тіла може не бути */ }
+
+  /* Розвідка по списаннях — теж дія людини: з розкладу вона нічого не
+     міняє й нікому не потрібна. */
+  if (wantProbe === 'billing') {
+    if (cron) return reply({ error: 'this check is for a person, not for the schedule' }, 400);
+    return reply(await probeBilling(base, hdr, onlyOwner, probeAcc));
+  }
 
   /* Тестове повідомлення — дія людини й тільки людини. З розкладу воно
      не має сенсу: нікому буде його читати, а розсилати тест щогодини —
