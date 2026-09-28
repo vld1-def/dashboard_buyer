@@ -339,15 +339,24 @@ const LIST_LIMIT = 500;
    виглядав так само, як те, чого ніколи не існувало, — просто зникав.
 
    Тому беремо всі стани, які означають «ввімкнене»: крутиться, чекає
-   перевірки або зламане. ПАУЗИ тут навмисно немає — ні своєї, ні
-   батьківської (CAMPAIGN_PAUSED, ADSET_PAUSED): вимкнене вимкнули
-   свідомо, і тягнути в знімок пів кабінета архіву заради цього не
-   варто. Так таблиця й далі лишається розміром «скільки зараз
-   ввімкнено», а не «скільки колись було».
+   перевірки або зламане.
 
-   Правила дивляться лише на ACTIVE — фільтр стоїть у fb-rules. */
+   ПАУЗУ ТЕПЕР ТЕЖ БЕРЕМО — і свою, і батьківську. Не заради повноти, а
+   тому, що зʼявився перемикач: вимкнути можна лише те, що видно, і
+   ввімкнути — так само. Поки пауз у знімку не було, вимкнена кампанія
+   зникала з розбору вже при наступній синхронізації, і ввімкнути її
+   назад не було звідки. Перемикач, який працює в один бік, гірший за
+   його відсутність.
+
+   ARCHIVED і DELETED не беремо — і саме в них лежить той «пів кабінета
+   архіву», якого ми боялись. Пауза в живому кабінеті — це переважно
+   те, що вимкнули цими днями; архів — усе, що було за рік.
+
+   Правила дивляться лише на ACTIVE — фільтр стоїть у самому запиті
+   fb-rules, тож нове в знімку їх не зачіпає. */
 const SNAP_STATUS = ['ACTIVE', 'PENDING_REVIEW', 'PREAPPROVED', 'DISAPPROVED',
-                     'WITH_ISSUES', 'PENDING_BILLING_INFO', 'IN_PROCESS'];
+                     'WITH_ISSUES', 'PENDING_BILLING_INFO', 'IN_PROCESS',
+                     'PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED'];
 
 function urlsFor(actId: string, tz: string): string[] {
   const act = 'act_' + actId;
@@ -416,9 +425,19 @@ function urlsFor(actId: string, tz: string): string[] {
 
          optimization_goal і подія пікселя потрібні екрану кабінета: без
          них стовпчик «Result» довелось би вгадувати, а вгадане число
-         гірше за чесний прочерк. */
+         гірше за чесний прочерк.
+
+         effective_status БАТЬКІВ — окрема річ, і вивести його з дітей
+         не можна. Кампанія буває PAUSED сама по собі, а її оголошення
+         при цьому ACTIVE: Facebook просто не показує їх. Поки ми
+         складали стан кампанії з оголошень, така кампанія виглядала
+         робочою, і питання «чому вона нічого не витрачає» лишалось без
+         відповіді просто тому, що відповідь ми не питали. Розширення
+         поля всередині того самого підзапиту не коштує ні запиту, ні
+         ліміту. */
       + '&fields=' + encodeURIComponent('name,effective_status,adset_id,campaign_id,'
-        + 'adset{name,optimization_goal,promoted_object{custom_event_type}},campaign{name},'
+        + 'adset{name,effective_status,optimization_goal,promoted_object{custom_event_type}},'
+        + 'campaign{name,effective_status},'
         + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
   ];
 }
@@ -437,8 +456,8 @@ type Day = { day: string; spend: number | null;
    повідомленні було видно, що саме вимкнули), батьки (щоб правило
    могло скластись до адсета чи кампанії) і числа. */
 type AdSnap = { ad_id: string; name: string; status: string;
-                adset_id: string; adset_name: string;
-                campaign_id: string; campaign_name: string;
+                adset_id: string; adset_name: string; adset_status: string;
+                campaign_id: string; campaign_name: string; campaign_status: string;
                 goal: string; event: string;
                 spend: number; imps: number; clicks: number; link_clicks: number;
                 actions: Json[] };
@@ -610,7 +629,9 @@ function readParts(parts: (Json | null)[]):
         ad_id: String(r.id || ''), name: String(r.name || ''),
         status: String(r.effective_status || ''),
         adset_id: String(r.adset_id || ''), adset_name: String(r.adset?.name || ''),
+        adset_status: String(r.adset?.effective_status || ''),
         campaign_id: String(r.campaign_id || ''), campaign_name: String(r.campaign?.name || ''),
+        campaign_status: String(r.campaign?.effective_status || ''),
         goal: String(r.adset?.optimization_goal || ''),
         event: String(r.adset?.promoted_object?.custom_event_type || ''),
         spend: Number(row.spend) || 0,
@@ -873,7 +894,9 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
           created_by: t.created_by, team_name: t.team_name, account_id: x.id,
           ad_id: a.ad_id, name: a.name, effective_status: a.status || null,
           adset_id: a.adset_id, adset_name: a.adset_name || null,
+          adset_status: a.adset_status || null,
           campaign_id: a.campaign_id, campaign_name: a.campaign_name || null,
+          campaign_status: a.campaign_status || null,
           optimization_goal: a.goal || null, custom_event_type: a.event || null,
           spend: a.spend, impressions: a.imps, clicks: a.clicks,
           link_clicks: a.link_clicks, actions: a.actions, seen_at: now
