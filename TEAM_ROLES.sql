@@ -170,22 +170,49 @@ create policy team_members_read_team on public.team_members
 --  team_name. Стара політика «своє» лишається: політики складаються
 --  через АБО, тож баєр нічого не втрачає й нічого нового не бачить.
 --
---  Тут навмисно НЕМАЄ payouts, expenses і bonus_tiers: тімліду вони не
---  потрібні, а видане один раз зайве право потім не забереш непомітно.
---  Знадобиться — додасте назву в список і виконаєте блок ще раз.
+--  ⚠️ СПИСОК БУВ ШИРШИЙ, І ЦЕ БУЛА ПОМИЛКА. Спершу сюди потрапили
+--  таблиці «про запас» — зокрема tasks. Наслідок побачили одразу:
+--  тімлід відкрив дашборд і побачив ЧУЖІ задачі. Задачі особисті, до
+--  аналітики команди стосунку не мають, і права на них ніхто не давав.
 --
---  fb_tokens тут немає й не буде НІКОЛИ: сам токен закритий навіть від
+--  Тому список тепер рівно такий, який читає сторінка Team, і не
+--  більший. Правило просте: спершу сторінці щось справді потрібно —
+--  тоді назва з'являється тут. «Хай буде, раптом знадобиться» у
+--  правах доступу означає «хтось побачить те, чого не мав».
+--
+--  payouts, expenses і bonus_tiers тут немає з тієї самої причини.
+--  fb_tokens немає й не буде НІКОЛИ: токен закритий навіть від
 --  власника, і роль цього не міняє.
 -- ════════════════════════════════════════════════════════════
+
+--  ▸ 1. Забрати зайве, видане раніше.
+--     drop policy if exists — тож виконати можна й на свіжій базі, де
+--     цих політик ніколи не було.
 
 do $$
 declare t text;
 begin
   foreach t in array array[
-    'daily_stats', 'creatives_stats', 'daily_reports', 'tasks',
-    'accounts_mapping', 'funnels_mapping', 'change_log', 'account_events',
-    'domains', 'fb_accounts', 'fb_ad_today', 'fb_rule_log'
+    'creatives_stats', 'daily_reports', 'tasks', 'accounts_mapping',
+    'funnels_mapping', 'change_log', 'account_events', 'domains', 'fb_ad_today'
   ]
+  loop
+    if exists (select 1 from information_schema.tables
+               where table_schema = 'public' and table_name = t) then
+      execute format('drop policy if exists %I on public.%I', t || '_read_team', t);
+    end if;
+  end loop;
+end $$;
+
+
+--  ▸ 2. Видати те, що сторінці справді потрібно.
+--     daily_stats — числа по людях; fb_accounts — кабінети й біди;
+--     fb_rule_log — що вимкнули правила.
+
+do $$
+declare t text;
+begin
+  foreach t in array array['daily_stats', 'fb_accounts', 'fb_rule_log']
   loop
     if exists (select 1 from information_schema.tables
                where table_schema = 'public' and table_name = t) then
@@ -196,6 +223,11 @@ begin
     end if;
   end loop;
 end $$;
+
+--  Перевірити, що саме видано зараз:
+-- select tablename, policyname from pg_policies
+--  where schemaname = 'public' and policyname like '%_read_team'
+--  order by tablename;
 
 
 -- ════════════════════════════════════════════════════════════
@@ -218,6 +250,18 @@ end $$;
 -- ════════════════════════════════════════════════════════════
 --  ▶ БЛОК 6 — завести тімліда і баєрів
 --
+--  ⚠️ ЦЕЙ БЛОК НЕ ОБОВ'ЯЗКОВИЙ, І ЙОГО МОЖНА ВІДКЛАСТИ. Тімліда ще
+--  немає? Пропустіть його зовсім. Сторінка Team працює вже після блоку
+--  5: адмін бачить усі команди, тож подивитись на неї й перевірити
+--  цифри можна своїм логіном, без жодного тімліда.
+--
+--  Коли людина з'явиться — повернетесь сюди й додасте один рядок. Нічого
+--  переробляти не доведеться: роль — це просто рядок у таблиці.
+--
+--  БАЄРІВ варто додати вже зараз, якщо їхні акаунти є: без цих рядків
+--  сторінка не знає імен і показує уривок uuid. На доступ це не впливає
+--  (баєр і так бачить своє) — лише на підпис у таблиці.
+--
 --  Тімлід прив'язаний до ОДНІЄЇ команди: team_name у нього має точно
 --  збігатися з тим, що стоїть у даних (IMPROVE — не improve і не
 --  «Improve»). Не збігеться — він побачить порожньо, і це буде схоже
@@ -225,7 +269,42 @@ end $$;
 --
 --  Баєрів заводити не обов'язково: без рядка людина й так бачить своє.
 --  Але варто — інакше в таблиці тімліда замість імені стоятиме uuid.
+--
+--  ⚠️ ЩО САМЕ ЗА UUID. Це id КОРИСТУВАЧА з auth.users — тієї людини,
+--  яка заходитиме в дашборд своїм логіном. Не номер кабінета, не
+--  команда і не ваш власний id.
+--
+--  Немає ще акаунта? У дашборді реєстрації немає, тільки вхід — тож
+--  користувача створюють у Supabase: Authentication → Users → Add user
+--  (пошта й пароль). Після цього він з'явиться в auth.users.
+--
+--  ЗРУЧНІШЕ — ЗА ПОШТОЮ, а не копіюванням uuid: варто переставити один
+--  символ, і рядок мовчки ляже на неіснуючого користувача. Варіант
+--  нижче сам знаходить id за поштою, а якщо пошти немає в auth.users —
+--  просто нічого не вставить, і це одразу видно по «0 rows».
 -- ════════════════════════════════════════════════════════════
+
+--  ▸ ВАРІАНТ 1 — за поштою (рекомендую)
+
+-- insert into public.team_members (user_id, team_name, name, role)
+-- select u.id, v.team_name, v.name, v.role
+--   from auth.users u
+--   join (values
+--     ('lead@example.com',   'IMPROVE', 'Ім''я',  'lead'),
+--     ('buyer1@example.com', 'IMPROVE', 'Олег',  'buyer'),
+--     ('buyer2@example.com', 'IMPROVE', 'Ірина', 'buyer')
+--   ) as v(email, team_name, name, role) on lower(u.email) = lower(v.email)
+-- on conflict (user_id) do update
+--   set role = excluded.role, name = excluded.name, team_name = excluded.team_name;
+
+--  Перевірити, що всіх знайшло: скільки рядків — стільки й людей.
+-- select tm.role, tm.name, tm.team_name, u.email
+--   from public.team_members tm join auth.users u on u.id = tm.user_id
+--  order by tm.role, tm.name;
+
+
+--  ▸ ВАРІАНТ 2 — якщо все-таки хочете вручну.
+--     Де взяти: select id, email from auth.users order by created_at;
 
 -- insert into public.team_members (user_id, team_name, name, role) values
 --   ('UUID-ТІМЛІДА', 'IMPROVE', 'Ім''я',  'lead'),
@@ -238,17 +317,35 @@ end $$;
 -- ════════════════════════════════════════════════════════════
 --  ▶ БЛОК 7 — перевірка
 --
---  Перший запит має показати вашу роль. Другий — скільки рядків
---  daily_stats ви тепер бачите: адмін побачить усі команди, тімлід —
---  свою цілком, баєр — тільки свої.
+--  ⚠️ НЕ ПЕРЕВІРЯЙТЕ РОЛЬ ЧЕРЕЗ my_role() ТУТ. У SQL Editor немає
+--  залогіненого користувача: auth.uid() там порожній, тож my_role()
+--  чесно поверне 'buyer' навіть адміну. Це не поломка ролей — це інше
+--  місце виконання. Роль перевіряється в браузері, під логіном.
 --
---  ⚠️ ЯКЩО ДРУГИЙ ЗАПИТ ПОКАЗУЄ created_by = null — це означає, що
---  КРОК 3 із SECURITY_BUYERS.sql (підписати старі рядки автором) ще не
---  виконано. Тоді сторінка тімліда не зможе розкласти дані по людях і
---  прямо про це скаже, замість малювати одного «невідомого баєра».
+--  Тому тут дивимось не на роль, а на те, що ЛЕЖИТЬ у таблицях.
 -- ════════════════════════════════════════════════════════════
 
--- select public.my_role() as role, public.my_team() as team;
+--  ▸ 1. Кого завели і з якою роллю.
+--     Немає рядка — людина лишається звичайним баєром.
+
+-- select tm.role, tm.name, tm.team_name, u.email
+--   from public.team_members tm join auth.users u on u.id = tm.user_id
+--  order by tm.role, tm.name;
+
+
+--  ▸ 2. Чи збігається назва команди тімліда з тією, що в даних.
+--     Найчастіша причина порожньої сторінки — саме тут: «Improve»
+--     проти «IMPROVE» база вважає різними командами, і мовчки.
+
+-- select team_name, count(*) as rows from public.daily_stats
+--  group by team_name order by rows desc;
+
+
+--  ▸ 3. Чи підписані рядки авторами.
+--     created_by = null означає, що КРОК 3 із SECURITY_BUYERS.sql ще
+--     не виконано. Сторінка тімліда тоді не розкладе дані по людях —
+--     і прямо про це скаже жовтою смугою, а не намалює одного
+--     «невідомого баєра».
 
 -- select created_by, team_name, count(*) as rows, round(sum(spend)::numeric, 2) as spend
 --   from public.daily_stats

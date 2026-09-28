@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 13:12">
+  <meta name="build" content="build 28.09 13:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3396,6 +3396,17 @@ body[data-route="domains"] #dm-detail {
 .sb-item[data-nav="team"] { display: none; }
 body.is-lead .sb-item[data-nav="team"] { display: flex; }
 
+/* А в самого тімліда в меню рівно одна сторінка — його власна.
+   Ховати сторінки баєра по одній програшно: наступний блок, який
+   хтось додасть, знову став би видимим за замовчуванням. Тому тут
+   навпаки — ховаємо все, крім Team.
+
+   Адміна це не стосується: дашборд його власний. */
+body.is-lead-only .sb-item[data-nav]:not([data-nav="team"]),
+body.is-lead-only .sb-item[data-hub],
+body.is-lead-only .sb-item[data-sheet],
+body.is-lead-only .sb-cap { display: none; }
+
 /* Кнопка «Rules» у шапці кабінетів. Виглядає як решта кнопок панелі,
    а увімкненою світиться, бо панель праворуч може бути й закритою — і
    тоді незрозуміло, чи вона взагалі є. */
@@ -4243,7 +4254,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 13:12</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 13:47</div>
     </div>
   </aside>
 
@@ -21175,8 +21186,34 @@ window.tmWhoAmI = async function () {
     tmRole = 'buyer'; tmTeam = '';
   }
   document.body.classList.toggle('is-lead', tmRole === 'lead' || tmRole === 'admin');
+  /* ТІМЛІД БАЧИТЬ ЛИШЕ СВОЮ СТОРІНКУ.
+
+     Спершу здавалось, що досить показати йому Team поруч із рештою. На
+     практиці вийшло інше: щойно він отримав право читати командні
+     числа, ними наповнились і сторінки баєра — Geo Performance, графіки,
+     а задачі взагалі показали чужі. Тобто людина, яка мала аналізувати
+     команду, відкривала чийсь робочий стіл.
+
+     Ховати це по одному віджету — програшна гра: наступний блок, який
+     хтось додасть, знову стане видимим за замовчуванням. Тому правило
+     одне: у тімліда в меню рівно одна сторінка. Адміна це не
+     стосується — дашборд його власний.
+
+     Це, знову ж, про зручність і ясність, а не про захист: чужих
+     рядків не віддасть база (TEAM_ROLES.sql), хоч би що робили з
+     розміткою. */
+  document.body.classList.toggle('is-lead-only', tmRole === 'lead');
+  if (tmRole === 'lead') tmKeepOnTeam();
   return { role: tmRole, team: tmTeam };
 };
+
+/* Тімлід міг лишити в адресі будь-який маршрут — з закладки чи просто
+   з минулого разу. Повертаємо на Team: інакше він побачив би порожній
+   дашборд і вирішив, що нічого не працює. */
+function tmKeepOnTeam() {
+  const now = String(location.hash || '').replace(/^#\/?/, '').split('/')[0];
+  if (now !== 'team' && typeof navGo === 'function') navGo('team');
+}
 
 /* Команда, дані якої показуємо. Тімлід прив'язаний до своєї й
    перемкнути її не може — ні кнопкою, ні адресою: чужу йому все одно
