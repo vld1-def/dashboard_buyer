@@ -1373,121 +1373,32 @@ async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
   return { test: r, shared: false };
 }
 
-/* ── ЧИ ВІДДАЄ FACEBOOK СПИСАННЯ З КАРТКИ ──
+/* ── ЩО FACEBOOK КАЖЕ ПРО ГРОШІ ПО КАРТЦІ, І ЧОГО НЕ КАЖЕ ──
 
-   Питання просте: скільки і коли Facebook зняв грошей, і чим це
-   скінчилось — Paid, Failed чи холд.
+   Тут була кнопка-розвідка: вона питала Graph, чи віддасть він списання
+   з картки. Своє вона відпрацювала, відповідь відома, і тримати
+   діагностику в картці кожного кабінета сенсу більше немає. Записуємо
+   знайдене, щоб ніхто не шукав це вдруге.
 
-   ПЕРША СПРОБА ВІДПОВІЛА НЕПОВНО, і це варто памʼятати. Ми спитали
-   кабінет одним списком полів, серед яких було неіснуюче
-   (adspaymentcycle — це ребро, а не поле). Graph на таке не відповідає
-   «оце дам, а оце ні»: він відмовляє ВСЬОМУ запиту. Через те з відповіді
-   не було видно, чи віддав би він funding_source_details і balance —
-   вони просто не встигли.
+   НЕМАЄ ВЗАГАЛІ. transactions, invoices і adspaymentcycle відповіли
+   однаково: «(#100) Tried accessing nonexisting field». Це не про
+   права — брак доступу звучить як «(#200) Requires ... permission», а
+   «nonexisting field» означає, що такого ребра в API просто немає.
+   Жодні права адміністратора його не створять, і списань списком —
+   сум, дат, Paid / Failed — Marketing API не віддає.
 
-   Тому тут кожна перевірка — окремий підзапит того самого пакета: одна
-   відмова більше нічого не ховає. Перший підзапит — metadata=1: він
-   повертає ПЕРЕЛІК полів і ребер, які цей вузол узагалі приймає. Це й
-   є відповідь на «чи є доступ», без вгадування назв.
+   metadata=1 на кабінеті теж мовчить: вузол відповідає, але переліку
+   своїх полів і ребер не дає.
 
-   Нічого не зберігаємо: поки не видно, що саме Facebook віддає, будувати
-   таблицю означало б зробити ще одне місце, де порожньо читається як
-   нуль.
+   ЩО Є: balance (нараховано й ще не списано), amount_spent (за весь
+   час), spend_cap, currency, account_status, is_prepay_account. Усе це
+   fb-sync і так забирає щопрогону списком кабінетів — саме з balance
+   береться «Not charged yet» у картці кабінета.
 
-   Тільки людина і тільки свій кабінет: з розкладу це безглуздо, а чужі
-   списання — не наша справа. */
-const PROBE_ACC = 'funding_source_details,balance,amount_spent,spend_cap,'
-                + 'currency,account_status,is_prepay_account';
-/* Що з переліку полів нас цікавить. Список у кабінета довгий, і вивалити
-   його цілком означало б сховати відповідь у шумі. */
-const PROBE_WORDS = /(bill|pay|fund|balance|owe|credit|invoice|card|transact|threshold|prepay|spend_cap)/i;
-
-async function probeBilling(base: string, hdr: Json, owner: string,
-                            accountId: string): Promise<Json> {
-  const id = String(accountId || '').trim();
-  if (!/^\d+$/.test(id)) return { error: 'which cabinet? pass a numeric account_id' };
-
-  /* Свій — значить є в fb_accounts під цим uid. Номер кабінета число
-     публічне, і вірити тілу запиту означало б дати заглядати в чужі
-     рахунки. */
-  const accs = await pgGet(base, hdr, 'fb_accounts?select=account_id,token_id'
-    + '&created_by=eq.' + encodeURIComponent(owner)
-    + '&account_id=eq.' + encodeURIComponent(id));
-  const acc = accs[0];
-  if (!acc) return { error: 'no such ad account among yours — run Sync now first' };
-  if (!acc.token_id) return { error: 'no token is linked to this cabinet any more — press Sync now' };
-
-  const toks = await pgGet(base, hdr, 'fb_tokens?select=id,token&id=eq.'
-    + encodeURIComponent(String(acc.token_id)));
-  const token = String((toks[0] || {}).token || '');
-  if (!token) return { error: 'the token row is gone — add the token again in Settings' };
-
-  const act = 'act_' + id;
-  /* Кожна перевірка окремим підзапитом — саме щоб одна відмова не
-     з'їдала решту. Пакет усе одно один похід. */
-  const asks: [string, string, string][] = [
-    ['what this cabinet accepts', 'meta', act + '?metadata=1'],
-    ['billing fields', 'one', act + '?fields=' + encodeURIComponent(PROBE_ACC)],
-    ['payment cycle', 'list', act + '/adspaymentcycle?limit=1'],
-    ['transactions', 'list', act + '/transactions?limit=1'],
-    ['invoices', 'list', act + '/invoices?limit=1']
-  ];
-
-  let parts: (Json | null)[];
-  try {
-    parts = await graphBatch(token, asks.map(a => a[2]));
-  } catch (e) {
-    const g = e as GraphError;
-    return { error: g.message, throttled: !!g.throttled };
-  }
-
-  /* Відповідь віддаємо як є, разом із кодом і текстом відмови. Саме
-     текст відмови й відповідає на питання, чи є доступ: «Requires
-     business_management» і «nonexisting field» — це дві різні відповіді
-     й дві різні дії. */
-  const checks: Json = {};
-  asks.forEach(([name, kind], i) => {
-    const p = parts[i];
-    if (!p) { checks[name] = { ok: false, note: 'no answer in the batch' }; return; }
-    const err = p.body?.error;
-    if (err) {
-      checks[name] = { ok: false, code: p.code,
-                       message: String(err.message || ''),
-                       type: String(err.type || ''),
-                       sub: err.error_subcode == null ? null : Number(err.error_subcode) };
-      return;
-    }
-    if (kind === 'meta') {
-      const m = p.body?.metadata || {};
-      const fields = Array.isArray(m.fields) ? m.fields : [];
-      const edges = m.connections && typeof m.connections === 'object'
-        ? Object.keys(m.connections) : [];
-      /* Відповів, але переліку не дав. Це не «полів немає» — це «не
-         розказую», і написати треба саме так: «0 полів» читалось би як
-         факт про кабінет, а це факт про відповідь. */
-      if (!fields.length && !edges.length) {
-        checks[name] = { ok: false, code: p.code,
-          message: 'answered, but told us nothing: this node does not list '
-                 + 'its fields and edges. Ask the ones below by name instead.' };
-        return;
-      }
-      checks[name] = { ok: true, code: p.code,
-        edges,
-        /* Поля фільтруємо за змістом: повний перелік у кабінета довгий,
-           і питання в ньому просто загубилось би. */
-        fields: fields.map((f: Json) => String(f.name || ''))
-                      .filter((n: string) => PROBE_WORDS.test(n)),
-        fieldCount: fields.length };
-      return;
-    }
-    const rows = Array.isArray(p.body?.data) ? p.body.data : null;
-    checks[name] = { ok: true, code: p.code,
-      count: rows ? rows.length : null,
-      fields: Object.keys((rows ? rows[0] : p.body) || {}),
-      rows: rows ? rows.slice(0, 5) : p.body };
-  });
-  return { account_id: id, checks };
-}
+   І ЩЕ ОДНЕ, заради чого все й затівалось: funding_source_details у
+   відповідь НЕ ПОТРАПЛЯЄ, щойно кабінет забанили. Facebook мовчки його
+   не віддає — і саме тому картка перетворювалась на прочерк. Лікує це
+   keepCard вище, а не права. */
 
 /* ── вхід ── */
 Deno.serve(async (req) => {
@@ -1533,22 +1444,11 @@ async function handle(req: Request): Promise<Response> {
   }
 
   let wantTest = false;
-  let wantProbe = '';
-  let probeAcc = '';
   try {
     const body = await req.json();
     onlyToken = Number(body?.token_id || 0) || 0;
     wantTest = body?.test === true;
-    wantProbe = String(body?.probe || '');
-    probeAcc = String(body?.account_id || '');
   } catch (_e) { /* тіла може не бути */ }
-
-  /* Розвідка по списаннях — теж дія людини: з розкладу вона нічого не
-     міняє й нікому не потрібна. */
-  if (wantProbe === 'billing') {
-    if (cron) return reply({ error: 'this check is for a person, not for the schedule' }, 400);
-    return reply(await probeBilling(base, hdr, onlyOwner, probeAcc));
-  }
 
   /* Тестове повідомлення — дія людини й тільки людини. З розкладу воно
      не має сенсу: нікому буде його читати, а розсилати тест щогодини —
