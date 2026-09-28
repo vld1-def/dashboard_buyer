@@ -1420,6 +1420,15 @@ async function probeBilling(base: string, hdr: Json, owner: string,
       const fields = Array.isArray(m.fields) ? m.fields : [];
       const edges = m.connections && typeof m.connections === 'object'
         ? Object.keys(m.connections) : [];
+      /* Відповів, але переліку не дав. Це не «полів немає» — це «не
+         розказую», і написати треба саме так: «0 полів» читалось би як
+         факт про кабінет, а це факт про відповідь. */
+      if (!fields.length && !edges.length) {
+        checks[name] = { ok: false, code: p.code,
+          message: 'answered, but told us nothing: this node does not list '
+                 + 'its fields and edges. Ask the ones below by name instead.' };
+        return;
+      }
       checks[name] = { ok: true, code: p.code,
         edges,
         /* Поля фільтруємо за змістом: повний перелік у кабінета довгий,

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 10:03">
+  <meta name="build" content="build 28.09 10:25">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3190,12 +3190,22 @@ body[data-route="domains"] #dm-detail {
    Блок під таблицею: кампанії, адсети, оголошення з числами. Висоту
    ділить із таблицею — своя третина екрана й власний скрол, щоб
    таблиця кабінетів не поїхала під нього цілком. */
+/* Смуга з кнопкою — у самому низу блока кабінетів. Лінія на ній, бо
+   саме вона тепер відділяє нижній шматок; нутро приростає під нею. */
+#cab-inside-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
 #cab-inside {
   /* min-width: 0 — щоб широка таблиця всередині тягнула свою смугу
      прокрутки, а не розсувала сторінку. */
   flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0;
-  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+  margin-top: 10px;
 }
+/* display на id б'є .hidden від Tailwind — саме через це блок колись
+   «ховався», лишаючись на екрані. Тому ховання прописане поіменно, як
+   і в решті панелей цього файлу. */
+#cab-inside.hidden, #cab-inside-bar.hidden { display: none; }
 .cd-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 12px; flex: 0 0 auto; margin-bottom: 8px;
@@ -3265,11 +3275,12 @@ body[data-route="domains"] #dm-detail {
    рядку: без них «Mostbet_KG_1» не має адреси. */
 .cd-where { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--text-muted); }
 .cab-inside-btn {
-  width: 100%; margin-top: 8px; padding: 6px 10px; border-radius: 10px;
+  padding: 6px 12px; border-radius: 10px; flex: 0 0 auto;
   font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
   background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
 }
 .cab-inside-btn:hover { color: var(--text-main); border-color: var(--accent); }
+.cab-inside-who { font-size: 10px; font-weight: 700; color: var(--text-muted); }
 /* Назви ще немає — показуємо id, але так, щоб це не читалось як назва. */
 .cd-noname { color: var(--text-muted); font-weight: 600; font-style: italic; }
 .cd-num { font-variant-numeric: tabular-nums; color: var(--text-main); }
@@ -4164,7 +4175,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:03</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 10:25</div>
     </div>
   </aside>
 
@@ -5071,7 +5082,12 @@ input.ui-in[type="range"] { padding: 0; }
 
   <!-- Що всередині вибраного кабінета: кампанії, адсети, оголошення з
        їхніми сьогоднішніми числами. Під таблицею, а не в панелі
-       праворуч, бо тут потрібні стовпчики, а не вузька смуга. -->
+       праворуч, бо тут потрібні стовпчики, а не вузька смуга.
+
+       Кнопка стоїть тут, у самому низу блока, а не в картці кабінета:
+       відкриває вона те, що зʼявиться просто під нею, і лінія, яка й
+       так відділяла цей шматок, тепер відділяє її разом із ним. -->
+  <div id="cab-inside-bar" class="hidden"></div>
   <div id="cab-inside" class="hidden"></div>
 
   <!-- Сторінки, з яких крутять ці кабінети. Під таблицею, а не над:
@@ -17832,7 +17848,7 @@ function cabDetail(c) {
   /* Разом із карткою кабінета показуємо і його нутро — кампанії з
      числами. Окремого кліку для цього немає навмисно: питання «що
      всередині» виникає рівно тоді, коли кабінет вибрали. */
-  if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else cdHide(); }
+  if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else { cdHide(); cdBar(''); } }
   /* Саме нутро не відкривається від вибору кабінета — див. cabdrill.js.
      Сюди заходять і просто по експорт, а таблиця на пів екрана в такі
      хвилини тільки заважає. */
@@ -17880,6 +17896,20 @@ function cabDetail(c) {
                       : (a === b ? a : a + ' — ' + b) + ', as Facebook counts the day for this cabinet');
         })()}
         ${cell('State', esc(c.fb.status || '—'))}
+        ${/* НАРАХОВАНО Й ЩЕ НЕ СПИСАНО. Facebook віддає це полем balance,
+              і воно вже лежало в базі — просто ніде не показувалось. Це
+              єдине, що він каже про гроші по картці: списань списком у
+              Marketing API немає (перевірено кнопкою нижче: ребер
+              transactions, invoices, adspaymentcycle не існує).
+
+              Нуль і «не знаємо» тут різні речі: нуль означає «щойно
+              списали, борг закрито», а прочерк — що поля не приїхало. */
+          cell('Not charged yet', c.fb.balance == null ? '—'
+                 : cabMoneyCur(c.fb.balance, c.fb.currency),
+               c.fb.balance == null
+                 ? 'Facebook did not send the balance for this cabinet'
+                 : 'Spent but not yet taken from the card. Facebook charges it '
+                   + 'when it reaches the billing threshold, or on the monthly date.')}
         ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns),
                cabByStatus(c.fb.campaigns_by_status))}
         ${cell('Ad sets', pair(c.fb.adsets_active, c.fb.adsets),
@@ -17899,12 +17929,6 @@ function cabDetail(c) {
       ${typeof fpForCab === 'function' ? fpForCab(c) : ''}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
-      ${/* Кампанії й оголошення цього кабінета — кнопкою, а не самі
-            собою: вибір кабінета не мусить нічого вантажити. */
-        typeof cdToggleOpen === 'function' ? `<button type="button" class="cab-inside-btn"
-          id="cab-inside-btn" data-acc="${esc(c.id)}" onclick="cdToggleOpen('${enc}')"
-          title="Campaigns, ad sets and ads of this cabinet with today\u2019s numbers">${
-            typeof cdBtnLabel === 'function' ? cdBtnLabel(c.id) : 'Campaigns & ads'}</button>` : ''}
       ${/* Чи віддає Facebook списання з картки — питання, на яке не
             відповісти з документації: одному кабінету віддасть, сусідньому
             відмовить. Тому кнопка, а не таблиця: один запит, нічого не
@@ -20296,12 +20320,28 @@ let cdFlat = false;
 window.cdIsOpen = (acc) => !!cdAcc && String(acc || '') === cdAcc;
 window.cdBtnLabel = (acc) => cdIsOpen(acc) ? 'Hide campaigns & ads' : 'Campaigns & ads';
 
-/* Підпис кнопки живе поруч зі станом, а не там, де її намалювали:
-   інакше рано чи пізно вони розійдуться, і кнопка «Hide» ховатиме те,
-   чого вже немає. */
+/* Кнопка живе внизу блока кабінетів, а не в картці: відкриває вона те,
+   що зʼявиться просто під нею. Малюємо її тут же, поруч зі станом —
+   інакше підпис рано чи пізно розійдеться зі справою, і «Hide»
+   ховатиме те, чого вже немає. */
+let cdFor = '';
+
+window.cdBar = function (account) {
+  const bar = document.getElementById('cab-inside-bar');
+  if (!bar) return;
+  cdFor = String(account || '').trim();
+  if (!cdFor) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  bar.classList.remove('hidden');
+  bar.innerHTML = `<button type="button" class="cab-inside-btn"
+      id="cab-inside-btn" onclick="cdToggleOpen('${encodeURIComponent(cdFor)}')"
+      title="Campaigns, ad sets and ads of this cabinet with today’s numbers">${
+        cdBtnLabel(cdFor)}</button>
+    <span class="cab-inside-who">${cdEsc(cdFor)}</span>`;
+};
+
 function cdBtnSync() {
   const b = document.getElementById('cab-inside-btn');
-  if (b) b.textContent = cdBtnLabel(b.dataset.acc || '');
+  if (b) b.textContent = cdBtnLabel(cdFor);
 }
 
 window.cdToggleOpen = function (accEnc) {
@@ -20320,6 +20360,8 @@ const cdMoney = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100)
 
 window.cdHide = function () {
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set();
+  /* Смугу з кнопкою не чіпаємо: кабінет вибраний, просто нутро
+     закрите. Прибирає її той, хто зняв вибір, — cdBar(''). */
   const box = document.getElementById('cab-inside');
   /* Вміст прибираємо, а не лише ховаємо: лишений у розмітці, він
      наступного разу встигає блимнути числами минулого кабінета. */
@@ -20331,7 +20373,9 @@ window.cdHide = function () {
    синхронізація. Нутро при цьому має лишатись як було, якщо кабінет той
    самий, і зникати, якщо вибрали інший. */
 window.cdOpen = function (account) {
-  if (String(account || '').trim() !== cdAcc) cdHide();
+  const id = String(account || '').trim();
+  cdBar(id);
+  if (id !== cdAcc) cdHide();
   else cdBtnSync();
 };
 
