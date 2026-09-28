@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 13:47">
+  <meta name="build" content="build 28.09 14:05">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3407,6 +3407,16 @@ body.is-lead-only .sb-item[data-hub],
 body.is-lead-only .sb-item[data-sheet],
 body.is-lead-only .sb-cap { display: none; }
 
+/* І все, що в шапці позначене admin-only: перемикач команд, бонуси,
+   тексти, унікалізатор, швидкі посилання. Клас там стояв і раніше — але
+   ховав його тільки старий режим ?view=teamlead, тож новому тімліду все
+   це лишалось видимим.
+
+   Перемикач команд ховаємо й з іншої причини: у тімліда команда одна,
+   і кнопка, яка нічого не перемикає, виглядає як поломка — натиснув,
+   сторінка перезавантажилась, нічого не змінилось. */
+body.is-lead-only .admin-only { display: none; }
+
 /* Кнопка «Rules» у шапці кабінетів. Виглядає як решта кнопок панелі,
    а увімкненою світиться, бо панель праворуч може бути й закритою — і
    тоді незрозуміло, чи вона взагалі є. */
@@ -4254,7 +4264,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 13:47</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 14:05</div>
     </div>
   </aside>
 
@@ -5298,7 +5308,11 @@ input.ui-in[type="range"] { padding: 0; }
   </div>
 
   <div class="flex gap-4 items-start">
-    <div id="team-list" class="flex-1 min-w-0"></div>
+    <!-- tm-list, а не team-list: id «team-list» уже зайнятий випадайкою
+         перемикача команд у шапці. Однакові id — це один вузол на двох
+         господарів: getElementById віддає перший, і таблиця баєрів
+         малювалась у меню перемикача. -->
+    <div id="tm-list" class="flex-1 min-w-0"></div>
     <div id="team-who" class="hidden w-[330px] shrink-0"></div>
   </div>
 </div>
@@ -21225,7 +21239,7 @@ function tmActiveTeam() {
 
 window.tmOpen = async function () {
   if (tmRole !== 'lead' && tmRole !== 'admin') {
-    const box = document.getElementById('team-list');
+    const box = document.getElementById('tm-list');
     if (box) box.innerHTML = '<p class="tm-empty">This page is for team leads. '
       + 'If you need it, ask the admin to add you in TEAM_ROLES.sql.</p>';
     return;
@@ -21454,7 +21468,7 @@ function tmDrawChart(people) {
 }
 
 function tmPaint() {
-  const list = document.getElementById('team-list');
+  const list = document.getElementById('tm-list');
   if (!list) return;
 
   const pick = document.getElementById('team-pick');
@@ -22358,9 +22372,28 @@ tmBoot();
     ['Records',        'hub:records',                    'Data Hub'],
     ['Expenses',       'hub:expenses',                   'Data Hub'],
     ['Sources',        'hub:providers',                  'Data Hub'],
-    ['Google Sheets',  'fn:sheetsOpen',                  'Sheets']
+    ['Google Sheets',  'fn:sheetsOpen',                  'Sheets'],
+    ['Team',           'nav:team',                       'Page']
   ];
-  let cmdSel = 0, cmdShown = CMDS;
+
+  /* ПАЛІТРА — ЦЕ ТЕЖ МЕНЮ, і про це легко забути.
+
+     Сторінки тімліда ми сховали в сайдбарі, а палітра лишилась із
+     повним списком: звідти він спокійно відкривав кабінети, бонуси,
+     унікалізатор і навіть імпорт кампаній. Ховати вхід, лишаючи двері
+     поруч, сенсу немає.
+
+     Тому в тімліда тут рівно те саме, що в меню, — його сторінка. А
+     динамічні записи (гео, акаунти, офери, креативи) прибрані цілком:
+     кожен із них веде на сторінку, якої в нього немає.
+
+     Пункт Team, навпаки, з'явився: у палітрі його не було взагалі. */
+  const cmdLead = () => document.body.classList.contains('is-lead-only');
+  const cmdBase = () => cmdLead()
+    ? CMDS.filter(c => c[1] === 'nav:team')
+    : CMDS.filter(c => c[1] !== 'nav:team' || document.body.classList.contains('is-lead'));
+
+  let cmdSel = 0, cmdShown = cmdBase();
 
   function cmdBuild() {
     if (document.getElementById('cmd-overlay')) return;
@@ -22380,6 +22413,9 @@ tmBoot();
   // між двома відкриттями палітри могла змінитись команда або місяць.
   // rawData — це top-level let, тобто у window його немає; беремо по імені.
   function cmdData() {
+    // Кожен такий запис веде на Report Builder або в Creatives — сторінки,
+    // яких у тімліда немає. Отже й записів бути не має.
+    if (cmdLead()) return [];
     const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : [];
     const out = [], seen = new Set();
     const push = (label, kind, arg, group) => {
@@ -22404,7 +22440,7 @@ tmBoot();
   function cmdRender(q) {
     const s = (q || '').trim().toLowerCase();
     if (!s) {
-      cmdShown = CMDS;
+      cmdShown = cmdBase();
     } else {
       const hit = c => c[0].toLowerCase().includes(s) || c[2].toLowerCase().includes(s);
       // Точний збіг завжди перший: на «BR» потрібне гео BR, а не сторінка
@@ -22415,7 +22451,7 @@ tmBoot();
         const l = c[0].toLowerCase();
         return l === s ? 0 : l.startsWith(s) ? 1 : 2;
       };
-      const all = CMDS.filter(hit).concat(cmdData().filter(hit));
+      const all = cmdBase().filter(hit).concat(cmdData().filter(hit));
       // 40 — щоб на широкому запиті не малювати тисячі рядків.
       cmdShown = all
         .map((c, i) => [c, rank(c), i])
