@@ -1334,24 +1334,31 @@ async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
 /* ── ЧИ ВІДДАЄ FACEBOOK СПИСАННЯ З КАРТКИ ──
 
    Питання просте: скільки і коли Facebook зняв грошей, і чим це
-   скінчилось — Paid, Failed чи холд. Відповідь на нього не можна
-   вгадати з документації: ребро act_X/transactions існує давно, але чи
-   віддасть його САМЕ ЦЕЙ токен на САМЕ ЦЬОМУ кабінеті — залежить від
-   того, чий кабінет, як він платить і що дозволив застосунок. Один
-   кабінет віддасть, сусідній відповість «(#200) Requires ...».
+   скінчилось — Paid, Failed чи холд.
 
-   Тому спершу розвідка, а не таблиця в базі: один запит, нічого не
-   зберігаємо, показуємо як є. Будувати екран на ребрі, яке може
-   мовчати, означало б зробити ще одне місце, де порожньо читається як
+   ПЕРША СПРОБА ВІДПОВІЛА НЕПОВНО, і це варто памʼятати. Ми спитали
+   кабінет одним списком полів, серед яких було неіснуюче
+   (adspaymentcycle — це ребро, а не поле). Graph на таке не відповідає
+   «оце дам, а оце ні»: він відмовляє ВСЬОМУ запиту. Через те з відповіді
+   не було видно, чи віддав би він funding_source_details і balance —
+   вони просто не встигли.
+
+   Тому тут кожна перевірка — окремий підзапит того самого пакета: одна
+   відмова більше нічого не ховає. Перший підзапит — metadata=1: він
+   повертає ПЕРЕЛІК полів і ребер, які цей вузол узагалі приймає. Це й
+   є відповідь на «чи є доступ», без вгадування назв.
+
+   Нічого не зберігаємо: поки не видно, що саме Facebook віддає, будувати
+   таблицю означало б зробити ще одне місце, де порожньо читається як
    нуль.
 
    Тільки людина і тільки свій кабінет: з розкладу це безглуздо, а чужі
    списання — не наша справа. */
-const PROBE_TXN = 'id,time,amount,status,charge_type,payment_option,'
-                + 'transaction_type,product_type,billing_start_time,billing_end_time,'
-                + 'provider_amount,app_amount,vat_invoice_id';
-const PROBE_ACC = 'funding_source_details,balance,amount_spent,spend_cap,currency,'
-                + 'account_status,adspaymentcycle{threshold_amount}';
+const PROBE_ACC = 'funding_source_details,balance,amount_spent,spend_cap,'
+                + 'currency,account_status,is_prepay_account';
+/* Що з переліку полів нас цікавить. Список у кабінета довгий, і вивалити
+   його цілком означало б сховати відповідь у шумі. */
+const PROBE_WORDS = /(bill|pay|fund|balance|owe|credit|invoice|card|transact|threshold|prepay|spend_cap)/i;
 
 async function probeBilling(base: string, hdr: Json, owner: string,
                             accountId: string): Promise<Json> {
@@ -1374,38 +1381,61 @@ async function probeBilling(base: string, hdr: Json, owner: string,
   if (!token) return { error: 'the token row is gone — add the token again in Settings' };
 
   const act = 'act_' + id;
+  /* Кожна перевірка окремим підзапитом — саме щоб одна відмова не
+     з'їдала решту. Пакет усе одно один похід. */
+  const asks: [string, string, string][] = [
+    ['what this cabinet accepts', 'meta', act + '?metadata=1'],
+    ['billing fields', 'one', act + '?fields=' + encodeURIComponent(PROBE_ACC)],
+    ['payment cycle', 'list', act + '/adspaymentcycle?limit=1'],
+    ['transactions', 'list', act + '/transactions?limit=1'],
+    ['invoices', 'list', act + '/invoices?limit=1']
+  ];
+
   let parts: (Json | null)[];
   try {
-    parts = await graphBatch(token, [
-      act + '/transactions?limit=10&fields=' + encodeURIComponent(PROBE_TXN),
-      act + '?fields=' + encodeURIComponent(PROBE_ACC)
-    ]);
+    parts = await graphBatch(token, asks.map(a => a[2]));
   } catch (e) {
     const g = e as GraphError;
     return { error: g.message, throttled: !!g.throttled };
   }
 
   /* Відповідь віддаємо як є, разом із кодом і текстом відмови. Саме
-     текст відмови й відповідає на питання, чи є доступ: «(#200)
-     Requires business_management» і «Unsupported get request» — це дві
-     різні відповіді й дві різні дії. */
-  const part = (i: number, want: string) => {
+     текст відмови й відповідає на питання, чи є доступ: «Requires
+     business_management» і «nonexisting field» — це дві різні відповіді
+     й дві різні дії. */
+  const checks: Json = {};
+  asks.forEach(([name, kind], i) => {
     const p = parts[i];
-    if (!p) return { ok: false, note: 'no answer in the batch' };
+    if (!p) { checks[name] = { ok: false, note: 'no answer in the batch' }; return; }
     const err = p.body?.error;
-    if (err) return { ok: false, code: p.code,
-                      message: String(err.message || ''),
-                      type: String(err.type || ''),
-                      sub: err.error_subcode == null ? null : Number(err.error_subcode) };
-    const data = want === 'list' ? (Array.isArray(p.body?.data) ? p.body.data : []) : p.body;
-    return { ok: true, code: p.code,
-             count: want === 'list' ? (data as Json[]).length : null,
-             fields: want === 'list'
-               ? Object.keys(((data as Json[])[0]) || {})
-               : Object.keys(data || {}),
-             rows: want === 'list' ? (data as Json[]).slice(0, 10) : data };
-  };
-  return { account_id: id, transactions: part(0, 'list'), account: part(1, 'one') };
+    if (err) {
+      checks[name] = { ok: false, code: p.code,
+                       message: String(err.message || ''),
+                       type: String(err.type || ''),
+                       sub: err.error_subcode == null ? null : Number(err.error_subcode) };
+      return;
+    }
+    if (kind === 'meta') {
+      const m = p.body?.metadata || {};
+      const fields = Array.isArray(m.fields) ? m.fields : [];
+      const edges = m.connections && typeof m.connections === 'object'
+        ? Object.keys(m.connections) : [];
+      checks[name] = { ok: true, code: p.code,
+        edges,
+        /* Поля фільтруємо за змістом: повний перелік у кабінета довгий,
+           і питання в ньому просто загубилось би. */
+        fields: fields.map((f: Json) => String(f.name || ''))
+                      .filter((n: string) => PROBE_WORDS.test(n)),
+        fieldCount: fields.length };
+      return;
+    }
+    const rows = Array.isArray(p.body?.data) ? p.body.data : null;
+    checks[name] = { ok: true, code: p.code,
+      count: rows ? rows.length : null,
+      fields: Object.keys((rows ? rows[0] : p.body) || {}),
+      rows: rows ? rows.slice(0, 5) : p.body };
+  });
+  return { account_id: id, checks };
 }
 
 /* ── вхід ── */
