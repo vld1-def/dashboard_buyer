@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 18:05">
+  <meta name="build" content="build 28.09 18:34">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4474,7 +4474,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 18:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 18:34</div>
     </div>
   </aside>
 
@@ -17351,7 +17351,12 @@ const CAB_STATE = {
   issue:   { label: 'Issue',     dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.10)', bd: 'rgba(245,158,11,.25)' },
   banned:  { label: 'Banned',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.14)',  bd: 'rgba(239,68,68,.32)' },
   review:  { label: 'In review', dot: '#38BDF8', tone: 'text-sky-400',     soft: 'rgba(56,189,248,.12)', bd: 'rgba(56,189,248,.30)' },
-  idle:    { label: 'Never ran', dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' },
+  /* Idle, а не «Never ran»: сюди потрапляє і кабінет, який ще не
+     починали, і той, що відпрацював і стоїть. Спільне в них одне —
+     зараз нічого не крутиться, і саме це підпис і має казати. У
+     рядку, де ми справді знаємо, що кабінет не крутив жодного разу,
+     так і написано (див. cabEverRan). */
+  idle:    { label: 'Idle',      dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' },
   /* Токен більше не бачить цей кабінет. Це не «нема кабінета» — це
      «нема очей»: числа лишились останніми відомими, і саме заради них
      рядок і потрібен. */
@@ -17944,13 +17949,33 @@ function cabStateOf(row, f, fb) {
      важливо, що вечірній імпорт ще не приїхав. Саме через це до токена
      робочий кабінет цілий day виглядав тихим. */
   if (fb && Number(fb.spend_today) > 0) return 'running';
+  /* ЖИВІ ОГОЛОШЕННЯ — ЦЕ ВЖЕ ВІДПОВІДЬ. Досі стан питали тільки в
+     грошей, і кабінет із увімкненими оголошеннями падав у «Never ran»
+     щоразу, коли Facebook ще не порахував сьогоднішній спенд, а
+     вечірній імпорт не приїхав. Тобто робочий кабінет підписувався як
+     такий, що не крутив ЖОДНОГО разу, — і зранку це було нормою, а не
+     винятком. Питаємо Facebook: він каже, скільки оголошень
+     доставляється просто зараз. */
+  if (fb && Number(fb.ads_active) > 0) return 'running';
   const x = f.map[String(row.account_id || '').trim()];
-  if (!x || x.spend <= 0) return 'idle';
   /* Гроші були — значить кабінет робочий. Раніше тут розрізнялось, чи
      вони були саме в останній імпортований day, і якщо ні — кабінет
      ставав Silent. На практиці це майже завжди означало не «затих», а
      «вечірній імпорт ще не приїхав». */
-  return 'running';
+  if (x && x.spend > 0) return 'running';
+  return 'idle';
+}
+
+/* Чи крутив цей кабінет хоч колись. Потрібно рівно для підпису: стан
+   idle означає «зараз нічого», а от «Never ran» — сильніше твердження,
+   і для кабінета з історією витрат воно просто неправда.
+
+   amount_spent — те, що Facebook витратив за весь time; воно лишається
+   й тоді, коли в наших daily_stats по цьому кабінету нічого немає
+   (підпис у витратах не збігається з номером — звичайна річ). */
+function cabEverRan(x, fb) {
+  if (x && x.spend > 0) return true;
+  return !!(fb && Number(fb.amount_spent) > 0);
 }
 
 /* Хто саме поставив цей стан — щоб на рядку було видно, чому він такий.
@@ -18377,6 +18402,11 @@ function cabRowHtml(c) {
     : `<td class="ta-c cab-num has-tip" title="${cabEsc(tip)}">${
         v == null ? '<span class="cab-na">—</span>' : v}</td>`;
   const label = (c.state === 'notoken' && c.lost > 0) ? `${S.label} · ${c.lost}d`
+    /* «Never ran» — сильне твердження, і казати його кабінету з
+       історією витрат не можна. Idle означає «зараз нічого не
+       крутиться», і це правда в обох випадках; різницю дописуємо лише
+       там, де вона є. */
+    : (c.state === 'idle' && !cabEverRan(c.x, c.fb)) ? 'Never ran'
     : S.label;
   /* НАЗВУ З FACEBOOK НЕ ПОКАЗУЄМО. Її вигадує той, хто заводив кабінет,
      вона нічого не каже про те, звідки цей кабінет запускають, і в
@@ -20944,15 +20974,20 @@ const CD_STATE = [
      CAMPAIGN_PAUSED і ADSET_PAUSED кажуть, що вимкнули НЕ це, а щось
      над ним, — і без цієї різниці людина шукала б вимикач не там. */
   { k: 'PAUSED',               s: 'off',  t: 'Off',
-    why: 'Switched off' },
+    why: 'Switched off — the switch on this row is the one that did it' },
   { k: 'CAMPAIGN_PAUSED',      s: 'off',  t: 'Campaign off',
     why: 'Its campaign is switched off — the switch is one level up' },
   { k: 'ADSET_PAUSED',         s: 'off',  t: 'Ad set off',
     why: 'Its ad set is switched off — the switch is one level up' },
   { k: 'ARCHIVED',             s: 'off',  t: 'Archived',
     why: 'Archived in Facebook' },
-  { k: 'ACTIVE',               s: 'ok',   t: 'Active',
-    why: 'Running' }
+  /* «On», а не «Active». Active читалось як назва стану у Facebook —
+     тобто як щось поруч із «Rejected» і «In review», — і людина не
+     могла зрозуміти, чи це стан, чи просто «ввімкнено». А це саме
+     «ввімкнено»: те саме, що показує перемикач у кінці рядка, тільки
+     словом. Решта підписів лишається станами, бо станами й є. */
+  { k: 'ACTIVE',               s: 'ok',   t: 'On',
+    why: 'Switched on and running' }
 ];
 const cdState = (k) => CD_STATE.find(x => x.k === String(k || '').toUpperCase());
 
@@ -21370,8 +21405,10 @@ function cdChips(n) {
   CD_STATE.forEach(st => {
     const cnt = n.state.get(st.k) || 0;
     if (!cnt) return;
+    // Один підпис на всі стани: «2 on», «1 rejected», «3 off». Окремий
+    // випадок для ACTIVE тут колись був лише заради слова «active».
     parts.push({ s: st.s, why: st.why,
-      text: ad ? st.t : st.k === 'ACTIVE' ? cnt + ' active' : cnt + ' ' + st.t.toLowerCase() });
+      text: ad ? st.t : cnt + ' ' + st.t.toLowerCase() });
   });
   const other = [...n.state.entries()].filter(([k]) => k && !cdState(k));
   if (other.length) parts.push({ s: 'wait', why: 'Facebook reports this state',
