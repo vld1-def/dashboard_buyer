@@ -44,8 +44,16 @@
 --  сторінка Rules скаже те саме.
 --
 --  Рядок живе один прогін: fb-sync прибирає з знімка все, що вже не
---  активне. Тому таблиця не росте — у ній рівно стільки рядків, скільки
---  зараз крутиться оголошень.
+--  ввімкнене. Тому таблиця не росте — у ній рівно стільки рядків,
+--  скільки зараз ввімкнено оголошень.
+--
+--  ВВІМКНЕНЕ — це не те саме, що ACTIVE. Сюди потрапляє й реджект, і те,
+--  що чекає перевірки: саме воно й потрібне на екрані кабінета, бо
+--  ввімкнене, але не крутиться, — це питання номер один. Пауз тут
+--  немає: вимкнене вимкнули свідомо.
+--
+--  ПРАВИЛА при цьому дивляться ЛИШЕ на ACTIVE — фільтр стоїть у
+--  fb-rules. Вимикати те, що вже й так не крутиться, змісту немає.
 --
 --  actions лежить сирим: що саме вважати лідом — налаштування правил
 --  (галочки на сторінці Rules), і зміна галочки не повинна вимагати
@@ -58,6 +66,7 @@ create table if not exists public.fb_ad_today (
   team_name    text,
   account_id   text not null,
   name         text,
+  effective_status text,
   adset_id     text,
   adset_name   text,
   campaign_id  text,
@@ -86,7 +95,8 @@ alter table public.fb_ad_today
   add column if not exists adset_name        text,
   add column if not exists campaign_name     text,
   add column if not exists optimization_goal text,
-  add column if not exists custom_event_type text;
+  add column if not exists custom_event_type text,
+  add column if not exists effective_status  text;
 
 alter table public.fb_ad_today enable row level security;
 

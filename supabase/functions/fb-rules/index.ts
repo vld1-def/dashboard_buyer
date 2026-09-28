@@ -236,14 +236,34 @@ function aggOf(row: Json, leadActions: string[]): Agg {
   };
 }
 
-/* Знімок активних оголошень кабінета — з бази, не з Facebook.
-   Порожньо означає «кабінет нічого не крутить»: fb-sync прибирає з
-   знімка все, що вимкнули. */
+/* Знімок кабінета — з бази, не з Facebook. Порожньо означає «кабінет
+   нічого не крутить»: fb-sync прибирає з знімка все, що вимкнули.
+
+   ТІЛЬКИ ACTIVE. У знімку лежить і реджект, і те, що чекає перевірки, —
+   вони потрібні екрану кабінета. Але правилу там робити нічого:
+   вимикати те, що й так не крутиться, — зайвий похід у Facebook і зайве
+   повідомлення в Telegram про «вимкнули» те, що вимкнув сам Facebook.
+
+   Фільтр саме в запиті, а не після нього: з ліміту в тисячу рядків
+   неактивні інакше витіснили б справжні. */
+const SNAP_ACTIVE = '&or=(effective_status.eq.ACTIVE,effective_status.is.null)';
+const SNAP_SELECT = '?select=ad_id,name,adset_id,campaign_id,spend,impressions,'
+                  + 'clicks,link_clicks,actions,seen_at';
+
 async function snapOf(base: string, hdr: Json, account: string, leadActions: string[]):
     Promise<{ ents: Ent[]; age: number }> {
-  const rows = await pgGet(base, hdr, 'fb_ad_today'
-    + '?select=ad_id,name,adset_id,campaign_id,spend,impressions,clicks,link_clicks,actions,seen_at'
-    + '&account_id=eq.' + encodeURIComponent(account) + '&limit=' + ADS_LIMIT);
+  const where = '&account_id=eq.' + encodeURIComponent(account) + '&limit=' + ADS_LIMIT;
+  /* Колонки ще немає — значить SQL-блок не виконали, а функцію вже
+     задеплоїли. Тоді в знімку й не може бути нічого, крім активного:
+     його писала стара fb-sync. Тож питаємо ще раз без фільтра, а не
+     лишаємо правила мовчки непрацюючими. */
+  let rows: Json[];
+  try {
+    rows = await pgGet(base, hdr, 'fb_ad_today' + SNAP_SELECT + where + SNAP_ACTIVE);
+  } catch (e) {
+    if (!/effective_status/i.test((e as Error).message)) throw e;
+    rows = await pgGet(base, hdr, 'fb_ad_today' + SNAP_SELECT + where);
+  }
   let newest = 0;
   const ents = rows.map(r => {
     const at = Date.parse(String(r.seen_at || ''));
