@@ -14,8 +14,15 @@
    усе, що під нею, — адсети й оголошення чіпати не треба. На кабінеті
    з десятьма кампаніями це десять записів замість двохсот.
 
-   ЗВОРОТНОЇ ДІЇ НЕМАЄ І НЕ БУДЕ. Вмикати треба вибірково й свідомо,
-   інакше одна кнопка підніме те, що глушили спеціально.
+   ЗВОРОТНА ДІЯ Є — АЛЕ ТІЛЬКИ ТОЧКОВА. Спершу її тут не було зовсім,
+   і причина була правильна: одна кнопка «увімкнути все» підняла б те,
+   що глушили спеціально. Ця причина нікуди не зникла, тому ввімкнути
+   можна рівно те, що назвали поіменно — {on:true, ids:[…]}. Без ids
+   увімкнення не буває взагалі: запит без них — це помилка, а не
+   «увімкни все».
+
+   Вимкнення без ids, навпаки, лишається: «зупинити кабінет» — дія
+   осмислена й потрібна саме тоді, коли розбиратись нема коли.
 
    Розгортання:
      supabase functions deploy fb-pause
@@ -81,12 +88,18 @@ async function activeCampaigns(token: string, actId: string): Promise<Json[]> {
   return Array.isArray(j.data) ? j.data : [];
 }
 
-/* Пакетна зупинка. Кожен підзапит незалежний, і одна невдача не валить
-   решти — саме тому часткові невдачі тут не виняток, а очікуваний
-   результат, який треба чесно порахувати. */
-async function pauseBatch(token: string, ids: string[]):
+/* Пакетне перемикання. Кожен підзапит незалежний, і одна невдача не
+   валить решти — саме тому часткові невдачі тут не виняток, а
+   очікуваний результат, який треба чесно порахувати.
+
+   ACTIVE, а не RESUMED чи щось подібне: у Facebook вмикання — це той
+   самий запис status, просто з іншим значенням. Батьків він не чіпає,
+   тож увімкнене оголошення у вимкненій кампанії так і лишиться
+   невидимим — і це правильно: ми ввімкнули рівно те, що просили. */
+async function pauseBatch(token: string, ids: string[], on = false):
     Promise<{ ok: string[]; bad: { id: string; why: string }[] }> {
-  const batch = ids.map(id => ({ method: 'POST', relative_url: id, body: 'status=PAUSED' }));
+  const want = on ? 'status=ACTIVE' : 'status=PAUSED';
+  const batch = ids.map(id => ({ method: 'POST', relative_url: id, body: want }));
   const res = await fetch(GRAPH + '/', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -142,15 +155,22 @@ async function handle(req: Request): Promise<Response> {
      Стеля на 200 — щоб «вимкни це» не перетворилось на «вимкни все»
      через випадково зібраний масив. */
   let wantIds: string[] = [];
+  let turnOn = false;
   try {
     const body = await req.json();
     accountId = String(body?.account_id || '').replace(/\D/g, '');
+    turnOn = body?.on === true;
     wantIds = (Array.isArray(body?.ids) ? body.ids : [])
       .map((x: unknown) => String(x).trim())
       .filter((x: string) => /^\d+$/.test(x))
       .slice(0, 200);
   } catch (_e) { /* тіла може не бути */ }
   if (!accountId) return reply({ error: 'account_id is required' }, 400);
+  /* Увімкнення без списку — не «увімкни все», а помилка. Перевіряємо
+     тут, до будь-якого походу в Facebook і до будь-якої перевірки прав:
+     запит, якого не існує, не повинен навіть починати роботу. */
+  if (turnOn && !wantIds.length) return reply({
+    error: 'switching on needs an explicit list: there is no "turn everything back on"' }, 400);
 
   const hdr: Json = { apikey: svc, Authorization: 'Bearer ' + svc,
                       'content-type': 'application/json' };
@@ -225,7 +245,8 @@ async function handle(req: Request): Promise<Response> {
     const refused = wantIds.filter(id => !names.has(id));
     if (!allowed.length) return reply({ paused: 0, failed: 0, total: 0,
       problems: refused.slice(0, 5).map(id => id + ': not in the snapshot of this cabinet'),
-      note: 'nothing to switch off: press Sync now, then try again' }, 400);
+      note: 'nothing to switch ' + (turnOn ? 'on' : 'off')
+          + ': press Sync now, then try again' }, 400);
     live = allowed.map(id => ({ id, name: names.get(id) }));
   } else {
   try {
@@ -246,7 +267,7 @@ async function handle(req: Request): Promise<Response> {
     if (Date.now() > deadline) { stopped = 'ran out of time'; break; }
     const ids = live.slice(i, i + BATCH_MAX).map(c => String(c.id));
     try {
-      const r = await pauseBatch(tok.token, ids);
+      const r = await pauseBatch(tok.token, ids, turnOn);
       done.push(...r.ok);
       bad.push(...r.bad);
     } catch (e) {
@@ -273,9 +294,10 @@ async function handle(req: Request): Promise<Response> {
         headers: { ...hdr, Prefer: 'return=minimal' },
         body: JSON.stringify([{
           team_name: acc.team_name, account_id: accountId,
-          kind: 'pause', to_state: 'paused',
-          note: done.length + (wantIds.length ? ' item(s) switched off by hand'
-                                              : ' campaign(s) paused')
+          kind: 'pause', to_state: turnOn ? 'resumed' : 'paused',
+          note: done.length + (turnOn ? ' item(s) switched on by hand'
+                : wantIds.length ? ' item(s) switched off by hand'
+                                 : ' campaign(s) paused')
               + (me.email ? ' by ' + me.email : '')
               + (bad.length ? ', ' + bad.length + ' failed' : ''),
           source: 'fb'
@@ -285,6 +307,10 @@ async function handle(req: Request): Promise<Response> {
   }
 
   return reply({
+    // Ім'я поля лишаємо paused — це «скільки перемкнули», і міняти його
+    // означало б зламати те, що вже вміє читати відповідь. Що саме
+    // зроблено, каже on.
+    on: turnOn,
     paused: done.length,
     failed: bad.length,
     total: live.length,

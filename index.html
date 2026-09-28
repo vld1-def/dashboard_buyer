@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 17:57">
+  <meta name="build" content="build 28.09 18:05">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3409,13 +3409,33 @@ body[data-route="domains"] #dm-detail {
 /* Нескінченність — це «гроші пішли, результату немає». Помітно, бо саме
    ці рядки й вимикають правила. */
 .cd-inf { color: #F87171; font-weight: 800; }
-.cd-off {
-  padding: 3px 9px; border-radius: 8px;
-  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
-  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+/* ПЕРЕМИКАЧ, як в Ads Manager. Раніше тут стояла кнопка «Stop», яка
+   вміла одне й нічого не показувала: після натискання рядок виглядав
+   так само, і незрозуміло було навіть, чи спрацювало.
+
+   Ширину й висоту тримаємо в пікселях, а не в em: рядок таблиці й так
+   щільний, а перемикач, який росте від шрифту, розсував би його. */
+.cd-sw {
+  position: relative; display: inline-block;
+  width: 30px; height: 17px; border-radius: 999px;
+  background: var(--surface-3); border: 1px solid var(--border-2);
+  transition: background .15s ease, border-color .15s ease;
+  vertical-align: middle;
 }
-.cd-off:hover { color: #F87171; border-color: rgba(239,68,68,.45); }
-.cd-off[disabled] { opacity: .45; }
+.cd-sw-k {
+  position: absolute; top: 2px; left: 2px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform .15s ease, background .15s ease;
+}
+.cd-sw.is-on { background: rgba(34,197,94,.22); border-color: rgba(34,197,94,.45); }
+.cd-sw.is-on .cd-sw-k { background: #22C55E; transform: translateX(13px); }
+.cd-sw:hover { border-color: var(--text-muted); }
+.cd-sw[disabled] { opacity: .45; }
+/* Стану ще не знаємо — не вдаємо, що знаємо. Пунктир каже «тут щось
+   буде», і тим відрізняє «вимкнено» від «не приїхало». */
+.cd-sw.is-na { border-style: dashed; }
+.cd-sw.is-na .cd-sw-k { background: var(--border-2); }
 .cd-empty { font-size: 11px; color: var(--text-muted); font-style: italic; margin: 6px 0; }
 
 /* ─────────── Сторінка тімліда ───────────
@@ -4454,7 +4474,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 17:57</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 18:05</div>
     </div>
   </aside>
 
@@ -20936,6 +20956,18 @@ const CD_STATE = [
 ];
 const cdState = (k) => CD_STATE.find(x => x.k === String(k || '').toUpperCase());
 
+/* УВІМКНЕНИЙ — ЦЕ ПРО ВЛАСНИЙ ВИМИКАЧ, а не про те, чи щось показують.
+   Різниця тут не теоретична: у реджекта вимикач увімкнений, просто
+   Facebook його не показує; в оголошення під вимкненою кампанією
+   вимикач теж увімкнений — вимкнули не його.
+
+   Тому вимкненими вважаємо рівно два стани: PAUSED (вимкнули саме це)
+   та ARCHIVED. CAMPAIGN_PAUSED і ADSET_PAUSED — ні: вимикач цієї
+   сутності стоїть в «увімкнено», і натиснути його ще раз означало б
+   нічого не зробити. Саме так показує й Facebook. */
+const CD_OFF = ['PAUSED', 'ARCHIVED', 'DELETED'];
+const cdIsOn = (k) => !CD_OFF.includes(String(k || '').toUpperCase());
+
 let cdAcc = '', cdRows = [], cdLeads = CD_LEAD_DEFAULT.slice();
 let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
 // База старіша за сторінку: немає колонок зі станом кампанії й адсета.
@@ -21083,6 +21115,10 @@ async function cdLoad(account) {
 
 window.cdSetFlat = function (v) { cdFlat = !!v; cdPaint(); };
 
+/* УВАГА: це розгортання дерева, а не вимикач. Ім'я коротке й
+   спокусливе — перемикач стану вже одного разу назвали так само й
+   мовчки затерли цю функцію: дерево перестало розкриватись, а помилки
+   не було жодної. Вимикач тепер зветься cdFlip. */
 window.cdToggle = function (k) {
   if (cdOpenIds.has(k)) cdOpenIds.delete(k); else cdOpenIds.add(k);
   cdPaint();
@@ -21408,23 +21444,51 @@ function cdRow(n, depth) {
     <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
     <td class="ta-r cd-num">${n.regs}</td>
     <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
-    <td class="ta-r"><button type="button" class="cd-off" ${cdBusy ? 'disabled' : ''}
-      onclick="cdPause('${cdEsc(n.id)}', '${n.kind}', '${encodeURIComponent(named || n.id)}')"
-      title="Switch this ${n.kind} off in Facebook">Stop</button></td>
+    <td class="ta-r">${cdSwitch(n, named)}</td>
   </tr>`;
 }
 
-/* Вимкнути одну сутність руками. Ходить у ту саму функцію, що й кнопка
-   «зупинити кабінет», — єдине місце в проєкті, яке щось міняє у
-   Facebook від імені людини. Вмикати назад вона не вміє навмисно. */
-window.cdPause = async function (id, kind, nameEnc) {
+/* ПЕРЕМИКАЧ, а не кнопка «Stop». Кнопка вміла одне — вимкнути, — і
+   після натискання рядок виглядав так само, як до нього: незрозуміло
+   було навіть те, чи спрацювало. Перемикач показує стан і міняє його в
+   обидва боки, як в Ads Manager.
+
+   Стан беремо з власного вимикача вузла, а не з того, чи щось
+   показують: реджект увімкнений, оголошення під вимкненою кампанією
+   теж увімкнене. */
+function cdSwitch(n, named) {
+  const on = cdIsOn(n.own);
+  const known = !!n.own;
+  const title = !known
+    ? 'Facebook has not told us the state of this ' + n.kind + ' yet — press Sync now'
+    : on ? 'Switched on. Click to switch off in Facebook'
+         : 'Switched off. Click to switch on in Facebook';
+  return `<button type="button" class="cd-sw${on ? ' is-on' : ''}${known ? '' : ' is-na'}"
+      role="switch" aria-checked="${on}" ${cdBusy ? 'disabled' : ''}
+      onclick="cdFlip('${cdEsc(n.id)}', '${n.kind}', '${encodeURIComponent(named || n.id)}', ${on})"
+      title="${cdEsc(title)}"><span class="cd-sw-k"></span></button>`;
+}
+
+/* Перемкнути одну сутність руками. Ходить у ту саму функцію, що й
+   кнопка «зупинити кабінет», — єдине місце в проєкті, яке щось міняє у
+   Facebook від імені людини.
+
+   Питаємо щоразу, і в обидва боки. Вимкнення зупиняє те, що працює;
+   увімкнення починає витрачати гроші. Жодна з цих дій не є тією, яку
+   можна зробити випадковим кліком по рядку таблиці. */
+window.cdFlip = async function (id, kind, nameEnc, isOn) {
   const name = decodeURIComponent(nameEnc);
+  const off = !!isOn;                     // зараз увімкнене → вимикаємо
   const go = typeof ask === 'function'
-    ? await ask({ title: 'Switch it off?', danger: true, ok: 'Switch off',
-        body: `Switch off the ${kind} “${name}” in Facebook?\n\n`
-            + 'Everything under it stops too. Turning it back on is done by hand, '
-            + 'in Ads Manager — neither this button nor the rules will do it for you.' })
-    : confirm('Switch off ' + kind + ' "' + name + '"?');
+    ? await ask(off
+        ? { title: 'Switch it off?', danger: true, ok: 'Switch off',
+            body: `Switch off the ${kind} “${name}” in Facebook?\n\n`
+                + 'Everything under it stops too.' }
+        : { title: 'Switch it on?', ok: 'Switch on',
+            body: `Switch on the ${kind} “${name}” in Facebook?\n\n`
+                + 'It starts spending again. Anything switched off ABOVE it stays off — '
+                + 'then nothing will show until that is switched on too.' })
+    : confirm((off ? 'Switch off ' : 'Switch on ') + kind + ' "' + name + '"?');
   if (!go) return;
 
   cdBusy = true; cdPaint();
@@ -21434,24 +21498,41 @@ window.cdPause = async function (id, kind, nameEnc) {
       method: 'POST',
       headers: { 'content-type': 'application/json',
                  Authorization: 'Bearer ' + (s?.session?.access_token || '') },
-      body: JSON.stringify({ account_id: cdAcc, ids: [id] })
+      body: JSON.stringify({ account_id: cdAcc, ids: [id], on: !off })
     });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
-    if (typeof toast === 'function') {
-      if (j.paused) toast('Switched off: ' + name);
-      else toast('Not switched off: ' + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
+    const word = off ? 'off' : 'on';
+    if (j.paused) {
+      /* Знімок про це ще не знає — він приїде наступною синхронізацією.
+         Але лишити рядок у старому положенні означало б показати
+         людині, що нічого не сталось. Тому правимо його в себе: це не
+         вигадане число, а те, що Facebook щойно підтвердив. */
+      cdSetOwn(id, off ? 'PAUSED' : 'ACTIVE');
+      if (typeof toast === 'function') toast('Switched ' + word + ': ' + name);
+    } else if (typeof toast === 'function') {
+      toast('Not switched ' + word + ': '
+        + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
     }
   } catch (e) {
-    if (typeof toast === 'function') toast('Could not switch off: ' + e.message, 'error');
+    if (typeof toast === 'function')
+      toast('Could not switch ' + (off ? 'off' : 'on') + ': ' + e.message, 'error');
   }
   cdBusy = false;
-  /* Знімок ще не знає про вимкнення — воно приїде наступною
-     синхронізацією. Тому просто перемальовуємо: показувати «вимкнено»
-     на підставі власної надії було б тим самим, що показувати
-     неперевірене число. */
   cdPaint();
 };
+
+/* Правимо стан у себе, у знімку в памʼяті. Рядків на одну кампанію
+   багато — по одному на кожне оголошення, — тож правити треба всі, що
+   її стосуються, інакше наступне ж перемальовування візьме стан із
+   сусіднього рядка й поверне вимикач назад. */
+function cdSetOwn(id, state) {
+  cdRows.forEach(r => {
+    if (String(r.campaign_id) === String(id)) r.campaign_status = state;
+    if (String(r.adset_id) === String(id)) r.adset_status = state;
+    if (String(r.ad_id) === String(id)) r.effective_status = state;
+  });
+}
 </script>
 
 <script>
