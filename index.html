@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 14:42">
+  <meta name="build" content="build 28.09 15:35">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2149,6 +2149,16 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 .set-panes.searching .set-pane.no-hit { display: none; }
 .set-panes.searching .set-group.no-hit { display: none; }
 .set-row.no-hit { display: none; }
+
+/* Перемикач сторінки Team. Вона є тільки в тімліда й адміна, тож і
+   рядок у налаштуваннях показуємо лише їм — інакше людина вмикала б
+   сторінку, якої в неї все одно не з'явиться.
+
+   :not(.no-hit) тут обов'язковий: без нього це правило перебивало б
+   пошук по налаштуваннях, і рядок Team лишався б видимим у будь-якій
+   вибірці, хоч би що шукали. */
+.set-row[data-team] { display: none; }
+body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
 /* Колонка, у якій пошук нічого не лишив, ховається разом зі своїм
    підзаголовком: інакше поруч із знайденим висіла б порожня «Filters»
    з кнопками, які нічим не керують. Групу цілком ховає setFilter. */
@@ -4434,7 +4444,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 14:42</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 15:35</div>
     </div>
   </aside>
 
@@ -8980,7 +8990,8 @@ async function loadSettings() {
     'toggle-report': 'report-builder-section',
     'toggle-cabinets': 'cabinets-section',
     'toggle-domains': 'domains-section',
-    'toggle-expenses': 'expenses-section'
+    'toggle-expenses': 'expenses-section',
+    'toggle-team': 'team-section'
   };
 
   for (const [checkId, sectionId] of Object.entries(config)) {
@@ -9010,6 +9021,9 @@ async function loadSettings() {
   /* Зберігаємо стан у пам'ять браузера. Перевірка на існування
      обов'язкова: варто прибрати один перемикач із розмітки й забути
      про цей рядок — і падає ВСЯ функція, а з нею й усі інші блоки. */
+  if (document.body.classList.contains('is-lead-only'))
+    document.getElementById('team-section')?.classList.remove('hidden');
+
   const settings = {};
   Object.keys(config).forEach(id => {
     const el = document.getElementById(id);
@@ -13176,6 +13190,14 @@ document.addEventListener('keydown', e => {
               <label class="set-row set-toggle" data-setting="report builder звіт">
                 <span class="set-label"><span class="set-ico">&#128202;</span>Report Builder</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-report" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <!-- Team бачать лише тімлід і адмін, тож і перемикач показуємо
+                   тільки їм: рядок, який керує сторінкою, якої в людини
+                   немає, — це не налаштування, а загадка. data-team, а не
+                   клас: за ним і ховаємо (див. design.css). -->
+              <label class="set-row set-toggle" data-team data-setting="team lead команда тімлід">
+                <span class="set-label"><span class="set-ico">&#128101;</span>Team</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-team" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
             </div>
           </div>
@@ -18269,8 +18291,7 @@ function cabSection(items) {
      щоб зовсім короткі номери не злипались із мітками; стеля у 22 —
      щоб один довгий підпис новоствореного кабінета не розсунув
      стовпчик на пів таблиці. */
-  const idW = Math.min(22, Math.max(6, ...sorted.map(c =>
-    String(c.row._new ? (c.fb.name || c.id) : c.id).length)));
+  const idW = Math.min(22, Math.max(6, ...sorted.map(c => String(c.id).length)));
 
   return `<table class="cab-tbl" style="--cab-id-w:${idW}ch">
     <thead><tr>
@@ -18309,11 +18330,13 @@ function cabRowHtml(c) {
   const label = c.state === 'silent' ? `${S.label} · ${c.silent}d`
     : (c.state === 'notoken' && c.lost > 0) ? `${S.label} · ${c.lost}d`
     : S.label;
-  /* Account, якого немає у твоєму списку, підписуємо його назвою з
-     Facebook: голий номер нічого не каже, а назва — каже. */
-  const primary = c.row._new ? (c.fb.name || c.id) : c.id;
-  const second = c.row._new ? c.id
-    : (c.fb && c.fb.name && c.fb.name !== c.id ? c.fb.name : '');
+  /* НАЗВУ З FACEBOOK НЕ ПОКАЗУЄМО. Її вигадує той, хто заводив кабінет,
+     вона нічого не каже про те, звідки цей кабінет запускають, і в
+     рядку просто відсувала браузер — єдиний підпис, який тут справді
+     потрібен. Account упізнають за номером і браузером; за назвою —
+     ніхто. Для пошуку й зчеплення з токеном назва лишається, вона
+     просто не малюється. */
+  const primary = c.id;
   /* Прочерк тут означає рівно «нуль за цей період», і нічого більше.
      Коли ми взагалі не знаємо — історії ще немає — показуємо знак
      питання: це різні відповіді, і плутати їх не можна. */
@@ -18327,7 +18350,6 @@ function cabRowHtml(c) {
     <td>
       <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
       <span class="cab-id">${primary}</span>
-      ${second ? `<span class="cab-chip">${second}</span>` : ''}
       ${c.row.profile
         ? `<span class="cab-chip">${cabEsc(c.row.profile)}</span>`
         : c.tok.browser
@@ -18434,7 +18456,7 @@ function cabCardOld(fb) {
 
   const head = `<div class="flex items-start justify-between gap-2 mb-3">
       <div class="min-w-0">
-        <p class="text-[13px] font-black text-dynamic truncate">${esc(c.row._new ? (c.fb.name || c.id) : c.id)}</p>
+        <p class="text-[13px] font-black text-dynamic truncate">${esc(c.id)}</p>
         <p class="text-[10px] font-black uppercase tracking-widest ${S.tone}">${S.label}</p>
         <p class="text-[9px] font-bold" style="color:var(--text-muted)">${esc(why.text)}</p>
       </div>
@@ -18671,7 +18693,10 @@ async function cabStopAll(idEnc) {
 
   const n = cabCounts(c.fb);
   const what = n && n.campaigns != null ? `${n.campaigns} active campaign(s)` : 'every active campaign';
-  const name = c.fb.name || id;
+  /* Називаємо номером, а не назвою з Facebook: у списку людина бачить
+     номер, і підтвердження мусить питати про ТЕ САМЕ, що в неї перед
+     очима. Інакше зупиняєш «Main acc», а в таблиці такого немає. */
+  const name = id;
   if (!await ask({ title: 'Stop everything?', danger: true, ok: 'Stop them',
     body: `Stop ${what} in ${name}?\n\n`
       + 'They will be paused in Facebook. Turning them back on is a separate, deliberate step '
