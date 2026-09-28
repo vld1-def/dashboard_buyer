@@ -185,22 +185,30 @@ create policy team_members_read_team on public.team_members
 --  власника, і роль цього не міняє.
 -- ════════════════════════════════════════════════════════════
 
---  ▸ 1. Забрати зайве, видане раніше.
---     drop policy if exists — тож виконати можна й на свіжій базі, де
---     цих політик ніколи не було.
+--  ▸ 1. Зняти ВСЕ, що було видано раніше.
+--
+--     Саме все, а не список назв. Перша редакція цього файлу видавала
+--     права ширше, ніж треба; якби тут стояв перелік, він мусив би
+--     точно збігатися з тим, що колись виконали — а він не збігається
+--     вже зараз. Знімати за ознакою «це наша політика» надійніше:
+--     що б не було видано, воно зникне.
+--
+--     Виконувати можна скільки завгодно разів. На свіжій базі просто
+--     нічого не знайде.
+--
+--     team_members обходимо: її політику видав блок 3 вище, і саме з
+--     неї тімлід читає список своїх баєрів. Знести її тут означало б
+--     лишити сторінку з порожнім списком людей.
 
 do $$
-declare t text;
+declare r record;
 begin
-  foreach t in array array[
-    'creatives_stats', 'daily_reports', 'tasks', 'accounts_mapping',
-    'funnels_mapping', 'change_log', 'account_events', 'domains', 'fb_ad_today'
-  ]
+  for r in select tablename, policyname from pg_policies
+            where schemaname = 'public'
+              and tablename <> 'team_members'
+              and policyname like '%\_read\_team' escape '\'
   loop
-    if exists (select 1 from information_schema.tables
-               where table_schema = 'public' and table_name = t) then
-      execute format('drop policy if exists %I on public.%I', t || '_read_team', t);
-    end if;
+    execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
   end loop;
 end $$;
 
@@ -224,7 +232,10 @@ begin
   end loop;
 end $$;
 
---  Перевірити, що саме видано зараз:
+--  Перевірити, що саме видано зараз. Рядків має бути рівно чотири:
+--  daily_stats, fb_accounts, fb_rule_log — числа команди, і
+--  team_members — список людей у ній. Більше — значить, десь лишилось
+--  зайве право; менше — сторінка тімліда буде порожньою.
 -- select tablename, policyname from pg_policies
 --  where schemaname = 'public' and policyname like '%_read_team'
 --  order by tablename;
