@@ -170,22 +170,49 @@ create policy team_members_read_team on public.team_members
 --  team_name. Стара політика «своє» лишається: політики складаються
 --  через АБО, тож баєр нічого не втрачає й нічого нового не бачить.
 --
---  Тут навмисно НЕМАЄ payouts, expenses і bonus_tiers: тімліду вони не
---  потрібні, а видане один раз зайве право потім не забереш непомітно.
---  Знадобиться — додасте назву в список і виконаєте блок ще раз.
+--  ⚠️ СПИСОК БУВ ШИРШИЙ, І ЦЕ БУЛА ПОМИЛКА. Спершу сюди потрапили
+--  таблиці «про запас» — зокрема tasks. Наслідок побачили одразу:
+--  тімлід відкрив дашборд і побачив ЧУЖІ задачі. Задачі особисті, до
+--  аналітики команди стосунку не мають, і права на них ніхто не давав.
 --
---  fb_tokens тут немає й не буде НІКОЛИ: сам токен закритий навіть від
+--  Тому список тепер рівно такий, який читає сторінка Team, і не
+--  більший. Правило просте: спершу сторінці щось справді потрібно —
+--  тоді назва з'являється тут. «Хай буде, раптом знадобиться» у
+--  правах доступу означає «хтось побачить те, чого не мав».
+--
+--  payouts, expenses і bonus_tiers тут немає з тієї самої причини.
+--  fb_tokens немає й не буде НІКОЛИ: токен закритий навіть від
 --  власника, і роль цього не міняє.
 -- ════════════════════════════════════════════════════════════
+
+--  ▸ 1. Забрати зайве, видане раніше.
+--     drop policy if exists — тож виконати можна й на свіжій базі, де
+--     цих політик ніколи не було.
 
 do $$
 declare t text;
 begin
   foreach t in array array[
-    'daily_stats', 'creatives_stats', 'daily_reports', 'tasks',
-    'accounts_mapping', 'funnels_mapping', 'change_log', 'account_events',
-    'domains', 'fb_accounts', 'fb_ad_today', 'fb_rule_log'
+    'creatives_stats', 'daily_reports', 'tasks', 'accounts_mapping',
+    'funnels_mapping', 'change_log', 'account_events', 'domains', 'fb_ad_today'
   ]
+  loop
+    if exists (select 1 from information_schema.tables
+               where table_schema = 'public' and table_name = t) then
+      execute format('drop policy if exists %I on public.%I', t || '_read_team', t);
+    end if;
+  end loop;
+end $$;
+
+
+--  ▸ 2. Видати те, що сторінці справді потрібно.
+--     daily_stats — числа по людях; fb_accounts — кабінети й біди;
+--     fb_rule_log — що вимкнули правила.
+
+do $$
+declare t text;
+begin
+  foreach t in array array['daily_stats', 'fb_accounts', 'fb_rule_log']
   loop
     if exists (select 1 from information_schema.tables
                where table_schema = 'public' and table_name = t) then
@@ -196,6 +223,11 @@ begin
     end if;
   end loop;
 end $$;
+
+--  Перевірити, що саме видано зараз:
+-- select tablename, policyname from pg_policies
+--  where schemaname = 'public' and policyname like '%_read_team'
+--  order by tablename;
 
 
 -- ════════════════════════════════════════════════════════════
