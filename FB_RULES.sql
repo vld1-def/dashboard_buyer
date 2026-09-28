@@ -91,12 +91,21 @@ create index if not exists fb_ad_today_acc_idx on public.fb_ad_today (account_id
 -- optimization_goal і custom_event_type — це те, на що оптимізується
 -- адсет. З них екран кабінета рахує «Result»: без них він показував би
 -- ліди там, де насправді реєстрації.
+--
+-- campaign_status і adset_status — ВЛАСНИЙ стан кампанії та адсета, а
+-- не складений з оголошень. Вивести його з дітей не можна: кампанія
+-- буває PAUSED сама по собі, а її оголошення при цьому ACTIVE —
+-- Facebook просто не показує їх. Поки стан кампанії складався з
+-- оголошень, така кампанія виглядала робочою, і питання «чому вона
+-- нічого не витрачає» лишалось без відповіді.
 alter table public.fb_ad_today
   add column if not exists adset_name        text,
   add column if not exists campaign_name     text,
   add column if not exists optimization_goal text,
   add column if not exists custom_event_type text,
-  add column if not exists effective_status  text;
+  add column if not exists effective_status  text,
+  add column if not exists campaign_status   text,
+  add column if not exists adset_status      text;
 
 alter table public.fb_ad_today enable row level security;
 

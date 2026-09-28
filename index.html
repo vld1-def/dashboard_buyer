@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 17:49">
+  <meta name="build" content="build 28.09 17:57">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3396,6 +3396,13 @@ body[data-route="domains"] #dm-detail {
 .cd-st-bad  { background: rgba(239,68,68,.16);  color: #F87171; }
 .cd-st-wait { background: rgba(250,204,21,.14); color: #FACC15; }
 .cd-st-na   { background: var(--surface-2); color: var(--text-muted); }
+/* Вимкнене — не біда, а рішення: сірий, а не червоний. Червоним воно
+   читалось би як поломка, і кожен свідомо вимкнений адсет вимагав би
+   уваги, якої не вартий. */
+.cd-st-off  { background: rgba(148,163,184,.16); color: #94A3B8; }
+/* Власний стан рядка, на відміну від розкладу його дітей. Обведення, а
+   не інший колір: колір тут уже зайнятий сенсом «наскільки погано». */
+.cd-st.is-self { box-shadow: inset 0 0 0 1px currentColor; }
 .cd-warn { color: #F87171; font-weight: 800; }
 .cd-spend { font-weight: 800; }
 .cd-na { color: var(--text-muted); opacity: .5; }
@@ -4447,7 +4454,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 17:49</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 17:57</div>
     </div>
   </aside>
 
@@ -20912,6 +20919,18 @@ const CD_STATE = [
     why: 'Facebook is still processing it' },
   { k: 'PREAPPROVED',          s: 'wait', t: 'Pre-approved',
     why: 'Running while review finishes' },
+  /* Вимкнене — не біда, а рішення. Тому окремий колір, не червоний і
+     не жовтий: це не те, що треба лагодити, а те, що треба бачити.
+     CAMPAIGN_PAUSED і ADSET_PAUSED кажуть, що вимкнули НЕ це, а щось
+     над ним, — і без цієї різниці людина шукала б вимикач не там. */
+  { k: 'PAUSED',               s: 'off',  t: 'Off',
+    why: 'Switched off' },
+  { k: 'CAMPAIGN_PAUSED',      s: 'off',  t: 'Campaign off',
+    why: 'Its campaign is switched off — the switch is one level up' },
+  { k: 'ADSET_PAUSED',         s: 'off',  t: 'Ad set off',
+    why: 'Its ad set is switched off — the switch is one level up' },
+  { k: 'ARCHIVED',             s: 'off',  t: 'Archived',
+    why: 'Archived in Facebook' },
   { k: 'ACTIVE',               s: 'ok',   t: 'Active',
     why: 'Running' }
 ];
@@ -20919,6 +20938,8 @@ const cdState = (k) => CD_STATE.find(x => x.k === String(k || '').toUpperCase())
 
 let cdAcc = '', cdRows = [], cdLeads = CD_LEAD_DEFAULT.slice();
 let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
+// База старіша за сторінку: немає колонок зі станом кампанії й адсета.
+let cdOld = '';
 
 /* Саме по собі нутро не відкривається. Account відкривають не тільки
    заради нього: частіше — щоб скачати експорт або дописати нотатку, а
@@ -21021,13 +21042,33 @@ async function cdLoad(account) {
     if (Array.isArray(v.leadActions) && v.leadActions.length) cdLeads = v.leadActions;
   } catch (e) { /* немає налаштування — беремо звичні типи */ }
 
+  /* СТОВПЧИК «STATUS» ДОВГО БУВ ПОРОЖНІЙ, і причина була тут: колонку
+     effective_status додали і в таблицю, і в fb-sync, а в цей select —
+     ні. Код нижче чесно читав r.effective_status, отримував undefined і
+     малював «unknown» для всього, що є. Тобто стовпчик працював рівно
+     так, ніби Facebook нічого не сказав, хоч сказав.
+
+     campaign_status і adset_status — ВЛАСНИЙ стан кампанії та адсета.
+     Вивести його з оголошень не можна: кампанія буває PAUSED сама по
+     собі, а її оголошення при цьому ACTIVE. */
+  const CD_CORE = 'ad_id,name,adset_id,adset_name,campaign_id,campaign_name,'
+    + 'effective_status,optimization_goal,custom_event_type,'
+    + 'spend,impressions,clicks,link_clicks,actions,seen_at';
+  const CD_NEW = 'campaign_status,adset_status';
+  const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
+
   try {
-    const { data, error } = await sb.from('fb_ad_today')
-      .select('ad_id,name,adset_id,adset_name,campaign_id,campaign_name,'
-            + 'optimization_goal,custom_event_type,'
-            + 'spend,impressions,clicks,link_clicks,actions,seen_at')
-      .eq('account_id', id)
-      .limit(1000);
+    /* База може бути старішою за сторінку: блок 1 FB_RULES.sql із
+       новими колонками ще не виконали. Тоді беремо те, що є, — але не
+       падаємо з «column does not exist», бо через одну колонку зник би
+       весь розбір кабінета. */
+    let res = await sb.from('fb_ad_today')
+      .select(CD_CORE + ',' + CD_NEW).eq('account_id', id).limit(1000);
+    if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
+      cdOld = res.error.message;
+      res = await sb.from('fb_ad_today').select(CD_CORE).eq('account_id', id).limit(1000);
+    } else cdOld = '';
+    const { data, error } = res;
     if (error) throw new Error(error.message);
     cdRows = data || [];
     cdErr = '';
@@ -21107,7 +21148,12 @@ function cdMetrics(r) {
    рахуються вони тут, а не в SQL: правило на рівні кампанії складає їх
    так само, тож розійтись вони не можуть. */
 function cdNode(id, name, kind) {
-  return { id: String(id || ''), name: name || '', kind,
+  /* own — ВЛАСНИЙ стан вузла, як його каже Facebook. Для оголошення це
+     те саме, що в state; для кампанії й адсета — інша річ, і саме вона
+     відповідає на «чому воно не витрачає». Складене з дітей на це
+     питання не відповідає: у вимкненої кампанії оголошення можуть бути
+     хоч усі ACTIVE, просто їх ніхто не показує. */
+  return { id: String(id || ''), name: name || '', kind, own: '',
            spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
            result: 0, hasResult: false, goals: new Set(),
            state: new Map(), ads: 0, kids: [] };
@@ -21127,9 +21173,15 @@ function cdTree() {
     const cid = String(r.campaign_id || ''), sid = String(r.adset_id || '');
     let c = camps.get(cid);
     if (!c) { c = cdNode(cid, r.campaign_name, 'campaign'); c.by = new Map(); camps.set(cid, c); }
+    // Власний стан беремо з першого рядка, де він узагалі є: у всіх
+    // оголошень однієї кампанії він той самий, а порожній буває тоді,
+    // коли база ще без цих колонок.
+    if (!c.own) c.own = String(r.campaign_status || '').toUpperCase();
     let s = c.by.get(sid);
     if (!s) { s = cdNode(sid, r.adset_name, 'ad set'); c.by.set(sid, s); c.kids.push(s); }
+    if (!s.own) s.own = String(r.adset_status || '').toUpperCase();
     const a = cdNode(r.ad_id, r.name, 'ad');
+    a.own = m.state;
     cdAdd(a, m); cdAdd(s, m); cdAdd(c, m);
     a.ads = 0;
     s.kids.push(a);
@@ -21163,7 +21215,9 @@ function cdBad() {
 function cdAds() {
   return cdRows.map(r => {
     const n = cdNode(r.ad_id, r.name, 'ad');
-    cdAdd(n, cdMetrics(r));
+    const m = cdMetrics(r);
+    n.own = m.state;
+    cdAdd(n, m);
     n.ads = 0;
     n.where = [r.campaign_name, r.adset_name].filter(Boolean).join(' · ');
     return n;
@@ -21263,6 +21317,20 @@ const cdNone = '<span class="cd-na">—</span>';
 function cdChips(n) {
   const ad = n.kind === 'ad';
   const parts = [];
+  /* ВЛАСНИЙ СТАН ВУЗЛА — ПЕРШИМ І ЗАВЖДИ. Раніше в кампанії стояв лише
+     розклад її оголошень, і вимкнена кампанія з активними оголошеннями
+     виглядала робочою: «5 active» — і все. Тепер спершу видно, що
+     вимкнена саме вона, а розклад дітей лишається поруч.
+
+     Для оголошення own і є його стан, тож дублювати не треба: нижній
+     цикл намалює те саме. */
+  if (!ad && n.own) {
+    const st = cdState(n.own);
+    parts.push(st
+      ? { s: st.s, why: st.why, text: st.t, self: true }
+      : { s: 'wait', why: 'Facebook reports this state',
+          text: String(n.own).toLowerCase().replace(/_/g, ' '), self: true });
+  }
   CD_STATE.forEach(st => {
     const cnt = n.state.get(st.k) || 0;
     if (!cnt) return;
@@ -21285,8 +21353,8 @@ function cdChips(n) {
   const rest = parts.length - show.length;
   const all = parts.map(x => x.text).join(', ');
   return `<span class="cd-sts" title="${cdEsc(all)}">`
-    + show.map(x => `<span class="cd-st cd-st-${x.s}" title="${cdEsc(x.why)}">${
-        cdEsc(x.text)}</span>`).join('')
+    + show.map(x => `<span class="cd-st cd-st-${x.s}${x.self ? ' is-self' : ''}" title="${
+        cdEsc(x.why)}">${cdEsc(x.text)}</span>`).join('')
     + (rest ? `<span class="cd-st cd-st-na">+${rest}</span>` : '')
     + '</span>';
 }
