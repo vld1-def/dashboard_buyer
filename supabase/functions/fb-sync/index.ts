@@ -134,7 +134,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-29.1';
+const FN_VERSION = '2026-09-29.2';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -475,9 +475,17 @@ function urlsFor(actId: string, tz: string): string[] {
        Facebook це не коштує: пакет іде одним запитом. */
     act + '/ads?effective_status=' + encodeURIComponent(JSON.stringify(SNAP_STATUS))
       + '&limit=' + LIST_LIMIT
-      + '&fields=' + encodeURIComponent('creative{effective_object_story_spec'
-        + '{link_data{link,child_attachments{link}},video_data{call_to_action{value{link}}}},'
-        + 'asset_feed_spec{link_urls{website_url}},template_url}'),
+      /* ПРОСТИМИ полями, без вкладеного вибору. Перша версія просила
+         creative{effective_object_story_spec{link_data{link,…}}} — і
+         Graph на такому вкладенні відмовляє цілому підзапиту, а не
+         одному полю. Назва поля без фігурних дужок повертає весь
+         обʼєкт, і розібрати його в себе і дешевше, і надійніше: нові
+         форми креативу не вимагатимуть нового синтаксису.
+
+         object_story_spec поруч із effective_ навмисно: у щойно
+         створених оголошень effective_ буває порожній. */
+      + '&fields=' + encodeURIComponent(
+        'creative{effective_object_story_spec,object_story_spec,asset_feed_spec,template_url}'),
   ];
 }
 
@@ -502,18 +510,22 @@ function hostOf(v: unknown): string {
    іде від найточнішого до найзагальнішого, і перший, що дав хост,
    виграє — решту навіть не дивимось. */
 function adHost(c: Json): string {
-  const spec: Json = c?.effective_object_story_spec || {};
-  const ld: Json = spec.link_data || {};
-  const kids: Json[] = Array.isArray(ld.child_attachments) ? ld.child_attachments : [];
   const feed: Json[] = Array.isArray(c?.asset_feed_spec?.link_urls)
     ? c.asset_feed_spec.link_urls : [];
-  const tries: unknown[] = [
-    ld.link,
-    kids.map((a: Json) => a?.link).find(Boolean),
-    spec.video_data?.call_to_action?.value?.link,
-    feed[0]?.website_url,
-    c?.template_url
-  ];
+  const tries: unknown[] = [];
+  /* Обидва spec: у щойно створених оголошень effective_ буває
+     порожній, а object_story_spec уже є. */
+  for (const spec of [c?.effective_object_story_spec, c?.object_story_spec]) {
+    if (!spec) continue;
+    const ld: Json = spec.link_data || {};
+    const kids: Json[] = Array.isArray(ld.child_attachments) ? ld.child_attachments : [];
+    tries.push(ld.link);
+    tries.push(kids.map((a: Json) => a?.link).find(Boolean));
+    tries.push(spec.video_data?.call_to_action?.value?.link);
+    tries.push(spec.template_data?.link);
+  }
+  tries.push(feed[0]?.website_url);
+  tries.push(c?.template_url);
   for (const v of tries) { const h = hostOf(v); if (h) return h; }
   return '';
 }
@@ -555,7 +567,7 @@ type PageUse = { ads: number; posts: Set<string> };
 
 function readParts(parts: (Json | null)[]):
     { patch: Json; err: string; days: Day[] | null;
-      pages: Map<string, PageUse> | null; live: AdSnap[] | null } {
+      pages: Map<string, PageUse> | null; live: AdSnap[] | null; linkErr: string } {
   const patch: Json = {};
   let err = '';
 
@@ -709,11 +721,26 @@ function readParts(parts: (Json | null)[]):
      приїхати: тоді хост лишається порожнім, а знімок — цілим. */
   const linkPart = parts[6];
   const hosts = new Map<string, string>();
+  let linkErr = '';
   if (linkPart && linkPart.code === 200) {
-    (Array.isArray(linkPart.body?.data) ? linkPart.body.data : []).forEach((r: Json) => {
+    const list: Json[] = Array.isArray(linkPart.body?.data) ? linkPart.body.data : [];
+    list.forEach((r: Json) => {
       const h = adHost(r?.creative || {});
       if (r?.id && h) hosts.set(String(r.id), h);
     });
+    /* Відповідь прийшла, а доменів у ній немає — це ОКРЕМИЙ діагноз, і
+       він не менш важливий за відмову. Означає, що посилання лежить не
+       там, де ми дивимось: інша форма креативу, або Facebook просто не
+       віддав creative на цьому зрізі. Мовчання тут коштувало б рівно
+       того, чого вже коштувало: людина шукає ваду в базі, а вада —
+       у полі запиту. */
+    if (list.length && !hosts.size)
+      linkErr = 'Facebook answered for ' + list.length
+        + ' ad(s) but no link was found in the creative';
+  } else if (linkPart) {
+    linkErr = String(linkPart.body?.error?.message || 'HTTP ' + linkPart.code);
+  } else {
+    linkErr = 'Facebook did not answer in time';
   }
 
   const livePart = parts[5];
@@ -747,7 +774,7 @@ function readParts(parts: (Json | null)[]):
     }).filter((a: AdSnap) => a.ad_id);
   }
 
-  return { patch, err, days, pages, live };
+  return { patch, err, days, pages, live, linkErr };
 }
 
 /* ── PostgREST ──
@@ -819,7 +846,9 @@ type Outcome = { accounts: number; failed: number; changed: number;
                  knownError: string;
                  // Скільки активних оголошень склали в знімок для правил
                  // і що завадило, якщо завадило.
-                 snapshot: number; snapshotError: string };
+                 snapshot: number; snapshotError: string;
+                 // Чому в знімку немає доменів. Порожньо — домени на місці.
+                 linkError: string };
 
 /* Привід написати людині. owner — хто саме має це прочитати: кабінети
    належать конкретним баєрам, і сповіщення ходять так само. */
@@ -857,7 +886,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
                         days: 0, noHistory: 0, historyError: '', knownError: '',
-                        snapshot: 0, snapshotError: '' };
+                        snapshot: 0, snapshotError: '', linkError: '' };
 
   let accs: Json[];
   try {
@@ -990,7 +1019,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       break;
     }
     slice.forEach((x, k) => {
-      const { patch, err, days, pages, live } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      const { patch, err, days, pages, live, linkErr } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      if (linkErr && !out.linkError) out.linkError = linkErr;
       if (pages) pageUse.set(x.id, pages);
       if (live) {
         snapSeen.push(x.id);
@@ -1686,7 +1716,7 @@ async function handle(req: Request): Promise<Response> {
   const alerts: Alert[] = [];
   let accounts = 0, failed = 0, changed = 0, done = 0;
   let days = 0, noHistory = 0, historyError = '';
-  let snapshot = 0, snapshotError = '';
+  let snapshot = 0, snapshotError = '', linkError = '';
   const problems: string[] = [];
   let throttled = false;
 
@@ -1706,6 +1736,7 @@ async function handle(req: Request): Promise<Response> {
     days += r.days; noHistory += r.noHistory;
     snapshot += r.snapshot;
     if (r.snapshotError && !snapshotError) snapshotError = r.snapshotError;
+    if (r.linkError && !linkError) linkError = r.linkError;
     if (r.historyError && !historyError) historyError = r.historyError;
     if (r.error) problems.push(t.label + ': ' + r.error);
     /* Порівняння зі станом минулого прогону відвалилось. Це не «трохи
@@ -1757,6 +1788,10 @@ async function handle(req: Request): Promise<Response> {
     /* Знімок для правил. Мовчати про його відсутність не можна: без
        нього правила нічого не бачать, а виглядало б це як «правила не
        працюють», і шукали б у геть іншому місці. */
+    /* Чому в знімку немає доменів. Окремим рядком, бо шукати причину
+       доводиться в геть іншому місці, ніж брак самого знімка: там
+       таблиця, тут поле запиту до Facebook. */
+    domains: linkError || 'ok',
     snapshot: snapshotError
       ? (/fb_ad_today|does not exist|42P01/i.test(snapshotError)
           ? 'no table yet — run FB_RULES.sql' : snapshotError)
