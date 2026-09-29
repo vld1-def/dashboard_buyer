@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 19:58">
+  <meta name="build" content="build 29.09 20:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1124,6 +1124,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   --surface:     #121216;
   --surface-2:   #17171C;
   --surface-3:   #1E1E24;
+  /* Смуга в дереві кампаній. Власний тон, а не --surface-3: той самий
+     колір носять смуга прокрутки й наведення в доці, і посунувши його
+     заради таблиці, ми посунули б і їх. Тут потрібна різниця, якої
+     вистачає оку на сусідніх рядках і не більше: надто світла смуга
+     читається як виділення, тобто як «цей рядок чимось особливий». */
+  --cd-band:     #191920;
   --border:      rgba(255,255,255,.07);
   --border-2:    rgba(255,255,255,.13);
   --text-main:   #E9E9EC;
@@ -1595,6 +1601,55 @@ body.hub-open .app-content { padding-bottom: 14px; }
 }
 #sh-frame { flex: 1; width: 100%; border: 0; background: #fff; display: block; }
 #sh-frame.hidden { display: none; }
+
+/* ── CSV і XLSX просто тут ──
+   Системний вибір файлів ховаємо власним правилом, а не класом
+   Tailwind: він єдине, що стоїть між людиною й чужорідним віджетом,
+   і покладатись на чужу бібліотеку в цьому не варто. */
+#sh-file { display: none !important; }
+.sh-filebar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); flex: 0 0 auto;
+}
+.sh-filebar.hidden { display: none; }
+.sh-fname {
+  font-size: 11px; font-weight: 900; color: var(--text-main);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sh-rows { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.sh-tabs {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 3px 7px; font-size: 10px; font-weight: 800; color: var(--text-main);
+  outline: none; cursor: pointer;
+}
+.sh-note { font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 18px; }
+.sh-table { flex: 1; min-height: 0; overflow: auto; background: var(--surface); }
+.sh-table.hidden { display: none; }
+.sh-grid { border-collapse: separate; border-spacing: 0; font-size: 11px; white-space: nowrap; }
+/* Шапка лишається на місці: на файлі в дві тисячі рядків без неї
+   через екран уже не видно, у якому ти стовпчику. */
+.sh-grid th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-3); color: var(--text-main);
+  font-weight: 900; text-align: left; padding: 6px 10px;
+  border-bottom: 1px solid var(--border-2); border-right: 1px solid var(--border);
+}
+.sh-grid td {
+  padding: 5px 10px; color: var(--text-main); font-weight: 600;
+  border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis;
+}
+.sh-grid tr:hover td { background: var(--surface-2); }
+/* Номер рядка теж липкий, і теж не з примхи: гортаючи вбік, легко
+   загубити, у якому ти рядку. */
+.sh-grid .sh-n {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--surface-3); color: var(--text-muted);
+  font-variant-numeric: tabular-nums; font-weight: 800;
+  text-align: right; padding: 5px 8px; min-width: 42px;
+}
+.sh-grid th.sh-n { z-index: 3; }
 
 /* ─────────── Компактніші секції ───────────
    Стара розмітка несе і власні mb-6/mb-8, і space-y-4 контейнера —
@@ -3494,7 +3549,7 @@ body[data-route="domains"] #dm-detail {
    годиться: перша комірка липка, і крізь неї було б видно, як під нею
    їде вміст, коли таблицю гортають убік. */
 .cd-r td, .cd-r td:first-child { background: var(--surface); }
-.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--surface-3); }
+.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--cd-band); }
 /* Наведення бере середній відтінок: він світліший за звичайний рядок і
    темніший за смугу, тож курсор видно в обох — а не лише в одній. */
 .cd-tbl tr.cd-r:hover td,
@@ -3502,6 +3557,24 @@ body[data-route="domains"] #dm-detail {
 /* Вибраний рядок лишається впізнаваним у будь-якій смузі: смуга
    акценту ліворуч сильніша за різницю тла. */
 .cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* Око й домен. Око бліде, поки закрите: це не та дія, по яку сюди
+   йдуть, і кричати про себе воно не повинно. */
+.cd-eye {
+  flex: 0 0 auto; width: 14px; height: 14px; padding: 0; margin-left: 6px;
+  background: none; border: 0; cursor: pointer; opacity: .45;
+  color: var(--text-muted); line-height: 0;
+}
+.cd-eye svg { width: 14px; height: 14px; display: block; }
+.cd-eye:hover { opacity: 1; color: var(--text-main); }
+.cd-eye.is-on { opacity: 1; color: var(--accent); }
+.cd-dom {
+  flex: 0 0 auto; margin-left: 5px; font-size: 10px; font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-muted); letter-spacing: .06em;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cd-dom.is-on { color: var(--accent); letter-spacing: 0; }
 /* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
    підпис лише уточнює, за який період воно. */
 .cd-bq { color: var(--text-muted); font-weight: 700; margin-left: 2px; }
@@ -4755,7 +4828,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 19:58</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 20:33</div>
     </div>
   </aside>
 
@@ -4976,6 +5049,10 @@ input.ui-in[type="range"] { padding: 0; }
             </a>
             <button class="sh-btn" onclick="sheetsToggleAdd()" title="Add a sheet">+ Add</button>
             <button class="sh-btn sh-del" onclick="sheetsRemove()" title="Remove from the list">Remove</button>
+            <!-- Файл читається В БРАУЗЕРІ й нікуди не йде: ні в Supabase,
+                 ні в Google. Тому кнопка стоїть поруч, а не в Files. -->
+            <button class="sh-btn" onclick="shPick()" title="Open a CSV or XLSX from this computer. The file is read here and is not uploaded anywhere.">+ Open file</button>
+            <input type="file" id="sh-file" accept=".csv,.tsv,.txt,.xlsx,.xls" onchange="shChose(this.files&&this.files[0])">
           </div>
           <button class="hub-close" onclick="sheetsClose()" title="Back to dashboard">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
@@ -4988,6 +5065,9 @@ input.ui-in[type="range"] { padding: 0; }
           <button class="sh-btn sh-save" onclick="sheetsAdd()">Save</button>
         </div>
         <div id="sh-empty" class="sh-empty hidden"></div>
+        <!-- Смуга відкритого файла: назва, аркуші, скільки рядків. -->
+        <div id="sh-filebar" class="sh-filebar hidden"></div>
+        <div id="sh-table" class="sh-table hidden"></div>
         <iframe id="sh-frame" title="Google Sheet"></iframe>
       </div>
 
@@ -21625,6 +21705,9 @@ window.cdHide = function () {
      пастка: смуги дії на екрані немає, людина про них не памʼятає, а
      наступний «Switch off» вимкне те, чого вона зараз не бачить. */
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set();
+  /* Відкрите око не переживає закриття: інакше показаний домен
+     дочекався б наступної людини за цим екраном. */
+  cdEyed = new Set();
   /* Смугу з кнопкою не чіпаємо: кабінет вибраний, просто нутро
      закрите. Прибирає її той, хто зняв вибір, — cdBar(''). */
   const box = document.getElementById('cab-inside');
@@ -21671,6 +21754,11 @@ async function cdLoad(account) {
     + 'campaign_daily_budget,campaign_lifetime_budget,'
     + 'adset_daily_budget,adset_lifetime_budget,'
     + 'own_status,campaign_own_status,adset_own_status';
+  /* Окремим ярусом, а не в CD_NEW. Ярус — це все або нічого: якби
+     link_domain лежав поруч із бюджетами, невиконаний DOMAIN_GUARD.sql
+     забрав би з собою й бюджети, й вимикачі. Так брак однієї колонки
+     коштує рівно її. */
+  const CD_DOM = 'link_domain';
   const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
   try {
@@ -21679,7 +21767,12 @@ async function cdLoad(account) {
        падаємо з «column does not exist», бо через одну колонку зник би
        весь розбір кабінета. */
     let res = await sb.from('fb_ad_today')
-      .select(CD_CORE + ',' + CD_NEW).eq('account_id', id).limit(1000);
+      .select(CD_CORE + ',' + CD_NEW + ',' + CD_DOM).eq('account_id', id).limit(1000);
+    if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
+      // Спершу без домену: він наймолодший, і найімовірніше саме його й бракує.
+      res = await sb.from('fb_ad_today')
+        .select(CD_CORE + ',' + CD_NEW).eq('account_id', id).limit(1000);
+    }
     if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
       cdOld = res.error.message;
       res = await sb.from('fb_ad_today').select(CD_CORE).eq('account_id', id).limit(1000);
@@ -21760,7 +21853,8 @@ function cdMetrics(r) {
     regs: cdPick(acts, CD_REG) || 0,
     result: !suf ? null : suf === 'impressions' ? imps : (cdPick(acts, suf) || 0),
     goal: String(r.optimization_goal || r.custom_event_type || ''),
-    state: String(r.effective_status || '').toUpperCase()
+    state: String(r.effective_status || '').toUpperCase(),
+    host: String(r.link_domain || '').trim()
   };
 }
 
@@ -21780,6 +21874,10 @@ function cdNode(id, name, kind) {
            leadBy: new Map(),        // подія → { v, used } по всіх дітях
            spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
            result: 0, hasResult: false, goals: new Set(),
+           /* Набором, а не рядком: під кампанією цілком законно стоять
+              оголошення на різні домени, і схлопнути це в одне значення
+              означало б показати перше-ліпше як «той самий». */
+           hosts: new Set(),
            state: new Map(), ads: 0, kids: [] };
 }
 function cdAdd(n, m) {
@@ -21795,6 +21893,7 @@ function cdAdd(n, m) {
   n.leads += m.leads; n.regs += m.regs; n.ads++;
   if (m.result != null) { n.result += m.result; n.hasResult = true; }
   if (m.goal) n.goals.add(m.goal);
+  if (m.host) n.hosts.add(m.host);
   n.state.set(m.state, (n.state.get(m.state) || 0) + 1);
 }
 
@@ -22213,6 +22312,82 @@ function cdChips(n) {
     + '</span>';
 }
 
+/* ── ДОМЕН, НА ЯКИЙ ВЕДЕ ОГОЛОШЕННЯ ──
+
+   За замовчуванням прихований, і це не примха. Дерево кампаній
+   відкривають на зустрічах, у демонстрації екрана і на скриншотах у
+   чат — а домен це рівно те, чого показувати стороннім не варто:
+   зібравши їх, людина ззовні бачить усю сітку. Тому домен лежить під
+   оком, і відкривається той рядок, який справді потрібен.
+
+   Ховаємо не стилем, а текстом: приховане через CSS лишається в
+   розмітці — на скриншоті його немає, зате в коді сторінки є. */
+let cdEyed = new Set();
+
+const CD_DOTS = '\u2022\u2022\u2022\u2022\u2022';
+const CD_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+  + '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const CD_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+  + '<path d="M17.9 17.9A10.7 10.7 0 0 1 12 20c-7 0-11-8-11-8a19.8 19.8 0 0 1 5.1-5.9m3.6-1.7A10.7'
+  + ' 10.7 0 0 1 12 4c7 0 11 8 11 8a19.8 19.8 0 0 1-2.2 3.2m-6.7-1.1a3 3 0 1 1-4.2-4.2"/>'
+  + '<line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+/* Домени беремо з даних у момент кліку, а НЕ кладемо в розмітку
+   заздалегідь. Це не дрібниця: і data-атрибут, і title у підказці —
+   та сама витока, просто на крок далі. Прихований напис, який видно в
+   коді сторінки, нікого не захищає. */
+function cdHostsFor(key) {
+  const i = key.indexOf(':');
+  const kind = key.slice(0, i), id = key.slice(i + 1);
+  const field = kind === 'ad' ? 'ad_id' : kind === 'campaign' ? 'campaign_id' : 'adset_id';
+  const out = new Set();
+  cdShown().forEach(r => {
+    if (String(r[field] || '') !== id) return;
+    const h = String(r.link_domain || '').trim();
+    if (h) out.add(h);
+  });
+  return [...out];
+}
+
+function cdDomText(hosts) {
+  /* Під кампанією цілком законно стоять оголошення на різні домени.
+     Показати перший із них як «домен кампанії» — саме та напівправда,
+     через яку потім шукають не там. */
+  return hosts.length === 1 ? hosts[0] : hosts.length + ' domains';
+}
+
+window.cdEye = function (key, el) {
+  if (cdEyed.has(key)) cdEyed.delete(key); else cdEyed.add(key);
+  const on = cdEyed.has(key);
+  /* Перемальовуємо ОДИН рядок, а не все дерево: cdPaint згорнув би
+     прокрутку й зняв фокус, а змінився рівно один напис. */
+  const cell = el.closest('.cd-name');
+  const box = cell && cell.querySelector('.cd-dom');
+  if (box) {
+    const hosts = cdHostsFor(key);
+    box.className = 'cd-dom' + (on ? ' is-on' : '');
+    box.textContent = on ? cdDomText(hosts) : CD_DOTS;
+    box.title = on && hosts.length > 1 ? hosts.join(', ') : '';
+  }
+  el.innerHTML = on ? CD_EYE_OFF : CD_EYE;
+  el.classList.toggle('is-on', on);
+  el.title = on ? 'Hide the domain' : 'Show the domain this runs on';
+};
+
+function cdDom(n, key) {
+  if (!n.hosts.size) return '';
+  const on = cdEyed.has(key);
+  const k = cdEsc(key).replace(/'/g, '&#39;');
+  /* Підказка НЕ називає домени, поки око закрите: інакше досить
+     навести мишу — і ховати не було чого. */
+  const tip = on ? 'Hide the domain' : 'Show the domain this runs on';
+  const body = on ? cdEsc(cdDomText([...n.hosts])) : CD_DOTS;
+  return `<button type="button" class="cd-eye${on ? ' is-on' : ''}"
+      onclick="event.stopPropagation();cdEye('${k}', this)"
+      title="${tip}" aria-label="Show the domain">${on ? CD_EYE_OFF : CD_EYE}</button>`
+    + `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`;
+}
+
 function cdRow(n, depth, band) {
   const key = n.kind + ':' + n.id;
   const kids = n.kids.length > 0;
@@ -22258,7 +22433,7 @@ function cdRow(n, depth, band) {
   return `<tr class="cd-r cd-d${depth}${band ? ' is-band' : ''}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
     <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
         title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
-        >${mark}${twist}${label}${count}</td>
+        >${mark}${twist}${label}${cdDom(n, key)}${count}</td>
     <td>${cdChips(n)}</td>
     <td class="ta-r cd-num">${cdBudgetText(n.budget)}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
@@ -23888,6 +24063,9 @@ tmBoot();
 
   window.sheetsPick = function (i) {
     sheetsIdx = Number(i) || 0;
+    /* Вибрали таблицю Google — відкритий файл закриваємо: два джерела
+       в одній рамці означали б, що видно не те, що вибрали. */
+    if (typeof shCloseFile === 'function' && shFile) return shCloseFile();
     sheetsRender();
   };
 
@@ -23927,6 +24105,10 @@ tmBoot();
     const empty = document.getElementById('sh-empty');
     const open = document.getElementById('sh-open');
     if (!sel || !frame || !empty) return;
+    /* Відкритий файл головніший: він тут просто зараз, а список Google
+       нікуди не дінеться. Інакше будь-яке перемальовування списку
+       згортало б таблицю, яку щойно відкрили. */
+    if (shFile) return;
 
     sel.innerHTML = sheets.map((s, i) =>
       `<option value="${i}" ${i === sheetsIdx ? 'selected' : ''}>${String(s.name).replace(/</g, '&lt;')}</option>`).join('');
@@ -23947,6 +24129,183 @@ tmBoot();
     const src = sheetPreview(cur.url);
     if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
     if (open) { open.style.display = ''; open.href = cur.url; }
+  }
+
+  /* ─────────── CSV і XLSX просто тут ───────────
+
+     Таблиця, яку прислали файлом, — це та сама таблиця. Досі, щоб її
+     подивитись, треба було або залити в Google, або відкрити Excel:
+     обидва шляхи ведуть із дашборда геть, а повертаються з них не
+     завжди.
+
+     Файл читається В БРАУЗЕРІ й НІКУДИ не йде — ні в Supabase, ні в
+     Google. Це не дрібниця: у вивантаженнях із партнерки їдуть sub-id,
+     а часом і дані людей, і заливати їх кудись заради перегляду —
+     непропорційна ціна за погляд. */
+
+  let shFile = null;        // { name, tabs: [{ name, rows }], idx }
+
+  const shEsc = (v) => String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+  /* Скільки рядків малюємо. Тридцять тисяч рядків у DOM кладуть
+     вкладку намертво, а прочитати їх очима все одно неможливо. */
+  const SH_MAX_ROWS = 2000;
+
+  window.shPick = function () { document.getElementById('sh-file')?.click(); };
+
+  /* Роздільник вгадуємо по ПЕРШОМУ рядку: у заголовку немає чисел із
+     комами й лапок із крапкою з комою всередині, тож саме там підрахунок
+     чесний. Рахувати по всьому файлу — значить дати одному полю з
+     крапкою з комою переважити сотню звичайних ком. */
+  function shDelim(head) {
+    const n = (ch) => head.split(ch).length;
+    const by = [[',', n(',')], [';', n(';')], ['\t', n('\t')], ['|', n('|')]];
+    by.sort((a, b) => b[1] - a[1]);
+    return by[0][1] > 1 ? by[0][0] : ',';
+  }
+
+  /* Свій розбір, а не split(','): у полі цілком законно лежить кома,
+     лапка й навіть перенос рядка — саме так Excel зберігає адреси й
+     нотатки. Розбір по split перетворив би один такий рядок на три
+     покалічені. */
+  function shCsv(text) {
+    const first = text.slice(0, text.indexOf('\n') + 1 || text.length);
+    const d = shDelim(first);
+    const rows = [];
+    let row = [], cur = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) {
+        if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+        continue;
+      }
+      if (ch === '"') { q = true; continue; }
+      if (ch === d) { row.push(cur); cur = ''; continue; }
+      if (ch === '\r') continue;
+      if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; continue; }
+      cur += ch;
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    // Хвостовий порожній рядок — це перенос у кінці файла, а не дані.
+    while (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop();
+    return rows;
+  }
+
+  /* SheetJS вантажимо НА ВИМОГУ. Майже мегабайт заради кнопки, якою
+     користуються раз на тиждень, платили б усі й щоразу — зокрема ті,
+     хто відкриває дашборд подивитись спенд. */
+  let shLibAt = null;
+  function shLib() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (shLibAt) return shLibAt;
+    shLibAt = new Promise((ok, no) => {
+      const el = document.createElement('script');
+      el.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      el.onload = () => window.XLSX ? ok(window.XLSX) : no(new Error('loaded but empty'));
+      el.onerror = () => { shLibAt = null; no(new Error('could not load the XLSX reader')); };
+      document.head.appendChild(el);
+    });
+    return shLibAt;
+  }
+
+  window.shChose = async function (file) {
+    const inp = document.getElementById('sh-file');
+    if (inp) inp.value = '';          // той самий файл мусить відкриватись двічі
+    if (!file) return;
+    const box = document.getElementById('sh-table');
+    const bar = document.getElementById('sh-filebar');
+    document.getElementById('sh-frame')?.classList.add('hidden');
+    document.getElementById('sh-empty')?.classList.add('hidden');
+    bar?.classList.remove('hidden');
+    box?.classList.remove('hidden');
+    if (bar) bar.innerHTML = '<span class="sh-fname">' + shEsc(file.name) + '</span>';
+    if (box) box.innerHTML = '<p class="sh-note">Reading…</p>';
+    try {
+      const buf = await file.arrayBuffer();
+      shFile = /\.(xlsx|xls)$/i.test(file.name)
+        ? await shReadBook(buf, file.name)
+        : shReadCsv(buf, file.name);
+    } catch (e) {
+      shFile = null;
+      if (bar) bar.classList.add('hidden');
+      if (box) box.innerHTML = '<p class="sh-note">Could not open: ' + shEsc(e.message) + '</p>';
+      return;
+    }
+    shPaint();
+  };
+
+  function shReadCsv(buf, name) {
+    /* Тим самим розбирачем, що й перегляд файлів: .csv з партнерки
+       часто зберігають у windows-1251, і суворий UTF-8 на ньому падає.
+       Без цього кирилиця в заголовках перетворюється на сміття. */
+    const text = typeof flDecode === 'function'
+      ? flDecode(buf) : new TextDecoder('utf-8').decode(buf);
+    return { name, idx: 0, tabs: [{ name: 'Sheet', rows: shCsv(text) }] };
+  }
+
+  async function shReadBook(buf, name) {
+    const X = await shLib();
+    const wb = X.read(buf, { type: 'array' });
+    const tabs = (wb.SheetNames || []).map(n => ({
+      name: n,
+      /* header:1 — рядками, а не обʼєктами: у вивантаженнях бувають
+         однакові заголовки, і обʼєкт тихо лишив би з них один.
+         defval — щоб порожня комірка лишалась коміркою, інакше рядок
+         поїде вліво й числа стануть не під своїми стовпчиками. */
+      rows: X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' })
+    }));
+    if (!tabs.length) throw new Error('the workbook has no sheets');
+    return { name, idx: 0, tabs };
+  }
+
+  window.shTab = function (i) { if (shFile) { shFile.idx = Number(i) || 0; shPaint(); } };
+
+  window.shCloseFile = function () {
+    shFile = null;
+    document.getElementById('sh-filebar')?.classList.add('hidden');
+    document.getElementById('sh-table')?.classList.add('hidden');
+    const box = document.getElementById('sh-table');
+    if (box) box.innerHTML = '';      // великий файл не має лишатись у памʼяті
+    sheetsRender();
+  };
+
+  function shPaint() {
+    const bar = document.getElementById('sh-filebar');
+    const box = document.getElementById('sh-table');
+    if (!shFile || !bar || !box) return;
+    const tab = shFile.tabs[shFile.idx] || shFile.tabs[0];
+    const rows = tab.rows || [];
+    const head = rows[0] || [];
+    const body = rows.slice(1);
+    const cut = body.length > SH_MAX_ROWS;
+    const show = cut ? body.slice(0, SH_MAX_ROWS) : body;
+    /* Найдовший рядок задає кількість стовпчиків: у вивантаженнях
+       хвостові порожні комірки часто просто обрізані, і рівнятись на
+       заголовок означало б загубити останні стовпчики. */
+    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+
+    bar.innerHTML = '<span class="sh-fname">' + shEsc(shFile.name) + '</span>'
+      + (shFile.tabs.length > 1
+          ? '<select class="sh-tabs" onchange="shTab(this.value)">'
+            + shFile.tabs.map((t, i) => '<option value="' + i + '"'
+                + (i === shFile.idx ? ' selected' : '') + '>' + shEsc(t.name) + '</option>').join('')
+            + '</select>'
+          : '')
+      + '<span class="sh-rows">' + body.length + ' row(s) · ' + cols + ' column(s)'
+      + (cut ? ' · showing first ' + SH_MAX_ROWS : '') + '</span>'
+      + '<button class="sh-btn sh-del" onclick="shCloseFile()">Close file</button>';
+
+    const cell = (v, tag) => '<' + tag + '>' + shEsc(v) + '</' + tag + '>';
+    const pad = (r) => { const a = r.slice(); while (a.length < cols) a.push(''); return a; };
+    box.innerHTML = '<table class="sh-grid"><thead><tr><th class="sh-n"></th>'
+      + pad(head).map(v => cell(v, 'th')).join('') + '</tr></thead><tbody>'
+      /* Номер рядка як у таблиці: без нього на довгому файлі неможливо
+         сказати вголос, про який саме рядок ідеться. */
+      + show.map((r, i) => '<tr><td class="sh-n">' + (i + 2) + '</td>'
+          + pad(r).map(v => cell(v, 'td')).join('') + '</tr>').join('')
+      + '</tbody></table>';
   }
 
   /* ─────────── Зріз KPI за моделлю виплат ───────────
