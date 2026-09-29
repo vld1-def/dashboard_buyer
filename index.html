@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 19:58">
+  <meta name="build" content="build 29.09 20:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3502,6 +3502,24 @@ body[data-route="domains"] #dm-detail {
 /* Вибраний рядок лишається впізнаваним у будь-якій смузі: смуга
    акценту ліворуч сильніша за різницю тла. */
 .cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* Око й домен. Око бліде, поки закрите: це не та дія, по яку сюди
+   йдуть, і кричати про себе воно не повинно. */
+.cd-eye {
+  flex: 0 0 auto; width: 14px; height: 14px; padding: 0; margin-left: 6px;
+  background: none; border: 0; cursor: pointer; opacity: .45;
+  color: var(--text-muted); line-height: 0;
+}
+.cd-eye svg { width: 14px; height: 14px; display: block; }
+.cd-eye:hover { opacity: 1; color: var(--text-main); }
+.cd-eye.is-on { opacity: 1; color: var(--accent); }
+.cd-dom {
+  flex: 0 0 auto; margin-left: 5px; font-size: 10px; font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-muted); letter-spacing: .06em;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cd-dom.is-on { color: var(--accent); letter-spacing: 0; }
 /* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
    підпис лише уточнює, за який період воно. */
 .cd-bq { color: var(--text-muted); font-weight: 700; margin-left: 2px; }
@@ -4755,7 +4773,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 19:58</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 20:22</div>
     </div>
   </aside>
 
@@ -21625,6 +21643,9 @@ window.cdHide = function () {
      пастка: смуги дії на екрані немає, людина про них не памʼятає, а
      наступний «Switch off» вимкне те, чого вона зараз не бачить. */
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set();
+  /* Відкрите око не переживає закриття: інакше показаний домен
+     дочекався б наступної людини за цим екраном. */
+  cdEyed = new Set();
   /* Смугу з кнопкою не чіпаємо: кабінет вибраний, просто нутро
      закрите. Прибирає її той, хто зняв вибір, — cdBar(''). */
   const box = document.getElementById('cab-inside');
@@ -21671,6 +21692,11 @@ async function cdLoad(account) {
     + 'campaign_daily_budget,campaign_lifetime_budget,'
     + 'adset_daily_budget,adset_lifetime_budget,'
     + 'own_status,campaign_own_status,adset_own_status';
+  /* Окремим ярусом, а не в CD_NEW. Ярус — це все або нічого: якби
+     link_domain лежав поруч із бюджетами, невиконаний DOMAIN_GUARD.sql
+     забрав би з собою й бюджети, й вимикачі. Так брак однієї колонки
+     коштує рівно її. */
+  const CD_DOM = 'link_domain';
   const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
   try {
@@ -21679,7 +21705,12 @@ async function cdLoad(account) {
        падаємо з «column does not exist», бо через одну колонку зник би
        весь розбір кабінета. */
     let res = await sb.from('fb_ad_today')
-      .select(CD_CORE + ',' + CD_NEW).eq('account_id', id).limit(1000);
+      .select(CD_CORE + ',' + CD_NEW + ',' + CD_DOM).eq('account_id', id).limit(1000);
+    if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
+      // Спершу без домену: він наймолодший, і найімовірніше саме його й бракує.
+      res = await sb.from('fb_ad_today')
+        .select(CD_CORE + ',' + CD_NEW).eq('account_id', id).limit(1000);
+    }
     if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
       cdOld = res.error.message;
       res = await sb.from('fb_ad_today').select(CD_CORE).eq('account_id', id).limit(1000);
@@ -21760,7 +21791,8 @@ function cdMetrics(r) {
     regs: cdPick(acts, CD_REG) || 0,
     result: !suf ? null : suf === 'impressions' ? imps : (cdPick(acts, suf) || 0),
     goal: String(r.optimization_goal || r.custom_event_type || ''),
-    state: String(r.effective_status || '').toUpperCase()
+    state: String(r.effective_status || '').toUpperCase(),
+    host: String(r.link_domain || '').trim()
   };
 }
 
@@ -21780,6 +21812,10 @@ function cdNode(id, name, kind) {
            leadBy: new Map(),        // подія → { v, used } по всіх дітях
            spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
            result: 0, hasResult: false, goals: new Set(),
+           /* Набором, а не рядком: під кампанією цілком законно стоять
+              оголошення на різні домени, і схлопнути це в одне значення
+              означало б показати перше-ліпше як «той самий». */
+           hosts: new Set(),
            state: new Map(), ads: 0, kids: [] };
 }
 function cdAdd(n, m) {
@@ -21795,6 +21831,7 @@ function cdAdd(n, m) {
   n.leads += m.leads; n.regs += m.regs; n.ads++;
   if (m.result != null) { n.result += m.result; n.hasResult = true; }
   if (m.goal) n.goals.add(m.goal);
+  if (m.host) n.hosts.add(m.host);
   n.state.set(m.state, (n.state.get(m.state) || 0) + 1);
 }
 
@@ -22213,6 +22250,82 @@ function cdChips(n) {
     + '</span>';
 }
 
+/* ── ДОМЕН, НА ЯКИЙ ВЕДЕ ОГОЛОШЕННЯ ──
+
+   За замовчуванням прихований, і це не примха. Дерево кампаній
+   відкривають на зустрічах, у демонстрації екрана і на скриншотах у
+   чат — а домен це рівно те, чого показувати стороннім не варто:
+   зібравши їх, людина ззовні бачить усю сітку. Тому домен лежить під
+   оком, і відкривається той рядок, який справді потрібен.
+
+   Ховаємо не стилем, а текстом: приховане через CSS лишається в
+   розмітці — на скриншоті його немає, зате в коді сторінки є. */
+let cdEyed = new Set();
+
+const CD_DOTS = '\u2022\u2022\u2022\u2022\u2022';
+const CD_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+  + '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const CD_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+  + '<path d="M17.9 17.9A10.7 10.7 0 0 1 12 20c-7 0-11-8-11-8a19.8 19.8 0 0 1 5.1-5.9m3.6-1.7A10.7'
+  + ' 10.7 0 0 1 12 4c7 0 11 8 11 8a19.8 19.8 0 0 1-2.2 3.2m-6.7-1.1a3 3 0 1 1-4.2-4.2"/>'
+  + '<line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+/* Домени беремо з даних у момент кліку, а НЕ кладемо в розмітку
+   заздалегідь. Це не дрібниця: і data-атрибут, і title у підказці —
+   та сама витока, просто на крок далі. Прихований напис, який видно в
+   коді сторінки, нікого не захищає. */
+function cdHostsFor(key) {
+  const i = key.indexOf(':');
+  const kind = key.slice(0, i), id = key.slice(i + 1);
+  const field = kind === 'ad' ? 'ad_id' : kind === 'campaign' ? 'campaign_id' : 'adset_id';
+  const out = new Set();
+  cdShown().forEach(r => {
+    if (String(r[field] || '') !== id) return;
+    const h = String(r.link_domain || '').trim();
+    if (h) out.add(h);
+  });
+  return [...out];
+}
+
+function cdDomText(hosts) {
+  /* Під кампанією цілком законно стоять оголошення на різні домени.
+     Показати перший із них як «домен кампанії» — саме та напівправда,
+     через яку потім шукають не там. */
+  return hosts.length === 1 ? hosts[0] : hosts.length + ' domains';
+}
+
+window.cdEye = function (key, el) {
+  if (cdEyed.has(key)) cdEyed.delete(key); else cdEyed.add(key);
+  const on = cdEyed.has(key);
+  /* Перемальовуємо ОДИН рядок, а не все дерево: cdPaint згорнув би
+     прокрутку й зняв фокус, а змінився рівно один напис. */
+  const cell = el.closest('.cd-name');
+  const box = cell && cell.querySelector('.cd-dom');
+  if (box) {
+    const hosts = cdHostsFor(key);
+    box.className = 'cd-dom' + (on ? ' is-on' : '');
+    box.textContent = on ? cdDomText(hosts) : CD_DOTS;
+    box.title = on && hosts.length > 1 ? hosts.join(', ') : '';
+  }
+  el.innerHTML = on ? CD_EYE_OFF : CD_EYE;
+  el.classList.toggle('is-on', on);
+  el.title = on ? 'Hide the domain' : 'Show the domain this runs on';
+};
+
+function cdDom(n, key) {
+  if (!n.hosts.size) return '';
+  const on = cdEyed.has(key);
+  const k = cdEsc(key).replace(/'/g, '&#39;');
+  /* Підказка НЕ називає домени, поки око закрите: інакше досить
+     навести мишу — і ховати не було чого. */
+  const tip = on ? 'Hide the domain' : 'Show the domain this runs on';
+  const body = on ? cdEsc(cdDomText([...n.hosts])) : CD_DOTS;
+  return `<button type="button" class="cd-eye${on ? ' is-on' : ''}"
+      onclick="event.stopPropagation();cdEye('${k}', this)"
+      title="${tip}" aria-label="Show the domain">${on ? CD_EYE_OFF : CD_EYE}</button>`
+    + `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`;
+}
+
 function cdRow(n, depth, band) {
   const key = n.kind + ':' + n.id;
   const kids = n.kids.length > 0;
@@ -22258,7 +22371,7 @@ function cdRow(n, depth, band) {
   return `<tr class="cd-r cd-d${depth}${band ? ' is-band' : ''}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
     <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
         title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
-        >${mark}${twist}${label}${count}</td>
+        >${mark}${twist}${label}${cdDom(n, key)}${count}</td>
     <td>${cdChips(n)}</td>
     <td class="ta-r cd-num">${cdBudgetText(n.budget)}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
