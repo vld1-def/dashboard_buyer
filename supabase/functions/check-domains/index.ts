@@ -321,7 +321,103 @@ const TG_WAS: Record<string, string> = {
   down: 'не відповідав', unknown: 'не перевірявся'
 };
 
-function tgText(worse: Change[], checked: number): string {
+/* ── ЩО КРУТИТЬСЯ НА ЗЛАМАНОМУ ДОМЕНІ ──
+
+   Сама по собі звістка «домен помер» коштує небагато: далі треба
+   згадати, які кампанії на ньому, залізти в кожен кабінет і знайти їх
+   руками. Саме ці хвилини й коштують грошей, бо відкрутка в цей час
+   іде в нікуди.
+
+   Відповідь уже лежить у базі: fb-sync пише поруч із кожним
+   оголошенням хост, на який воно веде. Лишилось поставити питання з
+   іншого боку — не «куди веде це оголошення», а «що живе на цьому
+   домені».
+
+   ACTIVE і тільки ACTIVE. Вимкнене на мертвому домені нікому не
+   шкодить, а в списку воно б тільки заважало побачити те, що справді
+   витрачає.
+
+   Нічого НЕ вимикаємо. Перевірка домену помиляється — не часто, але
+   помиляється: 403 від Cloudflare нашому User-Agent виглядає так само,
+   як зламаний домен, а клоакінг-домени навмисно віддають чужим 4xx.
+   Вимкнути живі кампанії вночі через таку помилку дорожче, ніж
+   недоотримати з мертвого домену до ранку. Тому тут — тільки звіт. */
+
+type Live = { ad: string; campaign: string; account: string; spend: number };
+
+const LIVE_MAX = 4;     // скільки кампаній перелічуємо під доменом
+
+async function liveOn(base: string, hdr: Record<string, string>,
+                      domains: string[]): Promise<Map<string, Live[]>> {
+  const out = new Map<string, Live[]>();
+  const want = [...new Set(domains.filter(Boolean))];
+  if (!want.length) return out;
+  /* in.() з лапками: у домені бувають дефіси й крапки, а PostgREST без
+     лапок вважав би кому роздільником і на цьому спіткнувся. */
+  const list = want.map(d => '"' + d.replace(/"/g, '') + '"').join(',');
+  try {
+    const res = await fetch(base + '/rest/v1/fb_ad_today'
+      + '?select=ad_id,name,campaign_name,account_id,spend,link_domain'
+      + '&effective_status=eq.ACTIVE'
+      + '&link_domain=in.(' + encodeURIComponent(list) + ')', { headers: hdr });
+    /* Колонки ще немає — DOMAIN_GUARD.sql не виконаний. Це не привід
+       завалити перевірку доменів: вона працювала до цього поля й має
+       працювати без нього. */
+    if (!res.ok) return out;
+    const rows: Record<string, unknown>[] = await res.json();
+    rows.forEach((r: Record<string, unknown>) => {
+      const d = String(r?.link_domain || '');
+      if (!d) return;
+      const list_ = out.get(d) || [];
+      list_.push({
+        ad: String(r?.ad_id || ''),
+        campaign: String(r?.campaign_name || ''),
+        account: String(r?.account_id || ''),
+        spend: Number(r?.spend) || 0
+      });
+      out.set(d, list_);
+    });
+  } catch (_e) { /* немає таблиці чи звʼязку — домени це не спиняє */ }
+  return out;
+}
+
+/* Оголошень під одним доменом бувають десятки, і перелічувати їх
+   поіменно означало б втопити повідомлення. Людині потрібен кабінет і
+   кампанія — далі вона знайде сама. */
+/* «3 оголошень крутиться» — не українська. Правило просте й давно
+   відоме: 1 — оголошення крутиться, 2-4 — оголошення крутяться, решта
+   — оголошень крутиться, з окремим випадком на 11-14. Рядок читають
+   спросоння, і кривий відмінок у ньому спотикає рівно тоді, коли
+   треба швидко зрозуміти. */
+function ads(n: number): string {
+  const t = n % 100, o = n % 10;
+  if (t >= 11 && t <= 14) return n + ' оголошень крутиться';
+  if (o === 1) return n + ' оголошення крутиться';
+  if (o >= 2 && o <= 4) return n + ' оголошення крутяться';
+  return n + ' оголошень крутиться';
+}
+
+function liveLines(list: Live[] | undefined): string {
+  if (!list || !list.length) return '';
+  const byCamp = new Map<string, { ads: number; spend: number; acc: string }>();
+  list.forEach(l => {
+    const key = l.account + '|' + (l.campaign || l.ad);
+    const cur = byCamp.get(key);
+    if (cur) { cur.ads++; cur.spend += l.spend; }
+    else byCamp.set(key, { ads: 1, spend: l.spend, acc: l.account });
+  });
+  const total = list.reduce((n, l) => n + l.spend, 0);
+  const camps = [...byCamp.entries()].sort((a, b) => b[1].spend - a[1].spend);
+  const head = `\n     \u{25B8} ${ads(list.length)} — $${total.toFixed(2)} сьогодні`;
+  const rows = camps.slice(0, LIVE_MAX).map(([key, v]) =>
+    `\n       \u2022 ${v.acc || '?'} · «${key.split('|').slice(1).join('|')}»`
+    + ` — ${v.ads} ого., $${v.spend.toFixed(2)}`);
+  const rest = camps.length - rows.length;
+  return head + rows.join('') + (rest > 0 ? `\n       …і ще ${rest}` : '');
+}
+
+function tgText(worse: Change[], checked: number,
+                live?: Map<string, Live[]>, head_?: string): string {
   const teams = new Set(worse.map(w => w.team));
   const all = worse.slice(0, TG_MAX).map(w => {
     const what = TG_WHAT[w.to] || w.to;
@@ -329,12 +425,15 @@ function tgText(worse: Change[], checked: number): string {
     // Команду називаємо, лише коли їх кілька: в одній команді це шум.
     const who = teams.size > 1 ? ` · ${w.team}` : '';
     return `${TG_MARK[w.to] || '\u{26AA}'} ${w.domain} — ${what}${why}`
-         + `\n     було: ${TG_WAS[w.from] || w.from}${who}`;
+         + `\n     було: ${TG_WAS[w.from] || w.from}${who}`
+         /* Найцінніший рядок у всьому повідомленні: не «домен помер», а
+            «домен помер, і ось що зараз на ньому витрачає». */
+         + liveLines(live?.get(w.domain));
   });
   /* checked === worse.length означає особистий лист: там у знаменнику
      стояло б те саме число, і «2 з 2» читалось би як «перевірено лише
      два домени». */
-  const head = `\u{1F319} Домени · нічна перевірка\n`
+  const head = (head_ || `\u{1F319} Домени · нічна перевірка\n`)
              + (checked > worse.length
                  ? `Погіршилось: ${worse.length} з ${checked}\n\n`
                  : `Погіршилось: ${worse.length}\n\n`);
@@ -385,8 +484,12 @@ async function tgSend(base: string, hdr: Record<string, string>,
   const shared = Deno.env.get('TG_CHAT_ID') || '';
   const out: string[] = [];
 
+  /* Питаємо ОДИН раз на всі зламані домени, а не в кожному листі:
+     рядки однакові, а запитів було б стільки, скільки людей. */
+  const live = await liveOn(base, hdr, worse.map(w => w.domain));
+
   // Спільний чат бачить усе — на те він і спільний.
-  if (shared) out.push('shared:' + await tgPost(token, shared, tgText(worse, checked)));
+  if (shared) out.push('shared:' + await tgPost(token, shared, tgText(worse, checked, live)));
 
   const byOwner = new Map<string, Change[]>();
   worse.forEach(w => {
@@ -412,7 +515,7 @@ async function tgSend(base: string, hdr: Record<string, string>,
       // checked ділити по людях чесно не вийде — вибірка йде по всіх
       // одразу. Тому кажемо, скільки саме в нього, а не частку від
       // чужого числа.
-      const r = await tgPost(token, chat, tgText(list, list.length));
+      const r = await tgPost(token, chat, tgText(list, list.length, live));
       if (r === 'sent') sent++; else fails.push(r);
     }
     out.push(`buyers: ${sent} sent`
@@ -531,6 +634,82 @@ async function runBatch(base: string, hdr: Record<string, string>,
            flags, spent, results, changed, byTeam };
 }
 
+/* ── ПРОБНЕ СПОВІЩЕННЯ ──
+
+   Щоб побачити, як виглядає тривога, не треба чекати, поки домен
+   справді помре. Але й брехати не можна: повідомлення, яке нічим не
+   відрізняється від справжнього, одного дня переплутають — і саме те,
+   справжнє, не сприймуть всерйоз. Тому заголовок інший і сказано
+   прямо, що це проба.
+
+   Дані беремо СПРАВЖНІ, наскільки вони є: домен — перший проблемний
+   зі списку людини, а як такого немає, то просто перший; живі
+   оголошення — з бази, за тим самим запитом, що й у бойовому шляху.
+   Порожньо — значить порожньо, і в повідомленні так і буде написано.
+   Намальовані цифри показали б те, чого перевірка не вміє.
+
+   Летить ЛИШЕ тому, хто натиснув: hdr тут — токен людини, і RLS віддає
+   з tg_links рівно її рядок. Пробна тривога, яка будить усю команду, —
+   найкращий спосіб добитись, щоб сповіщення вимкнули. */
+async function testAlert(base: string, hdr: Record<string, string>,
+                         team: string): Promise<Record<string, unknown>> {
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!token) return { error: 'TG_BOT_TOKEN is not set in the function secrets' };
+
+  let chat = '';
+  try {
+    const res = await fetch(base + '/rest/v1/tg_links?select=chat_id&chat_id=not.is.null&limit=1',
+      { headers: hdr });
+    if (res.ok) chat = String((await res.json())?.[0]?.chat_id || '');
+  } catch (_e) { /* нижче скажемо, що чату немає */ }
+  if (!chat) return { error: 'your Telegram is not linked — open the bot and press Start first' };
+
+  /* Беремо реальний домен, щоб у повідомленні стояло щось упізнаване.
+     Спершу той, що вже позначений проблемним: на ньому найімовірніше і
+     є що показати. */
+  const was = 'ok';
+  let domain = '', to = 'down', flagged: string | null = null;
+  try {
+    const qs = (extra: string) => '?select=domain,status,flagged_by&limit=1'
+      + (team ? '&team_name=eq.' + encodeURIComponent(team) : '') + extra;
+    for (const extra of ['&status=in.(danger,down,notfound)', '']) {
+      const res = await fetch(base + '/rest/v1/domains' + qs(extra), { headers: hdr });
+      if (!res.ok) continue;
+      const r = (await res.json())?.[0];
+      if (!r?.domain) continue;
+      domain = String(r.domain);
+      if (extra) { to = String(r.status || 'down'); flagged = r.flagged_by || null; }
+      break;
+    }
+  } catch (_e) { /* лишиться зразок нижче */ }
+  const sample = !domain;
+  if (sample) domain = 'example-domain.top';
+
+  const worse: Change[] = [{ domain, team: team || '—', owner: null,
+                             from: was, to, flagged_by: flagged }];
+  const live = await liveOn(base, hdr, [domain]);
+  const found = (live.get(domain) || []).length;
+
+  /* Хвіст пояснює рівно те, що людина зараз бачить, — і окремо те,
+     чого вона НЕ побачить: автопаузи тут немає і не буде без окремого
+     рішення. Мовчання про це — найгірший варіант: із тривоги, яка
+     виглядає рішучою, легко зробити висновок, що воно само вимкне. */
+  const tail = '\n\n' + (found
+      ? 'Так виглядатиме справжня тривога.'
+      : sample
+        ? 'Домен вигаданий: у списку ще немає жодного.'
+        : 'Під доменом порожньо — активних оголошень на ньому зараз немає. '
+          + 'У справжній тривозі тут був би список кабінетів і кампаній.')
+    + '\nНічого не вимкнено: сповіщення тільки повідомляє.';
+
+  const text = tgText(worse, 1, live,
+    '\u{1F9EA} Пробне сповіщення · не тривога\n') + tail;
+  const r = await tgPost(token, chat, text);
+  return r === 'sent'
+    ? { test: 'sent', domain, live: found, sample }
+    : { error: r.replace(/^failed: /, '') };
+}
+
 async function handle(req: Request): Promise<Response> {
 
   const base = Deno.env.get('SUPABASE_URL')!;
@@ -583,9 +762,13 @@ async function handle(req: Request): Promise<Response> {
   // конкретний домен примусово можна, передавши force або список
   // domains — тоді це свідомий вибір, а не фоновий прогін.
   let force = false;
+  // Проба сповіщення. Нічого не перевіряє й нічого не пише — тільки
+  // шле повідомлення тому, хто натиснув.
+  let test = false;
   try {
     const body = await req.json();
     team = String(body?.team || '');
+    test = body?.test === true;
     // Курсор. Без нього кожен наступний виклик повертав би ті самі перші
     // BATCH рядків, і дашборд ганяв би одну порцію по колу, так і не
     // дійшовши до решти списку.
@@ -632,6 +815,14 @@ async function handle(req: Request): Promise<Response> {
       cron: true, checked, more, next: after, flags, spent,
       changed: changed.length, telegram, worse
     }), { headers: { ...CORS, 'content-type': 'application/json' } });
+  }
+
+  /* Проба йде перед перевіркою: вона нічого не перевіряє і квоти не
+     витрачає — лише показує, як виглядає повідомлення. */
+  if (test) {
+    const r = await testAlert(base, hdr, team);
+    return new Response(JSON.stringify(r),
+      { status: r.error ? 400 : 200, headers: { ...CORS, 'content-type': 'application/json' } });
   }
 
   const b = await runBatch(base, hdr, { team, only, after, force });

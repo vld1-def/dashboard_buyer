@@ -49,10 +49,14 @@ const CORS = {
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
-// Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 5 запитів
-// на кабінет виходить 10 кабінетів за виклик.
-const PER_ACC = 6;
-const BATCH_MAX = 50;   // 10 кабінетів за виклик
+// Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 7 запитів
+// на кабінет виходить 7 кабінетів за виклик.
+//
+// Число мусить збігатися з довжиною urlsFor(): пакет ріжеться на
+// кабінети саме по ньому, і розбіжність тихо роз'їхала б відповіді —
+// кабінет читав би чужі цифри, не подавши знаку.
+const PER_ACC = 7;
+const BATCH_MAX = 50;   // 7 кабінетів за виклик
 
 /* Скільки днів витрат забираємо щоразу. Вікно ковзне, записуємо
    впритул (upsert по дню), тож історія в базі накопичується глибше за
@@ -130,7 +134,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-26.1';
+const FN_VERSION = '2026-09-29.1';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -457,7 +461,61 @@ function urlsFor(actId: string, tz: string): string[] {
         + 'optimization_goal,promoted_object{custom_event_type}},'
         + 'campaign{name,status,effective_status,daily_budget,lifetime_budget},'
         + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
+    /* КУДИ ВЕДЕ ОГОЛОШЕННЯ — щоб на питання «домен зламався, що на ньому
+       крутиться» відповідала база, а не людина, яка згадує з голови.
+
+       ОКРЕМИМ підзапитом, а не полем у знімку вище, і це та сама причина,
+       що й з insights: креатив — глибоке вкладене поле, і на довгому
+       списку Facebook час від часу відмовляє по ньому цілком. Дописавши
+       його до знімка, ми б разом із посиланням щоразу втрачали й цифри,
+       на яких стоять правила. Тут відмова коштує рівно одного: домен у
+       цьому прогоні лишиться невідомим.
+
+       Ціна — один елемент у тому самому пакеті. Окремого походу в
+       Facebook це не коштує: пакет іде одним запитом. */
+    act + '/ads?effective_status=' + encodeURIComponent(JSON.stringify(SNAP_STATUS))
+      + '&limit=' + LIST_LIMIT
+      + '&fields=' + encodeURIComponent('creative{effective_object_story_spec'
+        + '{link_data{link,child_attachments{link}},video_data{call_to_action{value{link}}}},'
+        + 'asset_feed_spec{link_urls{website_url}},template_url}'),
   ];
+}
+
+/* Хост із того, що дав Facebook. Схеми може не бути зовсім, тож
+   дописуємо https:// — інакше URL() відмовиться розбирати. Регістр
+   зводимо, www. знімаємо: у списку доменів його не пишуть, і
+   стикування за точною рівністю мовчки провалювалось би.
+
+   Що не розібралось — порожній рядок, а не здогадка. Хибний домен тут
+   гірший за відсутній: на ньому потім побудують «що зламалось». */
+function hostOf(v: unknown): string {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  try {
+    const u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+    return u.hostname.toLowerCase().replace(/^www\./, '');
+  } catch (_e) { return ''; }
+}
+
+/* Посилання лежить у різних місцях залежно від того, яке це оголошення:
+   звичайне зі посиланням, карусель, відео чи динамічний креатив. Перебір
+   іде від найточнішого до найзагальнішого, і перший, що дав хост,
+   виграє — решту навіть не дивимось. */
+function adHost(c: Json): string {
+  const spec: Json = c?.effective_object_story_spec || {};
+  const ld: Json = spec.link_data || {};
+  const kids: Json[] = Array.isArray(ld.child_attachments) ? ld.child_attachments : [];
+  const feed: Json[] = Array.isArray(c?.asset_feed_spec?.link_urls)
+    ? c.asset_feed_spec.link_urls : [];
+  const tries: unknown[] = [
+    ld.link,
+    kids.map((a: Json) => a?.link).find(Boolean),
+    spec.video_data?.call_to_action?.value?.link,
+    feed[0]?.website_url,
+    c?.template_url
+  ];
+  for (const v of tries) { const h = hostOf(v); if (h) return h; }
+  return '';
 }
 
 const total = (o: Json | null | undefined): number | null =>
@@ -487,7 +545,7 @@ type AdSnap = { ad_id: string; name: string; status: string; own: string;
                 campaign_daily: number | null; campaign_life: number | null;
                 goal: string; event: string;
                 spend: number; imps: number; clicks: number; link_clicks: number;
-                actions: Json[] };
+                actions: Json[]; host: string };
 
 /* Скільки оголошень і скільки різних постів кабінета ведуть на цю
    Сторінку. Пости рахуємо окремо від оголошень навмисно: один пост
@@ -647,6 +705,17 @@ function readParts(parts: (Json | null)[]):
      побачать за часом, що він застарів, і не діятимуть. Порожній масив
      — інша річ: кабінет справді нічого не крутить, і старі рядки треба
      прибрати, бо інакше правило вимикало б уже вимкнене. */
+  /* Куди веде кожне оголошення. Окрема відповідь, і вона має право не
+     приїхати: тоді хост лишається порожнім, а знімок — цілим. */
+  const linkPart = parts[6];
+  const hosts = new Map<string, string>();
+  if (linkPart && linkPart.code === 200) {
+    (Array.isArray(linkPart.body?.data) ? linkPart.body.data : []).forEach((r: Json) => {
+      const h = adHost(r?.creative || {});
+      if (r?.id && h) hosts.set(String(r.id), h);
+    });
+  }
+
   const livePart = parts[5];
   let live: AdSnap[] | null = null;
   if (livePart && livePart.code === 200) {
@@ -672,7 +741,8 @@ function readParts(parts: (Json | null)[]):
         imps: Number(row.impressions) || 0,
         clicks: Number(row.clicks) || 0,
         link_clicks: Number(row.inline_link_clicks) || 0,
-        actions: Array.isArray(row.actions) ? row.actions : []
+        actions: Array.isArray(row.actions) ? row.actions : [],
+        host: hosts.get(String(r.id || '')) || ''
       };
     }).filter((a: AdSnap) => a.ad_id);
   }
@@ -939,7 +1009,11 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
           campaign_lifetime_budget: a.campaign_life,
           optimization_goal: a.goal || null, custom_event_type: a.event || null,
           spend: a.spend, impressions: a.imps, clicks: a.clicks,
-          link_clicks: a.link_clicks, actions: a.actions, seen_at: now
+          link_clicks: a.link_clicks, actions: a.actions,
+          /* Порожнє пишемо як null, а не як ''. Порожній рядок стикнувся
+             б сам із собою, і домен «» зібрав би під себе всі оголошення,
+             чиє посилання ми не розібрали. */
+          link_domain: a.host || null, seen_at: now
         }));
       }
       Object.assign(x.row, patch);

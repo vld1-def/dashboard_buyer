@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 18:46">
+  <meta name="build" content="build 29.09 19:58">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4755,7 +4755,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 18:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 19:58</div>
     </div>
   </aside>
 
@@ -5698,6 +5698,10 @@ input.ui-in[type="range"] { padding: 0; }
         title="Real HTTP codes, Google blacklists and filtering DNS — from the server. Checks the whole list and skips domains already flagged; filter or search first to check exactly those rows, flagged ones included. No server — falls back to a browser check that can only tell whether a domain answers."
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-emerald-300 hover:text-white hover:bg-emerald-600"
         style="border:1px solid rgba(16,185,129,.35)">Check</button>
+      <button onclick="dmTestAlert()" id="dm-test-btn"
+        title="Sends one Telegram message to you only, in the exact shape a real alert takes: the domain, what happened to it, and which cabinets and campaigns are live on it right now. Nothing is checked and nothing is paused."
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-muted-dynamic hover:text-white"
+        style="border:1px solid var(--border)">Test alert</button>
       <button onclick="dmCheckHelp()"
         title="What the check needs, and what to do when the server does not answer"
         class="px-2 py-2 rounded-xl text-[10px] font-black transition text-muted-dynamic hover:text-white"
@@ -16622,7 +16626,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-26.1';
+const FB_FN_WANT = '2026-09-29.1';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -20113,6 +20117,13 @@ function dmPick(idEnc) {
   const id = decodeURIComponent(idEnc);
   dmSel = (dmSel === id) ? null : id;
   dmRender();
+  /* Питаємо базу лише коли картку відкрили: у списку буває дві сотні
+     доменів, і запит під кожен коштував би дорожче за відповідь на
+     питання, якого ніхто не поставив. */
+  if (dmSel) {
+    const row = dmRows.find(r => String(r.id) === String(dmSel));
+    if (row) dmLiveLoad(row.domain);
+  }
 }
 function dmSortBy(k) {
   if (dmSort.key === k) dmSort.dir = -dmSort.dir;
@@ -20283,6 +20294,8 @@ function dmDetail(r) {
             <p class="text-[12px] font-black text-dynamic font-mono">${dmEsc(v)}</p></div>`).join('')}
     </div>
 
+    ${dmLiveBlock(r.domain)}
+
     ${r.campaign ? `<p class="text-[10px] font-mono mb-3 break-all" style="color:var(--text-muted)"
       title="The line this domain was pasted under">${dmEsc(r.campaign)}</p>` : ''}
 
@@ -20367,9 +20380,103 @@ async function dmDelete(idEnc) {
   dmRender();
 }
 
+/* ── ЩО КРУТИТЬСЯ НА ЦЬОМУ ДОМЕНІ ──
+
+   Питання ставиться з іншого боку, ніж усе решта на цій сторінці: не
+   «куди веде оголошення», а «що живе на домені». Відповідь пише
+   fb-sync — поруч із кожним оголошенням лежить хост, на який воно
+   веде.
+
+   Тягнемо на вимогу, коли картку розгорнули, а не разом зі списком:
+   у списку буває дві сотні доменів, і запит під кожен з них коштував
+   би дорожче, ніж відповідь на питання, якого ніхто не поставив. */
+const dmLive = {};          // домен → масив рядків | 'loading' | 'none'
+
+async function dmLiveLoad(domain) {
+  if (dmLive[domain] !== undefined) return;
+  dmLive[domain] = 'loading';
+  try {
+    const { data, error } = await sb.from('fb_ad_today')
+      .select('ad_id,name,campaign_name,account_id,spend')
+      .eq('link_domain', domain).eq('effective_status', 'ACTIVE')
+      .order('spend', { ascending: false }).limit(200);
+    if (error) throw new Error(error.message);
+    dmLive[domain] = (data || []).length ? data : 'none';
+  } catch (e) {
+    /* Колонки ще немає — DOMAIN_GUARD.sql не виконаний. Це найчастіша
+       причина, і в неї є рецепт; ховати її за «щось пішло не так»
+       означало б відправити людину шукати ваду там, де її немає. */
+    dmLive[domain] = /link_domain|does not exist|42703|fb_ad_today|42P01/i.test(e.message)
+      ? 'nocol' : 'none';
+  }
+  dmRender();
+}
+
+/* Оголошення згортаємо в кампанії: під одним доменом їх бувають
+   десятки, а шукати людина піде все одно за кабінетом і кампанією. */
+function dmLiveBlock(domain) {
+  const v = dmLive[domain];
+  const wrap = (inner) => `<div class="dm-live rounded-lg px-2 py-2 mb-3" style="background:var(--surface-2)">
+      <p class="text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Live on this domain</p>
+      ${inner}</div>`;
+  const note = (t) => wrap(`<p class="text-[10px] font-bold" style="color:var(--text-muted)">${t}</p>`);
+  if (v === undefined || v === 'loading') return note('Looking…');
+  if (v === 'nocol') return note('Run DOMAIN_GUARD.sql, then sync once — after that this shows what is live here.');
+  if (v === 'none') return note('Nothing active points here right now.');
+
+  const by = new Map();
+  v.forEach(r => {
+    const key = (r.account_id || '?') + '|' + (r.campaign_name || r.ad_id);
+    const cur = by.get(key);
+    if (cur) { cur.ads++; cur.spend += Number(r.spend) || 0; }
+    else by.set(key, { ads: 1, spend: Number(r.spend) || 0 });
+  });
+  const total = v.reduce((n, r) => n + (Number(r.spend) || 0), 0);
+  const rows = [...by.entries()].sort((a, b) => b[1].spend - a[1].spend).map(([key, x]) => {
+    const [acc, ...rest] = key.split('|');
+    return `<div class="flex items-center justify-between gap-2 text-[10px] font-bold py-0.5">
+        <span class="truncate text-dynamic" title="${dmEsc(rest.join('|'))}">${dmEsc(rest.join('|'))}</span>
+        <span class="font-mono flex-shrink-0" style="color:var(--text-muted)">${dmEsc(acc)} · ${x.ads} · $${x.spend.toFixed(2)}</span>
+      </div>`;
+  });
+  return wrap(`<p class="text-[10px] font-black text-dynamic mb-1">${v.length} ad(s) · $${total.toFixed(2)} today</p>`
+    + rows.join(''));
+}
+
+/* ── ПРОБНЕ СПОВІЩЕННЯ ──
+
+   Побачити, як виглядає тривога, треба ДО того, як домен справді
+   помре — інакше перший раз, коли її читають, збігається з першим
+   разом, коли вона потрібна. Лист іде лише тому, хто натиснув. */
+async function dmTestAlert() {
+  const btn = document.getElementById('dm-test-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const token = sess?.session?.access_token;
+    if (!token) throw new Error('no session');
+    const res = await fetch(SUPABASE_URL + '/functions/v1/check-domains', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ team: currentTeam, test: true })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.error) throw new Error(j.error || 'HTTP ' + res.status);
+    toast(j.live
+      ? 'Sent to your Telegram — ' + j.live + ' live ad(s) on ' + j.domain
+      : 'Sent to your Telegram — nothing active on ' + j.domain + ' right now', 'ok');
+  } catch (e) {
+    toast('Test failed: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Test alert'; }
+  }
+}
+
 window.dmInit = dmInit;
 window.dmCheck = dmCheck;
 window.dmCheckHelp = dmCheckHelp;
+window.dmTestAlert = dmTestAlert;
 </script>
 
 <script>
