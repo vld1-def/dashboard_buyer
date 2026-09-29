@@ -105,7 +105,15 @@ alter table public.fb_ad_today
   add column if not exists custom_event_type text,
   add column if not exists effective_status  text,
   add column if not exists campaign_status   text,
-  add column if not exists adset_status      text;
+  add column if not exists adset_status      text,
+  -- Бюджет у Facebook стоїть АБО на кампанії (CBO), АБО на кожному
+  -- адсеті (ABO) — ніколи на обох. Тримаємо обидва рівні: інакше
+  -- половина кабінетів бачила б прочерк і не розуміла чому.
+  -- Числа в дрібних одиницях, як їх віддає Graph: 5000 = 50.00.
+  add column if not exists campaign_daily_budget    numeric,
+  add column if not exists campaign_lifetime_budget numeric,
+  add column if not exists adset_daily_budget       numeric,
+  add column if not exists adset_lifetime_budget    numeric;
 
 alter table public.fb_ad_today enable row level security;
 

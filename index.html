@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 07:17">
+  <meta name="build" content="build 29.09 07:28">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3409,6 +3409,9 @@ body[data-route="domains"] #dm-detail {
 /* Нескінченність — це «гроші пішли, результату немає». Помітно, бо саме
    ці рядки й вимикають правила. */
 .cd-inf { color: #F87171; font-weight: 800; }
+/* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
+   підпис лише уточнює, за який період воно. */
+.cd-bq { color: var(--text-muted); font-weight: 700; margin-left: 2px; }
 /* ПЕРЕМИКАЧ, як в Ads Manager. Раніше тут стояла кнопка «Stop», яка
    вміла одне й нічого не показувала: після натискання рядок виглядав
    так само, і незрозуміло було навіть, чи спрацювало.
@@ -4474,7 +4477,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 07:17</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 07:28</div>
     </div>
   </aside>
 
@@ -18005,8 +18008,20 @@ function cabWhy(c) {
 function cabSetGroup(v) { cabGroup = v; cabRender(); }
 function cabSetFilter(k) { cabFilter = (cabFilter === k) ? '' : k; cabSel = null; cabRender(); }
 
+/* ПРАВЕ МІСЦЕ ОДНЕ. Панель правил, відкриваючись, закриває картку
+   кабінета — а от навпаки цього не робилось, і в зворотному порядку
+   (спершу правила, потім кабінет) обидві лишались відкритими. Тоді
+   таблицю тисне з двох боків одразу: з тисячі пікселів лишалось
+   шістсот, стовпчики кампаній злипались, і виглядало це так, ніби
+   правила налізли на них зверху.
+
+   Симетрія: хто відкрився останнім, той і займає праве місце. */
 function cabPick(id) {
   cabSel = (cabSel === id) ? null : id;
+  if (cabSel && typeof rlPanel === 'function') {
+    const rl = document.getElementById('rules-panel');
+    if (rl && !rl.classList.contains('hidden')) rlPanel(false);
+  }
   cabRender();
 }
 
@@ -21166,7 +21181,9 @@ async function cdLoad(account) {
   const CD_CORE = 'ad_id,name,adset_id,adset_name,campaign_id,campaign_name,'
     + 'effective_status,optimization_goal,custom_event_type,'
     + 'spend,impressions,clicks,link_clicks,actions,seen_at';
-  const CD_NEW = 'campaign_status,adset_status';
+  const CD_NEW = 'campaign_status,adset_status,'
+    + 'campaign_daily_budget,campaign_lifetime_budget,'
+    + 'adset_daily_budget,adset_lifetime_budget';
   const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
   try {
@@ -21268,7 +21285,7 @@ function cdNode(id, name, kind) {
      відповідає на «чому воно не витрачає». Складене з дітей на це
      питання не відповідає: у вимкненої кампанії оголошення можуть бути
      хоч усі ACTIVE, просто їх ніхто не показує. */
-  return { id: String(id || ''), name: name || '', kind, own: '',
+  return { id: String(id || ''), name: name || '', kind, own: '', budget: null,
            spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
            result: 0, hasResult: false, goals: new Set(),
            state: new Map(), ads: 0, kids: [] };
@@ -21292,9 +21309,11 @@ function cdTree() {
     // оголошень однієї кампанії він той самий, а порожній буває тоді,
     // коли база ще без цих колонок.
     if (!c.own) c.own = String(r.campaign_status || '').toUpperCase();
+    if (!c.budget) c.budget = cdBudget(r.campaign_daily_budget, r.campaign_lifetime_budget);
     let s = c.by.get(sid);
     if (!s) { s = cdNode(sid, r.adset_name, 'ad set'); c.by.set(sid, s); c.kids.push(s); }
     if (!s.own) s.own = String(r.adset_status || '').toUpperCase();
+    if (!s.budget) s.budget = cdBudget(r.adset_daily_budget, r.adset_lifetime_budget);
     const a = cdNode(r.ad_id, r.name, 'ad');
     a.own = m.state;
     cdAdd(a, m); cdAdd(s, m); cdAdd(c, m);
@@ -21397,6 +21416,7 @@ function cdPaint() {
       <thead><tr>
         <th>${cdFlat ? 'Ad' : 'Campaign / ad set / ad'}</th>
         <th title="Switched on is not the same as running">Status</th>
+        <th class="ta-r" title="Campaign budget (CBO) or ad set budget (ABO) — Facebook keeps it on one level, not both">Budget</th>
         <th class="ta-r">Spend</th>
         <th class="ta-r" title="What the ad set optimizes for">Result</th>
         <th class="ta-r">Cost per result</th>
@@ -21417,6 +21437,27 @@ function cdPaint() {
 /* Ціна — нескінченність, коли витрати є, а результату немає. Прочерк
    тут означав би «нуль», а це різні речі: саме ці рядки й вимикають
    правила. */
+/* БЮДЖЕТ. У Facebook він стоїть АБО на кампанії (CBO), АБО на кожному
+   адсеті (ABO) — ніколи на обох. Тому порожньо тут означає не «нуль», а
+   «бюджет на іншому рівні», і малювати замість нього нуль не можна.
+
+   Числа приїжджають у дрібних одиницях: 5000 — це 50.00. Так само, як
+   баланс кабінета, який колись через це показував $0 замість $0.43. */
+function cdBudget(daily, life) {
+  const d = daily === null || daily === undefined || daily === '' ? null : Number(daily);
+  const l = life === null || life === undefined || life === '' ? null : Number(life);
+  if (Number.isFinite(d) && d > 0) return { v: d / 100, kind: 'daily' };
+  if (Number.isFinite(l) && l > 0) return { v: l / 100, kind: 'lifetime' };
+  return null;
+}
+
+/* Денний бюджет підписуємо, довічний теж: «$50» без слова читалось би
+   як те саме число в обох випадках, а це дві різні величини — одна за
+   добу, друга за весь time. */
+const cdBudgetText = (b) => !b ? cdNone
+  : b.kind === 'daily' ? cdMoney(b.v) + ' <span class="cd-bq">/day</span>'
+  : cdMoney(b.v) + ' <span class="cd-bq">total</span>';
+
 const cdPer = (spend, n) => n > 0 ? cdMoney(spend / n)
   : (spend > 0 ? '<span class="cd-inf" title="Money spent, nothing back yet">∞</span>'
                : '<span class="cd-na">—</span>');
@@ -21514,6 +21555,7 @@ function cdRow(n, depth) {
         title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
         >${twist}${label}${count}</td>
     <td>${cdChips(n)}</td>
+    <td class="ta-r cd-num">${cdBudgetText(n.budget)}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
     <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${result}</td>
     <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${perResult}</td>
