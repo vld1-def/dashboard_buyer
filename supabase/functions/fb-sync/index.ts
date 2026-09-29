@@ -134,7 +134,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-29.2';
+const FN_VERSION = '2026-09-29.3';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -484,8 +484,13 @@ function urlsFor(actId: string, tz: string): string[] {
 
          object_story_spec поруч із effective_ навмисно: у щойно
          створених оголошень effective_ буває порожній. */
-      + '&fields=' + encodeURIComponent(
-        'creative{effective_object_story_spec,object_story_spec,asset_feed_spec,template_url}'),
+      /* id — ЯВНО. Graph повертає його для вузлів edge і без прохання,
+         але вся звʼязка тримається саме на ньому: без id кожен домен
+         нікуди не приписати, і назовні це виглядало б як «доменів
+         немає». Покладатись тут на замовчування — зайвий ризик за нуль
+         економії. */
+      + '&fields=' + encodeURIComponent('id,creative{effective_object_story_spec,'
+        + 'object_story_spec,asset_feed_spec,template_url}'),
   ];
 }
 
@@ -734,9 +739,19 @@ function readParts(parts: (Json | null)[]):
        віддав creative на цьому зрізі. Мовчання тут коштувало б рівно
        того, чого вже коштувало: людина шукає ваду в базі, а вада —
        у полі запиту. */
-    if (list.length && !hosts.size)
-      linkErr = 'Facebook answered for ' + list.length
-        + ' ad(s) but no link was found in the creative';
+    if (list.length && !hosts.size) {
+      /* Кажемо не лише «не знайшли», а Й ЩО ТАМ БУЛО. Без цього
+         наступний крок — знову здогадка: поле креативу могло
+         називатись інакше, приїхати порожнім або не приїхати зовсім,
+         і всі три випадки ззовні однакові. Перелік ключів займає
+         рядок, а економить цілий захід. */
+      const first = list.find((r: Json) => r?.creative) || list[0] || {};
+      const keys = Object.keys(first?.creative || {});
+      const noId = list.filter((r: Json) => !r?.id).length;
+      linkErr = 'answered for ' + list.length + ' ad(s), no link found'
+        + (noId ? '; ' + noId + ' without id' : '')
+        + '; creative had: ' + (keys.length ? keys.join(', ') : 'nothing');
+    }
   } else if (linkPart) {
     linkErr = String(linkPart.body?.error?.message || 'HTTP ' + linkPart.code);
   } else {
