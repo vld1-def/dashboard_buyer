@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 22:20">
+  <meta name="build" content="build 29.09 23:12">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1656,6 +1656,39 @@ body.hub-open:not(.dock-off) #sheets-panel { height: calc(100vh / var(--zoom) - 
   text-align: right; padding: 5px 8px; min-width: 42px;
 }
 .sh-grid th.sh-n { z-index: 3; }
+/* Номер рядка він же кнопка вибору: окрема галочка коштувала б
+   стовпчика, а на телефоні кожен стовпчик на вагу. */
+.sh-grid .sh-n.is-pick { cursor: pointer; user-select: none; }
+.sh-grid .sh-n.is-pick:hover { color: var(--text-main); background: var(--surface-2); }
+.sh-grid tr.is-sel td { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.sh-grid tr.is-sel td.sh-n {
+  background: color-mix(in srgb, var(--accent) 30%, var(--surface));
+  color: var(--text-main);
+}
+.sh-grid tr.is-sel:hover td { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+
+/* Підсумок. Знизу, бо дивляться на нього ПІСЛЯ того, як виділили.
+   Гортається вбік: стовпчиків із числами буває багато, і ховати
+   частину означало б, що сума знайшлась не для всього. */
+.sh-sum {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px; border-top: 1px solid var(--border-2);
+  background: var(--surface-2); overflow-x: auto; white-space: nowrap;
+}
+.sh-sum.hidden { display: none; }
+.sh-sum-n {
+  font-size: 10px; font-weight: 900; color: var(--accent);
+  text-transform: uppercase; letter-spacing: .08em; flex: 0 0 auto;
+}
+.sh-sum-i {
+  font-size: 11px; font-weight: 700; color: var(--text-main); flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.sh-sum-i b { color: var(--text-muted); font-weight: 800; margin-right: 4px; }
+/* Скільки з виділених рядків узагалі мали тут число. Показуємо лише
+   коли їх менше, ніж рядків: мовчазна сума по половині стовпчика
+   виглядала б як сума по всьому. */
+.sh-sum-i i { color: var(--text-muted); font-style: normal; font-size: 10px; }
 
 /* ─────────── Компактніші секції ───────────
    Стара розмітка несе і власні mb-6/mb-8, і space-y-4 контейнера —
@@ -4636,6 +4669,51 @@ input.ui-in[type="range"] { padding: 0; }
 #fl-view.hidden { display: none; }
 
 #files-modal.hidden { display: none; }
+
+/* ═══════════ ТЕЛЕФОН ═══════════
+
+   Досі сторінка була зроблена під монітор і на телефоні просто
+   обрізалась: список кабінетів у 732px, панель правил у 452px і
+   таблиця кампаній, де сама назва займала 320 пікселів із 383. Тобто
+   видно було назву — і нічого більше, а по цифри сюди й заходять.
+
+   Нічого не ховаємо: усі стовпчики лишаються, просто доходити до них
+   треба вбік. Сховати на телефоні те, що є на моніторі, означало б, що
+   з телефона дашборд відповідає на менше питань, ніж насправді вміє. */
+@media (max-width: 720px) {
+  /* Список, картка й правила стають одне під одним: поруч їм на 390
+     пікселях нема як стояти, і правила просто виїжджали за екран. */
+  .cab-row { flex-wrap: wrap; }
+  #rules-panel, #cab-detail { width: 100% !important; }
+  /* Список кабінетів ширший за екран — гортаємо вбік, а не обрізаємо.
+     Обрізане виглядає як «даних немає», прокрутка — як «дані далі».
+     Скролер саме навколо таблиці: у #cab-list живе ще й розбір кабінета
+     зі своєю прокруткою, і другий скролер навколо нього заважав би. */
+  .cab-scroll { overflow-x: auto; }
+
+  /* Назва кампанії. Головна вада на телефоні: 340px стелі з'їдали
+     майже весь екран, і поруч із нею не лишалось місця під жодну
+     цифру. 44vw лишає більшу половину ширини числам. */
+  .cd-name { max-width: 44vw; }
+  /* Відступи дерева вдвічі менші: на телефоні кожні десять пікселів
+     ліворуч — це десять пікселів, яких бракує назві. */
+  .cd-d1 .cd-name { padding-left: 12px; }
+  .cd-d2 .cd-name { padding-left: 24px; }
+  .cd-tbl td, .cd-tbl th { padding: 6px 6px; }
+  /* Стовпчиків п'ятнадцять, і на вузькому екрані вони й так тісні:
+     менша стеля робить прокрутку коротшою, не з'їдаючи читабельність. */
+  .cd-tbl { min-width: 1000px; }
+  /* Висоти даємо більше: горизонталі на телефоні бракує, вертикалі — ні. */
+  .cd-wrap { height: min(calc(72vh - 20px), 620px); }
+
+  /* Док не влазить у ряд — гортаємо його, а не обрізаємо кнопки.
+     Обрізана кнопка виглядає як кнопка, якої немає. */
+  #app-dock {
+    overflow-x: auto !important; max-width: calc(100vw - 16px) !important;
+    justify-content: flex-start !important;
+  }
+  #app-dock::-webkit-scrollbar { height: 0; }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -4837,7 +4915,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 22:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 23:12</div>
     </div>
   </aside>
 
@@ -5077,6 +5155,9 @@ input.ui-in[type="range"] { padding: 0; }
         <!-- Смуга відкритого файла: назва, аркуші, скільки рядків. -->
         <div id="sh-filebar" class="sh-filebar hidden"></div>
         <div id="sh-table" class="sh-table hidden"></div>
+        <!-- Підсумок виділеного. Знизу, як у таблицях: дивляться на
+             нього після того, як виділили, а не перед. -->
+        <div id="sh-sum" class="sh-sum hidden"></div>
         <iframe id="sh-frame" title="Google Sheet"></iframe>
       </div>
 
@@ -5712,7 +5793,9 @@ input.ui-in[type="range"] { padding: 0; }
        журнал недоступний. Історія конкретного кабінета — у його панелі. -->
   <div id="cab-feed"></div>
 
-  <div class="flex gap-4 items-start">
+  <!-- cab-row — щоб на телефоні цей ряд міг перенестись: списку,
+       картці й правилам там нема як стояти поруч. -->
+  <div class="cab-row flex gap-4 items-start">
     <div id="cab-list" class="flex-1 min-w-0 space-y-1.5"></div>
     <div id="cab-detail" class="hidden w-[330px] shrink-0"></div>
     <!-- Ширина тут, а не класом w-[420px]: довільні значення Tailwind
@@ -18741,7 +18824,12 @@ function cabSection(items) {
      стовпчик на пів таблиці. */
   const idW = Math.min(22, Math.max(6, ...sorted.map(c => String(c.id).length)));
 
-  return `<table class="cab-tbl" style="--cab-id-w:${idW}ch">
+  /* Обгортка заради телефона: таблиця там ширша за екран, і без
+     власного скролера її просто обрізало б. Обрізане читається як
+     «даних немає», прокрутка — як «дані далі». Обгортаємо саме
+     таблицю, а не весь список: у списку живе ще й розбір кабінета зі
+     своєю прокруткою, і другий скролер навколо нього лише заважав би. */
+  return `<div class="cab-scroll"><table class="cab-tbl" style="--cab-id-w:${idW}ch">
     <thead><tr>
       ${th('state', 'State')}
       ${th('id', 'Account')}
@@ -18762,7 +18850,7 @@ function cabSection(items) {
             ${cabMoney(list2.reduce((a2, i) => a2 + i.x.spend, 0))}</span></td></tr>` : '';
       return gh + list2.map(cabRowHtml).join('');
     }).join('')}
-    </tbody></table>`;
+    </tbody></table></div>`;
 }
 
 function cabRowHtml(c) {
@@ -24265,6 +24353,8 @@ tmBoot();
     box?.classList.remove('hidden');
     if (bar) bar.innerHTML = '<span class="sh-fname">' + shEsc(file.name) + '</span>';
     if (box) box.innerHTML = '<p class="sh-note">Reading…</p>';
+    shSel = new Set(); shAnchor = -1;
+    document.getElementById('sh-sum')?.classList.add('hidden');
     try {
       const buf = await file.arrayBuffer();
       shFile = /\.(xlsx|xls)$/i.test(file.name)
@@ -24303,10 +24393,181 @@ tmBoot();
     return { name, idx: 0, tabs };
   }
 
-  window.shTab = function (i) { if (shFile) { shFile.idx = Number(i) || 0; shPaint(); } };
+  /* ── ВИДІЛЕННЯ РЯДКІВ І СУМА СТОВПЦЯ ──
+
+     Найчастіше питання до вивантаження — «скільки разом». Досі на це
+     треба було лізти в Excel, тобто йти з дашборда геть по число,
+     яке рахується за секунду.
+
+     Виділяємо РЯДКАМИ, а не комірками: у вивантаженні рядок — це подія
+     (day, кампанія, виплата), і «підсумуй ось ці» майже завжди
+     означає саме рядки. Комірковий вибір мишею на телефоні ще й
+     неможливо зробити пальцем. */
+
+  let shSel = new Set();     // індекси показаних рядків
+  let shAnchor = -1;         // від чого рахувати діапазон для shift-кліку
+
+  /* ЧИСЛО ЧИ НЕ ЧИСЛО — вирішуємо ПО СТОВПЧИКУ, а не по комірці.
+     Причина в комі: «1,234» — це і тисяча двісті тридцять чотири, і
+     одна ціла двісті тридцять чотири, і з однієї комірки цього не
+     видно. А от по всьому стовпчику видно: якщо хоч десь після коми
+     НЕ три цифри («12,5»), то кома в цьому стовпчику десяткова, і
+     тоді вона десяткова скрізь. Помилитись тут дорого: неправильна
+     сума гірша за відсутню, бо виглядає так само переконливо. */
+  /* Date — не показник. «01.09» і «02.09» — це перше й друге вересня,
+     а не 1.09 і 2.09, і підсумок 6.27 по них виглядає так само
+     переконливо, як справжня сума. Саме тому дати треба впізнати й
+     пропустити: мовчазне безглузде число гірше за його відсутність.
+
+     Але й навпаки помилитись не можна, і це небезпечніше: перша версія
+     цієї перевірки вважала датою «62.10» і «9.35» — і стовпчик грошей
+     мовчки зникав із підсумку. Тому впізнаємо лише те, що датою бути
+     МУСИТЬ:
+       · рік у складі — «01.09.2026», «2026-09-01»;
+       · роздільник / або - — у грошах їх не буває;
+       · дві частини через крапку І провідний нуль І місяць ≤ 12 —
+         «01.09» пишуть саме так, а «62.10» і «9.35» під це не
+         підпадають, бо нуля попереду не мають.
+     Сумнівне лишається числом: втратити сумнівний стовпчик гірше, ніж
+     показати суму по тому, що виявилось датою. */
+  function shIsDate(t) {
+    const v = String(t).trim();
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(v)) return true;         // ISO
+    if (/^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(v)) return true; // з роком
+    if (/^\d{1,2}[/-]\d{1,2}$/.test(v)) return true;             // / або -
+    const m = /^(\d{2})\.(\d{1,2})$/.exec(v);                    // «01.09»
+    return !!m && m[1][0] === '0' && Number(m[2]) >= 1 && Number(m[2]) <= 12;
+  }
+
+  function shNumCol(vals) {
+    let seen = 0, dotAndComma = 0, decimalComma = 0, dates = 0;
+    vals.forEach(v => {
+      const t = String(v == null ? '' : v).trim();
+      if (!t) return;
+      const c = t.replace(/[^0-9.,-]/g, '');
+      if (!c) return;
+      seen++;
+      if (shIsDate(t)) dates++;
+      const hasC = c.includes(','), hasD = c.includes('.');
+      if (hasC && hasD) dotAndComma++;
+      // Кома, після якої не рівно три цифри, буває тільки десятковою.
+      if (hasC && !/,\d{3}(\D|$)/.test(c + ' ')) decimalComma++;
+      if (hasC && /,\d{1,2}$/.test(c)) decimalComma++;
+    });
+    if (!seen) return null;
+    /* ВСІ значення, а не половина: один рядок «01.09» серед грошей —
+       це випадковість, а не привід викинути стовпчик цілком. */
+    if (dates === seen) return null;
+    /* Є і крапка, і кома — роздільник дробу той, що ПРАВІШЕ: так
+       записують і «1.234,56», і «1,234.56», і сплутати їх не можна. */
+    return { decComma: dotAndComma ? false : decimalComma > 0, mixed: dotAndComma > 0 };
+  }
+
+  function shNum(raw, how) {
+    let t = String(raw == null ? '' : raw).trim();
+    if (!t) return null;
+    // Дужки — від'ємне: так пишуть мінус у бухгалтерських вивантаженнях.
+    const paren = /^\(.*\)$/.test(t);
+    // Валюта, пробіли, нерозривні пробіли, знак відсотка — не цифри.
+    t = t.replace(/[\s  ]/g, '').replace(/[^0-9.,-]/g, '');
+    if (!t || !/\d/.test(t)) return null;
+    if (how && how.mixed) {
+      // Роздільник дробу — той, що правіше; другий знак групує.
+      const lastC = t.lastIndexOf(','), lastD = t.lastIndexOf('.');
+      if (lastC > lastD) t = t.replace(/\./g, '').replace(',', '.');
+      else t = t.replace(/,/g, '');
+    } else if (how && how.decComma) {
+      t = t.replace(/\./g, '').replace(',', '.');
+    } else {
+      t = t.replace(/,/g, '');
+    }
+    const n = Number(t);
+    if (!Number.isFinite(n)) return null;
+    return paren ? -n : n;
+  }
+
+  /* Показуємо стільки знаків, скільки їх у даних, але не більше двох:
+     сума копійок із трьома знаками — це вже не те число, яке лежить у
+     файлі, а результат нашого округлення. */
+  const shFmt = (n) => (Math.round(n * 100) / 100)
+    .toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+  window.shRowPick = function (i, shift) {
+    const n = Number(i);
+    if (shift && shAnchor >= 0) {
+      const [a, b] = shAnchor < n ? [shAnchor, n] : [n, shAnchor];
+      for (let k = a; k <= b; k++) shSel.add(k);
+    } else {
+      if (shSel.has(n)) shSel.delete(n); else shSel.add(n);
+      shAnchor = n;
+    }
+    shMark();
+  };
+
+  window.shPickAll = function () {
+    const tab = shFile && (shFile.tabs[shFile.idx] || shFile.tabs[0]);
+    const rows = tab ? Math.max(0, (tab.rows || []).length - 1) : 0;
+    const shown = Math.min(rows, SH_MAX_ROWS);
+    if (shSel.size >= shown) shSel = new Set();
+    else { shSel = new Set(); for (let k = 0; k < shown; k++) shSel.add(k); }
+    shAnchor = -1;
+    shMark();
+  };
+
+  /* Перемальовуємо ТІЛЬКИ підсвітку й підсумок, а не всю таблицю: на
+     двох тисячах рядків повний перемальов помітний пальцем. */
+  function shMark() {
+    document.querySelectorAll('#sh-table tbody tr').forEach(tr => {
+      tr.classList.toggle('is-sel', shSel.has(Number(tr.dataset.i)));
+    });
+    shSum();
+  }
+
+  function shSum() {
+    const box = document.getElementById('sh-sum');
+    if (!box) return;
+    if (!shFile || !shSel.size) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    const tab = shFile.tabs[shFile.idx] || shFile.tabs[0];
+    const rows = tab.rows || [];
+    const head = rows[0] || [];
+    const body = rows.slice(1);
+    const picked = [...shSel].sort((a, b) => a - b).map(i => body[i]).filter(Boolean);
+    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+
+    const bits = [];
+    for (let c = 0; c < cols; c++) {
+      const vals = picked.map(r => r[c]);
+      const how = shNumCol(vals);
+      if (!how) continue;
+      let sum = 0, n = 0;
+      vals.forEach(v => { const x = shNum(v, how); if (x != null) { sum += x; n++; } });
+      /* Стовпчик, де число трапилось раз на двадцять рядків, — це
+         текст із випадковою цифрою, а не показник. Сума по ньому
+         виглядала б як відповідь на питання, якого ніхто не ставив. */
+      if (!n || n * 2 < picked.length) continue;
+      bits.push('<span class="sh-sum-i"><b>' + shEsc(head[c] || 'col ' + (c + 1))
+        + '</b> ' + shFmt(sum) + (n < picked.length ? ' <i>(' + n + ')</i>' : '') + '</span>');
+    }
+
+    box.classList.remove('hidden');
+    box.innerHTML = '<span class="sh-sum-n">' + picked.length + ' row(s)</span>'
+      + (bits.length ? bits.join('') : '<span class="sh-sum-i">no numeric column here</span>')
+      + '<button class="sh-btn" onclick="shClearPick()">Clear</button>';
+  }
+
+  window.shClearPick = function () { shSel = new Set(); shAnchor = -1; shMark(); };
+
+  window.shTab = function (i) {
+    /* Вибір не переживає зміну аркуша: рядок номер 5 на іншому аркуші —
+       зовсім інший рядок, і підсумок по ньому був би вигадкою. */
+    if (shFile) { shFile.idx = Number(i) || 0; shSel = new Set(); shAnchor = -1; shPaint(); }
+  };
 
   window.shCloseFile = function () {
     shFile = null;
+    shSel = new Set(); shAnchor = -1;
+    const sum = document.getElementById('sh-sum');
+    if (sum) { sum.classList.add('hidden'); sum.innerHTML = ''; }
     document.getElementById('sh-filebar')?.classList.add('hidden');
     document.getElementById('sh-table')?.classList.add('hidden');
     const box = document.getElementById('sh-table');
@@ -24342,13 +24603,21 @@ tmBoot();
 
     const cell = (v, tag) => '<' + tag + '>' + shEsc(v) + '</' + tag + '>';
     const pad = (r) => { const a = r.slice(); while (a.length < cols) a.push(''); return a; };
-    box.innerHTML = '<table class="sh-grid"><thead><tr><th class="sh-n"></th>'
+    box.innerHTML = '<table class="sh-grid"><thead><tr>'
+      /* Клік по кутку — виділити все або зняти все: інакше «підсумуй
+         увесь файл» довелось би набирати двома тисячами кліків. */
+      + '<th class="sh-n is-pick" onclick="shPickAll()" title="Select all rows">\u2713</th>'
       + pad(head).map(v => cell(v, 'th')).join('') + '</tr></thead><tbody>'
       /* Номер рядка як у таблиці: без нього на довгому файлі неможливо
-         сказати вголос, про який саме рядок ідеться. */
-      + show.map((r, i) => '<tr><td class="sh-n">' + (i + 2) + '</td>'
+         сказати вголос, про який саме рядок ідеться. Він же й кнопка
+         вибору — окрема галочка коштувала б стовпчика, а на телефоні
+         кожен стовпчик на вагу. */
+      + show.map((r, i) => '<tr data-i="' + i + '"' + (shSel.has(i) ? ' class="is-sel"' : '') + '>'
+          + '<td class="sh-n is-pick" onclick="shRowPick(' + i + ', event.shiftKey)"'
+          + ' title="Click to pick, shift-click for a range">' + (i + 2) + '</td>'
           + pad(r).map(v => cell(v, 'td')).join('') + '</tr>').join('')
       + '</tbody></table>';
+    shSum();
   }
 
   /* ─────────── Зріз KPI за моделлю виплат ───────────
