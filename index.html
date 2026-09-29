@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 20:22">
+  <meta name="build" content="build 29.09 20:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1124,6 +1124,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   --surface:     #121216;
   --surface-2:   #17171C;
   --surface-3:   #1E1E24;
+  /* Смуга в дереві кампаній. Власний тон, а не --surface-3: той самий
+     колір носять смуга прокрутки й наведення в доці, і посунувши його
+     заради таблиці, ми посунули б і їх. Тут потрібна різниця, якої
+     вистачає оку на сусідніх рядках і не більше: надто світла смуга
+     читається як виділення, тобто як «цей рядок чимось особливий». */
+  --cd-band:     #191920;
   --border:      rgba(255,255,255,.07);
   --border-2:    rgba(255,255,255,.13);
   --text-main:   #E9E9EC;
@@ -1595,6 +1601,55 @@ body.hub-open .app-content { padding-bottom: 14px; }
 }
 #sh-frame { flex: 1; width: 100%; border: 0; background: #fff; display: block; }
 #sh-frame.hidden { display: none; }
+
+/* ── CSV і XLSX просто тут ──
+   Системний вибір файлів ховаємо власним правилом, а не класом
+   Tailwind: він єдине, що стоїть між людиною й чужорідним віджетом,
+   і покладатись на чужу бібліотеку в цьому не варто. */
+#sh-file { display: none !important; }
+.sh-filebar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); flex: 0 0 auto;
+}
+.sh-filebar.hidden { display: none; }
+.sh-fname {
+  font-size: 11px; font-weight: 900; color: var(--text-main);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sh-rows { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.sh-tabs {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 3px 7px; font-size: 10px; font-weight: 800; color: var(--text-main);
+  outline: none; cursor: pointer;
+}
+.sh-note { font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 18px; }
+.sh-table { flex: 1; min-height: 0; overflow: auto; background: var(--surface); }
+.sh-table.hidden { display: none; }
+.sh-grid { border-collapse: separate; border-spacing: 0; font-size: 11px; white-space: nowrap; }
+/* Шапка лишається на місці: на файлі в дві тисячі рядків без неї
+   через екран уже не видно, у якому ти стовпчику. */
+.sh-grid th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-3); color: var(--text-main);
+  font-weight: 900; text-align: left; padding: 6px 10px;
+  border-bottom: 1px solid var(--border-2); border-right: 1px solid var(--border);
+}
+.sh-grid td {
+  padding: 5px 10px; color: var(--text-main); font-weight: 600;
+  border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis;
+}
+.sh-grid tr:hover td { background: var(--surface-2); }
+/* Номер рядка теж липкий, і теж не з примхи: гортаючи вбік, легко
+   загубити, у якому ти рядку. */
+.sh-grid .sh-n {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--surface-3); color: var(--text-muted);
+  font-variant-numeric: tabular-nums; font-weight: 800;
+  text-align: right; padding: 5px 8px; min-width: 42px;
+}
+.sh-grid th.sh-n { z-index: 3; }
 
 /* ─────────── Компактніші секції ───────────
    Стара розмітка несе і власні mb-6/mb-8, і space-y-4 контейнера —
@@ -3494,7 +3549,7 @@ body[data-route="domains"] #dm-detail {
    годиться: перша комірка липка, і крізь неї було б видно, як під нею
    їде вміст, коли таблицю гортають убік. */
 .cd-r td, .cd-r td:first-child { background: var(--surface); }
-.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--surface-3); }
+.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--cd-band); }
 /* Наведення бере середній відтінок: він світліший за звичайний рядок і
    темніший за смугу, тож курсор видно в обох — а не лише в одній. */
 .cd-tbl tr.cd-r:hover td,
@@ -4773,7 +4828,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 20:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 20:33</div>
     </div>
   </aside>
 
@@ -4994,6 +5049,10 @@ input.ui-in[type="range"] { padding: 0; }
             </a>
             <button class="sh-btn" onclick="sheetsToggleAdd()" title="Add a sheet">+ Add</button>
             <button class="sh-btn sh-del" onclick="sheetsRemove()" title="Remove from the list">Remove</button>
+            <!-- Файл читається В БРАУЗЕРІ й нікуди не йде: ні в Supabase,
+                 ні в Google. Тому кнопка стоїть поруч, а не в Files. -->
+            <button class="sh-btn" onclick="shPick()" title="Open a CSV or XLSX from this computer. The file is read here and is not uploaded anywhere.">+ Open file</button>
+            <input type="file" id="sh-file" accept=".csv,.tsv,.txt,.xlsx,.xls" onchange="shChose(this.files&&this.files[0])">
           </div>
           <button class="hub-close" onclick="sheetsClose()" title="Back to dashboard">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
@@ -5006,6 +5065,9 @@ input.ui-in[type="range"] { padding: 0; }
           <button class="sh-btn sh-save" onclick="sheetsAdd()">Save</button>
         </div>
         <div id="sh-empty" class="sh-empty hidden"></div>
+        <!-- Смуга відкритого файла: назва, аркуші, скільки рядків. -->
+        <div id="sh-filebar" class="sh-filebar hidden"></div>
+        <div id="sh-table" class="sh-table hidden"></div>
         <iframe id="sh-frame" title="Google Sheet"></iframe>
       </div>
 
@@ -24001,6 +24063,9 @@ tmBoot();
 
   window.sheetsPick = function (i) {
     sheetsIdx = Number(i) || 0;
+    /* Вибрали таблицю Google — відкритий файл закриваємо: два джерела
+       в одній рамці означали б, що видно не те, що вибрали. */
+    if (typeof shCloseFile === 'function' && shFile) return shCloseFile();
     sheetsRender();
   };
 
@@ -24040,6 +24105,10 @@ tmBoot();
     const empty = document.getElementById('sh-empty');
     const open = document.getElementById('sh-open');
     if (!sel || !frame || !empty) return;
+    /* Відкритий файл головніший: він тут просто зараз, а список Google
+       нікуди не дінеться. Інакше будь-яке перемальовування списку
+       згортало б таблицю, яку щойно відкрили. */
+    if (shFile) return;
 
     sel.innerHTML = sheets.map((s, i) =>
       `<option value="${i}" ${i === sheetsIdx ? 'selected' : ''}>${String(s.name).replace(/</g, '&lt;')}</option>`).join('');
@@ -24060,6 +24129,183 @@ tmBoot();
     const src = sheetPreview(cur.url);
     if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
     if (open) { open.style.display = ''; open.href = cur.url; }
+  }
+
+  /* ─────────── CSV і XLSX просто тут ───────────
+
+     Таблиця, яку прислали файлом, — це та сама таблиця. Досі, щоб її
+     подивитись, треба було або залити в Google, або відкрити Excel:
+     обидва шляхи ведуть із дашборда геть, а повертаються з них не
+     завжди.
+
+     Файл читається В БРАУЗЕРІ й НІКУДИ не йде — ні в Supabase, ні в
+     Google. Це не дрібниця: у вивантаженнях із партнерки їдуть sub-id,
+     а часом і дані людей, і заливати їх кудись заради перегляду —
+     непропорційна ціна за погляд. */
+
+  let shFile = null;        // { name, tabs: [{ name, rows }], idx }
+
+  const shEsc = (v) => String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+  /* Скільки рядків малюємо. Тридцять тисяч рядків у DOM кладуть
+     вкладку намертво, а прочитати їх очима все одно неможливо. */
+  const SH_MAX_ROWS = 2000;
+
+  window.shPick = function () { document.getElementById('sh-file')?.click(); };
+
+  /* Роздільник вгадуємо по ПЕРШОМУ рядку: у заголовку немає чисел із
+     комами й лапок із крапкою з комою всередині, тож саме там підрахунок
+     чесний. Рахувати по всьому файлу — значить дати одному полю з
+     крапкою з комою переважити сотню звичайних ком. */
+  function shDelim(head) {
+    const n = (ch) => head.split(ch).length;
+    const by = [[',', n(',')], [';', n(';')], ['\t', n('\t')], ['|', n('|')]];
+    by.sort((a, b) => b[1] - a[1]);
+    return by[0][1] > 1 ? by[0][0] : ',';
+  }
+
+  /* Свій розбір, а не split(','): у полі цілком законно лежить кома,
+     лапка й навіть перенос рядка — саме так Excel зберігає адреси й
+     нотатки. Розбір по split перетворив би один такий рядок на три
+     покалічені. */
+  function shCsv(text) {
+    const first = text.slice(0, text.indexOf('\n') + 1 || text.length);
+    const d = shDelim(first);
+    const rows = [];
+    let row = [], cur = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) {
+        if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+        continue;
+      }
+      if (ch === '"') { q = true; continue; }
+      if (ch === d) { row.push(cur); cur = ''; continue; }
+      if (ch === '\r') continue;
+      if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; continue; }
+      cur += ch;
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    // Хвостовий порожній рядок — це перенос у кінці файла, а не дані.
+    while (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop();
+    return rows;
+  }
+
+  /* SheetJS вантажимо НА ВИМОГУ. Майже мегабайт заради кнопки, якою
+     користуються раз на тиждень, платили б усі й щоразу — зокрема ті,
+     хто відкриває дашборд подивитись спенд. */
+  let shLibAt = null;
+  function shLib() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (shLibAt) return shLibAt;
+    shLibAt = new Promise((ok, no) => {
+      const el = document.createElement('script');
+      el.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      el.onload = () => window.XLSX ? ok(window.XLSX) : no(new Error('loaded but empty'));
+      el.onerror = () => { shLibAt = null; no(new Error('could not load the XLSX reader')); };
+      document.head.appendChild(el);
+    });
+    return shLibAt;
+  }
+
+  window.shChose = async function (file) {
+    const inp = document.getElementById('sh-file');
+    if (inp) inp.value = '';          // той самий файл мусить відкриватись двічі
+    if (!file) return;
+    const box = document.getElementById('sh-table');
+    const bar = document.getElementById('sh-filebar');
+    document.getElementById('sh-frame')?.classList.add('hidden');
+    document.getElementById('sh-empty')?.classList.add('hidden');
+    bar?.classList.remove('hidden');
+    box?.classList.remove('hidden');
+    if (bar) bar.innerHTML = '<span class="sh-fname">' + shEsc(file.name) + '</span>';
+    if (box) box.innerHTML = '<p class="sh-note">Reading…</p>';
+    try {
+      const buf = await file.arrayBuffer();
+      shFile = /\.(xlsx|xls)$/i.test(file.name)
+        ? await shReadBook(buf, file.name)
+        : shReadCsv(buf, file.name);
+    } catch (e) {
+      shFile = null;
+      if (bar) bar.classList.add('hidden');
+      if (box) box.innerHTML = '<p class="sh-note">Could not open: ' + shEsc(e.message) + '</p>';
+      return;
+    }
+    shPaint();
+  };
+
+  function shReadCsv(buf, name) {
+    /* Тим самим розбирачем, що й перегляд файлів: .csv з партнерки
+       часто зберігають у windows-1251, і суворий UTF-8 на ньому падає.
+       Без цього кирилиця в заголовках перетворюється на сміття. */
+    const text = typeof flDecode === 'function'
+      ? flDecode(buf) : new TextDecoder('utf-8').decode(buf);
+    return { name, idx: 0, tabs: [{ name: 'Sheet', rows: shCsv(text) }] };
+  }
+
+  async function shReadBook(buf, name) {
+    const X = await shLib();
+    const wb = X.read(buf, { type: 'array' });
+    const tabs = (wb.SheetNames || []).map(n => ({
+      name: n,
+      /* header:1 — рядками, а не обʼєктами: у вивантаженнях бувають
+         однакові заголовки, і обʼєкт тихо лишив би з них один.
+         defval — щоб порожня комірка лишалась коміркою, інакше рядок
+         поїде вліво й числа стануть не під своїми стовпчиками. */
+      rows: X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' })
+    }));
+    if (!tabs.length) throw new Error('the workbook has no sheets');
+    return { name, idx: 0, tabs };
+  }
+
+  window.shTab = function (i) { if (shFile) { shFile.idx = Number(i) || 0; shPaint(); } };
+
+  window.shCloseFile = function () {
+    shFile = null;
+    document.getElementById('sh-filebar')?.classList.add('hidden');
+    document.getElementById('sh-table')?.classList.add('hidden');
+    const box = document.getElementById('sh-table');
+    if (box) box.innerHTML = '';      // великий файл не має лишатись у памʼяті
+    sheetsRender();
+  };
+
+  function shPaint() {
+    const bar = document.getElementById('sh-filebar');
+    const box = document.getElementById('sh-table');
+    if (!shFile || !bar || !box) return;
+    const tab = shFile.tabs[shFile.idx] || shFile.tabs[0];
+    const rows = tab.rows || [];
+    const head = rows[0] || [];
+    const body = rows.slice(1);
+    const cut = body.length > SH_MAX_ROWS;
+    const show = cut ? body.slice(0, SH_MAX_ROWS) : body;
+    /* Найдовший рядок задає кількість стовпчиків: у вивантаженнях
+       хвостові порожні комірки часто просто обрізані, і рівнятись на
+       заголовок означало б загубити останні стовпчики. */
+    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+
+    bar.innerHTML = '<span class="sh-fname">' + shEsc(shFile.name) + '</span>'
+      + (shFile.tabs.length > 1
+          ? '<select class="sh-tabs" onchange="shTab(this.value)">'
+            + shFile.tabs.map((t, i) => '<option value="' + i + '"'
+                + (i === shFile.idx ? ' selected' : '') + '>' + shEsc(t.name) + '</option>').join('')
+            + '</select>'
+          : '')
+      + '<span class="sh-rows">' + body.length + ' row(s) · ' + cols + ' column(s)'
+      + (cut ? ' · showing first ' + SH_MAX_ROWS : '') + '</span>'
+      + '<button class="sh-btn sh-del" onclick="shCloseFile()">Close file</button>';
+
+    const cell = (v, tag) => '<' + tag + '>' + shEsc(v) + '</' + tag + '>';
+    const pad = (r) => { const a = r.slice(); while (a.length < cols) a.push(''); return a; };
+    box.innerHTML = '<table class="sh-grid"><thead><tr><th class="sh-n"></th>'
+      + pad(head).map(v => cell(v, 'th')).join('') + '</tr></thead><tbody>'
+      /* Номер рядка як у таблиці: без нього на довгому файлі неможливо
+         сказати вголос, про який саме рядок ідеться. */
+      + show.map((r, i) => '<tr><td class="sh-n">' + (i + 2) + '</td>'
+          + pad(r).map(v => cell(v, 'td')).join('') + '</tr>').join('')
+      + '</tbody></table>';
   }
 
   /* ─────────── Зріз KPI за моделлю виплат ───────────
