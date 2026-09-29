@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 18:33">
+  <meta name="build" content="build 29.09 18:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4507,9 +4507,16 @@ input.ui-in[type="range"] { padding: 0; }
 .fl-in {
   background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
   padding: 6px 9px; font-size: 11.5px; font-weight: 700; color: var(--text-main); outline: none;
+  /* <select> має власну, трохи більшу висоту, ніж <input>. Без спільної
+     стелі рядок їде сходинкою на два пікселі — помітно саме тому, що
+     поля стоять поруч. */
+  box-sizing: border-box; min-height: 28px;
 }
 .fl-in:focus { border-color: var(--accent); }
-.fl-in.is-wide { flex: 1 1 280px; min-width: 240px; }
+/* Розтягуватись має ПОЛЕ, а не сам інпут. Різниця не дрібна: .fl-f
+   стоїть колонкою, тож flex на інпуті ріс не вшир, а вгору, і 280px
+   ставали не шириною, а висотою — звідси й коробки на пів екрана. */
+.fl-f.is-wide { flex: 1 1 280px; min-width: 240px; }
 .fl-form-acts { display: flex; gap: 6px; flex: 0 0 auto; }
 
 /* Перегляд. Висота стала: рамка не вміє казати, скільки їй треба, а
@@ -4748,7 +4755,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 18:33</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 18:46</div>
     </div>
   </aside>
 
@@ -22631,8 +22638,8 @@ window.flEditOpen = function (i) {
   if (!r || !box) return;
   box.classList.remove('hidden');
   box.innerHTML = `<div class="fl-form">
-      <label class="fl-f"><span class="fl-f-l">Name</span>
-        <input class="fl-in is-wide" id="fl-f-title" value="${flEsc(r.title)}"></label>
+      <label class="fl-f is-wide"><span class="fl-f-l">Name</span>
+        <input class="fl-in" id="fl-f-title" value="${flEsc(r.title)}"></label>
       <label class="fl-f"><span class="fl-f-l">Kind</span>
         <select class="fl-in" id="fl-f-kind">
           ${FL_KINDS.map(k => `<option value="${k.k}" ${r.kind === k.k ? 'selected' : ''}>${k.label}</option>`).join('')}
@@ -22640,8 +22647,8 @@ window.flEditOpen = function (i) {
       <label class="fl-f"><span class="fl-f-l">Cabinet</span>
         <input class="fl-in" id="fl-f-cab" placeholder="1149896616961527"
           value="${flEsc(r.account_id || '')}"></label>
-      <label class="fl-f"><span class="fl-f-l">Note</span>
-        <input class="fl-in is-wide" id="fl-f-note" placeholder="bought 12.09, farmed"
+      <label class="fl-f is-wide"><span class="fl-f-l">Note</span>
+        <input class="fl-in" id="fl-f-note" placeholder="bought 12.09, farmed"
           value="${flEsc(r.note || '')}"></label>
       <div class="fl-form-acts">
         <button type="button" class="fl-btn is-main" onclick="flPut(${i})">Save</button>
