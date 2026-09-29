@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 20:33">
+  <meta name="build" content="build 29.09 20:44">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1559,10 +1559,16 @@ input[type="date"]::-webkit-datetime-edit-year-field { color: var(--text-main); 
 .hub-close:hover { color: var(--text-main); border-color: var(--border-2); }
 .hub-close svg { width: 13px; height: 13px; stroke-width: 2.2; }
 #datahub-frame { flex: 1; width: 100%; border: 0; background: transparent; display: block; }
-/* Поки відкритий Data Hub, ховаємо док дашборда: у Form.html є власний,
-   і два плаваючі меню на екрані накладались би одне на одне. */
-body.hub-open #app-dock { display: none !important; }
+/* Док ховаємо ЛИШЕ там, де є свій: у Form.html власне плаваюче меню, і
+   два таких на екрані накладались би одне на одне. Довго це правило
+   стояло на hub-open, тобто на будь-якій панелі, — і Таблиці, у яких
+   свого дока немає, лишались без меню просто за компанію. */
+body.dock-off #app-dock { display: none !important; }
 body.hub-open .app-content { padding-bottom: 14px; }
+/* Док лишився — значить він плаває над низом панелі. Вкорочуємо її
+   рівно на його висоту з відступом: інакше останні рядки таблиці
+   ховались би під ним, і це виглядало б як обрізані дані. */
+body.hub-open:not(.dock-off) #sheets-panel { height: calc(100vh / var(--zoom) - 54px - 78px); }
 
 /* ─────────── Google Таблиці ─────────── */
 #sheets-panel {
@@ -3557,6 +3563,9 @@ body[data-route="domains"] #dm-detail {
 /* Вибраний рядок лишається впізнаваним у будь-якій смузі: смуга
    акценту ліворуч сильніша за різницю тла. */
 .cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* Чому немає ока. Тоном як «not running» — це те саме: те, що варто
+   знати, не шукаючи, але не тривога. */
+.cd-nodom { color: var(--text-muted); cursor: help; border-bottom: 1px dotted var(--border-2); }
 
 /* Око й домен. Око бліде, поки закрите: це не та дія, по яку сюди
    йдуть, і кричати про себе воно не повинно. */
@@ -4828,7 +4837,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 20:33</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 20:44</div>
     </div>
   </aside>
 
@@ -21557,6 +21566,10 @@ const CD_NOT_LIVE = ['PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'ARCHIVED', 'D
 const cdLive = (k) => !CD_NOT_LIVE.includes(String(k || '').toUpperCase());
 
 let cdAcc = '', cdRows = [];
+/* Чому в дереві немає ока: '' — усе гаразд, 'sql' — немає колонки,
+   'sync' — колонка є, але знімок старий. Мовчазна відсутність кнопки
+   читається як «розробник її загубив», і саме так її й прочитали. */
+let cdNoDom = '';
 // Список подій-лідів більше не налаштовується — див. CD_LEAD_DEFAULT.
 const cdLeads = CD_LEAD_DEFAULT;
 let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
@@ -21667,7 +21680,7 @@ function cdHeadBits() {
   const age = cdSeen ? Math.round((Date.now() - cdSeen) / 60000) : null;
   const when = age == null ? ''
     : age < 2 ? 'just synced' : age + ' min ago';
-  return `<p class="cd-s">${when}${cdBad()}</p>
+  return `<p class="cd-s">${when}${cdBad()}${cdDomNote()}</p>
     <div class="cd-tabs">
       <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
         onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Tree</button>
@@ -21679,6 +21692,19 @@ function cdHeadBits() {
         <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
           onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
     </div>`;
+}
+
+/* Одним рядком, поруч із «3 not running»: це та сама категорія —
+   те, що варто знати, не шукаючи. */
+function cdDomNote() {
+  if (!cdNoDom) return '';
+  const sep = (cdSeen || cdBad()) ? ' · ' : '';
+  const text = cdNoDom === 'sql' ? 'no domains: run DOMAIN_GUARD.sql'
+                                 : 'no domains: sync once';
+  const tip = cdNoDom === 'sql'
+    ? 'The link_domain column is missing. Run DOMAIN_GUARD.sql in Supabase, deploy fb-sync, then press Sync now.'
+    : 'The column is there, but no ad carries a domain yet. Deploy fb-sync and press Sync now.';
+  return sep + '<span class="cd-nodom" title="' + cdEsc(tip) + '">' + text + '</span>';
 }
 
 function cdBtnSync() {
@@ -21759,6 +21785,7 @@ async function cdLoad(account) {
      забрав би з собою й бюджети, й вимикачі. Так брак однієї колонки
      коштує рівно її. */
   const CD_DOM = 'link_domain';
+  cdNoDom = '';
   const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
   try {
@@ -21770,6 +21797,7 @@ async function cdLoad(account) {
       .select(CD_CORE + ',' + CD_NEW + ',' + CD_DOM).eq('account_id', id).limit(1000);
     if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
       // Спершу без домену: він наймолодший, і найімовірніше саме його й бракує.
+      cdNoDom = 'sql';
       res = await sb.from('fb_ad_today')
         .select(CD_CORE + ',' + CD_NEW).eq('account_id', id).limit(1000);
     }
@@ -21782,6 +21810,11 @@ async function cdLoad(account) {
     cdRows = data || [];
     cdErr = '';
     cdSeen = cdRows.reduce((a, r) => Math.max(a, Date.parse(r.seen_at || '') || 0), 0);
+    /* Колонка є, а доменів немає — значить синхронізація ще не ходила
+       з новою fb-sync. Ззовні це не відрізнити від «ока не існує», і
+       саме тому про це треба сказати вголос, а не мовчати. */
+    if (!cdNoDom && cdRows.length
+        && !cdRows.some(r => String(r.link_domain || '').trim())) cdNoDom = 'sync';
   } catch (e) {
     cdRows = [];
     cdErr = /fb_ad_today|does not exist|schema cache/i.test(e.message)
@@ -23578,7 +23611,11 @@ tmBoot();
     'team':       { section: 'team-section' },
     'reports':    { section: 'report-builder-section' },
     'expenses':   { section: 'expenses-section' },
-    'hub':        { panel: 'datahub-panel' },
+    /* ownDock — у Form.html є ВЛАСНИЙ плаваючий док, і два таких меню
+       на екрані накладались би одне на одне. Це стосується саме Data
+       Hub, а не панелей узагалі: у Таблиць свого дока немає, і ховати
+       наш, поки вони відкриті, — це забирати меню без причини. */
+    'hub':        { panel: 'datahub-panel', ownDock: true },
     'sheets':     { panel: 'sheets-panel' }
   };
   const SECTIONS = Object.values(ROUTES).map(r => r.section).filter(Boolean);
@@ -23727,6 +23764,7 @@ tmBoot();
     SECTIONS.forEach(id => off(id, r.section !== id));
     PANELS.forEach(id => document.getElementById(id)?.classList.toggle('hidden', r.panel !== id));
     document.body.classList.toggle('hub-open', !!r.panel);
+    document.body.classList.toggle('dock-off', !!r.ownDock);
     // Тільки на дашборді блоки розтягуються на висоту екрана
     document.body.classList.toggle('route-dash', !!r.dash);
     document.body.dataset.route = name || 'dash';
