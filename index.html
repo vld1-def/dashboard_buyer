@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 07:28">
+  <meta name="build" content="build 29.09 07:49">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3412,6 +3412,28 @@ body[data-route="domains"] #dm-detail {
 /* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
    підпис лише уточнює, за який період воно. */
 .cd-bq { color: var(--text-muted); font-weight: 700; margin-left: 2px; }
+
+/* ПІДСУМОК — липкий до низу таблиці, як шапка до верху. Таблиця
+   скролиться всередині себе, і рядок, який поїхав угору разом із
+   вмістом, не відповідає на питання «а скільки всього» саме тоді, коли
+   його й ставлять — гортаючи довгий список.
+
+   z-index на 1 менший за шапку: на стику виграє шапка, бо назви
+   стовпчиків потрібні, щоб прочитати сам підсумок. */
+.cd-tot td {
+  position: sticky; bottom: 0; z-index: 1;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border-2);
+  font-weight: 900; color: var(--text-main);
+  padding: 7px 8px;
+}
+.cd-tot td:first-child {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted);
+}
+/* Прочерки в підсумку тлумлені так само, як у рядках: «немає» не має
+   важити більше за число поруч. */
+.cd-tot .cd-na { font-weight: 700; }
 /* ПЕРЕМИКАЧ, як в Ads Manager. Раніше тут стояла кнопка «Stop», яка
    вміла одне й нічого не показувала: після натискання рядок виглядав
    так само, і незрозуміло було навіть, чи спрацювало.
@@ -4477,7 +4499,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 07:28</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 07:49</div>
     </div>
   </aside>
 
@@ -20959,6 +20981,28 @@ const cdLeadBase = (t) => String(t || '')
   .replace(/^offsite_conversion\./, '')
   .replace(/_grouped$/, '');
 
+/* ЩО САМЕ ПОРАХУВАЛИ. Число без розкладу не перевірити: коли на екрані
+   на один лід більше, ніж в Ads Manager, питання завжди одне — який
+   рядок зайвий. Тому тримаємо поруч із числом усі відмічені події з
+   їхніми значеннями й позначкою, чи потрапили вони в суму. */
+function cdLeadWhy(actions, want) {
+  if (!Array.isArray(actions)) return [];
+  const rows = [];
+  const by = new Map();
+  actions.forEach(x => {
+    const t = String(x.action_type || '');
+    if (!want.includes(t)) return;
+    const b = cdLeadBase(t);
+    if (!by.has(b)) by.set(b, []);
+    by.get(b).push({ t, v: Number(x.value) || 0 });
+  });
+  by.forEach((list, b) => {
+    const total = list.find(x => x.t === b);
+    list.forEach(x => rows.push({ t: x.t, v: x.v, used: !total || x.t === b }));
+  });
+  return rows;
+}
+
 function cdLeadCount(actions, want) {
   if (!Array.isArray(actions)) return 0;
   const by = new Map();                     // базова подія → [{ type, value }]
@@ -21269,6 +21313,7 @@ function cdMetrics(r) {
     imps,
     clicks: Number(r.link_clicks) || 0,
     leads: cdLeadCount(acts, cdLeads),
+    leadWhy: cdLeadWhy(acts, cdLeads),
     regs: cdPick(acts, CD_REG) || 0,
     result: !suf ? null : suf === 'impressions' ? imps : (cdPick(acts, suf) || 0),
     goal: String(r.optimization_goal || r.custom_event_type || ''),
@@ -21286,11 +21331,20 @@ function cdNode(id, name, kind) {
      питання не відповідає: у вимкненої кампанії оголошення можуть бути
      хоч усі ACTIVE, просто їх ніхто не показує. */
   return { id: String(id || ''), name: name || '', kind, own: '', budget: null,
+           leadBy: new Map(),        // подія → { v, used } по всіх дітях
            spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
            result: 0, hasResult: false, goals: new Set(),
            state: new Map(), ads: 0, kids: [] };
 }
 function cdAdd(n, m) {
+  (m.leadWhy || []).forEach(x => {
+    const cur = n.leadBy.get(x.t) || { v: 0, used: x.used };
+    cur.v += x.v;
+    // Якщо хоч десь подія пішла в суму — так і кажемо: саме цей рядок
+    // і відповідає за число, яке людина бачить.
+    cur.used = cur.used || x.used;
+    n.leadBy.set(x.t, cur);
+  });
   n.spend += m.spend; n.imps += m.imps; n.clicks += m.clicks;
   n.leads += m.leads; n.regs += m.regs; n.ads++;
   if (m.result != null) { n.result += m.result; n.hasResult = true; }
@@ -21400,8 +21454,12 @@ function cdPaint() {
   }
 
   const body = [];
-  if (cdFlat) cdAds().forEach(a => body.push(cdRow(a, 0)));
-  else cdTree().forEach(c => {
+  /* Верхній рівень тримаємо окремо: з нього ж рахується підсумок. У
+     дереві це кампанії, у списку — оголошення; нижні рівні вже складені
+     в кампанії, і брати обидва означало б порахувати все двічі. */
+  const top = cdFlat ? cdAds() : cdTree();
+  if (cdFlat) top.forEach(a => body.push(cdRow(a, 0)));
+  else top.forEach(c => {
     body.push(cdRow(c, 0));
     if (!cdOpenIds.has('campaign:' + c.id)) return;
     c.kids.forEach(s => {
@@ -21431,7 +21489,70 @@ function cdPaint() {
         <th></th>
       </tr></thead>
       <tbody>${body.join('')}</tbody>
+      ${cdTotalRow(top)}
     </table></div>`;
+}
+
+/* ПІДСУМОК. Рахуємо з верхнього рівня — кампаній у дереві, оголошень у
+   списку: нижні рівні вже складені в них, і брати обидва означало б
+   порахувати все двічі.
+
+   Похідні числа (CPM, CTR, ціна за щось) рахуються ІЗ СУМ, а не як
+   середнє по рядках. Середнє з середніх — інше число: кампанія на
+   три долари важила б у ньому стільки ж, скільки кампанія на триста. */
+function cdTotalRow(list) {
+  if (!list || !list.length) return '';
+  const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, result: 0,
+              hasResult: false, ads: 0 };
+  list.forEach(n => {
+    t.spend += n.spend; t.imps += n.imps; t.clicks += n.clicks;
+    t.leads += n.leads; t.regs += n.regs; t.ads += n.ads || 1;
+    if (n.hasResult) { t.result += n.result; t.hasResult = true; }
+  });
+
+  const cpm = t.imps > 0 ? cdMoney(t.spend / t.imps * 1000) : cdNone;
+  const ctr = t.imps > 0
+    ? (Math.round(t.clicks / t.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
+
+  return `<tfoot><tr class="cd-tot">
+    <td>Total</td>
+    <td></td>
+    <td class="ta-r cd-num">${cdBudgetText(cdTotalBudget(list))}</td>
+    <td class="ta-r cd-num cd-spend">${cdMoney(t.spend)}</td>
+    <td class="ta-r cd-num">${t.hasResult ? String(t.result) : cdNone}</td>
+    <td class="ta-r cd-num">${t.hasResult ? cdPer(t.spend, t.result) : cdNone}</td>
+    <td class="ta-r cd-num">${cpm}</td>
+    <td class="ta-r cd-num">${ctr}</td>
+    <td class="ta-r cd-num">${t.clicks}</td>
+    <td class="ta-r cd-num">${cdPer(t.spend, t.clicks)}</td>
+    <td class="ta-r cd-num">${t.leads}</td>
+    <td class="ta-r cd-num">${cdPer(t.spend, t.leads)}</td>
+    <td class="ta-r cd-num">${t.regs}</td>
+    <td class="ta-r cd-num">${cdPer(t.spend, t.regs)}</td>
+    <td></td>
+  </tr></tfoot>`;
+}
+
+/* Загальний бюджет. У Facebook він стоїть або на кампанії, або на її
+   адсетах — ніколи на обох, тож беремо з кампанії, а як там порожньо,
+   складаємо її адсети. Подвійного рахунку тут бути не може.
+
+   Денний і довічний не складаємо разом: це різні величини, і сума
+   «50 на добу плюс 1200 за весь time» не означає нічого. Коли трапилось
+   і те, і те, показуємо денний — його й дивляться щодня. */
+function cdTotalBudget(list) {
+  let daily = 0, life = 0;
+  list.forEach(n => {
+    const own = n.budget;
+    if (own) { if (own.kind === 'daily') daily += own.v; else life += own.v; return; }
+    (n.kids || []).forEach(k => {
+      if (!k.budget) return;
+      if (k.budget.kind === 'daily') daily += k.budget.v; else life += k.budget.v;
+    });
+  });
+  if (daily > 0) return { v: daily, kind: 'daily' };
+  if (life > 0) return { v: life, kind: 'lifetime' };
+  return null;
 }
 
 /* Ціна — нескінченність, коли витрати є, а результату немає. Прочерк
@@ -21457,6 +21578,22 @@ function cdBudget(daily, life) {
 const cdBudgetText = (b) => !b ? cdNone
   : b.kind === 'daily' ? cdMoney(b.v) + ' <span class="cd-bq">/day</span>'
   : cdMoney(b.v) + ' <span class="cd-bq">total</span>';
+
+/* Розклад під підказкою. Читається як відповідь на питання «чому саме
+   стільки»: що Facebook прислав, що з цього порахували, а що прибрали
+   як те саме іншим іменем.
+
+   Подія, яку НЕ порахували, теж у списку — саме вона найчастіше і є
+   відповіддю: побачивши «app installs 1 — counted», людина зніме
+   галочку й отримає своє число, а не гадатиме. */
+function cdLeadTip(n) {
+  const rows = [...n.leadBy.entries()].filter(([, x]) => x.v !== 0);
+  if (!rows.length) return 'Nothing Facebook calls a lead came in for this row.';
+  const out = rows.map(([t, x]) =>
+    t + ' ' + x.v + (x.used ? ' — counted' : ' — same event under another name, not added'));
+  return 'Lead = ' + n.leads + '\n' + out.join('\n')
+       + '\n\nWhich events count is a setting: the Rules panel, "What counts as a Lead".';
+}
 
 const cdPer = (spend, n) => n > 0 ? cdMoney(spend / n)
   : (spend > 0 ? '<span class="cd-inf" title="Money spent, nothing back yet">∞</span>'
@@ -21563,7 +21700,7 @@ function cdRow(n, depth) {
     <td class="ta-r cd-num">${ctr}</td>
     <td class="ta-r cd-num">${n.clicks}</td>
     <td class="ta-r cd-num">${cdPer(n.spend, n.clicks)}</td>
-    <td class="ta-r cd-num">${n.leads}</td>
+    <td class="ta-r cd-num has-tip" title="${cdEsc(cdLeadTip(n))}">${n.leads}</td>
     <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
     <td class="ta-r cd-num">${n.regs}</td>
     <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
