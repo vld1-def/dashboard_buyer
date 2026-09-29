@@ -113,7 +113,16 @@ alter table public.fb_ad_today
   add column if not exists campaign_daily_budget    numeric,
   add column if not exists campaign_lifetime_budget numeric,
   add column if not exists adset_daily_budget       numeric,
-  add column if not exists adset_lifetime_budget    numeric;
+  add column if not exists adset_lifetime_budget    numeric,
+  -- status, а НЕ effective_status: це положення самого вимикача
+  -- (ACTIVE / PAUSED / ARCHIVED). Те саме оголошення з вимикачем ACTIVE
+  -- буде DISAPPROVED, якщо його відхилили, і CAMPAIGN_PAUSED, якщо
+  -- вимкнули кампанію над ним. Поки ми мали лише effective_status,
+  -- положення вимикача доводилось вгадувати — і на реджектах здогадка
+  -- була хибною.
+  add column if not exists own_status               text,
+  add column if not exists campaign_own_status      text,
+  add column if not exists adset_own_status         text;
 
 alter table public.fb_ad_today enable row level security;
 
