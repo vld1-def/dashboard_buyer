@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.09 18:34">
+  <meta name="build" content="build 29.09 07:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4474,7 +4474,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.09 18:34</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 07:17</div>
     </div>
   </aside>
 
@@ -20917,6 +20917,51 @@ window.rlCheck = async function () {
 const CD_LEAD_DEFAULT = ['lead', 'onsite_conversion.lead_grouped',
                          'offsite_conversion.fb_pixel_lead', 'mobile_app_install'];
 
+/* ОДНУ Й ТУ САМУ ПОДІЮ FACEBOOK ВІДДАЄ КІЛЬКОМА ІМЕНАМИ ОДРАЗУ.
+
+   Три ліди приїжджають так:
+     lead                              3
+     onsite_conversion.lead_grouped    3
+     offsite_conversion.fb_pixel_lead  3
+   — це не дев'ять лідів, а ті самі три, порахованих трьома способами.
+   Поки ми просто складали все, що відмічене галочкою, стовпчик Lead
+   показував утричі більше, а ціна ліда — утричі менше. Реєстрації цієї
+   вади не мали, бо там cdPick бере ОДНЕ значення; сюди те саме не
+   поширили, і саме тому клацання сходилось, а ліди — ні.
+
+   Складати все одно треба: 'lead' і 'mobile_app_install' — це різні
+   події, і людина може хотіти обидві. Тому зводимо тип до БАЗОВОЇ
+   події, беремо по одному значенню на подію й лише тоді складаємо
+   різні події.
+
+   Яке саме значення на подію: якщо в списку є сама базова назва
+   ('lead'), беремо її — у Facebook це загальне число, що вже містить
+   і піксельні, і лід-форми. Якщо її не відмітили, а відмітили окремі
+   джерела — складаємо їх: людина попросила саме ці джерела. */
+const cdLeadBase = (t) => String(t || '')
+  .replace(/^offsite_conversion\.fb_pixel_/, '')
+  .replace(/^onsite_conversion\./, '')
+  .replace(/^offsite_conversion\./, '')
+  .replace(/_grouped$/, '');
+
+function cdLeadCount(actions, want) {
+  if (!Array.isArray(actions)) return 0;
+  const by = new Map();                     // базова подія → [{ type, value }]
+  actions.forEach(x => {
+    const t = String(x.action_type || '');
+    if (!want.includes(t)) return;
+    const b = cdLeadBase(t);
+    if (!by.has(b)) by.set(b, []);
+    by.get(b).push({ t, v: Number(x.value) || 0 });
+  });
+  let n = 0;
+  by.forEach((list, b) => {
+    const total = list.find(x => x.t === b);
+    n += total ? total.v : list.reduce((a, x) => a + x.v, 0);
+  });
+  return n;
+}
+
 /* РЕЗУЛЬТАТ — це не «якась подія», а та сама, на яку оптимізується
    адсет. Facebook показує в Ads Manager саме її, тож і ми беремо ціль
    адсета (optimization_goal), а для конверсій — подію пікселя
@@ -21206,8 +21251,7 @@ function cdMetrics(r) {
     spend: Number(r.spend) || 0,
     imps,
     clicks: Number(r.link_clicks) || 0,
-    leads: acts.reduce((a, x) =>
-      a + (cdLeads.includes(String(x.action_type)) ? (Number(x.value) || 0) : 0), 0),
+    leads: cdLeadCount(acts, cdLeads),
     regs: cdPick(acts, CD_REG) || 0,
     result: !suf ? null : suf === 'impressions' ? imps : (cdPick(acts, suf) || 0),
     goal: String(r.optimization_goal || r.custom_event_type || ''),

@@ -221,12 +221,55 @@ function addAgg(to: Agg, from: Agg): void {
    Ліди складаємо тут, а не при записі: що саме вважати лідом — це
    налаштування, і людина міняє його галочкою. Якби ми записували вже
    порахуване, кожна така галочка вимагала б нового походу в Facebook. */
+/* ОДНУ Й ТУ САМУ ПОДІЮ FACEBOOK ВІДДАЄ КІЛЬКОМА ІМЕНАМИ ОДРАЗУ.
+
+   Три ліди приїжджають так:
+     lead                              3
+     onsite_conversion.lead_grouped    3
+     offsite_conversion.fb_pixel_lead  3
+   — це не дев'ять лідів, а ті самі три, порахованих трьома способами.
+   Поки ми просто складали все, що відмічене галочкою, правила бачили
+   втричі більше лідів, а отже ВТРИЧІ ДЕШЕВШУ ціну ліда — і не вимикали
+   те, що давно мало бути вимкнене. Це вада не показу, а рішень.
+
+   Складати все одно треба: 'lead' і 'mobile_app_install' — різні
+   події. Тому зводимо тип до базової події, беремо по одному значенню
+   на подію й лише тоді складаємо різні події. Якщо в списку є сама
+   базова назва ('lead'), беремо її — у Facebook це загальне число.
+   Якщо відмічені лише окремі джерела, складаємо їх.
+
+   ТЕ САМЕ ПРАВИЛО ЖИВЕ В ДАШБОРДІ (cdLeadCount у розборі кабінета).
+   Спільного модуля між Deno-функцією та сторінкою немає, тож код
+   продубльований — але розійтись їм не можна: ціна ліда на екрані й
+   ціна ліда в правилі мусять бути одним числом. */
+function leadBase(t: string): string {
+  return String(t || '')
+    .replace(/^offsite_conversion\.fb_pixel_/, '')
+    .replace(/^onsite_conversion\./, '')
+    .replace(/^offsite_conversion\./, '')
+    .replace(/_grouped$/, '');
+}
+
+function leadCount(acts: Json[], want: string[]): number {
+  const by = new Map<string, { t: string; v: number }[]>();
+  acts.forEach(a => {
+    const t = String(a.action_type || '');
+    if (!want.includes(t)) return;
+    const b = leadBase(t);
+    if (!by.has(b)) by.set(b, []);
+    by.get(b)!.push({ t, v: Number(a.value) || 0 });
+  });
+  let n = 0;
+  by.forEach((list, b) => {
+    const total = list.find(x => x.t === b);
+    n += total ? total.v : list.reduce((a, x) => a + x.v, 0);
+  });
+  return n;
+}
+
 function aggOf(row: Json, leadActions: string[]): Agg {
   const acts: Json[] = Array.isArray(row.actions) ? row.actions : [];
-  let leads = 0;
-  acts.forEach(a => {
-    if (leadActions.includes(String(a.action_type))) leads += Number(a.value) || 0;
-  });
+  const leads = leadCount(acts, leadActions);
   return {
     spend: Number(row.spend) || 0,
     imps: Number(row.impressions) || 0,
