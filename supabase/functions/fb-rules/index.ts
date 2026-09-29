@@ -109,7 +109,8 @@ type Rule = {
    спрацювати. А от коли витрат немає взагалі, метрики немає: це не
    нуль, це «нічого не відбувалось», і такі сутності правила не
    торкаються (плюс поріг спенду однаково їх відсіює). */
-type Agg = { spend: number; imps: number; clicks: number; linkClicks: number; leads: number };
+type Agg = { spend: number; imps: number; clicks: number; linkClicks: number;
+             leads: number; regs: number; purchases: number };
 
 const METRICS: Record<string, (a: Agg) => number | null> = {
   spend:       a => a.spend,
@@ -118,6 +119,10 @@ const METRICS: Record<string, (a: Agg) => number | null> = {
   link_clicks: a => a.linkClicks,
   cpc_link:    a => a.linkClicks > 0 ? a.spend / a.linkClicks : (a.spend > 0 ? Infinity : null),
   cpl:         a => a.leads > 0 ? a.spend / a.leads : (a.spend > 0 ? Infinity : null),
+  regs:        a => a.regs,
+  cpr:         a => a.regs > 0 ? a.spend / a.regs : (a.spend > 0 ? Infinity : null),
+  purchases:   a => a.purchases,
+  cpp:         a => a.purchases > 0 ? a.spend / a.purchases : (a.spend > 0 ? Infinity : null),
   cpm:         a => a.imps > 0 ? a.spend / a.imps * 1000 : (a.spend > 0 ? Infinity : null),
   ctr_link:    a => a.imps > 0 ? a.linkClicks / a.imps * 100 : null
 };
@@ -131,9 +136,11 @@ const METRICS: Record<string, (a: Agg) => number | null> = {
 const METRIC_LABEL: Record<string, string> = {
   spend: 'spend', imps: 'impressions', leads: 'leads',
   link_clicks: 'link clicks', cpc_link: 'cost per link click',
-  cpl: 'cost per lead', cpm: 'CPM', ctr_link: 'link CTR'
+  cpl: 'cost per lead', cpm: 'CPM', ctr_link: 'link CTR',
+  regs: 'registrations', cpr: 'cost per registration',
+  purchases: 'purchases', cpp: 'cost per purchase'
 };
-const METRIC_MONEY = ['spend', 'cpc_link', 'cpl', 'cpm'];
+const METRIC_MONEY = ['spend', 'cpc_link', 'cpl', 'cpm', 'cpr', 'cpp'];
 
 function fmtMetric(m: string, v: number | null): string {
   if (v == null) return 'n/a';
@@ -257,11 +264,14 @@ type Ent = { id: string; name: string; level: string; account: string;
              adset: string; adsetName: string;
              campaign: string; campaignName: string; agg: Agg };
 
-function aggZero(): Agg { return { spend: 0, imps: 0, clicks: 0, linkClicks: 0, leads: 0 }; }
+function aggZero(): Agg {
+  return { spend: 0, imps: 0, clicks: 0, linkClicks: 0, leads: 0, regs: 0, purchases: 0 };
+}
 
 function addAgg(to: Agg, from: Agg): void {
   to.spend += from.spend; to.imps += from.imps; to.clicks += from.clicks;
   to.linkClicks += from.linkClicks; to.leads += from.leads;
+  to.regs += from.regs; to.purchases += from.purchases;
 }
 
 /* Рядок знімка → числа, якими міряють правила.
@@ -315,6 +325,37 @@ function leadCount(acts: Json[], want: string[]): number {
   return n;
 }
 
+/* РЕЄСТРАЦІЯ Й ПОКУПКА — та сама біда з кількома іменами, але
+   розвʼязана інакше, ніж у лідів, і навмисно.
+
+   У лідів список подій колись налаштовувався, тож там треба скласти
+   кілька РІЗНИХ подій і лише всередині кожної взяти одне значення.
+   Тут подія одна, і питання лише в тому, яким із своїх імен Facebook
+   її цього разу назвав: complete_registration,
+   offsite_conversion.fb_pixel_complete_registration,
+   onsite_conversion.complete_registration — це та сама реєстрація.
+   Склавши їх, ми показали б подвійне й потрійне число.
+
+   Тому беремо НАЙТОЧНІШИЙ збіг і тільки його. Рівно так само рахує
+   дашборд (cdPick у розборі кабінета), і розійтись їм не можна:
+   кількість реєстрацій на екрані й та, за якою діє правило, мусять
+   бути одним числом. */
+function pickEvent(acts: Json[], suf: string): number {
+  let best = 0, rank = 99;
+  acts.forEach(a => {
+    const t = String(a.action_type || '');
+    const r = t === suf ? 0
+      : t === 'offsite_conversion.fb_pixel_' + suf ? 1
+      : t === 'onsite_conversion.' + suf ? 2
+      : (t.endsWith('.' + suf) || t.endsWith('_' + suf)) ? 3 : 99;
+    if (r < rank) { rank = r; best = Number(a.value) || 0; }
+  });
+  return rank === 99 ? 0 : best;
+}
+
+const REG_EVENT = 'complete_registration';
+const BUY_EVENT = 'purchase';
+
 function aggOf(row: Json, leadActions: string[]): Agg {
   const acts: Json[] = Array.isArray(row.actions) ? row.actions : [];
   const leads = leadCount(acts, leadActions);
@@ -323,7 +364,12 @@ function aggOf(row: Json, leadActions: string[]): Agg {
     imps: Number(row.impressions) || 0,
     clicks: Number(row.clicks) || 0,
     linkClicks: Number(row.link_clicks) || 0,
-    leads
+    leads,
+    /* Немає події — це нуль, а не «невідомо»: саме «витратив і жодної
+       реєстрації» правило й мусить ловити. Ціна ж при нулі стає
+       нескінченною, як і в лідів, — і теж ловиться. */
+    regs: pickEvent(acts, REG_EVENT),
+    purchases: pickEvent(acts, BUY_EVENT)
   };
 }
 
