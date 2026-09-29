@@ -122,6 +122,47 @@ const METRICS: Record<string, (a: Agg) => number | null> = {
   ctr_link:    a => a.imps > 0 ? a.linkClicks / a.imps * 100 : null
 };
 
+/* Підписи для повідомлення. Ті самі метрики в дашборді підписані
+   довше («Cost per link click»), бо там є місце. Тут рядок читають у
+   телефоні, тож коротко — але так, щоб не сплутати CTR із CTR: у нас
+   це ЗАВЖДИ link CTR, тобто переходи за посиланням ÷ покази, а не
+   «CTR (all)» з Ads Manager, куди входять і лайки, і кліки по сторінці.
+   Саме ця плутанина й змушує питати, чому правило спрацювало. */
+const METRIC_LABEL: Record<string, string> = {
+  spend: 'spend', imps: 'impressions', leads: 'leads',
+  link_clicks: 'link clicks', cpc_link: 'cost per link click',
+  cpl: 'cost per lead', cpm: 'CPM', ctr_link: 'link CTR'
+};
+const METRIC_MONEY = ['spend', 'cpc_link', 'cpl', 'cpm'];
+
+function fmtMetric(m: string, v: number | null): string {
+  if (v == null) return 'n/a';
+  if (v === Infinity) return '∞';
+  if (METRIC_MONEY.includes(m)) return money(v);
+  if (m === 'ctr_link') return (Math.round(v * 100) / 100) + '%';
+  return String(Math.round(v * 100) / 100);
+}
+
+/* ЧОМУ САМЕ ЦЕЙ РЯДОК. Повідомлення показувало один і той самий набір
+   чисел — спенд, клік, лід — хоч би за чим ганялось правило. Правило
+   на CTR вимикало оголошення, а CTR у повідомленні не було взагалі:
+   перевірити його рішення було ніяк, і питання «чому воно зупинило, в
+   мене там інші числа» виникало щоразу — причому виправдано.
+
+   Показуємо і виміряне, і поріг: «link CTR 1.09% < 30%» пояснює
+   рішення цілком, і видно навіть те, що поріг виставлено не тією
+   міркою. */
+function whyHit(r: Rule, a: Agg): string {
+  return r.when.map(c => METRIC_LABEL[c.m] || c.m)
+    .map((label, i) => {
+      const c = r.when[i];
+      const f = METRICS[c.m];
+      return label + ' ' + fmtMetric(c.m, f ? f(a) : null)
+        + ' ' + c.op + ' ' + fmtMetric(c.m, c.v);
+    })
+    .join(r.match === 'any' ? ' OR ' : ' AND ');
+}
+
 /* ЛІД — ЦЕ ПОДІЯ ПІКСЕЛЯ, і більше нічого.
 
    Довго це був список із галочками в дашборді, і кожна галочка
@@ -367,6 +408,9 @@ function atLevel(ads: Ent[], level: string): Ent[] {
    чужі вимкнення. */
 type Hit = { rule: string; ruleName: string; level: string; id: string; name: string;
              account: string; campaignName: string; owner: string; team: string;
+             /* Виміряне проти порога, словами. Рахуємо тут, а не в
+                повідомленні: там уже немає ні правила, ні чисел. */
+             why: string;
              agg: Agg; dry: boolean; ok: boolean; error: string; acted: boolean;
              /* Правило не діяло, бо його про це не просили (Check now),
                 а не тому, що йому заборонено. Різні речі, і підпис у
@@ -494,7 +538,9 @@ function tgText(hits: Hit[]): string {
     + (failed ? ', ' + failed + ' could not be paused' : '') + '\n\n';
   const one = (h: Hit) => (h.dry ? '\u{1F441} ' : h.ok ? '⛔ ' : '⚠ ')
     + h.level + ' «' + h.name + '»\n   ' + whereLine(h) + '\n   ' + metricLine(h)
-    + '\n   rule: ' + h.ruleName + (h.error ? '\n   ' + h.error : '');
+    + '\n   rule: ' + h.ruleName
+    + (h.why ? '\n   matched: ' + h.why : '')
+    + (h.error ? '\n   ' + h.error : '');
   const lines = hits.slice(0, TG_MAX).map(one);
   const tail = () => {
     const rest = hits.length - lines.length;
@@ -666,7 +712,7 @@ Deno.serve(async (req) => {
                       name: e.name, account, campaignName: e.campaignName,
                       owner: String(t.created_by || ''), team: String(a.team_name || t.team_name || ''),
                       agg: e.agg, dry: forceDry || r.dry, ok: false, error: '', acted: false,
-                      preview: forceDry });
+                      preview: forceDry, why: whyHit(r, e.agg) });
         });
       }
     }
