@@ -427,6 +427,17 @@ function urlsFor(actId: string, tz: string): string[] {
          них стовпчик «Result» довелось би вгадувати, а вгадане число
          гірше за чесний прочерк.
 
+         STATUS І EFFECTIVE_STATUS — ЦЕ ДВА РІЗНІ ПОЛЯ, і плутати їх
+         не можна. status — положення самого вимикача (ACTIVE, PAUSED,
+         ARCHIVED). effective_status — що з цього вийшло: те саме
+         оголошення з вимикачем ACTIVE буде DISAPPROVED, якщо його
+         відхилили, і CAMPAIGN_PAUSED, якщо вимкнули кампанію над ним.
+
+         Довго ми брали лише effective_status і з нього ВГАДУВАЛИ
+         положення вимикача. На реджектах здогадка виявилась хибною:
+         перемикач показував «ввімкнено» там, де насправді вимкнено.
+         Тепер питаємо саме те поле, яке й означає вимикач.
+
          effective_status БАТЬКІВ — окрема річ, і вивести його з дітей
          не можна. Кампанія буває PAUSED сама по собі, а її оголошення
          при цьому ACTIVE: Facebook просто не показує їх. Поки ми
@@ -441,10 +452,10 @@ function urlsFor(actId: string, tz: string): string[] {
          ніколи на обох. Питати лише один рівень означало б показувати
          прочерк половині кабінетів, причому тій половині, яка про це
          не здогадується. */
-      + '&fields=' + encodeURIComponent('name,effective_status,adset_id,campaign_id,'
-        + 'adset{name,effective_status,daily_budget,lifetime_budget,'
+      + '&fields=' + encodeURIComponent('name,status,effective_status,adset_id,campaign_id,'
+        + 'adset{name,status,effective_status,daily_budget,lifetime_budget,'
         + 'optimization_goal,promoted_object{custom_event_type}},'
-        + 'campaign{name,effective_status,daily_budget,lifetime_budget},'
+        + 'campaign{name,status,effective_status,daily_budget,lifetime_budget},'
         + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
   ];
 }
@@ -467,10 +478,12 @@ type Day = { day: string; spend: number | null;
    це тут головне: нуль означає «бюджет тут 0», порожнеча — «бюджет не
    на цьому рівні». Своя копія тієї самої функції не лише зайва, а й
    просто не компілювалась: ім'я вже зайняте. */
-type AdSnap = { ad_id: string; name: string; status: string;
+type AdSnap = { ad_id: string; name: string; status: string; own: string;
                 adset_id: string; adset_name: string; adset_status: string;
+                adset_own: string;
                 adset_daily: number | null; adset_life: number | null;
                 campaign_id: string; campaign_name: string; campaign_status: string;
+                campaign_own: string;
                 campaign_daily: number | null; campaign_life: number | null;
                 goal: string; event: string;
                 spend: number; imps: number; clicks: number; link_clicks: number;
@@ -642,12 +655,15 @@ function readParts(parts: (Json | null)[]):
       return {
         ad_id: String(r.id || ''), name: String(r.name || ''),
         status: String(r.effective_status || ''),
+        own: String(r.status || ''),
         adset_id: String(r.adset_id || ''), adset_name: String(r.adset?.name || ''),
         adset_status: String(r.adset?.effective_status || ''),
+        adset_own: String(r.adset?.status || ''),
         adset_daily: num(r.adset?.daily_budget),
         adset_life: num(r.adset?.lifetime_budget),
         campaign_id: String(r.campaign_id || ''), campaign_name: String(r.campaign?.name || ''),
         campaign_status: String(r.campaign?.effective_status || ''),
+        campaign_own: String(r.campaign?.status || ''),
         campaign_daily: num(r.campaign?.daily_budget),
         campaign_life: num(r.campaign?.lifetime_budget),
         goal: String(r.adset?.optimization_goal || ''),
@@ -911,11 +927,14 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
         live.forEach(a => snapRows.push({
           created_by: t.created_by, team_name: t.team_name, account_id: x.id,
           ad_id: a.ad_id, name: a.name, effective_status: a.status || null,
+          own_status: a.own || null,
           adset_id: a.adset_id, adset_name: a.adset_name || null,
           adset_status: a.adset_status || null,
+          adset_own_status: a.adset_own || null,
           adset_daily_budget: a.adset_daily, adset_lifetime_budget: a.adset_life,
           campaign_id: a.campaign_id, campaign_name: a.campaign_name || null,
           campaign_status: a.campaign_status || null,
+          campaign_own_status: a.campaign_own || null,
           campaign_daily_budget: a.campaign_daily,
           campaign_lifetime_budget: a.campaign_life,
           optimization_goal: a.goal || null, custom_event_type: a.event || null,

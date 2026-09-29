@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 09:00">
+  <meta name="build" content="build 29.09 09:54">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3449,6 +3449,41 @@ body[data-route="domains"] #dm-detail {
 /* Прочерки в підсумку тлумлені так само, як у рядках: «немає» не має
    важити більше за число поруч. */
 .cd-tot .cd-na { font-weight: 700; }
+
+/* МУЛЬТИВИБІР. Галочка живе в комірці назви разом із трикутником, тому
+   тримаємо її вузькою і притискаємо до тексту: власного стовпчика на
+   неї немає, а зайві пікселі тут з'їдають ширину назви.
+
+   Відступ у дереві (.cd-d1/.cd-d2) зсуває галочку разом із назвою — це
+   навмисно: так видно, до якого рівня належить вибраний рядок. */
+.cd-mk {
+  width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
+  accent-color: var(--accent); cursor: pointer; flex: 0 0 auto;
+}
+/* Вибраний рядок підсвічуємо смугою зліва, а не фоном: фон уже зайнятий
+   під :hover, і два фони поспіль читаються як один. */
+.cd-r.is-mk td { background: var(--surface-2); }
+.cd-r.is-mk td:first-child {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Смуга дії. Стоїть між шапкою й таблицею, а не над карткою: дія
+   стосується рядків, і від них її відводити не можна.
+
+   Не липка: коли таблицю гортають, смуга їде вгору разом зі списком —
+   але вибір нікуди не дівається, а липкий рядок тут конкурував би з
+   липкою шапкою таблиці й підсумком унизу. */
+.cd-mkbar {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 6px 9px; margin-bottom: 7px;
+  border: 1px solid var(--border-2); border-radius: 10px;
+  background: var(--surface-2);
+}
+.cd-mkn {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-main); margin-right: 2px;
+}
 /* ПЕРЕМИКАЧ, як в Ads Manager. Раніше тут стояла кнопка «Stop», яка
    вміла одне й нічого не показувала: після натискання рядок виглядав
    так само, і незрозуміло було навіть, чи спрацювало.
@@ -4504,7 +4539,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 09:00</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 09:54</div>
     </div>
   </aside>
 
@@ -21088,13 +21123,17 @@ const cdIsOn = (k) => !CD_OFF.includes(String(k || '').toUpperCase());
 
 /* А ЦЕ ІНШЕ ПИТАННЯ, і плутати їх не можна.
 
-   cdIsOn каже, чи ввімкнений вимикач САМОГО рядка — це для перемикача
-   в кінці рядка. cdLive каже, чи щось узагалі крутиться: оголошення з
-   увімкненим вимикачем під вимкненою кампанією не крутиться, хоч його
-   власний вимикач і стоїть на «так».
+   cdIsOn каже, чи ввімкнений вимикач САМОГО рядка — і читає для цього
+   status, справжнє положення вимикача. cdLive каже, чи щось узагалі
+   крутиться, і читає effective_status.
 
-   Реджект тут лишається живим навмисно. Він увімкнений, гроші на нього
-   виділені, і саме його треба побачити — фільтр «тільки активні», який
+   Довго перемикач вгадував своє положення з effective_status, бо
+   status ми просто не питали. На реджектах здогадка виявилась хибною:
+   вимкнене оголошення показувалось як ввімкнене. Тепер обидва поля
+   приїжджають із Facebook, і вгадувати нема чого.
+
+   Реджект у фільтрі «тільки активні» лишається видимим навмисно:
+   гроші на нього виділені, і саме його треба побачити — фільтр, що
    ховає реджекти, ховав би рівно те, заради чого сюди заходять. */
 const CD_NOT_LIVE = ['PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'ARCHIVED', 'DELETED'];
 const cdLive = (k) => !CD_NOT_LIVE.includes(String(k || '').toUpperCase());
@@ -21111,6 +21150,21 @@ let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
 let cdOnly = (() => { try { return localStorage.getItem('cd_only_live') === '1'; }
                       catch (e) { return false; } })();
 
+/* МУЛЬТИВИБІР. Вимкнути пʼять оголошень п'ятьма кліками з п'ятьма
+   підтвердженнями — це не робота, а покарання. Тому галочки на рядках
+   і одна дія на всіх.
+
+   Тримаємо саме id, а не посилання на вузли: дерево перебудовується
+   при кожному перемальовуванні, і вузол, збережений у Set, наступної
+   ж секунди стає чужим об'єктом. */
+let cdMarked = new Set();
+
+window.cdMark = function (id, on) {
+  if (on) cdMarked.add(String(id)); else cdMarked.delete(String(id));
+  cdPaint();
+};
+window.cdMarkClear = function () { cdMarked = new Set(); cdPaint(); };
+
 window.cdSetOnly = function (v) {
   cdOnly = !!v;
   try { localStorage.setItem('cd_only_live', cdOnly ? '1' : '0'); } catch (e) {}
@@ -21124,7 +21178,14 @@ function cdShown() {
   if (!cdOnly) return cdRows;
   /* Рядок без стану лишаємо: ми не знаємо, що з ним, а мовчки ховати
      те, чого не знаєш, — найгірший з варіантів. */
-  return cdRows.filter(r => !r.effective_status || cdLive(r.effective_status));
+  return cdRows.filter(r => {
+    /* Власний вимикач сильніший за effective_status: вимкнене
+       оголошення Facebook інколи й далі підписує як відхилене, і по
+       самому лише DISAPPROVED воно виглядало б живим. Вимикач на
+       «off» означає, що не крутиться, — і сперечатись тут нема з чим. */
+    if (r.own_status && !cdIsOn(r.own_status)) return false;
+    return !r.effective_status || cdLive(r.effective_status);
+  });
 }
 // База старіша за сторінку: немає колонок зі станом кампанії й адсета.
 let cdOld = '';
@@ -21191,7 +21252,10 @@ const cdMoney = (v) => '$' + (Math.round((Number(v) || 0) * 100) / 100)
   .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 window.cdHide = function () {
-  cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set();
+  /* Вибір теж скидаємо. Галочки, які пережили закриття панелі, — це
+     пастка: смуги дії на екрані немає, людина про них не памʼятає, а
+     наступний «Switch off» вимкне те, чого вона зараз не бачить. */
+  cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set();
   /* Смугу з кнопкою не чіпаємо: кабінет вибраний, просто нутро
      закрите. Прибирає її той, хто зняв вибір, — cdBar(''). */
   const box = document.getElementById('cab-inside');
@@ -21217,7 +21281,7 @@ async function cdLoad(account) {
   const id = String(account || '').trim();
   if (!id) return cdHide();
   box.classList.remove('hidden');
-  if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); }
+  if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set(); }
   cdAcc = id;
   cdBtnSync();
   cdPaint();
@@ -21236,7 +21300,8 @@ async function cdLoad(account) {
     + 'spend,impressions,clicks,link_clicks,actions,seen_at';
   const CD_NEW = 'campaign_status,adset_status,'
     + 'campaign_daily_budget,campaign_lifetime_budget,'
-    + 'adset_daily_budget,adset_lifetime_budget';
+    + 'adset_daily_budget,adset_lifetime_budget,'
+    + 'own_status,campaign_own_status,adset_own_status';
   const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
   try {
@@ -21339,7 +21404,10 @@ function cdNode(id, name, kind) {
      відповідає на «чому воно не витрачає». Складене з дітей на це
      питання не відповідає: у вимкненої кампанії оголошення можуть бути
      хоч усі ACTIVE, просто їх ніхто не показує. */
-  return { id: String(id || ''), name: name || '', kind, own: '', budget: null,
+  /* own — що ПОКАЗУЄ Facebook (effective_status): з нього підписи в
+     стовпчику Status. sw — положення самого вимикача (status): з нього
+     перемикач. Два різні поля, два різні питання. */
+  return { id: String(id || ''), name: name || '', kind, own: '', sw: '', budget: null,
            leadBy: new Map(),        // подія → { v, used } по всіх дітях
            spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
            result: 0, hasResult: false, goals: new Set(),
@@ -21372,13 +21440,16 @@ function cdTree() {
     // оголошень однієї кампанії він той самий, а порожній буває тоді,
     // коли база ще без цих колонок.
     if (!c.own) c.own = String(r.campaign_status || '').toUpperCase();
+    if (!c.sw) c.sw = String(r.campaign_own_status || '').toUpperCase();
     if (!c.budget) c.budget = cdBudget(r.campaign_daily_budget, r.campaign_lifetime_budget);
     let s = c.by.get(sid);
     if (!s) { s = cdNode(sid, r.adset_name, 'ad set'); c.by.set(sid, s); c.kids.push(s); }
     if (!s.own) s.own = String(r.adset_status || '').toUpperCase();
+    if (!s.sw) s.sw = String(r.adset_own_status || '').toUpperCase();
     if (!s.budget) s.budget = cdBudget(r.adset_daily_budget, r.adset_lifetime_budget);
     const a = cdNode(r.ad_id, r.name, 'ad');
     a.own = m.state;
+    a.sw = String(r.own_status || '').toUpperCase();
     cdAdd(a, m); cdAdd(s, m); cdAdd(c, m);
     a.ads = 0;
     s.kids.push(a);
@@ -21414,6 +21485,7 @@ function cdAds() {
     const n = cdNode(r.ad_id, r.name, 'ad');
     const m = cdMetrics(r);
     n.own = m.state;
+    n.sw = String(r.own_status || '').toUpperCase();
     cdAdd(n, m);
     n.ads = 0;
     n.where = [r.campaign_name, r.adset_name].filter(Boolean).join(' · ');
@@ -21490,7 +21562,7 @@ function cdPaint() {
     });
   });
 
-  box.innerHTML = head + `<div class="cd-wrap custom-scrollbar">
+  box.innerHTML = head + cdMarkBar() + `<div class="cd-wrap custom-scrollbar">
     <table class="cd-tbl">
       <thead><tr>
         <th>${cdFlat ? 'Ad' : 'Campaign / ad set / ad'}</th>
@@ -21513,6 +21585,80 @@ function cdPaint() {
       ${cdTotalRow(top)}
     </table></div>`;
 }
+
+/* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
+   нулем вибраних забирає висоту й нічого не каже. */
+function cdMarkBar() {
+  const n = cdMarked.size;
+  if (!n) return '';
+  return `<div class="cd-mkbar">
+      <span class="cd-mkn">${n} picked</span>
+      <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}
+        onclick="cdFlipMany(false)">Switch off</button>
+      <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}
+        onclick="cdFlipMany(true)">Switch on</button>
+      <button type="button" class="cd-tab" onclick="cdMarkClear()">Clear</button>
+    </div>`;
+}
+
+/* Перемкнути все вибране однією дією. Facebook приймає до двохсот
+   адрес за раз, і fb-pause тримає ту саму стелю — тож ділити на пачки
+   тут нема чого.
+
+   Питаємо один раз на всю пачку, а не на кожен рядок: пʼять
+   підтверджень поспіль перестають читати вже на другому. */
+window.cdFlipMany = async function (on) {
+  const ids = [...cdMarked];
+  if (!ids.length) return;
+  const what = ids.length + ' item(s)';
+  const go = typeof ask === 'function'
+    ? await ask(on
+        ? { title: 'Switch them on?', ok: 'Switch on',
+            body: `Switch on ${what} in Facebook?\n\n`
+                + 'They start spending again. Anything switched off ABOVE them stays off.' }
+        : { title: 'Switch them off?', danger: true, ok: 'Switch off',
+            body: `Switch off ${what} in Facebook?\n\nEverything under them stops too.` })
+    : confirm((on ? 'Switch on ' : 'Switch off ') + what + '?');
+  if (!go) return;
+
+  cdBusy = true; cdPaint();
+  try {
+    const { data: s } = await sb.auth.getSession();
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json',
+                 Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+      body: JSON.stringify({ account_id: cdAcc, ids, on: !!on })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+    const done = Number(j.paused) || 0;
+    /* Правимо стан у себе лише тоді, коли пройшли ВСІ. Скільки саме
+       пройшло, Facebook каже числом, а не списком, — тож на частковому
+       успіху чесніше не чіпати нічого й дочекатись синхронізації, ніж
+       розфарбувати навмання.
+
+       З тієї ж причини вибір на частковому успіху НЕ скидаємо: людина
+       бачить ті самі галочки й може спробувати ще раз. Повторне
+       вимкнення вже вимкненого нічого не ламає, а от втрачений список
+       із пʼяти рядків довелось би збирати наново. */
+    if (done === ids.length) {
+      ids.forEach(id => cdSetOwn(id, on ? 'ACTIVE' : 'PAUSED'));
+      cdMarked = new Set();
+    }
+    if (typeof toast === 'function') {
+      if (done === ids.length) toast('Switched ' + (on ? 'on' : 'off') + ': ' + done);
+      else if (done) toast('Switched ' + done + ' of ' + ids.length
+        + ' — ' + ((j.problems || [])[0] || 'Facebook refused the rest'), 'warn');
+      else toast('Nothing switched: '
+        + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not switch: ' + e.message, 'error');
+  }
+  cdBusy = false;
+  cdPaint();
+};
 
 /* ПІДСУМОК. Рахуємо з верхнього рівня — кампаній у дереві, оголошень у
    списку: нижні рівні вже складені в них, і брати обидва означало б
@@ -21708,10 +21854,18 @@ function cdRow(n, depth) {
   const ctr = n.imps > 0
     ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
 
-  return `<tr class="cd-r cd-d${depth}">
+  /* Галочка стоїть у комірці назви, а не окремим стовпчиком: власного
+     стовпчика на неї немає де взяти, а клік по ній не повинен
+     розкривати дерево — звідси stopPropagation. */
+  const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
+      onclick="event.stopPropagation()"
+      onchange="cdMark('${cdEsc(n.id)}', this.checked)"
+      title="Pick this ${n.kind} to switch together with others">`;
+
+  return `<tr class="cd-r cd-d${depth}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
     <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
         title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
-        >${twist}${label}${count}</td>
+        >${mark}${twist}${label}${count}</td>
     <td>${cdChips(n)}</td>
     <td class="ta-r cd-num">${cdBudgetText(n.budget)}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
@@ -21738,10 +21892,14 @@ function cdRow(n, depth) {
    показують: реджект увімкнений, оголошення під вимкненою кампанією
    теж увімкнене. */
 function cdSwitch(n, named) {
-  const on = cdIsOn(n.own);
-  const known = !!n.own;
+  /* Положення вимикача беремо з status, а не з effective_status. Поки
+     бази ще без цієї колонки, sw порожній — тоді чесно показуємо
+     «не знаємо» пунктиром, а не вгадуємо, як робили раніше. */
+  const known = !!n.sw;
+  const on = known && cdIsOn(n.sw);
   const title = !known
-    ? 'Facebook has not told us the state of this ' + n.kind + ' yet — press Sync now'
+    ? 'Facebook has not told us the switch position of this ' + n.kind
+      + ' yet — deploy fb-sync, run block 1 of FB_RULES.sql, then press Sync now'
     : on ? 'Switched on. Click to switch off in Facebook'
          : 'Switched off. Click to switch on in Facebook';
   return `<button type="button" class="cd-sw${on ? ' is-on' : ''}${known ? '' : ' is-na'}"
@@ -21809,9 +21967,15 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
    сусіднього рядка й поверне вимикач назад. */
 function cdSetOwn(id, state) {
   cdRows.forEach(r => {
-    if (String(r.campaign_id) === String(id)) r.campaign_status = state;
-    if (String(r.adset_id) === String(id)) r.adset_status = state;
-    if (String(r.ad_id) === String(id)) r.effective_status = state;
+    if (String(r.campaign_id) === String(id)) {
+      r.campaign_status = state; r.campaign_own_status = state;
+    }
+    if (String(r.adset_id) === String(id)) {
+      r.adset_status = state; r.adset_own_status = state;
+    }
+    if (String(r.ad_id) === String(id)) {
+      r.effective_status = state; r.own_status = state;
+    }
   });
 }
 </script>
