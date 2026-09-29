@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 13:52">
+  <meta name="build" content="build 29.09 15:20">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3345,11 +3345,23 @@ body[data-route="domains"] #dm-detail {
 }
 .cd-tab:hover { color: var(--text-main); }
 .cd-tab.is-on { background: var(--accent); border-color: transparent; color: #fff; }
-/* Висота стеля, а не «скільки вийде». Пів екрана таблиці там, де
-   людина зайшла по експорт, — це не показ даних, а перешкода. Стелі
-   вистачає на пʼять кампаній, а коли одну розгорнули — на неї з
-   дітьми; далі всередині зʼявляється своя смуга. */
-.cd-wrap { flex: 1 1 auto; min-height: 0; max-height: 320px; overflow: auto; }
+/* Висота — стеля, а не «скільки вийде»: пів екрана таблиці там, де
+   людина зайшла по експорт, це перешкода, а не показ даних.
+
+   Але 320px були надто скупі. Підсумок липне до низу ОБЛАСТІ ГОРТАННЯ,
+   а не блока, — тож поки та область була нижчою за блок, між підсумком
+   і краєм лишалась порожнеча, і липкість виглядала зламаною, хоч
+   працювала. Стеля від висоти вікна прибирає саме цю порожнечу: тепер
+   таблиця добирає доступне, а підсумок стоїть там, де його й шукають —
+   унизу.
+
+   min() лишає й другу стелю в пікселях: на дуже високому екрані 58vh
+   перетворилось би на тисячу пікселів таблиці, а це вже знову
+   перешкода. */
+.cd-wrap {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  max-height: min(58vh, 560px);
+}
 .cd-tbl { width: 100%; border-collapse: collapse; min-width: 1180px; }
 .cd-tbl th {
   position: sticky; top: 0; z-index: 2; background: var(--surface-2);
@@ -3724,7 +3736,17 @@ body.is-lead-only .admin-only { display: none; }
 .rl-form-bot .rl-f .rl-in { width: 100%; }
 .rl-form-bot { margin-top: 8px; }
 .rl-form-acts { display: flex; gap: 6px; margin-top: 10px; }
+/* Рядок умови мусить лишатись ОДНИМ рядком. Хрестик, який перестрибнув
+   униз, читається як окрема кнопка «видалити щось» — а він про ту
+   умову, поруч з якою стояв.
+
+   Ламався він не сам: список метрик виріс («Cost per registration»
+   довше за все, що там було), а селект без стелі розтягується під
+   найдовший свій пункт і виштовхує сусідів. Тому метриці — гнучка
+   ширина з правом стискатись, а не природна. */
 .rl-cond { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+.rl-cond > .rl-in[data-f="m"] { flex: 1 1 150px; min-width: 0; }
+.rl-cond > .rl-mini { flex: 0 0 auto; margin-left: auto; }
 .rl-in {
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
   padding: 6px 9px; font-size: 11.5px; font-weight: 700; color: var(--text-main); outline: none;
@@ -4567,7 +4589,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 13:52</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 15:20</div>
     </div>
   </aside>
 
@@ -5437,7 +5459,7 @@ input.ui-in[type="range"] { padding: 0; }
          існують лише якщо їх знайшов збирач, і варто класу не потрапити
          в збірку — панель роздувається на всю таблицю. На цьому вже
          обпеклись із панеллю кабінета. -->
-    <div id="rules-panel" class="hidden shrink-0" style="width:420px">
+    <div id="rules-panel" class="hidden shrink-0" style="width:452px">
 <!-- ═══════════ ПРАВИЛА АВТОМАТИЧНОГО ВИМИКАННЯ ═══════════
      Панель праворуч на сторінці кабінетів, поруч із карткою кабінета:
      правила — про той самий парк, і окремий пункт меню про них був
@@ -5473,13 +5495,6 @@ input.ui-in[type="range"] { padding: 0; }
         <div id="rl-log"></div>
       </div>
 
-      <p class="rl-hint">
-        A new rule starts in <b>report-only</b> mode: it counts and writes to Telegram but changes nothing.
-        Watch it for a few days, then switch it to live. Rules only ever switch things <b>off</b> —
-        turning them back on stays a decision you make yourself, in Ads Manager.
-        The minimum spend is not optional: without it an ad with two dollars and one click
-        is “an expensive click”.
-      </p>
     </div>
 </div>
     </div>
