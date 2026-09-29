@@ -1468,9 +1468,25 @@ async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
    SUPABASE_URL — окремий запис у Vault заради неї був би ще одним
    місцем, яке можна забути заповнити.
 
-   Відповіді не чекаємо довго й на помилці не падаємо: синхронізація
-   вже зробила свою роботу, і зривати її звіт через те, що правила не
-   відповіли, було б гірше за коротке «не вийшло» в тому ж звіті. */
+   ЧЕКАЄМО КОРОТКО, І ЦЕ ГОЛОВНЕ. Перший варіант чекав на повну
+   відповідь — і це була вада, яка могла зупинити саму синхронізацію.
+   У fb-sync свій дедлайн на 110 секунд, у fb-rules власний такий
+   самий, а розклад дає на ВЕСЬ виклик 120 (timeout_milliseconds у
+   FB_SYNC_CRON.sql). Два дедлайни підряд у ці 120 не влазять, тож на
+   великому парку net.http_post обривав би з'єднання, і в журналі
+   розкладу це читалось би як «синхронізація не працює» — хоч свою
+   частину вона вже зробила.
+
+   Тому даємо правилам двадцять секунд і не більше. Обрив за цією
+   межею НЕ означає, що правила не відпрацювали: це окремий виклик
+   функції, він живе своїм життям і дороблює до кінця. Ми лише
+   перестаємо на нього дивитись.
+
+   І на помилці не падаємо: синхронізація вже зробила своє, і зривати
+   її звіт через мовчання правил було б гірше за коротке «не вийшло» в
+   тому ж звіті. */
+const RULES_WAIT_MS = 20_000;
+
 async function runRules(cron: boolean): Promise<string> {
   if (!cron) return 'skipped: not a scheduled run';
   const key = Deno.env.get('RULES_CRON_SECRET') || '';
@@ -1480,7 +1496,8 @@ async function runRules(cron: boolean): Promise<string> {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-cron-key': key },
-      body: '{}'
+      body: '{}',
+      signal: AbortSignal.timeout(RULES_WAIT_MS)
     });
     const j = await res.json().catch(() => null) as Json | null;
     if (!res.ok) return 'failed: HTTP ' + res.status
@@ -1489,7 +1506,14 @@ async function runRules(cron: boolean): Promise<string> {
     const would = Number(j?.would_pause) || 0;
     return 'ok: ' + paused + ' paused, ' + would + ' reported';
   } catch (e) {
-    return 'failed: ' + (e as Error).message;
+    /* Обрив за НАШОЮ ж межею — не помилка: правила пішли працювати, ми
+       просто не дочекались відповіді. Плутати це зі справжньою
+       невдачею не можна, інакше у звіті щоразу стояло б «failed» там,
+       де все гаразд. */
+    const err = e as Error;
+    return err.name === 'TimeoutError' || /abort|timeout/i.test(err.message || '')
+      ? 'started: still running after ' + (RULES_WAIT_MS / 1000) + 's, not waiting'
+      : 'failed: ' + err.message;
   }
 }
 

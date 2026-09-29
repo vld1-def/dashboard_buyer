@@ -48,6 +48,13 @@ alter table public.file_links
   add column if not exists mime text,
   add column if not exists size bigint;
 
+-- І прибираємо саме те посилання. Тут не можна обмежитись додаванням
+-- колонок: у старій версії url був NOT NULL, а нова його не заповнює
+-- ніколи — тож кожне завантаження падало б із «null value in column
+-- "url" violates not-null constraint». Колонка належала задуму, де
+-- файли лежали в Drive; у новому вона не потрібна й лише заважає.
+alter table public.file_links drop column if exists url;
+
 create index if not exists file_links_team_at_idx
   on public.file_links (team_name, at desc);
 
