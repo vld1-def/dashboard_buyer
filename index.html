@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 12:50">
+  <meta name="build" content="build 29.09 13:52">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3289,10 +3289,20 @@ body[data-route="domains"] #dm-detail {
    таблиця кабінетів не поїхала під нього цілком. */
 /* Смуга з кнопкою — у самому низу блока кабінетів. Лінія на ній, бо
    саме вона тепер відділяє нижній шматок; нутро приростає під нею. */
+/* Один рядок на все: кнопка, номер кабінета, стрічка стану, вкладки й
+   фільтр. Вкладки притискаємо праворуч — ліворуч те, ПРО ЩО мова,
+   праворуч те, ЯК це показати.
+
+   flex-wrap лишаємо: на вузькому екрані рядок має перенестись, а не
+   виштовхнути вкладки за край, де до них не дотягнутись. */
 #cab-inside-bar {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
 }
+#cab-inside-bar .cd-tabs { margin-left: auto; }
+/* Стрічка стану більше не має власного рядка, тож не дає їй розсувати
+   сусідів: вона тут найменш важлива з трьох. */
+#cab-inside-bar .cd-s { flex: 0 1 auto; }
 #cab-inside {
   /* min-width: 0 — щоб широка таблиця всередині тягнула свою смугу
      прокрутки, а не розсувала сторінку. */
@@ -3303,9 +3313,9 @@ body[data-route="domains"] #dm-detail {
    «ховався», лишаючись на екрані. Тому ховання прописане поіменно, як
    і в решті панелей цього файлу. */
 #cab-inside.hidden, #cab-inside-bar.hidden { display: none; }
-/* Заголовка тут більше немає — лишились стрічка стану й вкладки, і
-   вони в один рядок. Через це вирівнювання по центру, а не по верху:
-   раніше зверху стояв заголовок у два рядки, і тягнутись було до чого. */
+/* .cd-head більше не малюється: і стрічка стану, і вкладки переїхали
+   в #cab-inside-bar, до кнопки. Правило лишаємо на випадок, якщо
+   блок колись повернуть, — але висоти воно вже не коштує. */
 .cd-head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; flex: 0 0 auto; margin-bottom: 8px; min-height: 24px;
@@ -3424,6 +3434,24 @@ body[data-route="domains"] #dm-detail {
 /* Нескінченність — це «гроші пішли, результату немає». Помітно, бо саме
    ці рядки й вимикають правила. */
 .cd-inf { color: #F87171; font-weight: 800; }
+
+/* УМОВНЕ ФОРМАТУВАННЯ. Порівняння з підсумком цієї ж таблиці, не з
+   вписаним порогом — див. cdTone у розборі кабінета.
+
+   Фарбуємо текст, а не тло: тло вже зайняте під :hover і під вибрані
+   рядки, і третій шар кольору зробив би з таблиці вітраж. Colour
+   приглушений навмисно — він має підказувати, куди дивитись, а не
+   кричати замість числа.
+
+   Червоне ТУТ означає «дорожче за середнє», а не «зламано»: у таблиці
+   вже є червоне для реджектів і для нескінченної ціни, тож беремо той
+   самий відтінок тьмянішим, аби не сплутати важливість. */
+.cd-num.is-worse  { color: #F87171; }
+.cd-num.is-better { color: #4ADE80; }
+/* Під time гортання око чіпляється за вагу, а не за відтінок, тож
+   гіршому додаємо ще й трохи ваги — але лише гіршому: шукають саме
+   його, а «все добре» помічати не треба. */
+.cd-num.is-worse { font-weight: 800; }
 /* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
    підпис лише уточнює, за який період воно. */
 .cd-bq { color: var(--text-muted); font-weight: 700; margin-left: 2px; }
@@ -4539,7 +4567,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 12:50</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 13:52</div>
     </div>
   </aside>
 
@@ -20653,6 +20681,21 @@ const RL_METRICS = [
        + 'so a threshold like 30 matches almost everything' },
   { k: 'leads',       label: 'Leads',
     tip: 'Pixel lead events today' },
+  /* Реєстрація й покупка — ті самі числа, що в колонках Reg і Result
+     у Кампаніях. Facebook віддає кожну з них кількома іменами одразу
+     (complete_registration і offsite_conversion.fb_pixel_complete_
+     registration — це та сама реєстрація), тож рахується найточніший
+     збіг і тільки він: складені, вони дали б подвійне число. */
+  { k: 'cpr',         label: 'Cost per registration', money: true,
+    tip: 'Spend ÷ registrations. Spent something and got none — the cost is ∞, '
+       + 'so a rule like “> $5” catches it' },
+  { k: 'regs',        label: 'Registrations',
+    tip: 'Completed registrations today. No registration event at all counts as 0, '
+       + 'not as “unknown”' },
+  { k: 'cpp',         label: 'Cost per purchase', money: true,
+    tip: 'Spend ÷ purchases. Spent something and got none — the cost is ∞' },
+  { k: 'purchases',   label: 'Purchases',
+    tip: 'Purchase events today' },
   { k: 'link_clicks', label: 'Link clicks',
     tip: 'Clicks that went to the link, not every click on the ad' },
   { k: 'imps',        label: 'Impressions' }
@@ -21235,6 +21278,15 @@ window.cdBtnLabel = (acc) => cdIsOpen(acc) ? 'Hide campaigns & ads' : 'Campaigns
    ховатиме те, чого вже немає. */
 let cdFor = '';
 
+/* ОДИН РЯДОК НА ВСЕ. Раніше їх було два: смуга з кнопкою «Hide
+   campaigns & ads» і окрема шапка таблиці зі стрічкою стану та
+   вкладками. Два рядки коштували близько сорока пікселів висоти —
+   рівно тієї, якої бракує самій таблиці, заради якої сюди й заходять.
+
+   Вкладки й фільтр живуть тут, а не в таблиці, ще й тому, що вони про
+   те саме, що й кнопка: що саме показано. Кнопка відкриває список,
+   вкладки перемикають його вигляд, галочка ховає рядки — одна думка,
+   один рядок. */
 window.cdBar = function (account) {
   const bar = document.getElementById('cab-inside-bar');
   if (!bar) return;
@@ -21245,8 +21297,30 @@ window.cdBar = function (account) {
       id="cab-inside-btn" onclick="cdToggleOpen('${encodeURIComponent(cdFor)}')"
       title="Campaigns, ad sets and ads of this cabinet with today’s numbers">${
         cdBtnLabel(cdFor)}</button>
-    <span class="cab-inside-who">${cdEsc(cdFor)}</span>`;
+    <span class="cab-inside-who">${cdEsc(cdFor)}</span>`
+    + (cdIsOpen(cdFor) ? cdHeadBits() : '');
 };
+
+/* Стрічка стану й вкладки. Окремо від cdBar, бо перемальовуються вони
+   з різних приводів: смуга — коли змінився кабінет, ці — коли
+   змінився вигляд таблиці. */
+function cdHeadBits() {
+  const age = cdSeen ? Math.round((Date.now() - cdSeen) / 60000) : null;
+  const when = age == null ? ''
+    : age < 2 ? 'just synced' : age + ' min ago';
+  return `<p class="cd-s">${when}${cdBad()}</p>
+    <div class="cd-tabs">
+      <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
+        onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Tree</button>
+      <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
+        onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
+      ${cdFlat ? '' : `<button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
+      <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>`}
+      <label class="cd-only" title="Hide what is switched off — its own switch or one above it. Rejected ads stay: they are switched on and money is set aside for them.">
+        <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
+          onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
+    </div>`;
+}
 
 function cdBtnSync() {
   const b = document.getElementById('cab-inside-btn');
@@ -21514,32 +21588,14 @@ function cdPaint() {
   if (!box) return;
 
   /* Заголовка тут немає навмисно. «Inside <номер>» повторював номер,
-     який стоїть рядком вище у вибраному кабінеті, а «Today's numbers
-     from the last sync» пояснював те, що видно з самої таблиці. Два
-     рядки тексту коштували висоти, якої бракує кампаніям.
+     який стоїть рядком вище, а «Today's numbers from the last sync»
+     пояснював те, що видно з самої таблиці.
 
-     Те, що НЕ видно з таблиці, лишаємо: коли знято знімок і скільки
-     всередині не крутиться. Але однією стрічкою збоку, а не абзацом:
-     без цього «спенд $0» читається як «не крутить», хоч це може бути
-     просто знімок, якого ще не зробили. */
-  const age = cdSeen ? Math.round((Date.now() - cdSeen) / 60000) : null;
-  const when = age == null ? ''
-    : age < 2 ? 'just synced' : age + ' min ago';
-
-  const head = `<div class="cd-head">
-      <p class="cd-s">${when}${cdBad()}</p>
-      <div class="cd-tabs">
-        <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
-          onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Tree</button>
-        <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
-          onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
-        ${cdFlat ? '' : `<button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
-        <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>`}
-        <label class="cd-only" title="Hide what is switched off — its own switch or one above it. Rejected ads stay: they are switched on and money is set aside for them.">
-          <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
-            onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
-      </div>
-    </div>`;
+     Стрічка стану й вкладки теж переїхали — у смугу з кнопкою (cdBar).
+     Вони про те саме, що й кнопка: що саме показано. Тримати їх
+     окремим рядком означало б платити висотою двічі за одну думку. */
+  const head = '';
+  cdBar(cdFor);
 
   if (cdErr === 'no-table') {
     box.innerHTML = head + '<p class="cd-empty">The snapshot table does not exist yet — run '
@@ -21567,6 +21623,10 @@ function cdPaint() {
      дереві це кампанії, у списку — оголошення; нижні рівні вже складені
      в кампанії, і брати обидва означало б порахувати все двічі. */
   const top = cdFlat ? cdAds() : cdTree();
+  /* Орієнтир для підсвічування — рівно те саме, що й у підсумку:
+     верхній рівень, бо нижні в нього вже складені. Рахуємо раз, а не
+     в кожному рядку. */
+  cdBase = cdBaseOf(top);
   if (cdFlat) top.forEach(a => body.push(cdRow(a, 0)));
   else top.forEach(c => {
     body.push(cdRow(c, 0));
@@ -21675,6 +21735,65 @@ window.cdFlipMany = async function (on) {
   cdBusy = false;
   cdPaint();
 };
+
+/* ══════════ УМОВНЕ ФОРМАТУВАННЯ ══════════
+
+   Чотирнадцять стовпчиків чисел — це стіна, у якій погане нічим не
+   відрізняється від доброго, і очі доводиться вести по рядку пальцем.
+
+   ОРІЄНТИР — САМА Ж ТАБЛИЦЯ, а не вписаний поріг. Лід за $3 у KG і
+   лід за $3 у PL — різні новини, тож будь-який абсолютний поріг довелось
+   би виставляти окремо на кожну воронку й підтримувати руками. А
+   питання «дорожче, ніж у середньому в цьому кабінеті» має сенс
+   завжди й не потребує налаштувань.
+
+   Фарбуємо ТЕКСТ, а не тло: тло вже зайняте під :hover і під вибрані
+   рядки, і третій шар кольору перетворив би таблицю на вітраж. */
+const CD_WORSE = 1.35;   // на третину дорожче за середнє — це помітно
+const CD_BETTER = 0.75;  // на чверть дешевше — теж
+
+/* Малий рядок не судимо. Один лід на два долари робить «ціну ліда»
+   вдвічі кращою за середню, хоча це ще не результат, а збіг.
+
+   Поріг свідомо МАЛИЙ. Його робота — прибрати шум від рядків, які
+   майже нічого не витратили, а не вирішувати, на що людині дивитись.
+   Спроба рахувати його від середнього рядка провалилась саме тому:
+   середнє бралось із кампаній, а фарбуються й оголошення під ними, —
+   і поріг виходив вищим за весь нижній рівень, тобто гасив геть усе
+   підсвічування. Піввідсотка від таблиці такої вади не мають. */
+const CD_TONE_MIN = 0.005;   // частка спенду всієї таблиці
+
+let cdBase = null;
+
+function cdBaseOf(list) {
+  const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, result: 0, hasResult: false };
+  (list || []).forEach(n => {
+    t.spend += n.spend; t.imps += n.imps; t.clicks += n.clicks;
+    t.leads += n.leads; t.regs += n.regs;
+    if (n.hasResult) { t.result += n.result; t.hasResult = true; }
+  });
+  return {
+    spend: t.spend,
+    floor: t.spend * CD_TONE_MIN,
+    cpm: t.imps > 0 ? t.spend / t.imps * 1000 : null,
+    ctr: t.imps > 0 ? t.clicks / t.imps * 100 : null,
+    cpc: t.clicks > 0 ? t.spend / t.clicks : null,
+    cpl: t.leads > 0 ? t.spend / t.leads : null,
+    cpr: t.regs > 0 ? t.spend / t.regs : null,
+    cpres: t.hasResult && t.result > 0 ? t.spend / t.result : null
+  };
+}
+
+/* Клас для комірки. Порожньо означає «нема чого сказати» — і це
+   найчастіший випадок: підсвічувати треба краї, а не всю таблицю. */
+function cdTone(value, base, spend, higherIsBetter) {
+  if (!cdBase || base == null || !isFinite(base) || base <= 0) return '';
+  if (!isFinite(value) || value <= 0) return '';          // ∞ вже червона через .cd-inf
+  if (cdBase.floor > 0 && spend < cdBase.floor) return '';
+  const r = value / base;
+  if (higherIsBetter) return r >= CD_WORSE ? ' is-better' : r <= CD_BETTER ? ' is-worse' : '';
+  return r >= CD_WORSE ? ' is-worse' : r <= CD_BETTER ? ' is-better' : '';
+}
 
 /* ПІДСУМОК. Рахуємо з верхнього рівня — кампаній у дереві, оголошень у
    списку: нижні рівні вже складені в них, і брати обидва означало б
@@ -21870,6 +21989,16 @@ function cdRow(n, depth) {
   const ctr = n.imps > 0
     ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
 
+  /* Ті самі числа, але не підписані — для підсвічування. Брати їх із
+     рядка вже не вийде: там «$1.27» і «1.09%», а порівнювати треба
+     величини, а не текст. */
+  const vCpm = n.imps > 0 ? n.spend / n.imps * 1000 : null;
+  const vCtr = n.imps > 0 ? n.clicks / n.imps * 100 : null;
+  const vCpc = n.clicks > 0 ? n.spend / n.clicks : null;
+  const vCpl = n.leads > 0 ? n.spend / n.leads : null;
+  const vCpr = n.regs > 0 ? n.spend / n.regs : null;
+  const vResult = n.hasResult && n.result > 0 ? n.spend / n.result : null;
+
   /* Галочка стоїть у комірці назви, а не окремим стовпчиком: власного
      стовпчика на неї немає де взяти, а клік по ній не повинен
      розкривати дерево — звідси stopPropagation. */
@@ -21886,15 +22015,16 @@ function cdRow(n, depth) {
     <td class="ta-r cd-num">${cdBudgetText(n.budget)}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
     <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${result}</td>
-    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${perResult}</td>
-    <td class="ta-r cd-num">${cpm}</td>
-    <td class="ta-r cd-num">${ctr}</td>
+    <td class="ta-r cd-num${cdTone(vResult, cdBase.cpres, n.spend)}"
+        title="${cdEsc(goalTip)}">${perResult}</td>
+    <td class="ta-r cd-num${cdTone(vCpm, cdBase.cpm, n.spend)}">${cpm}</td>
+    <td class="ta-r cd-num${cdTone(vCtr, cdBase.ctr, n.spend, true)}">${ctr}</td>
     <td class="ta-r cd-num">${n.clicks}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.clicks)}</td>
+    <td class="ta-r cd-num${cdTone(vCpc, cdBase.cpc, n.spend)}">${cdPer(n.spend, n.clicks)}</td>
     <td class="ta-r cd-num has-tip" title="${cdEsc(cdLeadTip(n))}">${n.leads}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
+    <td class="ta-r cd-num${cdTone(vCpl, cdBase.cpl, n.spend)}">${cdPer(n.spend, n.leads)}</td>
     <td class="ta-r cd-num">${n.regs}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
+    <td class="ta-r cd-num${cdTone(vCpr, cdBase.cpr, n.spend)}">${cdPer(n.spend, n.regs)}</td>
     <td class="ta-r">${cdSwitch(n, named)}</td>
   </tr>`;
 }
