@@ -434,10 +434,17 @@ function urlsFor(actId: string, tz: string): string[] {
          робочою, і питання «чому вона нічого не витрачає» лишалось без
          відповіді просто тому, що відповідь ми не питали. Розширення
          поля всередині того самого підзапиту не коштує ні запиту, ні
-         ліміту. */
+         ліміту.
+
+         БЮДЖЕТ беремо на ОБОХ рівнях, і це не запас: у Facebook він
+         стоїть або на кампанії (CBO), або на кожному адсеті (ABO) —
+         ніколи на обох. Питати лише один рівень означало б показувати
+         прочерк половині кабінетів, причому тій половині, яка про це
+         не здогадується. */
       + '&fields=' + encodeURIComponent('name,effective_status,adset_id,campaign_id,'
-        + 'adset{name,effective_status,optimization_goal,promoted_object{custom_event_type}},'
-        + 'campaign{name,effective_status},'
+        + 'adset{name,effective_status,daily_budget,lifetime_budget,'
+        + 'optimization_goal,promoted_object{custom_event_type}},'
+        + 'campaign{name,effective_status,daily_budget,lifetime_budget},'
         + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
   ];
 }
@@ -455,9 +462,16 @@ type Day = { day: string; spend: number | null;
    звідки його читають правила. Нічого зайвого: назва (щоб у
    повідомленні було видно, що саме вимкнули), батьки (щоб правило
    могло скластись до адсета чи кампанії) і числа. */
+/* Бюджет приходить рядком і в дрібних одиницях («5000» — це 50.00).
+   Розбираємо наявною num() — вона вже відрізняє порожнечу від нуля, а
+   це тут головне: нуль означає «бюджет тут 0», порожнеча — «бюджет не
+   на цьому рівні». Своя копія тієї самої функції не лише зайва, а й
+   просто не компілювалась: ім'я вже зайняте. */
 type AdSnap = { ad_id: string; name: string; status: string;
                 adset_id: string; adset_name: string; adset_status: string;
+                adset_daily: number | null; adset_life: number | null;
                 campaign_id: string; campaign_name: string; campaign_status: string;
+                campaign_daily: number | null; campaign_life: number | null;
                 goal: string; event: string;
                 spend: number; imps: number; clicks: number; link_clicks: number;
                 actions: Json[] };
@@ -630,8 +644,12 @@ function readParts(parts: (Json | null)[]):
         status: String(r.effective_status || ''),
         adset_id: String(r.adset_id || ''), adset_name: String(r.adset?.name || ''),
         adset_status: String(r.adset?.effective_status || ''),
+        adset_daily: num(r.adset?.daily_budget),
+        adset_life: num(r.adset?.lifetime_budget),
         campaign_id: String(r.campaign_id || ''), campaign_name: String(r.campaign?.name || ''),
         campaign_status: String(r.campaign?.effective_status || ''),
+        campaign_daily: num(r.campaign?.daily_budget),
+        campaign_life: num(r.campaign?.lifetime_budget),
         goal: String(r.adset?.optimization_goal || ''),
         event: String(r.adset?.promoted_object?.custom_event_type || ''),
         spend: Number(row.spend) || 0,
@@ -895,8 +913,11 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
           ad_id: a.ad_id, name: a.name, effective_status: a.status || null,
           adset_id: a.adset_id, adset_name: a.adset_name || null,
           adset_status: a.adset_status || null,
+          adset_daily_budget: a.adset_daily, adset_lifetime_budget: a.adset_life,
           campaign_id: a.campaign_id, campaign_name: a.campaign_name || null,
           campaign_status: a.campaign_status || null,
+          campaign_daily_budget: a.campaign_daily,
+          campaign_lifetime_budget: a.campaign_life,
           optimization_goal: a.goal || null, custom_event_type: a.event || null,
           spend: a.spend, impressions: a.imps, clicks: a.clicks,
           link_clicks: a.link_clicks, actions: a.actions, seen_at: now
