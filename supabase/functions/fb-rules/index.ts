@@ -213,7 +213,8 @@ function ruleHits(r: Rule, a: Agg): boolean {
 /* ═══════════ ЩО ЗАРАЗ КРУТИТЬСЯ ═══════════ */
 
 type Ent = { id: string; name: string; level: string; account: string;
-             adset: string; campaign: string; agg: Agg };
+             adset: string; adsetName: string;
+             campaign: string; campaignName: string; agg: Agg };
 
 function aggZero(): Agg { return { spend: 0, imps: 0, clicks: 0, linkClicks: 0, leads: 0 }; }
 
@@ -296,8 +297,8 @@ function aggOf(row: Json, leadActions: string[]): Agg {
    Фільтр саме в запиті, а не після нього: з ліміту в тисячу рядків
    неактивні інакше витіснили б справжні. */
 const SNAP_ACTIVE = '&or=(effective_status.eq.ACTIVE,effective_status.is.null)';
-const SNAP_SELECT = '?select=ad_id,name,adset_id,campaign_id,spend,impressions,'
-                  + 'clicks,link_clicks,actions,seen_at';
+const SNAP_SELECT = '?select=ad_id,name,adset_id,adset_name,campaign_id,campaign_name,'
+                  + 'spend,impressions,clicks,link_clicks,actions,seen_at';
 
 async function snapOf(base: string, hdr: Json, account: string, leadActions: string[]):
     Promise<{ ents: Ent[]; age: number }> {
@@ -318,27 +319,38 @@ async function snapOf(base: string, hdr: Json, account: string, leadActions: str
     const at = Date.parse(String(r.seen_at || ''));
     if (Number.isFinite(at) && at > newest) newest = at;
     return { id: String(r.ad_id), name: String(r.name || ''), level: 'ad', account,
-             adset: String(r.adset_id || ''), campaign: String(r.campaign_id || ''),
+             adset: String(r.adset_id || ''), adsetName: String(r.adset_name || ''),
+             campaign: String(r.campaign_id || ''), campaignName: String(r.campaign_name || ''),
              agg: aggOf(r, leadActions) };
   });
   return { ents, age: newest ? Date.now() - newest : Infinity };
 }
 
-/* Сутності того рівня, на якому працює правило. Назву для адсета й
-   кампанії беремо з їхніх оголошень: окремий запит за назвами коштував
-   би ще один похід у Graph на кожен кабінет, а в повідомленні однаково
-   потрібен орієнтир, а не точний підпис. */
+/* Сутності того рівня, на якому працює правило.
+
+   НАЗВУ БЕРЕМО СПРАВЖНЮ. Раніше тут стояла назва ПЕРШОГО оголошення
+   групи, з поясненням, що окремий запит за назвами коштував би ще один
+   похід у Graph. Пояснення застаріло: adset_name і campaign_name лежать
+   у тому самому знімку, їх лише не було в select. Тобто правило на
+   рівні кампанії писало в Telegram «campaign «Mostbet_KG_1»», де
+   Mostbet_KG_1 — оголошення, а не кампанія. Знайти за таким підписом
+   можна було хіба навмання. */
 function atLevel(ads: Ent[], level: string): Ent[] {
   if (level === 'ad') return ads;
   const key = (e: Ent) => level === 'adset' ? e.adset : e.campaign;
+  // Порожня назва буває в рядках зі старого знімка — тоді хай краще
+  // буде id, ніж чуже імʼя.
+  const nameOf = (e: Ent, k: string) =>
+    (level === 'adset' ? e.adsetName : e.campaignName) || k;
   const by = new Map<string, Ent>();
   ads.forEach(a => {
     const k = key(a);
     if (!k) return;
     let e = by.get(k);
     if (!e) {
-      e = { id: k, name: a.name, level, account: a.account,
-            adset: a.adset, campaign: a.campaign, agg: aggZero() };
+      e = { id: k, name: nameOf(a, k), level, account: a.account,
+            adset: a.adset, adsetName: a.adsetName,
+            campaign: a.campaign, campaignName: a.campaignName, agg: aggZero() };
       by.set(k, e);
     }
     addAgg(e.agg, a.agg);
@@ -354,8 +366,12 @@ function atLevel(ads: Ent[], level: string): Ent[] {
    побачить. Брати їх «із першого токена» означало б написати одному про
    чужі вимкнення. */
 type Hit = { rule: string; ruleName: string; level: string; id: string; name: string;
-             account: string; owner: string; team: string;
-             agg: Agg; dry: boolean; ok: boolean; error: string; acted: boolean };
+             account: string; campaignName: string; owner: string; team: string;
+             agg: Agg; dry: boolean; ok: boolean; error: string; acted: boolean;
+             /* Правило не діяло, бо його про це не просили (Check now),
+                а не тому, що йому заборонено. Різні речі, і підпис у
+                Telegram мусить їх розрізняти. */
+             preview: boolean };
 
 /* Пакетом, бо вимкнень за прогін може бути багато, а окремий запит на
    кожне — це і ліміти, і дедлайн. Пакет Graph тримає до 50. */
@@ -431,6 +447,44 @@ function metricLine(h: Hit): string {
     + ' · ' + a.leads + ' lead(s)';
 }
 
+/* АДРЕСА ВЛУЧАННЯ. Без неї повідомлення каже «вимкнули KG_1» — а KG_1
+   у людини з сорока кабінетами лежить невідомо де. Кабінет і кампанія
+   і є тим найкоротшим шляхом від сповіщення до того самого рядка в Ads
+   Manager: id кабінета вставляють у пошук, назву кампанії видно очима.
+
+   Назву кампанії не повторюємо там, де сама сутність і є кампанією. */
+function whereLine(h: Hit): string {
+  const camp = h.level === 'campaign' ? '' : String(h.campaignName || '').trim();
+  return 'cab ' + (h.account || '?') + (camp ? ' · camp «' + camp + '»' : '');
+}
+
+/* ЧОМУ НІЧОГО НЕ ВИМКНУЛОСЬ.
+
+   Старий підпис казав «This rule is still in report-only mode» і на
+   цьому замовкав. Двох речей він не казав: ЯКЕ саме правило і ДЕ його
+   ввімкнути, — тож питання «то чому воно не зупинило?» виникало щоразу
+   наново.
+
+   Гірше: той самий підпис зʼявлявся й після «Check now» у панелі.
+   Правило при цьому могло бути цілком бойовим — його просто не просили
+   діяти. Називати це «report-only mode» було прямою неправдою, і саме
+   вона й збивала з пантелику. */
+function dryNote(hits: Hit[]): string {
+  const dry = hits.filter(h => h.dry);
+  if (!dry.length) return '';
+  const names = [...new Set(dry.filter(h => !h.preview).map(h => h.ruleName))];
+  if (!names.length) {
+    return '\n\n\u{1F441} Preview — this was a “Check now”, not a scheduled run.'
+      + '\n   Nothing was switched off. The rules themselves were not asked to act.';
+  }
+  const which = names.map(n => '«' + n + '»').join(', ');
+  return '\n\n\u{1F441} Report only — nothing was switched off.'
+    + '\n   ' + which + ' ' + (names.length > 1 ? 'are' : 'is')
+    + ' not allowed to act yet.'
+    + '\n   To let ' + (names.length > 1 ? 'them' : 'it') + ' switch things off:'
+    + ' Rules → open the rule → tick “Allowed to switch things off”.';
+}
+
 function tgText(hits: Hit[]): string {
   const real = hits.filter(h => !h.dry && h.ok).length;
   const dry = hits.filter(h => h.dry).length;
@@ -439,16 +493,20 @@ function tgText(hits: Hit[]): string {
     + (real && dry ? ', ' + dry + ' more only reported' : '')
     + (failed ? ', ' + failed + ' could not be paused' : '') + '\n\n';
   const one = (h: Hit) => (h.dry ? '\u{1F441} ' : h.ok ? '⛔ ' : '⚠ ')
-    + h.level + ' «' + h.name + '»\n   ' + metricLine(h)
+    + h.level + ' «' + h.name + '»\n   ' + whereLine(h) + '\n   ' + metricLine(h)
     + '\n   rule: ' + h.ruleName + (h.error ? '\n   ' + h.error : '');
   const lines = hits.slice(0, TG_MAX).map(one);
   const tail = () => {
     const rest = hits.length - lines.length;
     return rest > 0 ? '\n\n…and ' + rest + ' more.' : '';
   };
-  while (lines.length > 1 && (head + lines.join('\n') + tail()).length > TG_LIMIT) lines.pop();
-  const note = dry && !real
-    ? '\n\nThis rule is still in report-only mode — nothing was touched.' : '';
+  /* Підпис рахуємо В стелю, а не поверх неї. Раніше його дописували
+     після обрізання — і повідомлення, що тільки-но влізло, разом із
+     підписом уже не влазило. Telegram на таке відповідає помилкою, і
+     зникає все повідомлення, а не зайвий рядок. */
+  const note = dryNote(hits);
+  while (lines.length > 1
+         && (head + lines.join('\n') + tail() + note).length > TG_LIMIT) lines.pop();
   return head + lines.join('\n') + tail() + note;
 }
 
@@ -605,9 +663,10 @@ Deno.serve(async (req) => {
              гасити її оголошення — марні запити й зайві рядки в журналі. */
           if (hits.some(h => h.id === e.id || h.id === e.adset || h.id === e.campaign)) return;
           hits.push({ rule: r.id, ruleName: r.name, level: r.level, id: e.id,
-                      name: e.name, account,
+                      name: e.name, account, campaignName: e.campaignName,
                       owner: String(t.created_by || ''), team: String(a.team_name || t.team_name || ''),
-                      agg: e.agg, dry: forceDry || r.dry, ok: false, error: '', acted: false });
+                      agg: e.agg, dry: forceDry || r.dry, ok: false, error: '', acted: false,
+                      preview: forceDry });
         });
       }
     }
