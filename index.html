@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 15:46">
+  <meta name="build" content="build 29.09 16:34">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3471,29 +3471,35 @@ body[data-route="domains"] #dm-detail {
    ці рядки й вимикають правила. */
 .cd-inf { color: #F87171; font-weight: 800; }
 
-/* УМОВНЕ ФОРМАТУВАННЯ. Порівняння з підсумком цієї ж таблиці, не з
-   вписаним порогом — див. cdTone у розборі кабінета.
+/* УМОВНЕ ФОРМАТУВАННЯ — НА ЦІЛИЙ РЯДОК, і рівно два кольори.
 
-   ЗАЛИВАЄМО КОМІРКУ, а не лише фарбуємо цифри. Спершу тут був самий
-   колір тексту — і це виявилось задумом, якого не видно: у рядку з
-   чотирнадцяти чисел відтінок однієї цифри не ловиться боковим зором,
-   а саме ним таблицю й проглядають. Заливка ловиться.
+   Спершу фарбувались окремі комірки, кожне число проти свого
+   середнього. Виглядало розумно, а читалось погано: у рядку з
+   чотирнадцяти чисел частина зелена, частина червона, і що робити з
+   таким рядком — незрозуміло. Питання ж у людини одне: цей рядок
+   хороший чи поганий. Отже й відповідь одна на рядок.
 
-   Тло РЯДКА при цьому не чіпаємо: воно зайняте під :hover і під
-   вибрані рядки. Заливка живе на КОМІРЦІ й тому з ними уживається —
-   але :hover фарбує й комірки, тож наші правила мусять бути
-   сильнішими, інакше підсвічування зникало б саме під курсором.
+   Відтінки приглушені до краю. Тло рядка тут не прикраса, а найнижчий
+   шар: поверх нього ще лягають :hover і позначка вибраного, і всі три
+   мусять уживатись. Тому беремо ледь помітну плівку, яка читається
+   плямою на весь рядок, а не кольором, що сперечається з числами.
 
-   Червоне ТУТ означає «дорожче за середнє», а не «зламано»: у таблиці
-   вже є червоне для реджектів і для нескінченної ціни. Щоб не
-   сплутати важливість, беремо приглушену заливку, а не насичений
-   колір. */
-.cd-num.is-worse,  .cd-tbl tr:hover td.cd-num.is-worse {
-  color: #FCA5A5; background: rgba(239, 68, 68, .16); font-weight: 800;
-}
-.cd-num.is-better, .cd-tbl tr:hover td.cd-num.is-better {
-  color: #86EFAC; background: rgba(34, 197, 94, .13);
-}
+   Перша комірка липка й має власне тло — інакше, догортавши вправо,
+   побачиш білу назву на кольоровому рядку. Тож фарбуємо і її. */
+.cd-r.is-bad  td { background: rgba(239, 68, 68, .14); }
+.cd-r.is-good td { background: rgba(34, 197, 94, .12); }
+.cd-r.is-bad  td:first-child { background: rgba(239, 68, 68, .14); }
+.cd-r.is-good td:first-child { background: rgba(34, 197, 94, .12); }
+/* Під курсором рядок має підсвічуватись сильніше за свій колір, але
+   не втрачати його: інакше наведення стирало б саме ту ознаку, за
+   якою рядок і шукали. */
+.cd-tbl tr.cd-r.is-bad:hover td,
+.cd-tbl tr.cd-r.is-bad:hover td:first-child { background: rgba(239, 68, 68, .22); }
+.cd-tbl tr.cd-r.is-good:hover td,
+.cd-tbl tr.cd-r.is-good:hover td:first-child { background: rgba(34, 197, 94, .20); }
+/* Вибраний рядок лишається впізнаваним попри колір: смуга акценту
+   ліворуч сильніша за будь-яку з плівок. */
+.cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
 /* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
    підпис лише уточнює, за який період воно. */
 .cd-bq { color: var(--text-muted); font-weight: 700; margin-left: 2px; }
@@ -4619,7 +4625,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 15:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 16:34</div>
     </div>
   </aside>
 
@@ -21811,9 +21817,6 @@ window.cdFlipMany = async function (on) {
 
    Фарбуємо ТЕКСТ, а не тло: тло вже зайняте під :hover і під вибрані
    рядки, і третій шар кольору перетворив би таблицю на вітраж. */
-const CD_WORSE = 1.25;   // на чверть дорожче за середнє — вже варте ока
-const CD_BETTER = 0.8;   // на пʼяту частину дешевше — теж
-
 /* Малий рядок не судимо. Один лід на два долари робить «ціну ліда»
    вдвічі кращою за середню, хоча це ще не результат, а збіг.
 
@@ -21846,15 +21849,34 @@ function cdBaseOf(list) {
   };
 }
 
-/* Клас для комірки. Порожньо означає «нема чого сказати» — і це
-   найчастіший випадок: підсвічувати треба краї, а не всю таблицю. */
-function cdTone(value, base, spend, higherIsBetter) {
-  if (!cdBase || base == null || !isFinite(base) || base <= 0) return '';
-  if (!isFinite(value) || value <= 0) return '';          // ∞ вже червона через .cd-inf
-  if (cdBase.floor > 0 && spend < cdBase.floor) return '';
-  const r = value / base;
-  if (higherIsBetter) return r >= CD_WORSE ? ' is-better' : r <= CD_BETTER ? ' is-worse' : '';
-  return r >= CD_WORSE ? ' is-worse' : r <= CD_BETTER ? ' is-better' : '';
+/* ТОН ЦІЛОГО РЯДКА, і рівно два кольори: дорожче за середнє в цьому
+   кабінеті чи дешевше. Без «посередині».
+
+   Спершу тут фарбувались окремі комірки — кожне число проти свого
+   середнього. Виглядало розумно, а читалось погано: у рядку з
+   чотирнадцяти чисел частина зелена, частина червона, і що робити з
+   таким рядком — незрозуміло. Питання ж у людини одне: цей рядок
+   хороший чи поганий. Тому й відповідь одна на рядок.
+
+   Міряємо тим, заради чого оголошення крутять: ціною РЕЗУЛЬТАТУ —
+   того, на що адсет оптимізується. Цілі немає — беремо ціну ліда.
+   Немає й лідів — мовчимо: вигадувати оцінку нема з чого.
+
+   Витрати є, результату немає — це не «дорого», це найгірше що може
+   бути, і воно червоне без жодних порівнянь. */
+function cdRowTone(n) {
+  if (!cdBase) return '';
+  const per = (v) => v > 0 ? n.spend / v : (n.spend > 0 ? Infinity : null);
+  const v = n.hasResult ? per(n.result) : per(n.leads);
+  if (v == null) return '';
+  // Рядок, який майже нічого не витратив, не судимо: один лід на
+  // копійки зробив би його «кращим за середній», хоч це ще не
+  // результат, а збіг.
+  if (cdBase.floor > 0 && n.spend < cdBase.floor) return '';
+  if (v === Infinity) return ' is-bad';
+  const base = n.hasResult ? cdBase.cpres : cdBase.cpl;
+  if (base == null || !isFinite(base) || base <= 0) return '';
+  return v > base ? ' is-bad' : ' is-good';
 }
 
 /* ПІДСУМОК. Рахуємо з верхнього рівня — кампаній у дереві, оголошень у
@@ -22051,15 +22073,6 @@ function cdRow(n, depth) {
   const ctr = n.imps > 0
     ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
 
-  /* Ті самі числа, але не підписані — для підсвічування. Брати їх із
-     рядка вже не вийде: там «$1.27» і «1.09%», а порівнювати треба
-     величини, а не текст. */
-  const vCpm = n.imps > 0 ? n.spend / n.imps * 1000 : null;
-  const vCtr = n.imps > 0 ? n.clicks / n.imps * 100 : null;
-  const vCpc = n.clicks > 0 ? n.spend / n.clicks : null;
-  const vCpl = n.leads > 0 ? n.spend / n.leads : null;
-  const vCpr = n.regs > 0 ? n.spend / n.regs : null;
-  const vResult = n.hasResult && n.result > 0 ? n.spend / n.result : null;
 
   /* Галочка стоїть у комірці назви, а не окремим стовпчиком: власного
      стовпчика на неї немає де взяти, а клік по ній не повинен
@@ -22069,7 +22082,7 @@ function cdRow(n, depth) {
       onchange="cdMark('${cdEsc(n.id)}', this.checked)"
       title="Pick this ${n.kind} to switch together with others">`;
 
-  return `<tr class="cd-r cd-d${depth}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
+  return `<tr class="cd-r cd-d${depth}${cdRowTone(n)}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
     <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
         title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
         >${mark}${twist}${label}${count}</td>
@@ -22077,16 +22090,15 @@ function cdRow(n, depth) {
     <td class="ta-r cd-num">${cdBudgetText(n.budget)}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
     <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${result}</td>
-    <td class="ta-r cd-num${cdTone(vResult, cdBase.cpres, n.spend)}"
-        title="${cdEsc(goalTip)}">${perResult}</td>
-    <td class="ta-r cd-num${cdTone(vCpm, cdBase.cpm, n.spend)}">${cpm}</td>
-    <td class="ta-r cd-num${cdTone(vCtr, cdBase.ctr, n.spend, true)}">${ctr}</td>
+    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${perResult}</td>
+    <td class="ta-r cd-num">${cpm}</td>
+    <td class="ta-r cd-num">${ctr}</td>
     <td class="ta-r cd-num">${n.clicks}</td>
-    <td class="ta-r cd-num${cdTone(vCpc, cdBase.cpc, n.spend)}">${cdPer(n.spend, n.clicks)}</td>
+    <td class="ta-r cd-num">${cdPer(n.spend, n.clicks)}</td>
     <td class="ta-r cd-num has-tip" title="${cdEsc(cdLeadTip(n))}">${n.leads}</td>
-    <td class="ta-r cd-num${cdTone(vCpl, cdBase.cpl, n.spend)}">${cdPer(n.spend, n.leads)}</td>
+    <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
     <td class="ta-r cd-num">${n.regs}</td>
-    <td class="ta-r cd-num${cdTone(vCpr, cdBase.cpr, n.spend)}">${cdPer(n.spend, n.regs)}</td>
+    <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
     <td class="ta-r">${cdSwitch(n, named)}</td>
   </tr>`;
 }
