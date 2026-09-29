@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 16:34">
+  <meta name="build" content="build 29.09 17:01">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3471,34 +3471,36 @@ body[data-route="domains"] #dm-detail {
    ці рядки й вимикають правила. */
 .cd-inf { color: #F87171; font-weight: 800; }
 
-/* УМОВНЕ ФОРМАТУВАННЯ — НА ЦІЛИЙ РЯДОК, і рівно два кольори.
+/* СМУГИ ПІД КАМПАНІЮ.
 
-   Спершу фарбувались окремі комірки, кожне число проти свого
-   середнього. Виглядало розумно, а читалось погано: у рядку з
-   чотирнадцяти чисел частина зелена, частина червона, і що робити з
-   таким рядком — незрозуміло. Питання ж у людини одне: цей рядок
-   хороший чи поганий. Отже й відповідь одна на рядок.
+   У дереві три рівні, і на екрані вони зливаються в стіну: де
+   скінчилась одна кампанія й почалась наступна, видно хіба по відступу
+   назви — а відступ ліворуч, коли очі вже поїхали вправо, до чисел.
+   Через це рядок легко прочитати не під тією кампанією.
 
-   Відтінки приглушені до краю. Тло рядка тут не прикраса, а найнижчий
-   шар: поверх нього ще лягають :hover і позначка вибраного, і всі три
-   мусять уживатись. Тому беремо ледь помітну плівку, яка читається
-   плямою на весь рядок, а не кольором, що сперечається з числами.
+   Тому кожна друга кампанія разом зі своїми адсетами й оголошеннями
+   отримує світліше тло. Виходить блок, який видно одним поглядом, не
+   читаючи назв.
 
-   Перша комірка липка й має власне тло — інакше, догортавши вправо,
-   побачиш білу назву на кольоровому рядку. Тож фарбуємо і її. */
-.cd-r.is-bad  td { background: rgba(239, 68, 68, .14); }
-.cd-r.is-good td { background: rgba(34, 197, 94, .12); }
-.cd-r.is-bad  td:first-child { background: rgba(239, 68, 68, .14); }
-.cd-r.is-good td:first-child { background: rgba(34, 197, 94, .12); }
-/* Під курсором рядок має підсвічуватись сильніше за свій колір, але
-   не втрачати його: інакше наведення стирало б саме ту ознаку, за
-   якою рядок і шукали. */
-.cd-tbl tr.cd-r.is-bad:hover td,
-.cd-tbl tr.cd-r.is-bad:hover td:first-child { background: rgba(239, 68, 68, .22); }
-.cd-tbl tr.cd-r.is-good:hover td,
-.cd-tbl tr.cd-r.is-good:hover td:first-child { background: rgba(34, 197, 94, .20); }
-/* Вибраний рядок лишається впізнаваним попри колір: смуга акценту
-   ліворуч сильніша за будь-яку з плівок. */
+   Різниця навмисно мала. Це МЕЖА МІЖ ГРУПАМИ, а не оцінка: тло, яке
+   впадає в око, читалось би як «тут щось не так», хоч воно означає
+   лише «це вже інша кампанія». Спершу тут і стояла оцінка —
+   дорожче/дешевше за середнє, — і вона відповідала на питання, якого
+   не ставили: числа для оцінки в таблиці й так є, бракувало саме межі.
+
+   Перша комірка липка й має власне тло — без окремого правила смуга
+   обривалась би на ній, і саме там, де читають назви. */
+/* Обидві смуги задані ЯВНО й непрозоро. Прозорий відтінок тут не
+   годиться: перша комірка липка, і крізь неї було б видно, як під нею
+   їде вміст, коли таблицю гортають убік. */
+.cd-r td, .cd-r td:first-child { background: var(--surface); }
+.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--surface-3); }
+/* Наведення бере середній відтінок: він світліший за звичайний рядок і
+   темніший за смугу, тож курсор видно в обох — а не лише в одній. */
+.cd-tbl tr.cd-r:hover td,
+.cd-tbl tr.cd-r:hover td:first-child { background: var(--surface-2); }
+/* Вибраний рядок лишається впізнаваним у будь-якій смузі: смуга
+   акценту ліворуч сильніша за різницю тла. */
 .cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
 /* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
    підпис лише уточнює, за який період воно. */
@@ -4424,6 +4426,106 @@ input.ui-in[type="range"] { padding: 0; }
   font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .8;
   text-decoration: none;
 }
+
+/* ═══════════ FILES ═══════════
+   Список посилань на файли в Drive. Самих файлів тут немає — чому,
+   написано у FILES.sql. */
+.fl-btn {
+  padding: 6px 12px; border-radius: 10px; flex: 0 0 auto;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+  text-decoration: none; display: inline-flex; align-items: center;
+}
+.fl-btn:hover { color: var(--text-main); border-color: var(--border-2); }
+.fl-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
+.fl-empty { font-size: 11px; color: var(--text-muted); padding: 14px 2px; }
+
+/* Сітка, а не таблиця: стовпчиків шість, і всі, крім назви й нотатки,
+   вузькі та передбачувані — таблиця тут коштувала б розмітки без
+   жодної вигоди. */
+.fl-tbl { display: flex; flex-direction: column; }
+.fl-row {
+  display: grid; align-items: center; gap: 10px;
+  grid-template-columns: 76px minmax(0, 1.6fr) 130px minmax(0, 1fr) 78px auto;
+  padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 11.5px;
+}
+.fl-row:hover { background: var(--surface-2); }
+.fl-kind {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; text-align: center;
+}
+/* Назва — і кнопка, і посилання: під одним кліком одна дія, різниця
+   лише в тому, де файл відкриється. Тому й вигляд однаковий. */
+.fl-name {
+  font-weight: 700; color: var(--text-main); text-align: left;
+  background: none; border: 0; padding: 0; font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  text-decoration: none; cursor: pointer;
+}
+.fl-name:hover { color: var(--accent); }
+/* Посилання, яке не відкриється, не має вдавати робоче. */
+.fl-name.is-dead { color: var(--text-muted); font-style: italic; cursor: default; }
+.fl-name.is-dead:hover { color: var(--text-muted); }
+.fl-cab { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fl-note {
+  font-size: 10.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fl-at { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fl-acts { display: flex; gap: 5px; justify-content: flex-end; }
+.fl-mini {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  padding: 4px 8px; border-radius: 8px; text-decoration: none;
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
+  display: inline-flex; align-items: center;
+}
+.fl-mini:hover { color: var(--text-main); border-color: var(--border-2); }
+.fl-mini.is-bad:hover { color: #F87171; border-color: rgba(239, 68, 68, .4); }
+
+.fl-form {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: 12px; padding: 12px; margin-bottom: 12px;
+}
+.fl-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fl-f-l {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted);
+}
+.fl-in {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+  padding: 6px 9px; font-size: 11.5px; font-weight: 700; color: var(--text-main); outline: none;
+}
+.fl-in:focus { border-color: var(--accent); }
+.fl-in.is-wide { flex: 1 1 280px; min-width: 240px; }
+/* Попередження про паролі стоїть у формі, а не в довідці внизу: його
+   треба прочитати рівно тоді, коли руки вже тягнуться вставити файл. */
+.fl-warn {
+  flex: 1 1 100%; font-size: 10px; line-height: 1.5;
+  color: #FCA5A5; background: rgba(239, 68, 68, .09);
+  border: 1px solid rgba(239, 68, 68, .25); border-radius: 10px; padding: 8px 10px; margin: 0;
+}
+.fl-form-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* Перегляд. Висота стала — рамка з Drive не вміє казати, скільки їй
+   треба, а стрибок висоти від кожного відкриття зіпсував би сторінку
+   так само, як колись у кампаніях. */
+.fl-view-box {
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: 12px; padding: 10px; margin-bottom: 12px;
+}
+.fl-view-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.fl-view-t {
+  font-size: 11.5px; font-weight: 800; color: var(--text-main); flex: 1 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fl-frame {
+  width: 100%; height: min(62vh, 620px); border: 0; border-radius: 10px;
+  background: var(--surface);
+}
+.fl-view-s { font-size: 10px; color: var(--text-muted); margin: 8px 0 0; }
+#fl-view.hidden, #fl-form.hidden { display: none; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -4578,6 +4680,14 @@ input.ui-in[type="range"] { padding: 0; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.8 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.8-3.8-9S9.5 5.7 12 3z"/></svg>
         <span class="sb-lbl">Domains</span>
       </button>
+      <!-- Файли. Пункт admin-only: список «ось усі наші акаунти й де
+           лежать ключі від них» — це карта, і показувати її всім, хто
+           зайшов, не треба. Справжня межа все одно в політиках бази
+           (FILES.sql), а не тут. -->
+      <button class="sb-item admin-only" data-nav="files" onclick="navGo('files')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>
+        <span class="sb-lbl">Files</span>
+      </button>
       <button class="sb-item" data-nav="expenses" onclick="navGo('expenses')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
         <span class="sb-lbl">Expenses</span>
@@ -4625,7 +4735,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 16:34</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 17:01</div>
     </div>
   </aside>
 
@@ -5667,6 +5777,32 @@ input.ui-in[type="range"] { padding: 0; }
     <div id="tm-list" class="flex-1 min-w-0"></div>
     <div id="team-who" class="hidden w-[330px] shrink-0"></div>
   </div>
+</div>
+
+<!-- ═══════════ FILES ═══════════
+     Посилання на файли в Drive, а не самі файли. Чому саме так —
+     довга відповідь лежить у FILES.sql, коротка: ключі від акаунтів
+     не можна класти в сторінку, публічний ключ якої лежить у її ж
+     вихідному коді. -->
+<div id="files-section" class="card p-5 rounded-3xl shadow-xl">
+  <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
+    <div>
+      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Files</h2>
+      <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Where each file lives in Drive, and what it belongs to</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a id="fl-folder" href="#" target="_blank" rel="noopener"
+         class="fl-btn is-main hidden">Open FILES folder</a>
+      <button type="button" onclick="flFolderAsk()" id="fl-folder-set" class="fl-btn">Folder link</button>
+      <button type="button" onclick="flAdd()" class="fl-btn is-main">+ File</button>
+    </div>
+  </div>
+
+  <div id="fl-form" class="hidden"></div>
+  <!-- Перегляд відкривається під списком, а не поверх нього: файл
+       дивляться разом із рядком, до якого він належить. -->
+  <div id="fl-view" class="hidden"></div>
+  <div id="fl-list"></div>
 </div>
 
 <!-- ═══════════ END REPORT BUILDER ═══════════ -->
@@ -21674,18 +21810,22 @@ function cdPaint() {
      дереві це кампанії, у списку — оголошення; нижні рівні вже складені
      в кампанії, і брати обидва означало б порахувати все двічі. */
   const top = cdFlat ? cdAds() : cdTree();
-  /* Орієнтир для підсвічування — рівно те саме, що й у підсумку:
-     верхній рівень, бо нижні в нього вже складені. Рахуємо раз, а не
-     в кожному рядку. */
-  cdBase = cdBaseOf(top);
-  if (cdFlat) top.forEach(a => body.push(cdRow(a, 0)));
+  /* Смуга чергується по КАМПАНІЯХ, а не по рядках: рядків у кампанії
+     скільки завгодно, і чергування по них розрізало б саме ту групу,
+     яку ми й намагаємось показати цілою.
+
+     У списку оголошень кампаній немає, тож там чергуємо по рядках —
+     це звичайна зебра, і вона теж допомагає не з'їхати очима. */
+  let band = 0;
+  if (cdFlat) top.forEach((a, k) => body.push(cdRow(a, 0, k % 2)));
   else top.forEach(c => {
-    body.push(cdRow(c, 0));
+    const b = band++ % 2;
+    body.push(cdRow(c, 0, b));
     if (!cdOpenIds.has('campaign:' + c.id)) return;
     c.kids.forEach(s => {
-      body.push(cdRow(s, 1));
+      body.push(cdRow(s, 1, b));
       if (!cdOpenIds.has('ad set:' + s.id)) return;
-      s.kids.forEach(a => body.push(cdRow(a, 2)));
+      s.kids.forEach(a => body.push(cdRow(a, 2, b)));
     });
   });
 
@@ -21804,80 +21944,21 @@ window.cdFlipMany = async function (on) {
   cdPaint();
 };
 
-/* ══════════ УМОВНЕ ФОРМАТУВАННЯ ══════════
 
-   Чотирнадцять стовпчиків чисел — це стіна, у якій погане нічим не
-   відрізняється від доброго, і очі доводиться вести по рядку пальцем.
+/* СМУГИ ПІД КАМПАНІЮ.
 
-   ОРІЄНТИР — САМА Ж ТАБЛИЦЯ, а не вписаний поріг. Лід за $3 у KG і
-   лід за $3 у PL — різні новини, тож будь-який абсолютний поріг довелось
-   би виставляти окремо на кожну воронку й підтримувати руками. А
-   питання «дорожче, ніж у середньому в цьому кабінеті» має сенс
-   завжди й не потребує налаштувань.
+   У дереві три рівні, і на екрані вони зливаються в суцільну стіну:
+   де скінчилась одна кампанія й почалась наступна, видно хіба по
+   відступу назви — а відступ ліворуч, коли очі вже поїхали вправо, до
+   чисел. Через це рядок легко прочитати не під тією кампанією.
 
-   Фарбуємо ТЕКСТ, а не тло: тло вже зайняте під :hover і під вибрані
-   рядки, і третій шар кольору перетворив би таблицю на вітраж. */
-/* Малий рядок не судимо. Один лід на два долари робить «ціну ліда»
-   вдвічі кращою за середню, хоча це ще не результат, а збіг.
+   Тому кожна наступна кампанія отримує іншу яскравість тла, а її
+   адсети й оголошення — ту саму, що й вона. Виходить блок, який видно
+   одним поглядом, не читаючи назв.
 
-   Поріг свідомо МАЛИЙ. Його робота — прибрати шум від рядків, які
-   майже нічого не витратили, а не вирішувати, на що людині дивитись.
-   Спроба рахувати його від середнього рядка провалилась саме тому:
-   середнє бралось із кампаній, а фарбуються й оголошення під ними, —
-   і поріг виходив вищим за весь нижній рівень, тобто гасив геть усе
-   підсвічування. Піввідсотка від таблиці такої вади не мають. */
-const CD_TONE_MIN = 0.005;   // частка спенду всієї таблиці
-
-let cdBase = null;
-
-function cdBaseOf(list) {
-  const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, result: 0, hasResult: false };
-  (list || []).forEach(n => {
-    t.spend += n.spend; t.imps += n.imps; t.clicks += n.clicks;
-    t.leads += n.leads; t.regs += n.regs;
-    if (n.hasResult) { t.result += n.result; t.hasResult = true; }
-  });
-  return {
-    spend: t.spend,
-    floor: t.spend * CD_TONE_MIN,
-    cpm: t.imps > 0 ? t.spend / t.imps * 1000 : null,
-    ctr: t.imps > 0 ? t.clicks / t.imps * 100 : null,
-    cpc: t.clicks > 0 ? t.spend / t.clicks : null,
-    cpl: t.leads > 0 ? t.spend / t.leads : null,
-    cpr: t.regs > 0 ? t.spend / t.regs : null,
-    cpres: t.hasResult && t.result > 0 ? t.spend / t.result : null
-  };
-}
-
-/* ТОН ЦІЛОГО РЯДКА, і рівно два кольори: дорожче за середнє в цьому
-   кабінеті чи дешевше. Без «посередині».
-
-   Спершу тут фарбувались окремі комірки — кожне число проти свого
-   середнього. Виглядало розумно, а читалось погано: у рядку з
-   чотирнадцяти чисел частина зелена, частина червона, і що робити з
-   таким рядком — незрозуміло. Питання ж у людини одне: цей рядок
-   хороший чи поганий. Тому й відповідь одна на рядок.
-
-   Міряємо тим, заради чого оголошення крутять: ціною РЕЗУЛЬТАТУ —
-   того, на що адсет оптимізується. Цілі немає — беремо ціну ліда.
-   Немає й лідів — мовчимо: вигадувати оцінку нема з чого.
-
-   Витрати є, результату немає — це не «дорого», це найгірше що може
-   бути, і воно червоне без жодних порівнянь. */
-function cdRowTone(n) {
-  if (!cdBase) return '';
-  const per = (v) => v > 0 ? n.spend / v : (n.spend > 0 ? Infinity : null);
-  const v = n.hasResult ? per(n.result) : per(n.leads);
-  if (v == null) return '';
-  // Рядок, який майже нічого не витратив, не судимо: один лід на
-  // копійки зробив би його «кращим за середній», хоч це ще не
-  // результат, а збіг.
-  if (cdBase.floor > 0 && n.spend < cdBase.floor) return '';
-  if (v === Infinity) return ' is-bad';
-  const base = n.hasResult ? cdBase.cpres : cdBase.cpl;
-  if (base == null || !isFinite(base) || base <= 0) return '';
-  return v > base ? ' is-bad' : ' is-good';
-}
+   Це НЕ оцінка. Спершу тут фарбувалось «дорожче/дешевше за середнє», і
+   це відповідало на питання, якого не ставили: у таблиці й так є
+   числа, щоб судити, а бракувало саме межі між групами. */
 
 /* ПІДСУМОК. Рахуємо з верхнього рівня — кампаній у дереві, оголошень у
    списку: нижні рівні вже складені в них, і брати обидва означало б
@@ -22040,7 +22121,7 @@ function cdChips(n) {
     + '</span>';
 }
 
-function cdRow(n, depth) {
+function cdRow(n, depth, band) {
   const key = n.kind + ':' + n.id;
   const kids = n.kids.length > 0;
   const open = cdOpenIds.has(key);
@@ -22082,7 +22163,7 @@ function cdRow(n, depth) {
       onchange="cdMark('${cdEsc(n.id)}', this.checked)"
       title="Pick this ${n.kind} to switch together with others">`;
 
-  return `<tr class="cd-r cd-d${depth}${cdRowTone(n)}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
+  return `<tr class="cd-r cd-d${depth}${band ? ' is-band' : ''}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
     <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
         title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
         >${mark}${twist}${label}${count}</td>
@@ -22198,6 +22279,296 @@ function cdSetOwn(id, state) {
     }
   });
 }
+</script>
+
+<script>
+/* ═══════════ FILES ═══════════
+
+   Сторінка тримає ПОСИЛАННЯ на файли в Drive, а не файли. Причина
+   одна й вона вирішальна: купивши акаунт, ви отримуєте файл із
+   логіном, поштою, 2FA і куками — повний набір ключів. Дашборд стоїть
+   на GitHub Pages, його публічний ключ лежить у вихідному коді
+   сторінки, і сховати його неможливо за задумом. Один витік коштував
+   би не «хтось побачив статку», а всі акаунти одразу.
+
+   Тому ключі лишаються в Drive під доступом Google, а тут — адреса й
+   підпис. Хто не має доступу до папки, той за посиланням не побачить
+   нічого.
+
+   І з тієї ж причини поле note питає контекст, а не паролі. Сторінка
+   про це каже прямо: база попередити не може. */
+
+const FL_KINDS = [
+  { k: 'account', label: 'Account' },
+  { k: 'proxy',   label: 'Proxy' },
+  { k: 'card',    label: 'Card' },
+  { k: 'creo',    label: 'Creative' },
+  { k: 'doc',     label: 'Document' },
+  { k: 'other',   label: 'Other' }
+];
+
+let flRows = [], flLoaded = false, flEdit = -1, flFolder = '';
+
+const flEsc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+/* Приймаємо лише http(s). Без цього в href міг би поїхати
+   javascript:, а рядок сюди пише людина — тобто це не теорія. */
+function flSafeUrl(v) {
+  const s = String(v || '').trim();
+  if (!/^https?:\/\//i.test(s)) return '';
+  return s;
+}
+
+/* ПЕРЕГЛЯД ПРЯМО НА СТОРІНЦІ.
+
+   Drive вміє віддавати файл у рамку за адресою /preview — треба лише
+   дістати його id зі звичайного посилання, яке людина скопіювала з
+   адресного рядка. Форм у Google кілька, і всі вони трапляються:
+
+     drive.google.com/file/d/<id>/view?usp=sharing
+     drive.google.com/open?id=<id>
+     docs.google.com/document/d/<id>/edit
+
+   Папку в рамку вставити не можна — для неї лишається кнопка «відкрити
+   в Drive», і це чесніше за порожню рамку без пояснення.
+
+   ВАЖЛИВО: рамка показує файл лише тому, хто вже має до нього доступ
+   у Google. Ми нічого не обходимо — просто не змушуємо перемикати
+   вкладку. Хто доступу не має, побачить усередині звичне гуглівське
+   «запитати доступ», і це правильно. */
+function flPreviewUrl(url) {
+  const u = flSafeUrl(url);
+  if (!u) return '';
+  if (!/^https?:\/\/(drive|docs)\.google\.com\//i.test(u)) return '';
+  if (/\/drive\/folders\//i.test(u)) return '';        // папку не вбудувати
+  const m = u.match(/\/d\/([-\w]{10,})/) || u.match(/[?&]id=([-\w]{10,})/);
+  if (!m) return '';
+  const id = m[1];
+  // Документи, таблиці й презентації мають власний шлях перегляду.
+  const doc = u.match(/docs\.google\.com\/(document|spreadsheets|presentation)\//i);
+  return doc
+    ? 'https://docs.google.com/' + doc[1].toLowerCase() + '/d/' + id + '/preview'
+    : 'https://drive.google.com/file/d/' + id + '/preview';
+}
+
+window.flInit = async function () {
+  if (flLoaded) { flRender(); return; }
+  flLoaded = true;
+  try { flFolder = flSafeUrl(await getTeamSetting('files_folder_url')); } catch (e) { flFolder = ''; }
+  await flLoad();
+};
+
+async function flLoad() {
+  const box = document.getElementById('fl-list');
+  if (box) box.innerHTML = '<p class="fl-empty">Loading…</p>';
+  try {
+    const { data, error } = await sb.from('file_links')
+      .select('id,title,url,kind,account_id,note,at,created_by')
+      .eq('team_name', currentTeam).order('at', { ascending: false }).limit(500);
+    if (error) throw new Error(error.message);
+    flRows = data || [];
+  } catch (e) {
+    flRows = [];
+    if (box) {
+      /* Таблиці ще немає — це найчастіша причина, і вона має рецепт.
+         Ховати її за «щось пішло не так» означало б відправити людину
+         шукати ваду там, де її немає. */
+      box.innerHTML = '<p class="fl-empty">' + (/file_links|does not exist|42P01/i.test(e.message)
+        ? 'No table yet — run FILES.sql, then reload.'
+        : 'Could not read: ' + flEsc(e.message)) + '</p>';
+      return;
+    }
+  }
+  flRender();
+}
+
+function flRender() {
+  const a = document.getElementById('fl-folder');
+  if (a) {
+    a.classList.toggle('hidden', !flFolder);
+    if (flFolder) a.setAttribute('href', flFolder);
+  }
+  const box = document.getElementById('fl-list');
+  if (!box) return;
+  if (!flRows.length) {
+    box.innerHTML = '<p class="fl-empty">Nothing here yet. Upload the file to your Drive '
+      + 'folder, then press “+ File” and paste the link.</p>';
+    return;
+  }
+  const kind = (k) => (FL_KINDS.find(x => x.k === k) || FL_KINDS[FL_KINDS.length - 1]).label;
+  box.innerHTML = '<div class="fl-tbl">' + flRows.map((r, i) => {
+    const url = flSafeUrl(r.url);
+    /* Назва відкриває перегляд ТУТ, коли файл можна вбудувати, і
+       Drive у новій вкладці, коли ні. Одна й та сама дія під одним і
+       тим самим кліком — різниця лише в тому, де воно відкриється. */
+    const name = !url
+      /* Адреса не відкривається — показуємо назву текстом. Мертве
+         посилання, яке виглядає живим, гірше за видиме «немає». */
+      ? '<span class="fl-name is-dead" title="Not a http(s) link">' + flEsc(r.title) + '</span>'
+      : flPreviewUrl(url)
+        ? '<button type="button" class="fl-name" onclick="flView(' + i + ')"'
+          + ' title="Open here">' + flEsc(r.title) + '</button>'
+        : '<a href="' + flEsc(url) + '" target="_blank" rel="noopener" class="fl-name"'
+          + ' title="Opens in Drive — this one cannot be shown here">'
+          + flEsc(r.title) + '</a>';
+    return '<div class="fl-row">'
+      + '<span class="fl-kind">' + flEsc(kind(r.kind)) + '</span>'
+      + name
+      + (r.account_id ? '<span class="fl-cab" title="Cabinet">' + flEsc(r.account_id) + '</span>' : '<span></span>')
+      + '<span class="fl-note">' + flEsc(r.note || '') + '</span>'
+      + '<span class="fl-at">' + String(r.at || '').slice(0, 10) + '</span>'
+      + '<span class="fl-acts">'
+      + (url ? '<a class="fl-mini" href="' + flEsc(url) + '" target="_blank" rel="noopener"'
+             + ' title="Open in Drive">↗</a>' : '')
+      + '<button type="button" class="fl-mini" onclick="flOpen(' + i + ')">Edit</button>'
+      + '<button type="button" class="fl-mini is-bad" onclick="flDrop(' + i + ')">✕</button>'
+      + '</span></div>';
+  }).join('') + '</div>';
+}
+
+/* ── перегляд ── */
+
+window.flView = function (i) {
+  const r = flRows[i];
+  if (!r) return;
+  const src = flPreviewUrl(r.url);
+  const box = document.getElementById('fl-view');
+  if (!box || !src) { if (flSafeUrl(r.url)) window.open(r.url, '_blank', 'noopener'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="fl-view-box">
+      <div class="fl-view-head">
+        <span class="fl-view-t">${flEsc(r.title)}</span>
+        <a class="fl-mini" href="${flEsc(flSafeUrl(r.url))}" target="_blank" rel="noopener">Open in Drive</a>
+        <button type="button" class="fl-mini is-bad" onclick="flViewClose()">✕</button>
+      </div>
+      <iframe class="fl-frame" src="${flEsc(src)}" allow="autoplay"
+        referrerpolicy="no-referrer"></iframe>
+      <p class="fl-view-s">Shown straight from Drive. If it asks for access, the file is
+        simply not shared with the Google account you are signed in with.</p>
+    </div>`;
+};
+
+window.flViewClose = function () {
+  const box = document.getElementById('fl-view');
+  /* Вміст прибираємо, а не лише ховаємо: лишена в розмітці рамка
+     тримає з'єднання з Drive і при наступному відкритті блимає
+     минулим файлом. */
+  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+};
+
+/* ── форма ── */
+
+window.flAdd = function () { flOpen(-1); };
+
+window.flOpen = function (i) {
+  flEdit = i;
+  const r = i >= 0 ? flRows[i] : { title: '', url: '', kind: 'account', account_id: '', note: '' };
+  const box = document.getElementById('fl-form');
+  if (!box) return;
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="fl-form">
+      <label class="fl-f"><span class="fl-f-l">What is it</span>
+        <input class="fl-in" id="fl-f-title" placeholder="Mostbet KG · account #3"
+          value="${flEsc(r.title)}"></label>
+      <label class="fl-f"><span class="fl-f-l">Drive link</span>
+        <input class="fl-in is-wide" id="fl-f-url" placeholder="https://drive.google.com/…"
+          value="${flEsc(r.url)}"></label>
+      <label class="fl-f"><span class="fl-f-l">Kind</span>
+        <select class="fl-in" id="fl-f-kind">
+          ${FL_KINDS.map(k => `<option value="${k.k}" ${r.kind === k.k ? 'selected' : ''}>${k.label}</option>`).join('')}
+        </select></label>
+      <label class="fl-f"><span class="fl-f-l">Cabinet (optional)</span>
+        <input class="fl-in" id="fl-f-cab" placeholder="1149896616961527"
+          value="${flEsc(r.account_id || '')}"></label>
+      <label class="fl-f"><span class="fl-f-l">Note</span>
+        <input class="fl-in is-wide" id="fl-f-note" placeholder="bought 12.09, farmed"
+          value="${flEsc(r.note || '')}"></label>
+      <p class="fl-warn">Never put passwords, 2FA codes or cookies here. This page stores
+        the address, not the keys — the keys stay in Drive, behind your Google access.</p>
+      <div class="fl-form-acts">
+        <button type="button" class="fl-btn is-main" onclick="flPut()">Save</button>
+        <button type="button" class="fl-btn" onclick="flCancel()">Cancel</button>
+      </div>
+    </div>`;
+};
+
+window.flCancel = function () {
+  flEdit = -1;
+  const box = document.getElementById('fl-form');
+  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+};
+
+window.flPut = async function () {
+  const val = (id) => String(document.getElementById(id)?.value || '').trim();
+  const title = val('fl-f-title');
+  const url = flSafeUrl(val('fl-f-url'));
+  if (!title) { if (typeof toast === 'function') toast('Give it a name', 'warn'); return; }
+  if (!url) {
+    if (typeof toast === 'function')
+      toast('The link must start with http:// or https://', 'warn');
+    return;
+  }
+  const row = { team_name: currentTeam, title, url, kind: val('fl-f-kind') || 'other',
+                account_id: val('fl-f-cab') || null, note: val('fl-f-note') || null };
+  try {
+    const { data: s } = await sb.auth.getUser();
+    row.created_by = s?.user?.id || null;
+    if (flEdit >= 0) {
+      const { error } = await sb.from('file_links').update(row).eq('id', flRows[flEdit].id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await sb.from('file_links').insert(row);
+      if (error) throw new Error(error.message);
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
+    return;
+  }
+  flCancel();
+  await flLoad();
+  if (typeof toast === 'function') toast('Saved');
+};
+
+window.flDrop = async function (i) {
+  const r = flRows[i];
+  if (!r) return;
+  const go = typeof ask === 'function'
+    ? await ask({ title: 'Remove this line?', danger: true, ok: 'Remove',
+                  body: 'Removes the line from this list only. The file itself stays in Drive.' })
+    : confirm('Remove "' + r.title + '" from the list?');
+  if (!go) return;
+  try {
+    const { error } = await sb.from('file_links').delete().eq('id', r.id);
+    if (error) throw new Error(error.message);
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not remove: ' + e.message, 'error');
+    return;
+  }
+  await flLoad();
+};
+
+/* Адреса папки — одна на команду, тож живе в налаштуваннях, а не в
+   рядку. Питаємо тут же: гнати людину в Settings заради одного поля,
+   яке вписують раз, — це зайвий крок рівно там, де його помітно. */
+window.flFolderAsk = async function () {
+  const v = prompt('Link to the Drive folder where these files live:', flFolder || '');
+  if (v === null) return;
+  const url = flSafeUrl(v);
+  if (v.trim() && !url) {
+    if (typeof toast === 'function')
+      toast('The link must start with http:// or https://', 'warn');
+    return;
+  }
+  try {
+    await setTeamSetting('files_folder_url', url);
+    flFolder = url;
+    flRender();
+    if (typeof toast === 'function') toast(url ? 'Folder saved' : 'Folder cleared');
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
+  }
+};
 </script>
 
 <script>
@@ -22745,6 +23116,7 @@ tmBoot();
     'team':       { section: 'team-section' },
     'reports':    { section: 'report-builder-section' },
     'expenses':   { section: 'expenses-section' },
+    'files':      { section: 'files-section' },
     'hub':        { panel: 'datahub-panel' },
     'sheets':     { panel: 'sheets-panel' }
   };
@@ -22929,6 +23301,8 @@ tmBoot();
     // баєрові вона взагалі не відкриється, тож витрачати на неї запити
     // при кожному завантаженні дашборда сенсу немає.
     if (name === 'team' && typeof tmOpen === 'function') tmOpen();
+    // Файли, як кабінети й домени, вантажаться при першому заході.
+    if (name === 'files' && typeof flInit === 'function') flInit();
 
     document.body.classList.remove('sb-open');
     /* Гортається тепер колонка контенту, а не вікно: window.scrollTo
