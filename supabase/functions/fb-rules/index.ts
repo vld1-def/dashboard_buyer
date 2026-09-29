@@ -56,7 +56,50 @@ const ADS_LIMIT = 500;      // стеля списку оголошень на �
 const SNAP_MAX_AGE_MS = 90 * 60_000;
 // Окремою функцією, щоб це рішення можна було перевірити тестом, а не
 // вірити йому на слово: воно вирішує, діяти чи не діяти взагалі.
-function snapTooOld(ageMs: number): boolean { return !(ageMs <= SNAP_MAX_AGE_MS); }
+function snapTooOld(ageMs: number, limitMs = SNAP_MAX_AGE_MS): boolean {
+  return !(ageMs <= limitMs);
+}
+
+/* НАСКІЛЬКИ СТАРИМ ЗНІМОК МАЄ ПРАВО БУТИ — питання не до нас, а до
+   налаштованого темпу синхронізації.
+
+   Дев'яносто хвилин були зашиті під припущення «вдень щопівгодини,
+   вночі раз на годину». Але темп налаштовується, і в списку є «раз на
+   2 години» та «раз на 4». Вибравши будь-який із них, людина мовчки
+   вимикала собі нічні правила: знімок ставав старшим за межу, і
+   правила відмовлялись діяти — саме вночі, коли на них і
+   покладаються.
+
+   Тепер межа йде за темпом: інтервал плюс запас на те, що прогін
+   почався не рівно в хвилину. Нижче дев'яноста хвилин не опускаємось —
+   на швидкому темпі ширша межа нікому не заважає, а запас на
+   пропущений прогін лишається.
+
+   Це друга лінія. Перша — ланцюг: fb-sync запускає правила одразу за
+   собою, і там знімку секунди. Межа потрібна на випадок, коли ланцюг
+   не налаштований або синхронізація стала зовсім. */
+const SNAP_PACE_GRACE_MS = 30 * 60_000;
+
+async function snapLimit(base: string, hdr: Json): Promise<number> {
+  let rows: Json[] = [];
+  try { rows = await pgGet(base, hdr, 'team_settings?select=value&key=eq.fb_sync_pace'); }
+  catch (_e) { return SNAP_MAX_AGE_MS; }
+  let slowest = 0;
+  rows.forEach(r => {
+    let v: Json = {};
+    try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
+    catch (_e) { return; }
+    /* Беремо ПОВІЛЬНІШИЙ із двох: межа мусить покривати найгірший
+       випадок доби, інакше вночі вона знову виявиться замалою. Котра
+       зараз година, тут не питаємо — знімок міг приїхати ще вночі. */
+    [v.day, v.night].forEach(x => {
+      const n = Number(x);
+      if (Number.isFinite(n) && n >= 5 && n <= 1440) slowest = Math.max(slowest, n);
+    });
+  });
+  if (!slowest) return SNAP_MAX_AGE_MS;
+  return Math.max(SNAP_MAX_AGE_MS, slowest * 60_000 + SNAP_PACE_GRACE_MS);
+}
 const BATCH_MAX = 50;       // стеля пакета Graph
 
 type Json = Record<string, any>;
@@ -688,6 +731,7 @@ Deno.serve(async (req) => {
   } catch (_e) { /* тіла може не бути */ }
 
   const { rules, leads } = await loadRules(base, hdr, owner);
+  const maxAge = await snapLimit(base, hdr);
   const use = onlyRule ? rules.filter(r => r.id === onlyRule) : rules;
   if (!use.length) return reply({ fn: FN_VERSION, cron, rules: 0, note: 'no rules switched on' });
 
@@ -725,13 +769,14 @@ Deno.serve(async (req) => {
       let ads: Ent[];
       try {
         const snap = await snapOf(base, hdr, account, leads);
-        if (snapTooOld(snap.age)) {
+        if (snapTooOld(snap.age, maxAge)) {
           /* Не діємо й кажемо чому. Мовчання тут було б найгіршим:
              виглядало б як «правила не працюють», а шукали б причину
              в правилах, а не в синхронізації. */
           stale++;
           problems.push(account + ': the snapshot is '
             + (snap.age === Infinity ? 'missing' : Math.round(snap.age / 60000) + ' min old')
+            + ', older than the ' + Math.round(maxAge / 60000) + ' min this sync pace allows'
             + ' — press Sync now on Cabinets, or check the fb-sync schedule');
           continue;
         }

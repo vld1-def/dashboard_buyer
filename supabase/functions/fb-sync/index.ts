@@ -1464,6 +1464,35 @@ async function tgTest(base: string, hdr: Json, owner: string): Promise<Json> {
    keepCard вище, а не права. */
 
 /* ── вхід ── */
+/* Стукаємо в fb-rules її ж ключем розкладу. Адресу виводимо з
+   SUPABASE_URL — окремий запис у Vault заради неї був би ще одним
+   місцем, яке можна забути заповнити.
+
+   Відповіді не чекаємо довго й на помилці не падаємо: синхронізація
+   вже зробила свою роботу, і зривати її звіт через те, що правила не
+   відповіли, було б гірше за коротке «не вийшло» в тому ж звіті. */
+async function runRules(cron: boolean): Promise<string> {
+  if (!cron) return 'skipped: not a scheduled run';
+  const key = Deno.env.get('RULES_CRON_SECRET') || '';
+  if (!key) return 'not configured: set RULES_CRON_SECRET for fb-sync too';
+  const url = (Deno.env.get('SUPABASE_URL') || '') + '/functions/v1/fb-rules';
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-cron-key': key },
+      body: '{}'
+    });
+    const j = await res.json().catch(() => null) as Json | null;
+    if (!res.ok) return 'failed: HTTP ' + res.status
+      + (j && j.error ? ' — ' + String(j.error) : '');
+    const paused = Number(j?.paused) || 0;
+    const would = Number(j?.would_pause) || 0;
+    return 'ok: ' + paused + ' paused, ' + would + ' reported';
+  } catch (e) {
+    return 'failed: ' + (e as Error).message;
+  }
+}
+
 Deno.serve(async (req) => {
   // OPTIONS — найперше й без жодних умов: без CORS-заголовків на
   // preflight браузер не покаже навіть тексту помилки.
@@ -1597,6 +1626,21 @@ async function handle(req: Request): Promise<Response> {
 
   const telegram = await tgSend(base, hdr, alerts);
 
+  /* Правила — ОДРАЗУ ПІСЛЯ знімка, тим самим прогоном.
+
+     Раніше вони жили власним розкладом і читали знімок, який хтось
+     колись поклав. Поки темп був щопівгодинний, це сходилось. Але
+     темп налаштовується, і «вночі раз на чотири години» ламало все
+     мовчки: правила прокидались щопівгодини, бачили знімок старший за
+     свою межу і відмовлялись діяти. Тобто вибір «рідше синхронізувати»
+     тихо вимикав нічні правила — саме тоді, коли на них і
+     покладаються, бо вночі людина спить.
+
+     Ланцюгом цього питання немає взагалі: скільки б разів на добу не
+     ходила синхронізація, правила йдуть за нею й бачать знімок,
+     якому секунди. */
+  const rulesRun = await runRules(cron);
+
   /* Про історію витрат кажемо одним рядком. Мовчання тут коштувало б
      дорого: вибір періоду на сторінці спирається саме на неї, і «чому
      за минулий тиждень нулі» має мати відповідь у тому ж місці, де
@@ -1620,6 +1664,11 @@ async function handle(req: Request): Promise<Response> {
           ? 'no table yet — run FB_RULES.sql' : snapshotError)
       : snapshot + ' active ad(s)',
     telegram,
+    /* Чи пішли правила слідом. Мовчати не можна з тієї ж причини, що й
+       про знімок: коли секрет не прописали, правила просто не
+       запускаються — і це виглядає як «правила не працюють», а шукали
+       б знову не там. */
+    rules: rulesRun,
     problems: problems.slice(0, 10)
   });
 }
