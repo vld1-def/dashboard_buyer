@@ -122,12 +122,19 @@ const METRICS: Record<string, (a: Agg) => number | null> = {
   ctr_link:    a => a.imps > 0 ? a.linkClicks / a.imps * 100 : null
 };
 
-// Що вважати лідом. За замовчуванням — лід-форми, піксельні ліди й
-// інстали додатка: саме вони трапляються в цих кампаніях.
-const LEAD_ACTIONS_DEFAULT = [
-  'lead', 'onsite_conversion.lead_grouped',
-  'offsite_conversion.fb_pixel_lead', 'mobile_app_install'
-];
+/* ЛІД — ЦЕ ПОДІЯ ПІКСЕЛЯ, і більше нічого.
+
+   Довго це був список із галочками в дашборді, і кожна галочка
+   додавала свою подію. Виходило число, яке не сходилось ні з чим, а
+   знайти, яка саме галочка його роздула, можна було лише перебором.
+   Для правил це гірше, ніж для екрана: завищені ліди — це занижена
+   ціна ліда, тобто правило не вимикає те, що давно мало вимкнути.
+
+   Константа, а не налаштування, і рівно така сама в дашборді
+   (CD_LEAD_DEFAULT у розборі кабінета). Розійтись їм не можна: ціна
+   ліда на екрані й ціна ліда, за якою діє правило, мусять бути одним
+   числом. */
+const LEAD_ACTIONS_DEFAULT = ['offsite_conversion.fb_pixel_lead'];
 
 function ruleNum(v: unknown, lo: number, hi: number, fallback: number): number {
   const n = Number(v);
@@ -144,7 +151,8 @@ async function loadRules(base: string, hdr: Json, owner: string):
   catch (_e) { /* немає налаштувань — немає правил */ }
 
   const rules: Rule[] = [];
-  let leads = LEAD_ACTIONS_DEFAULT;
+  // Список подій більше не налаштовується — див. LEAD_ACTIONS_DEFAULT.
+  const leads = LEAD_ACTIONS_DEFAULT;
   const teams: string[] = [];
 
   rows.forEach(r => {
@@ -152,8 +160,6 @@ async function loadRules(base: string, hdr: Json, owner: string):
     try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
     catch (_e) { return; }
     teams.push(String(r.team_name || ''));
-    if (Array.isArray(v.leadActions) && v.leadActions.length)
-      leads = v.leadActions.map((x: unknown) => String(x));
     (Array.isArray(v.rules) ? v.rules : []).forEach((x: Json, i: number) => {
       const when: Cond[] = (Array.isArray(x.when) ? x.when : [])
         .filter((c: Json) => METRICS[String(c?.m)] && ['>', '>=', '<', '<=', '='].includes(String(c?.op)))

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 07:58">
+  <meta name="build" content="build 29.09 09:00">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3312,7 +3312,22 @@ body[data-route="domains"] #dm-detail {
 }
 .cd-h { font-size: 12px; font-weight: 900; color: var(--text-main); margin: 0; }
 .cd-s { font-size: 10px; color: var(--text-muted); margin: 0; min-width: 0; }
-.cd-tabs { display: flex; gap: 5px; flex: 0 0 auto; }
+.cd-tabs { display: flex; gap: 5px; flex: 0 0 auto; align-items: center; }
+
+/* «Тільки активні». Поруч із вкладками, бо це теж про те, що саме
+   показано. Вигляд не як у кнопок навмисно: вкладки перемикають
+   ВИГЛЯД, а це ховає РЯДКИ — різні речі, і плутати їх не варто. */
+.cd-only {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px 3px 6px; border-radius: 8px; cursor: pointer;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); border: 1px solid transparent;
+}
+.cd-only:hover { color: var(--text-main); border-color: var(--border); }
+.cd-only input { width: 12px; height: 12px; accent-color: var(--accent); cursor: pointer; }
+.cd-only:has(input:checked) {
+  color: var(--text-main); border-color: var(--border-2); background: var(--surface-2);
+}
 .cd-tab {
   padding: 5px 11px; border-radius: 9px;
   font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
@@ -3672,16 +3687,6 @@ body.is-lead-only .admin-only { display: none; }
 .rl-grp { margin-top: 18px; }
 .rl-grp-h { font-size: 11px; font-weight: 900; color: var(--text-main); margin: 0; }
 .rl-grp-s { font-size: 10px; color: var(--text-muted); margin: 2px 0 8px; line-height: 1.5; }
-.rl-leads { display: flex; flex-wrap: wrap; gap: 6px; }
-.rl-lead {
-  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  padding: 5px 10px; border-radius: 999px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  font-size: 11px; font-weight: 700; color: var(--text-main);
-}
-.rl-lead:has(input:checked) { border-color: var(--accent); }
-.rl-lead input { width: 13px; height: 13px; accent-color: var(--accent); }
-
 .rl-log-row {
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
   padding: 7px 10px; margin-bottom: 4px; border-radius: 10px;
@@ -4499,7 +4504,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 07:58</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 09:00</div>
     </div>
   </aside>
 
@@ -5394,16 +5399,10 @@ input.ui-in[type="range"] { padding: 0; }
 
       <div id="rl-list"></div>
 
-      <!-- «Що вважати лідом» переїхало в налаштування. Це не про
-           правила: тим самим списком рахується стовпчик Lead у розборі
-           кабінета, і шукати його в панелі про автоматичне вимикання
-           не було де. Число одне на обидва місця — навмисно: якби тут
-           стояв свій список, ціна ліда на екрані й ціна ліда в правилі
-           розійшлись би, і повірити не можна було б жодній. -->
-      <p class="rl-grp-s" style="margin-top:12px">
-        Rules count leads the same way the Campaigns table does — the list of events is
-        in Settings → Facebook → <b>What counts as a Lead</b>.
-      </p>
+      <!-- Списку «що вважати лідом» тут більше немає, і в налаштуваннях
+           теж. Лід — це подія пікселя, одна й та сама тут і в кампаніях.
+           Вибір, який мовчки міняв число в десяти місцях, коштував
+           дорожче за гнучкість, якою користувались раз на рік. -->
 
       <div class="rl-grp">
         <h3 class="rl-grp-h">Last actions</h3>
@@ -8156,10 +8155,6 @@ function openSettingsModal() {
   document.getElementById('month-menu')?.classList.add('hidden');
   document.getElementById('team-menu')?.classList.add('hidden');
   document.getElementById('settings-modal').classList.remove('hidden');
-  /* «Що вважати лідом» живе тут, а читає його той самий код, що й
-     панель правил. Поки панель не відкривали, список подій не
-     завантажений — і блок у налаштуваннях лишався б порожнім. */
-  if (typeof rlInit === 'function') rlInit();
   switchSettingsTab('general');
   // Load saved Drive API key
   const driveKey = localStorage.getItem('drive_api_key') || '';
@@ -13485,13 +13480,6 @@ document.addEventListener('keydown', e => {
               </span>
             </div>
             <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. Anything under 30 minutes needs the schedule itself changed (see the alter_job note at the bottom of FB_SYNC_CRON.sql); Facebook counts even refused requests against the limit, so faster is not always more data.</p>
-          </div>
-
-<div class="set-group">
-            <h3 class="set-gtitle">What counts as a Lead</h3>
-            <p class="set-gsub">Facebook reports conversions by type, and the same lead often arrives under two or three names at once. These are the ones added up into “leads”; everything else is ignored. One list for the whole dashboard: the Lead column in Campaigns and the cost per lead your rules act on are the same number, and they have to be.</p>
-            <div class="rl-leads" id="rl-leads" data-setting="lead actions ліди події"></div>
-            <p class="set-hint opacity-60">Hover the Lead number in Campaigns to see which events it was made of, and which were dropped as the same event under another name.</p>
           </div>
 
 <div class="set-group">
@@ -20599,7 +20587,7 @@ window.uqMode = function (m) {
    розкладом: браузер для цього не годиться — його закривають.
 
    Правила лежать у team_settings під ключем fb_rules, одним об'єктом:
-   { leadActions: [...], rules: [...] }. Окремої таблиці немає навмисно
+   { rules: [...] }. Окремої таблиці немає навмисно
    — правил одиниці, вони цілком налаштування, і зайвий SQL-крок при
    встановленні коштував би дорожче за користь.
 
@@ -20628,18 +20616,7 @@ const RL_LEVELS = [
 /* Те, що Facebook називає конверсіями. Список навмисно короткий: усе
    інше (перегляди, реакції) лідом не є, і мовчки додавати його в
    знаменник ціни ліда означало б робити правила безглуздими. */
-const RL_LEAD_ACTIONS = [
-  { k: 'lead',                                  label: 'Lead forms' },
-  { k: 'onsite_conversion.lead_grouped',         label: 'Lead forms (grouped)' },
-  { k: 'offsite_conversion.fb_pixel_lead',       label: 'Pixel: lead' },
-  { k: 'mobile_app_install',                     label: 'App installs' },
-  { k: 'complete_registration',                  label: 'Registrations' },
-  { k: 'offsite_conversion.fb_pixel_purchase',   label: 'Pixel: purchase' }
-];
-const RL_LEADS_DEFAULT = ['lead', 'onsite_conversion.lead_grouped',
-                          'offsite_conversion.fb_pixel_lead', 'mobile_app_install'];
-
-let rlRules = [], rlLeads = RL_LEADS_DEFAULT.slice(), rlEdit = null, rlLog = [], rlLoaded = false;
+let rlRules = [], rlEdit = null, rlLog = [], rlLoaded = false;
 
 const rlEsc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -20668,14 +20645,13 @@ window.rlInit = async function () {
     const raw = await getTeamSetting('fb_rules');
     const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
     rlRules = Array.isArray(v.rules) ? v.rules : [];
-    if (Array.isArray(v.leadActions) && v.leadActions.length) rlLeads = v.leadActions;
   } catch (e) { /* немає налаштування — починаємо з чистого */ }
   rlPaint();
   rlLogLoad();
 };
 
 async function rlSave() {
-  await setTeamSetting('fb_rules', JSON.stringify({ leadActions: rlLeads, rules: rlRules }));
+  await setTeamSetting('fb_rules', JSON.stringify({ rules: rlRules }));
   if (typeof setSaved === 'function') setSaved();
 }
 
@@ -20738,13 +20714,6 @@ function rlWords(r) {
 function rlPaint() {
   const box = document.getElementById('rl-list');
   if (!box) return;
-  const lead = document.getElementById('rl-leads');
-  if (lead) lead.innerHTML = RL_LEAD_ACTIONS.map(a => `
-    <label class="rl-lead">
-      <input type="checkbox" ${rlLeads.includes(a.k) ? 'checked' : ''}
-        onchange="rlLeadSet('${a.k}', this.checked)">
-      <span>${rlEsc(a.label)}</span></label>`).join('');
-
   if (!rlRules.length && rlEdit == null) {
     box.innerHTML = '<p class="rl-empty">No rules yet. Press “+ Rule” — the first one starts in report-only mode.</p>';
     return;
@@ -20897,17 +20866,6 @@ window.rlDrop = async function (i) {
   rlPaint();
 };
 
-window.rlLeadSet = async function (k, on) {
-  rlLeads = on ? [...new Set([...rlLeads, k])] : rlLeads.filter(x => x !== k);
-  if (!rlLeads.length) {
-    // Порожній список означав би «лідів не буває» — і всі правила з
-    // ціною ліда мовчки перестали б працювати. Не даємо.
-    rlLeads = [k];
-    if (typeof toast === 'function') toast('At least one conversion type stays', 'warn');
-  }
-  await rlSave();
-  rlPaint();
-};
 
 /* «Check now» рахує й нічого не чіпає — dry:true поверх правил. Це
    свідомо: кнопка, яка вимикає рекламу з першого кліку, рано чи пізно
@@ -20961,14 +20919,19 @@ window.rlCheck = async function () {
    оголошення — так, як у репорт-білдері. Вкладки змушували тримати в
    голові, до чого належить рядок; дерево показує це саме.
 
-   ЛІДИ РАХУЄМО ЗА ТИМИ Ж ГАЛОЧКАМИ, що й правила (налаштування
-   fb_rules.leadActions). Якби тут був свій список, ціна ліда на екрані
-   й ціна ліда в правилі розійшлись би — і повірити не можна було б
-   жодній.
+   ЛІД — ЦЕ ПОДІЯ ПІКСЕЛЯ, і більше нічого. Довго тут був список із
+   галочками, і кожна галочка додавала свою подію: лід-форми, інстали
+   застосунку, згруповані ліди. Виходило число, яке не сходилось ні з
+   чим — ні з Ads Manager, ні з очікуванням, — а знайти, яка саме
+   галочка його роздула, можна було лише перебором.
+
+   Тепер одна подія, та сама на екрані й у правилах (fb-rules тримає
+   таку саму константу). Налаштування немає навмисно: вибір, який
+   мовчки міняє число в десяти місцях, коштує дорожче за гнучкість,
+   якою користуються раз на рік.
    ══════════════════════════════════════════════════════════════════ */
 
-const CD_LEAD_DEFAULT = ['lead', 'onsite_conversion.lead_grouped',
-                         'offsite_conversion.fb_pixel_lead', 'mobile_app_install'];
+const CD_LEAD_DEFAULT = ['offsite_conversion.fb_pixel_lead'];
 
 /* ОДНУ Й ТУ САМУ ПОДІЮ FACEBOOK ВІДДАЄ КІЛЬКОМА ІМЕНАМИ ОДРАЗУ.
 
@@ -21123,8 +21086,46 @@ const cdState = (k) => CD_STATE.find(x => x.k === String(k || '').toUpperCase())
 const CD_OFF = ['PAUSED', 'ARCHIVED', 'DELETED'];
 const cdIsOn = (k) => !CD_OFF.includes(String(k || '').toUpperCase());
 
-let cdAcc = '', cdRows = [], cdLeads = CD_LEAD_DEFAULT.slice();
+/* А ЦЕ ІНШЕ ПИТАННЯ, і плутати їх не можна.
+
+   cdIsOn каже, чи ввімкнений вимикач САМОГО рядка — це для перемикача
+   в кінці рядка. cdLive каже, чи щось узагалі крутиться: оголошення з
+   увімкненим вимикачем під вимкненою кампанією не крутиться, хоч його
+   власний вимикач і стоїть на «так».
+
+   Реджект тут лишається живим навмисно. Він увімкнений, гроші на нього
+   виділені, і саме його треба побачити — фільтр «тільки активні», який
+   ховає реджекти, ховав би рівно те, заради чого сюди заходять. */
+const CD_NOT_LIVE = ['PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'ARCHIVED', 'DELETED'];
+const cdLive = (k) => !CD_NOT_LIVE.includes(String(k || '').toUpperCase());
+
+let cdAcc = '', cdRows = [];
+// Список подій-лідів більше не налаштовується — див. CD_LEAD_DEFAULT.
+const cdLeads = CD_LEAD_DEFAULT;
 let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
+
+/* «Тільки активні». Памʼятаємо між заходами: це не режим перегляду, а
+   налаштування робочого місця — хто його вмикає, той майже завжди
+   хоче його й завтра. Памʼять браузера може бути недоступна (режим
+   інкогніто, заборонені дані сайту), тож читання й запис у try. */
+let cdOnly = (() => { try { return localStorage.getItem('cd_only_live') === '1'; }
+                      catch (e) { return false; } })();
+
+window.cdSetOnly = function (v) {
+  cdOnly = !!v;
+  try { localStorage.setItem('cd_only_live', cdOnly ? '1' : '0'); } catch (e) {}
+  cdPaint();
+};
+
+/* Фільтруємо ВХІДНІ рядки, а не готові. Інакше кампанія показувала б
+   суму, в якій половина рядків прихована, — тобто число, що не
+   сходиться з тим, що під ним видно. */
+function cdShown() {
+  if (!cdOnly) return cdRows;
+  /* Рядок без стану лишаємо: ми не знаємо, що з ним, а мовчки ховати
+     те, чого не знаєш, — найгірший з варіантів. */
+  return cdRows.filter(r => !r.effective_status || cdLive(r.effective_status));
+}
 // База старіша за сторінку: немає колонок зі станом кампанії й адсета.
 let cdOld = '';
 
@@ -21220,14 +21221,6 @@ async function cdLoad(account) {
   cdAcc = id;
   cdBtnSync();
   cdPaint();
-
-  /* Галочки лідів лежать у налаштуваннях правил. Читаємо їх щоразу, а не
-     один раз: людина могла щойно змінити їх у панелі поруч. */
-  try {
-    const raw = await getTeamSetting('fb_rules');
-    const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
-    if (Array.isArray(v.leadActions) && v.leadActions.length) cdLeads = v.leadActions;
-  } catch (e) { /* немає налаштування — беремо звичні типи */ }
 
   /* СТОВПЧИК «STATUS» ДОВГО БУВ ПОРОЖНІЙ, і причина була тут: колонку
      effective_status додали і в таблицю, і в fb-sync, а в цей select —
@@ -21370,7 +21363,7 @@ function cdAdd(n, m) {
 
 function cdTree() {
   const camps = new Map();
-  cdRows.forEach(r => {
+  cdShown().forEach(r => {
     const m = cdMetrics(r);
     const cid = String(r.campaign_id || ''), sid = String(r.adset_id || '');
     let c = camps.get(cid);
@@ -21402,7 +21395,7 @@ function cdTree() {
 /* Скільки з них ввімкнені, але не крутяться. У шапці, бо це те, заради
    чого сюди й заходять, — а не те, що треба шукати очима по дереву. */
 function cdBad() {
-  const bad = cdRows.filter(r => {
+  const bad = cdShown().filter(r => {
     const st = cdState(r.effective_status);
     return st && st.s === 'bad';
   }).length;
@@ -21417,7 +21410,7 @@ function cdBad() {
    списку це єдиний спосіб відповісти на «що найдорожче», а батьків
    лишаємо підписом, щоб рядок не втратив адресу. */
 function cdAds() {
-  return cdRows.map(r => {
+  return cdShown().map(r => {
     const n = cdNode(r.ad_id, r.name, 'ad');
     const m = cdMetrics(r);
     n.own = m.state;
@@ -21454,6 +21447,9 @@ function cdPaint() {
           onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
         ${cdFlat ? '' : `<button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
         <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>`}
+        <label class="cd-only" title="Hide what is switched off — its own switch or one above it. Rejected ads stay: they are switched on and money is set aside for them.">
+          <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
+            onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
       </div>
     </div>`;
 
@@ -21466,6 +21462,15 @@ function cdPaint() {
   if (!cdRows.length) {
     box.innerHTML = head + '<p class="cd-empty">Nothing active in the snapshot. '
       + 'Either this cabinet is not running anything, or the sync has not filled it yet — press Sync now.</p>';
+    return;
+  }
+
+  /* Фільтр сховав усе. Порожня таблиця без пояснення читається як
+     «нічого не крутиться» або як поломка — а насправді це ми самі
+     щойно попросили сховати. */
+  if (cdOnly && !cdShown().length) {
+    box.innerHTML = head + '<p class="cd-empty">Everything here is switched off — '
+      + 'nothing is live right now. Untick “Only live” to see it.</p>';
     return;
   }
 
@@ -21608,7 +21613,7 @@ function cdLeadTip(n) {
   const out = rows.map(([t, x]) =>
     t + ' ' + x.v + (x.used ? ' — counted' : ' — same event under another name, not added'));
   return 'Lead = ' + n.leads + '\n' + out.join('\n')
-       + '\n\nWhich events count is a setting: Settings \u2192 Facebook \u2192 "What counts as a Lead".';
+       + '\n\nA lead is the pixel lead event, here and in the rules alike.';
 }
 
 const cdPer = (spend, n) => n > 0 ? cdMoney(spend / n)
