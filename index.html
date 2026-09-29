@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 12:19">
+  <meta name="build" content="build 29.09 12:50">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4539,7 +4539,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 12:19</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 12:50</div>
     </div>
   </aside>
 
@@ -20632,14 +20632,29 @@ window.uqMode = function (m) {
    зміна робиться в двох місцях одночасно.
    ══════════════════════════════════════════════════════════════════ */
 
+/* Підказки тут не прикраса. Під словом CTR у Facebook живуть дві різні
+   цифри: «CTR (all)» рахує будь-який клік по оголошенню, «CTR (link
+   click-through rate)» — лише переходи за посиланням. Ми міряємо друге,
+   і воно в рази менше. Поріг, виставлений за першою міркою, вимикає
+   геть усе, що перейшло поріг спенду, — і виглядає це як поломка
+   правил, хоч правило чесно зробило, що написано. */
 const RL_METRICS = [
-  { k: 'cpc_link',    label: 'Cost per link click', money: true },
-  { k: 'cpl',         label: 'Cost per lead',       money: true },
-  { k: 'cpm',         label: 'CPM',                 money: true },
-  { k: 'spend',       label: 'Spend today',         money: true },
-  { k: 'ctr_link',    label: 'Link CTR, %' },
-  { k: 'leads',       label: 'Leads' },
-  { k: 'link_clicks', label: 'Link clicks' },
+  { k: 'cpc_link',    label: 'Cost per link click', money: true,
+    tip: 'Spend ÷ link clicks' },
+  { k: 'cpl',         label: 'Cost per lead',       money: true,
+    tip: 'Spend ÷ leads. A lead is the pixel lead event' },
+  { k: 'cpm',         label: 'CPM',                 money: true,
+    tip: 'Spend per 1000 impressions' },
+  { k: 'spend',       label: 'Spend today',         money: true,
+    tip: 'Spent today, in the account currency' },
+  { k: 'ctr_link',    label: 'Link CTR, %',
+    tip: 'Link clicks ÷ impressions, in percent — not Facebook’s “CTR (all)”, '
+       + 'which also counts likes and clicks on the page. Usually under 5%, '
+       + 'so a threshold like 30 matches almost everything' },
+  { k: 'leads',       label: 'Leads',
+    tip: 'Pixel lead events today' },
+  { k: 'link_clicks', label: 'Link clicks',
+    tip: 'Clicks that went to the link, not every click on the ad' },
   { k: 'imps',        label: 'Impressions' }
 ];
 const RL_OPS = ['>', '>=', '<', '<=', '='];
@@ -20781,7 +20796,8 @@ function rlBlank() {
 
 function rlForm(r, i) {
   const cond = (c, k) => `<div class="rl-cond">
-      <select class="rl-in" data-f="m" data-k="${k}">
+      <select class="rl-in" data-f="m" data-k="${k}"
+        title="${rlEsc((RL_METRICS.find(m => m.k === c.m) || {}).tip || '')}">
         ${RL_METRICS.map(m => `<option value="${m.k}" ${c.m === m.k ? 'selected' : ''}>${m.label}</option>`).join('')}
       </select>
       <select class="rl-in is-op" data-f="op" data-k="${k}">
@@ -21572,7 +21588,7 @@ function cdPaint() {
         <th class="ta-r" title="What the ad set optimizes for">Result</th>
         <th class="ta-r">Cost per result</th>
         <th class="ta-r" title="Cost per 1000 impressions">CPM</th>
-        <th class="ta-r" title="Link clicks ÷ impressions">CTR</th>
+        <th class="ta-r" title="Link clicks ÷ impressions, in percent — not Facebook’s “CTR (all)”, which also counts likes and clicks on the page. This is the number the rules measure.">Link CTR</th>
         <th class="ta-r">Link clicks</th>
         <th class="ta-r" title="Cost per link click">CPC</th>
         <th class="ta-r">Lead</th>
