@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 18:10">
+  <meta name="build" content="build 29.09 18:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4533,11 +4533,20 @@ input.ui-in[type="range"] { padding: 0; }
   margin: 0 auto; border-radius: 10px; object-fit: contain;
 }
 .fl-view-s { font-size: 10px; color: var(--text-muted); margin: 8px 0 0; }
+.fl-txt {
+  margin: 0; max-height: 52vh; overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px; line-height: 1.55; color: var(--text-main);
+  white-space: pre-wrap; word-break: break-word;
+  background: var(--surface-2); border-radius: 8px; padding: 10px 12px;
+}
+.fl-where {
+  font-size: 9px; color: var(--text-muted); margin: 3px 0 0;
+  font-weight: 700; letter-spacing: .02em;
+}
 #fl-view.hidden { display: none; }
 
-/* Вікно займає висоту так само, як решта панелей. */
-#files-panel { display: flex; flex-direction: column; min-height: 0; }
-#files-panel.hidden { display: none; }
+#files-modal.hidden { display: none; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -4739,7 +4748,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 18:10</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 18:33</div>
     </div>
   </aside>
 
@@ -4865,7 +4874,7 @@ input.ui-in[type="range"] { padding: 0; }
     </button>
 
     <!-- Файли. Саме вікно й завантаження — у files.js. -->
-    <button onclick="navGo('files')" class="p-2 card rounded-xl shadow-md text-amber-300 hover:bg-gray-500/10 transition admin-only" title="Files">
+    <button onclick="openFilesModal()" class="p-2 card rounded-xl shadow-md text-amber-300 hover:bg-gray-500/10 transition admin-only" title="Files">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
     </button>
 
@@ -4973,31 +4982,6 @@ input.ui-in[type="range"] { padding: 0; }
         </div>
         <div id="sh-empty" class="sh-empty hidden"></div>
         <iframe id="sh-frame" title="Google Sheet"></iframe>
-      </div>
-
-      <!-- ФАЙЛИ. Вікно, як Sheets і Data Hub, а не сторінка сайдбара:
-           по файл заходять між справами, і забирати заради цього весь
-           екран у того, що робили, не треба. Кнопка — у нижній групі,
-           поруч із рештою вікон. -->
-      <div id="files-panel" class="card hidden">
-        <div class="hub-head">
-          <div class="fl-bar">
-            <button class="fl-btn is-main" onclick="flPick()" title="Upload a file">+ Upload</button>
-            <input type="file" id="fl-input" multiple class="hidden" onchange="flChose(this.files)">
-            <input id="fl-q" class="fl-in" placeholder="Search" oninput="flRender()">
-            <span id="fl-count" class="fl-count"></span>
-          </div>
-          <button class="hub-close" onclick="navGo('')" title="Back to dashboard">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
-            Dashboard
-          </button>
-        </div>
-        <!-- Кидати файл можна на все вікно, а не лише на кнопку: коли
-             файл уже в руці, цілитись у маленьку мішень — зайва робота. -->
-        <div id="fl-drop" class="fl-drop">
-          <div id="fl-view" class="hidden"></div>
-          <div id="fl-list"></div>
-        </div>
       </div>
 
       <!-- Місячний таргет -->
@@ -5760,351 +5744,38 @@ input.ui-in[type="range"] { padding: 0; }
   </div>
 </div>
 
-<script>
-/* ═══════════ ФАЙЛОВИЙ ПРОВІДНИК ═══════════
-
-   Файли лежать у Supabase Storage, у ПРИВАТНОМУ бакеті: завантажити,
-   подивитись і скачати можна лише залогіненому, і лише через короткі
-   підписані адреси, які живуть десять хвилин. Публічного посилання на
-   файл не існує взагалі — на відміну від бакета зі звітними фото,
-   який читає будь-хто.
-
-   Це важливо саме тут. У файлі купленого акаунта лежать логін, пошта,
-   2FA і куки, і найгірше, що можна було б зробити, — покласти їх туди,
-   звідки їх віддають без запитань. Тому бакет приватний, політики в
-   FILES.sql дозволяють лише authenticated, а анонімові не лишено
-   нічого.
-
-   Метадані (назва, тег, кабінет, нотатка) лежать окремо в file_links:
-   Storage вміє зберігати файл, але не вміє відповісти на питання «а
-   що з цього під KG» — для цього потрібна таблиця. */
-
-const FL_BUCKET = 'files';
-const FL_KINDS = [
-  { k: 'account', label: 'Account' },
-  { k: 'proxy',   label: 'Proxy' },
-  { k: 'card',    label: 'Card' },
-  { k: 'creo',    label: 'Creative' },
-  { k: 'doc',     label: 'Document' },
-  { k: 'other',   label: 'Other' }
-];
-/* Стеля на файл. Не з примхи: сторінка тримає його в памʼяті, поки
-   вантажить, а бакет — спільний на всю команду. Півсотні мегабайт
-   вистачає на все, заради чого сюди заходять. */
-const FL_MAX = 50 * 1024 * 1024;
-
-let flRows = [], flLoaded = false, flBusy = false;
-
-const flEsc = (v) => String(v == null ? '' : v)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-
-function flSize(n) {
-  const v = Number(n) || 0;
-  if (v < 1024) return v + ' B';
-  if (v < 1024 * 1024) return Math.round(v / 1024) + ' KB';
-  return (Math.round(v / 1024 / 1024 * 10) / 10) + ' MB';
-}
-
-/* Ім'я файла в бакеті робимо самі. Взяти те, що дала людина, не можна
-   двічі: по-перше, Storage не приймає кирилицю й пробіли в ключі;
-   по-друге, два однакові імені перезаписали б одне одного мовчки.
-   Справжню назву зберігаємо в таблиці — там їй нічого не загрожує. */
-function flKey(name) {
-  const ext = (String(name).match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || '';
-  const rnd = Math.random().toString(36).slice(2, 10);
-  return currentTeam.replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 40)
-    + '/' + Date.now().toString(36) + '-' + rnd + (ext ? '.' + ext.toLowerCase() : '');
-}
-
-window.flInit = async function () {
-  flDropWire();
-  if (flLoaded) { flRender(); return; }
-  flLoaded = true;
-  await flLoad();
-};
-
-async function flLoad() {
-  const box = document.getElementById('fl-list');
-  if (box) box.innerHTML = '<p class="fl-empty">Loading…</p>';
-  try {
-    const { data, error } = await sb.from('file_links')
-      .select('id,title,path,mime,size,kind,account_id,note,at')
-      .eq('team_name', currentTeam).order('at', { ascending: false }).limit(500);
-    if (error) throw new Error(error.message);
-    flRows = data || [];
-  } catch (e) {
-    flRows = [];
-    if (box) {
-      /* Таблиці ще немає — найчастіша причина, і в неї є рецепт.
-         Ховати її за «щось пішло не так» означало б відправити людину
-         шукати ваду там, де її немає. */
-      box.innerHTML = '<p class="fl-empty">' + (/file_links|does not exist|42P01/i.test(e.message)
-        ? 'No table yet — run FILES.sql, then reload.'
-        : 'Could not read: ' + flEsc(e.message)) + '</p>';
-      return;
-    }
-  }
-  flRender();
-}
-
-/* ── завантаження ── */
-
-window.flPick = function () { document.getElementById('fl-input')?.click(); };
-
-/* Кидати файл можна на все вікно. Коли він уже в руці, цілитись у
-   маленьку мішень — зайва робота, а промах поверх сторінки відкрив би
-   файл у вкладці й загубив те, що було на екрані. */
-function flDropWire() {
-  const z = document.getElementById('fl-drop');
-  if (!z || z.dataset.wired) return;
-  z.dataset.wired = '1';
-  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
-  ['dragenter', 'dragover'].forEach(t => z.addEventListener(t, (e) => {
-    stop(e); z.classList.add('is-over');
-  }));
-  ['dragleave', 'drop'].forEach(t => z.addEventListener(t, (e) => {
-    stop(e); if (t === 'dragleave' && z.contains(e.relatedTarget)) return;
-    z.classList.remove('is-over');
-  }));
-  z.addEventListener('drop', (e) => flChose(e.dataTransfer?.files));
-}
-
-window.flChose = async function (list) {
-  const files = [...(list || [])];
-  const inp = document.getElementById('fl-input');
-  if (inp) inp.value = '';          // той самий файл мусить вантажитись двічі
-  if (!files.length || flBusy) return;
-  flBusy = true;
-  let done = 0;
-  for (const f of files) {
-    const ok = await flUpload(f, ++done, files.length);
-    if (!ok) break;
-  }
-  flBusy = false;
-  await flLoad();
-};
-
-async function flUpload(file, n, total) {
-  const box = document.getElementById('fl-list');
-  if (box) box.innerHTML = '<p class="fl-empty">Uploading ' + n + ' of ' + total
-    + ' — ' + flEsc(file.name) + '…</p>';
-  if (file.size > FL_MAX) {
-    if (typeof toast === 'function')
-      toast(file.name + ' is ' + flSize(file.size) + ' — the limit is ' + flSize(FL_MAX), 'warn');
-    return true;                    // один завеликий не спиняє решту
-  }
-  const path = flKey(file.name);
-  try {
-    const up = await sb.storage.from(FL_BUCKET).upload(path, file, {
-      cacheControl: '3600', upsert: false,
-      contentType: file.type || 'application/octet-stream'
-    });
-    if (up.error) throw new Error(up.error.message);
-  } catch (e) {
-    if (typeof toast === 'function')
-      /* Бакета ще немає — це не «щось пішло не так», а невиконаний
-         FILES.sql, і сказати треба саме це. */
-      toast(/bucket|not found|404/i.test(e.message)
-        ? 'No bucket yet — run FILES.sql'
-        : 'Upload failed: ' + e.message, 'error');
-    return false;
-  }
-  try {
-    const { data: s } = await sb.auth.getUser();
-    const { error } = await sb.from('file_links').insert({
-      team_name: currentTeam, created_by: s?.user?.id || null,
-      title: file.name, path, mime: file.type || '', size: file.size,
-      kind: 'other', account_id: null, note: null
-    });
-    if (error) throw new Error(error.message);
-  } catch (e) {
-    /* Рядок не записався — прибираємо й файл. Інакше в бакеті осідає
-       сміття, якого ніхто вже не побачить і не видалить. */
-    try { await sb.storage.from(FL_BUCKET).remove([path]); } catch (_e) {}
-    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
-    return false;
-  }
-  return true;
-}
-
-/* ── список ── */
-
-function flRender() {
-  const q = String(document.getElementById('fl-q')?.value || '').trim().toLowerCase();
-  const rows = !q ? flRows : flRows.filter(r =>
-    (r.title + ' ' + (r.note || '') + ' ' + (r.account_id || '')).toLowerCase().includes(q));
-
-  const cnt = document.getElementById('fl-count');
-  if (cnt) cnt.textContent = flRows.length
-    ? (q ? rows.length + ' of ' + flRows.length : flRows.length + ' file(s)') : '';
-
-  const box = document.getElementById('fl-list');
-  if (!box) return;
-  if (!rows.length) {
-    box.innerHTML = '<p class="fl-empty">' + (q
-      ? 'Nothing matches “' + flEsc(q) + '”.'
-      : 'Empty. Drop a file anywhere here, or press “+ Upload”.') + '</p>';
-    return;
-  }
-  const kind = (k) => (FL_KINDS.find(x => x.k === k) || FL_KINDS[FL_KINDS.length - 1]).label;
-  box.innerHTML = '<div class="fl-tbl">' + rows.map((r) => {
-    const i = flRows.indexOf(r);
-    return '<div class="fl-row">'
-      + '<span class="fl-kind">' + flEsc(kind(r.kind)) + '</span>'
-      + '<button type="button" class="fl-name" onclick="flView(' + i + ')"'
-      + ' title="Open here">' + flEsc(r.title) + '</button>'
-      + (r.account_id ? '<span class="fl-cab" title="Cabinet">' + flEsc(r.account_id) + '</span>' : '<span></span>')
-      + '<span class="fl-note">' + flEsc(r.note || '') + '</span>'
-      + '<span class="fl-at">' + flSize(r.size) + '</span>'
-      + '<span class="fl-at">' + String(r.at || '').slice(0, 10) + '</span>'
-      + '<span class="fl-acts">'
-      + '<button type="button" class="fl-mini" onclick="flGet(' + i + ')" title="Download">↓</button>'
-      + '<button type="button" class="fl-mini" onclick="flEditOpen(' + i + ')">Edit</button>'
-      + '<button type="button" class="fl-mini is-bad" onclick="flDrop(' + i + ')">✕</button>'
-      + '</span></div>';
-  }).join('') + '</div>';
-}
-
-/* ── підписана адреса ──
-   Бакет приватний, тож прямого посилання на файл не існує. Просимо
-   коротку підписану адресу рівно тоді, коли файл треба показати чи
-   віддати, і не зберігаємо її: за десять хвилин вона мертва, і це
-   саме те, чого ми й хочемо. */
-async function flSigned(row) {
-  const { data, error } = await sb.storage.from(FL_BUCKET)
-    .createSignedUrl(row.path, 600);
-  if (error) throw new Error(error.message);
-  return data?.signedUrl || '';
-}
-
-window.flGet = async function (i) {
-  const r = flRows[i];
-  if (!r) return;
-  try {
-    const url = await flSigned(r);
-    const a = document.createElement('a');
-    a.href = url; a.download = r.title; a.rel = 'noopener';
-    document.body.appendChild(a); a.click(); a.remove();
-  } catch (e) {
-    if (typeof toast === 'function') toast('Could not download: ' + e.message, 'error');
-  }
-};
-
-/* ── перегляд ──
-   Показуємо те, що браузер уміє показати сам: картинки, PDF, текст.
-   Для решти чесно кажемо, що переглянути не вийде, і лишаємо кнопку
-   «скачати» — порожня рамка без пояснення гірша за пряму відмову. */
-function flKindOf(r) {
-  const m = String(r.mime || '').toLowerCase();
-  const n = String(r.title || '').toLowerCase();
-  if (m.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp)$/.test(n)) return 'image';
-  if (m === 'application/pdf' || /\.pdf$/.test(n)) return 'pdf';
-  if (m.startsWith('text/') || /\.(txt|csv|json|md|log)$/.test(n)) return 'text';
-  return '';
-}
-
-window.flView = async function (i) {
-  const r = flRows[i];
-  const box = document.getElementById('fl-view');
-  if (!r || !box) return;
-  const how = flKindOf(r);
-  box.classList.remove('hidden');
-  box.innerHTML = '<div class="fl-view-box"><div class="fl-view-head">'
-    + '<span class="fl-view-t">' + flEsc(r.title) + '</span>'
-    + '<button type="button" class="fl-mini" onclick="flGet(' + i + ')">Download</button>'
-    + '<button type="button" class="fl-mini is-bad" onclick="flViewClose()">✕</button>'
-    + '</div><p class="fl-view-s">Loading…</p></div>';
-  if (!how) {
-    box.querySelector('.fl-view-s').textContent =
-      'This kind of file cannot be shown here — download it to open.';
-    return;
-  }
-  let url = '';
-  try { url = await flSigned(r); }
-  catch (e) {
-    box.querySelector('.fl-view-s').textContent = 'Could not open: ' + e.message;
-    return;
-  }
-  const body = how === 'image'
-    ? '<img class="fl-img" src="' + flEsc(url) + '" alt="' + flEsc(r.title) + '">'
-    : '<iframe class="fl-frame" src="' + flEsc(url) + '" title="' + flEsc(r.title) + '"></iframe>';
-  box.querySelector('.fl-view-s').outerHTML = body;
-};
-
-window.flViewClose = function () {
-  const box = document.getElementById('fl-view');
-  /* Вміст прибираємо, а не лише ховаємо: лишена рамка тримає
-     з'єднання, а підписана адреса в розмітці живе довше, ніж треба. */
-  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
-};
-
-/* ── підпис рядка ── */
-
-window.flEditOpen = function (i) {
-  const r = flRows[i];
-  const box = document.getElementById('fl-view');
-  if (!r || !box) return;
-  box.classList.remove('hidden');
-  box.innerHTML = `<div class="fl-form">
-      <label class="fl-f"><span class="fl-f-l">Name</span>
-        <input class="fl-in is-wide" id="fl-f-title" value="${flEsc(r.title)}"></label>
-      <label class="fl-f"><span class="fl-f-l">Kind</span>
-        <select class="fl-in" id="fl-f-kind">
-          ${FL_KINDS.map(k => `<option value="${k.k}" ${r.kind === k.k ? 'selected' : ''}>${k.label}</option>`).join('')}
-        </select></label>
-      <label class="fl-f"><span class="fl-f-l">Cabinet</span>
-        <input class="fl-in" id="fl-f-cab" placeholder="1149896616961527"
-          value="${flEsc(r.account_id || '')}"></label>
-      <label class="fl-f"><span class="fl-f-l">Note</span>
-        <input class="fl-in is-wide" id="fl-f-note" placeholder="bought 12.09, farmed"
-          value="${flEsc(r.note || '')}"></label>
-      <div class="fl-form-acts">
-        <button type="button" class="fl-btn is-main" onclick="flPut(${i})">Save</button>
-        <button type="button" class="fl-btn" onclick="flViewClose()">Cancel</button>
+<!-- ═══════════ ФАЙЛИ ═══════════
+     Модалка, як Accounts, а не окремий маршрут. По файл заходять між
+     справами: подивився — закрив і повернувся туди ж, де був. Маршрут
+     ламав саме це, бо міняв сторінку під ногами. -->
+<div id="files-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
+     onclick="if(event.target===this) closeFilesModal()">
+  <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
+      <div>
+        <h2 class="text-xl font-black italic tracking-tighter text-amber-300">Files</h2>
+        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Drop a file anywhere in this window</p>
+        <!-- Куди лягає файл. Бакет приватний і прямого посилання немає,
+             тож без цього рядка видно лише список і жодного «де». -->
+        <p id="fl-where" class="fl-where"></p>
       </div>
-    </div>`;
-};
-
-window.flPut = async function (i) {
-  const r = flRows[i];
-  if (!r) return;
-  const val = (id) => String(document.getElementById(id)?.value || '').trim();
-  const title = val('fl-f-title') || r.title;
-  try {
-    const { error } = await sb.from('file_links').update({
-      title, kind: val('fl-f-kind') || 'other',
-      account_id: val('fl-f-cab') || null, note: val('fl-f-note') || null
-    }).eq('id', r.id);
-    if (error) throw new Error(error.message);
-  } catch (e) {
-    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
-    return;
-  }
-  flViewClose();
-  await flLoad();
-};
-
-window.flDrop = async function (i) {
-  const r = flRows[i];
-  if (!r) return;
-  const go = typeof ask === 'function'
-    ? await ask({ title: 'Delete this file?', danger: true, ok: 'Delete',
-                  body: 'Removes the file itself, not just the line. This cannot be undone.' })
-    : confirm('Delete "' + r.title + '"? This removes the file itself.');
-  if (!go) return;
-  try {
-    /* Спершу рядок, потім файл. У зворотному порядку невдале видалення
-       рядка лишило б у списку запис, за яким нічого немає. */
-    const { error } = await sb.from('file_links').delete().eq('id', r.id);
-    if (error) throw new Error(error.message);
-    await sb.storage.from(FL_BUCKET).remove([r.path]);
-  } catch (e) {
-    if (typeof toast === 'function') toast('Could not delete: ' + e.message, 'error');
-  }
-  flViewClose();
-  await flLoad();
-};
-</script>
+      <div class="flex items-center gap-3">
+        <span id="fl-count" class="fl-count"></span>
+        <input id="fl-q" oninput="flRender()" placeholder="Search…"
+          class="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none focus:border-amber-400 w-40">
+        <button type="button" onclick="flPick()" class="fl-btn is-main">+ Upload</button>
+        <input type="file" id="fl-input" multiple onchange="flChose(this.files)">
+        <button onclick="closeFilesModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+      </div>
+    </div>
+    <!-- Кидати файл можна на все вікно, а не лише на кнопку: коли він уже
+         в руці, цілитись у маленьку мішень — зайва робота. -->
+    <div id="fl-drop" class="fl-drop flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 pt-4">
+      <div id="fl-view" class="hidden"></div>
+      <div id="fl-list"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════ END REPORT BUILDER ═══════════ -->
       </div><!-- /#dashboard-content -->
@@ -14791,8 +14462,12 @@ function closeDataCheckModal() { document.getElementById('data-check-modal').cla
 function dcHandleFile(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
-  reader.onload = ev => { dcParse(ev.target.result); };
-  reader.readAsText(file);
+  reader.onload = ev => {
+    const buf = ev.target.result;
+    dcParse(typeof flDecode === 'function'
+      ? flDecode(buf) : new TextDecoder('utf-8').decode(buf));
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 function dcParse(content) {
@@ -22584,6 +22259,438 @@ function cdSetOwn(id, state) {
 }
 </script>
 
+<script>
+/* ═══════════ ФАЙЛОВИЙ ПРОВІДНИК ═══════════
+
+   Файли лежать у Supabase Storage, у ПРИВАТНОМУ бакеті: завантажити,
+   подивитись і скачати можна лише залогіненому, і лише через короткі
+   підписані адреси, які живуть десять хвилин. Публічного посилання на
+   файл не існує взагалі — на відміну від бакета зі звітними фото,
+   який читає будь-хто.
+
+   Це важливо саме тут. У файлі купленого акаунта лежать логін, пошта,
+   2FA і куки, і найгірше, що можна було б зробити, — покласти їх туди,
+   звідки їх віддають без запитань. Тому бакет приватний, політики в
+   FILES.sql дозволяють лише authenticated, а анонімові не лишено
+   нічого.
+
+   Метадані (назва, тег, кабінет, нотатка) лежать окремо в file_links:
+   Storage вміє зберігати файл, але не вміє відповісти на питання «а
+   що з цього під KG» — для цього потрібна таблиця. */
+
+const FL_BUCKET = 'files';
+const FL_KINDS = [
+  { k: 'account', label: 'Account' },
+  { k: 'proxy',   label: 'Proxy' },
+  { k: 'card',    label: 'Card' },
+  { k: 'creo',    label: 'Creative' },
+  { k: 'doc',     label: 'Document' },
+  { k: 'other',   label: 'Other' }
+];
+/* Стеля на файл. Не з примхи: сторінка тримає його в памʼяті, поки
+   вантажить, а бакет — спільний на всю команду. Півсотні мегабайт
+   вистачає на все, заради чого сюди заходять. */
+const FL_MAX = 50 * 1024 * 1024;
+
+let flRows = [], flLoaded = false, flBusy = false;
+
+const flEsc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+function flSize(n) {
+  const v = Number(n) || 0;
+  if (v < 1024) return v + ' B';
+  if (v < 1024 * 1024) return Math.round(v / 1024) + ' KB';
+  return (Math.round(v / 1024 / 1024 * 10) / 10) + ' MB';
+}
+
+/* Ім'я файла в бакеті робимо самі. Взяти те, що дала людина, не можна
+   двічі: по-перше, Storage не приймає кирилицю й пробіли в ключі;
+   по-друге, два однакові імені перезаписали б одне одного мовчки.
+   Справжню назву зберігаємо в таблиці — там їй нічого не загрожує. */
+function flFolder() {
+  return String(currentTeam || '').replace(/[^A-Za-z0-9_-]+/g, '_').slice(0, 40);
+}
+
+function flKey(name) {
+  const ext = (String(name).match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || '';
+  const rnd = Math.random().toString(36).slice(2, 10);
+  return flFolder() + '/' + Date.now().toString(36) + '-' + rnd
+    + (ext ? '.' + ext.toLowerCase() : '');
+}
+
+/* Куди саме лягає файл, написано в шапці вікна. Без цього рядка
+   «завантажив — і не знаю, де воно» законне питання: бакет приватний,
+   прямого посилання немає, і зі сторони видно лише список. */
+function flWhere() {
+  const el = document.getElementById('fl-where');
+  if (el) el.textContent = 'Supabase Storage · private bucket “'
+    + FL_BUCKET + '” · ' + (flFolder() || '—') + '/';
+}
+
+/* Відкривається модалкою, як Accounts, а не маршрутом. Різниця не
+   косметична: маршрут міняв сторінку під ногами, і людина, яка зайшла
+   подивитись один файл, поверталась не туди, де була. */
+window.openFilesModal = async function () {
+  document.getElementById('files-modal')?.classList.remove('hidden');
+  flDropWire();
+  flWhere();
+  /* Уже завантажене показуємо одразу, а свіже тягнемо слідом: інакше
+     кожне відкриття впиралось би в повний запит до бази. */
+  if (flLoaded) { flRender(); flLoad(); return; }
+  flLoaded = true;
+  await flLoad();
+};
+
+window.closeFilesModal = function () {
+  document.getElementById('files-modal')?.classList.add('hidden');
+  /* Перегляд закриваємо разом із вікном: лишена рамка тримає
+     з'єднання, а підписана адреса в розмітці живе довше, ніж треба. */
+  flViewClose();
+};
+
+async function flLoad() {
+  const box = document.getElementById('fl-list');
+  if (box) box.innerHTML = '<p class="fl-empty">Loading…</p>';
+  try {
+    const { data, error } = await sb.from('file_links')
+      .select('id,title,path,mime,size,kind,account_id,note,at')
+      .eq('team_name', currentTeam).order('at', { ascending: false }).limit(500);
+    if (error) throw new Error(error.message);
+    flRows = data || [];
+  } catch (e) {
+    flRows = [];
+    if (box) {
+      /* Таблиці ще немає — найчастіша причина, і в неї є рецепт.
+         Ховати її за «щось пішло не так» означало б відправити людину
+         шукати ваду там, де її немає. */
+      box.innerHTML = '<p class="fl-empty">' + (/file_links|does not exist|42P01/i.test(e.message)
+        ? 'No table yet — run FILES.sql, then reload.'
+        : 'Could not read: ' + flEsc(e.message)) + '</p>';
+      return;
+    }
+  }
+  flRender();
+}
+
+/* ── завантаження ── */
+
+window.flPick = function () { document.getElementById('fl-input')?.click(); };
+
+/* Кидати файл можна на все вікно. Коли він уже в руці, цілитись у
+   маленьку мішень — зайва робота, а промах поверх сторінки відкрив би
+   файл у вкладці й загубив те, що було на екрані. */
+function flDropWire() {
+  const z = document.getElementById('fl-drop');
+  if (!z || z.dataset.wired) return;
+  z.dataset.wired = '1';
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  ['dragenter', 'dragover'].forEach(t => z.addEventListener(t, (e) => {
+    stop(e); z.classList.add('is-over');
+  }));
+  ['dragleave', 'drop'].forEach(t => z.addEventListener(t, (e) => {
+    stop(e); if (t === 'dragleave' && z.contains(e.relatedTarget)) return;
+    z.classList.remove('is-over');
+  }));
+  z.addEventListener('drop', (e) => flChose(e.dataTransfer?.files));
+}
+
+window.flChose = async function (list) {
+  const files = [...(list || [])];
+  const inp = document.getElementById('fl-input');
+  if (inp) inp.value = '';          // той самий файл мусить вантажитись двічі
+  if (!files.length || flBusy) return;
+  flBusy = true;
+  let done = 0;
+  for (const f of files) {
+    const ok = await flUpload(f, ++done, files.length);
+    if (!ok) break;
+  }
+  flBusy = false;
+  await flLoad();
+};
+
+async function flUpload(file, n, total) {
+  const box = document.getElementById('fl-list');
+  if (box) box.innerHTML = '<p class="fl-empty">Uploading ' + n + ' of ' + total
+    + ' — ' + flEsc(file.name) + '…</p>';
+  if (file.size > FL_MAX) {
+    if (typeof toast === 'function')
+      toast(file.name + ' is ' + flSize(file.size) + ' — the limit is ' + flSize(FL_MAX), 'warn');
+    return true;                    // один завеликий не спиняє решту
+  }
+  const path = flKey(file.name);
+  try {
+    const up = await sb.storage.from(FL_BUCKET).upload(path, file, {
+      cacheControl: '3600', upsert: false,
+      contentType: file.type || 'application/octet-stream'
+    });
+    if (up.error) throw new Error(up.error.message);
+  } catch (e) {
+    if (typeof toast === 'function')
+      /* Бакета ще немає — це не «щось пішло не так», а невиконаний
+         FILES.sql, і сказати треба саме це. */
+      toast(/bucket|not found|404/i.test(e.message)
+        ? 'No bucket yet — run FILES.sql'
+        : 'Upload failed: ' + e.message, 'error');
+    return false;
+  }
+  try {
+    const { data: s } = await sb.auth.getUser();
+    const { error } = await sb.from('file_links').insert({
+      team_name: currentTeam, created_by: s?.user?.id || null,
+      title: file.name, path, mime: file.type || '', size: file.size,
+      kind: 'other', account_id: null, note: null
+    });
+    if (error) throw new Error(error.message);
+  } catch (e) {
+    /* Рядок не записався — прибираємо й файл. Інакше в бакеті осідає
+       сміття, якого ніхто вже не побачить і не видалить. */
+    try { await sb.storage.from(FL_BUCKET).remove([path]); } catch (_e) {}
+    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
+    return false;
+  }
+  return true;
+}
+
+/* ── список ── */
+
+function flRender() {
+  const q = String(document.getElementById('fl-q')?.value || '').trim().toLowerCase();
+  const rows = !q ? flRows : flRows.filter(r =>
+    (r.title + ' ' + (r.note || '') + ' ' + (r.account_id || '')).toLowerCase().includes(q));
+
+  const cnt = document.getElementById('fl-count');
+  if (cnt) cnt.textContent = flRows.length
+    ? (q ? rows.length + ' of ' + flRows.length : flRows.length + ' file(s)') : '';
+
+  const box = document.getElementById('fl-list');
+  if (!box) return;
+  if (!rows.length) {
+    box.innerHTML = '<p class="fl-empty">' + (q
+      ? 'Nothing matches “' + flEsc(q) + '”.'
+      : 'Empty. Drop a file anywhere here, or press “+ Upload”.') + '</p>';
+    return;
+  }
+  const kind = (k) => (FL_KINDS.find(x => x.k === k) || FL_KINDS[FL_KINDS.length - 1]).label;
+  box.innerHTML = '<div class="fl-tbl">' + rows.map((r) => {
+    const i = flRows.indexOf(r);
+    return '<div class="fl-row">'
+      + '<span class="fl-kind">' + flEsc(kind(r.kind)) + '</span>'
+      + '<button type="button" class="fl-name" onclick="flView(' + i + ')"'
+      + ' title="Open here">' + flEsc(r.title) + '</button>'
+      + (r.account_id ? '<span class="fl-cab" title="Cabinet">' + flEsc(r.account_id) + '</span>' : '<span></span>')
+      + '<span class="fl-note">' + flEsc(r.note || '') + '</span>'
+      + '<span class="fl-at">' + flSize(r.size) + '</span>'
+      + '<span class="fl-at">' + String(r.at || '').slice(0, 10) + '</span>'
+      + '<span class="fl-acts">'
+      + '<button type="button" class="fl-mini" onclick="flGet(' + i + ')" title="Download">↓</button>'
+      + '<button type="button" class="fl-mini" onclick="flEditOpen(' + i + ')">Edit</button>'
+      + '<button type="button" class="fl-mini is-bad" onclick="flDrop(' + i + ')">✕</button>'
+      + '</span></div>';
+  }).join('') + '</div>';
+}
+
+/* ── підписана адреса ──
+   Бакет приватний, тож прямого посилання на файл не існує. Просимо
+   коротку підписану адресу рівно тоді, коли файл треба показати чи
+   віддати, і не зберігаємо її: за десять хвилин вона мертва, і це
+   саме те, чого ми й хочемо. */
+async function flSigned(row) {
+  const { data, error } = await sb.storage.from(FL_BUCKET)
+    .createSignedUrl(row.path, 600);
+  if (error) throw new Error(error.message);
+  return data?.signedUrl || '';
+}
+
+window.flGet = async function (i) {
+  const r = flRows[i];
+  if (!r) return;
+  try {
+    const url = await flSigned(r);
+    const a = document.createElement('a');
+    a.href = url; a.download = r.title; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not download: ' + e.message, 'error');
+  }
+};
+
+/* ── перегляд ──
+   Показуємо те, що браузер уміє показати сам: картинки, PDF, текст.
+   Для решти чесно кажемо, що переглянути не вийде, і лишаємо кнопку
+   «скачати» — порожня рамка без пояснення гірша за пряму відмову. */
+function flKindOf(r) {
+  const m = String(r.mime || '').toLowerCase();
+  const n = String(r.title || '').toLowerCase();
+  if (m.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp)$/.test(n)) return 'image';
+  if (m === 'application/pdf' || /\.pdf$/.test(n)) return 'pdf';
+  if (m.startsWith('text/') || /\.(txt|csv|json|md|log)$/.test(n)) return 'text';
+  return '';
+}
+
+/* ── текст і кирилиця ──
+   Storage віддає .txt без charset, а браузер у такому разі вгадує — і
+   на кирилиці вгадує погано: UTF-8 у рамці перетворюється на
+   «Ð¿Ñ€Ð¸Ð²Ñ–Ñ‚». Тому текст не віддаємо в <iframe>, а тягнемо байти й
+   розбираємо самі. Спершу UTF-8 у суворому режимі: якщо файл справді
+   UTF-8, він пройде. Якщо ні — це майже завжди windows-1251, бо саме в
+   ній віддають txt з даними акаунтів; латиниця в обох однакова, тож
+   помилитись на англійському файлі неможливо. */
+const FL_TXT_MAX = 400 * 1024;      // більше однаково ніхто не читає
+
+function flDecode(buf) {
+  const bytes = new Uint8Array(buf);
+  /* BOM — це сам файл каже «я UTF-8». Віримо і прибираємо мітку, бо
+     інакше вона лишається першим, невидимим символом тексту. */
+  const bom = bytes.length > 2 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
+  const body = bom ? bytes.subarray(3) : bytes;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(body);
+  } catch (_e) {
+    try { return new TextDecoder('windows-1251').decode(body); }
+    catch (_e2) { return new TextDecoder('utf-8').decode(body); }
+  }
+}
+
+async function flText(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const buf = await res.arrayBuffer();
+  const cut = buf.byteLength > FL_TXT_MAX;
+  return flDecode(cut ? buf.slice(0, FL_TXT_MAX) : buf)
+    + (cut ? '\n\n… shown first ' + Math.round(FL_TXT_MAX / 1024) + ' KB — download for the rest.' : '');
+}
+
+/* Поки чекаємо на підписану адресу, вікно могли вже закрити — і тоді
+   писати в розмітку нема куди. Мітка каже, чи це ще ТОЙ САМИЙ перегляд:
+   без неї закриття під time завантаження кидало помилку, а відкриття
+   іншого файла дописувало б відповідь у чужу рамку. */
+let flViewAt = 0;
+
+window.flView = async function (i) {
+  const r = flRows[i];
+  const box = document.getElementById('fl-view');
+  if (!r || !box) return;
+  const mine = ++flViewAt;
+  const how = flKindOf(r);
+  box.classList.remove('hidden');
+  box.innerHTML = '<div class="fl-view-box"><div class="fl-view-head">'
+    + '<span class="fl-view-t">' + flEsc(r.title) + '</span>'
+    + '<button type="button" class="fl-mini" onclick="flGet(' + i + ')">Download</button>'
+    + '<button type="button" class="fl-mini is-bad" onclick="flViewClose()">✕</button>'
+    + '</div><p class="fl-view-s">Loading…</p></div>';
+  // Порожнє місце під відповідь. Його може вже не бути, коли ми
+  // повернемось, — тому щоразу питаємо заново, а не тримаємо посилання.
+  const slot = () => (flViewAt === mine ? box.querySelector('.fl-view-s') : null);
+  if (!how) {
+    const el = slot();
+    if (el) el.textContent = 'This kind of file cannot be shown here — download it to open.';
+    return;
+  }
+  let url = '';
+  try { url = await flSigned(r); }
+  catch (e) {
+    const el = slot();
+    if (el) el.textContent = 'Could not open: ' + e.message;
+    return;
+  }
+  if (how === 'text') {
+    let txt = '';
+    try { txt = await flText(url); }
+    catch (e) {
+      const bad = slot();
+      if (bad) bad.textContent = 'Could not read: ' + e.message;
+      return;
+    }
+    const ok = slot();
+    if (!ok) return;               // вікно закрили, поки ми читали
+    ok.outerHTML = '<pre class="fl-txt">' + flEsc(txt) + '</pre>';
+    return;
+  }
+  const el = slot();
+  if (!el) return;                 // вікно закрили, поки ми чекали
+  el.outerHTML = how === 'image'
+    ? '<img class="fl-img" src="' + flEsc(url) + '" alt="' + flEsc(r.title) + '">'
+    : '<iframe class="fl-frame" src="' + flEsc(url) + '" title="' + flEsc(r.title) + '"></iframe>';
+};
+
+window.flViewClose = function () {
+  flViewAt++;                      // усе, що вантажиться, більше не наше
+  const box = document.getElementById('fl-view');
+  /* Вміст прибираємо, а не лише ховаємо: лишена рамка тримає
+     з'єднання, а підписана адреса в розмітці живе довше, ніж треба. */
+  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+};
+
+/* ── підпис рядка ── */
+
+window.flEditOpen = function (i) {
+  const r = flRows[i];
+  const box = document.getElementById('fl-view');
+  if (!r || !box) return;
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="fl-form">
+      <label class="fl-f"><span class="fl-f-l">Name</span>
+        <input class="fl-in is-wide" id="fl-f-title" value="${flEsc(r.title)}"></label>
+      <label class="fl-f"><span class="fl-f-l">Kind</span>
+        <select class="fl-in" id="fl-f-kind">
+          ${FL_KINDS.map(k => `<option value="${k.k}" ${r.kind === k.k ? 'selected' : ''}>${k.label}</option>`).join('')}
+        </select></label>
+      <label class="fl-f"><span class="fl-f-l">Cabinet</span>
+        <input class="fl-in" id="fl-f-cab" placeholder="1149896616961527"
+          value="${flEsc(r.account_id || '')}"></label>
+      <label class="fl-f"><span class="fl-f-l">Note</span>
+        <input class="fl-in is-wide" id="fl-f-note" placeholder="bought 12.09, farmed"
+          value="${flEsc(r.note || '')}"></label>
+      <div class="fl-form-acts">
+        <button type="button" class="fl-btn is-main" onclick="flPut(${i})">Save</button>
+        <button type="button" class="fl-btn" onclick="flViewClose()">Cancel</button>
+      </div>
+    </div>`;
+};
+
+window.flPut = async function (i) {
+  const r = flRows[i];
+  if (!r) return;
+  const val = (id) => String(document.getElementById(id)?.value || '').trim();
+  const title = val('fl-f-title') || r.title;
+  try {
+    const { error } = await sb.from('file_links').update({
+      title, kind: val('fl-f-kind') || 'other',
+      account_id: val('fl-f-cab') || null, note: val('fl-f-note') || null
+    }).eq('id', r.id);
+    if (error) throw new Error(error.message);
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
+    return;
+  }
+  flViewClose();
+  await flLoad();
+};
+
+window.flDrop = async function (i) {
+  const r = flRows[i];
+  if (!r) return;
+  const go = typeof ask === 'function'
+    ? await ask({ title: 'Delete this file?', danger: true, ok: 'Delete',
+                  body: 'Removes the file itself, not just the line. This cannot be undone.' })
+    : confirm('Delete "' + r.title + '"? This removes the file itself.');
+  if (!go) return;
+  try {
+    /* Спершу рядок, потім файл. У зворотному порядку невдале видалення
+       рядка лишило б у списку запис, за яким нічого немає. */
+    const { error } = await sb.from('file_links').delete().eq('id', r.id);
+    if (error) throw new Error(error.message);
+    await sb.storage.from(FL_BUCKET).remove([r.path]);
+  } catch (e) {
+    if (typeof toast === 'function') toast('Could not delete: ' + e.message, 'error');
+  }
+  flViewClose();
+  await flLoad();
+};
+</script>
+
 <!-- ═══════════ TEAM — сторінка тімліда ═══════════
 
      Питання тімліда не «скільки команда відкрутила», а «в кого
@@ -23182,12 +23289,11 @@ tmBoot();
     'team':       { section: 'team-section' },
     'reports':    { section: 'report-builder-section' },
     'expenses':   { section: 'expenses-section' },
-    'files':      { panel: 'files-panel' },
     'hub':        { panel: 'datahub-panel' },
     'sheets':     { panel: 'sheets-panel' }
   };
   const SECTIONS = Object.values(ROUTES).map(r => r.section).filter(Boolean);
-  const PANELS = ['datahub-panel', 'sheets-panel', 'files-panel'];
+  const PANELS = ['datahub-panel', 'sheets-panel'];
   // Блоки, які разом складають сторінку «Дашборд»
   const DASH_BLOCKS = ['milestone-container', 'kpi-row', 'charts-row', 'insights-row'];
 
@@ -23367,8 +23473,6 @@ tmBoot();
     // баєрові вона взагалі не відкриється, тож витрачати на неї запити
     // при кожному завантаженні дашборда сенсу немає.
     if (name === 'team' && typeof tmOpen === 'function') tmOpen();
-    // Файли, як кабінети й домени, вантажаться при першому заході.
-    if (name === 'files' && typeof flInit === 'function') flInit();
 
     document.body.classList.remove('sb-open');
     /* Гортається тепер колонка контенту, а не вікно: window.scrollTo
