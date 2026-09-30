@@ -129,6 +129,16 @@ drop policy if exists "files_bucket_write" on storage.objects;
 create policy "files_bucket_write" on storage.objects
   for insert to authenticated with check (bucket_id = 'files');
 
+-- Перезаписати наявний файл — це UPDATE на storage.objects, а не
+-- insert. Без цієї політики правка тексту у вікні падає з «new row
+-- violates row-level security policy»: завантажити новий файл можна,
+-- видалити можна, а зберегти поверх — ні.
+drop policy if exists "files_bucket_edit" on storage.objects;
+create policy "files_bucket_edit" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'files')
+  with check (bucket_id = 'files');
+
 drop policy if exists "files_bucket_drop" on storage.objects;
 create policy "files_bucket_drop" on storage.objects
   for delete to authenticated using (bucket_id = 'files');

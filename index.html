@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 11:01">
+  <meta name="build" content="build 30.09 11:09">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4955,7 +4955,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 11:01</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 11:09</div>
     </div>
   </aside>
 
@@ -23001,6 +23001,19 @@ function flRender() {
   }).join('') + '</div>';
 }
 
+/* «new row violates row-level security policy» — правда, і ні про що.
+
+   База каже, що правило не пустило, але не каже ЯКЕ і що з цим
+   робити. Для людини це нічим не краще за «щось пішло не так»: вона
+   бачить помилку з незнайомими словами й не має жодної зачіпки.
+
+   А причин рівно дві, і вони різні: або в бакеті бракує політики на
+   перезапис (FILES.sql виконаний не до кінця чи зі старої версії),
+   або файл залив хтось інший і міняти його може тільки він. */
+function flRls(e) {
+  return /row-level security|violates row.level/i.test(String((e && e.message) || ''));
+}
+
 /* ── МІТКИ ВСЕРЕДИНІ ФАЙЛА ──
 
    @1149896616961527 — кабінет, #прогріта — вільний тег.
@@ -23327,6 +23340,7 @@ window.flTxtSave = async function () {
   }
   const btn = document.querySelector('.fl-txt-bar .is-main');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  let step = 'storage';
   try {
     const up = await sb.storage.from(FL_BUCKET).upload(flTxt.path, blob, {
       /* upsert: той самий шлях, той самий рядок у списку. Новий шлях
@@ -23336,6 +23350,7 @@ window.flTxtSave = async function () {
       contentType: flTxt.mime || 'text/plain;charset=utf-8'
     });
     if (up.error) throw new Error(up.error.message);
+    step = 'row';
     // Розмір у списку має відповідати файлові, інакше він бреше.
     // Мітки — разом із ним: дописав @кабінет і зберіг, а пошук його не
     // бачить до наступного відкриття — це той самий різновид тиші.
@@ -23347,7 +23362,14 @@ window.flTxtSave = async function () {
     if (row) { row.tags = tags; row.cabs = cabs; }
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
-    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
+    /* Який саме крок відмовив — ми знаємо, і це вся різниця між
+       порадою і загадкою. */
+    const msg = !flRls(e) ? 'Could not save: ' + e.message
+      : step === 'storage'
+        ? 'Saving over a file needs one more rule in the bucket. '
+          + 'Run FILES.sql again — it adds the update policy.'
+        : 'This file was uploaded by someone else, so only they can change it.';
+    if (typeof toast === 'function') toast(msg, 'error', 9000);
     return;
   }
   flTxt.text = text;
@@ -23407,7 +23429,10 @@ window.flPut = async function (i) {
     }).eq('id', r.id);
     if (error) throw new Error(error.message);
   } catch (e) {
-    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
+    if (typeof toast === 'function')
+      toast(flRls(e)
+        ? 'This file was uploaded by someone else, so only they can change it.'
+        : 'Could not save: ' + e.message, 'error', flRls(e) ? 9000 : 5000);
     return;
   }
   flViewClose();
@@ -23429,7 +23454,10 @@ window.flDrop = async function (i) {
     if (error) throw new Error(error.message);
     await sb.storage.from(FL_BUCKET).remove([r.path]);
   } catch (e) {
-    if (typeof toast === 'function') toast('Could not delete: ' + e.message, 'error');
+    if (typeof toast === 'function')
+      toast(flRls(e)
+        ? 'This file was uploaded by someone else, so only they can delete it.'
+        : 'Could not delete: ' + e.message, 'error', flRls(e) ? 9000 : 5000);
   }
   flViewClose();
   await flLoad();
