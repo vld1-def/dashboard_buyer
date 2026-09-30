@@ -134,7 +134,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-30.1';
+const FN_VERSION = '2026-09-30.2';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -516,31 +516,53 @@ function hostOf(v: unknown): string {
   } catch (_e) { return ''; }
 }
 
-/* Посилання лежить у різних місцях залежно від того, яке це оголошення:
-   звичайне зі посиланням, карусель, відео чи динамічний креатив. Перебір
-   іде від найточнішого до найзагальнішого, і перший, що дав хост,
-   виграє — решту навіть не дивимось. */
-function adHost(c: Json): string {
+/* УСІ хости креативу, а не перший-ліпший.
+
+   Перша версія брала перший знайдений і на динамічному креативі
+   привозила чужий: у стрічці посилань їх десяток, і перше з них цілком
+   може вести на Amazon. Показувати його як «домен оголошення» —
+   напівправда, за якою потім шукають не там. */
+function adHosts(c: Json): string[] {
   const feed: Json[] = Array.isArray(c?.asset_feed_spec?.link_urls)
     ? c.asset_feed_spec.link_urls : [];
   const tries: unknown[] = [];
   /* object_story_spec — єдине місце, де лежить посилання: поля
      effective_object_story_spec у AdCreative НЕМАЄ (перевірено помилкою #100). */
-  for (const spec of [c?.object_story_spec]) {
-    if (!spec) continue;
-    const ld: Json = spec.link_data || {};
-    const kids: Json[] = Array.isArray(ld.child_attachments) ? ld.child_attachments : [];
-    tries.push(ld.link);
-    tries.push(kids.map((a: Json) => a?.link).find(Boolean));
-    tries.push(spec.video_data?.call_to_action?.value?.link);
-    tries.push(spec.template_data?.link);
-  }
-  tries.push(feed[0]?.website_url);
+  const spec: Json = c?.object_story_spec || {};
+  const ld: Json = spec.link_data || {};
+  const kids: Json[] = Array.isArray(ld.child_attachments) ? ld.child_attachments : [];
+  tries.push(ld.link);
+  kids.forEach((a: Json) => tries.push(a?.link));
+  tries.push(spec.video_data?.call_to_action?.value?.link);
+  tries.push(spec.template_data?.link);
+  // У динамічному креативі посилань буває десяток — беремо всі.
+  feed.forEach((u: Json) => tries.push(u?.website_url));
   /* object_url — для оголошень, зроблених не з посту Сторінки:
      там посилання лежить саме в ньому, а spec порожній. */
   tries.push(c?.object_url);
-  for (const v of tries) { const h = hostOf(v); if (h) return h; }
-  return '';
+  const out: string[] = [];
+  tries.forEach(v => { const h = hostOf(v); if (h && !out.includes(h)) out.push(h); });
+  return out;
+}
+
+/* ЯКИЙ із них наш.
+
+   Орієнтир — вкладка Domains: це єдиний список, про який ми знаємо, що
+   він наш. Хост збігається з рядком списку або є його піддоменом
+   (go.kg-promo.top під kg-promo.top) — це він.
+
+   Жоден не збігся — краще НІЧОГО, ніж чужий. Домен потрібен, щоб
+   відповісти «що крутиться на зламаному домені», і Amazon у цій
+   відповіді не просто зайвий: він робить її неправильною.
+
+   Списку немає зовсім — тоді беремо перший: без орієнтира це все, що
+   ми можемо чесно сказати. */
+function pickHost(hosts: string[], known: Set<string>): string {
+  if (!hosts.length) return '';
+  if (!known.size) return hosts[0];
+  const mine = hosts.find(h => known.has(h)
+    || [...known].some(k => h.endsWith('.' + k)));
+  return mine || '';
 }
 
 const total = (o: Json | null | undefined): number | null =>
@@ -578,7 +600,7 @@ type AdSnap = { ad_id: string; name: string; status: string; own: string;
    інша картина, ніж «12 оголошень на 12 постів». */
 type PageUse = { ads: number; posts: Set<string> };
 
-function readParts(parts: (Json | null)[]):
+function readParts(parts: (Json | null)[], ours: Set<string>):
     { patch: Json; err: string; days: Day[] | null;
       pages: Map<string, PageUse> | null; live: AdSnap[] | null; linkErr: string } {
   const patch: Json = {};
@@ -737,17 +759,34 @@ function readParts(parts: (Json | null)[]):
   let linkErr = '';
   if (linkPart && linkPart.code === 200) {
     const list: Json[] = Array.isArray(linkPart.body?.data) ? linkPart.body.data : [];
+    /* Чужі хости, які ми свідомо не взяли — щоб було ЩО сказати, коли
+       посилання є, а нашого серед них немає. Мовчазний порожній стовпець
+       у цьому випадку виглядає точно так само, як зламаний запит. */
+    const skipped: string[] = [];
     list.forEach((r: Json) => {
-      const h = adHost(r?.creative || {});
+      const all = adHosts(r?.creative || {});
+      const h = pickHost(all, ours);
       if (r?.id && h) hosts.set(String(r.id), h);
+      else if (all.length) all.forEach(x => {
+        if (skipped.length < 4 && !skipped.includes(x)) skipped.push(x);
+      });
     });
+    /* Посилання знайшлись, але жодне не наше. Окремий діагноз: запит
+       працює, поле правильне — не збігається СПИСОК. Тому й підказка
+       конкретна: ось що крутиться, ось скільки доменів ми знаємо. */
+    if (list.length && !hosts.size && skipped.length) {
+      linkErr = 'found links, none in your Domains tab ('
+        + skipped.join(', ') + ')'
+        + (ours.size ? '; ' + ours.size + ' domain(s) in the list'
+                     : '; the Domains tab is empty');
+    }
     /* Відповідь прийшла, а доменів у ній немає — це ОКРЕМИЙ діагноз, і
        він не менш важливий за відмову. Означає, що посилання лежить не
        там, де ми дивимось: інша форма креативу, або Facebook просто не
        віддав creative на цьому зрізі. Мовчання тут коштувало б рівно
        того, чого вже коштувало: людина шукає ваду в базі, а вада —
        у полі запиту. */
-    if (list.length && !hosts.size) {
+    if (list.length && !hosts.size && !linkErr) {
       /* Кажемо не лише «не знайшли», а Й ЩО ТАМ БУЛО. Без цього
          наступний крок — знову здогадка: поле креативу могло
          називатись інакше, приїхати порожнім або не приїхати зовсім,
@@ -808,6 +847,31 @@ async function pgGet(base: string, hdr: Json, path: string): Promise<Json[]> {
   const res = await fetch(base + '/rest/v1/' + path, { headers: hdr });
   if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
   return await res.json();
+}
+
+/* Наш список доменів — вкладка Domains, як її бачить команда.
+
+   Це єдиний орієнтир, який у нас є. Без нього «домен оголошення» —
+   просто перше посилання з креативу, а в динамічному креативі їх
+   десяток і перше цілком може вести на Amazon.
+
+   Помилка тут не валить синхронізацію: порожній список означає
+   «орієнтира немає», і pickHost чесно бере перший хост, а не вдає,
+   що знає більше. */
+async function teamDomains(base: string, hdr: Json, team: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!team) return out;
+  try {
+    const rows = await pgGet(base, hdr,
+      'domains?select=domain&team_name=eq.' + encodeURIComponent(team)
+      + '&limit=2000');
+    rows.forEach((r: Json) => {
+      // У списку домен пишуть як завгодно: зі схемою, зі слешем, з www.
+      const h = hostOf(r?.domain);
+      if (h) out.add(h);
+    });
+  } catch (_e) { /* немає списку — немає орієнтира, і це не збій синку */ }
+  return out;
 }
 
 async function pgUpsert(base: string, hdr: Json, table: string,
@@ -1025,6 +1089,10 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     };
   });
 
+  /* Один запит на токен, а не на кабінет: список доменів команди для
+     всіх кабінетів той самий. */
+  const ourDomains = await teamDomains(base, hdr, t.team_name);
+
   for (let i = 0; i < base_.length; i += BATCH_MAX / PER_ACC) {
     if (Date.now() > deadline) { out.error = out.error || 'ran out of time'; break; }
     const slice = base_.slice(i, i + BATCH_MAX / PER_ACC);
@@ -1042,7 +1110,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       break;
     }
     slice.forEach((x, k) => {
-      const { patch, err, days, pages, live, linkErr } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC));
+      const { patch, err, days, pages, live, linkErr } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC), ourDomains);
       if (linkErr && !out.linkError) out.linkError = linkErr;
       if (pages) pageUse.set(x.id, pages);
       if (live) {
