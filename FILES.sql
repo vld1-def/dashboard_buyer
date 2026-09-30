@@ -58,6 +58,23 @@ alter table public.file_links drop column if exists url;
 create index if not exists file_links_team_at_idx
   on public.file_links (team_name, at desc);
 
+-- ── МІТКИ ВСЕРЕДИНІ ФАЙЛА ──
+-- У тексті пишуть @1149896616961527 (кабінет) і #прогріта (вільний
+-- тег). Дашборд вибирає їх із вмісту й кладе сюди.
+--
+-- Чому окремими колонками, а не пошуком по самому файлу: файли лежать
+-- у приватному бакеті, і щоб знайти тег, довелось би скачати всі до
+-- одного — двісті підписаних адрес і двісті завантажень на кожен
+-- пошук. Мітки в таблиці роблять пошук одним запитом.
+alter table public.file_links add column if not exists tags text[];
+alter table public.file_links add column if not exists cabs text[];
+
+-- gin — щоб «які файли з тегом X» лишалось швидким і на тисячі рядків.
+create index if not exists file_links_tags_idx
+  on public.file_links using gin (tags);
+create index if not exists file_links_cabs_idx
+  on public.file_links using gin (cabs);
+
 
 -- ════════════════════════════════════════════════════════════
 --  ▶ БЛОК 2 — доступ до таблиці

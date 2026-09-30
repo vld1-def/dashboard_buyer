@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 10:36">
+  <meta name="build" content="build 30.09 11:01">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2265,16 +2265,33 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
    з кнопками, які нічим не керують. Групу цілком ховає setFilter. */
 .set-panes.searching .set-col:not(:has(.set-row:not(.no-hit))) { display: none; }
 
+/* ── мітки всередині файла ── */
+/* Кнопка, що не виглядає кнопкою: у тексті файла рамка й фон рвали б
+   рядок, а мітка має читатись як частина рядка, просто помітна. */
+.fl-t { background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+        font: inherit; line-height: inherit; border-radius: 3px; }
+.fl-t-cab { color: var(--accent); font-weight: 700; }
+.fl-t-tag { color: var(--info); font-weight: 700; }
+.fl-t:hover { text-decoration: underline; }
+.fl-t:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+.fl-chip { display: inline-block; margin: 0 4px 0 0; padding: 1px 6px;
+           border-radius: 999px; font-size: 10.5px; font-weight: 700;
+           border: 1px solid var(--border-2); white-space: nowrap; }
+.fl-chip.is-cab { color: var(--accent); }
+.fl-chip.is-tag { color: var(--info); }
+.fl-chip.is-more { color: var(--text-muted); }
+
 /* ── правка текстового файла ── */
 .fl-txt-bar { display: flex; align-items: center; gap: 8px;
               flex-wrap: wrap; margin: 0 0 8px; }
 /* Пояснення стоїть ПОРУЧ із кнопкою, а не під полем: попередження про
    зміну кодування має бути прочитане до натискання, а не після. */
-.fl-txt-why { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.fl-txt-why { font-size: 11.5px; color: var(--text-muted); line-height: 1.35; }
 .fl-ta { width: 100%; min-height: 46vh; resize: vertical;
          box-sizing: border-box; padding: 10px 12px;
-         background: var(--card); color: var(--fg);
-         border: 1px solid var(--line); border-radius: 8px;
+         background: var(--surface); color: var(--text-main);
+         border: 1px solid var(--border); border-radius: 9px;
          font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
          /* Перенос НЕ вмикаємо: у файлах з акаунтами рядок — це запис,
             і розірваний навпіл він читається як два. */
@@ -4938,7 +4955,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 10:36</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 11:01</div>
     </div>
   </aside>
 
@@ -22836,7 +22853,7 @@ async function flLoad() {
   if (box) box.innerHTML = '<p class="fl-empty">Loading…</p>';
   try {
     const { data, error } = await sb.from('file_links')
-      .select('id,title,path,mime,size,kind,account_id,note,at')
+      .select('id,title,path,mime,size,kind,account_id,note,at,tags,cabs')
       .eq('team_name', currentTeam).order('at', { ascending: false }).limit(500);
     if (error) throw new Error(error.message);
     flRows = data || [];
@@ -22939,8 +22956,16 @@ async function flUpload(file, n, total) {
 
 function flRender() {
   const q = String(document.getElementById('fl-q')?.value || '').trim().toLowerCase();
-  const rows = !q ? flRows : flRows.filter(r =>
-    (r.title + ' ' + (r.note || '') + ' ' + (r.account_id || '')).toLowerCase().includes(q));
+  /* #тег і @кабінет шукаємо ТОЧНО, а не підрядком: #kg не має
+     витягувати #kg-old, інакше «покажи файли цього тегу» перестає
+     означати те, що обіцяє. Решта — звичайний пошук по тексту картки,
+     як було. */
+  const exact = /^[#@]/.test(q) ? q.slice(1) : '';
+  const rows = !q ? flRows : flRows.filter(r => exact
+    ? (q[0] === '#' ? (r.tags || []) : (r.cabs || [])).includes(exact)
+    : (r.title + ' ' + (r.note || '') + ' ' + (r.account_id || '') + ' '
+       + (r.tags || []).join(' ') + ' ' + (r.cabs || []).join(' '))
+      .toLowerCase().includes(q));
 
   const cnt = document.getElementById('fl-count');
   if (cnt) cnt.textContent = flRows.length
@@ -22962,7 +22987,10 @@ function flRender() {
       + '<button type="button" class="fl-name" onclick="flView(' + i + ')"'
       + ' title="Open here">' + flEsc(r.title) + '</button>'
       + (r.account_id ? '<span class="fl-cab" title="Cabinet">' + flEsc(r.account_id) + '</span>' : '<span></span>')
-      + '<span class="fl-note">' + flEsc(r.note || '') + '</span>'
+      /* Мітки видно в рядку — інакше, щоб дізнатись, що в файлі, його
+         щоразу треба відкривати, а вся користь тегів саме в тому, щоб
+         не відкривати. */
+      + '<span class="fl-note">' + flTagChips(r) + flEsc(r.note || '') + '</span>'
       + '<span class="fl-at">' + flSize(r.size) + '</span>'
       + '<span class="fl-at">' + String(r.at || '').slice(0, 10) + '</span>'
       + '<span class="fl-acts">'
@@ -22971,6 +22999,113 @@ function flRender() {
       + '<button type="button" class="fl-mini is-bad" onclick="flDrop(' + i + ')">✕</button>'
       + '</span></div>';
   }).join('') + '</div>';
+}
+
+/* ── МІТКИ ВСЕРЕДИНІ ФАЙЛА ──
+
+   @1149896616961527 — кабінет, #прогріта — вільний тег.
+
+   Два різні знаки навмисно. Account — це не просто слово: за ним
+   можна перейти, його можна звірити зі списком, і плутати його з
+   довільною позначкою не варто. А ще так не треба вгадувати, чи 16
+   цифр у рядку — це айді кабінета, чи номер картки, чи sub_id.
+
+   Розбираємо ВМІСТ, а не картку файла: мітка має стояти там, де
+   людина її написала, поруч із рядком, якого вона стосується. */
+const FL_CAB_RE = /@(\d{6,20})\b/g;
+/* Літери, цифри, підкреслення й дефіс — і кирилиця теж: теги пишуть
+   українською, і #прогріта має працювати так само, як #warm. */
+const FL_TAG_RE = /#([\p{L}\p{N}_-]{1,40})/gu;
+
+function flTags(text) {
+  const t = String(text || '');
+  const uniq = (re, cut) => {
+    const out = [];
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(t)) !== null) {
+      const v = cut(m[1]);
+      if (v && !out.includes(v) && out.length < 60) out.push(v);
+    }
+    return out;
+  };
+  return { cabs: uniq(FL_CAB_RE, v => v),
+           // Tags зводимо до нижнього регістру: #KG і #kg — один тег,
+           // інакше пошук ділив би файли навпіл на рівному місці.
+           tags: uniq(FL_TAG_RE, v => v.toLowerCase()) };
+}
+
+// Однакові набори? Тоді й писати нема чого.
+function flSameTags(a, b) {
+  const A = (a || []).slice().sort(), B = (b || []).slice().sort();
+  return A.length === B.length && A.every((v, i) => v === B[i]);
+}
+
+/* Записуємо мітки в картку файла — щоб пошук був одним запитом, а не
+   двомастами завантажень із приватного бакета.
+
+   Обрізаний файл НЕ чіпаємо: ми бачили лише перші 400 КБ, і затерти
+   ними мітки з решти означало б втратити те, чого ми не читали. Та
+   сама причина, з якої такий файл не дається правити. */
+async function flIndex(i, text, cut) {
+  const r = flRows[i];
+  if (!r || cut) return;
+  const { tags, cabs } = flTags(text);
+  if (flSameTags(tags, r.tags) && flSameTags(cabs, r.cabs)) return;
+  r.tags = tags; r.cabs = cabs;
+  try {
+    await sb.from('file_links').update({ tags, cabs }).eq('id', r.id);
+  } catch (_e) {
+    /* Колонок ще немає — FILES.sql не виконаний. Мітки на екрані від
+       цього працюють, не працює лише пошук по них, і валити через це
+       перегляд файла було б ціною, вищою за втрату. */
+  }
+  flRender();
+}
+
+/* Показуємо мітки клікабельними. Спершу екрануємо ВЕСЬ текст, і лише
+   потім вставляємо розмітку — у зворотному порядку вміст файла став
+   би розміткою сторінки, а у файлах з акаунтами трапляється будь-що. */
+function flMark(text) {
+  return flEsc(String(text || ''))
+    .replace(FL_CAB_RE, (_m, id) =>
+      '<button type="button" class="fl-t fl-t-cab" onclick="flCabGo(\'' + id + '\')"'
+      + ' title="Open this cabinet">@' + id + '</button>')
+    .replace(FL_TAG_RE, (_m, tag) =>
+      '<button type="button" class="fl-t fl-t-tag" onclick="flTagGo(\''
+      + flEsc(tag.toLowerCase()).replace(/'/g, '&#39;') + '\')"'
+      + ' title="Show files with this tag">#' + tag + '</button>');
+}
+
+/* Мітка веде до кабінета — заради цього вона й мітка. Вікно
+   зачиняємо: залишити його відкритим поверх кабінета означало б
+   показати перехід, який нікуди не привів. */
+window.flCabGo = function (id) {
+  closeFilesModal();
+  if (typeof navGo === 'function') navGo('cabinets');
+  if (typeof cabPick === 'function') cabPick(String(id));
+};
+
+window.flTagGo = function (tag) {
+  flViewClose();
+  const q = document.getElementById('fl-q');
+  if (q) { q.value = '#' + tag; flRender(); }
+};
+
+/* У рядку списку мітки лише показуємо. Клікабельними вони живуть у
+   відкритому файлі: там видно, ДО ЧОГО саме мітка стосується, а тут
+   вона була б відірвана від свого рядка. */
+const FL_CHIPS = 4;
+
+function flTagChips(r) {
+  const cabs = (r.cabs || []).map(c => ({ t: '@' + c, k: 'cab' }));
+  const tags = (r.tags || []).map(t => ({ t: '#' + t, k: 'tag' }));
+  const all = cabs.concat(tags);
+  if (!all.length) return '';
+  const show = all.slice(0, FL_CHIPS);
+  return show.map(x => '<span class="fl-chip is-' + x.k + '">' + flEsc(x.t) + '</span>').join('')
+    + (all.length > show.length
+        ? '<span class="fl-chip is-more">+' + (all.length - show.length) + '</span>' : '');
 }
 
 /* ── підписана адреса ──
@@ -23103,6 +23238,11 @@ window.flView = async function (i) {
     flTxt = { i, path: r.path, mime: r.mime || '',
               text: got.text, cut: got.cut, enc: got.enc };
     ok.outerHTML = flTxtHtml(false);
+    /* Мітки в уже завантаженому файлі мають знайтись, а не чекати, поки
+       його хтось відкриє й перезбереже. Тому індексуємо на перегляді —
+       але лише коли набір справді змінився, інакше кожне відкриття
+       файла було б записом у базу. */
+    flIndex(i, got.text, got.cut);
     return;
   }
   const el = slot();
@@ -23144,7 +23284,7 @@ function flTxtHtml(editing) {
       : '<button type="button" class="fl-mini" onclick="flTxtEdit()">Edit</button>';
   const body = editing
     ? '<textarea class="fl-ta" id="fl-ta" spellcheck="false">' + flEsc(flTxt.text) + '</textarea>'
-    : '<pre class="fl-txt">' + flEsc(flTxt.text)
+    : '<pre class="fl-txt">' + flMark(flTxt.text)
       + (flTxt.cut ? '\n\n… shown first ' + Math.round(FL_TXT_MAX / 1024)
                      + ' KB — download for the rest.' : '') + '</pre>';
   return '<div class="fl-txt-bar">' + acts
@@ -23197,9 +23337,14 @@ window.flTxtSave = async function () {
     });
     if (up.error) throw new Error(up.error.message);
     // Розмір у списку має відповідати файлові, інакше він бреше.
+    // Мітки — разом із ним: дописав @кабінет і зберіг, а пошук його не
+    // бачить до наступного відкриття — це той самий різновид тиші.
+    const { tags, cabs } = flTags(text);
     const { error } = await sb.from('file_links')
-      .update({ size: blob.size }).eq('id', flRows[flTxt.i]?.id);
+      .update({ size: blob.size, tags, cabs }).eq('id', flRows[flTxt.i]?.id);
     if (error) throw new Error(error.message);
+    const row = flRows[flTxt.i];
+    if (row) { row.tags = tags; row.cabs = cabs; }
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
     if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
