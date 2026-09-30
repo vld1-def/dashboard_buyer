@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 29.09 23:12">
+  <meta name="build" content="build 30.09 07:03">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1689,6 +1689,13 @@ body.hub-open:not(.dock-off) #sheets-panel { height: calc(100vh / var(--zoom) - 
    коли їх менше, ніж рядків: мовчазна сума по половині стовпчика
    виглядала б як сума по всьому. */
 .sh-sum-i i { color: var(--text-muted); font-style: normal; font-size: 10px; }
+/* Пропущені стовпчики — тоном тихіше за суми: це пояснення, а не
+   показник, але мовчати про них не можна. */
+.sh-skip { color: var(--text-muted); font-weight: 600; cursor: help; }
+.sh-hint {
+  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  opacity: .8; flex: 0 0 auto;
+}
 
 /* ─────────── Компактніші секції ───────────
    Стара розмітка несе і власні mb-6/mb-8, і space-y-4 контейнера —
@@ -4915,7 +4922,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.09 23:12</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 07:03</div>
     </div>
   </aside>
 
@@ -16846,6 +16853,15 @@ window.fbSync = async function (say, body) {
        знає лише відповідь функції. Поки її викидали, шукати доводилось
        у базі, хоч вада була в полі запиту до Facebook. */
     if (j.domains && j.domains !== 'ok') bits.push('domains: ' + j.domains);
+    /* Кладемо причину туди, де видно НАСЛІДОК. У дереві кампаній
+       людина бачить «немає доменів» і не має звідки дізнатись чому:
+       відповідь приїхала сюди, у підсумок синхронізації, і жила рівно
+       доти, доки не зникне це повідомлення. Через це питання «а чому»
+       доводилось ставити й перепитувати. Тепер воно лежить поруч із
+       рештою налаштувань команди, і дерево читає його саме. */
+    if (typeof setTeamSetting === 'function' && j.domains)
+      setTeamSetting('fb_link_note', j.domains === 'ok' ? '' : String(j.domains))
+        .catch(() => {});   // лічильник причин не привід завалити синхронізацію
     /* Що сталося з Telegram. Функція рахувала це від самого початку й
        віддавала в відповіді, а сторінка мовчки викидала — тому
        «not configured» і «0 sent, 1 not linked» роками виглядали
@@ -21789,9 +21805,28 @@ function cdHeadBits() {
 
 /* Одним рядком, поруч із «3 not running»: це та сама категорія —
    те, що варто знати, не шукаючи. */
+/* Що сказала синхронізація про домени минулого разу. Читаємо один раз
+   і тримаємо: причина міняється не частіше, ніж раз на прогін. */
+let cdLinkNote = null;
+async function cdLinkWhy() {
+  if (cdLinkNote !== null) return;
+  cdLinkNote = '';
+  try {
+    if (typeof getTeamSetting === 'function')
+      cdLinkNote = String((await getTeamSetting('fb_link_note')) || '');
+  } catch (e) { cdLinkNote = ''; }
+  if (cdLinkNote && cdAcc) cdPaint();
+}
+
 function cdDomNote() {
   if (!cdNoDom) return '';
   const sep = (cdSeen || cdBad()) ? ' · ' : '';
+  /* Причина від самої синхронізації важливіша за нашу здогадку: вона
+     каже, що ВІДПОВІВ Facebook, а не що ми припускаємо. */
+  if (cdNoDom === 'sync' && cdLinkNote)
+    return sep + '<span class="cd-nodom" title="' + cdEsc('This is what the last sync reported. '
+      + 'Press Sync now after deploying fb-sync to refresh it.')
+      + '">no domains: ' + cdEsc(cdLinkNote) + '</span>';
   const text = cdNoDom === 'sql' ? 'no domains: run DOMAIN_GUARD.sql'
                                  : 'no domains: sync once';
   const tip = cdNoDom === 'sql'
@@ -21907,7 +21942,7 @@ async function cdLoad(account) {
        з новою fb-sync. Ззовні це не відрізнити від «ока не існує», і
        саме тому про це треба сказати вголос, а не мовчати. */
     if (!cdNoDom && cdRows.length
-        && !cdRows.some(r => String(r.link_domain || '').trim())) cdNoDom = 'sync';
+        && !cdRows.some(r => String(r.link_domain || '').trim())) { cdNoDom = 'sync'; cdLinkWhy(); }
   } catch (e) {
     cdRows = [];
     cdErr = /fb_ad_today|does not exist|schema cache/i.test(e.message)
@@ -24440,7 +24475,7 @@ tmBoot();
   }
 
   function shNumCol(vals) {
-    let seen = 0, dotAndComma = 0, decimalComma = 0, dates = 0;
+    let seen = 0, dotAndComma = 0, decimalComma = 0, dates = 0, ids = 0, pcts = 0;
     vals.forEach(v => {
       const t = String(v == null ? '' : v).trim();
       if (!t) return;
@@ -24448,6 +24483,13 @@ tmBoot();
       if (!c) return;
       seen++;
       if (shIsDate(t)) dates++;
+      /* Айді — не показник. Номер кабінета у Facebook має 15-16 цифр, і
+         складені докупи вони дають 3,349,896,616,961,529: число, яке
+         виглядає як відповідь, а не означає нічого. Жоден показник —
+         ні гроші, ні кліки — не буває цілим на дванадцять цифр, тож
+         межа безпечна з обох боків. */
+      if (/^\d{12,}$/.test(c)) ids++;
+      if (/%\s*$/.test(t)) pcts++;
       const hasC = c.includes(','), hasD = c.includes('.');
       if (hasC && hasD) dotAndComma++;
       // Кома, після якої не рівно три цифри, буває тільки десятковою.
@@ -24457,10 +24499,15 @@ tmBoot();
     if (!seen) return null;
     /* ВСІ значення, а не половина: один рядок «01.09» серед грошей —
        це випадковість, а не привід викинути стовпчик цілком. */
-    if (dates === seen) return null;
+    if (dates === seen) return { skip: 'dates' };
+    if (ids === seen) return { skip: 'ids' };
     /* Є і крапка, і кома — роздільник дробу той, що ПРАВІШЕ: так
        записують і «1.234,56», і «1,234.56», і сплутати їх не можна. */
-    return { decComma: dotAndComma ? false : decimalComma > 0, mixed: dotAndComma > 0 };
+    /* Відсотки СУМУВАТИ не можна: 1.24% + 0.98% — це не 2.22% нічого.
+       Показуємо середнє й підписуємо його, щоб ніхто не прочитав його
+       як суму. */
+    return { decComma: dotAndComma ? false : decimalComma > 0,
+             mixed: dotAndComma > 0, pct: pcts === seen };
   }
 
   function shNum(raw, how) {
@@ -24535,23 +24582,33 @@ tmBoot();
     const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
 
     const bits = [];
+    const skipped = [];
     for (let c = 0; c < cols; c++) {
       const vals = picked.map(r => r[c]);
       const how = shNumCol(vals);
-      if (!how) continue;
+      const label = String(head[c] || 'col ' + (c + 1));
+      if (!how) continue;                       // узагалі не числа — це текст
+      /* Пропущений стовпчик мусить бути НАЗВАНИЙ. Мовчки прибраний
+         показник виглядає точно як вада: «а чому тут немає суми». */
+      if (how.skip) { skipped.push(label + ' (' + how.skip + ')'); continue; }
       let sum = 0, n = 0;
       vals.forEach(v => { const x = shNum(v, how); if (x != null) { sum += x; n++; } });
       /* Стовпчик, де число трапилось раз на двадцять рядків, — це
          текст із випадковою цифрою, а не показник. Сума по ньому
          виглядала б як відповідь на питання, якого ніхто не ставив. */
       if (!n || n * 2 < picked.length) continue;
-      bits.push('<span class="sh-sum-i"><b>' + shEsc(head[c] || 'col ' + (c + 1))
-        + '</b> ' + shFmt(sum) + (n < picked.length ? ' <i>(' + n + ')</i>' : '') + '</span>');
+      const pct = how.pct;
+      bits.push('<span class="sh-sum-i"><b>' + shEsc(label) + '</b> '
+        + (pct ? 'avg ' : '') + shFmt(pct ? sum / n : sum) + (pct ? '%' : '')
+        + (n < picked.length ? ' <i>(' + n + ')</i>' : '') + '</span>');
     }
 
     box.classList.remove('hidden');
     box.innerHTML = '<span class="sh-sum-n">' + picked.length + ' row(s)</span>'
       + (bits.length ? bits.join('') : '<span class="sh-sum-i">no numeric column here</span>')
+      + (skipped.length
+          ? '<span class="sh-sum-i sh-skip" title="Summing these would give a number that looks like an answer but means nothing">'
+            + 'skipped: ' + shEsc(skipped.join(', ')) + '</span>' : '')
       + '<button class="sh-btn" onclick="shClearPick()">Clear</button>';
   }
 
@@ -24599,6 +24656,10 @@ tmBoot();
           : '')
       + '<span class="sh-rows">' + body.length + ' row(s) · ' + cols + ' column(s)'
       + (cut ? ' · showing first ' + SH_MAX_ROWS : '') + '</span>'
+      /* Без цього рядка виділення просто не знаходять: номер рядка не
+         схожий на кнопку, і «сума не працює» означає «я не здогадався,
+         куди тиснути». */
+      + '<span class="sh-hint">Click row numbers to sum · shift for a range</span>'
       + '<button class="sh-btn sh-del" onclick="shCloseFile()">Close file</button>';
 
     const cell = (v, tag) => '<' + tag + '>' + shEsc(v) + '</' + tag + '>';
