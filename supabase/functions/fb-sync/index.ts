@@ -134,7 +134,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-29.3';
+const FN_VERSION = '2026-09-30.1';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -475,22 +475,28 @@ function urlsFor(actId: string, tz: string): string[] {
        Facebook це не коштує: пакет іде одним запитом. */
     act + '/ads?effective_status=' + encodeURIComponent(JSON.stringify(SNAP_STATUS))
       + '&limit=' + LIST_LIMIT
-      /* ПРОСТИМИ полями, без вкладеного вибору. Перша версія просила
-         creative{effective_object_story_spec{link_data{link,…}}} — і
-         Graph на такому вкладенні відмовляє цілому підзапиту, а не
-         одному полю. Назва поля без фігурних дужок повертає весь
-         обʼєкт, і розібрати його в себе і дешевше, і надійніше: нові
-         форми креативу не вимагатимуть нового синтаксису.
+      /* ПРОСТИМИ полями, без вкладеного вибору: назва без фігурних
+         дужок повертає весь обʼєкт, і розібрати його в себе дешевше й
+         надійніше, ніж описувати вкладення.
 
-         object_story_spec поруч із effective_ навмисно: у щойно
-         створених оголошень effective_ буває порожній. */
-      /* id — ЯВНО. Graph повертає його для вузлів edge і без прохання,
-         але вся звʼязка тримається саме на ньому: без id кожен домен
+         І ТІЛЬКИ ті, що справді існують. Попередня версія просила
+         effective_object_story_spec — такого поля в AdCreative немає, і
+         Facebook відповів «(#100) Tried accessing nonexisting field».
+         Ціна помилки тут непропорційна: одне вигадане імʼя валить УВЕСЬ
+         підзапит разом із полями, які існують, — тобто домени не
+         приїжджали не через брак даних, а через одне слово.
+
+         Тому три давні, добре відомі поля AdCreative й нічого «про
+         всяк випадок»: кожне зайве імʼя — ще один шанс покласти все.
+         Якщо якогось із них не буде, діагностика назве його поіменно,
+         як назвала це.
+
+         id — ЯВНО: вся звʼязка тримається саме на ньому, без id домен
          нікуди не приписати, і назовні це виглядало б як «доменів
-         немає». Покладатись тут на замовчування — зайвий ризик за нуль
+         немає». Покладатись на замовчування — зайвий ризик за нуль
          економії. */
-      + '&fields=' + encodeURIComponent('id,creative{effective_object_story_spec,'
-        + 'object_story_spec,asset_feed_spec,template_url}'),
+      + '&fields=' + encodeURIComponent(
+        'id,creative{object_story_spec,asset_feed_spec,object_url}'),
   ];
 }
 
@@ -518,9 +524,9 @@ function adHost(c: Json): string {
   const feed: Json[] = Array.isArray(c?.asset_feed_spec?.link_urls)
     ? c.asset_feed_spec.link_urls : [];
   const tries: unknown[] = [];
-  /* Обидва spec: у щойно створених оголошень effective_ буває
-     порожній, а object_story_spec уже є. */
-  for (const spec of [c?.effective_object_story_spec, c?.object_story_spec]) {
+  /* object_story_spec — єдине місце, де лежить посилання: поля
+     effective_object_story_spec у AdCreative НЕМАЄ (перевірено помилкою #100). */
+  for (const spec of [c?.object_story_spec]) {
     if (!spec) continue;
     const ld: Json = spec.link_data || {};
     const kids: Json[] = Array.isArray(ld.child_attachments) ? ld.child_attachments : [];
@@ -530,7 +536,9 @@ function adHost(c: Json): string {
     tries.push(spec.template_data?.link);
   }
   tries.push(feed[0]?.website_url);
-  tries.push(c?.template_url);
+  /* object_url — для оголошень, зроблених не з посту Сторінки:
+     там посилання лежить саме в ньому, а spec порожній. */
+  tries.push(c?.object_url);
   for (const v of tries) { const h = hostOf(v); if (h) return h; }
   return '';
 }
