@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 15:21">
+  <meta name="build" content="build 30.09 16:15">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4955,7 +4955,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 15:21</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 16:15</div>
     </div>
   </aside>
 
@@ -19457,6 +19457,14 @@ async function cabWrite(id, patch) {
   if (error) return error.message;
   if (!(data && data.length))
     return 'the row was not saved — it is not yours, or it belongs to another team (id ' + id + ')';
+  /* Той самий рядок лежить ще й в accRows — окремому кеші вікна
+     Accounts. Лишити його старим означає, що дві частини сторінки
+     думають про кабінет різне, а журнал акуратно записує цю розбіжність
+     як подію. Саме так архів і «змінював статус» сам собою. */
+  if (typeof accRows !== 'undefined' && Array.isArray(accRows)) {
+    const twin = accRows.find(r => String(r.id) === String(id));
+    if (twin) Object.assign(twin, patch);
+  }
   return '';
 }
 
@@ -19672,7 +19680,21 @@ async function evBoot() {
 
   let rows = [];
   try {
-    if (accTeam === currentTeam && accRows.length) {
+    /* ЖУРНАЛ МУСИТЬ СУДИТИ З ТОГО Ж, ЩО Й ЕКРАН.
+
+       Тут стояв лише accRows — окремий кеш вікна Accounts. Кнопка
+       Archive пише в базу і в cabRows, а в accRows не пише ніхто. Далі
+       звірка брала застарілий рядок, рахувала з нього «banned», бачила,
+       що востаннє записано «archived», — і дописувала перехід
+       archived → banned. Кожні шістдесят секунд, без жодної дії
+       людини, і в журналі це виглядало як справжня зміна статусу.
+
+       Сам кабінет у базі при цьому лишався в архіві. Брехав журнал —
+       але читають саме його. */
+    if (typeof cabLoaded !== 'undefined' && cabLoaded
+        && typeof cabRows !== 'undefined' && cabRows.length) {
+      rows = cabRows;
+    } else if (accTeam === currentTeam && accRows.length) {
       rows = accRows;
     } else {
       rows = await sbFetchAll('accounts_mapping',
@@ -19685,9 +19707,17 @@ async function evBoot() {
   } catch (e) { return; }
 
   const f = cabFacts();
+  // Набір архівних будує сторінка кабінетів; журнал може прокинутись
+  // раніше за неї, і тоді архів був би йому невидимий.
+  if (typeof cabArchBuild === 'function') cabArchBuild();
   const cards = rows.map(r => {
     const id = String(r.account_id || '').trim();
-    const state = cabStateOf(r, f);
+    /* І з ТИМ САМИМ fb, що й таблиця. Без нього звірка не бачить ні
+       втраченого токена, ні бана з Facebook — тобто рахує інший стан,
+       ніж показано на екрані, і різниця між ними осідає в журналі
+       вигаданими переходами. */
+    const fb = typeof cabFbFor === 'function' ? cabFbFor(r) : null;
+    const state = cabStateOf(r, f, fb);
     /* hold лишається в підписі, бо evSync його читає, — але тримати
        більше нічого: єдиний стан, який ми притримували на day-два,
        щоб не писати в стрічку щовечірнє «затих і ожив», був silent, а
