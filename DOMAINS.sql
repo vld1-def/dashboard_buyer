@@ -59,6 +59,18 @@ alter table public.domains add column if not exists campaign text;
 -- бачать різне.
 alter table public.domains add column if not exists flagged_by text;
 
+-- Відколи домен лежить. Потрібна не для краси: нічний звіт довго
+-- доповідав лише про ЗМІНУ статусу, а домен, який ліг і лежить,
+-- змінюється рівно один раз — першої ночі. Далі він горів мовчки.
+-- Тепер про такі нагадують щоночі, і саме ця дата каже, котру добу.
+alter table public.domains add column if not exists broken_since timestamptz;
+
+-- Домени вже лежать, а дати немає — це рядки з часів до цієї колонки.
+-- Проставляємо теперішній час: вигадувати минуле гірше, ніж чесно
+-- почати лік із сьогодні.
+update public.domains set broken_since = now()
+ where broken_since is null and status in ('down', 'notfound', 'danger');
+
 -- ktid — це те саме, що в daily_stats: через нього домен зв'язується з
 -- воронкою, а отже зі спендом. Звідси й береться сигнал «домен затих».
 create index if not exists domains_team_ktid_idx
