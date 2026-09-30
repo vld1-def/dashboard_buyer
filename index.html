@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 08:43">
+  <meta name="build" content="build 30.09 10:36">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2264,6 +2264,22 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
    підзаголовком: інакше поруч із знайденим висіла б порожня «Filters»
    з кнопками, які нічим не керують. Групу цілком ховає setFilter. */
 .set-panes.searching .set-col:not(:has(.set-row:not(.no-hit))) { display: none; }
+
+/* ── правка текстового файла ── */
+.fl-txt-bar { display: flex; align-items: center; gap: 8px;
+              flex-wrap: wrap; margin: 0 0 8px; }
+/* Пояснення стоїть ПОРУЧ із кнопкою, а не під полем: попередження про
+   зміну кодування має бути прочитане до натискання, а не після. */
+.fl-txt-why { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.fl-ta { width: 100%; min-height: 46vh; resize: vertical;
+         box-sizing: border-box; padding: 10px 12px;
+         background: var(--card); color: var(--fg);
+         border: 1px solid var(--line); border-radius: 8px;
+         font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         /* Перенос НЕ вмикаємо: у файлах з акаунтами рядок — це запис,
+            і розірваний навпіл він читається як два. */
+         white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+.fl-ta:focus { outline: none; border-color: var(--accent); }
 
 @media (max-width: 720px) {
   .set-body { flex-direction: column; }
@@ -4922,7 +4938,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 08:43</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 10:36</div>
     </div>
   </aside>
 
@@ -23005,27 +23021,40 @@ function flKindOf(r) {
    помилитись на англійському файлі неможливо. */
 const FL_TXT_MAX = 400 * 1024;      // більше однаково ніхто не читає
 
-function flDecode(buf) {
+function flDecode(buf, out) {
+  const say = (e) => { if (out) out.enc = e; };
   const bytes = new Uint8Array(buf);
   /* BOM — це сам файл каже «я UTF-8». Віримо і прибираємо мітку, бо
      інакше вона лишається першим, невидимим символом тексту. */
   const bom = bytes.length > 2 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF;
   const body = bom ? bytes.subarray(3) : bytes;
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(body);
+    const t = new TextDecoder('utf-8', { fatal: true }).decode(body);
+    say('utf-8'); return t;
   } catch (_e) {
-    try { return new TextDecoder('windows-1251').decode(body); }
-    catch (_e2) { return new TextDecoder('utf-8').decode(body); }
+    try { const t = new TextDecoder('windows-1251').decode(body); say('windows-1251'); return t; }
+    catch (_e2) { const t = new TextDecoder('utf-8').decode(body); say('utf-8'); return t; }
   }
 }
 
+/* Текст і приписка про обрізання — ОКРЕМО, і це не косметика.
+   Раніше приписка приклеювалась до тексту, і поки його лише читали,
+   різниці не було. Тепер текст можна зберегти назад — і приклеєний
+   рядок «… shown first 400 KB» поїхав би у файл як його вміст.
+
+   cache: 'no-store' і мітка часу — щоб після збереження не приїхала
+   стара копія з кешу. Показати вчорашній вміст файла, який щойно
+   змінили, гірше, ніж не показати нічого: людина вирішить, що
+   збереження не спрацювало, і збереже ще раз поверх свіжого. */
 async function flText(url) {
-  const res = await fetch(url);
+  const bust = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+  const res = await fetch(bust, { cache: 'no-store' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const buf = await res.arrayBuffer();
   const cut = buf.byteLength > FL_TXT_MAX;
-  return flDecode(cut ? buf.slice(0, FL_TXT_MAX) : buf)
-    + (cut ? '\n\n… shown first ' + Math.round(FL_TXT_MAX / 1024) + ' KB — download for the rest.' : '');
+  const meta = {};
+  const text = flDecode(cut ? buf.slice(0, FL_TXT_MAX) : buf, meta);
+  return { text, cut, enc: meta.enc || 'utf-8' };
 }
 
 /* Поки чекаємо на підписану адресу, вікно могли вже закрити — і тоді
@@ -23062,8 +23091,8 @@ window.flView = async function (i) {
     return;
   }
   if (how === 'text') {
-    let txt = '';
-    try { txt = await flText(url); }
+    let got = null;
+    try { got = await flText(url); }
     catch (e) {
       const bad = slot();
       if (bad) bad.textContent = 'Could not read: ' + e.message;
@@ -23071,7 +23100,9 @@ window.flView = async function (i) {
     }
     const ok = slot();
     if (!ok) return;               // вікно закрили, поки ми читали
-    ok.outerHTML = '<pre class="fl-txt">' + flEsc(txt) + '</pre>';
+    flTxt = { i, path: r.path, mime: r.mime || '',
+              text: got.text, cut: got.cut, enc: got.enc };
+    ok.outerHTML = flTxtHtml(false);
     return;
   }
   const el = slot();
@@ -23081,8 +23112,111 @@ window.flView = async function (i) {
     : '<iframe class="fl-frame" src="' + flEsc(url) + '" title="' + flEsc(r.title) + '"></iframe>';
 };
 
+/* ── ПРАВКА ТЕКСТУ ──
+
+   Найчастіше треба дописати у файл кілька рядків — айді кабінетів,
+   помітку, чий це акаунт. Заради цього качати файл, відкривати
+   блокнотом і заливати назад — довше, ніж сама правка.
+
+   Зберігаємо ЗАВЖДИ в UTF-8. Файли з даними акаунтів часто приїжджають
+   у windows-1251, і записати їх назад тією ж кодовою сторінкою
+   означало б тягти її за собою вічно. Але змінити кодування файла
+   мовчки не можна — тому про це сказано просто над полем, ДО того як
+   людина натисне Save, а не в тості після. */
+let flTxt = null;
+
+function flTxtHtml(editing) {
+  if (!flTxt) return '';
+  /* Обрізаний файл редагувати НЕ можна, і це не перестраховка: у полі
+     було б лише перші 400 КБ, а Save записав би саме їх — решта файла
+     зникла б без жодного сліду. Мовчазна втрата даних тут коштує
+     найдорожче, бо помітять її не сьогодні. */
+  const why = flTxt.cut
+    ? 'Too big to edit here — only the first ' + Math.round(FL_TXT_MAX / 1024)
+      + ' KB is shown. Download it to change the rest.'
+    : editing && flTxt.enc !== 'utf-8'
+    ? 'This file is ' + flTxt.enc + '. Saving rewrites it as UTF-8.'
+    : '';
+  const acts = flTxt.cut ? ''
+    : editing
+      ? '<button type="button" class="fl-mini is-main" onclick="flTxtSave()">Save</button>'
+        + '<button type="button" class="fl-mini" onclick="flTxtBack()">Cancel</button>'
+      : '<button type="button" class="fl-mini" onclick="flTxtEdit()">Edit</button>';
+  const body = editing
+    ? '<textarea class="fl-ta" id="fl-ta" spellcheck="false">' + flEsc(flTxt.text) + '</textarea>'
+    : '<pre class="fl-txt">' + flEsc(flTxt.text)
+      + (flTxt.cut ? '\n\n… shown first ' + Math.round(FL_TXT_MAX / 1024)
+                     + ' KB — download for the rest.' : '') + '</pre>';
+  return '<div class="fl-txt-bar">' + acts
+    + (why ? '<span class="fl-txt-why">' + flEsc(why) + '</span>' : '')
+    + '</div>' + body;
+}
+
+/* Перемальовуємо лише нутрощі рамки: шапка з назвою й «скачати» до
+   правки стосунку не має, і смикати її означало б гасити фокус. */
+function flTxtPaint(editing) {
+  const box = document.getElementById('fl-view');
+  const host = box && box.querySelector('.fl-view-box');
+  if (!host || !flTxt) return;
+  const old = host.querySelector('.fl-txt-bar');
+  const body = host.querySelector('.fl-txt, .fl-ta');
+  if (old) old.remove();
+  if (body) body.remove();
+  host.insertAdjacentHTML('beforeend', flTxtHtml(editing));
+  if (editing) document.getElementById('fl-ta')?.focus();
+}
+
+window.flTxtEdit = function () { if (flTxt && !flTxt.cut) flTxtPaint(true); };
+window.flTxtBack = function () { flTxtPaint(false); };
+
+window.flTxtSave = async function () {
+  if (!flTxt || flTxt.cut) return;
+  const el = document.getElementById('fl-ta');
+  if (!el) return;
+  const text = el.value;
+  /* Нічого не змінилось — не пишемо. Зайвий запис створив би нову
+     версію файла й новий time зміни на рівному місці. */
+  if (text === flTxt.text) { flTxtPaint(false);
+    if (typeof toast === 'function') toast('Nothing changed.', 'warn', 3000); return; }
+
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  if (blob.size > FL_MAX) {
+    if (typeof toast === 'function')
+      toast('That would be ' + flSize(blob.size) + ' — the limit is ' + flSize(FL_MAX), 'error');
+    return;
+  }
+  const btn = document.querySelector('.fl-txt-bar .is-main');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const up = await sb.storage.from(FL_BUCKET).upload(flTxt.path, blob, {
+      /* upsert: той самий шлях, той самий рядок у списку. Новий шлях
+         лишив би поруч стару копію, і за тиждень ніхто не сказав би,
+         котра з них справжня. */
+      upsert: true, cacheControl: '3600',
+      contentType: flTxt.mime || 'text/plain;charset=utf-8'
+    });
+    if (up.error) throw new Error(up.error.message);
+    // Розмір у списку має відповідати файлові, інакше він бреше.
+    const { error } = await sb.from('file_links')
+      .update({ size: blob.size }).eq('id', flRows[flTxt.i]?.id);
+    if (error) throw new Error(error.message);
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+    if (typeof toast === 'function') toast('Could not save: ' + e.message, 'error');
+    return;
+  }
+  flTxt.text = text;
+  flTxt.enc = 'utf-8';             // тепер це справді так
+  flTxtPaint(false);
+  if (typeof toast === 'function') toast('Saved.', 'ok', 2500);
+  await flLoad();
+};
+
 window.flViewClose = function () {
   flViewAt++;                      // усе, що вантажиться, більше не наше
+  /* Текст забуваємо разом із рамкою: лишений у памʼяті, він при
+     наступному Save поїхав би не в той файл. */
+  flTxt = null;
   const box = document.getElementById('fl-view');
   /* Вміст прибираємо, а не лише ховаємо: лишена рамка тримає
      з'єднання, а підписана адреса в розмітці живе довше, ніж треба. */
