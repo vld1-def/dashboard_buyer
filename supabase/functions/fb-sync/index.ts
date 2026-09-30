@@ -134,7 +134,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    знає, якої чекає (build.py дістає це число просто звідси), і каже
    вголос, коли вони розійшлись. Число міняється разом із будь-якою
    правкою, що має бути видно зовні. */
-const FN_VERSION = '2026-09-30.2';
+const FN_VERSION = '2026-09-30.3';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -898,12 +898,30 @@ async function pgUpsert(base: string, hdr: Json, table: string,
    Таблиці може не бути, RLS може не пустити. Це не причина завалити
    імпорт: журнал — надбудова, а не його суть. */
 const EV_WORD: Record<string, string> = {
-  active: 'running', banned: 'banned', closed: 'banned', closing: 'banned',
+  active: 'running', banned: 'banned', closed: 'archived', closing: 'archived',
   unsettled: 'issue', review: 'issue', grace: 'issue', unknown: 'issue'
 };
 
+/* ЗАКРИТИЙ — ЦЕ НЕ ЗАБАНЕНИЙ.
+
+   Довго closed і closing зводились у 'banned', і кабінет, який людина
+   сама відправила в архів, після першої ж синхронізації приїжджав у
+   стрічку червоним «banned». Тобто власне рішення поверталось як
+   катастрофа — і поруч із ним губився справжній бан, бо шукати його
+   доводилось серед своїх же архівів.
+
+   Різниця одна й перевірна: disable_reason. Facebook заповнює його,
+   коли закрив кабінет САМ і за щось конкретне — політика, ризик,
+   платіж. Порожній disable_reason при закритому кабінеті означає, що
+   його закрили навмисно, і це архів, а не бан. */
+function evWord(word: string, reason: string): string {
+  const w = EV_WORD[word] || 'issue';
+  return w === 'archived' && reason ? 'banned' : w;
+}
+
 async function noteChanges(base: string, hdr: Json, team: string,
-                           changes: { account_id: string; from: string; to: string; note: string }[]) {
+                           changes: { account_id: string; from: string; to: string;
+                                      note: string; reason: string }[]) {
   if (!changes.length || !team) return;
   try {
     await fetch(base + '/rest/v1/account_events', {
@@ -911,8 +929,8 @@ async function noteChanges(base: string, hdr: Json, team: string,
       headers: { ...hdr, Prefer: 'return=minimal' },
       body: JSON.stringify(changes.map(c => ({
         team_name: team, account_id: c.account_id, kind: 'state',
-        from_state: c.from ? (EV_WORD[c.from] || 'issue') : null,
-        to_state: EV_WORD[c.to] || 'issue',
+        from_state: c.from ? evWord(c.from, c.reason) : null,
+        to_state: evWord(c.to, c.reason),
         note: c.note, source: 'fb'
       })))
     });
@@ -1048,7 +1066,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   const snapSeen: string[] = [];
   // кабінет -> Сторінка -> скільки оголошень і постів
   const pageUse = new Map<string, Map<string, PageUse>>();
-  const changes: { account_id: string; from: string; to: string; note: string }[] = [];
+  const changes: { account_id: string; from: string; to: string;
+                   note: string; reason: string }[] = [];
 
   // Основа рядка — з того, що вже приїхало списком: стан, картка,
   // валюта. Навіть якщо пакетні запити нижче впадуть, це вже збережеться.
@@ -1162,7 +1181,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     if (was.status !== r.status) {
       out.changed++;
       changes.push({ account_id: String(r.account_id), from: was.status, to: String(r.status),
-                     note: [r.name, r.disable_reason].filter(Boolean).join(' · ') });
+                     note: [r.name, r.disable_reason].filter(Boolean).join(' · '),
+                     reason: String(r.disable_reason || '') });
       /* Повернення до active — теж новина, і хороша. Мовчати про неї
          означало б, що з бота приходять лише погані звістки, а такого
          бота вимикають. */
