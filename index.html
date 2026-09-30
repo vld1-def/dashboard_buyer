@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 13:16">
+  <meta name="build" content="build 30.09 14:08">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4955,7 +4955,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 13:16</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 14:08</div>
     </div>
   </aside>
 
@@ -19369,20 +19369,48 @@ async function cabStopAll(idEnc) {
   }
 }
 
+/* ЗАПИС, ЯКИЙ НІЧОГО НЕ ЗАПИСАВ.
+
+   PostgREST на UPDATE, що не зачепив жодного рядка, повертає НЕ
+   помилку, а порожній успіх. Не той id, RLS не пустила, рядок в іншій
+   команді — назовні все три виглядають як «збережено».
+
+   Саме через це архів «витягувало» назад: кнопка малювала Archived,
+   у базі не мінялось нічого, і після першого ж перезавантаження
+   статус повертався туди, звідки його бере Facebook. Причому
+   НЕ ОДРАЗУ — а значить, і звʼязку з натисканням не видно.
+
+   Тому питаємо .select(): рядок повернувся — записали; не повернувся
+   — кажемо про це вголос і відкочуємо те, що намалювали. Мовчазна
+   невдача тут гірша за будь-яку помилку: людина впевнена, що кабінет
+   відкладено, і повертається до нього через тиждень. */
+async function cabWrite(id, patch) {
+  const { data, error } = await sb.from('accounts_mapping')
+    .update(patch).eq('id', id).select('id');
+  if (error) return error.message;
+  if (!(data && data.length))
+    return 'the row was not saved — it is not yours, or it belongs to another team (id ' + id + ')';
+  return '';
+}
+
 async function cabSaveField(id, key, value) {
   const row = cabRows.find(r => String(r.id) === String(id));
-  if (!row) return;
+  /* Рядка немає в памʼяті — писати нікуди, і мовчати про це не можна:
+     зовні це виглядає як звичайне збереження. */
+  if (!row) { alert('Could not save: this cabinet is not in your list yet — press '
+    + '“Add to my list” first.'); return; }
   const prev = row[key];
   row[key] = value;
   const patch = {}; patch[key] = value;
-  const { error } = await sb.from('accounts_mapping').update(patch).eq('id', id);
-  if (error) { row[key] = prev; alert('Could not save: ' + error.message); }
+  const why = await cabWrite(id, patch);
+  if (why) { row[key] = prev; alert('Could not save: ' + why); }
   cabRender();
 }
 
 async function cabSetStatus(id, status) {
   const row = cabRows.find(r => String(r.id) === String(id));
-  if (!row) return;
+  if (!row) { alert('Could not save: this cabinet is not in your list yet — press '
+    + '“Add to my list” first.'); return; }
   const prev = row.status;
   // Стан рахуємо до і після: ручний статус — це такий самий перехід, як
   // і той, що ми ловимо з грошей, і в журналі він має лежати поруч.
@@ -19392,8 +19420,11 @@ async function cabSetStatus(id, status) {
   row.status = status;
   const now = cabStateOf(row, f, fb);
   cabRender();
-  const { error } = await sb.from('accounts_mapping').update({ status }).eq('id', id);
-  if (error) { row.status = prev; cabRender(); alert('Could not save: ' + error.message); return; }
+  const why = await cabWrite(id, { status });
+  /* Відкочуємо саме те, що намалювали. Лишити на екрані Archived, якого
+     немає в базі, — це та сама тиша, тільки відкладена до наступного
+     перезавантаження. */
+  if (why) { row.status = prev; cabRender(); alert('Could not save: ' + why); return; }
   if (typeof evLog === 'function') await evLog(String(row.account_id || '').trim(), was, now, '', 'manual');
 }
 
