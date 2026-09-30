@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 11:09">
+  <meta name="build" content="build 30.09 13:16">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4955,7 +4955,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 11:09</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 13:16</div>
     </div>
   </aside>
 
@@ -16838,7 +16838,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-09-30.2';
+const FB_FN_WANT = '2026-09-30.3';
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -17925,7 +17925,7 @@ try {
    робочими — у когось вони вже збережені в браузері, і ламати збережене
    заради двох кнопок не варто. */
 const CAB_RANGES = [
-  ['today', 'Today'], ['yest', 'Yesterday']
+  ['today', 'Today'], ['yest', 'Yesterday'], ['month', 'This month']
 ];
 
 const cabDay = n => {
@@ -17937,8 +17937,17 @@ const cabDay = n => {
 
 /* Межі вибраного періоду, завжди since <= until. Порожні поля в
    ручному режимі не вважаємо помилкою: одна дата означає один day. */
+/* Перше число поточного місяця. Рахуємо з календаря, а не як «мінус
+   30 днів»: «цей місяць» першого числа означає один day, а не місяць
+   назад, і різниця тут якраз та, заради якої кнопку й просили. */
+const cabMonthStart = () => {
+  const t = new Date();
+  return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-01';
+};
+
 function cabRangeDates() {
   if (cabRange.key === 'yest') return [cabDay(1), cabDay(1)];
+  if (cabRange.key === 'month') return [cabMonthStart(), cabDay(0)];
   if (cabRange.key === '7d')   return [cabDay(6), cabDay(0)];
   if (cabRange.key === '30d')  return [cabDay(29), cabDay(0)];
   if (cabRange.key === 'custom') {
@@ -18001,7 +18010,12 @@ function cabFromToken(fb) {
 /* Стан кабінета словами Facebook. unknown потрапляє в issue навмисно:
    незнайомий код — привід подивитись, а не привід малювати зелене. */
 const CAB_FB_STATE = {
-  active: '', banned: 'banned', closed: 'banned', closing: 'banned',
+  active: '', banned: 'banned',
+  /* closed і closing — ОКРЕМО від бана. Зведені в 'banned', вони
+     перетворювали власне рішення на катастрофу: кабінет, відправлений
+     в архів, після першої ж синхронізації ставав червоним «Banned».
+     Розрізняє їх disable_reason — див. cabStateOf. */
+  closed: 'closed', closing: 'closed',
   unsettled: 'issue', review: 'issue', grace: 'issue',
   /* unknown — це НЕ проблема, а наше незнання: Facebook віддав код
      стану, якого немає в нашому списку. Поки воно означало «issue»,
@@ -18426,6 +18440,15 @@ function cabStateOf(row, f, fb) {
      спендом. */
   if (fb && fb.missing_since) return 'notoken';
   const byFb = fb ? CAB_FB_STATE[String(fb.status || 'unknown')] : '';
+  /* Закритий кабінет — це архів, а НЕ бан. Різниця одна й перевірна:
+     disable_reason. Facebook заповнює його, коли закрив кабінет сам і
+     за щось конкретне — політика, ризик, платіж. Порожній при
+     закритому означає, що його закрили навмисно.
+
+     Плутати ці двоє дорого в обидва боки: власний архів лякає як бан,
+     а справжній бан губиться серед архівів, і шукати його доводиться
+     очима. */
+  if (byFb === 'closed') return fb.disable_reason ? 'banned' : 'archived';
   if (byFb === 'banned') return 'banned';
   const st = String(row.status || 'active').toLowerCase();
   if (st === 'ban') return 'banned';
@@ -18748,7 +18771,7 @@ function cabRender() {
       ${tile('working', 'Working', working, '#8B5CF6', 'rgba(139,92,246,.14)', 'rgba(139,92,246,.32)')}
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
-      ${tile('', 'All', all.length, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
+      ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
     </div>`;
   }
 
@@ -18766,7 +18789,11 @@ function cabRender() {
 
   // ── фільтр і пошук ──
   const q = (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
-  const inFilter = c => !cabFilter ? true
+  /* Архів у «All» не потрапляє — і це не примха. Архівують саме для
+     того, щоб більше цей кабінет не бачити, а список, який усе одно
+     його показує, робить архівування безглуздим. Побачити архів можна
+     там, де його й просять: на власній плитці Archived. */
+  const inFilter = c => (!cabFilter || cabFilter === 'all') ? c.state !== 'archived'
     : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
     : c.state === cabFilter;
   const inText = c => !q || [c.id, c.row.provider_name, c.row.status_note,
