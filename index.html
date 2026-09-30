@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 07:30">
+  <meta name="build" content="build 30.09 08:43">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4922,7 +4922,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 07:30</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 08:43</div>
     </div>
   </aside>
 
@@ -19968,8 +19968,14 @@ async function dmCheck() {
     // всіх», і довіри до цифри не було б.
     const skipped = narrowed ? 0 : wasFlagged;
     const tail = skipped ? ` Skipped ${skipped} already flagged — filter to Danger and check again to re-check those.` : '';
+    /* ЦЯ кнопка в Telegram не пише — і ніде про це не було сказано.
+       Людина натискала «Check», бачила зламаний домен і чекала
+       повідомлення, якого ця гілка не шле й не збирається: тривоги
+       йдуть тільки з нічного прогону. Мовчання тут виглядає точно як
+       зламаний бот, і саме так і виглядало. */
+    const tg = srv.broken ? '\n\nTelegram alerts go out with the nightly run, not from this button.' : '';
     toast(where
-      ? `Checked ${srv.total} domain(s) via ${where}. Flagged: ${srv.flagged}.` + tail
+      ? `Checked ${srv.total} domain(s) via ${where}. Flagged: ${srv.flagged}.` + tail + tg
       : `Checked ${srv.total} domain(s) — HTTP codes only.\n\n`
         + 'No blacklist source answered. Filtering DNS needs no key and should always work, '
         + 'so this usually means the function could not reach the network.',
@@ -20006,7 +20012,7 @@ async function dmCheck() {
    їде в PostgREST як in.(…) у рядку запиту, і на сотнях доменів він
    просто не влізе. */
 async function dmCheckServer(only, say) {
-  let total = 0, flagged = 0, flags = 'none', spent = 0;
+  let total = 0, flagged = 0, flags = 'none', spent = 0, broken = 0;
   const apply = j => {
     (j.results || []).forEach(x => {
       const row = dmRows.find(r => String(r.id) === String(x.id));
@@ -20027,6 +20033,10 @@ async function dmCheckServer(only, say) {
     spent += typeof j.spent === 'number' ? j.spent
            : (/web-risk|safe-browsing/.test(String(j.flags || '')) ? (j.checked || 0) : 0);
     flagged += (j.results || []).filter(x => x.status === 'danger').length;
+    /* Зламане — це не лише мітка. «Не відповідає» рахується окремо від
+       flagged саме тому, що саме воно й було в людини: два домени
+       лежали як down, а flagged лишався нулем. */
+    broken += (j.results || []).filter(x => DM_BAD.includes(x.status)).length;
     say(`Checking ${total}…`);
     dmRender();
   };
@@ -20070,7 +20080,7 @@ async function dmCheckServer(only, say) {
       }
     }
     await dmWrAdd(spent);
-    return { ok: true, total, flagged, flags };
+    return { ok: true, total, flagged, flags, broken };
   } catch (e) {
     await dmWrAdd(spent);   // що встигли витратити — витрачено
     /* «Failed to fetch» означає рівно одне: браузер не зміг виконати

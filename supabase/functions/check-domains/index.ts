@@ -42,7 +42,7 @@ const CORS = {
 
 type Verdict = { status: string; status_code: number | null };
 type Row = { id: number; domain: string; team_name: string; status: string | null;
-              created_by: string | null };
+              created_by: string | null; broken_since: string | null };
 
 async function probe(domain: string): Promise<Verdict> {
   for (const method of ['HEAD', 'GET'] as const) {
@@ -310,6 +310,11 @@ const TG_MAX = 25;    // скільки доменів перелічуємо п
    через відмову. */
 const TG_LIMIT = 3900;
 
+/* Які статуси вважаємо зламаним доменом. Один список на всю функцію:
+   розійшовшись, він дав би найгірший різновид вади — домен, який в
+   одному місці зламаний, а в іншому ні. */
+const BAD = ['down', 'notfound', 'danger'];
+
 const TG_MARK: Record<string, string> = {
   danger: '\u{1F534}', notfound: '\u{1F7E0}', down: '\u{26AB}'
 };
@@ -320,6 +325,64 @@ const TG_WAS: Record<string, string> = {
   ok: 'працював', danger: 'був із міткою', notfound: 'був 404',
   down: 'не відповідав', unknown: 'не перевірявся'
 };
+
+/* ── ДОСІ ЗЛАМАНИЙ ──
+
+   Доповідати лише про ЗМІНУ статусу — правильно рівно доти, доки
+   зміна колись настає. Домен, який ліг і лежить, змінюється один раз:
+   першої ночі. Далі кожен наступний прогін бачить «було down, стало
+   down», не каже нічого — і мовчить, поки на ньому горять гроші.
+   Саме так і сталось: два домени лежали, а в Telegram не прийшло
+   нічого, бо доповідати не було про що.
+
+   Тому друга половина звіту: домени, які лежать ДОСІ. Щоб вона не
+   перетворилась на щоденний шум, у неї потрапляють не всі — лише ті,
+   на яких ЩОСЬ КРУТИТЬСЯ (це робить нижче tgSend). Зламаний домен без
+   жодного активного оголошення нікому не пече: він зачекає до ранку.
+
+   Читаємо з таблиці, а не з результатів прогону, і це навмисно:
+   домени з міткою фоновий прогін пропускає, щоб не палити квоту Web
+   Risk, — а мовчати про них тим паче не можна. */
+type Still = { domain: string; team: string; owner: string | null;
+               status: string; since: string | null };
+
+async function stillBroken(base: string, hdr: Record<string, string>,
+                           team: string, skip: Set<string>): Promise<Still[]> {
+  const qs = new URLSearchParams();
+  qs.set('select', 'domain,team_name,status,created_by,broken_since');
+  qs.set('status', 'in.(' + BAD.join(',') + ')');
+  qs.set('limit', '500');
+  if (team) qs.set('team_name', 'eq.' + team);
+  try {
+    const res = await fetch(base + '/rest/v1/domains?' + qs.toString(), { headers: hdr });
+    if (!res.ok) return [];
+    const rows: Record<string, unknown>[] = await res.json();
+    return rows
+      // Те, що зламалось цієї ж ночі, вже стоїть у першій половині
+      // листа. Двічі про один домен — це не наполегливість, а шум.
+      .filter(r => !skip.has(String(r?.domain || '')))
+      .map(r => ({ domain: String(r?.domain || ''), team: String(r?.team_name || ''),
+                   owner: r?.created_by == null ? null : String(r.created_by),
+                   status: String(r?.status || ''),
+                   since: r?.broken_since == null ? null : String(r.broken_since) }))
+      .filter(x => x.domain);
+  } catch (_e) { return []; }
+}
+
+/* «3 дні» замість «3 днів»: рядок читають спросоння, і кривий
+   відмінок спотикає рівно тоді, коли треба швидко зрозуміти. */
+function days(since: string | null): string {
+  if (!since) return '';
+  const ms = Date.now() - Date.parse(since);
+  if (!(ms >= 0)) return '';
+  const n = Math.floor(ms / 86_400_000);
+  if (n < 1) return 'сьогодні';
+  const t = n % 100, o = n % 10;
+  if (t >= 11 && t <= 14) return n + ' днів';
+  if (o === 1) return n + ' день';
+  if (o >= 2 && o <= 4) return n + ' дні';
+  return n + ' днів';
+}
 
 /* ── ЩО КРУТИТЬСЯ НА ЗЛАМАНОМУ ДОМЕНІ ──
 
@@ -417,8 +480,9 @@ function liveLines(list: Live[] | undefined): string {
 }
 
 function tgText(worse: Change[], checked: number,
-                live?: Map<string, Live[]>, head_?: string): string {
-  const teams = new Set(worse.map(w => w.team));
+                live?: Map<string, Live[]>, head_?: string,
+                still?: Still[]): string {
+  const teams = new Set(worse.map(w => w.team).concat((still || []).map(x => x.team)));
   const all = worse.slice(0, TG_MAX).map(w => {
     const what = TG_WHAT[w.to] || w.to;
     const why = w.to === 'danger' && w.flagged_by ? ` (${w.flagged_by})` : '';
@@ -433,8 +497,12 @@ function tgText(worse: Change[], checked: number,
   /* checked === worse.length означає особистий лист: там у знаменнику
      стояло б те саме число, і «2 з 2» читалось би як «перевірено лише
      два домени». */
+  /* «Погіршилось: 0» — не звіт, а спантеличення: людина відкриває
+     лист саме тому, що щось не так. Коли нового немає, рядок мовчить,
+     а далі йде те, заради чого лист і прийшов. */
   const head = (head_ || `\u{1F319} Домени · нічна перевірка\n`)
-             + (checked > worse.length
+             + (!worse.length ? ''
+                : checked > worse.length
                  ? `Погіршилось: ${worse.length} з ${checked}\n\n`
                  : `Погіршилось: ${worse.length}\n\n`);
   const lines = all.slice();
@@ -442,8 +510,38 @@ function tgText(worse: Change[], checked: number,
     const rest = worse.length - lines.length;
     return rest > 0 ? `\n\n…і ще ${rest}. Решта — у дашборді, фільтр Problem.` : '';
   };
-  while (lines.length > 1 && (head + lines.join('\n') + tail()).length > TG_LIMIT) lines.pop();
-  return head + lines.join('\n') + tail();
+
+  /* Друга половина: лежить не перший день, і на ньому досі крутиться.
+     Стоїть ПІСЛЯ нового, бо щойно зламане важливіше: там ще можна
+     встигнути. Але стоїть — бо інакше про це не сказав би ніхто. */
+  const old_ = (still || []).map(x => {
+    const how = days(x.since);
+    const who = teams.size > 1 ? ` · ${x.team}` : '';
+    return `${TG_MARK[x.status] || '\u{26AA}'} ${x.domain} — ${TG_WHAT[x.status] || x.status}`
+         + (how ? ` · ${how}` : '') + who
+         + liveLines(live?.get(x.domain));
+  });
+  const oldHead = old_.length
+    ? `\n\n\u{1F553} Досі зламані, і гроші йдуть: ${old_.length}\n\n` : '';
+  const oldTail = () => {
+    const rest = old_.length - shown_.length;
+    return rest > 0 ? `\n\n…і ще ${rest} таких. Дашборд, фільтр Problem.` : '';
+  };
+  const shown_ = old_.slice(0, TG_MAX);
+
+  const whole = () => {
+    const top = (head + lines.join('\n') + tail())
+      /* Коли нового немає, заголовок закінчується переносом, а далі йде
+         ще один — і лист починається з порожнечі. Дрібниця, але саме з
+         таких дрібниць складається «його явно робив робот». */
+      .replace(/\n+$/, '');
+    return top + (shown_.length ? oldHead + shown_.join('\n') + oldTail() : '');
+  };
+  /* Ріжемо СПЕРШУ старе: у листі, який не влазить, новина про свіжу
+     поломку цінніша за нагадування про вчорашню. */
+  while (shown_.length && whole().length > TG_LIMIT) shown_.pop();
+  while (lines.length > 1 && whole().length > TG_LIMIT) lines.pop();
+  return whole();
 }
 
 async function tgPost(token: string, chat: string, text: string): Promise<string> {
@@ -476,8 +574,8 @@ async function tgPost(token: string, chat: string, text: string): Promise<string
    Кому куди писати — в tg_links. Хто себе не прив'язав, того просто
    немає в розсилці: це не помилка, а вибір людини. */
 async function tgSend(base: string, hdr: Record<string, string>,
-                      worse: Change[], checked: number): Promise<string> {
-  if (!worse.length) return 'nothing to report';
+                      worse: Change[], checked: number,
+                      broken: Still[] = []): Promise<string> {
   const token = Deno.env.get('TG_BOT_TOKEN') || '';
   if (!token) return 'not configured';
 
@@ -486,10 +584,21 @@ async function tgSend(base: string, hdr: Record<string, string>,
 
   /* Питаємо ОДИН раз на всі зламані домени, а не в кожному листі:
      рядки однакові, а запитів було б стільки, скільки людей. */
-  const live = await liveOn(base, hdr, worse.map(w => w.domain));
+  const live = await liveOn(base, hdr,
+    worse.map(w => w.domain).concat(broken.map(b => b.domain)));
+
+  /* ОСЬ ДЕ нагадування перестає бути щоденним шумом: у лист іде не
+     кожен зламаний домен, а лише той, на якому ЗАРАЗ щось крутиться.
+     Домен, який ліг і нічого не витрачає, зачекає до ранку — і хай
+     чекає мовчки, бо інакше через тиждень ці листи перестануть
+     читати, а разом із ними й той єдиний, заради якого все це. */
+  const still = broken.filter(b => (live.get(b.domain) || []).length > 0);
+
+  if (!worse.length && !still.length) return 'nothing to report';
 
   // Спільний чат бачить усе — на те він і спільний.
-  if (shared) out.push('shared:' + await tgPost(token, shared, tgText(worse, checked, live)));
+  if (shared) out.push('shared:'
+    + await tgPost(token, shared, tgText(worse, checked, live, undefined, still)));
 
   const byOwner = new Map<string, Change[]>();
   worse.forEach(w => {
@@ -497,6 +606,16 @@ async function tgSend(base: string, hdr: Record<string, string>,
     const list = byOwner.get(w.owner);
     if (list) list.push(w); else byOwner.set(w.owner, [w]);
   });
+  /* Нагадування адресуємо так само поіменно. Власник, у якого сьогодні
+     нічого нового не зламалось, листа досі не отримував би зовсім —
+     хоча саме його домен і горить третю добу. */
+  const stillBy = new Map<string, Still[]>();
+  still.forEach(x => {
+    if (!x.owner) return;
+    const list = stillBy.get(x.owner);
+    if (list) list.push(x); else stillBy.set(x.owner, [x]);
+  });
+  stillBy.forEach((_v, owner) => { if (!byOwner.has(owner)) byOwner.set(owner, []); });
 
   if (byOwner.size) {
     let links: { user_id: string; chat_id: string }[] = [];
@@ -515,7 +634,8 @@ async function tgSend(base: string, hdr: Record<string, string>,
       // checked ділити по людях чесно не вийде — вибірка йде по всіх
       // одразу. Тому кажемо, скільки саме в нього, а не частку від
       // чужого числа.
-      const r = await tgPost(token, chat, tgText(list, list.length, live));
+      const r = await tgPost(token, chat,
+        tgText(list, list.length, live, undefined, stillBy.get(owner) || []));
       if (r === 'sent') sent++; else fails.push(r);
     }
     out.push(`buyers: ${sent} sent`
@@ -532,7 +652,8 @@ type Batch = {
   results: Result[]; changed: Change[]; byTeam: Map<string, number>;
 };
 type Result = { id: number; domain: string; status: string; status_code: number | null;
-                flagged_by: string | null; source: string; checked_at: string };
+                flagged_by: string | null; source: string; checked_at: string;
+                broken_since: string | null };
 type Change = { domain: string; team: string; owner: string | null;
                 from: string; to: string; flagged_by: string | null };
 
@@ -549,7 +670,7 @@ async function runBatch(base: string, hdr: Record<string, string>,
   // status потрібен не для фільтра, а щоб знати, що саме змінилось:
   // нічний прогін має доповідати про зміни, а не про весь список.
   // created_by — щоб знати, кому саме писати в Telegram.
-  qs.set('select', 'id,domain,team_name,status,created_by');
+  qs.set('select', 'id,domain,team_name,status,created_by,broken_since');
   qs.set('order', 'id.asc');
   qs.set('limit', String(BATCH + 1));
   if (o.team) qs.set('team_name', 'eq.' + o.team);
@@ -610,8 +731,17 @@ async function runBatch(base: string, hdr: Record<string, string>,
     const was = r.status || 'unknown';
     if (status !== was) changed.push({ domain: r.domain, team: r.team_name,
                                        owner: r.created_by, from: was, to: status, flagged_by });
+    /* ВІДКОЛИ лежить. Без цієї дати нагадування вміло б сказати лише
+       «досі зламаний», а «досі зламаний, третю добу» — зовсім інша
+       терміновість. Ставимо, коли зламався; знімаємо, коли ожив;
+       не чіпаємо, поки лежить — інакше лічильник щоночі обнулявся б.
+       Уже зламаний, а дати немає — це старі рядки з часів до цієї
+       колонки: починаємо лік із сьогодні, бо вигадувати минуле гірше,
+       ніж не знати його. */
+    const bad_ = BAD.includes(status);
+    const broken_since = !bad_ ? null : (r.broken_since || at);
     return { id: r.id, domain: r.domain, status, status_code: v.status_code,
-             flagged_by, source: 'server', checked_at: at };
+             flagged_by, source: 'server', checked_at: at, broken_since };
   });
 
   // По одному PATCH на рядок: upsert писав би й ті колонки, яких ми не
@@ -621,7 +751,8 @@ async function runBatch(base: string, hdr: Record<string, string>,
       method: 'PATCH',
       headers: { ...hdr, Prefer: 'return=minimal' },
       body: JSON.stringify({ status: r.status, status_code: r.status_code,
-                             flagged_by: r.flagged_by, source: 'server', checked_at: at })
+                             flagged_by: r.flagged_by, source: 'server', checked_at: at,
+                             broken_since: r.broken_since })
     }).catch(() => null)));
 
   // Web Risk — рівно один запит на домен, тож перевірені домени і є
@@ -809,11 +940,19 @@ async function handle(req: Request): Promise<Response> {
     /* Що змінилось — окремо від того, що перевірено. Саме це піде в
        Telegram, коли дійдуть руки: доповідати треба про нові проблеми,
        а не про те, що двісті доменів як працювали, так і працюють. */
-    const worse = changed.filter(c => c.to === 'danger' || c.to === 'down' || c.to === 'notfound');
-    const telegram = await tgSend(base, hdr, worse, checked);
+    const worse = changed.filter(c => BAD.includes(c.to));
+    /* Те, що лежить ДОСІ. Без цього прогін мовчав про домен, який
+       ліг учора й горить далі: змін немає — отже, нема про що
+       доповідати. Було саме так, і коштувало це двох доменів. */
+    const still = await stillBroken(base, hdr, team,
+      new Set(worse.map(w => w.domain)));
+    const telegram = await tgSend(base, hdr, worse, checked, still);
     return new Response(JSON.stringify({
       cron: true, checked, more, next: after, flags, spent,
-      changed: changed.length, telegram, worse
+      changed: changed.length, telegram, worse,
+      // Скільки всього лежить — окремо від того, скільки пішло в лист
+      // (у лист ідуть лише ті, на яких щось крутиться).
+      broken: still.length
     }), { headers: { ...CORS, 'content-type': 'application/json' } });
   }
 
