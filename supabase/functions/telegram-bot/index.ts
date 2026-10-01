@@ -149,11 +149,15 @@ const money = (n: number, cur: string): string => {
 const BAD = ['banned', 'closed', 'closing'];
 const SICK = ['unsettled', 'review', 'grace'];
 
+type Cab = { id: string; name: string; who: string };
 type Park = {
   live: number; total: number; ads: number;
-  banned: string[]; lost: string[]; sick: string[];
+  banned: Cab[]; lost: Cab[]; sick: Cab[];
   spend: Record<string, number>;
   seen: string;
+  /* Скільки кабінетів у підрахунок НЕ пішло, бо їхні числа заморожені.
+     Без цього сума мовчки меншає, і це виглядає як утрачений спенд. */
+  frozen: number;
 };
 
 /* Те, що бот показує, збирається ОДИН раз: усі відповіді — різні
@@ -162,7 +166,17 @@ type Park = {
 async function park(base: string, hdr: Record<string, string>, uid: string): Promise<Park> {
   const rows = await pick(base, hdr, 'fb_accounts'
     + '?select=account_id,name,status,spend_today,currency,ads_active,'
-    + 'missing_since,synced_at&created_by=eq.' + encodeURIComponent(uid) + '&limit=500');
+    + 'missing_since,synced_at,token_id&created_by=eq.' + encodeURIComponent(uid)
+    + '&limit=500');
+
+  /* Чий це браузер. У дашборді він береться з назви токена: другий
+     шматок через підкреслення (агент_браузер_БМ). Якщо людина вписала
+     профіль руками — її запис свіжіший за розбір назви, і перемагає. */
+  const browser = new Map<string, string>();
+  const tokName = new Map<string, string>();
+  (await pick(base, hdr, 'fb_tokens?select=id,name&created_by=eq.'
+    + encodeURIComponent(uid) + '&limit=200'))
+    .forEach(t => tokName.set(String(t.id), String(t.name || '')));
 
   /* Архівовані не рахуємо — інакше бот сперечався б із дашбордом,
      де людина їх свідомо прибрала з очей. Ключ і як написано, і
@@ -174,36 +188,73 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
     const d = s2.replace(/\D/g, '');
     return d && d !== s2 ? [s2, d] : [s2];
   };
-  (await pick(base, hdr, 'accounts_mapping'
-    + '?select=account_id,fb_account_id&status=eq.archive&created_by=eq.'
-    + encodeURIComponent(uid) + '&limit=500'))
-    .forEach(r => { keys(r.account_id).forEach(k => arch.add(k));
-                    keys(r.fb_account_id).forEach(k => arch.add(k)); });
+  /* Одним запитом і архів, і профілі: два походи по ту саму таблицю
+     коштували б удвічі, а відповідь потрібна та сама. Колонки profile
+     може не бути — тоді PostgREST відмовить, і ми спитаємо без неї. */
+  let mine = await pick(base, hdr, 'accounts_mapping'
+    + '?select=account_id,fb_account_id,status,profile&created_by=eq.'
+    + encodeURIComponent(uid) + '&limit=500');
+  if (!mine.length) mine = await pick(base, hdr, 'accounts_mapping'
+    + '?select=account_id,fb_account_id,status&created_by=eq.'
+    + encodeURIComponent(uid) + '&limit=500');
+  mine.forEach(r => {
+    if (String(r.status || '').toLowerCase() === 'archive') {
+      keys(r.account_id).forEach(k => arch.add(k));
+      keys(r.fb_account_id).forEach(k => arch.add(k));
+    }
+    const p = String(r.profile || '').trim();
+    if (p) { keys(r.account_id).forEach(k => browser.set(k, p));
+             keys(r.fb_account_id).forEach(k => browser.set(k, p)); }
+  });
 
   const out: Park = { live: 0, total: 0, ads: 0, banned: [], lost: [], sick: [],
-                      spend: {}, seen: '' };
+                      spend: {}, seen: '', frozen: 0 };
   rows.forEach(r => {
     const id = String(r.account_id || '');
     if (keys(id).some(k => arch.has(k))) return;
     out.total++;
     const name = String(r.name || id);
     const st = String(r.status || '').toLowerCase();
+    /* Профіль руками переважає; інакше беремо другий шматок назви
+       токена — agent_browser_BM. */
+    const who = keys(id).map(k => browser.get(k)).find(Boolean)
+      || String(tokName.get(String(r.token_id || '')) || '').split('_')[1] || '';
+    const cab: Cab = { id, name, who: String(who).trim() };
+
+    /* ЗАМОРОЖЕНІ ЧИСЛА В СУМУ НЕ ЙДУТЬ.
+
+       Коли токен втрачає доступ, fb-sync навмисно НЕ стирає рядок —
+       лишає останні відомі числа й ставить missing_since. Для екрана
+       це правильно: видно, скільки кабінет крутив, поки його бачили.
+       Але складати їх у «спенд сьогодні» означає щодня додавати те,
+       чого сьогодні не було. Саме так тижневої давнини сума в чужій
+       валюті трималась у звіті як жива. */
+    if (r.missing_since) { out.frozen++; out.lost.push(cab); return; }
+
     const cur = String(r.currency || 'USD');
     const sp = num(r.spend_today);
     if (sp) out.spend[cur] = (out.spend[cur] || 0) + sp;
     out.ads += num(r.ads_active);
     if (num(r.ads_active) > 0 || sp > 0) out.live++;
-    if (r.missing_since) out.lost.push(name);
-    else if (BAD.includes(st)) out.banned.push(name);
-    else if (SICK.includes(st)) out.sick.push(name + ' \u00b7 ' + st);
+    if (BAD.includes(st)) out.banned.push(cab);
+    else if (SICK.includes(st)) out.sick.push({ ...cab, name: name + ' \u00b7 ' + st });
+
+    /* НАЙСТАРІШИЙ із тих, що пішли в суму, а не найсвіжіший з усіх.
+       Брали max — і підпис казав «5 хв тому», поки частина чисел була
+       тижневої давнини. Чесна обіцянка тут одна: усе, що ви бачите,
+       не старіше за це. */
     const at = String(r.synced_at || '');
-    if (at && at > out.seen) out.seen = at;
+    if (at && (!out.seen || at < out.seen)) out.seen = at;
   });
   return out;
 }
 
-const list = (a: string[], max: number): string =>
-  a.slice(0, max).map(x => '   \u2022 ' + x).join('\n')
+/* Айді — щоб кабінет можна було знайти, не гадаючи за назвою. Браузер
+   — щоб знати, куди йти його відкривати. Назва без цих двох змушує
+   шукати руками саме тоді, коли щось горить. */
+const list = (a: Cab[], max: number): string =>
+  a.slice(0, max).map(x => '   \u2022 ' + x.name + '\n     ' + x.id
+    + (x.who ? ' \u00b7 ' + x.who : '')).join('\n')
   + (a.length > max ? '\n   …і ще ' + (a.length - max) : '');
 
 const spendLine = (p: Park): string => {
@@ -218,8 +269,12 @@ const spendLine = (p: Park): string => {
    годинної давності — бот не питає Facebook, він показує те, що привіз
    останній прогін синхронізації. */
 const seenLine = (p: Park): string =>
-  p.seen ? '\n\n\u{1F551} дані від синхронізації ' + ago(p.seen)
-         : '\n\n\u{1F551} синхронізації ще не було';
+  (p.seen ? '\n\n\u{1F551} усе не старіше за ' + ago(p.seen)
+          : '\n\n\u{1F551} синхронізації ще не було')
+  /* Заморожені не просто виключені — про них сказано. Мовчки менша
+     сума виглядає як загублений спенд, і це наступне питання. */
+  + (p.frozen ? '\n\u2744 ' + p.frozen + ' кабінет(ів) не рахую: токен їх '
+                + 'не бачить, числа заморожені' : '');
 
 function cardSum(p: Park): string {
   const bad = p.banned.length + p.lost.length + p.sick.length;
@@ -248,9 +303,12 @@ function cardSpend(p: Park): string {
 function cardCabs(p: Park): string {
   if (!p.total) return '\u{1F5C2} Кабінетів не знайшлось.\n\n'
     + 'Або синхронізація ще не проходила, або токен не додано.';
+  /* Тихі рахуємо відніманням, і заморожені теж треба відняти —
+     інакше їхня кількість двічі потрапляє в підсумок. */
+  const quiet = p.total - p.live - p.banned.length - p.lost.length - p.sick.length;
   return '\u{1F5C2} Кабінети: ' + p.total + '\n\n'
     + 'Крутять: ' + p.live + '\n'
-    + 'Тихі: ' + (p.total - p.live - p.banned.length - p.lost.length) + '\n'
+    + 'Тихі: ' + (quiet > 0 ? quiet : 0) + '\n'
     + (p.banned.length ? '\n\u{1F534} Забанені (' + p.banned.length + '):\n'
         + list(p.banned, 8) + '\n' : '')
     + (p.lost.length ? '\n\u{1F7E3} Токен не бачить (' + p.lost.length + '):\n'
