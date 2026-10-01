@@ -3,6 +3,13 @@
    баєра, відв'язати назад — і відповісти на запит про стан парку:
    скільки кабінетів крутить, скільки витрачено сьогодні, що зламалось.
 
+   ЧИСЛА ТІ САМІ, ЩО НА ЕКРАНІ, і це не випадково. Клацання, ліди,
+   реєстрації й депозити бот рахує тим самим розбором, що й таблиця
+   кампаній: одна подія Facebook приїжджає кількома іменами, і хто
+   складає їх наївно, бачить утричі більше лідів. Якби бот рахував
+   інакше, його число сперечалось би з екраном — і вірити не можна
+   було б жодному.
+
    ПРО ВІДПОВІДІ НА ЗАПИТ
    Бот ходить у базу ключем сервісної ролі, тобто бачить УСЕ. Тому
    кожен запит жорстко звужується до created_by того, хто прив'язав
@@ -165,20 +172,127 @@ const money = (n: number, cur: string): string => {
   return CUR[cur] ? CUR[cur] + v : v + ' ' + cur;
 };
 
+/* ЦІНА ЗА ОДИНИЦЮ — не те саме, що сума, і двох знаків тут буває
+   замало. Клац за 0.004$ із двома знаками показався б як 0.00 — тобто
+   «безкоштовно», і це рівно та сама брехня, від якої нижче стоїть ∞. */
+const rate = (n: number, cur: string): string => {
+  const d = n > 0 && n < 0.01 ? 4 : 2;
+  const v = n.toLocaleString('en-US',
+    { minimumFractionDigits: d, maximumFractionDigits: d });
+  return CUR[cur] ? CUR[cur] + v : v + ' ' + cur;
+};
+
+/* ЦІНА БЕЗ ПОДІЇ — НЕ НУЛЬ. Нуль читається як «безкоштовно», а це
+   рівно навпаки: гроші пішли, віддачі немає. Той самий словник, що в
+   дашборді: є подія → ціна, немає події при спенді → ∞, немає нічого
+   → прочерк. */
+const per = (spend: number, n: number, cur: string): string =>
+  n > 0 ? rate(spend / n, cur) : (spend > 0 ? '\u221E' : '\u2014');
+
+type Act = { action_type?: unknown; value?: unknown };
+
+/* ОДНУ Й ТУ САМУ ПОДІЮ FACEBOOK ВІДДАЄ КІЛЬКОМА ІМЕНАМИ ОДРАЗУ.
+
+   Три ліди приїжджають так:
+     lead                              3
+     onsite_conversion.lead_grouped    3
+     offsite_conversion.fb_pixel_lead  3
+   — це не дев'ять лідів, а ті самі три, порахованих трьома способами.
+   Тому зводимо тип до БАЗОВОЇ події й беремо ПО ОДНОМУ значенню на
+   подію. Той самий розбір, що й у дашборді (cdLeadBase / cdLeadCount):
+   якби бот рахував лідів інакше, його число сперечалося б із екраном,
+   і вірити не можна було б жодному. */
+const LEAD_EVENTS = ['lead', 'onsite_conversion.lead_grouped',
+                     'offsite_conversion.fb_pixel_lead'];
+
+const leadBase = (t: string): string => String(t || '')
+  .replace(/^offsite_conversion\.fb_pixel_/, '')
+  .replace(/^onsite_conversion\./, '')
+  .replace(/^offsite_conversion\./, '')
+  .replace(/_grouped$/, '');
+
+function leadCount(actions: unknown[]): number {
+  if (!Array.isArray(actions)) return 0;
+  const by = new Map<string, { t: string; v: number }[]>();
+  actions.forEach(x => {
+    const t = String((x as Act)?.action_type || '');
+    if (!LEAD_EVENTS.includes(t)) return;
+    const b = leadBase(t);
+    if (!by.has(b)) by.set(b, []);
+    by.get(b)!.push({ t, v: num((x as Act)?.value) });
+  });
+  let n = 0;
+  /* Якщо приїхала сама базова назва — беремо її: у Facebook це
+     загальне число, що вже містить і піксельні, і лід-форми. Немає —
+     складаємо окремі джерела. */
+  by.forEach((list, b) => {
+    const total = list.find(x => x.t === b);
+    n += total ? total.v : list.reduce((a, x) => a + x.v, 0);
+  });
+  return n;
+}
+
+/* ОДНА подія, а не сума схожих. На ту саму реєстрацію Facebook часто
+   віддає і complete_registration, і offsite_conversion.fb_pixel_
+   complete_registration; склавши їх, ми показали б подвійне число. */
+function pickAct(actions: unknown[], suf: string): number {
+  if (!suf || !Array.isArray(actions)) return 0;
+  let best = 0, rank = 99;
+  actions.forEach(x => {
+    const t = String((x as Act)?.action_type || '');
+    const r = t === suf ? 0
+      : t === 'offsite_conversion.fb_pixel_' + suf ? 1
+      : t === 'onsite_conversion.' + suf ? 2
+      : (t.endsWith('.' + suf) || t.endsWith('_' + suf)) ? 3 : 99;
+    if (r < rank) { rank = r; best = num((x as Act)?.value); }
+  });
+  return rank === 99 ? 0 : best;
+}
+
+/* Що бот вважає реєстрацією й депозитом — ті самі події, що й імпорт
+   звітів (FBR_CONV у fbrep): депозит у Facebook живе під іменем
+   purchase. Розійтись цим двом словникам означало б, що звіт і бот
+   рахують різне, називаючи це однаково. */
+const EV_REG = 'complete_registration';
+const EV_DEP = 'purchase';
+
 /* Стан кабінета словами — той самий словник, що й у дашборді. */
 const BAD = ['banned', 'closed', 'closing'];
 const SICK = ['unsettled', 'review', 'grace'];
 
 type Cab = { id: string; name: string; who: string };
+/* Клацання й конверсії — ПО ВАЛЮТАХ, і це не запас. Ціна ліда в
+   доларах і ціна ліда в гривнях — не одне число, і середнє з них не
+   означає нічого. Спенд тут теж свій: він порахований із тих САМИХ
+   оголошень, що й конверсії (див. нижче). */
+type Conv = { spend: number; clicks: number; leads: number;
+              regs: number; deps: number };
+type CabSpend = { id: string; name: string; who: string;
+                  spend: number; cur: string };
 type Park = {
   live: number; total: number; ads: number;
   banned: Cab[]; lost: Cab[]; sick: Cab[];
   spend: Record<string, number>;
+  /* Розклад спенда по кабінетах: підсумок не каже, КУДИ пішли гроші, а
+     питання після нього завжди саме це. */
+  byCab: CabSpend[];
+  conv: Record<string, Conv>;
+  /* Оголошень більше, ніж ми беремо за раз. Тоді конверсії неповні —
+     і про це треба сказати, а не показати менше число молча. */
+  convCap: boolean;
+  convRows: number;
   seen: string;
   /* Скільки кабінетів у підрахунок НЕ пішло, бо їхні числа заморожені.
      Без цього сума мовчки меншає, і це виглядає як утрачений спенд. */
   frozen: number;
 };
+
+/* Знімок оголошень читаємо сторінками: в одного баєра їх бувають
+   тисячі, а PostgREST усе одно віддає не більше свого ліміту. Межа
+   є навмисно — пам'ять функції не безмежна, — але доїхавши до неї,
+   ми про це кажемо. */
+const SNAP_PAGE = 1000;
+const SNAP_PAGES = 5;
 
 /* Те, що бот показує, збирається ОДИН раз: усі відповіді — різні
    зрізи тієї самої картини, і збирати її двічі означало б колись
@@ -228,7 +342,13 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
   });
 
   const out: Park = { live: 0, total: 0, ads: 0, banned: [], lost: [], sick: [],
-                      spend: {}, seen: '', frozen: 0 };
+                      spend: {}, byCab: [], conv: {}, convCap: false, convRows: 0,
+                      seen: '', frozen: 0 };
+  /* Валюта тих кабінетів, що ПІШЛИ в підрахунок. Нею ж нижче
+     відсіюється знімок: рядка немає в цій мапі — значить кабінет
+     архівований, заморожений або чужий, і його оголошення рахувати не
+     можна. */
+  const curOf = new Map<string, string>();
   rows.forEach(r => {
     const id = String(r.account_id || '');
     if (keys(id).some(k => arch.has(k))) return;
@@ -253,7 +373,11 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
 
     const cur = String(r.currency || 'USD');
     const sp = num(r.spend_today);
-    if (sp) out.spend[cur] = (out.spend[cur] || 0) + sp;
+    keys(id).forEach(k => curOf.set(k, cur));
+    if (sp) {
+      out.spend[cur] = (out.spend[cur] || 0) + sp;
+      out.byCab.push({ ...cab, spend: sp, cur });
+    }
     out.ads += num(r.ads_active);
     if (num(r.ads_active) > 0 || sp > 0) out.live++;
     if (BAD.includes(st)) out.banned.push(cab);
@@ -266,6 +390,56 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
     const at = String(r.synced_at || '');
     if (at && (!out.seen || at < out.seen)) out.seen = at;
   });
+
+  /* Спершу валюта, потім спенд. Складати валюти не можна, але й
+     ПЕРЕМІШУВАТИ їх у списку не варто: 300 \u20B4 над 120 $ читається як
+     «тут витрачено більше», а це не так. Порядок валют — той самий,
+     що в підсумковому рядку. */
+  const curRank = Object.keys(out.spend);
+  out.byCab.sort((a, b) => a.cur === b.cur ? b.spend - a.spend
+    : curRank.indexOf(a.cur) - curRank.indexOf(b.cur));
+
+  /* ── КЛАЦАННЯ, ЛІДИ, РЕЄСТРАЦІЇ, ДЕПОЗИТИ ──
+
+     Їх немає в рядку кабінета: fb_accounts знає спенд і показники, а
+     події — тільки знімок оголошень, той самий, з якого живе таблиця
+     кампаній. Тому беремо його й зводимо.
+
+     СПЕНД ТУТ ОКРЕМИЙ, і це головне в усьому блоці. Ціна ліда — це
+     спенд ТИХ оголошень, чиї ліди ми порахували. Поділивши підсумок
+     кабінета на ліди знімка, ми завищили б ціну на все, що в знімок не
+     входить (видалені й архівні оголошення), і не сказали б про це
+     жодним словом.
+
+     order=ad_id обов'язковий: offset без упорядкування PostgREST
+     виконує як завгодно, і сторінки можуть перекритись або розійтись —
+     тобто частина оголошень порахувалась би двічі, а частина зникла. */
+  let all = false;
+  for (let page = 0; page < SNAP_PAGES; page++) {
+    const part = await pick(base, hdr, 'fb_ad_today'
+      + '?select=account_id,spend,link_clicks,actions'
+      + '&created_by=eq.' + encodeURIComponent(uid)
+      + '&order=ad_id&limit=' + SNAP_PAGE + '&offset=' + (page * SNAP_PAGE));
+    part.forEach(r => {
+      const cur = curOf.get(String(r.account_id || ''));
+      if (!cur) return;
+      const c = out.conv[cur] || (out.conv[cur] =
+        { spend: 0, clicks: 0, leads: 0, regs: 0, deps: 0 });
+      c.spend += num(r.spend);
+      /* Клац ПО ПОСИЛАННЮ, а не будь-який: саме його показує CPC у
+         таблиці кампаній, і саме за нього платять. clicks рахує ще й
+         лайки з розгортань — із ним ціна клацання вийшла б меншою за
+         справжню. */
+      c.clicks += num(r.link_clicks);
+      const acts = Array.isArray(r.actions) ? r.actions as unknown[] : [];
+      c.leads += leadCount(acts);
+      c.regs += pickAct(acts, EV_REG);
+      c.deps += pickAct(acts, EV_DEP);
+      out.convRows++;
+    });
+    if (part.length < SNAP_PAGE) { all = true; break; }
+  }
+  out.convCap = !all;
   return out;
 }
 
@@ -296,12 +470,92 @@ const seenLine = (p: Park): string =>
   + (p.frozen ? '\n\u2744 ' + p.frozen + ' кабінет(ів) не рахую: токен їх '
                 + 'не бачить, числа заморожені' : '');
 
+/* Кількість і ціна в один рядок. Кількість без ціни не відповідає на
+   питання «дорого чи ні», ціна без кількості — на питання «а чи є з
+   чого її рахувати»: 50$ за лід при одному ліді й при сорока — це дві
+   різні новини. */
+const CONV_ROWS: [string, (c: Conv) => number][] = [
+  ['Клацань', c => c.clicks], ['Лідів', c => c.leads],
+  ['Реєстрацій', c => c.regs], ['Депозитів', c => c.deps]
+];
+
+/* Розділювач тисяч — як у сумах: 1240 і 1,240 читаються з різною
+   швидкістю, а поруч із грошима, де він уже є, його відсутність
+   виглядає як інше число. */
+const cnt = (n: number): string => n.toLocaleString('en-US');
+
+const convLines = (c: Conv, cur: string, pad: string): string =>
+  CONV_ROWS.map(([label, get]) => pad + label + ': ' + cnt(get(c))
+    + ' \u00b7 ' + per(c.spend, get(c), cur)).join('\n');
+
+/* ЧОМУ СПЕНД У ЦЬОМУ БЛОЦІ МОЖЕ НЕ ЗБІГТИСЬ ІЗ ПІДСУМКОМ.
+
+   Конверсії живуть у знімку оголошень, а в ньому немає видалених і
+   архівних: вони витратили гроші, але Facebook їх у списку вже не
+   віддає. Ціни ми рахуємо зі спенда самого знімка — інакше вони
+   завищились би на цю різницю. Поки різниця в межах округлення, про
+   неї нема чого говорити; коли перестає бути — кажемо, скільки саме
+   спенда пішло в ціни. */
+const covNote = (p: Park): string => {
+  const parts: string[] = [];
+  Object.keys(p.spend).forEach(cur => {
+    const total = p.spend[cur];
+    const got = (p.conv[cur] || { spend: 0 }).spend;
+    if (total > 0 && got < total * 0.98)
+      parts.push(cur + ' ' + Math.round(got / total * 100) + '%');
+  });
+  return parts.length
+    ? '\n\u2139 ціни рахую зі спенда оголошень у знімку (' + parts.join(', ')
+      + '): решта \u2014 на оголошеннях, яких у ньому вже немає.'
+    : '';
+};
+
+function convBlock(p: Park): string {
+  const curs = Object.keys(p.conv).filter(c => {
+    const x = p.conv[c];
+    return x.spend || x.clicks || x.leads || x.regs || x.deps;
+  });
+  /* Нічого не знайшли — так і кажемо. Чотири нулі виглядали б як
+     «конверсій немає», хоч насправді немає знімка: таблиці ще не
+     створили або синхронізація до неї не дійшла. Це різні новини, і
+     друга означає, що треба йти щось робити. */
+  if (!curs.length) return '\n\u2139 Клацань і конверсій не бачу: знімок '
+    + 'оголошень порожній \u2014 або синхронізація ще не ходила, або в базі '
+    + 'не виконано FB_RULES.sql.\n';
+  /* Одна валюта — рівний список. Кілька — РОЗДІЛЬНО: ціна ліда в
+     доларах і в гривнях не складається в одне число, а поставлені
+     поруч без підпису валюти вони читаються як одне. */
+  const body = curs.length === 1
+    ? convLines(p.conv[curs[0]], curs[0], '')
+    : curs.map(c => c + ':\n' + convLines(p.conv[c], c, '   ')).join('\n');
+  /* Примітки — окремим абзацом, а не впритул до того, що йде далі:
+     злиплі рядки читаються як один список, і «потребує уваги» нижче
+     виглядало б частиною приписки про ціни. */
+  const notes = (p.convCap ? '\n\u26A0 оголошень більше за ' + (SNAP_PAGE * SNAP_PAGES)
+         + ' \u2014 конверсії порахував по перших.' : '') + covNote(p);
+  return '\n' + body + '\n' + (notes ? notes + '\n' : '');
+}
+
+/* Айді, а не лише назва: саме ним кабінет шукають в Ads Manager і в
+   антидетекті. Браузер — щоб знати, куди йти його відкривати. */
+const cabSpendList = (p: Park): string => {
+  if (!p.byCab.length) return '';
+  const max = 20;
+  return 'По кабінетах:\n'
+    + p.byCab.slice(0, max).map(x => '   \u2022 ' + x.id
+        + (x.who ? ' \u00b7 ' + x.who : '')
+        + ' \u2014 ' + money(x.spend, x.cur)).join('\n')
+    + (p.byCab.length > max ? '\n   …і ще ' + (p.byCab.length - max) : '')
+    + '\n\n';
+};
+
 function cardSum(p: Park): string {
   const bad = p.banned.length + p.lost.length + p.sick.length;
   return '\u{1F4CA} Зведення\n\n'
     + 'Крутять: ' + p.live + ' з ' + p.total + '\n'
     + 'Оголошень активних: ' + p.ads + '\n'
     + 'Спенд сьогодні: ' + spendLine(p) + '\n'
+    + convBlock(p)
     + (bad ? '\n\u26A0 Потребує уваги: ' + bad + '\n'
            + (p.banned.length ? 'Забанені: ' + p.banned.length + '\n' : '')
            + (p.lost.length ? 'Токен не бачить: ' + p.lost.length + '\n' : '')
@@ -312,11 +566,10 @@ function cardSum(p: Park): string {
 
 function cardSpend(p: Park): string {
   return '\u{1F4B0} Спенд сьогодні\n\n' + spendLine(p) + '\n\n'
-    + 'Крутять: ' + p.live + ' кабінет(ів), ' + p.ads + ' оголошень\n'
-    /* «Сьогодні» рахує Facebook, і рахує у поясі КАБІНЕТА. Не сказати
-       цього — значить одного разу отримати питання, чому о першій ночі
-       числа не обнулились. */
-    + '\n\u2139 «Сьогодні» — за часовим поясом кабінета, не вашим.'
+    /* Підсумок не каже, КУДИ пішли гроші, — а наступне питання завжди
+       саме це. Поки розкладу не було, за ним ішли в дашборд. */
+    + cabSpendList(p)
+    + 'Крутять: ' + p.live + ' кабінет(ів), ' + p.ads + ' оголошень'
     + seenLine(p);
 }
 
