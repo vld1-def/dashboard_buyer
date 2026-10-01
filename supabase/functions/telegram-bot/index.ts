@@ -80,15 +80,35 @@ async function reply(token: string, chat: number | string, text: string,
   } catch (_e) { /* не відповіли — не привід падати */ }
 }
 
-/* Кнопки. Inline, а не клавіатура знизу: вони лишаються під тим
-   повідомленням, до якого належать, і не займають місце назавжди. */
+/* КЛАВІАТУРА, А НЕ INLINE.
+
+   Спершу тут були inline-кнопки: вони живуть під тим повідомленням, до
+   якого прикріплені, і щоб натиснути ще раз, треба відгортати чат
+   назад до старої відповіді. У звичайних ботів кнопки стоять під полем
+   вводу завжди — і це не прикраса, а різниця між «натиснув» і
+   «спершу знайди, куди натискати».
+
+   is_persistent тримає її розгорнутою: без нього Telegram згортає
+   клавіатуру в іконку, і кнопок знову не видно.
+
+   Натиснута кнопка надсилає свій ТЕКСТ звичайним повідомленням — тому
+   нижче ці підписи розбираються нарівні з командами. */
+const B_SUM = '\u{1F4CA} Зведення';
+const B_SPEND = '\u{1F4B0} Спенд';
+const B_CABS = '\u{1F5C2} Кабінети';
+const B_DOM = '\u{1F310} Домени';
+
 const KEYS = {
-  inline_keyboard: [
-    [{ text: '\u{1F4CA} Зведення', callback_data: 'sum' },
-     { text: '\u{1F4B0} Спенд',    callback_data: 'spend' }],
-    [{ text: '\u{1F5C2} Кабінети', callback_data: 'cabs' },
-     { text: '\u{1F310} Домени',   callback_data: 'dom' }]
-  ]
+  keyboard: [[{ text: B_SUM }, { text: B_SPEND }],
+             [{ text: B_CABS }, { text: B_DOM }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+
+/* Підпис кнопки → та сама дія, що й команда. Один шлях на обидва
+   входи: інакше кнопка й /spend колись покажуть різне. */
+const BTN: Record<string, string> = {
+  [B_SUM]: 'sum', [B_SPEND]: 'spend', [B_CABS]: 'cabs', [B_DOM]: 'dom'
 };
 
 /* Telegram лишає кнопку «в натисканні», поки не відповіси на callback.
@@ -372,7 +392,11 @@ async function handle(req: Request): Promise<Response> {
 
   const upd = await req.json();
 
-  /* ── натиснули кнопку ── */
+  /* ── натиснули inline-кнопку ── */
+  /* Клавіатура тепер звичайна, під полем вводу, і callback не шле. Але
+     повідомлення з inline-кнопками, надіслані раніше, лишаються в
+     чаті назавжди — і хтось їх таки натисне. Викинути цю гілку
+     означало б, що стара кнопка мовчки не працює. */
   const cb = upd?.callback_query;
   if (cb) {
     const cbChat = cb?.message?.chat?.id;
@@ -474,7 +498,7 @@ async function handle(req: Request): Promise<Response> {
     '/status': 'sum', '/sum': 'sum', '/spend': 'spend',
     '/cabs': 'cabs', '/cabinets': 'cabs', '/domains': 'dom', '/menu': 'menu'
   };
-  const cmd = ASK[text.split(/[\s@]/)[0].toLowerCase()];
+  const cmd = BTN[text] || ASK[text.split(/[\s@]/)[0].toLowerCase()];
   if (cmd) {
     await answer(token, base, hdr, chat, cmd);
     return new Response('ok', { status: 200 });
