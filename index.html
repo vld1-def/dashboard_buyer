@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 01.10 08:20">
+  <meta name="build" content="build 01.10 11:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4975,7 +4975,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 08:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 11:22</div>
     </div>
   </aside>
 
@@ -22021,11 +22021,27 @@ const cdIsOn = (k) => !CD_OFF.includes(String(k || '').toUpperCase());
    вимкнене оголошення показувалось як ввімкнене. Тепер обидва поля
    приїжджають із Facebook, і вгадувати нема чого.
 
-   Реджект у фільтрі «тільки активні» лишається видимим навмисно:
-   гроші на нього виділені, і саме його треба побачити — фільтр, що
-   ховає реджекти, ховав би рівно те, заради чого сюди заходять. */
-const CD_NOT_LIVE = ['PAUSED', 'CAMPAIGN_PAUSED', 'ADSET_PAUSED', 'ARCHIVED', 'DELETED'];
-const cdLive = (k) => !CD_NOT_LIVE.includes(String(k || '').toUpperCase());
+   «ТІЛЬКИ АКТИВНІ» — ЦЕ АКТИВНІ, А НЕ ВВІМКНЕНІ.
+
+   Спершу цей фільтр ховав лише вимкнене, а реджекти лишав — навмисно:
+   гроші на них виділені, і саме їх треба побачити. На живому кабінеті
+   вийшло навпаки. Увімкнених із реджектом бувають десятки, вони
+   забивають список, і серед них не видно тих кількох, що справді
+   крутяться, — тобто фільтр не відповідав на єдине питання, заради
+   якого його вмикають.
+
+   Реджекти при цьому нікуди не зникають із очей: є стовпчик Status, є
+   «N not running» у шапці, і є рядок про те, скільки саме сховано і на
+   яку суму (cdHidden нижче). Сховане, про яке сказано числом, — не те
+   саме, що сховане молча.
+
+   Список БІЛИЙ, а не чорний, і це важливіше за самий зміст фільтра.
+   Чорний означав би, що кожен новий стан Facebook за замовчуванням
+   вважається живим, — а нові стани зʼявляються, і жоден із них ще не
+   був живим: ні DISAPPROVED, ні WITH_ISSUES, ні PENDING_BILLING_INFO
+   не крутяться, хоч вимикач у них і стоїть на «так». */
+const CD_DELIVERS = ['ACTIVE'];
+const cdLive = (k) => CD_DELIVERS.includes(String(k || '').toUpperCase());
 
 let cdAcc = '', cdRows = [];
 /* Чому в дереві немає ока: '' — усе гаразд, 'sql' — немає колонки,
@@ -22061,6 +22077,20 @@ window.cdMarkClear = function () { cdMarked = new Set(); cdPaint(); };
 window.cdSetOnly = function (v) {
   cdOnly = !!v;
   try { localStorage.setItem('cd_only_live', cdOnly ? '1' : '0'); } catch (e) {}
+  /* Галочки з рядків, яких більше не видно, знімаємо. Інакше смуга
+     каже «5 picked», на екрані їх два, а «Switch off» перемкне всі
+     пʼять — дія над тим, чого людина зараз не бачить. Відколи фільтр
+     ховає й реджекти, це перестало бути теорією: саме реджекти й
+     відмічають, щоб вимкнути пачкою. */
+  if (cdOnly && cdMarked.size) {
+    const live = new Set(cdShown().map(r => String(r.ad_id)));
+    /* Знімаємо лише з ОГОЛОШЕНЬ: вибраною буває й кампанія, а її id
+       серед ad_id немає — вона нікуди не зникла. */
+    cdRows.forEach(r => {
+      const id = String(r.ad_id);
+      if (!live.has(id)) cdMarked.delete(id);
+    });
+  }
   cdPaint();
 };
 
@@ -22072,10 +22102,10 @@ function cdShown() {
   /* Рядок без стану лишаємо: ми не знаємо, що з ним, а мовчки ховати
      те, чого не знаєш, — найгірший з варіантів. */
   return cdRows.filter(r => {
-    /* Власний вимикач сильніший за effective_status: вимкнене
-       оголошення Facebook інколи й далі підписує як відхилене, і по
-       самому лише DISAPPROVED воно виглядало б живим. Вимикач на
-       «off» означає, що не крутиться, — і сперечатись тут нема з чим. */
+    /* Власний вимикач перевіряємо ОКРЕМО, і після переходу на білий
+       список він потрібен не менше: рядок без effective_status ми
+       лишаємо видимим (див. нижче), і без цієї перевірки разом із ним
+       лишилось би й вимкнене, про стан якого база просто не знає. */
     if (r.own_status && !cdIsOn(r.own_status)) return false;
     return !r.effective_status || cdLive(r.effective_status);
   });
@@ -22142,7 +22172,7 @@ function cdHeadBits() {
   const age = cdSeen ? Math.round((Date.now() - cdSeen) / 60000) : null;
   const when = age == null ? ''
     : age < 2 ? 'just synced' : age + ' min ago';
-  return `<p class="cd-s">${when}${cdBad()}${cdDomNote()}</p>
+  return `<p class="cd-s">${when}${cdBad()}${cdHidden()}${cdDomNote()}</p>
     <div class="cd-tabs">
       <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
         onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Tree</button>
@@ -22150,7 +22180,7 @@ function cdHeadBits() {
         onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
       ${cdFlat ? '' : `<button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
       <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>`}
-      <label class="cd-only" title="Hide what is switched off — its own switch or one above it. Rejected ads stay: they are switched on and money is set aside for them.">
+      <label class="cd-only" title="Show only what Facebook is actually showing. Rejected, blocked, in-review and switched-off rows are hidden — the line above says how many and how much they spent.">
         <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
           onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
     </div>`;
@@ -22470,6 +22500,56 @@ function cdBad() {
   return sep + '<span class="cd-warn">' + bad + ' not running</span>';
 }
 
+/* ЩО САМЕ СХОВАВ ФІЛЬТР — і на яку суму.
+
+   Коротший список сам по собі не новина. Новина — ЧОМУ він коротший.
+   Без цього рядка «Only live» виглядав би як поломка або як «у
+   кабінеті більше нічого немає», а десятки реджектів зникли б з очей
+   зовсім — тобто ми поміняли б одну сліпу пляму на іншу.
+
+   Spend тут не для краси: сховані рядки не йдуть і в підсумок, і без
+   цього числа різниця між «$14» під фільтром і «$28» без нього
+   лишалась би без відповіді. */
+const CD_HID_WORD = {
+  bad: 'rejected or blocked', wait: 'waiting on review',
+  off: 'switched off',
+  /* Стан каже ACTIVE, а власний вимикач — ні. Суперечність із
+     Facebook, але вирішує вимикач: не крутиться. */
+  ok: 'switched off'
+};
+
+function cdHidBits() {
+  if (!cdOnly) return null;
+  const live = new Set(cdShown().map(r => String(r.ad_id)));
+  const hid = cdRows.filter(r => !live.has(String(r.ad_id)));
+  if (!hid.length) return null;
+  const by = {};
+  let spend = 0;
+  hid.forEach(r => {
+    const st = cdState(r.effective_status);
+    /* Стану немає в словнику — отже сховав його вимикач, бо лише він і
+       може сховати рядок із незнайомим станом. */
+    const k = st ? st.s : 'off';
+    by[k] = (by[k] || 0) + 1;
+    spend += Number(r.spend) || 0;
+  });
+  return { n: hid.length, by, spend };
+}
+
+const cdHidWords = (h) => ['bad', 'wait', 'off', 'ok']
+  .filter(k => h.by[k]).map(k => h.by[k] + ' ' + CD_HID_WORD[k]).join(', ');
+
+function cdHidden() {
+  const h = cdHidBits();
+  if (!h) return '';
+  const words = cdHidWords(h);
+  // Крапку ставимо лише тоді, коли ліворуч від неї щось є.
+  const sep = (cdSeen || cdBad()) ? ' \u00b7 ' : '';
+  return sep + '<span class="cd-warn">Only live hides ' + h.n
+    + (words ? ': ' + words : '')
+    + (h.spend ? ' \u00b7 ' + cdMoney(h.spend) + ' spent' : '') + '</span>';
+}
+
 /* Просто оголошення, без батьків. Сортуємо так само за спендом: у
    списку це єдиний спосіб відповісти на «що найдорожче», а батьків
    лишаємо підписом, щоб рядок не втратив адресу. */
@@ -22516,8 +22596,15 @@ function cdPaint() {
      «нічого не крутиться» або як поломка — а насправді це ми самі
      щойно попросили сховати. */
   if (cdOnly && !cdShown().length) {
-    box.innerHTML = head + '<p class="cd-empty">Everything here is switched off — '
-      + 'nothing is live right now. Untick “Only live” to see it.</p>';
+    /* Причину називаємо словами: «нічого не крутиться» і «все
+       відхилено» — це дві різні новини, і друга означає, що треба йти
+       щось робити. Поки тут стояло одне «switched off», друга читалась
+       як перша. */
+    const h = cdHidBits();
+    const words = h ? cdHidWords(h) : '';
+    box.innerHTML = head + '<p class="cd-empty">Nothing is live here right now'
+      + (words ? ' \u2014 ' + words : '') + '. '
+      + 'Untick “Only live” to see it all.</p>';
     return;
   }
 
