@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 01.10 06:29">
+  <meta name="build" content="build 01.10 08:20">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2275,6 +2275,15 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
 .cd-unit { display: block; font-size: 9px; font-weight: 700;
            color: var(--text-muted); letter-spacing: .02em;
            line-height: 1.1; margin-top: 1px; }
+
+/* Архів, що загубився дорогою. Помітно, але не криком: це не
+   катастрофа, це підказка, куди дивитись. */
+.cab-archlost {
+  margin: 8px 0 0; padding: 7px 10px; border-radius: 9px;
+  font-size: 11px; font-weight: 700; line-height: 1.4;
+  color: var(--warn); background: rgba(234,179,8,.10);
+  border: 1px solid rgba(234,179,8,.28);
+}
 
 /* ── мітки всередині файла ── */
 /* Кнопка, що не виглядає кнопкою: у тексті файла рамка й фон рвали б
@@ -4966,7 +4975,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 06:29</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 08:20</div>
     </div>
   </aside>
 
@@ -18465,13 +18474,86 @@ function cabArchKeys(v) {
   return d && d !== s2 ? [s2, d] : [s2];
 }
 
+/* АРХІВ, ЯКИЙ ЗАГУБИВСЯ ДОРОГОЮ.
+
+   Тричі поспіль кабінети «виходили з архіву», і тричі причина була
+   різна: мовчазний запис, крихке зчеплення рядка з кабінетом,
+   журнал, що судив із застарілого кеша. Спільне в них одне — з
+   екрана не було видно НІЧОГО. Людина бачила кабінет не там, де
+   поклала, і єдиним способом дізнатись причину був запит у базу.
+
+   Тому тепер сторінка рахує це сама: скільки твоїх рядків позначені
+   архівом проти того, скільки кабінетів справді показані архівними.
+   Розійшлись — скажемо вголос і назвемо, котрі саме. Це не лікує
+   жодну з причин, зате жодна більше не сховається. */
+function cabArchLost() {
+  const want = cabRows.filter(r => String(r.status || '').toLowerCase() === 'archive');
+  if (!want.length) return [];
+  /* Показаним вважається кабінет, який потрапив у cabAll зі станом
+     archived. Рядок, що не зчепився з жодним кабінетом, сюди не
+     рахуємо окремо: він видимий у «не привʼязані», і це інша розмова. */
+  const shown = new Set();
+  cabAll.forEach(c => { if (c.state === 'archived') {
+    cabArchKeys(c.id).forEach(k => shown.add(k));
+    if (c.fb) cabArchKeys(c.fb.account_id).forEach(k => shown.add(k));
+  } });
+  return want.filter(r => {
+    const keys = cabArchKeys(r.account_id).concat(cabArchKeys(r.fb_account_id));
+    if (!keys.length) return false;
+    if (keys.some(k => shown.has(k))) return false;
+    // Рядок без живого кабінета — не втрата архіву, а відсутній кабінет.
+    return !!cabFbFor(r);
+  }).map(r => String(r.account_id || r.id));
+}
+
+/* ЗАСУВКА.
+
+   Тричі поспіль кабінети «виходили з архіву», і тричі причина була
+   інша: мовчазний запис, крихке зчеплення рядка з кабінетом, журнал
+   із застарілого кеша. Шукати четверту — марна робота, бо хиба щоразу
+   та сама: архів тримався на тому, що потрібний рядок ДОЇДЕ. Не
+   доїхав з будь-якої причини — і кабінет виринав там, звідки його
+   прибрали.
+
+   Тому архів більше не виводиться щоразу наново. Він ЗАПАМʼЯТОВУЄТЬСЯ
+   і знімається рівно одним способом — рукою: натиснувши OK, Issue чи
+   Ban. Жоден збій, жодне невдале зчеплення, жодна порожня відповідь
+   кабінета звідти не виймають.
+
+   Памʼять браузера може бути недоступна (інкогніто, заборонені дані
+   сайту) — тоді засувка просто не переживе перезавантаження, а все
+   інше працює як раніше. */
+const CAB_ARCH_KEY = 'cab_archived';
+const CAB_ARCH_MAX = 2000;
+
+function cabArchLoad() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CAB_ARCH_KEY) || '[]');
+    return Array.isArray(raw) ? raw.map(String) : [];
+  } catch (e) { return []; }
+}
+function cabArchSave() {
+  try {
+    localStorage.setItem(CAB_ARCH_KEY,
+      JSON.stringify([...cabArch].slice(0, CAB_ARCH_MAX)));
+  } catch (e) { /* немає памʼяті — працюємо без неї */ }
+}
+
 function cabArchBuild() {
-  cabArch = new Set();
+  // Починаємо з того, що вже знали: засувка переживає перезавантаження.
+  cabArch = new Set(cabArchLoad());
   cabRows.forEach(r => {
-    if (String(r.status || '').toLowerCase() !== 'archive') return;
-    cabArchKeys(r.account_id).forEach(k => cabArch.add(k));
-    cabArchKeys(r.fb_account_id).forEach(k => cabArch.add(k));
+    const keys = cabArchKeys(r.account_id).concat(cabArchKeys(r.fb_account_id));
+    if (!keys.length) return;
+    /* Рядок ПРИЇХАВ і каже «не архів» — це свідомий стан, поставлений
+       рукою, і він засувку знімає. Саме так її й належить знімати.
+       А от рядок, якого немає (не зчепився, не завантажився, чужа
+       команда), не каже нічого — і мовчання не має права нічого
+       скасовувати. */
+    const isArch = String(r.status || '').toLowerCase() === 'archive';
+    keys.forEach(k => { if (isArch) cabArch.add(k); else cabArch.delete(k); });
   });
+  cabArchSave();
 }
 
 function cabIsArch(row, fb) {
@@ -18828,7 +18910,20 @@ function cabRender() {
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
-    </div>`;
+    </div>`
+    /* Попередження стоїть ПІД плитками, тобто рівно там, куди людина
+       дивиться, коли шукає свій кабінет. Ховати його в підказку чи в
+       журнал означало б повторити те саме мовчання, через яке три
+       рази поспіль причина лишалась невідомою. */
+    + (() => {
+        const lost = cabArchLost();
+        if (!lost.length) return '';
+        return `<p class="cab-archlost">
+          \u26A0 ${lost.length} cabinet(s) are archived in your list but are not
+          showing as Archived: ${cabEsc(lost.slice(0, 6).join(', '))}${
+            lost.length > 6 ? ' …+' + (lost.length - 6) : ''}.
+          The archive is stored, the screen is losing it \u2014 send this line over.</p>`;
+      })();
   }
 
   /* Підказку про міграцію з екрана прибрано на прохання. Поля
