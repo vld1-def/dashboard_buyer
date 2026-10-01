@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.09 16:15">
+  <meta name="build" content="build 01.10 05:54">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2264,6 +2264,12 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
    підзаголовком: інакше поруч із знайденим висіла б порожня «Filters»
    з кнопками, які нічим не керують. Групу цілком ховає setFilter. */
 .set-panes.searching .set-col:not(:has(.set-row:not(.no-hit))) { display: none; }
+
+/* Одиниця результату — поруч із числом, не замість нього. Дрібним і
+   тьмяним: вона пояснює, а не сперечається за увагу з самим числом. */
+.cd-unit { display: block; font-size: 9px; font-weight: 700;
+           color: var(--text-muted); letter-spacing: .02em;
+           text-transform: lowercase; line-height: 1.1; margin-top: 1px; }
 
 /* ── мітки всередині файла ── */
 /* Кнопка, що не виглядає кнопкою: у тексті файла рамка й фон рвали б
@@ -4955,7 +4961,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.09 16:15</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 05:54</div>
     </div>
   </aside>
 
@@ -21703,7 +21709,20 @@ window.rlCheck = async function () {
    якою користуються раз на рік.
    ══════════════════════════════════════════════════════════════════ */
 
-const CD_LEAD_DEFAULT = ['offsite_conversion.fb_pixel_lead'];
+/* All імена, якими Facebook зве ОДИН І ТОЙ САМИЙ лід.
+
+   Тут був лише offsite_conversion.fb_pixel_lead — і це була моя
+   помилка. Боявся потрійного рахунку, а він і так неможливий:
+   cdLeadCount зводить усі три імені до базової події й бере ОДНЕ
+   значення (див. cdLeadBase нижче). Звуження нічого не лікувало, зате
+   обнуляло колонку всім, у кого лід приїжджає під іншим іменем — а
+   приїжджає він під тим, яке обере Facebook, і вибір цей не наш.
+
+   mobile_app_install сюди НЕ повертаємо: інстал застосунку — інша
+   подія, і скласти її з лідом означало б отримати число, яке ні про
+   що. Кому потрібні інстали — це окрема колонка, а не домішка. */
+const CD_LEAD_DEFAULT = ['lead', 'onsite_conversion.lead_grouped',
+                         'offsite_conversion.fb_pixel_lead'];
 
 /* ОДНУ Й ТУ САМУ ПОДІЮ FACEBOOK ВІДДАЄ КІЛЬКОМА ІМЕНАМИ ОДРАЗУ.
 
@@ -21803,6 +21822,22 @@ const CD_EVENT = {
   SUBMIT_APPLICATION: 'submit_application', SCHEDULE: 'schedule'
 };
 const CD_REG = 'complete_registration';
+
+/* Як називати одиницю результату в комірці. Коротко: місця там на
+   одне слово, а довге зіпхне число за край. */
+const CD_UNIT = {
+  lead: 'leads', complete_registration: 'regs', purchase: 'purchases',
+  link_click: 'clicks', landing_page_view: 'LPV', impressions: 'impr.',
+  mobile_app_install: 'installs', video_view: 'views',
+  post_engagement: 'engage', like: 'likes', rsvp: 'RSVP',
+  add_to_cart: 'carts', initiate_checkout: 'checkouts',
+  add_payment_info: 'pay info', subscribe: 'subs', start_trial: 'trials',
+  donate: 'donations', view_content: 'views', search: 'searches',
+  contact: 'contacts', submit_application: 'applications',
+  schedule: 'bookings',
+  'messaging_conversation_started_7d': 'chats'
+};
+const cdUnitWord = (u) => CD_UNIT[u] || String(u || '').replace(/_/g, ' ');
 
 /* СТАН ОГОЛОШЕННЯ. У знімку лежить те, що ввімкнене, — а ввімкнене не
    означає «крутиться»: реджект теж ввімкнений, просто Facebook його не
@@ -22214,6 +22249,10 @@ function cdMetrics(r) {
     leadWhy: cdLeadWhy(acts, cdLeads),
     regs: cdPick(acts, CD_REG) || 0,
     result: !suf ? null : suf === 'impressions' ? imps : (cdPick(acts, suf) || 0),
+    /* ОДИНИЦЯ результату — не прикраса. «Result 1240» на адсеті, який
+       оптимізується на кліки, читається точно так само, як 1240
+       депозитів. Число без своєї одиниці — найтихіший спосіб збрехати. */
+    unit: suf || '',
     goal: String(r.optimization_goal || r.custom_event_type || ''),
     state: String(r.effective_status || '').toUpperCase(),
     host: String(r.link_domain || '').trim()
@@ -22236,6 +22275,10 @@ function cdNode(id, name, kind) {
            leadBy: new Map(),        // подія → { v, used } по всіх дітях
            spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
            result: 0, hasResult: false, goals: new Set(),
+           /* ЯКІ саме одиниці склались у result. Набором, бо під
+              кампанією бувають адсети з різними цілями, і тоді їхня
+              сума — не число, а каша: кліки плюс покупки. */
+           units: new Set(),
            /* Набором, а не рядком: під кампанією цілком законно стоять
               оголошення на різні домени, і схлопнути це в одне значення
               означало б показати перше-ліпше як «той самий». */
@@ -22253,7 +22296,8 @@ function cdAdd(n, m) {
   });
   n.spend += m.spend; n.imps += m.imps; n.clicks += m.clicks;
   n.leads += m.leads; n.regs += m.regs; n.ads++;
-  if (m.result != null) { n.result += m.result; n.hasResult = true; }
+  if (m.result != null) { n.result += m.result; n.hasResult = true;
+                          if (m.unit) n.units.add(m.unit); }
   if (m.goal) n.goals.add(m.goal);
   if (m.host) n.hosts.add(m.host);
   n.state.set(m.state, (n.state.get(m.state) || 0) + 1);
@@ -22520,15 +22564,47 @@ window.cdFlipMany = async function (on) {
    Похідні числа (CPM, CTR, ціна за щось) рахуються ІЗ СУМ, а не як
    середнє по рядках. Середнє з середніх — інше число: кампанія на
    три долари важила б у ньому стільки ж, скільки кампанія на триста. */
+/* РІЗНІ ОДИНИЦІ НЕ СКЛАДАЮТЬСЯ.
+
+   Кампанія, де один адсет оптимізується на кліки, а інший на покупки,
+   складала їх в одне число — і воно виходило велике. Зрозуміти з
+   екрана, що воно безглузде, було неможливо: колонка не казала, ЩО
+   рахує. Саме так «результатів багато» й бралось там, де депозитів
+   бути не могло.
+
+   Тепер: одна одиниця — число з її назвою; кілька — «mixed» і перелік
+   у підказці. Прочерк замість суми тут не втрата, а відмова брехати. */
+function cdResultCell(n) {
+  if (!n.hasResult) return { text: cdNone, per: cdNone,
+                             tip: 'The sync has not brought the goal yet' };
+  const u = [...(n.units || [])];
+  if (u.length > 1) return {
+    text: 'mixed', per: cdNone,
+    tip: 'Different ad sets count different things: '
+       + u.map(cdUnitWord).join(', ') + '. Adding them up would mean nothing — '
+       + 'open the ad sets to see each on its own.'
+  };
+  const word = u.length ? cdUnitWord(u[0]) : '';
+  return {
+    text: String(n.result) + (word ? '<span class="cd-unit">' + cdEsc(word) + '</span>' : ''),
+    per: cdPer(n.spend, n.result),
+    tip: word ? 'Counted: ' + word : 'What the ad set optimizes for'
+  };
+}
+
 function cdTotalRow(list) {
   if (!list || !list.length) return '';
   const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, result: 0,
-              hasResult: false, ads: 0 };
+              hasResult: false, ads: 0, units: new Set() };
   list.forEach(n => {
     t.spend += n.spend; t.imps += n.imps; t.clicks += n.clicks;
     t.leads += n.leads; t.regs += n.regs; t.ads += n.ads || 1;
-    if (n.hasResult) { t.result += n.result; t.hasResult = true; }
+    // Підсумок складає ті самі одиниці, що й рядки, — і спотикається
+    // об ту саму кашу, якщо їх кілька. Тож і поводиться так само.
+    if (n.hasResult) { t.result += n.result; t.hasResult = true;
+                       (n.units || []).forEach(u => t.units.add(u)); }
   });
+  const tRes = cdResultCell(t);
 
   const cpm = t.imps > 0 ? cdMoney(t.spend / t.imps * 1000) : cdNone;
   const ctr = t.imps > 0
@@ -22539,8 +22615,8 @@ function cdTotalRow(list) {
     <td></td>
     <td class="ta-r cd-num">${cdBudgetText(cdTotalBudget(list))}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(t.spend)}</td>
-    <td class="ta-r cd-num">${t.hasResult ? String(t.result) : cdNone}</td>
-    <td class="ta-r cd-num">${t.hasResult ? cdPer(t.spend, t.result) : cdNone}</td>
+    <td class="ta-r cd-num" title="${cdEsc(tRes.tip)}">${tRes.text}</td>
+    <td class="ta-r cd-num">${tRes.per}</td>
     <td class="ta-r cd-num">${cpm}</td>
     <td class="ta-r cd-num">${ctr}</td>
     <td class="ta-r cd-num">${t.clicks}</td>
@@ -22612,7 +22688,7 @@ function cdLeadTip(n) {
   const out = rows.map(([t, x]) =>
     t + ' ' + x.v + (x.used ? ' — counted' : ' — same event under another name, not added'));
   return 'Lead = ' + n.leads + '\n' + out.join('\n')
-       + '\n\nA lead is the pixel lead event, here and in the rules alike.';
+       + '\n\nFacebook reports the same lead under several names; only one of them is counted. The dashboard and the rules count it identically.';
 }
 
 const cdPer = (spend, n) => n > 0 ? cdMoney(spend / n)
@@ -22778,12 +22854,10 @@ function cdRow(n, depth, band) {
     ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
     : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
 
-  const goals = [...n.goals];
-  const goalTip = !goals.length ? 'The sync has not brought the goal yet'
-    : goals.length === 1 ? 'Goal: ' + goals[0]
-    : 'Mixed goals: ' + goals.join(', ');
-  const result = n.hasResult ? String(n.result) : cdNone;
-  const perResult = n.hasResult ? cdPer(n.spend, n.result) : cdNone;
+  const res = cdResultCell(n);
+  const goalTip = res.tip;
+  const result = res.text;
+  const perResult = res.per;
 
   const cpm = n.imps > 0 ? cdMoney(n.spend / n.imps * 1000) : cdNone;
   const ctr = n.imps > 0

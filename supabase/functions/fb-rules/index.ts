@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-1';
+const FN_VERSION = 'rules-2';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -225,7 +225,18 @@ function whyHit(r: Rule, a: Agg): string {
    (CD_LEAD_DEFAULT у розборі кабінета). Розійтись їм не можна: ціна
    ліда на екрані й ціна ліда, за якою діє правило, мусять бути одним
    числом. */
-const LEAD_ACTIONS_DEFAULT = ['offsite_conversion.fb_pixel_lead'];
+const LEAD_ACTIONS_DEFAULT = ['lead', 'onsite_conversion.lead_grouped',
+                              'offsite_conversion.fb_pixel_lead'];
+
+/* ЧОМУ ТУТ ЗНОВУ ТРИ ІМЕНІ, А НЕ ОДНЕ.
+
+   Було звужено до одного пікселя — зі страху перед потрійним
+   рахунком. Страх був марний: leadCount нижче зводить усі три імені
+   до базової події й бере ОДНЕ значення. А от шкода була справжня —
+   у кого Facebook віддає лід під іншим іменем, ліди ставали нулем.
+
+   Для правил нуль лідів гірший, ніж для екрана: ціна ліда стає
+   нескінченною, і правило вимикає те, що працює. */
 
 function ruleNum(v: unknown, lo: number, hi: number, fallback: number): number {
   const n = Number(v);
