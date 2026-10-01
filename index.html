@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 01.10 05:54">
+  <meta name="build" content="build 01.10 06:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4961,7 +4961,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 05:54</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 06:22</div>
     </div>
   </aside>
 
@@ -21809,7 +21809,18 @@ const CD_GOAL = {
   EVENT_RESPONSES: 'rsvp', VALUE: 'purchase',
   CONVERSATIONS: 'messaging_conversation_started_7d',
   REPLIES: 'messaging_conversation_started_7d',
-  IMPRESSIONS: 'impressions', REACH: 'impressions'
+  IMPRESSIONS: 'impressions',
+  /* REACH — ОКРЕМО, і не 'impressions'. У Ads Manager під ціллю Reach
+     стоїть охоплення: скільки РІЗНИХ людей побачили. Покази — скільки
+     разів показали, і на тій самій кампанії це число більше, часом
+     утричі. Підставляти одне замість іншого означало б показувати
+     чуже число під правильним підписом.
+
+     Самого охоплення синхронізація поки не привозить (у запиті
+     insights його немає), тож показуємо покази — але підписуємо чесно,
+     що це не те, що рахує Facebook. Краще видима розбіжність, ніж
+     тиха. */
+  REACH: 'reach_as_impressions'
   /* OFFSITE_CONVERSIONS тут навмисно немає: за неї відповідає подія
      пікселя нижче — саме вона й відрізняє реєстрацію від покупки. */
 };
@@ -21835,7 +21846,10 @@ const CD_UNIT = {
   donate: 'donations', view_content: 'views', search: 'searches',
   contact: 'contacts', submit_application: 'applications',
   schedule: 'bookings',
-  'messaging_conversation_started_7d': 'chats'
+  'messaging_conversation_started_7d': 'chats',
+  // Підпис навмисно незручний: він має впадати в око, поки охоплення
+  // не привозиться по-справжньому.
+  reach_as_impressions: 'impr. (not reach)'
 };
 const cdUnitWord = (u) => CD_UNIT[u] || String(u || '').replace(/_/g, ' ');
 
@@ -22248,7 +22262,9 @@ function cdMetrics(r) {
     leads: cdLeadCount(acts, cdLeads),
     leadWhy: cdLeadWhy(acts, cdLeads),
     regs: cdPick(acts, CD_REG) || 0,
-    result: !suf ? null : suf === 'impressions' ? imps : (cdPick(acts, suf) || 0),
+    result: !suf ? null
+          : (suf === 'impressions' || suf === 'reach_as_impressions') ? imps
+          : (cdPick(acts, suf) || 0),
     /* ОДИНИЦЯ результату — не прикраса. «Result 1240» на адсеті, який
        оптимізується на кліки, читається точно так само, як 1240
        депозитів. Число без своєї одиниці — найтихіший спосіб збрехати. */
@@ -22575,20 +22591,35 @@ window.cdFlipMany = async function (on) {
    Тепер: одна одиниця — число з її назвою; кілька — «mixed» і перелік
    у підказці. Прочерк замість суми тут не втрата, а відмова брехати. */
 function cdResultCell(n) {
+  /* ЩО СКАЗАВ САМ FACEBOOK. Колонка показує подію, на яку
+     оптимізується адсет, — і коли число виглядає дивним, перше
+     питання завжди одне: а яка там ціль? Доки відповідь лежала тільки
+     в коді, перевірити її з екрана було нічим, і спір «у Facebook
+     інакше» не мав де закінчитись. Тепер ціль стоїть у підказці як є,
+     її ж словами. */
+  const goals = [...(n.goals || [])];
+  const said = !goals.length ? ''
+    : '\nFacebook calls the goal: ' + goals.join(', ');
   if (!n.hasResult) return { text: cdNone, per: cdNone,
-                             tip: 'The sync has not brought the goal yet' };
+                             tip: 'The sync has not brought the goal yet' + said };
   const u = [...(n.units || [])];
   if (u.length > 1) return {
     text: 'mixed', per: cdNone,
     tip: 'Different ad sets count different things: '
        + u.map(cdUnitWord).join(', ') + '. Adding them up would mean nothing — '
-       + 'open the ad sets to see each on its own.'
+       + 'open the ad sets to see each on its own.' + said
   };
   const word = u.length ? cdUnitWord(u[0]) : '';
+  /* Ціль Reach — єдиний випадок, де ми свідомо показуємо не те, що
+     Facebook: охоплення синхронізація не привозить. Мовчати про це
+     не можна. */
+  const warn = u[0] === 'reach_as_impressions'
+    ? '\nFacebook counts Reach here — unique people. The sync brings '
+      + 'impressions only, and on the same ad set that number is larger.' : '';
   return {
     text: String(n.result) + (word ? '<span class="cd-unit">' + cdEsc(word) + '</span>' : ''),
     per: cdPer(n.spend, n.result),
-    tip: word ? 'Counted: ' + word : 'What the ad set optimizes for'
+    tip: (word ? 'Counted: ' + word : 'What the ad set optimizes for') + warn + said
   };
 }
 
