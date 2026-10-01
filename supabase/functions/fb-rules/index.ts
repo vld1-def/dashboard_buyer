@@ -579,16 +579,52 @@ async function logHits(base: string, hdr: Json, hits: Hit[]): Promise<string> {
 const TG_MAX = 20;
 const TG_LIMIT = 3500;
 
+/* ЗАВЖДИ ДВА ЗНАКИ. Без них ціна клацання виглядала як «$2.1», а
+   спенд — як «$45»: око читає це не як гроші, а як щось недописане, і
+   поруч із «$0.42» у сусідньому рядку числа перестають вишиковуватись
+   одне під одним. */
 function money(v: number): string {
-  return '$' + (Math.round(v * 100) / 100).toLocaleString('en-US');
+  return '$' + (Math.round(v * 100) / 100).toLocaleString('en-US',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+/* Українська множина, а не «лід(ів)». Дужки в живому тексті читаються
+   як недороблений шаблон — а це повідомлення людина читає між справами
+   й швидко. */
+function plural(n: number, one: string, few: string, many: string): string {
+  const t = Math.abs(n) % 100, d = t % 10;
+  if (t > 10 && t < 20) return many;
+  if (d === 1) return one;
+  if (d >= 2 && d <= 4) return few;
+  return many;
+}
+
+/* ЧИСЛА — ТІЛЬКИ ТІ, ЩО ЩОСЬ КАЖУТЬ.
+
+   Було «$45 · click $0.42 · lead ∞ · 0 lead(s)»: «lead ∞» і «0
+   lead(s)» — це двічі одне й те саме, бо нуль лідів і Є причина, чому
+   ціна нескінченна. Нескінченність при цьому виглядає як поломка, а не
+   як відповідь.
+
+   Тому ціну показуємо лише там, де є з чого її рахувати, а решту —
+   лише коли воно не нуль. Реєстрації й депозити теж: правило могло
+   ганятись саме за ними, і нуль, якого не видно, нічого не псує, а
+   видимий нуль — псує рядок. */
 function metricLine(h: Hit): string {
   const a = h.agg;
-  const cpc = METRICS.cpc_link(a), cpl = METRICS.cpl(a);
-  const part = (label: string, v: number | null) =>
-    v == null ? '' : ' · ' + label + ' ' + (v === Infinity ? '∞' : money(v));
-  return money(a.spend) + part('click', cpc) + part('lead', cpl)
-    + ' · ' + a.leads + ' lead(s)';
+  const out = [money(a.spend),
+               a.leads + ' ' + plural(a.leads, 'лід', 'ліди', 'лідів')];
+  if (a.regs) out.push(a.regs + ' реєстр.');
+  if (a.purchases) out.push(a.purchases + ' деп.');
+  /* CPC і CPL, а не «клац» і «лід»: інакше «1 лід · лід $21.00» каже
+     словом «лід» дві різні речі підряд — кількість і ціну. А скорочення
+     тут рідніші за переклад: ними ж людина назвала свої правила. */
+  const cpc = METRICS.cpc_link(a);
+  if (cpc != null && cpc !== Infinity) out.push('CPC ' + money(cpc));
+  if (a.leads > 0) {
+    const cpl = METRICS.cpl(a);
+    if (cpl != null && cpl !== Infinity) out.push('CPL ' + money(cpl));
+  }
+  return out.join(' · ');
 }
 
 /* АДРЕСА ВЛУЧАННЯ. Без неї повідомлення каже «вимкнули KG_1» — а KG_1
@@ -599,7 +635,7 @@ function metricLine(h: Hit): string {
    Назву кампанії не повторюємо там, де сама сутність і є кампанією. */
 function whereLine(h: Hit): string {
   const camp = h.level === 'campaign' ? '' : String(h.campaignName || '').trim();
-  return 'cab ' + (h.account || '?') + (camp ? ' · camp «' + camp + '»' : '');
+  return 'каб. ' + (h.account || '?') + (camp ? ' · ' + camp : '');
 }
 
 /* ЧОМУ НІЧОГО НЕ ВИМКНУЛОСЬ.
@@ -618,42 +654,108 @@ function dryNote(hits: Hit[]): string {
   if (!dry.length) return '';
   const names = [...new Set(dry.filter(h => !h.preview).map(h => h.ruleName))];
   if (!names.length) {
-    return '\n\n\u{1F441} Preview — this was a “Check now”, not a scheduled run.'
-      + '\n   Nothing was switched off. The rules themselves were not asked to act.';
+    return '\n\n\u{1F441} Це була перевірка «Check now», не розклад.'
+      + '\n    Нічого не вимкнулось: правил діяти й не просили.';
   }
   const which = names.map(n => '«' + n + '»').join(', ');
-  return '\n\n\u{1F441} Report only — nothing was switched off.'
-    + '\n   ' + which + ' ' + (names.length > 1 ? 'are' : 'is')
-    + ' not allowed to act yet.'
-    + '\n   To let ' + (names.length > 1 ? 'them' : 'it') + ' switch things off:'
-    + ' Rules → open the rule → tick “Allowed to switch things off”.';
+  /* Шлях лишаємо АНГЛІЙСЬКОЮ, бо саме так підписано на екрані. Переклад
+     тут був би найгіршим із варіантів: людина пішла б шукати «Дозволено
+     вимикати» й не знайшла б нічого. */
+  return '\n\n\u{1F441} Тільки звіт — нічого не вимкнулось.'
+    + '\n    ' + which + ' поки що не ' + (names.length > 1 ? 'мають' : 'має')
+    + ' права вимикати.'
+    + '\n    Дозволити: Rules → відкрий правило → познач'
+    + ' “Allowed to switch things off”.';
+}
+
+/* ГРУПУЄМО, А НЕ ПЕРЕЛІЧУЄМО.
+
+   Кожне влучання йшло пʼятьма рядками, і всі пʼять починались
+   однаково. Коли правило чіпляє пʼять оголошень однієї кампанії — це
+   двадцять пʼять рядків, із яких десять — та сама адреса й та сама
+   назва правила, виписані пʼять разів поспіль. У телефоні, між
+   справами, однакові блоки просто зливаються, і щоб знайти, ЩО саме
+   вимкнулось, доводиться вчитуватись у кожен.
+
+   Тому спільне — правило, кабінет і кампанія — пишемо ОДИН раз
+   заголовком групи. Під ним лишається тільки те, що в кожного своє.
+
+   Ключ групи бере кампанію лише там, де сутність не є самою кампанією:
+   інакше дві кампанії під одним правилом злились би в одну групу з
+   чужим підписом. */
+const tgKey = (h: Hit): string => [h.ruleName, h.account,
+  h.level === 'campaign' ? '' : String(h.campaignName || '')].join('\u0000');
+
+/* Позначка на початку рядка — єдиний якір, за який чіпляється око.
+   Саме тому вона стоїть у НУЛЬОВІЙ колонці, а все інше з відступом:
+   довга назва оголошення переноситься, і без якоря не видно, де
+   закінчилось одне й почалось наступне. */
+const tgMark = (h: Hit): string => h.dry ? '\u{1F441}' : h.ok ? '⛔' : '⚠';
+
+const tgOne = (h: Hit): string => tgMark(h) + ' ' + h.name
+  + '\n    ' + metricLine(h)
+  /* «Чому» — найцінніший рядок: саме він відповідає на «та в мене там
+     інші числа». Стрілка, а не крапка: це не ще один показник, це
+     пояснення рішення. */
+  + (h.why ? '\n    \u21B3 ' + h.why : '')
+  /* Помилка — окремим рядком і зі своїм знаком. Останньою з пʼяти
+     однакових вона губилась, хоч це єдиний рядок, який означає, що
+     вимкнути НЕ вдалось і гроші далі йдуть. */
+  + (h.error ? '\n    ⚠ ' + h.error : '');
+
+/* ЩО САМЕ ВИМКНУЛОСЬ — оголошення, адсет чи ціла кампанія. Без цього
+   слова «⛔ Mostbet_KG_new» читається як одне оголошення, хоч це могла
+   бути кампанія на сорок. Стоїть у заголовку групи, а не в кожному
+   рядку: рівень задає правило, тож у межах однієї групи він один. На
+   випадок, якщо колись стане не один, — перелічимо через скісну. */
+const TG_LEVEL: Record<string, string> = {
+  ad: 'оголошення', adset: 'адсет', campaign: 'кампанія' };
+
+function tgBody(hits: Hit[]): string {
+  const order: string[] = [];
+  const by = new Map<string, Hit[]>();
+  hits.forEach(h => {
+    const k = tgKey(h);
+    if (!by.has(k)) { by.set(k, []); order.push(k); }
+    (by.get(k) as Hit[]).push(h);
+  });
+  return order.map(k => {
+    const list = by.get(k) as Hit[];
+    const lv = [...new Set(list.map(h => h.level))]
+      .map(l => TG_LEVEL[l] || l).join(' / ');
+    return '«' + list[0].ruleName + '» · ' + lv + '\n' + whereLine(list[0]) + '\n'
+      + list.map(tgOne).join('\n');
+  }).join('\n\n');
 }
 
 function tgText(hits: Hit[]): string {
   const real = hits.filter(h => !h.dry && h.ok).length;
   const dry = hits.filter(h => h.dry).length;
   const failed = hits.filter(h => !h.dry && !h.ok).length;
-  const head = (real ? '⛔ Paused ' + real : '\u{1F441} Would pause ' + dry)
-    + (real && dry ? ', ' + dry + ' more only reported' : '')
-    + (failed ? ', ' + failed + ' could not be paused' : '') + '\n\n';
-  const one = (h: Hit) => (h.dry ? '\u{1F441} ' : h.ok ? '⛔ ' : '⚠ ')
-    + h.level + ' «' + h.name + '»\n   ' + whereLine(h) + '\n   ' + metricLine(h)
-    + '\n   rule: ' + h.ruleName
-    + (h.why ? '\n   matched: ' + h.why : '')
-    + (h.error ? '\n   ' + h.error : '');
-  const lines = hits.slice(0, TG_MAX).map(one);
-  const tail = () => {
-    const rest = hits.length - lines.length;
-    return rest > 0 ? '\n\n…and ' + rest + ' more.' : '';
-  };
+  /* Підсумок окремими шматками через крапку, а не одним реченням із
+     комами: «Paused 3, 1 more only reported, 1 could not be paused»
+     читається до кінця, перш ніж стає зрозуміло, скільки всього сталось
+     поганого. */
+  const head = [real ? '⛔ Вимкнено ' + real : '',
+                dry ? '\u{1F441} ' + dry + ' лише показано' : '',
+                failed ? '⚠ ' + failed + ' не вдалось' : '']
+    .filter(Boolean).join(' · ') + '\n\n';
+
+  const note = dryNote(hits);
   /* Підпис рахуємо В стелю, а не поверх неї. Раніше його дописували
      після обрізання — і повідомлення, що тільки-но влізло, разом із
      підписом уже не влазило. Telegram на таке відповідає помилкою, і
-     зникає все повідомлення, а не зайвий рядок. */
-  const note = dryNote(hits);
-  while (lines.length > 1
-         && (head + lines.join('\n') + tail() + note).length > TG_LIMIT) lines.pop();
-  return head + lines.join('\n') + tail() + note;
+     зникає все повідомлення, а не зайвий рядок.
+
+     Відрізаємо тепер ВЛУЧАННЯ, а не готові рядки: рядок із середини
+     групи, викинутий сам по собі, лишив би заголовок без того, що під
+     ним, або число без пояснення. */
+  let keep = hits.slice(0, TG_MAX);
+  const build = (list: Hit[]) => head + tgBody(list)
+    + (hits.length > list.length ? '\n\n…і ще ' + (hits.length - list.length) : '')
+    + note;
+  while (keep.length > 1 && build(keep).length > TG_LIMIT) keep = keep.slice(0, -1);
+  return build(keep);
 }
 
 async function tgPost(token: string, chat: string, text: string): Promise<string> {
