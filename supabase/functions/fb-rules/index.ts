@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-2';
+const FN_VERSION = 'rules-3';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -135,6 +135,9 @@ async function pgGet(base: string, hdr: Json, path: string): Promise<Json[]> {
 type Cond = { m: string; op: string; v: number };
 type Rule = {
   id: string; name: string; on: boolean; dry: boolean;
+  /* ЧИЄ ЦЕ ПРАВИЛО. Не для звіту — для того, чиї кабінети воно має
+     право чіпати. Див. loadRules нижче. */
+  owner: string;
   level: 'ad' | 'adset' | 'campaign';
   match: 'all' | 'any';
   minSpend: number;
@@ -245,12 +248,29 @@ function ruleNum(v: unknown, lo: number, hi: number, fallback: number): number {
 
 /* Читаємо правила з team_settings. Окремої таблиці навмисно немає:
    правил одиниці, вони цілком налаштування, і зайвий SQL-крок при
-   встановленні коштував би дорожче за користь. */
+   встановленні коштував би дорожче за користь.
+
+   ЧИТАЄМО РАЗОМ З АВТОРОМ, і це не дрібниця.
+
+   Функція ходить ключем сервісної ролі, тобто бачить налаштування ВСІХ
+   баєрів. Поки автора не брали, правила складались у одну купу й
+   застосовувались до кабінетів кожного, кого обходив прогін: новий
+   баєр заводив собі «CPL > 3, можна вимикати» — і за пів години воно
+   гасило чужі оголошення. Власник кабінета бачив це як «щось саме
+   повимикалось», і шукати причину в чужих налаштуваннях йому б і на
+   думку не спало.
+
+   Коли питає людина з дашборда, звужуємо ще й запитом: інакше
+   «Check now» рахував би в «rules: N» чужі правила, яких ця людина не
+   бачить і змінити не може. */
 async function loadRules(base: string, hdr: Json, owner: string):
-    Promise<{ rules: Rule[]; leads: string[]; teams: string[] }> {
+    Promise<{ rules: Rule[]; leads: string[]; teams: string[]; orphan: number }> {
   let rows: Json[] = [];
-  try { rows = await pgGet(base, hdr, 'team_settings?select=team_name,value&key=eq.fb_rules'); }
+  const q = 'team_settings?select=team_name,value,created_by&key=eq.fb_rules'
+    + (owner ? '&created_by=eq.' + encodeURIComponent(owner) : '');
+  try { rows = await pgGet(base, hdr, q); }
   catch (_e) { /* немає налаштувань — немає правил */ }
+  let orphan = 0;
 
   const rules: Rule[] = [];
   // Список подій більше не налаштовується — див. LEAD_ACTIONS_DEFAULT.
@@ -261,6 +281,16 @@ async function loadRules(base: string, hdr: Json, owner: string):
     let v: Json = {};
     try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
     catch (_e) { return; }
+    /* Рядок без автора нікому не належить, а отже нічиїх кабінетів і не
+       чіпає. Вимикати рекламу «від імені нікого» — рівно та вада, яку
+       цей фільтр і закриває, тож такі правила пропускаємо й кажемо про
+       це вголос: мовчки зниклі правила читались би як поламана
+       функція. Лікується кроком 3 SECURITY_BUYERS.sql. */
+    const ruleOwner = String(r.created_by || '');
+    if (!ruleOwner) {
+      orphan += (Array.isArray(v.rules) ? v.rules : []).length;
+      return;
+    }
     teams.push(String(r.team_name || ''));
     (Array.isArray(v.rules) ? v.rules : []).forEach((x: Json, i: number) => {
       const when: Cond[] = (Array.isArray(x.when) ? x.when : [])
@@ -271,6 +301,7 @@ async function loadRules(base: string, hdr: Json, owner: string):
       rules.push({
         id: String(x.id || (r.team_name + '-' + i)),
         name: String(x.name || 'rule ' + (i + 1)),
+        owner: ruleOwner,
         on: x.on !== false,
         // Відсутнє dry читаємо як true: правило, у якому не сказано
         // прямо «можна діяти», діяти не має.
@@ -284,7 +315,16 @@ async function loadRules(base: string, hdr: Json, owner: string):
       });
     });
   });
-  return { rules: rules.filter(r => r.on), leads, teams };
+  return { rules: rules.filter(r => r.on), leads, teams, orphan };
+}
+
+/* ЧИЇ ПРАВИЛА МОЖНА ЗАСТОСУВАТИ ДО ЦИХ КАБІНЕТІВ. Окремою функцією, а
+   не рядком усередині циклу, саме тому, що це та обіцянка, яку треба
+   мати чим перевірити: правило вимикає рекламу, і «чуже до чужого не
+   приклеїться» має бути твердженням із тестом, а не припущенням. */
+function rulesFor(list: Rule[], tokenOwner: string): Rule[] {
+  if (!tokenOwner) return [];
+  return list.filter(r => r.owner === tokenOwner);
 }
 
 function condOk(c: Cond, a: Agg): boolean | null {
@@ -843,7 +883,7 @@ Deno.serve(async (req) => {
     onlyRule = String(body?.rule_id || '');
   } catch (_e) { /* тіла може не бути */ }
 
-  const { rules, leads } = await loadRules(base, hdr, owner);
+  const { rules, leads, orphan } = await loadRules(base, hdr, owner);
   const maxAge = await snapLimit(base, hdr);
   const use = onlyRule ? rules.filter(r => r.id === onlyRule) : rules;
   if (!use.length) return reply({ fn: FN_VERSION, cron, rules: 0, note: 'no rules switched on' });
@@ -860,8 +900,22 @@ Deno.serve(async (req) => {
   const hits: Hit[] = [];
   let scanned = 0, cabinets = 0, stale = 0;
 
+  /* Правило чіпає ТІЛЬКИ кабінети свого автора. Токен — це і є
+     власник: кабінети приходять під ним, і вимикати їх однаково можна
+     лише ним. Токен без автора не збігається ні з чиїми правилами, і
+     це теж треба сказати, а не тихо його обійти. */
+  if (orphan) problems.push(orphan + ' rule(s) have no owner and were skipped'
+    + ' — fill created_by in team_settings (step 3 of SECURITY_BUYERS.sql)');
+
   for (const t of tokens) {
     if (Date.now() > deadline) { problems.push('ran out of time'); break; }
+    const tokenOwner = String(t.created_by || '');
+    if (!tokenOwner) {
+      problems.push(t.label + ': the token has no owner, so no rule applies to it');
+      continue;
+    }
+    const ours = rulesFor(use, tokenOwner);
+    if (!ours.length) continue;
     // Кабінети цього токена беремо з нашої ж таблиці: список парку там
     // уже є, і питати його в Facebook удруге немає потреби. Зниклі
     // (missing_since) пропускаємо — там нічого не крутиться.
@@ -875,7 +929,7 @@ Deno.serve(async (req) => {
       if (Date.now() > deadline) { problems.push('ran out of time'); break; }
       const account = String(a.account_id || '');
       if (!account || String(a.status || '') !== 'active') continue;
-      const mine = use.filter(r => !r.cabs.length || r.cabs.includes(account));
+      const mine = ours.filter(r => !r.cabs.length || r.cabs.includes(account));
       if (!mine.length) continue;
       cabinets++;
 
