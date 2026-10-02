@@ -84,12 +84,36 @@ create index if not exists file_links_cabs_idx
 --  ними станеться, це що їх побачать. А перелік того, що в команди
 --  лежить по акаунтах, — це карта, і роздавати її анонімам не можна
 --  навіть без самих файлів.
+--
+--  ⚠️ ЧИТАННЯ БУЛО using (true) — І ЦЕ БУЛА ПОМИЛКА.
+--  Писати, правити й видаляти могли лише свої рядки, а ЧИТАТИ — будь-хто
+--  залогінений. Поки баєр був один, «залогінений» означало «я». Другий
+--  баєр у тому ж проєкті — і він бачить перелік чужих файлів: які
+--  кабінети, які мітки, які нотатки. У самих файлах лежать логін,
+--  пошта, 2FA і куки, тож навіть перелік — це вже карта.
+--
+--  Тепер видно тільки своє. Дашборд не змінюється: він і так питає
+--  рядки своєї команди, просто тепер база не віддасть чужі.
 
 alter table public.file_links enable row level security;
 
+-- Старі рядки без автора. Після наступної політики вони зникнуть з
+-- очей — не загубляться, а саме перестануть показуватись, бо нема з
+-- чим звіряти. Кажемо про це ДО того, як це станеться.
+do $$
+declare n bigint;
+begin
+  select count(*) into n from public.file_links where created_by is null;
+  if n > 0 then
+    raise notice '⚠️ % файл(ів) без автора — після цього блоку вони зникнуть зі списку.', n;
+    raise notice '   Підписати їх на себе: update public.file_links set created_by = auth.uid() where created_by is null;';
+    raise notice '   (виконувати тим акаунтом, якому вони належать)';
+  end if;
+end $$;
+
 drop policy if exists "files_read" on public.file_links;
 create policy "files_read" on public.file_links
-  for select to authenticated using (true);
+  for select to authenticated using (auth.uid() = created_by);
 
 drop policy if exists "files_insert" on public.file_links;
 create policy "files_insert" on public.file_links
@@ -120,28 +144,97 @@ insert into storage.buckets (id, name, public)
 values ('files', 'files', false)
 on conflict (id) do update set public = false;
 
--- Читають, пишуть і видаляють лише залогінені. Анонімові — нічого.
-drop policy if exists "files_bucket_read" on storage.objects;
-create policy "files_bucket_read" on storage.objects
-  for select to authenticated using (bucket_id = 'files');
+-- ⚠️ І ТУТ БУЛО ВІДКРИТО ДЛЯ ВСІХ ЗАЛОГІНЕНИХ.
+-- Закритий рядок у таблиці нічого не вартий, якщо сам файл віддається
+-- кожному, хто ввійшов: шлях видно в підписаній адресі, а підписану
+-- адресу бакет видавав будь-кому. Другий баєр міг не лише СКАЧАТИ
+-- чужий файл з логінами й куками, а й ВИДАЛИТИ його.
+--
+-- Тепер кожна дія — лише над своїм. Автора файла Storage проставляє
+-- сам при завантаженні; insert лишається без умови саме тому, що в
+-- мить вставки автора ще немає — його ставить Storage після неї.
+--
+-- Колонка автора в storage.objects називається по-різному в різних
+-- версіях Supabase (owner uuid — стара, owner_id text — нова). Тому не
+-- вгадуємо, а дивимось, що є насправді: політика, написана під
+-- неіснуючу колонку, не створиться зовсім, і бакет лишиться відкритим.
+do $$
+declare
+  has_new boolean;
+  ocol    text;   -- як називається колонка автора в цій версії Supabase
+  cond    text;   -- умова «це моє» для політик
+begin
+  select exists (select 1 from information_schema.columns
+                  where table_schema = 'storage' and table_name = 'objects'
+                    and column_name = 'owner_id') into has_new;
 
-drop policy if exists "files_bucket_write" on storage.objects;
-create policy "files_bucket_write" on storage.objects
-  for insert to authenticated with check (bucket_id = 'files');
+  if has_new then
+    ocol := 'owner_id';
+    cond := 'owner_id = auth.uid()::text';
+  elsif exists (select 1 from information_schema.columns
+                 where table_schema = 'storage' and table_name = 'objects'
+                   and column_name = 'owner') then
+    ocol := 'owner';
+    cond := 'owner = auth.uid()';
+  else
+    raise exception 'у storage.objects немає ні owner_id, ні owner — політику власника не побудувати';
+  end if;
 
--- Перезаписати наявний файл — це UPDATE на storage.objects, а не
--- insert. Без цієї політики правка тексту у вікні падає з «new row
--- violates row-level security policy»: завантажити новий файл можна,
--- видалити можна, а зберегти поверх — ні.
-drop policy if exists "files_bucket_edit" on storage.objects;
-create policy "files_bucket_edit" on storage.objects
-  for update to authenticated
-  using (bucket_id = 'files')
-  with check (bucket_id = 'files');
+  -- Файли, завантажені до того, як автор узагалі записувався. Беремо
+  -- його з підпису в file_links: шлях у бакеті і є path рядка, тож
+  -- здогадуватись нема про що.
+  execute format(
+    'update storage.objects o set %I = f.created_by%s '
+    'from public.file_links f '
+    'where o.bucket_id = ''files'' and o.name = f.path '
+    '  and f.created_by is not null and o.%I is null',
+    ocol, case when has_new then '::text' else '' end, ocol);
 
-drop policy if exists "files_bucket_drop" on storage.objects;
-create policy "files_bucket_drop" on storage.objects
-  for delete to authenticated using (bucket_id = 'files');
+  execute 'drop policy if exists "files_bucket_read" on storage.objects';
+  execute format(
+    'create policy "files_bucket_read" on storage.objects '
+    'for select to authenticated using (bucket_id = ''files'' and %s)', cond);
+
+  execute 'drop policy if exists "files_bucket_write" on storage.objects';
+  execute
+    'create policy "files_bucket_write" on storage.objects '
+    'for insert to authenticated with check (bucket_id = ''files'')';
+
+  -- Перезаписати наявний файл — це UPDATE на storage.objects, а не
+  -- insert. Без цієї політики правка тексту у вікні падає з «new row
+  -- violates row-level security policy»: завантажити новий файл можна,
+  -- видалити можна, а зберегти поверх — ні.
+  execute 'drop policy if exists "files_bucket_edit" on storage.objects';
+  execute format(
+    'create policy "files_bucket_edit" on storage.objects '
+    'for update to authenticated using (bucket_id = ''files'' and %s) '
+    'with check (bucket_id = ''files'' and %s)', cond, cond);
+
+  execute 'drop policy if exists "files_bucket_drop" on storage.objects';
+  execute format(
+    'create policy "files_bucket_drop" on storage.objects '
+    'for delete to authenticated using (bucket_id = ''files'' and %s)', cond);
+end $$;
+
+-- Файли в бакеті, у яких автора так і не знайшлось: рядка в file_links
+-- немає або в рядку порожній created_by. Після політик вище вони не
+-- відкриються нікому. Мовчати про це не можна — зникле без пояснення
+-- читається як втрата.
+do $$
+declare n bigint; ocol text;
+begin
+  select case when exists (select 1 from information_schema.columns
+                            where table_schema = 'storage' and table_name = 'objects'
+                              and column_name = 'owner_id')
+              then 'owner_id' else 'owner' end into ocol;
+  execute format(
+    'select count(*) from storage.objects where bucket_id = ''files'' and %I is null', ocol)
+    into n;
+  if n > 0 then
+    raise notice '⚠️ % файл(ів) у бакеті без автора — вони більше не відкриються.', n;
+    raise notice '   Знайти їх: select name from storage.objects where bucket_id = ''files'' and % is null;', ocol;
+  end if;
+end $$;
 
 
 -- ════════════════════════════════════════════════════════════
