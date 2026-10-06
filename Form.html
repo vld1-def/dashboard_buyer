@@ -1029,6 +1029,13 @@ const keywords = {
   geo: ['country', 'geo', 'страна', 'країна', 'гео', 'location', 'країна/регіон'],
   cid: ['ad name', 'назва оголошення', 'название объявления', 'creative id'],
   installs: ['leads', 'лід', 'лид', 'mobile app installs', 'app installs', 'інсталяції', 'установки мобільного', 'установки мобильного', 'встановлення мобільного', 'встановлення застосунку'],
+  /* Увага на порядок: у точному збігу перемагає ПЕРШЕ слово зі списку.
+     У звіті по апці шапка містить і «Leads», і «App installs» — і до цього
+     бралась колонка «Leads», бо вона в списку перша. У такому звіті вона
+     нульова (у прикладі: Leads 0, App installs 71), тож імпорт заливав нулі
+     й жодної скарги не було: 0 — теж число.
+     Тому в APP-режимі список інсталів перевертаємо — ліди лишаються в
+     хвості, щоб звіт БЕЗ колонки «App installs» все одно розібрався. */ 
   // ВАЖЛИВО: 'platform' прибрано з device — інакше воно перехоплювало колонку Platform
   device: ['пристрій показів', 'impression device', 'device platform', 'пристрій', 'устройство показов', 'устройство'],
   // Платформа: facebook / instagram / messenger / audience network
@@ -1179,6 +1186,19 @@ async function refreshProvidersTable() {
 
 // Зіставлення колонок: спершу точні збіги, потім часткові, і одна колонка — одному полю.
 // Без цього "Platform" перехоплював би "Platform position", а "Publisher platform" — обидва.
+const INSTALLS_APP_FIRST = [
+  'mobile app installs', 'app installs', 'інсталяції',
+  'установки мобільного', 'установки мобильного',
+  'встановлення мобільного', 'встановлення застосунку',
+  'leads', 'лід', 'лид'
+];
+
+// Список ключових слів для колонки з урахуванням режиму трафіку.
+function kwFor(key) {
+  if (key === 'installs' && trafficMode === 'app') return INSTALLS_APP_FIRST;
+  return keywords[key];
+}
+
 function mapColumns(headers) {
   const map = {};
   const taken = new Set();
@@ -1187,7 +1207,7 @@ function mapColumns(headers) {
 
   // 1) точний збіг заголовка з ключовим словом
   keys.forEach(key => {
-    for (const kw of keywords[key]) {
+    for (const kw of kwFor(key)) {
       const i = headers.findIndex((h, idx) => !taken.has(idx) && h === kw);
       if (i !== -1) { map[key] = i; taken.add(i); return; }
     }
@@ -1196,7 +1216,7 @@ function mapColumns(headers) {
   // 2) частковий збіг — довші ключові слова мають пріоритет ("platform position" > "platform")
   const partial = keys
     .filter(k => map[k] === -1)
-    .map(k => ({ k, kws: [...keywords[k]].sort((a, b) => b.length - a.length) }))
+    .map(k => ({ k, kws: [...kwFor(k)].sort((a, b) => b.length - a.length) }))
     .sort((a, b) => (b.kws[0]?.length || 0) - (a.kws[0]?.length || 0));
 
   partial.forEach(({ k, kws }) => {
@@ -2156,18 +2176,45 @@ const MC_NUMERIC = {
 
 let mcResolve = () => {};
 
-/* Чи дістане гео шаблон назви кампанії — для режиму, який зараз
-   увімкнено. У PWA шаблон один. У APP їх може бути кілька (профілі),
-   і який саме підійде, видно лише по конкретній назві, — тож питаємо
-   інакше: чи хоч один із них узагалі вміє гео. Якщо жоден не вміє,
-   колонку Country справді треба спитати. */
-function geoFromCampaignName() {
-  if (trafficMode === 'app') {
-    const masks = [apMaskFromLegacy(appParse || {})]
-      .concat(Object.values(appProfiles || {}).map(c => apMaskFromLegacy(c || {})));
-    return masks.some(m => String(m || '').includes('{geo}'));
+/* ЧИ ДІСТАНЕ ШАБЛОН ГЕО З НАЗВ У ЦЬОМУ ФАЙЛІ — а не «чи є в шаблоні {geo}».
+   Різниця не теоретична. Типовий APP-шаблон *_*_*_{app}_{acc}_{cid}_{geo}
+   на назві
+
+     cy638t_8wxg7hf7_58ck6MfJ_pfb10964_2087290858548700_UZ_2
+
+   віддає geo = «2»: гео стоїть на один токен лівіше, ніж описано.
+   {geo} у шаблоні є — а гео не дістається. Якби ми на цьому замовкли,
+   імпорт заліз би з країною «2» і ніхто б не спитав.
+
+   Тому беремо справжні назви з файлу, проганяємо через той самий
+   розбір, що й імпорт, і дивимось на результат: код країни — це дві
+   літери, все інше гео не є. Не вийшло на половині назв — питаємо. */
+const GEO_SAMPLE = 60;
+
+function geoFromNames(lines, map) {
+  if (map.name === -1) return false;
+  let ok = 0, tried = 0;
+  for (let i = 1; i < lines.length && tried < GEO_SAMPLE; i++) {
+    const camp = String(lines[i][map.name] || '').trim();
+    if (!camp) continue;
+    tried++;
+    let geo = '';
+    if (trafficMode === 'app') {
+      // Той самий виклик, що в імпорті: профілі, legacy-позиції, все.
+      geo = String(parseAppCampaign(camp, '', '').geo || '');
+    } else {
+      // Колонки Country тут немає — інакше гео не бракувало б, —
+      // тому дивимось тільки на те, що дає шаблон.
+      const r = apParseMask(pwaMask, camp.split('_'), '', '');
+      geo = String((r && r.geo) || '');
+    }
+    if (/^[A-Za-z]{2}$/.test(geo.trim())) ok++;
   }
-  return String(pwaMask || '').includes('{geo}');
+  if (tried && ok * 2 < tried) {
+    console.warn('Campaign-name mask gave a usable geo for only ' + ok +
+      ' of ' + tried + ' names — asking for the geo instead.');
+  }
+  return tried > 0 && ok * 2 >= tried;
 }
 
 // perFile: [{ name, missing: ['acc', 'geo', ...] }]
@@ -2266,13 +2313,14 @@ function handleCSV(e, type) {
          щоб гео не вписувати: воно вже є в назві.
 
          Питати те, що ми вміємо вивести, — це не обережність, а зайва
-         робота щоразу. Якщо ж назва під шаблон не ляже, гео стане «??»
-         і про це скаже окреме повідомлення після імпорту з числом
-         таких рядків — мовчки це не пройде. */
+         робота щоразу. Але «вміємо» перевіряємо на справжніх назвах із
+         цього файлу (geoFromNames), а не по наявності {geo} у шаблоні:
+         шаблон буває зсунутий на токен і тоді віддає не країну, а
+         «2». Не склалось — питаємо, як раніше. */
       const missing = keys.filter(k => map[k] === -1 &&
         !(k === 'startDate' && map.endDate !== -1) &&
         !(k === 'endDate' && map.startDate !== -1) &&
-        !(k === 'geo' && geoFromCampaignName()));
+        !(k === 'geo' && geoFromNames(lines, map)));
       parsed.push({ name, lines, headers, map, missing });
     });
 
