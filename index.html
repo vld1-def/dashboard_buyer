@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 10:49">
+  <meta name="build" content="build 06.10 11:23">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 10:49</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 11:23</div>
     </div>
   </aside>
 
@@ -17381,6 +17381,28 @@ function fbCabMoney(v, cur) {
   return cur === 'USD' ? '$' + s : s + ' ' + (cur || '');
 }
 
+/* ХТО З ТОКЕНІВ ЗʼЇВ ЧАС. Показуємо, лише коли прогін справді довгий:
+   у швидкому це зайвий рядок, а от у довгому це єдине місце, де видно,
+   що винен один токен зі ста кабінетами, а не «все повільне».
+
+   graph — скільки з того ми просто чекали на Facebook. Коли це майже
+   весь time токена, прискорювати треба запити до Facebook; коли ні —
+   шукати в себе. */
+const FB_SLOW_AFTER_MS = 20_000;
+
+function fbSlowList(j) {
+  const slow = Array.isArray(j.slowest) ? j.slowest : [];
+  if (!slow.length || !(Number(j.took_ms) >= FB_SLOW_AFTER_MS)) return '';
+  const sec = v => (Number(v) || 0) / 1000;
+  const rows = slow.slice(0, 3).filter(x => sec(x.ms) >= 1).map(x =>
+    fbEsc(x.label) + ' ' + sec(x.ms).toFixed(1) + 's'
+    + (x.accounts ? ' \u00b7 ' + x.accounts + ' cab' : '')
+    + (x.graph_ms ? ' \u00b7 ' + Math.round(100 * x.graph_ms / Math.max(1, x.ms))
+        + '% waiting on Facebook' : ''));
+  if (!rows.length) return '';
+  return '<br><span class="opacity-70">slowest: ' + rows.join('<br>') + '</span>';
+}
+
 function fbCabList(j) {
   const all = Array.isArray(j.cabs) ? j.cabs : [];
   if (!all.length) return '';
@@ -17466,7 +17488,8 @@ window.fbSync = async function (say, body) {
        «telegram: nothing to report» означають «усе гаразд»: писати їх
        щоразу означає вчити не читати цей кут екрана. */
     const head = `\u2713 ${j.accounts} cabinet(s) from ${j.tokens} token(s)`
-      + (j.changed ? ` \u00b7 ${j.changed} changed state` : '');
+      + (j.changed ? ` \u00b7 ${j.changed} changed state` : '')
+      + (j.took_ms ? ` \u00b7 ${(j.took_ms / 1000).toFixed(1)}s` : '');
 
     const warn = [];
     if (j.failed) warn.push(`${j.failed} came back incomplete`);
@@ -17522,10 +17545,15 @@ window.fbSync = async function (say, body) {
         + (list.length > max ? '<br>\u2026and ' + (list.length - max) + ' more' : '')
         + '</span>';
 
+    /* Порядок: галочка, кабінети, негаразди, і аж потім — хто зʼїв time.
+       Перелік найповільніших зʼявляється саме тоді, коли список
+       кабінетів найдовший, і поставити його ВИЩЕ означало б відсунути
+       вниз те, заради чого кнопку й натискали. */
     tell('<b>' + fbEsc(head) + '</b>'
       + fbCabList(j)
       + dim('\u26A0', warn, 4)
-      + dim('\u00d7', probs, SHOW),
+      + dim('\u00d7', probs, SHOW)
+      + fbSlowList(j),
       j.throttled || j.failed || probs.length || warn.length ? 'var(--warn)' : 'var(--ok)');
     return j;
   } catch (e) {

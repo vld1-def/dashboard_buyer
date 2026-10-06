@@ -58,6 +58,21 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 const PER_ACC = 7;
 const BATCH_MAX = 50;   // 7 кабінетів за виклик
 
+/* СКІЛЬКИ ПАКЕТІВ ТРИМАЄМО В ПОВІТРІ ОДНОЧАСНО.
+
+   Пакети йшли СТРОГО ПО ЧЕРЗІ: відправили п'ятдесят підзапитів,
+   дочекались, відправили наступні п'ятдесят. Усередині пакета Facebook
+   виконує підзапити паралельно сам — а от між пакетами ми чекали
+   рівно нічого. На сорока кабінетах це шість послідовних походів, і
+   кожен триває стільки, скільки найповільніший підзапит у ньому.
+
+   Три за раз — компроміс, і обидва боки важать. Менше — не прискорює;
+   більше — це сплеск, а ліміт Facebook рахує навіть відмовлені запити,
+   і впертись у нього дорожче, ніж зачекати: тоді не приїде взагалі
+   нічого. Загальна кількість запитів від цього не змінюється — тільки
+   те, скільки часу ми стоїмо й дивимось у стелю. */
+const BATCH_PAR = 3;
+
 /* Скільки днів витрат забираємо щоразу. Вікно ковзне, записуємо
    впритул (upsert по дню), тож історія в базі накопичується глибше за
    нього — а от перезаписуються тільки останні 30 днів.
@@ -973,7 +988,11 @@ type Outcome = { accounts: number; failed: number; changed: number;
                     account(s) from 3 token(s)» — число, з якого не
                     видно, чи твій кабінет серед тих сорока. Саме це й
                     питають після натискання Sync now. */
-                 touched: Touched[] };
+                 touched: Touched[];
+                 /* Скільки з часу цього токена пішло саме на очікування
+                    Facebook. Без цього числа «довго» не має адреси: це
+                    може бути і Graph, і наша ж база. */
+                 graphMs: number };
 
 type Touched = { id: string; name: string; spend: number; cur: string;
                  status: string; err: string };
@@ -1014,7 +1033,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
                         days: 0, noHistory: 0, historyError: '', knownError: '',
-                        snapshot: 0, snapshotError: '', linkError: '', touched: [] };
+                        snapshot: 0, snapshotError: '', linkError: '', touched: [],
+                        graphMs: 0 };
 
   let accs: Json[];
   try {
@@ -1135,22 +1155,40 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
      всіх кабінетів той самий. */
   const ourDomains = await teamDomains(base, hdr, t.team_name);
 
-  for (let i = 0; i < base_.length; i += BATCH_MAX / PER_ACC) {
+  const CHUNK = BATCH_MAX / PER_ACC;
+  const slices: (typeof base_)[] = [];
+  for (let i = 0; i < base_.length; i += CHUNK) slices.push(base_.slice(i, i + CHUNK));
+
+  /* Пакети йдуть хвилями по BATCH_PAR, а не по одному. Розбираємо їх
+     СТРОГО в початковому порядку: дані прив'язані до позиції в пакеті,
+     і порядок розбору не має залежати від того, хто відповів перший. */
+  let stop = false;
+  for (let w = 0; w < slices.length && !stop; w += BATCH_PAR) {
     if (Date.now() > deadline) { out.error = out.error || 'ran out of time'; break; }
-    const slice = base_.slice(i, i + BATCH_MAX / PER_ACC);
-    let parts: (Json | null)[];
-    try {
-      parts = await graphBatch(t.token,
-        slice.flatMap(x => urlsFor(x.id, String(x.row.timezone_name || ''))));
-    } catch (e) {
-      const g = e as GraphError;
-      out.error = g.message;
-      out.throttled = !!g.throttled;
+    const wave = slices.slice(w, w + BATCH_PAR);
+    const gStart = Date.now();
+    const got = await Promise.all(wave.map(async (sl) => {
+      try {
+        return { sl, parts: await graphBatch(t.token,
+          sl.flatMap(x => urlsFor(x.id, String(x.row.timezone_name || '')))) };
+      } catch (e) { return { sl, err: e as GraphError }; }
+    }));
+    out.graphMs += Date.now() - gStart;
+
+    for (const g of got) {
+    if (g.err) {
+      out.error = out.error || g.err.message;
+      out.throttled = out.throttled || !!g.err.throttled;
       // Пакет не пройшов цілком — але те, що вже є списком, зберегти
       // варто: стан кабінета важливіший за кількість адсетів.
-      slice.forEach(x => { x.row.sync_error = g.message; rows.push(x.row); });
-      break;
+      g.sl.forEach(x => { x.row.sync_error = g.err!.message; rows.push(x.row); });
+      /* Далі хвиль не шлемо. Ту, що вже приїхала, однаково розбираємо:
+         запити за неї вже витрачені, і викинути відповідь означало б
+         заплатити й нічого не отримати. */
+      stop = true;
+      continue;
     }
+    const slice = g.sl, parts = g.parts;
     slice.forEach((x, k) => {
       const { patch, err, days, pages, live, linkErr } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC), ourDomains);
       if (linkErr && !out.linkError) out.linkError = linkErr;
@@ -1190,6 +1228,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
         currency: x.row.currency, synced_at: now
       }));
     });
+    }
   }
 
   // Кабінети, до яких не дійшли черги (дедлайн або зірваний пакет), усе
@@ -1927,12 +1966,23 @@ async function handle(req: Request): Promise<Response> {
      біду й сховати справжній хвіст. */
   const walked = new Set<number>();
 
+  /* СКІЛЬКИ ЧАСУ ЗʼЇВ КОЖЕН ТОКЕН — і скільки з того пішло на Facebook.
+
+     «Синхронізація довга» без цього числа не має адреси: один поганий
+     токен із сотнею кабінетів виглядає точно так само, як рівномірно
+     повільні всі. Міряємо тут, а не вгадуємо. */
+  const timing: { label: string; ms: number; graph_ms: number; accounts: number }[] = [];
+  const runStart = Date.now();
+
   for (const t of tokens) {
     if (Date.now() > deadline) break;
     walked.add(t.id);
     let r: Outcome;
+    const tStart = Date.now();
     try {
       r = await syncToken(base, hdr, t, deadline, alerts);
+      timing.push({ label: t.label, ms: Date.now() - tStart,
+                    graph_ms: r.graphMs, accounts: r.accounts });
     } catch (e) {
       // Один поганий токен не мусить зупиняти решту: у людини їх
       // десяток, і зупинятись на першому — найгірше з можливого.
@@ -2005,6 +2055,11 @@ async function handle(req: Request): Promise<Response> {
        почне з них, бо список упорядкований за давністю. */
     skipped: tokens.filter(t => !walked.has(t.id)).slice(0, 20).map(t => t.label),
     skipped_total: tokens.length - walked.size,
+    /* ЧАС — щоб «довго» можна було полагодити, а не лише відчути.
+       Найповільніші згори: саме вони й вирішують, чи вкладемось у
+       дедлайн, і саме їх має сенс розглядати першими. */
+    took_ms: Date.now() - runStart,
+    slowest: timing.sort((a, b) => b.ms - a.ms).slice(0, 5),
     history,
     /* Знімок для правил. Мовчати про його відсутність не можна: без
        нього правила нічого не бачать, а виглядало б це як «правила не
