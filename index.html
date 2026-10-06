@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 08:47">
+  <meta name="build" content="build 06.10 08:59">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:47</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:59</div>
     </div>
   </aside>
 
@@ -25433,9 +25433,13 @@ tmBoot();
     const v = String(u || '').trim();
     if (/\/spreadsheets\/d\/[A-Za-z0-9_-]+/.test(v)) return 'gs';
     // Опублікована сторінка: foo.notion.site/… (і старий notion.site/…)
-    if (/^https?:\/\/([a-z0-9-]+\.)?notion\.site\//i.test(v)) return 'notion-pub';
-    // Робоча сторінка: notion.so / www.notion.so — вбудувати не дасть
-    if (/^https?:\/\/(www\.)?notion\.so\//i.test(v)) return 'notion-priv';
+    if (/^https?:\/\/([a-z0-9-]+\.)?notion\.site(\/|$)/i.test(v)) return 'notion-pub';
+    /* Робоча сторінка. ДОМЕНІВ У NOTION ТРИ, і це не дрібниця: вони
+       переїхали з notion.so на notion.com, а сам застосунок віддає
+       посилання з app.notion.com. Ми знали лише notion.so — і на
+       посилання, яке людина щойно скопіювала з Notion, відповідали
+       «це не схоже на Notion». Тому беремо піддомен будь-який. */
+    if (/^https?:\/\/([a-z0-9-]+\.)*notion\.(so|com)(\/|$)/i.test(v)) return 'notion-priv';
     return '';
   }
 
@@ -25550,11 +25554,12 @@ tmBoot();
       frame.classList.add('hidden');
       frame.removeAttribute('src');
       empty.innerHTML = `<p>Notion does not allow this page to be shown inside another site.</p>
-        <p class="sh-hint">This is a workspace link (notion.so). Notion blocks those from being
-        embedded anywhere — nothing is broken here, and there is no way around it from this side.
+        <p class="sh-hint">This is a workspace link (notion.so, notion.com or app.notion.com).
+        Notion blocks those from being embedded anywhere — nothing is broken here, and there is no
+        way around it from this side.
         <br><br>To see it in the dashboard: open the page in Notion → <b>Share</b> → <b>Publish</b>,
-        then paste the <b>notion.site</b> link it gives you. Until then use “Edit” above to open it
-        in a new tab.</p>`;
+        then paste the <b>notion.site</b> link it gives you. Until then “Edit” above opens it in a
+        new tab, and the link stays in this list.</p>`;
       return;
     }
 
