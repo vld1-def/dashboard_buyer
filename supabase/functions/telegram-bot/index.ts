@@ -357,7 +357,7 @@ const FRESH_MIN = 5;
    ні йому, ні мені: ззовні свіжий код і старий виглядають однаково.
    Про fb-sync бот уже казав версію (вона приїжджає у відповіді
    прогону) — а про себе не казав нічого. Тепер каже. */
-const FN_VERSION = 'bot-10';
+const FN_VERSION = 'bot-11';
 /* Чекаємо довше, ніж 25 с: у кого десяток токенів, прогін за чверть
    хвилини не встигає, і кнопка щоразу відповідала «числа ще старі».
    Верхня межа тут не наша — Telegram чекає на відповідь вебхука
@@ -511,7 +511,11 @@ type Hub = { day: string; spend: number; installs: number; regs: number;
              deps: number; byCab: HubCab[]; cabs: number;
              /* Доїхали до межі вибірки. Тоді останній день міг
                 обрізатись, і сума в ньому менша за справжню. */
-             cap: boolean };
+             cap: boolean;
+             /* Найбільша дата з майбутнього, якщо така в базі є. Не для
+                підрахунку — для одного рядка: такий рядок ламає не лише
+                цей блок, а й будь-який вибір періоду в дашборді. */
+             ahead: string };
 
 /* pick() ковтає будь-яку відмову й віддає порожній масив — для
    необовʼязкових шматків це правильно, але не тут. Саме мовчання й
@@ -530,21 +534,49 @@ async function askRows(base: string, hdr: Record<string, string>, path: string):
   } catch (e) { return { rows: [], err: String((e as Error).message || e) }; }
 }
 
+/* МАЙБУТНЄ ВІДСІКАЄМО, І ЦЕ НЕ ПРИДИРКА.
+
+   «Останній день, за який щось заливали» бралось як просто найбільша
+   дата в таблиці — і цього достатньо рівно доти, доки всі дати
+   справжні. Варто одному рядку приїхати з імпорту з датою 2099-01-01
+   (бита клітинка, зсунутий стовпчик, рядок заголовка, прийнятий за
+   дані) — і він виграє сортування назавжди. Блок тоді показує
+   «Дашборд · 2099-01-01, спенд $0.00»: зухвало точна дата й нуль
+   грошей, тобто найгірший різновид відповіді — виглядає як факт.
+
+   Витрати не бувають у майбутньому. Запас у добу — на те, що день у
+   рядку рахується за годинником кабінета, а ми тут у UTC: календарна
+   дата в баєра може випереджати нашу, і відрізати її було б такою
+   самою вадою, тільки в інший бік. */
+function dayCap(): string {
+  return new Date(Date.now() + 24 * 3_600_000).toISOString().slice(0, 10);
+}
+
 async function hubDay(base: string, hdr: Record<string, string>, uid: string):
     Promise<{ hub: Hub | null; err: string }> {
+  const cap = dayCap();
   /* Беремо з кінця за датою й зупиняємось на межі: уся історія нам не
      потрібна, потрібен ОСТАННІЙ день, за який щось заливали. */
   const got = await askRows(base, hdr, 'daily_stats'
     + '?select=date,account,spend,installs,regs,deposits&created_by=eq.'
-    + encodeURIComponent(uid) + '&order=date.desc&limit=' + HUB_ROWS);
+    + encodeURIComponent(uid) + '&date=lte.' + cap
+    + '&order=date.desc&limit=' + HUB_ROWS);
   if (got.err) return { hub: null, err: got.err };
   const rows = got.rows;
-  if (!rows.length) return { hub: null, err: 'empty' };
+
+  /* Про відсічене — окремим рядком, а не мовчки. Рядок із датою з
+     майбутнього псує не лише цей блок: він розтягує будь-який вибір
+     періоду в дашборді, і знайти його інакше дуже важко. */
+  const far = await askRows(base, hdr, 'daily_stats?select=date&created_by=eq.'
+    + encodeURIComponent(uid) + '&date=gt.' + cap + '&order=date.desc&limit=1');
+  const ahead = far.rows.length ? String(far.rows[0].date || '') : '';
+
+  if (!rows.length) return { hub: null, err: ahead ? 'only-ahead:' + ahead : 'empty' };
   const day = String(rows[0].date || '');
   if (!day) return { hub: null, err: 'no-date' };
 
   const out: Hub = { day, spend: 0, installs: 0, regs: 0, deps: 0,
-                     byCab: [], cabs: 0, cap: rows.length >= HUB_ROWS };
+                     byCab: [], cabs: 0, cap: rows.length >= HUB_ROWS, ahead };
   const by = new Map<string, number>();
   rows.forEach(r => {
     if (String(r.date || '') !== day) return;
@@ -929,6 +961,16 @@ const hubCabList = (h: Hub): string => {
     + (h.byCab.length > max ? '\n   …і ще ' + (h.byCab.length - max) : '') + '\n';
 };
 
+/* Рядок про дати з майбутнього. Відсікти й промовчати було б
+   півсправи: такий рядок лишається в базі й далі розтягує будь-який
+   вибір періоду в дашборді, а знайти його там майже неможливо. */
+const aheadNote = (ahead: string): string =>
+  ahead ? '\u26A0 у daily_stats є рядки з датою до ' + ahead
+          + ' \u2014 витрат у майбутньому не буває, у підрахунок вони не '
+          + 'пішли. Варто знайти їх в імпорті: вони псують і вибір періоду '
+          + 'в дашборді.\n'
+        : '';
+
 function hubBlock(p: Park, withCabs: boolean): string {
   const h = p.hub;
   if (!h) {
@@ -942,7 +984,15 @@ function hubBlock(p: Park, withCabs: boolean): string {
           ? 'у daily_stats нічого немає \u2014 залийте вивантаження в дашборді.'
           : p.hubErr === 'no-date'
             ? 'у рядках немає дати.'
-            : p.hubErr)
+            : p.hubErr.startsWith('only-ahead:')
+              /* Єдине, що є в таблиці — рядки з майбутнього. Сказати тут
+                 «нічого немає» означало б послати людину заливати те,
+                 що вже залито, замість того, щоб показати биту дату. */
+              ? 'усі рядки в daily_stats мають дату з майбутнього (до '
+                + p.hubErr.slice('only-ahead:'.length)
+                + '). Витрат у майбутньому не буває \u2014 схоже, при '
+                + 'імпорті зʼїхав стовпчик дати.'
+              : p.hubErr)
       + '\n';
   }
   const lines = HUB_ROWS_OUT.filter(([, get]) => get(h) > 0)
@@ -957,7 +1007,8 @@ function hubBlock(p: Park, withCabs: boolean): string {
        два різні числа в одній відповіді виглядають як поломка. */
     + '\u2139 це ваш імпорт за останній залитий день, не Facebook.\n'
     + (h.cap ? '\u26A0 рядків більше за ' + HUB_ROWS + ' \u2014 за цей день '
-               + 'порахував по перших.\n' : '');
+               + 'порахував по перших.\n' : '')
+    + aheadNote(h.ahead);
 }
 
 function cardSum(p: Park): string {
