@@ -846,7 +846,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Account</label><input type="text" id="km-acc" placeholder="Sub ID 5"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Campaign</label><input type="text" id="km-camp" placeholder="Sub ID 1"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Funnel</label><input type="text" id="km-funnel" placeholder="Sub ID 2"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Creative</label><input type="text" id="km-cr" placeholder="Sub ID 3"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Creative <span class="text-slate-600">· PWA</span></label><input type="text" id="km-cr" placeholder="Sub ID 3"></div>
+            <!-- У APP креатив приходить іншим сабом, ніж у PWA. Одне
+                 поле на обидва режими означало б переписувати його
+                 щоразу при перемиканні — і колись забути. -->
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Creative <span class="text-slate-600">· APP</span></label><input type="text" id="km-cr-app" placeholder="Sub ID 20"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1.5">Platform (placement)</label><input type="text" id="km-plc" placeholder="Sub ID 4"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Offer</label><input type="text" id="km-offer" placeholder="Offer"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Day</label><input type="text" id="km-day" placeholder="Day"></div>
@@ -1210,7 +1214,12 @@ let keitaroAgg = null;   // {byCreative:{}, byDaily:{}, byCampaign:{}, days:Set,
 let lastFbParse = null;  // {map, lines} — щоб перерахувати, якщо Keitaro прийшов пізніше
 
 // Назви колонок Keitaro (у кожної команди можуть відрізнятись) — редагується в Settings
-const KM_DEFAULT = { acc:'Sub ID 5', camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3', plc:'Sub ID 4', offer:'Offer',
+/* crApp — креатив для APP-трафіку. У PWA він приходить одним сабом, у
+   APP іншим, і одне поле на обидва режими означало б переписувати його
+   щоразу при перемиканні — а одного разу забути й залити креативи
+   чужого режиму, не помітивши. */
+const KM_DEFAULT = { acc:'Sub ID 5', camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
+                     crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
 
@@ -1222,7 +1231,8 @@ async function loadKeitaroMap() {
   } catch (e) { console.warn('keitaro_map:', e.message); }
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
   set('km-acc', keitaroMap.acc); set('km-camp', keitaroMap.camp); set('km-funnel', keitaroMap.funnel);
-  set('km-cr', keitaroMap.cr); set('km-plc', keitaroMap.plc); set('km-offer', keitaroMap.offer);
+  set('km-cr', keitaroMap.cr); set('km-cr-app', keitaroMap.crApp);
+  set('km-plc', keitaroMap.plc); set('km-offer', keitaroMap.offer);
   set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
   set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
   set('km-tz', keitaroMap.tz);
@@ -1232,6 +1242,7 @@ async function saveKeitaroMap() {
   const g = id => (document.getElementById(id)?.value || '').trim();
   const m = { acc:g('km-acc')||KM_DEFAULT.acc, camp:g('km-camp')||KM_DEFAULT.camp,
               funnel:g('km-funnel')||KM_DEFAULT.funnel, cr:g('km-cr')||KM_DEFAULT.cr,
+              crApp:g('km-cr-app')||KM_DEFAULT.crApp,
               plc:g('km-plc')||KM_DEFAULT.plc, offer:g('km-offer')||KM_DEFAULT.offer,
               day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
               ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
@@ -1792,7 +1803,18 @@ function parseKeitaro(content) {
     if (i === -1) i = h.findIndex(x => x.includes(n));
     return i;
   };
-  const iAcc = col(keitaroMap.acc), iCamp = col(keitaroMap.camp), iCr = col(keitaroMap.cr);
+  const iAcc = col(keitaroMap.acc), iCamp = col(keitaroMap.camp);
+  /* Креатив беремо за режимом трафіку. Якщо APP-колонки у звіті немає
+     — відкочуємось на PWA-саб і кажемо це в консоль: мовчазний відкат
+     залив би креативи не з того стовпчика, і всі вони виглядали б як
+     справжні. */
+  let iCr = col(keitaroMap.cr);
+  if (trafficMode === 'app') {
+    const iApp = col(keitaroMap.crApp);
+    if (iApp >= 0) iCr = iApp;
+    else console.warn('Keitaro: APP creative column "' + keitaroMap.crApp
+      + '" not found — falling back to "' + keitaroMap.cr + '"');
+  }
   const iFun = col(keitaroMap.funnel), iPlc = col(keitaroMap.plc), iOff = col(keitaroMap.offer);
   console.log('Keitaro offer column:', iOff >= 0 ? `"${sp(lines[0])[iOff]}"` : `НЕ ЗНАЙДЕНО (шукали "${keitaroMap.offer}")`,
               '| відомі оффери команди:', knownOffers);
