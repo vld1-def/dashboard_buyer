@@ -339,7 +339,34 @@ const SNAP_PAGES = 5;
    те, що є, І КАЖЕМО ЦЕ ВГОЛОС: мовчки показані старі числа тут
    найгірше, бо людина щойно попросила свіжі. */
 const FRESH_MIN = 5;
-const SYNC_WAIT_MS = 25_000;
+/* Чекаємо довше, ніж 25 с: у кого десяток токенів, прогін за чверть
+   хвилини не встигає, і кнопка щоразу відповідала «числа ще старі».
+   Верхня межа тут не наша — Telegram чекає на відповідь вебхука
+   близько хвилини, після чого шле оновлення ще раз. Сорок п'ять
+   лишають запас на сам збір відповіді. */
+const SYNC_WAIT_MS = 45_000;
+
+/* ЩО САМЕ ВІДПОВІЛА СИНХРОНІЗАЦІЯ — у підпис, коли числа лишились
+   старими. Інакше «не підтягує свіже» не має жодного сліду: прогін міг
+   не бути задеплоєним, міг не дійти до половини токенів, міг взагалі
+   не знайти жодного. Три різні біди, однакові на вигляд. */
+function syncWhy(j: Record<string, unknown> | null): string {
+  if (!j) return '';
+  const bits: string[] = [];
+  const skipped = Number(j.skipped_total) || 0;
+  if (skipped) {
+    const names = Array.isArray(j.skipped) ? (j.skipped as string[]).slice(0, 3) : [];
+    bits.push('не дійшло до ' + skipped + ' токен(ів)'
+      + (names.length ? ': ' + names.join(', ') : '')
+      + ' — наступний прогін почне з них');
+  }
+  if (j.throttled) bits.push('Facebook уперся в ліміт');
+  /* Версію кажемо завжди, коли числа лишились старими: найчастіша
+     причина «нічого не змінилось» — функція просто не задеплоєна, а
+     ззовні це не відрізнити від несправної. */
+  if (j.fn) bits.push('fb-sync ' + String(j.fn));
+  return bits.join(' · ');
+}
 
 type Fresh = { ran: boolean; note: string };
 
@@ -369,6 +396,11 @@ async function freshen(base: string, hdr: Record<string, string>,
        Сказати «оновлено» тут означало б пообіцяти те, чого не було. */
     if (!Number(j?.tokens)) return { ran: false, note:
       'оновлювати нічого: токенів не знайшлось' };
+    /* Прогін відповів — але це ще не означає, що він обійшов усе.
+       Якщо хвіст лишився, кажемо про це тут, а не мовчимо до наступного
+       разу: саме цей хвіст і є тими кабінетами, чиї числа тижневі. */
+    const why = syncWhy(j);
+    if (Number(j?.skipped_total) || j?.throttled) return { ran: true, note: why };
     return { ran: true, note: '' };
   } catch (e) {
     const err = e as Error;
@@ -377,7 +409,8 @@ async function freshen(base: string, hdr: Record<string, string>,
        сказати; наступне натискання за хвилину покаже вже свіже. */
     if (err.name === 'TimeoutError' || /abort|timeout/i.test(err.message || ''))
       return { ran: false, note: 'оновлення триває довше за ' + (SYNC_WAIT_MS / 1000)
-        + ' с \u2014 числа нижче ще старі, спробуйте ще раз за хвилину' };
+        + ' с — воно не зупинилось, просто не встигло до відповіді. '
+        + 'Числа нижче ще старі; натисніть ще раз за хвилину' };
     return { ran: false, note: 'оновити не вийшло: ' + (err.message || 'без причини') };
   }
 }
