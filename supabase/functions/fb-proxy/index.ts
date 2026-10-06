@@ -84,7 +84,8 @@ function withTimeout(ms: number): { signal: AbortSignal; done: () => void } {
    Повертаємо окремо адресу без секретів — саме вона потім лежить у
    базі як proxy_host і світиться в інтерфейсі. */
 function parseProxy(raw: string): {
-  url: string; host: string; user: string; pass: string; scheme: string;
+  url: string; host: string; user: string; pass: string;
+  scheme: string; explicit: boolean;
 } | null {
   const s = String(raw || '').trim();
   if (!s) return null;
@@ -98,16 +99,23 @@ function parseProxy(raw: string): {
         host: u.host,
         user: decodeURIComponent(u.username || ''),
         pass: decodeURIComponent(u.password || ''),
-        scheme
+        scheme, explicit: true
       };
     } catch (_e) { return null; }
   }
 
+  /* host:port без схеми — HTTP лише як ПЕРША здогадка, не як факт.
+     explicit: false каже нижче, що її можна переглянути: той самий
+     рядок від постачальника буває і HTTP, і SOCKS5, а ззовні вони
+     нічим не відрізняються — ні виглядом, ні номером порту. */
   const p = s.split(':');
-  if (p.length === 2) return { url: 'http://' + s, host: s, user: '', pass: '', scheme: 'http' };
+  if (p.length === 2) {
+    return { url: 'http://' + s, host: s, user: '', pass: '', scheme: 'http', explicit: false };
+  }
   if (p.length === 4) {
     const host = p[0] + ':' + p[1];
-    return { url: 'http://' + host, host, user: p[2], pass: p[3], scheme: 'http' };
+    return { url: 'http://' + host, host, user: p[2], pass: p[3],
+             scheme: 'http', explicit: false };
   }
   return null;
 }
@@ -154,7 +162,7 @@ async function ipThrough(client: Json | null): Promise<string> {
 
    Додаємо до тексту помилки, а не замість нього: оригінал потрібен
    тому, хто піде з ним до постачальника. */
-function explain(err: string, p: { scheme: string; user: string }): string {
+function explain(err: string, p: { scheme: string; user: string; explicit: boolean }): string {
   const e = err.toLowerCase();
   const tips: string[] = [];
   if (/tunnel|connect|forbidden|407|proxy authentication/.test(e)) {
@@ -169,8 +177,11 @@ function explain(err: string, p: { scheme: string; user: string }): string {
   if (/timed out|timeout|aborted/.test(e)) {
     tips.push('the proxy did not answer at all — wrong port, or it is down');
   }
-  if (p.scheme === 'http' && /tunnel|connect/.test(e)) {
+  if (p.explicit && p.scheme === 'http' && /tunnel|connect/.test(e)) {
     tips.push('if this is a SOCKS proxy, write it with the scheme: socks5://host:port');
+  }
+  if (!p.explicit && /tunnel|connect/.test(e)) {
+    tips.push('both http and socks5 were tried on this address, and neither got through');
   }
   return tips.length ? err + '\n\n' + tips.join('\n') : err;
 }
@@ -243,18 +254,35 @@ Deno.serve(async (req) => {
                    note: 'no proxy set for this token' });
   }
 
-  let client: Json;
-  try { client = clientFor(p); }
-  catch (e) {
-    const why = (e as Error).message === 'NO_HTTP_CLIENT'
-      ? 'this runtime has no Deno.createHttpClient — a proxy cannot be used here'
-      : (e as Error).message;
-    return reply({ ok: false, label: row.label, host: p.host,
-                   direct_ip: direct, note: why });
-  }
+  /* ДВІ СПРОБИ, КОЛИ СХЕМУ НЕ НАЗВАЛИ.
 
-  const viaIp = await ipThrough(client);
-  const graphErr = await graphThrough(client, String(row.token || ''));
+     Рядок host:port:user:pass однаково буває і HTTP-проксі, і SOCKS5 —
+     ні вигляд, ні номер порту їх не розрізняють. Пробували тільки HTTP,
+     і на SOCKS5 відмова виглядала точнісінько як «проксі не пускає»:
+     людина йшла перевіряти логін і пароль, які були правильні.
+
+     Тому коли схему не назвали явно, пробуємо другу. Назвали — не
+     чіпаємо: людина сказала, що в неї, і здогадуватись за неї немає
+     підстав. */
+  const tries = p.explicit ? [p.scheme] : ['http', 'socks5'];
+  let viaIp = '', graphErr = '', used = '';
+  for (const scheme of tries) {
+    const url = scheme + '://' + p.host;
+    let client: Json;
+    try { client = clientFor({ url, user: p.user, pass: p.pass }); }
+    catch (e) {
+      const why = (e as Error).message === 'NO_HTTP_CLIENT'
+        ? 'this runtime has no Deno.createHttpClient — a proxy cannot be used here'
+        : (e as Error).message;
+      return reply({ ok: false, label: row.label, host: p.host,
+                     direct_ip: direct, note: why });
+    }
+    used = scheme;
+    viaIp = await ipThrough(client);
+    graphErr = await graphThrough(client, String(row.token || ''));
+    if (viaIp && !graphErr) break;        // спрацювало — друга спроба зайва
+  }
+  p.scheme = used;
 
   /* Однакові адреси — найважливіше, що тут можна побачити: запит пішов
      повз проксі, і все, заради чого він додавався, не сталось. */
@@ -280,6 +308,7 @@ Deno.serve(async (req) => {
   /* Чим саме ми його спробували: схема і чи були логін із паролем.
      Самих секретів тут немає й бути не може — лише «так» або «ні». */
   return reply({ ok, label: row.label, host: p.host, scheme: p.scheme,
+                 tried: tries.join(' then '),
                  with_login: !!(p.user || p.pass),
                  direct_ip: direct, proxy_ip: viaIp, note });
 });
