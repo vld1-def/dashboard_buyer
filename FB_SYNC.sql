@@ -99,6 +99,23 @@ create policy "own_select" on public.fb_accounts for select to authenticated
 
 grant select on public.fb_accounts to authenticated;
 
+-- ── Видалення кабінета зі сторінки ───────────────────────────────────
+--
+-- Рядки сюди пише лише fb-sync, і доти сторінка їх лише читала. Але
+-- після тестів у парку лишаються чужі кабінети: токен давно видалено, а
+-- рядок стоїть, псує лічильники й лізе в око.
+--
+-- Дозвіл навмисно ВУЖЧИЙ за «видаляй своє»: прибрати можна тільки те,
+-- чого вже не бачить жоден токен (missing_since проставлено). Живий
+-- кабінет видаляти немає сенсу — найближчий прогін створить рядок
+-- наново, і кнопка виглядала б зламаною. А так умова збігається з тим,
+-- що людина й так бачить на екрані як «No token».
+drop policy if exists "own_delete_lost" on public.fb_accounts;
+create policy "own_delete_lost" on public.fb_accounts for delete to authenticated
+  using (created_by = auth.uid() and missing_since is not null);
+
+grant delete on public.fb_accounts to authenticated;
+
 
 -- ────────────────────────────────────────────────────────────
 --  ЯКЩО ТАБЛИЦЯ ВЖЕ БУЛА
