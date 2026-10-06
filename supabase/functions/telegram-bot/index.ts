@@ -346,6 +346,14 @@ const SNAP_PAGES = 5;
    те, що є, І КАЖЕМО ЦЕ ВГОЛОС: мовчки показані старі числа тут
    найгірше, бо людина щойно попросила свіжі. */
 const FRESH_MIN = 5;
+
+/* ВЕРСІЯ САМОГО БОТА — у підписі, коли числа лишились старими.
+
+   «Я все задеплоїв, а нічого не змінилось» неможливо було перевірити
+   ні йому, ні мені: ззовні свіжий код і старий виглядають однаково.
+   Про fb-sync бот уже казав версію (вона приїжджає у відповіді
+   прогону) — а про себе не казав нічого. Тепер каже. */
+const FN_VERSION = 'bot-9';
 /* Чекаємо довше, ніж 25 с: у кого десяток токенів, прогін за чверть
    хвилини не встигає, і кнопка щоразу відповідала «числа ще старі».
    Верхня межа тут не наша — Telegram чекає на відповідь вебхука
@@ -377,17 +385,57 @@ function syncWhy(j: Record<string, unknown> | null): string {
 
 type Fresh = { ran: boolean; note: string };
 
+/* ЧОМУ ЦЕ МОВЧАЛО, ХОЧ УСЕ БУЛО ЗАДЕПЛОЄНО.
+
+   Тут читався НАЙСВІЖІШИЙ synced_at (order=synced_at.desc), а підпис
+   під відповіддю обіцяє НАЙСТАРІШИЙ: «усе не старіше за …». Два різні
+   числа, і саме в цьому вся вада.
+
+   Прогін за розкладом обходить токени по черзі й щоразу чіпає ЧАСТИНУ
+   кабінетів. Отже найсвіжіший synced_at майже завжди молодший за
+   пʼять хвилин — і freshen тихо повертався з ran:false, note:'',
+   жодного разу не покликавши fb-sync. А найстаріший тим часом стояв
+   на одинадцяти днях, і людина бачила рівно це: старі числа, кнопка
+   ніби працює, у підписі ні слова про причину.
+
+   Тепер міряємо те саме, що обіцяємо: найстаріший synced_at. Заморожені
+   пропускаємо (missing_since) — їх і park() не рахує, а їхня дата не
+   рушить уже ніколи, тож тримати через них вічне «треба оновити» не
+   можна. nullsfirst — щоб щойно доданий токен, у якого synced_at ще
+   немає, переважив усе. */
+const STALE_MIN = 20;
+
+/* Межа на САМІ СПРОБИ, а не на дані. Поки хвіст черги не розсмоктався,
+   найстаріша дата не рушить — і без цієї межі кожне натискання кнопки
+   запускало б 45-секундний прогін наново. Памʼять живе, поки жива
+   інстанція функції, тобто рівно там, куди прилітають повторні
+   натискання. Причину з попередньої спроби переказуємо тією ж
+   фразою: мовчання тут було б тим самим, від чого ми й лікуємось. */
+const TRY_EVERY_MS = 3 * 60_000;
+const lastTry = new Map<string, { at: number; note: string }>();
+
 async function freshen(base: string, hdr: Record<string, string>,
                        uid: string): Promise<Fresh> {
   const rows = await pick(base, hdr, 'fb_accounts?select=synced_at&created_by=eq.'
-    + encodeURIComponent(uid) + '&order=synced_at.desc&limit=1');
-  const at = String(rows[0]?.synced_at || '');
+    + encodeURIComponent(uid)
+    + '&missing_since=is.null&order=synced_at.asc.nullsfirst&limit=1');
+  /* Жодного рядка — синхронізації ще не було зовсім, і це теж підстава
+     піти її запустити, а не причина замовкнути. */
+  const at = rows.length ? String(rows[0].synced_at || '') : '';
   const ageMin = at ? (Date.now() - Date.parse(at)) / 60_000 : Infinity;
-  if (ageMin < FRESH_MIN) return { ran: false, note: '' };
+  if (ageMin < STALE_MIN) return { ran: false, note: '' };
+
+  const prev = lastTry.get(uid);
+  if (prev && Date.now() - prev.at < TRY_EVERY_MS)
+    return { ran: false, note: prev.note };
+  const done = (r: Fresh): Fresh => {
+    lastTry.set(uid, { at: Date.now(), note: r.note });
+    return r;
+  };
 
   const key = Deno.env.get('CRON_SECRET') || '';
-  if (!key) return { ran: false, note:
-    'оновити зараз не можу: у секретах функцій немає CRON_SECRET' };
+  if (!key) return done({ ran: false, note:
+    'оновити зараз не можу: у секретах функцій немає CRON_SECRET' });
 
   try {
     const res = await fetch(base + '/functions/v1/fb-sync', {
@@ -397,27 +445,27 @@ async function freshen(base: string, hdr: Record<string, string>,
       signal: AbortSignal.timeout(SYNC_WAIT_MS)
     });
     const j = await res.json().catch(() => null) as Record<string, unknown> | null;
-    if (!res.ok) return { ran: false, note: 'оновити не вийшло: HTTP ' + res.status
-      + (j && j.error ? ' \u2014 ' + String(j.error) : '') };
+    if (!res.ok) return done({ ran: false, note: 'оновити не вийшло: HTTP ' + res.status
+      + (j && j.error ? ' \u2014 ' + String(j.error) : '') });
     /* Токенів немає — це не збій синхронізації, а порожній парк.
        Сказати «оновлено» тут означало б пообіцяти те, чого не було. */
-    if (!Number(j?.tokens)) return { ran: false, note:
-      'оновлювати нічого: токенів не знайшлось' };
+    if (!Number(j?.tokens)) return done({ ran: false, note:
+      'оновлювати нічого: токенів не знайшлось' });
     /* Прогін відповів — але це ще не означає, що він обійшов усе.
        Якщо хвіст лишився, кажемо про це тут, а не мовчимо до наступного
        разу: саме цей хвіст і є тими кабінетами, чиї числа тижневі. */
     const why = syncWhy(j);
-    if (Number(j?.skipped_total) || j?.throttled) return { ran: true, note: why };
-    return { ran: true, note: '' };
+    if (Number(j?.skipped_total) || j?.throttled) return done({ ran: true, note: why });
+    return done({ ran: true, note: '' });
   } catch (e) {
     const err = e as Error;
     /* Обрив за НАШОЮ межею — синхронізація пішла працювати, ми просто
        не дочекались. Числа нижче ще старі, і це головне, що треба
        сказати; наступне натискання за хвилину покаже вже свіже. */
     if (err.name === 'TimeoutError' || /abort|timeout/i.test(err.message || ''))
-      return { ran: false, note: 'оновлення триває довше за ' + (SYNC_WAIT_MS / 1000)
+      return done({ ran: false, note: 'оновлення триває довше за ' + (SYNC_WAIT_MS / 1000)
         + ' с — воно не зупинилось, просто не встигло до відповіді. '
-        + 'Числа нижче ще старі; натисніть ще раз за хвилину' };
+        + 'Числа нижче ще старі; натисніть ще раз за хвилину' });
     return { ran: false, note: 'оновити не вийшло: ' + (err.message || 'без причини') };
   }
 }
@@ -712,6 +760,10 @@ const seenLine = (p: Park): string =>
      числа й так були свіжі: зайвий рядок у кожній відповіді про те,
      що все гаразд, читати перестають. */
   + (p.fresh ? '\n\u26A0 ' + p.fresh : '')
+  /* Версію показуємо не завжди, а рівно тоді, коли людина й так
+     питає «це взагалі задеплоєно?»: числа старі або щось не вийшло.
+     У спокійній відповіді цей рядок був би шумом. */
+  + ((p.fresh || snapTooOld(p.seen)) ? '\n\u{1F6E0} ' + FN_VERSION : '')
   /* Заморожені не просто виключені — про них сказано. Мовчки менша
      сума виглядає як загублений спенд, і це наступне питання. */
   + (p.frozen ? '\n\u2744 ' + p.frozen + ' кабінет(ів) не рахую: токен їх '
