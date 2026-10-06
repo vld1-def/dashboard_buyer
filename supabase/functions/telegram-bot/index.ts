@@ -256,9 +256,25 @@ function pickAct(actions: unknown[], suf: string): number {
 const EV_REG = 'complete_registration';
 const EV_DEP = 'purchase';
 
-/* Стан кабінета словами — той самий словник, що й у дашборді. */
-const BAD = ['banned', 'closed', 'closing'];
+/* ЗАКРИТИЙ КАБІНЕТ — ЦЕ НЕ ЗАБАНЕНИЙ, і тут це довго було не так.
+
+   Коментар вище казав «той самий словник, що й у дашборді» — а словник
+   був інший: closed і closing лежали в одному списку з banned. Тобто
+   кабінет, який закрили СВОЇМИ Ж руками, приходив у Telegram під
+   заголовком «Забанені». Плутати ці двоє дорого в обидва боки:
+   власний архів лякає як бан, а справжній бан губиться серед архівів.
+
+   Різниця одна й перевірна, і дашборд саме на неї й спирається:
+   disable_reason. Facebook заповнює його, коли закрив кабінет САМ і за
+   щось конкретне — політика, ризик, платіж. Порожній disable_reason
+   при закритому кабінеті означає, що його закрили навмисно. */
 const SICK = ['unsettled', 'review', 'grace'];
+const SHUT = ['closed', 'closing'];
+
+function isBanned(status: string, reason: string): boolean {
+  if (status === 'banned') return true;
+  return SHUT.includes(status) && !!reason;
+}
 
 type Cab = { id: string; name: string; who: string };
 /* Клацання й конверсії — ПО ВАЛЮТАХ, і це не запас. Ціна ліда в
@@ -272,6 +288,9 @@ type CabSpend = { id: string; name: string; who: string;
 type Park = {
   live: number; total: number; ads: number;
   banned: Cab[]; lost: Cab[]; sick: Cab[];
+  /* Закриті без причини — свій же архів. Окремо від банів: інакше
+     власне рішення щодня приходить як катастрофа. */
+  shut: Cab[];
   spend: Record<string, number>;
   /* Розклад спенда по кабінетах: підсумок не каже, КУДИ пішли гроші, а
      питання після нього завжди саме це. */
@@ -367,8 +386,10 @@ async function freshen(base: string, hdr: Record<string, string>,
    зрізи тієї самої картини, і збирати її двічі означало б колись
    показати в двох кнопках різні числа. */
 async function park(base: string, hdr: Record<string, string>, uid: string): Promise<Park> {
+  /* disable_reason тут обовʼязковий: без нього бан від власного архіву
+     не відрізнити, а саме це й питають у першу чергу. */
   const rows = await pick(base, hdr, 'fb_accounts'
-    + '?select=account_id,name,status,spend_today,currency,ads_active,'
+    + '?select=account_id,name,status,disable_reason,spend_today,currency,ads_active,'
     + 'missing_since,synced_at,token_id&created_by=eq.' + encodeURIComponent(uid)
     + '&limit=500');
 
@@ -410,7 +431,7 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
              keys(r.fb_account_id).forEach(k => browser.set(k, p)); }
   });
 
-  const out: Park = { live: 0, total: 0, ads: 0, banned: [], lost: [], sick: [],
+  const out: Park = { live: 0, total: 0, ads: 0, banned: [], lost: [], sick: [], shut: [],
                       spend: {}, byCab: [], conv: {}, convCap: false, convRows: 0,
                       seen: '', frozen: 0, fresh: '' };
   /* Валюта тих кабінетів, що ПІШЛИ в підрахунок. Нею ж нижче
@@ -449,8 +470,14 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
     }
     out.ads += num(r.ads_active);
     if (num(r.ads_active) > 0 || sp > 0) out.live++;
-    if (BAD.includes(st)) out.banned.push(cab);
-    else if (SICK.includes(st)) out.sick.push({ ...cab, name: name + ' \u00b7 ' + st });
+    const why = String(r.disable_reason || '').trim();
+    if (isBanned(st, why)) {
+      out.banned.push(why ? { ...cab, name: name + ' \u00b7 ' + why } : cab);
+    } else if (SHUT.includes(st)) {
+      /* Закритий без причини — це архів. У «потребує уваги» йому
+         місця немає: нічого не сталось, так і задумано. */
+      out.shut.push(cab);
+    } else if (SICK.includes(st)) out.sick.push({ ...cab, name: name + ' \u00b7 ' + st });
 
     /* НАЙСТАРІШИЙ із тих, що пішли в суму, а не найсвіжіший з усіх.
        Брали max — і підпис казав «5 хв тому», поки частина чисел була
@@ -634,6 +661,10 @@ function cardSum(p: Park): string {
            + (p.lost.length ? 'Токен не бачить: ' + p.lost.length + '\n' : '')
            + (p.sick.length ? 'Проблеми з оплатою: ' + p.sick.length + '\n' : '')
        : '\n\u2705 Проблемних кабінетів немає\n')
+    /* Закриті — ПОЗА «потребує уваги». Вони там і стояли, під словом
+       «Забанені», і саме через це щоранку виглядало, ніби вчора
+       забанили ще три. */
+    + (p.shut.length ? 'Закриті (свій архів): ' + p.shut.length + '\n' : '')
     + seenLine(p);
 }
 
@@ -651,7 +682,8 @@ function cardCabs(p: Park): string {
     + 'Або синхронізація ще не проходила, або токен не додано.';
   /* Тихі рахуємо відніманням, і заморожені теж треба відняти —
      інакше їхня кількість двічі потрапляє в підсумок. */
-  const quiet = p.total - p.live - p.banned.length - p.lost.length - p.sick.length;
+  const quiet = p.total - p.live - p.banned.length - p.lost.length
+              - p.sick.length - p.shut.length;
   return '\u{1F5C2} Кабінети: ' + p.total + '\n\n'
     + 'Крутять: ' + p.live + '\n'
     + 'Тихі: ' + (quiet > 0 ? quiet : 0) + '\n'
@@ -661,6 +693,10 @@ function cardCabs(p: Park): string {
         + list(p.lost, 8) + '\n' : '')
     + (p.sick.length ? '\n\u{1F7E1} Оплата (' + p.sick.length + '):\n'
         + list(p.sick, 8) + '\n' : '')
+    /* Закриті — своїм заголовком і своїм (спокійним) кольором. Раніше
+       вони лежали під 🔴 «Забанені», і кожен ранок читався як розгром. */
+    + (p.shut.length ? '\n\u{1F4E6} Закриті \u2014 свій архів (' + p.shut.length + '):\n'
+        + list(p.shut, 8) + '\n' : '')
     + seenLine(p);
 }
 

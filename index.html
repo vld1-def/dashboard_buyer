@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 07:32">
+  <meta name="build" content="build 06.10 08:18">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5016,7 +5016,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 07:32</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:18</div>
     </div>
   </aside>
 
@@ -13986,10 +13986,11 @@ document.addEventListener('keydown', e => {
 
 <div class="set-group">
             <h3 class="set-gtitle">Sync schedule</h3>
-            <p class="set-gsub">How often the dashboard walks the cabinets. The schedule itself ticks every 30 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
+            <p class="set-gsub">How often the dashboard walks the cabinets — and, with it, how often rules get a chance to act: they run right after each sync, on a snapshot that is seconds old. The schedule itself ticks every 15 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
             <div class="set-row" data-setting="sync pace interval синхронізація темп інтервал">
               <label class="set-label" for="fb-pace-day">Daytime, every</label>
               <select id="fb-pace-day" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="15">15 minutes</option>
                 <option value="30">30 minutes</option>
                 <option value="60">1 hour</option>
                 <option value="120">2 hours</option>
@@ -13999,6 +14000,7 @@ document.addEventListener('keydown', e => {
             <div class="set-row" data-setting="sync pace night ніч синхронізація">
               <label class="set-label" for="fb-pace-night">At night, every</label>
               <select id="fb-pace-night" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="15">15 minutes</option>
                 <option value="30">30 minutes</option>
                 <option value="60">1 hour</option>
                 <option value="120">2 hours</option>
@@ -14014,7 +14016,7 @@ document.addEventListener('keydown', e => {
                 <span class="set-hint" style="margin:0" id="fb-pace-tz"></span>
               </span>
             </div>
-            <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. Anything under 30 minutes needs the schedule itself changed (see the alter_job note at the bottom of FB_SYNC_CRON.sql); Facebook counts even refused requests against the limit, so faster is not always more data.</p>
+            <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. 15 minutes is as fast as the schedule ticks, so a smaller number changes nothing until you change the schedule too (the alter_job note at the bottom of FB_SYNC_CRON.sql). Facebook counts even refused requests against the limit, so faster is not always more data: 15 minutes costs twice what 30 does.</p>
           </div>
 
 <div class="set-group">
@@ -16699,7 +16701,10 @@ async function fbInspect(token) {
 
    Зсув часу пишемо разом із вікном: «ніч з 0 до 8» без нього
    означало б ніч по Гринвічу, тобто не ту, про яку думали. */
-const FB_PACE_DEF = { day: 30, night: 60, from: 0, to: 8 };
+/* 15 хвилин удень — стільки ж, скільки стукає розклад. Темп задає не
+   лише свіжість чисел: правила йдуть слідом за синхронізацією, тож це
+   водночас і те, як швидко правило встигне зупинити оголошення. */
+const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8 };
 
 window.fbPaceLoad = async function () {
   const dEl = document.getElementById('fb-pace-day');
