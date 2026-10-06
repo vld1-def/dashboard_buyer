@@ -282,6 +282,9 @@ type Park = {
   convCap: boolean;
   convRows: number;
   seen: string;
+  /* Чому числа можуть бути не найсвіжішими. Порожньо — значить
+     оновлення або не було потрібне, або пройшло. */
+  fresh: string;
   /* Скільки кабінетів у підрахунок НЕ пішло, бо їхні числа заморожені.
      Без цього сума мовчки меншає, і це виглядає як утрачений спенд. */
   frozen: number;
@@ -293,6 +296,72 @@ type Park = {
    ми про це кажемо. */
 const SNAP_PAGE = 1000;
 const SNAP_PAGES = 5;
+
+/* ─────────── СВІЖІ ЧИСЛА НА ЗАПИТ ───────────
+
+   Бот нічого не питає у Facebook сам: він показує те, що привіз
+   останній прогін синхронізації. Прогін ходить за розкладом і ще й
+   має власний темп (вночі рідше), тож між натисканням кнопки і
+   числами під нею лежала година, а вночі й більше. Підпис про вік
+   був — але людині потрібні свіжі числа, а не точний вік старих.
+
+   Тому перед відповіддю бот просить fb-sync оновити кабінети САМЕ
+   ЦЬОГО баєра. Токена людини в нього немає, тому йде спільним
+   секретом розкладу і полем owner — fb-sync звужується до цього
+   власника й не застосовує темп (на кнопку натиснули щойно).
+
+   ЧОМУ З ПОРОГОМ. Без нього кожне натискання тягло б Facebook, а
+   ліміти там спільні з усім іншим: десяток натискань поспіль
+   коштували б дорожче за годину роботи. Свіжіше за FRESH_MIN —
+   не оновлюємо, бо нема чого.
+
+   ЧОМУ З МЕЖЕЮ ЧАСУ. Синхронізація десятка токенів триває довше, ніж
+   Telegram готовий чекати на відповідь вебхука. Не встигли — віддаємо
+   те, що є, І КАЖЕМО ЦЕ ВГОЛОС: мовчки показані старі числа тут
+   найгірше, бо людина щойно попросила свіжі. */
+const FRESH_MIN = 5;
+const SYNC_WAIT_MS = 25_000;
+
+type Fresh = { ran: boolean; note: string };
+
+async function freshen(base: string, hdr: Record<string, string>,
+                       uid: string): Promise<Fresh> {
+  const rows = await pick(base, hdr, 'fb_accounts?select=synced_at&created_by=eq.'
+    + encodeURIComponent(uid) + '&order=synced_at.desc&limit=1');
+  const at = String(rows[0]?.synced_at || '');
+  const ageMin = at ? (Date.now() - Date.parse(at)) / 60_000 : Infinity;
+  if (ageMin < FRESH_MIN) return { ran: false, note: '' };
+
+  const key = Deno.env.get('CRON_SECRET') || '';
+  if (!key) return { ran: false, note:
+    'оновити зараз не можу: у секретах функцій немає CRON_SECRET' };
+
+  try {
+    const res = await fetch(base + '/functions/v1/fb-sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-cron-key': key },
+      body: JSON.stringify({ owner: uid, on_demand: true }),
+      signal: AbortSignal.timeout(SYNC_WAIT_MS)
+    });
+    const j = await res.json().catch(() => null) as Record<string, unknown> | null;
+    if (!res.ok) return { ran: false, note: 'оновити не вийшло: HTTP ' + res.status
+      + (j && j.error ? ' \u2014 ' + String(j.error) : '') };
+    /* Токенів немає — це не збій синхронізації, а порожній парк.
+       Сказати «оновлено» тут означало б пообіцяти те, чого не було. */
+    if (!Number(j?.tokens)) return { ran: false, note:
+      'оновлювати нічого: токенів не знайшлось' };
+    return { ran: true, note: '' };
+  } catch (e) {
+    const err = e as Error;
+    /* Обрив за НАШОЮ межею — синхронізація пішла працювати, ми просто
+       не дочекались. Числа нижче ще старі, і це головне, що треба
+       сказати; наступне натискання за хвилину покаже вже свіже. */
+    if (err.name === 'TimeoutError' || /abort|timeout/i.test(err.message || ''))
+      return { ran: false, note: 'оновлення триває довше за ' + (SYNC_WAIT_MS / 1000)
+        + ' с \u2014 числа нижче ще старі, спробуйте ще раз за хвилину' };
+    return { ran: false, note: 'оновити не вийшло: ' + (err.message || 'без причини') };
+  }
+}
 
 /* Те, що бот показує, збирається ОДИН раз: усі відповіді — різні
    зрізи тієї самої картини, і збирати її двічі означало б колись
@@ -343,7 +412,7 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
 
   const out: Park = { live: 0, total: 0, ads: 0, banned: [], lost: [], sick: [],
                       spend: {}, byCab: [], conv: {}, convCap: false, convRows: 0,
-                      seen: '', frozen: 0 };
+                      seen: '', frozen: 0, fresh: '' };
   /* Валюта тих кабінетів, що ПІШЛИ в підрахунок. Нею ж нижче
      відсіюється знімок: рядка немає в цій мапі — значить кабінет
      архівований, заморожений або чужий, і його оголошення рахувати не
@@ -465,6 +534,10 @@ const spendLine = (p: Park): string => {
 const seenLine = (p: Park): string =>
   (p.seen ? '\n\n\u{1F551} усе не старіше за ' + ago(p.seen)
           : '\n\n\u{1F551} синхронізації ще не було')
+  /* Що сталося з оновленням перед цією відповіддю. Порожньо — коли
+     числа й так були свіжі: зайвий рядок у кожній відповіді про те,
+     що все гаразд, читати перестають. */
+  + (p.fresh ? '\n\u26A0 ' + p.fresh : '')
   /* Заморожені не просто виключені — про них сказано. Мовчки менша
      сума виглядає як загублений спенд, і це наступне питання. */
   + (p.frozen ? '\n\u2744 ' + p.frozen + ' кабінет(ів) не рахую: токен їх '
@@ -792,7 +865,11 @@ async function answer(token: string, base: string, hdr: Record<string, string>,
     await reply(token, chat, await cardDom(base, hdr, link.user_id), KEYS);
     return;
   }
+  /* Спершу оновлення, потім читання. Навпаки було б безглуздо: ми
+     прочитали б старе, оновили базу й показали прочитане. */
+  const f = await freshen(base, hdr, link.user_id);
   const p = await park(base, hdr, link.user_id);
+  p.fresh = f.note;
   const text = kind === 'spend' ? cardSpend(p)
              : kind === 'cabs'  ? cardCabs(p)
              : cardSum(p);

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 07:03">
+  <meta name="build" content="build 06.10 07:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5016,7 +5016,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 07:03</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 07:32</div>
     </div>
   </aside>
 
@@ -16851,12 +16851,24 @@ function fbProxyLine(r) {
     return '<div class="fb-meta fb-proxy is-off">No proxy \u2014 this token reads Facebook '
          + 'from the server address, same as every other one</div>';
   }
+  /* Час — без секунд: рядок стоїть у списку токенів, і три зайві
+     символи там коштують більше, ніж точність до секунди комусь
+     колись знадобиться. */
   const when = r.proxy_checked_at
-    ? new Date(r.proxy_checked_at).toLocaleString() : 'not checked yet';
+    ? new Date(r.proxy_checked_at).toLocaleString(undefined, {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+      })
+    : 'not checked yet';
   const good = r.proxy_note === 'ok';
+  /* «135.106.121.28:64207 → 135.106.121.28» — це одне й те саме двічі.
+     Стрілка має сенс рівно тоді, коли Facebook побачив НЕ ту адресу,
+     що вписана: тоді це новина. Коли ту саму — зайва половина рядка. */
+  const hostOnly = String(r.proxy_host).split(':')[0];
+  const other = r.proxy_ip && r.proxy_ip !== hostOnly && r.proxy_ip !== r.proxy_host;
   return `<div class="fb-meta fb-proxy ${good ? 'is-on' : 'is-warn'}">
       \u{1F310} ${fbEsc(r.proxy_host)}
-      ${r.proxy_ip ? ' \u2192 ' + fbEsc(r.proxy_ip) : ''}
+      ${other ? ' \u2192 ' + fbEsc(r.proxy_ip) : ''}
       \u00b7 ${fbEsc(when)}
       ${r.proxy_note && !good ? ' \u00b7 ' + fbEsc(r.proxy_note) : ''}
     </div>`;
