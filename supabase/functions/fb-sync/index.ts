@@ -1775,11 +1775,40 @@ async function handle(req: Request): Promise<Response> {
   }
 
   let wantTest = false;
+  let onDemand = false;
+  let askOwner = '';
   try {
     const body = await req.json();
     onlyToken = Number(body?.token_id || 0) || 0;
     wantTest = body?.test === true;
+    onDemand = body?.on_demand === true;
+    askOwner = String(body?.owner || '').trim();
   } catch (_e) { /* тіла може не бути */ }
+
+  /* ОНОВЛЕННЯ НА ЗАПИТ, АЛЕ НЕ З БРАУЗЕРА.
+
+     Бот у Telegram показує те, що привіз останній прогін, — і поки
+     прогін був щогодинним, кнопка «Зведення» віддавала числа годинної
+     давності. Підпис про вік під відповіддю був, та людині потрібні
+     свіжі числа, а не точний вік старих.
+
+     Токена людини бот не має: він ходить ключем сервісної ролі й
+     спільним секретом розкладу. Тому запит «оновити кабінети цього
+     баєра зараз» приходить із cron-ключем і полем owner.
+
+     З БРАУЗЕРНОГО ВХОДУ owner ІГНОРУЄТЬСЯ. Там межу ставить
+     перевірений uid, і дозволити переписати його тілом запиту
+     означало б дати одному баєру синхронізувати чужі токени — тобто
+     рівно те, від чого вся ця функція й звужується. */
+  if (cron && askOwner) {
+    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(askOwner))
+      return reply({ error: 'owner must be a uuid' }, 400);
+    onlyOwner = askOwner;
+  }
+  /* «На запит» без звуження — це повний прогін без темпу, тобто спосіб
+     обійти розклад. Такого входу не буває: або звужено до баєра, або
+     це звичайний прогін за розкладом. */
+  if (onDemand && !onlyOwner) onDemand = false;
 
   /* Тестове повідомлення — дія людини й тільки людини. З розкладу воно
      не має сенсу: нікому буде його читати, а розсилати тест щогодини —
@@ -1793,7 +1822,7 @@ async function handle(req: Request): Promise<Response> {
      стук тут — до того, як піти по токени й у Facebook: інакше «раз на
      годину вночі» коштувало б рівно стільки ж запитів, скільки й
      щопівгодинний прогін. */
-  if (cron) {
+  if (cron && !onDemand) {
     const pace = await syncPace(base, hdr);
     const night = paceIsNight(pace, new Date());
     const everyMs = (night ? pace.night : pace.day) * 60_000;
@@ -1879,7 +1908,11 @@ async function handle(req: Request): Promise<Response> {
      Ланцюгом цього питання немає взагалі: скільки б разів на добу не
      ходила синхронізація, правила йдуть за нею й бачать знімок,
      якому секунди. */
-  const rulesRun = await runRules(cron);
+  /* На запит людини правила НЕ запускаємо. Вони ходять на всіх
+     власників разом і пишуть у Telegram — натиснута кнопка «Зведення»
+     не мусить нікому нічого надсилати, а тим паче вимикати
+     оголошення комусь іншому. Розклад їх запустить, як і раніше. */
+  const rulesRun = onDemand ? 'skipped: on-demand refresh' : await runRules(cron);
 
   /* Про історію витрат кажемо одним рядком. Мовчання тут коштувало б
      дорого: вибір періоду на сторінці спирається саме на неї, і «чому
@@ -1893,7 +1926,8 @@ async function handle(req: Request): Promise<Response> {
 
   return reply({
     fn: FN_VERSION,
-    cron, tokens: done, accounts, failed, changed, throttled,
+    cron, on_demand: onDemand, scoped: onlyOwner ? 'one owner' : 'all owners',
+    tokens: done, accounts, failed, changed, throttled,
     more: done < tokens.length,
     history,
     /* Знімок для правил. Мовчати про його відсутність не можна: без
