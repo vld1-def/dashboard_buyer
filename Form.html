@@ -2156,6 +2156,20 @@ const MC_NUMERIC = {
 
 let mcResolve = () => {};
 
+/* Чи дістане гео шаблон назви кампанії — для режиму, який зараз
+   увімкнено. У PWA шаблон один. У APP їх може бути кілька (профілі),
+   і який саме підійде, видно лише по конкретній назві, — тож питаємо
+   інакше: чи хоч один із них узагалі вміє гео. Якщо жоден не вміє,
+   колонку Country справді треба спитати. */
+function geoFromCampaignName() {
+  if (trafficMode === 'app') {
+    const masks = [apMaskFromLegacy(appParse || {})]
+      .concat(Object.values(appProfiles || {}).map(c => apMaskFromLegacy(c || {})));
+    return masks.some(m => String(m || '').includes('{geo}'));
+  }
+  return String(pwaMask || '').includes('{geo}');
+}
+
 // perFile: [{ name, missing: ['acc', 'geo', ...] }]
 // Повертає { '<file>': { acc: '...', geo: '...' } } або null, якщо скасували.
 function askMissingColumns(perFile) {
@@ -2243,10 +2257,22 @@ function handleCSV(e, type) {
       const headers = lines[0].map(h => h.toLowerCase());
       const map = mapColumns(headers);
       if (map.spend === -1 && map.name === -1) { badNames.push(name + ' (does not look like an FB report)'); return; }
-      // Дату вважаємо знайденою, якщо є хоч одна з двох колонок.
+      /* Дату вважаємо знайденою, якщо є хоч одна з двох колонок.
+
+         ГЕО НЕ ПИТАЄМО, КОЛИ ЙОГО ДІСТАНЕ ШАБЛОН. Вікно «не знайшли
+         колонку Geo» зʼявлялось на кожному звіті без стовпчика Country
+         — тобто майже на кожному, — і людина вписувала країну руками.
+         А шаблон назви кампанії стоїть у налаштуваннях саме для того,
+         щоб гео не вписувати: воно вже є в назві.
+
+         Питати те, що ми вміємо вивести, — це не обережність, а зайва
+         робота щоразу. Якщо ж назва під шаблон не ляже, гео стане «??»
+         і про це скаже окреме повідомлення після імпорту з числом
+         таких рядків — мовчки це не пройде. */
       const missing = keys.filter(k => map[k] === -1 &&
         !(k === 'startDate' && map.endDate !== -1) &&
-        !(k === 'endDate' && map.startDate !== -1));
+        !(k === 'endDate' && map.startDate !== -1) &&
+        !(k === 'geo' && geoFromCampaignName()));
       parsed.push({ name, lines, headers, map, missing });
     });
 

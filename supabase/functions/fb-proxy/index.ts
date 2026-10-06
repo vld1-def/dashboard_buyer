@@ -139,6 +139,42 @@ async function ipThrough(client: Json | null): Promise<string> {
   } finally { t.done(); }
 }
 
+/* ЩО НАСПРАВДІ ОЗНАЧАЄ ПОМИЛКА ПРОКСІ.
+
+   «unsuccessful tunnel» — точний текст, але він лишає людину сам на
+   сам із пошуком. А причин у відмови на CONNECT рівно кілька, і всі
+   вони перевіряються за хвилину, якщо їх назвати.
+
+   Найчастіша — логін із паролем: більшість куплених проксі без них не
+   пускає нікого, а в рядку host:port їх немає. Друга за частотою —
+   білий список адрес: проксі пускає лише з твоєї домашньої, а запит
+   прийшов із сервера. І вона тут окремо важлива, бо адреса сервера
+   щоразу інша: білий список на Edge Functions не працює в принципі,
+   скільки його не поповнюй.
+
+   Додаємо до тексту помилки, а не замість нього: оригінал потрібен
+   тому, хто піде з ним до постачальника. */
+function explain(err: string, p: { scheme: string; user: string }): string {
+  const e = err.toLowerCase();
+  const tips: string[] = [];
+  if (/tunnel|connect|forbidden|407|proxy authentication/.test(e)) {
+    if (!p.user) {
+      tips.push('the proxy got no login and password — most paid proxies refuse '
+        + 'without them; write it as host:port:user:pass');
+    }
+    tips.push('or it only allows whitelisted addresses: this call came from the '
+      + 'Supabase server, and that address is different on every run — '
+      + 'a whitelist cannot work here, only a login and password can');
+  }
+  if (/timed out|timeout|aborted/.test(e)) {
+    tips.push('the proxy did not answer at all — wrong port, or it is down');
+  }
+  if (p.scheme === 'http' && /tunnel|connect/.test(e)) {
+    tips.push('if this is a SOCKS proxy, write it with the scheme: socks5://host:port');
+  }
+  return tips.length ? err + '\n\n' + tips.join('\n') : err;
+}
+
 async function graphThrough(client: Json, token: string): Promise<string> {
   const t = withTimeout(STEP_MS);
   try {
@@ -224,9 +260,9 @@ Deno.serve(async (req) => {
      повз проксі, і все, заради чого він додавався, не сталось. */
   const samePlace = !!viaIp && !!direct && viaIp === direct;
   const ok = !!viaIp && !graphErr && !samePlace;
-  const note = graphErr ? graphErr
+  const note = graphErr ? explain(graphErr, p)
     : samePlace ? 'the proxy answered from the same address as a direct call — traffic did not go through it'
-    : !viaIp ? 'the proxy did not answer'
+    : !viaIp ? explain('the proxy did not answer', p)
     : 'ok';
 
   try {
@@ -241,6 +277,9 @@ Deno.serve(async (req) => {
     });
   } catch (_e) { /* не записали — відповідь усе одно чесна */ }
 
+  /* Чим саме ми його спробували: схема і чи були логін із паролем.
+     Самих секретів тут немає й бути не може — лише «так» або «ні». */
   return reply({ ok, label: row.label, host: p.host, scheme: p.scheme,
+                 with_login: !!(p.user || p.pass),
                  direct_ip: direct, proxy_ip: viaIp, note });
 });
