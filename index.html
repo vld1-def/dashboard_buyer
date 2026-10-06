@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 16:07">
+  <meta name="build" content="build 06.10 18:20">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -753,10 +753,6 @@ input[type="date"]::-webkit-datetime-edit-year-field {
   /* Weekly heatmap — приховуємо менш важливі колонки */
   .heat-col-hide { display: none; }
 
-  /* Live table — зменшуємо padding клітинок */
-  #live-table-section td,
-  #live-table-section th { padding: 6px 8px !important; font-size: 10px !important; }
-
   /* Screenshot modal */
   #screenshot-modal .card { border-radius: 1.5rem !important; }
 
@@ -1387,13 +1383,11 @@ select option { background: var(--surface-2); color: var(--text-main); }
 }
 
 /* ─────────── Таблиці ─────────── */
-#live-table-section thead th, #rb-table thead th {
+#rb-table thead th {
   padding: 11px 16px !important; font-size: 10px !important;
   background: var(--surface-2) !important; color: var(--text-muted) !important;
   letter-spacing: .12em; backdrop-filter: none !important; border-bottom: 1px solid var(--border) !important;
 }
-#live-table-section tbody td { padding: 11px 16px !important; font-size: 12px; }
-#live-table-section tbody tr:hover td { background: rgba(255,255,255,.025); }
 
 /* ─────────── Скролбари ─────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1718,8 +1712,6 @@ body.hub-open:not(.dock-off) #sheets-panel { height: calc(100vh / var(--zoom) - 
 #dashboard-content .card > .mb-6 { margin-bottom: 12px !important; }
 #dashboard-content .card > .mb-5 { margin-bottom: 10px !important; }
 
-#live-table-section > .overflow-x-auto { max-height: 400px !important; }
-#live-table-section > .p-6 { padding: 14px !important; }
 #rb-table-wrap { max-height: 400px !important; }
 #creative-analyzer-section [class*="max-h-["] { max-height: 320px !important; }
 
@@ -4967,10 +4959,6 @@ input.ui-in[type="range"] { padding: 0; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
         <span class="sb-lbl">Geo Breakdown</span>
       </button>
-      <button class="sb-item" data-nav="live" onclick="navGo('live')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
-        <span class="sb-lbl">Live Data</span>
-      </button>
       <button class="sb-item" data-nav="cabinets" onclick="navGo('cabinets')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M2 12h20"/></svg>
         <span class="sb-lbl">Cabinets</span>
@@ -5027,7 +5015,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 16:07</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 18:20</div>
     </div>
   </aside>
 
@@ -5766,48 +5754,6 @@ input.ui-in[type="range"] { padding: 0; }
         <div id="device-geo-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
       </div>
 
-      <!-- Live Table -->
-     <!-- Live Table Section -->
-<div id="live-table-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5">
-    <div class="p-6 border-b border-white/5 flex flex-col xl:flex-row justify-between items-center gap-6 bg-white/[0.02]">
-        <h2 class="font-black text-xl uppercase tracking-tighter text-blue-500 italic">Live Data Feed</h2>
-        
-        <!-- Фільтри -->
-        <div class="flex flex-wrap gap-3 p-2 rounded-2xl bg-black/20 border border-white/5 text-xs font-bold">
-            <input type="date" id="filter-from" onchange="applyFilter()" class="bg-transparent outline-none p-2 text-white">
-            <span class="mt-2 opacity-30 uppercase text-[9px]">To</span>
-            <input type="date" id="filter-to" onchange="applyFilter()" class="bg-transparent outline-none p-2 text-white">
-            
-            <!-- Оживлений селектор ГЕО -->
-            <select id="filter-geo-select" onchange="applyFilter()" class="bg-transparent border-l border-white/10 pl-3 outline-none uppercase text-[10px] min-w-[100px] font-black tracking-widest text-white cursor-pointer">
-                <option value="">ALL GEO</option>
-            </select>
-        </div>
-    </div>
-
-    <div class="overflow-x-auto max-h-[600px] custom-scrollbar">
-        <table class="w-full text-left border-separate border-spacing-0">
-            <!-- Хедер з ефектом рідкого скла -->
-            <thead class="sticky top-0 z-20 backdrop-blur-3xl bg-white/[0.03] shadow-[0_4px_30px_rgba(0,0,0,0.1)] border-b border-white/10">
-                <tr class="text-[11px] font-black uppercase tracking-widest text-slate-500">
-                    <th onclick="sortTable('date')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Date <span id="sort-date"></span></th>
-                    <th onclick="sortTable('account')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Account</th>
-                    <th onclick="sortTable('geo')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5 text-center">Geo</th>
-                    <th class="p-5 border-b border-white/5">Agent</th>
-                    <th onclick="sortTable('funnel')" class="p-5 cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Funnel</th>
-                    <th onclick="sortTable('spend')" class="p-5 text-right cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Spend</th>
-                    <th onclick="sortTable('regs')" class="p-5 text-center cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5">Regs</th>
-                    <th onclick="sortTable('deposits')" class="p-5 text-center cursor-pointer hover:text-blue-400 transition-colors border-b border-white/5 text-green-500">Dep</th>
-                </tr>
-            </thead>
-            <tbody id="table-body" class="divide-y divide-white/5 bg-transparent">
-                <!-- Дані вставляються через JS -->
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- ═══════════ REPORT BUILDER (списки як у Keitaro) ═══════════ -->
 <div id="report-builder-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5 mt-8">
   <div class="p-5 border-b border-white/5 bg-white/[0.02]">
     <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
@@ -6731,6 +6677,20 @@ async function sbFetchAll(table, build) {
   });
 }
 
+/* Межі вибраного місяця — одним місцем на всю сторінку.
+
+   Рахувалось це тут же, всередині застосування фільтра, і більше нікому
+   не було видно. Коли «Live Data Feed» прибрали, виявилось, що підпис
+   періоду на картці-скріншоті брав дати з ПОЛІВ тієї таблиці — тобто
+   тримався за блок, який до нього не має стосунку. Тепер обидва питають
+   одне й те саме. */
+function monthRange() {
+  const [year, month] = currentMonthFilter.split('-');
+  const lastDay = new Date(year, month, 0).getDate();
+  return [`${currentMonthFilter}-01`,
+          `${currentMonthFilter}-${lastDay < 10 ? '0' + lastDay : lastDay}`];
+}
+
   function applyGlobalFilter() {
   // 1. Фільтруємо дані для кешу
   filteredDataCache = rawData.filter(d => d.date && d.date.startsWith(currentMonthFilter));
@@ -6738,15 +6698,11 @@ async function sbFetchAll(table, build) {
   console.log(`📊 Глобальний фільтр: ${currentMonthFilter}`);
 
   // 2. Розраховуємо дати для інпутів (Початок і Кінець місяця)
-  const [year, month] = currentMonthFilter.split('-');
-  const lastDay = new Date(year, month, 0).getDate(); // Визначаємо кількість днів у місяці
-  
-  const start = `${currentMonthFilter}-01`;
-  const end = `${currentMonthFilter}-${lastDay < 10 ? '0' + lastDay : lastDay}`;
+  const [start, end] = monthRange();
 
   // 3. Автоматично виставляємо дати в УСІ фільтри на сторінці
-  const fromInputs = ['filter-from', 'chart-from', 'geo-filter-from', 'ai-from', 'heat-from'];
-  const toInputs = ['filter-to', 'chart-to', 'geo-filter-to', 'ai-to', 'heat-to'];
+  const fromInputs = ['chart-from', 'geo-filter-from', 'ai-from', 'heat-from'];
+  const toInputs = ['chart-to', 'geo-filter-to', 'ai-to', 'heat-to'];
 
   fromInputs.forEach(id => {
     const el = document.getElementById(id);
@@ -6902,7 +6858,6 @@ async function sbFetchAll(table, build) {
   renderTrend(data);
   renderGeoList(data);
   setTimeout(syncGeoHeight, 0);   // після того, як обидві колонки відмалювались
-  renderTable(data);
   renderWeeklyHeatmap(data);
   renderInsightCards(data);
 }
@@ -7434,29 +7389,6 @@ const m = {};
         </div>
       </div>`;
   }).join('');
-}
-  // --- 1. МАЛЮВАННЯ ГОЛОВНОЇ ТАБЛИЦІ (Live Data Feed) ---
-// 2. Функція рендеру таблиці (БЕЗ стовпця %)
-function renderTable(data) {
-  const body = document.getElementById('table-body');
-  if (!body) return;
-  body.innerHTML = '';
-
-  data.forEach(row => {
-    body.innerHTML += `
-      <tr class="hover:bg-white/[0.02] transition-colors text-sm font-medium">
-        <td class="p-5 text-slate-500 font-mono text-xs">${row.date}</td>
-        <td class="p-5 font-black uppercase text-white">${row.account || row.acc || 'N/A'}</td>
-        <td class="p-5 text-center">
-          <span class="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-lg font-black text-[10px] uppercase">${row.geo}</span>
-        </td>
-        <td class="p-5 text-slate-400 text-xs">${row.agent || 'Direct'}</td>
-        <td class="p-5 font-bold text-white">${row.funnel || 'Default'}</td>
-        <td class="p-5 font-black text-right text-white">$${Math.round(row.spend).toLocaleString()}</td>
-        <td class="p-5 text-center font-bold text-blue-400 text-lg">${row.regs}</td>
-        <td class="p-5 text-center font-black text-green-500 text-lg">${row.deposits}</td>
-      </tr>`;
-  });
 }
 
   // --- 8. ТАСКИ ТА ЗВІТИ (SQL) ---
@@ -8870,7 +8802,7 @@ async function loadTeamLeadToggles() {
   const fresh = await getTeamSetting('tl_access');
   if (fresh) { try { acc = JSON.parse(fresh); } catch (e) {} }
   // Дозволено лише те, що явно === true (нові блоки не вмикаються самі)
-  ['kpi','chart','geo','creatives','heatmap','table','device-geo','report'].forEach(k => {
+  ['kpi','chart','geo','creatives','heatmap','device-geo','report'].forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
     if (el) el.checked = acc[k] === true;
   });
@@ -9602,7 +9534,7 @@ async function siteLogout() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','chart','geo','creatives','heatmap','table','device-geo','report','cabinets','domains','expenses'];
+  const keys = ['kpi','chart','geo','creatives','heatmap','device-geo','report','cabinets','domains','expenses'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -9670,7 +9602,6 @@ async function initTeamLeadMode() {
     'geo':        'geo-sidebar-col',
     'creatives':  'creative-analyzer-section',
     'heatmap':    'weekly-analysis-section',
-    'table':      'live-table-section',
     'device-geo': 'device-geo-section',
     'report':     'report-builder-section',
     'cabinets':   'cabinets-section',
@@ -9734,7 +9665,6 @@ async function loadSettings() {
   const config = {
     'toggle-creatives': 'creative-analyzer-section',
     'toggle-device-geo': 'device-geo-section',
-    'toggle-table': 'live-table-section',
     'toggle-heatmap': 'weekly-analysis-section',
     'toggle-report': 'report-builder-section',
     'toggle-cabinets': 'cabinets-section',
@@ -10121,7 +10051,7 @@ function escapeHtml(str) {
 
 function populateGeoFilter(data) {
   // Список ID всіх селекторів ГЕО на сторінці
-  const targetSelects = ['filter-geo-select', 'heat-geo'];
+  const targetSelects = ['heat-geo'];
   
   // Отримуємо унікальні ГЕО з масиву даних
   const geos = [...new Set(data.map(d => (d.geo || "").toUpperCase()))]
@@ -10629,8 +10559,11 @@ async function toggleSyncModal() {
 // --- 3. СКРІНШОТ КАРТКА (SUMMARY) ---
 function openScreenshotModal() {
   const modal = document.getElementById('screenshot-modal');
-  const from = document.getElementById('filter-from').value;
-  const to = document.getElementById('filter-to').value;
+  /* Period беремо з місяця, вибраного вгорі сторінки. Раніше він
+     читався з полів «Live Data Feed» — а та таблиця була лише одним із
+     блоків, і разом із нею підпис зник би, хоч самі дані ті самі:
+     filteredDataCache наповнює саме місячний фільтр. */
+  const [from, to] = monthRange();
 
   const act = filteredDataCache;
   if (!act.length) { alert("No data to show"); return; }
@@ -10794,21 +10727,6 @@ window.addEventListener('click', function(e) {
     currentTaskFilter = status;
     renderTasks(status);
   }
-     // --- 8. ТАБЛИЦЯ ТА ФІЛЬТРИ ---
-  function applyFilter() {
-  const from = document.getElementById('filter-from').value;
-  const to = document.getElementById('filter-to').value;
-  const geo = document.getElementById('filter-geo-select').value;
-  
-  // Фільтруємо rawData
-  filteredDataCache = rawData.filter(d => {
-    const matchDate = (!from || d.date >= from) && (!to || d.date <= to);
-    const matchGeo = !geo || d.geo === geo;
-    return matchDate && matchGeo;
-  });
-  
-  renderTable(filteredDataCache);
-}
      // --- 10. КЕРУВАННЯ ВІДЖЕТАМИ ТА МЕНЮ ---
 window.onclick = function(event) {
   const menus = ['month-menu', 'team-menu'];
@@ -11240,39 +11158,6 @@ function closeGeoModal() {
 }
 
     // Глобальний стан сортування
-let sortConfig = { key: 'date', direction: 'desc' };
-
-// 1. Функція сортування
-function sortTable(key) {
-  // Перемикаємо напрямок, якщо натиснули на ту саму колонку
-  if (sortConfig.key === key) {
-    sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
-  } else {
-    sortConfig.key = key;
-    sortConfig.direction = 'desc';
-  }
-
-  // Сортуємо відфільтровані дані
-  filteredDataCache.sort((a, b) => {
-    let valA = a[key];
-    let valB = b[key];
-
-    // Обробка чисел для Spend, Regs, Deposits
-    if (['spend', 'regs', 'deposits'].includes(key)) {
-      valA = Number(valA) || 0;
-      valB = Number(valB) || 0;
-    } else {
-      valA = String(valA).toLowerCase();
-      valB = String(valB).toLowerCase();
-    }
-
-    if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
-    if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-    return 0;
-  });
-
-  renderTable(filteredDataCache);
-}
 async function deletePayoutFromSQL(payoutId) {
   // 1. Перевірка на "привидів"
   if (!payoutId || payoutId === 'undefined') {
@@ -13937,10 +13822,6 @@ document.addEventListener('keydown', e => {
                 <span class="set-label"><span class="set-ico">&#128241;</span>Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-device-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="live data feed таблиця">
-                <span class="set-label"><span class="set-ico">&#128203;</span>Live Data</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-table" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
-              </label>
               <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк">
                 <span class="set-label"><span class="set-ico">&#128452;</span>Cabinets</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-cabinets" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
@@ -14099,8 +13980,6 @@ document.addEventListener('keydown', e => {
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій"><span class="set-label">Geo Breakdown</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="live data feed таблиця"><span class="set-label">Live Data</span>
-                <span class="toggle-switch"><input type="checkbox" id="tl-show-table" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-cabinets" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="domains домени"><span class="set-label">Domains</span>
@@ -14726,7 +14605,7 @@ function gcDiff(geo, results) {
       <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         <div>
           <label class="block text-[9px] font-black uppercase tracking-widest text-violet-400 mb-1.5">Variants per file</label>
-          <input type="number" id="uq-count" min="1" max="30" value="3"
+          <input type="number" id="uq-count" min="1" max="30" value="1"
             class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
         </div>
         <div>
@@ -25447,7 +25326,6 @@ tmBoot();
     'heatmap':    { section: 'weekly-analysis-section' },
     'creatives':  { section: 'creative-analyzer-section' },
     'geo':        { section: 'device-geo-section' },
-    'live':       { section: 'live-table-section' },
     'cabinets':   { section: 'cabinets-section' },
     'domains':    { section: 'domains-section' },
     'team':       { section: 'team-section' },
@@ -26615,7 +26493,6 @@ tmBoot();
     ['Heatmap',        'nav:heatmap',    'Page'],
     ['Creatives',      'nav:creatives',  'Page'],
     ['Geo Breakdown',  'nav:geo',         'Page'],
-    ['Live Data',      'nav:live',         'Page'],
     ['Cabinets',       'nav:cabinets',   'Page'],
     ['Domains',        'nav:domains',    'Page'],
     ['Report Builder', 'nav:reports',     'Page'],
