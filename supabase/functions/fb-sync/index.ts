@@ -953,7 +953,10 @@ async function noteChanges(base: string, hdr: Json, team: string,
 type TokenRow = { id: number; label: string; token: string;
                   created_by: string; team_name: string | null;
                   // Яким ми його бачили минулого разу.
-                  status?: string | null };
+                  status?: string | null;
+                  // Коли до нього востаннє дійшла черга. Порожньо —
+                  // жодного разу, і тоді він іде першим.
+                  checked_at?: string | null };
 
 type Outcome = { accounts: number; failed: number; changed: number;
                  error: string; throttled: boolean;
@@ -1872,7 +1875,29 @@ async function handle(req: Request): Promise<Response> {
     }
   }
 
-  let q = 'fb_tokens?select=id,label,token,created_by,team_name,status&order=id.asc';
+  /* ПОРЯДОК ТОКЕНІВ — ЗА ДАВНІСТЮ, А НЕ ЗА НОМЕРОМ. Це не косметика.
+
+     Прогін має дві межі, на яких він виходить достроково: власний
+     дедлайн (110 с) і ліміт Facebook (далі по списку буде те саме,
+     тож ламаємось). Обидві лишають ХВІСТ списку необійденим.
+
+     А список завжди починався з id.asc — тобто з тих самих токенів.
+     Виходить стабільне голодування: перші синхронізуються щоразу,
+     останні НІКОЛИ. Саме так у боті зʼявилось «усе не старіше за 11
+     днів»: кабінети наприкінці списку не оновлювались із того дня,
+     коли прогін востаннє встиг дійти до них.
+
+     Найгірше, що мовчало це бездоганно: `more` у відповіді є, але
+     читає її хіба той, хто щойно натиснув Sync now.
+
+     checked_at кожному токену проставляє markToken — на будь-якому
+     результаті: ok, протух, немає кабінетів. Тому «найдавніше
+     перевірений» це чесне «найдовше чекав», а nullsfirst ставить
+     наперед щойно доданий токен, який не перевіряли жодного разу.
+     id.asc лишається другим ключем, щоб порядок був визначений, коли
+     час однаковий. */
+  let q = 'fb_tokens?select=id,label,token,created_by,team_name,status,checked_at'
+        + '&order=checked_at.asc.nullsfirst,id.asc';
   if (onlyOwner) q += '&created_by=eq.' + encodeURIComponent(onlyOwner);
   if (onlyToken) q += '&id=eq.' + onlyToken;
 
@@ -1896,9 +1921,15 @@ async function handle(req: Request): Promise<Response> {
   let snapshot = 0, snapshotError = '', linkError = '';
   const problems: string[] = [];
   let throttled = false;
+  /* До яких токенів черга дійшла. Рахуємо на вході в тіло циклу, а не
+     по done: токен, що впав із винятком, ОБІЙДЕНИЙ — просто невдало, і
+     записувати його в «не дійшли» означало б двічі сказати про одну
+     біду й сховати справжній хвіст. */
+  const walked = new Set<number>();
 
   for (const t of tokens) {
     if (Date.now() > deadline) break;
+    walked.add(t.id);
     let r: Outcome;
     try {
       r = await syncToken(base, hdr, t, deadline, alerts);
@@ -1966,7 +1997,14 @@ async function handle(req: Request): Promise<Response> {
     fn: FN_VERSION,
     cron, on_demand: onDemand, scoped: onlyOwner ? 'one owner' : 'all owners',
     tokens: done, accounts, failed, changed, throttled,
-    more: done < tokens.length,
+    more: walked.size < tokens.length,
+    /* ДО КОГО ЧЕРГА НЕ ДІЙШЛА — ПОІМЕННО. Поки тут стояло саме лише
+       `more: true`, прогін міг роками не доходити до хвоста списку, і
+       єдиним слідом був булевий прапорець у відповіді, яку ніхто не
+       читає. Тепер видно, чиї саме числа зараз старі; наступний прогін
+       почне з них, бо список упорядкований за давністю. */
+    skipped: tokens.filter(t => !walked.has(t.id)).slice(0, 20).map(t => t.label),
+    skipped_total: tokens.length - walked.size,
     history,
     /* Знімок для правил. Мовчати про його відсутність не можна: без
        нього правила нічого не бачать, а виглядало б це як «правила не
