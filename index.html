@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 13:19">
+  <meta name="build" content="build 06.10 13:45">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 13:19</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 13:45</div>
     </div>
   </aside>
 
@@ -18513,7 +18513,11 @@ let cabSort = { key: 'state', dir: 1 };
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
-/* Написи команд, що трапились серед ТВОЇХ кабінетів, окрім поточного. */
+/* Скільки рядків віддала база ДО відсіву по команді. Різниця між цим
+   числом і довжиною cabFb — це рівно те, що ми сховали навмисно, і
+   про що треба сказати, якщо після відсіву не лишилось нічого. */
+let cabFbRaw = 0;
+/* Написи чужих команд, що трапились у відповіді. */
 let cabFbTeams = [];
 /* Твої рядки з accounts_mapping, яким не знайшлось живого кабінета.
    Потрібні рівно в одному місці — у селекті ручної прив'язки. */
@@ -18997,27 +19001,29 @@ async function cabFbLoad() {
       res = await sb.from('fb_accounts').select(CAB_FB_CORE);
     }
     if (res.error) throw res.error;
-    /* КОМАНДОЮ БІЛЬШЕ НЕ РІЖЕМО, і це не послаблення.
+    /* КОМАНДОЮ РІЖЕМО, І ЦЕ ЄДИНЕ, ЩО ТУТ ТРИМАЄ МЕЖУ.
 
-       Розділення тут робить RLS: запит віддає ЛИШЕ твої рядки, чужих
-       серед них немає фізично. Фільтр по команді стояв ПОВЕРХ цього —
-       тобто міг зробити рівно одне: сховати твої ж кабінети, якщо
-       напис на них не збігся з командою, вибраною на сторінці.
+       Був day, коли цей фільтр прибрали — з доводом «RLS і так
+       віддає лише свої рядки, тож фільтр може хіба сховати твоє». Довід
+       хибний, і перевірити його треба було не головою, а в TEAM_ROLES.sql:
+       на fb_accounts висить ДРУГА політика, fb_accounts_read_team, і
+       вона дозволяє select по can_read_team(team_name). А can_read_team
+       для ролі admin повертає true для будь-якої команди.
 
-       Саме так воно й сталось: у команді кілька баєрів, кожен додавав
-       токен під своїм написом (fb_tokens.team_name = currentTeam на
-       момент додавання), і сторінка, відкрита на IMPROVE, не показувала
-       26 кабінетів — не тому, що вони чужі, а тому, що підписані
-       інакше.
+       Тобто в адміна запит віддає ВСІ рядки таблиці, і прибраний фільтр
+       одразу притягнув у список чужі кабінети — разом із трьома
+       наслідками: чуже видно, підписи агентів («Adcards») підмінились
+       на запасний розбір назви токена, бо під чужий рядок свого
+       accounts_mapping немає, і числа поїхали.
 
-       Напис лишається як напис: він видно в рядку, по ньому можна
-       групувати. Але ховати ним власні дані — ціна без жодної
-       користі. */
-    cabFb = res.data || [];
-    /* Які ще написи трапились. Не для фільтра — для одного тихого
-       рядка: якщо кабінети підписані різними командами, людина має це
-       бачити, а не здогадуватись. */
-    cabFbTeams = [...new Set(cabFb.map(r => String(r.team_name || '').trim())
+       Політики в Postgres складаються через OR. Межу тут тримає
+       сторінка. */
+    cabFbRaw = (res.data || []).length;
+    cabFb = (res.data || []).filter(r => !r.team_name || r.team_name === currentTeam);
+    /* Чиї саме написи ми прибрали. Потрібні для одного рядка нижче:
+       «твій токен нічого не привіз» і «тут є 26 кабінетів, але чужих»
+       — різні новини, а виглядали однаково. */
+    cabFbTeams = [...new Set((res.data || []).map(r => String(r.team_name || '').trim())
       .filter(v => v && v !== currentTeam))];
     /* Назви токенів окремим запитом. Сам токен звідти не приїде й
        приїхати не може: права на цей стовпчик забрано в усіх. */
@@ -19026,6 +19032,7 @@ async function cabFbLoad() {
     (t.data || []).forEach(x => cabTokens[x.id] = x.label);
   } catch (e) {
     cabFb = [];
+    cabFbRaw = 0;
     cabFbTeams = [];
     cabFbErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
@@ -19035,7 +19042,11 @@ async function cabFbLoad() {
    «останні 30 днів у памʼять»: історія в базі накопичується глибше за
    вікно, яке переписує імпорт, тож за минулий квартал теж можна
    спитати — і відповідь буде.
- */
+
+   Команду, як і в cabFbLoad, відсіюємо вже тут — і з тієї самої
+   причини: в адміна політика fb_spend_daily_read_team віддає чужі
+   рядки теж, а показати чужий спенд під своїм кабінетом гірше, ніж
+   не показати нічого. */
 async function cabDaysLoad() {
   cabDays = {};
   cabDaysErr = '';
@@ -19044,6 +19055,7 @@ async function cabDaysLoad() {
     const rows = await sbFetchAll('fb_spend_daily',
       q => q.gte('day', since).lte('day', until).order('day', { ascending: true }));
     rows.forEach(r => {
+      if (r.team_name && r.team_name !== currentTeam) return;
       const id = String(r.account_id || '');
       if (!id) return;
       cabDays[id] = (cabDays[id] || 0) + (Number(r.spend) || 0);
@@ -19108,16 +19120,24 @@ function cabFbNote() {
       + '<span class="font-mono">fb-sync</span>, then press Sync now.', 'warn');
   } else if (cabDaysErr) {
     say('Could not read spend history: ' + cabEsc(cabDaysErr), 'error');
-  } else if (cabFbTeams.length) {
-    /* Accountи підписані різними командами — показуємо ВСІ (ховати
-       власні дані ніколи не було правильно), але мовчати про різнобій
-       теж не можна: інакше незрозуміло, чому в списку більше, ніж
-       очікувалось. */
-    say('Some of your cabinets are filed under ' + cabFbTeams.length + ' other team name(s): '
-      + cabEsc(cabFbTeams.slice(0, 4).join(', '))
-      + (cabFbTeams.length > 4 ? '…' : '')
-      + '. They are all shown here — the team name is just a label, and what you see is '
-      + 'yours either way.');
+  } else if (!cabFb.length && cabFbRaw > 0) {
+    /* ПОРОЖНЬО ПІСЛЯ ВІДСІВУ — І ЦЕ ДВІ НОВИНИ, НЕ ОДНА.
+
+       Рядки приїхали, але всі чужі: ти адмін, тому база віддає й
+       кабінети інших баєрів, а сторінка показує лише свою команду.
+       Сказати тут просто «кабінетів немає» означало б приховати
+       половину відповіді — і саме через це минулого разу зробили
+       висновок, що фільтр ламає сторінку, і прибрали його. */
+    say('Nothing here for <b>' + cabEsc(currentTeam) + '</b> yet. '
+      + cabFbRaw + ' cabinet(s) are visible to you, but they are filed under '
+      + (cabFbTeams.length
+          ? 'other team name(s): <b>' + cabEsc(cabFbTeams.slice(0, 4).join(', ')) + '</b>'
+            + (cabFbTeams.length > 4 ? '…' : '')
+          : 'another team')
+      + ' \u2014 other buyers\u2019 cabinets, hidden here on purpose. '
+      + 'Switch the team at the top to look at theirs. '
+      + 'For your own: press <b>Sync now</b>; if nothing changes, '
+      + '<span class="font-mono">fb-sync</span> is not deployed.', 'warn');
   } else if (!cabFb.length && Object.keys(cabTokens).length) {
     /* ТОКЕН Є, КАБІНЕТІВ НЕМАЄ — і це не помилка, а черга.
 
