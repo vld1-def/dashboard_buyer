@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 08:59">
+  <meta name="build" content="build 06.10 09:01">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:59</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 09:01</div>
     </div>
   </aside>
 
@@ -16647,6 +16647,52 @@ const FB_NICE = ['ads_management', 'business_management'];
 
 let fbRows = [];
 
+/* ЧИЙ ЦЕ БРАУЗЕР — ПОРЯД ІЗ КАБІНЕТОМ, А НЕ В ІНШІЙ ВКЛАДЦІ.
+
+   У вікні Accounts було видно лише id, назву і стан. А питання, яке
+   виникає над цим списком найчастіше, — «де мені його відкривати».
+   Відповідь лежала у Cabinets, тобто за два переходи звідси.
+
+   Беремо з accounts_mapping.profile: це те саме поле, що заповнюється
+   само з назви токена і правиться руками в Cabinets та Form. Другого
+   джерела тут не заводимо — інакше вони б розійшлись, і жодному не
+   можна було б вірити.
+
+   Ключ і як написано, і самими цифрами: Facebook каже act_123…, а в
+   таблиці лежить 123… (або навпаки). */
+let fbProfiles = {};
+
+const fbIdKeys = (v) => {
+  const s2 = String(v == null ? '' : v).trim();
+  if (!s2) return [];
+  const d = s2.replace(/\D/g, '');
+  return d && d !== s2 ? [s2, d] : [s2];
+};
+
+async function fbProfilesLoad() {
+  fbProfiles = {};
+  /* Колонки profile може ще не бути — тоді просто немає що показувати,
+     і це не привід завалити список токенів. */
+  let res = await sb.from('accounts_mapping').select('account_id,fb_account_id,profile');
+  if (res.error) res = await sb.from('accounts_mapping').select('account_id,fb_account_id');
+  if (res.error) return;
+  (res.data || []).forEach(r => {
+    const v = String(r.profile || '').trim();
+    if (!v) return;
+    fbIdKeys(r.account_id).forEach(k => fbProfiles[k] = v);
+    fbIdKeys(r.fb_account_id).forEach(k => fbProfiles[k] = v);
+  });
+}
+
+/* Браузер кабінета: спершу те, що записано, потім — другий шматок
+   назви токена (агент_браузер_БМ). Записане завжди головніше: кабінет
+   могли перенести, а назва токена лишилась старою. */
+function fbBrowserOf(accId, tokenLabel) {
+  const hit = fbIdKeys(accId).map(k => fbProfiles[k]).find(Boolean);
+  if (hit) return hit;
+  return String(tokenLabel || '').split('_')[1] || '';
+}
+
 const fbEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -16779,6 +16825,8 @@ window.fbLoad = async function () {
     return;
   }
   fbRows = data || [];
+  // Підписи браузерів — одним запитом на весь список, а не на кожне вікно.
+  await fbProfilesLoad();
   fbCount();
   // Фільтр з'являється не одразу: на трьох токенах він лише займає
   // місце, на двадцяти без нього не обійтись.
@@ -17015,11 +17063,24 @@ window.fbShow = function (id) {
   const r = fbRows.find(x => x.id === id);
   if (!r) return;
   const accs = Array.isArray(r.accounts) ? r.accounts : [];
+  /* Bars вирівнюємо пробілами під найдовше значення: вікно
+     показує звичайний текст, і без вирівнювання три поля підряд
+     читаються як одне речення. */
+  const wId = Math.max(...accs.map(a => String(a.id || '').length), 2);
+  const wBr = Math.max(...accs.map(a => fbBrowserOf(a.id, r.label).length), 7);
+  const pad = (v, n) => String(v == null ? '' : v).padEnd(n);
+  const line = a => pad(a.id, wId) + '  '
+    + pad(fbBrowserOf(a.id, r.label) || '\u2014', wBr) + '  '
+    + (a.name || '') + (a.status === 'active' ? '' : '  (inactive)');
   tell(r.label,
       `Permissions: ${(r.scopes || []).join(', ') || '—'}\n`
     + `Checked: ${r.checked_at ? new Date(r.checked_at).toLocaleString() : '—'}\n\n`
     + (accs.length
-        ? 'Ad accounts:\n' + accs.map(a => `${a.id}  ${a.name}${a.status === 'active' ? '' : '  (inactive)'}`).join('\n')
+        ? 'Ad accounts:\n'
+          + pad('ID', wId) + '  ' + pad('BROWSER', wBr) + '  NAME\n'
+          + accs.map(line).join('\n')
+          + '\n\nThe browser comes from Cabinets (or from the token name when it is '
+          + 'not filled in there yet).'
         : 'No ad accounts visible.\n\nMost common cause: the system user has no Ad Accounts assigned in Business Settings → Add Assets.'));
 };
 
