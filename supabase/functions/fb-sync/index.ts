@@ -161,7 +161,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-10-06.1';
+const FN_VERSION = '2026-10-06.2';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1041,8 +1041,22 @@ function cabTag(r: Json, t: TokenRow): string {
   return (id || String(r.name || '') || 'unknown') + (br ? ' \u00b7 br ' + br : '');
 }
 
+/* ЗВУЖЕНИЙ ПРОГІН — І ЧОМУ ВІН НЕ ПРОСТО «ФІЛЬТР».
+
+   Прогнати один кабінет замість усього парку — очевидна зручність.
+   Небезпека в тому, що на півдорозі стоїть markMissing: вона позначає
+   «токен більше не бачить» УСІ кабінети токена, яких немає в списку.
+   Звузивши список до одного, ми тим самим оголосили б решту втраченими
+   — і це не косметика: заморожені кабінети випадають із суми спенда, а
+   в Telegram їдуть окремим рядком як біда.
+
+   Тому звуження — не фільтр поверх звичайного прогону, а окремий режим:
+   беремо числа по вибраних кабінетах і НЕ робимо жодних висновків про
+   ті, яких не питали. Те саме з «токен нічого не бачить»: порожній
+   список тут означає лише те, що серед видимих не було потрібного. */
 async function syncToken(base: string, hdr: Json, t: TokenRow,
-                         deadline: number, alerts: Alert[]): Promise<Outcome> {
+                         deadline: number, alerts: Alert[],
+                         only?: Set<string>): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
                         days: 0, noHistory: 0, historyError: '', knownError: '',
                         snapshot: 0, snapshotError: '', linkError: '', touched: [],
@@ -1062,7 +1076,17 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     return out;
   }
 
+  /* Звужуємо ТУТ, після того як Facebook віддав список: так ми точно
+     знаємо, що кабінет справді належить цьому токену, і не питаємо про
+     чужий. */
+  const narrowed = !!(only && only.size);
+  if (narrowed) accs = accs.filter(a =>
+    only!.has(String(a.account_id || String(a.id || '').replace(/^act_/, ''))));
+
   out.accounts = accs.length;
+  /* У звуженому режимі порожній список — не «токен осліп», а «серед
+     його кабінетів немає тих, яких просили». Жодних позначок. */
+  if (narrowed && !accs.length) return out;
   if (!accs.length) {
     // Токен більше не бачить нічого. Рядки не видаляємо — позначаємо.
     await markMissing(base, hdr, t, [], alerts);
@@ -1305,7 +1329,9 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   }
   await saveSnap(base, hdr, t, snapRows, snapSeen, now, out);
   await savePages(base, hdr, t, pageUse, now);
-  await markMissing(base, hdr, t, accs.map(a => String(a.account_id || '')), alerts);
+  /* Саме тут і була б вада: у звуженому прогоні цей виклик оголосив би
+     втраченими всі кабінети токена, крім обраного. */
+  if (!narrowed) await markMissing(base, hdr, t, accs.map(a => String(a.account_id || '')), alerts);
   await noteChanges(base, hdr, t.team_name || '', changes);
   await markToken(base, hdr, t, 'ok', `Sees ${accs.length} ad account(s)`, alerts);
   return out;
@@ -1850,6 +1876,10 @@ async function handle(req: Request): Promise<Response> {
   let onlyOwner = '';
   let cron = false;
   let onlyToken = 0;
+  /* Два способи звузити прогін. Кабінети — поіменно; браузер — усі
+     токени, у назві яких він другим шматком (Агент_Браузер_БМ). */
+  let onlyAccounts = new Set<string>();
+  let onlyBrowser = '';
 
   const cronKey = req.headers.get('x-cron-key') || '';
   if (cronKey) {
@@ -1870,6 +1900,12 @@ async function handle(req: Request): Promise<Response> {
   try {
     const body = await req.json();
     onlyToken = Number(body?.token_id || 0) || 0;
+    /* Номери кабінетів — лише цифри. Чистимо тут, а не нижче: у запит
+       вони підуть як частина фільтра, і що завгодно інше там зайве. */
+    onlyAccounts = new Set((Array.isArray(body?.accounts) ? body.accounts : [])
+      .map((x: unknown) => String(x).replace(/^act_/, '').trim())
+      .filter((x: string) => /^\d+$/.test(x)));
+    onlyBrowser = String(body?.browser || '').trim().toLowerCase();
     wantTest = body?.test === true;
     onDemand = body?.on_demand === true;
     askOwner = String(body?.owner || '').trim();
@@ -1955,6 +1991,11 @@ async function handle(req: Request): Promise<Response> {
   let tokens: TokenRow[];
   try {
     tokens = await pgGet(base, hdr, q) as TokenRow[];
+    /* Браузер відбираємо вже тут, а не запитом: він живе не окремим
+       стовпчиком, а другим шматком назви токена, і розбирати її вміє
+       лише tokenBrowser. Один розбір на обидва місця — одна правда. */
+    if (onlyBrowser) tokens = tokens.filter(t =>
+      tokenBrowser(t).toLowerCase() === onlyBrowser);
   } catch (e) {
     const msg = (e as Error).message;
     return reply({ error: /fb_tokens|does not exist/i.test(msg)
@@ -1992,7 +2033,7 @@ async function handle(req: Request): Promise<Response> {
     let r: Outcome;
     const tStart = Date.now();
     try {
-      r = await syncToken(base, hdr, t, deadline, alerts);
+      r = await syncToken(base, hdr, t, deadline, alerts, onlyAccounts);
       timing.push({ label: t.label, ms: Date.now() - tStart,
                     graph_ms: r.graphMs, accounts: r.accounts });
     } catch (e) {
