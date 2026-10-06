@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 09:55">
+  <meta name="build" content="build 06.10 10:49">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 09:55</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 10:49</div>
     </div>
   </aside>
 
@@ -17301,15 +17301,47 @@ window.fbAdd = async function () {
     scopes: info.scopes, expires_at: info.expires_at,
     accounts: info.accounts, app_id: info.app_id,
     status: info.status, status_note: info.note,
-    checked_at: new Date().toISOString()
+    /* checked_at НЕ СТАВИМО, і це важливо.
+
+       fb-sync обходить токени за давністю перевірки
+       (checked_at.asc.nullsfirst) — саме щоб хвіст списку не голодував.
+       Поки тут стояло «зараз», щойно доданий токен опинявся в кінці
+       черги, позаду всіх: не «перевірений щойно», а «найсвіжіше
+       перевірений». Тобто рівно навпаки до задуму.
+
+       Порожнє значення чесніше й за змістом: ми ще жодного разу не
+       ходили по його кабінети — ми лише спитали Facebook, хто він. */
+    checked_at: null
   };
-  const { error } = await sb.from('fb_tokens').insert([row]);
+  const { data: saved, error } = await sb.from('fb_tokens').insert([row]).select('id');
   if (error) return say('Could not save: ' + fbEsc(error.message), 'var(--bad)');
 
   // Чистимо поле одразу: токен не має лишатись у формі, яку хтось
   // побачить через плече.
   tokEl.value = ''; labEl.value = '';
+
+  /* ЗБЕРЕГТИ ТОКЕН І ПОКАЗАТИ КАБІНЕТИ — РІЗНІ РЕЧІ, і через це
+     зникали кабінети «без жодної помилки».
+
+     У вікні збереження написано «Ad accounts: 12» — це відповідь
+     Facebook просто зараз, вона лягає в fb_tokens.accounts. А сторінка
+     Cabinets читає ЗОВСІМ ІНШУ таблицю, fb_accounts, і наповнює її
+     тільки fb-sync. Тож людина бачила «12 кабінетів» у вікні, тиснула
+     Save, не отримувала жодної помилки — і йшла в Cabinets, де порожньо,
+     бо синхронізація до цього токена ще не дійшла.
+
+     Тому запускаємо її одразу й саме для цього токена: один токен —
+     це секунди, а не хвилина на весь парк. */
+  const id = saved && saved[0] && saved[0].id;
   say('Saved. Nobody can read this token back — not even you. That is deliberate.', 'var(--ok)');
+  if (!id) { fbLoad(); return; }
+  const r = await fbSync(t => say('Saved \u00b7 ' + t), { token_id: id });
+  /* fbSync сам пише підсумок через say. Додаємо лише те, чого він не
+     знає: куди тепер дивитись і що сторінку треба перечитати. */
+  if (r && r.accounts) {
+    say(out.innerHTML + '<br><span class="opacity-60">The cabinets are in Cabinets now — '
+      + 'reload that page if it is already open.</span>', 'var(--ok)');
+  }
   fbLoad();
 };
 
@@ -18453,6 +18485,10 @@ let cabSort = { key: 'state', dir: 1 };
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
+/* Скільки рядків приїхало ДО відсіву по команді. Без цього числа
+   «кабінетів немає» і «кабінети є, але чужої команди» виглядають
+   однаково — порожнім екраном. */
+let cabFbRaw = 0;
 /* Твої рядки з accounts_mapping, яким не знайшлось живого кабінета.
    Потрібні рівно в одному місці — у селекті ручної прив'язки. */
 let cabFree = [];
@@ -18939,6 +18975,7 @@ async function cabFbLoad() {
        рядки, а team_name у токена може бути порожнім — тоді фільтр у
        запиті сховав би геть усе, і виглядало б це як «нічого не
        приїхало», а не як «не проставлена команда». */
+    cabFbRaw = (res.data || []).length;
     cabFb = (res.data || []).filter(r => !r.team_name || r.team_name === currentTeam);
     /* Назви токенів окремим запитом. Сам токен звідти не приїде й
        приїхати не може: права на цей стовпчик забрано в усіх. */
@@ -18947,6 +18984,7 @@ async function cabFbLoad() {
     (t.data || []).forEach(x => cabTokens[x.id] = x.label);
   } catch (e) {
     cabFb = [];
+    cabFbRaw = 0;
     cabFbErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
 }
@@ -19031,6 +19069,29 @@ function cabFbNote() {
       + '<span class="font-mono">fb-sync</span>, then press Sync now.', 'warn');
   } else if (cabDaysErr) {
     say('Could not read spend history: ' + cabEsc(cabDaysErr), 'error');
+  } else if (!cabFb.length && cabFbRaw > 0) {
+    /* Рядки приїхали, але всі чужої команди. Раніше це виглядало точно
+       як «кабінетів немає» — тобто як поломка, хоча дані на місці й
+       просто підписані іншою командою. Після перейменування команди це
+       перше, що стається. */
+    say('Facebook brought ' + cabFbRaw + ' cabinet(s), but all of them are filed under a '
+      + 'different team, so none are shown here. This page is on '
+      + '<b>' + cabEsc(currentTeam) + '</b> — switch the team, or re-save the token so its '
+      + 'cabinets get this team name.', 'warn');
+  } else if (!cabFb.length && Object.keys(cabTokens).length) {
+    /* ТОКЕН Є, КАБІНЕТІВ НЕМАЄ — і це не помилка, а черга.
+
+       Вікно збереження токена показує «Ad accounts: 12» — відповідь
+       Facebook просто зараз, вона лягає в fb_tokens.accounts. А ця
+       сторінка читає fb_accounts, яку наповнює тільки fb-sync. Тож без
+       жодної помилки людина бачила 12 кабінетів у вікні й порожнечу
+       тут, і зрозуміти з екрана це було неможливо. */
+    say('The token is saved, but the sync has not brought its cabinets yet — '
+      + 'they live in a different table than the token. Press <b>Sync now</b>; '
+      + 'if nothing changes, <span class="font-mono">fb-sync</span> is not deployed.', 'warn');
+  } else if (!cabFb.length) {
+    say('No Facebook tokens yet — add one in Settings → Facebook tokens, '
+      + 'and its cabinets appear here right after.', 'warn');
   } else {
     // Усе налагодилось — забуваємо сказане, щоб наступна поломка
     // не змовчала лише через те, що вона та сама, що й минулого разу.
