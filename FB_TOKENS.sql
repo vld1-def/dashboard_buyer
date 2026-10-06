@@ -89,6 +89,32 @@ create policy "own_delete" on public.fb_tokens for delete to authenticated
 
 
 -- ────────────────────────────────────────────────────────────
+--  ПРОКСІ НА ТОКЕН
+-- ────────────────────────────────────────────────────────────
+--  Усе, що ходить у Facebook за розкладом, крутиться на інфраструктурі
+--  Supabase — отже з її адрес. Один набір адрес на всі токени й усі
+--  кабінети. Проксі на кожен токен це розводить: кабінет читається з
+--  тієї адреси, з якої ти в нього й заходиш.
+--
+--  ДВІ КОЛОНКИ, А НЕ ОДНА, І ЦЕ ГОЛОВНЕ ТУТ.
+--  proxy містить логін і пароль — такий самий секрет, як токен, і
+--  читати його зі сторінки не можна. Але показати щось треба, інакше
+--  людина не бачить, чи взагалі щось вписано. Тому host:port лежить
+--  окремо (proxy_host) і читається вільно: у ньому немає нічого, чим
+--  можна скористатись.
+--
+--  Решта — слід останньої перевірки: з якої адреси вийшов запит і що
+--  сказала функція fb-proxy. Без цього «проксі доданий» означає лише
+--  «рядок вписаний», а не «трафік пішов туди».
+alter table public.fb_tokens
+  add column if not exists proxy            text,
+  add column if not exists proxy_host       text,
+  add column if not exists proxy_ip         text,
+  add column if not exists proxy_note       text,
+  add column if not exists proxy_checked_at timestamptz;
+
+
+-- ────────────────────────────────────────────────────────────
 --  А ОСЬ І ГОЛОВНЕ: стовпчик token не віддається нікуди
 -- ────────────────────────────────────────────────────────────
 --  RLS каже, ЯКІ РЯДКИ видно. Права на стовпчики кажуть, ЯКІ ПОЛЯ.
@@ -101,9 +127,13 @@ create policy "own_delete" on public.fb_tokens for delete to authenticated
 
 revoke select on public.fb_tokens from authenticated, anon;
 
+--  proxy у цьому списку немає навмисно — поруч із token, і з тієї самої
+--  причини: у ньому логін і пароль. Назовні йде лише proxy_host і слід
+--  перевірки.
 grant select (id, created_by, team_name, label, bm_id, bm_name,
               scopes, expires_at, accounts, app_id,
-              status, status_note, checked_at, note, created_at)
+              status, status_note, checked_at, note, created_at,
+              proxy_host, proxy_ip, proxy_note, proxy_checked_at)
   on public.fb_tokens to authenticated;
 
 grant insert, update, delete on public.fb_tokens to authenticated;
