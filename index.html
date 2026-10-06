@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 11:23">
+  <meta name="build" content="build 06.10 13:19">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 11:23</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 13:19</div>
     </div>
   </aside>
 
@@ -18513,10 +18513,8 @@ let cabSort = { key: 'state', dir: 1 };
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
-/* Скільки рядків приїхало ДО відсіву по команді. Без цього числа
-   «кабінетів немає» і «кабінети є, але чужої команди» виглядають
-   однаково — порожнім екраном. */
-let cabFbRaw = 0;
+/* Написи команд, що трапились серед ТВОЇХ кабінетів, окрім поточного. */
+let cabFbTeams = [];
 /* Твої рядки з accounts_mapping, яким не знайшлось живого кабінета.
    Потрібні рівно в одному місці — у селекті ручної прив'язки. */
 let cabFree = [];
@@ -18999,12 +18997,28 @@ async function cabFbLoad() {
       res = await sb.from('fb_accounts').select(CAB_FB_CORE);
     }
     if (res.error) throw res.error;
-    /* Команду відсіюємо тут, а не запитом. RLS і так віддає лише свої
-       рядки, а team_name у токена може бути порожнім — тоді фільтр у
-       запиті сховав би геть усе, і виглядало б це як «нічого не
-       приїхало», а не як «не проставлена команда». */
-    cabFbRaw = (res.data || []).length;
-    cabFb = (res.data || []).filter(r => !r.team_name || r.team_name === currentTeam);
+    /* КОМАНДОЮ БІЛЬШЕ НЕ РІЖЕМО, і це не послаблення.
+
+       Розділення тут робить RLS: запит віддає ЛИШЕ твої рядки, чужих
+       серед них немає фізично. Фільтр по команді стояв ПОВЕРХ цього —
+       тобто міг зробити рівно одне: сховати твої ж кабінети, якщо
+       напис на них не збігся з командою, вибраною на сторінці.
+
+       Саме так воно й сталось: у команді кілька баєрів, кожен додавав
+       токен під своїм написом (fb_tokens.team_name = currentTeam на
+       момент додавання), і сторінка, відкрита на IMPROVE, не показувала
+       26 кабінетів — не тому, що вони чужі, а тому, що підписані
+       інакше.
+
+       Напис лишається як напис: він видно в рядку, по ньому можна
+       групувати. Але ховати ним власні дані — ціна без жодної
+       користі. */
+    cabFb = res.data || [];
+    /* Які ще написи трапились. Не для фільтра — для одного тихого
+       рядка: якщо кабінети підписані різними командами, людина має це
+       бачити, а не здогадуватись. */
+    cabFbTeams = [...new Set(cabFb.map(r => String(r.team_name || '').trim())
+      .filter(v => v && v !== currentTeam))];
     /* Назви токенів окремим запитом. Сам токен звідти не приїде й
        приїхати не може: права на цей стовпчик забрано в усіх. */
     const t = await sb.from('fb_tokens').select('id,label');
@@ -19012,7 +19026,7 @@ async function cabFbLoad() {
     (t.data || []).forEach(x => cabTokens[x.id] = x.label);
   } catch (e) {
     cabFb = [];
-    cabFbRaw = 0;
+    cabFbTeams = [];
     cabFbErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
 }
@@ -19021,9 +19035,7 @@ async function cabFbLoad() {
    «останні 30 днів у памʼять»: історія в базі накопичується глибше за
    вікно, яке переписує імпорт, тож за минулий квартал теж можна
    спитати — і відповідь буде.
-
-   Команду, як і в cabFbLoad, відсіюємо вже тут: RLS віддає лише свої
-   рядки, а team_name у токена буває порожнім. */
+ */
 async function cabDaysLoad() {
   cabDays = {};
   cabDaysErr = '';
@@ -19032,7 +19044,6 @@ async function cabDaysLoad() {
     const rows = await sbFetchAll('fb_spend_daily',
       q => q.gte('day', since).lte('day', until).order('day', { ascending: true }));
     rows.forEach(r => {
-      if (r.team_name && r.team_name !== currentTeam) return;
       const id = String(r.account_id || '');
       if (!id) return;
       cabDays[id] = (cabDays[id] || 0) + (Number(r.spend) || 0);
@@ -19097,15 +19108,16 @@ function cabFbNote() {
       + '<span class="font-mono">fb-sync</span>, then press Sync now.', 'warn');
   } else if (cabDaysErr) {
     say('Could not read spend history: ' + cabEsc(cabDaysErr), 'error');
-  } else if (!cabFb.length && cabFbRaw > 0) {
-    /* Рядки приїхали, але всі чужої команди. Раніше це виглядало точно
-       як «кабінетів немає» — тобто як поломка, хоча дані на місці й
-       просто підписані іншою командою. Після перейменування команди це
-       перше, що стається. */
-    say('Facebook brought ' + cabFbRaw + ' cabinet(s), but all of them are filed under a '
-      + 'different team, so none are shown here. This page is on '
-      + '<b>' + cabEsc(currentTeam) + '</b> — switch the team, or re-save the token so its '
-      + 'cabinets get this team name.', 'warn');
+  } else if (cabFbTeams.length) {
+    /* Accountи підписані різними командами — показуємо ВСІ (ховати
+       власні дані ніколи не було правильно), але мовчати про різнобій
+       теж не можна: інакше незрозуміло, чому в списку більше, ніж
+       очікувалось. */
+    say('Some of your cabinets are filed under ' + cabFbTeams.length + ' other team name(s): '
+      + cabEsc(cabFbTeams.slice(0, 4).join(', '))
+      + (cabFbTeams.length > 4 ? '…' : '')
+      + '. They are all shown here — the team name is just a label, and what you see is '
+      + 'yours either way.');
   } else if (!cabFb.length && Object.keys(cabTokens).length) {
     /* ТОКЕН Є, КАБІНЕТІВ НЕМАЄ — і це не помилка, а черга.
 
@@ -22678,6 +22690,24 @@ const CD_EVENT = {
 };
 const CD_REG = 'complete_registration';
 
+/* ІНСТАЛИ АПКИ — ОКРЕМИМ СТОВПЧИКОМ, І ТІЛЬКИ КОЛИ ВОНИ Є.
+
+   Досі інстали бачив лише той адсет, який на них і оптимізується: вони
+   падали в «Result» разом з усім іншим. Але кабінет з апкою майже
+   завжди змішаний — частина адсетів на інстали, частина на події
+   всередині, — і в такому дереві «Result» складає різні одиниці, а
+   інсталів як окремого числа не видно ніде.
+
+   Стовпчик ставимо САМ, коли в дереві є хоч один інстал: порожня
+   колонка на кожному PWA-кабінеті — це шум, а відсутня на APP-кабінеті
+   — та сама вада, що й була. */
+const CD_INST = 'mobile_app_install';
+
+/* Чи є в цьому дереві взагалі інстали. Вирішується РАЗ на перемальовку
+   і з ВЕРХНЬОГО рівня: він уже містить суму всіх дітей, тож обходити
+   дерево вдруге не треба. */
+let cdHasInst = false;
+
 /* Як називати одиницю результату в комірці. Коротко: місця там на
    одне слово, а довге зіпхне число за край. */
 const CD_UNIT = {
@@ -23139,6 +23169,7 @@ function cdMetrics(r) {
     leads: cdLeadCount(acts, cdLeads),
     leadWhy: cdLeadWhy(acts, cdLeads),
     regs: cdPick(acts, CD_REG) || 0,
+    installs: cdPick(acts, CD_INST) || 0,
     result: !suf ? null
           : (suf === 'impressions' || suf === 'reach_as_impressions') ? imps
           : (cdPick(acts, suf) || 0),
@@ -23166,7 +23197,7 @@ function cdNode(id, name, kind) {
      перемикач. Два різні поля, два різні питання. */
   return { id: String(id || ''), name: name || '', kind, own: '', sw: '', budget: null,
            leadBy: new Map(),        // подія → { v, used } по всіх дітях
-           spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0,
+           spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0,
            result: 0, hasResult: false, goals: new Set(),
            /* ЯКІ саме одиниці склались у result. Набором, бо під
               кампанією бувають адсети з різними цілями, і тоді їхня
@@ -23188,7 +23219,7 @@ function cdAdd(n, m) {
     n.leadBy.set(x.t, cur);
   });
   n.spend += m.spend; n.imps += m.imps; n.clicks += m.clicks;
-  n.leads += m.leads; n.regs += m.regs; n.ads++;
+  n.leads += m.leads; n.regs += m.regs; n.installs += m.installs; n.ads++;
   if (m.result != null) { n.result += m.result; n.hasResult = true;
                           if (m.unit) n.units.add(m.unit); }
   if (m.goal) n.goals.add(m.goal);
@@ -23357,6 +23388,10 @@ function cdPaint() {
      дереві це кампанії, у списку — оголошення; нижні рівні вже складені
      в кампанії, і брати обидва означало б порахувати все двічі. */
   const top = cdFlat ? cdAds() : cdTree();
+  /* Стовпчик інсталів ставимо САМ — і тільки коли вони є. Порожня
+     колонка на кожному PWA-кабінеті це шум, а відсутня на APP-кабінеті
+     — та сама вада, через яку інсталів не було видно ніде. */
+  cdHasInst = top.some(n => (n.installs || 0) > 0);
   /* Смуга чергується по КАМПАНІЯХ, а не по рядках: рядків у кампанії
      скільки завгодно, і чергування по них розрізало б саме ту групу,
      яку ми й намагаємось показати цілою.
@@ -23393,6 +23428,8 @@ function cdPaint() {
         <th class="ta-r">Cost per lead</th>
         <th class="ta-r" title="Completed registrations">Reg</th>
         <th class="ta-r">Cost per reg</th>
+        ${cdHasInst ? `<th class="ta-r" title="Mobile app installs. This column appears on its own when there are any \u2014 on a cabinet without an app it would be an empty column on every row.">Install</th>
+        <th class="ta-r">Cost per install</th>` : ''}
         <th></th>
       </tr></thead>
       <tbody>${body.join('')}${cdFill()}</tbody>
@@ -23414,7 +23451,11 @@ function cdPaint() {
    Тестам він не заважає: у ньому немає .cd-lbl, за яким вони й
    впізнають рядки таблиці. */
 function cdFill() {
-  return '<tr class="cd-fill" aria-hidden="true"><td colspan="15"></td></tr>';
+  /* Ширина — за фактом, а не числом у коді: коли зʼявляється пара
+     стовпчиків інсталів, прибитий «15» лишив би останні колонки без
+     заповнювача, і підсумок поїхав би вгору саме на APP-кабінетах. */
+  return '<tr class="cd-fill" aria-hidden="true"><td colspan="'
+    + (cdHasInst ? 17 : 15) + '"></td></tr>';
 }
 
 /* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
@@ -23559,11 +23600,12 @@ function cdResultCell(n) {
 
 function cdTotalRow(list) {
   if (!list || !list.length) return '';
-  const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, result: 0,
+  const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0, result: 0,
               hasResult: false, ads: 0, units: new Set() };
   list.forEach(n => {
     t.spend += n.spend; t.imps += n.imps; t.clicks += n.clicks;
-    t.leads += n.leads; t.regs += n.regs; t.ads += n.ads || 1;
+    t.leads += n.leads; t.regs += n.regs; t.installs += n.installs || 0;
+    t.ads += n.ads || 1;
     // Підсумок складає ті самі одиниці, що й рядки, — і спотикається
     // об ту саму кашу, якщо їх кілька. Тож і поводиться так само.
     if (n.hasResult) { t.result += n.result; t.hasResult = true;
@@ -23590,6 +23632,8 @@ function cdTotalRow(list) {
     <td class="ta-r cd-num">${cdPer(t.spend, t.leads)}</td>
     <td class="ta-r cd-num">${t.regs}</td>
     <td class="ta-r cd-num">${cdPer(t.spend, t.regs)}</td>
+    ${cdHasInst ? `<td class="ta-r cd-num">${t.installs}</td>
+    <td class="ta-r cd-num">${cdPer(t.spend, t.installs)}</td>` : ''}
     <td></td>
   </tr></tfoot>`;
 }
@@ -23854,6 +23898,8 @@ function cdRow(n, depth, band) {
     <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
     <td class="ta-r cd-num">${n.regs}</td>
     <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
+    ${cdHasInst ? `<td class="ta-r cd-num">${n.installs}</td>
+    <td class="ta-r cd-num">${cdPer(n.spend, n.installs)}</td>` : ''}
     <td class="ta-r">${cdSwitch(n, named)}</td>
   </tr>`;
 }

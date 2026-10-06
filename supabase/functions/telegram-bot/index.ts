@@ -301,6 +301,13 @@ type Park = {
   convCap: boolean;
   convRows: number;
   seen: string;
+  /* Числа дашборда за останній залитий день. Беруться лише тоді, коли
+     знімок Facebook старий — інакше це був би другий набір чисел про
+     те саме, і довіряти перестали б обом. */
+  hub: Hub | null;
+  /* Чому других чисел теж немає. Порожньо — значить питання не
+     стояло: знімок свіжий, запас не був потрібен. */
+  hubErr: string;
   /* Чому числа можуть бути не найсвіжішими. Порожньо — значить
      оновлення або не було потрібне, або пройшло. */
   fresh: string;
@@ -415,6 +422,97 @@ async function freshen(base: string, hdr: Record<string, string>,
   }
 }
 
+/* ═══════ ДАНІ ДАШБОРДА — ДРУГЕ ДЖЕРЕЛО, І ЧАСТО ЄДИНЕ ЖИВЕ ═══════
+
+   Бот дивився рівно в одне місце: fb_accounts, знімок Facebook, який
+   робить fb-sync. Коли той прогін не ходить — не задеплоєний, не
+   дійшов до токена, впертий у ліміт — бот чесно казав «усе не старіше
+   за 11 днів» і на цьому замовкав.
+
+   Але дашборд при цьому ПОВНИЙ. Його числа живуть у daily_stats, і
+   туди вони потрапляють не з fb-sync, а з імпорту: людина заливає
+   вивантаження, і спенд, ліди, реєстрації й депозити в неї перед
+   очима. Тобто дані були — просто бот про це місце не знав.
+
+   Тому коли знімок Facebook старий або його немає зовсім, беремо те
+   саме, що бачить людина на екрані. І ОБОВʼЯЗКОВО кажемо, звідки це:
+   «спенд сьогодні» з Facebook і «спенд за день останнього імпорту» —
+   різні обіцянки, і видати одне за інше було б гірше за мовчання.
+
+   Дата — НЕ «сьогодні», а остання, яка є в імпорті. Якщо востаннє
+   заливали позавчора, написати «сьогодні» означало б збрехати рівно
+   там, де людина й так підозрює несвіжість. */
+const HUB_STALE_H = 6;
+const HUB_ROWS = 3000;
+
+type HubCab = { id: string; spend: number };
+type Hub = { day: string; spend: number; installs: number; regs: number;
+             deps: number; byCab: HubCab[]; cabs: number;
+             /* Доїхали до межі вибірки. Тоді останній день міг
+                обрізатись, і сума в ньому менша за справжню. */
+             cap: boolean };
+
+/* pick() ковтає будь-яку відмову й віддає порожній масив — для
+   необовʼязкових шматків це правильно, але не тут. Саме мовчання й
+   було вадою: «нічого не бачу» і «запит відмовив» виглядали однаково,
+   а це різні новини, і друга означає, що треба йти щось робити. */
+async function askRows(base: string, hdr: Record<string, string>, path: string):
+    Promise<{ rows: Record<string, unknown>[]; err: string }> {
+  try {
+    const res = await fetch(base + '/rest/v1/' + path, { headers: hdr });
+    if (!res.ok) {
+      const t = (await res.text()).slice(0, 200);
+      return { rows: [], err: res.status + (t ? ' ' + t : '') };
+    }
+    const j = await res.json();
+    return { rows: Array.isArray(j) ? j : [], err: '' };
+  } catch (e) { return { rows: [], err: String((e as Error).message || e) }; }
+}
+
+async function hubDay(base: string, hdr: Record<string, string>, uid: string):
+    Promise<{ hub: Hub | null; err: string }> {
+  /* Беремо з кінця за датою й зупиняємось на межі: уся історія нам не
+     потрібна, потрібен ОСТАННІЙ день, за який щось заливали. */
+  const got = await askRows(base, hdr, 'daily_stats'
+    + '?select=date,account,spend,installs,regs,deposits&created_by=eq.'
+    + encodeURIComponent(uid) + '&order=date.desc&limit=' + HUB_ROWS);
+  if (got.err) return { hub: null, err: got.err };
+  const rows = got.rows;
+  if (!rows.length) return { hub: null, err: 'empty' };
+  const day = String(rows[0].date || '');
+  if (!day) return { hub: null, err: 'no-date' };
+
+  const out: Hub = { day, spend: 0, installs: 0, regs: 0, deps: 0,
+                     byCab: [], cabs: 0, cap: rows.length >= HUB_ROWS };
+  const by = new Map<string, number>();
+  rows.forEach(r => {
+    if (String(r.date || '') !== day) return;
+    out.spend += num(r.spend);
+    out.installs += num(r.installs);
+    out.regs += num(r.regs);
+    out.deps += num(r.deposits);
+    const id = String(r.account || '').trim();
+    if (id) by.set(id, (by.get(id) || 0) + num(r.spend));
+  });
+  out.cabs = by.size;
+  out.byCab = [...by.entries()].map(([id, spend]) => ({ id, spend }))
+    .sort((a, b) => b.spend - a.spend);
+  /* Межа важить лише тоді, коли обрізатись міг САМ останній день.
+     Якщо ми й так побачили його цілком — межа нічого не зіпсувала. */
+  if (out.cap && rows.filter(r => String(r.date || '') === day).length < rows.length)
+    out.cap = false;
+  return { hub: out, err: '' };
+}
+
+/* Наскільки старий знімок Facebook. Порожньо — його немає взагалі, і
+   це теж підстава взяти дані дашборда. */
+function snapTooOld(seen: string): boolean {
+  if (!seen) return true;
+  const at = Date.parse(seen);
+  if (!Number.isFinite(at)) return true;
+  return Date.now() - at > HUB_STALE_H * 3_600_000;
+}
+
 /* Те, що бот показує, збирається ОДИН раз: усі відповіді — різні
    зрізи тієї самої картини, і збирати її двічі означало б колись
    показати в двох кнопках різні числа. */
@@ -466,7 +564,7 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
 
   const out: Park = { live: 0, total: 0, ads: 0, banned: [], lost: [], sick: [], shut: [],
                       spend: {}, byCab: [], conv: {}, convCap: false, convRows: 0,
-                      seen: '', frozen: 0, fresh: '' };
+                      seen: '', frozen: 0, fresh: '', hub: null, hubErr: '' };
   /* Валюта тих кабінетів, що ПІШЛИ в підрахунок. Нею ж нижче
      відсіюється знімок: рядка немає в цій мапі — значить кабінет
      архівований, заморожений або чужий, і його оголошення рахувати не
@@ -569,6 +667,22 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
     if (part.length < SNAP_PAGE) { all = true; break; }
   }
   out.convCap = !all;
+
+  /* ЗАПАСНЕ ДЖЕРЕЛО — лише коли перше справді мовчить.
+
+     Тягнути другий набір чисел завжди було б гірше, ніж не тягнути
+     зовсім: у двох блоках стояли б різні суми про «сьогодні», і
+     довіряти перестали б обом. Тому дивимось на вік знімка: свіжий —
+     і жодного слова про дашборд; старий або його немає — беремо те,
+     що людина й так бачить на екрані, і підписуємо датою. */
+  if (snapTooOld(out.seen)) {
+    const h = await hubDay(base, hdr, uid);
+    out.hub = h.hub;
+    /* «empty» — це не поломка, а чесна відповідь: імпорту ще не було.
+       Решту кажемо дослівно: саме через проглочену відмову бот і
+       виглядав порожнім при повній базі. */
+    out.hubErr = h.hub ? '' : h.err;
+  }
   return out;
 }
 
@@ -682,6 +796,65 @@ const cabSpendList = (p: Park): string => {
     + '\n\n';
 };
 
+/* ─────────── ЧИСЛА ДАШБОРДА В ВІДПОВІДІ ───────────
+
+   ОКРЕМИМ блоком, із датою в заголовку й підписаним джерелом.
+   Підмішати їх до «Спенд сьогодні» було б найзручніше й найгірше: це
+   інша обіцянка (останній залитий день, а не сьогодні) з іншого
+   джерела (імпорт, а не Facebook). Два набори чисел під одним
+   підписом — найкоротший шлях утратити довіру до обох.
+
+   Валюта — долар, і це не припущення навмання: дашборд рахує
+   daily_stats саме так на кожному екрані. Якщо колись перестане —
+   виправляти треба в обох місцях разом.
+
+   Ціни тут рахуємо тими самими дробами, що й дашборд: інсталь, реєстр
+   і деп від спенда того ж дня. */
+const HUB_ROWS_OUT: [string, (h: Hub) => number][] = [
+  ['Інсталів', h => h.installs], ['Реєстрацій', h => h.regs],
+  ['Депозитів', h => h.deps]
+];
+
+const hubCabList = (h: Hub): string => {
+  if (!h.byCab.length) return '';
+  const max = 20;
+  return '\nПо кабінетах:\n'
+    + h.byCab.slice(0, max).map(x => '   \u2022 ' + x.id
+        + ' \u2014 ' + money(x.spend, 'USD')).join('\n')
+    + (h.byCab.length > max ? '\n   …і ще ' + (h.byCab.length - max) : '') + '\n';
+};
+
+function hubBlock(p: Park, withCabs: boolean): string {
+  const h = p.hub;
+  if (!h) {
+    /* Знімок старий, і запасу теж немає. Сказати ЧОМУ — єдина
+       причина, через яку цей рядок узагалі існує: саме тут бот і
+       замовкав, залишаючи людину з числами тижневої давнини й без
+       жодної підказки, куди йти. */
+    if (!p.hubErr) return '';
+    return '\n\u{1F4D1} Числа дашборда теж не дістав: '
+      + (p.hubErr === 'empty'
+          ? 'у daily_stats нічого немає \u2014 залийте вивантаження в дашборді.'
+          : p.hubErr === 'no-date'
+            ? 'у рядках немає дати.'
+            : p.hubErr)
+      + '\n';
+  }
+  const lines = HUB_ROWS_OUT.filter(([, get]) => get(h) > 0)
+    .map(([label, get]) => label + ': ' + cnt(get(h))
+      + ' \u00b7 ' + per(h.spend, get(h), 'USD'));
+  return '\n\u{1F4D1} Дашборд \u00b7 ' + h.day + '\n'
+    + 'Спенд: ' + money(h.spend, 'USD')
+    + (h.cabs ? ' \u00b7 ' + h.cabs + ' кабінет(ів)' : '') + '\n'
+    + (lines.length ? lines.join('\n') + '\n' : '')
+    + (withCabs ? hubCabList(h) : '')
+    /* Без цього рядка блок читається як другий «сьогодні» — і тоді
+       два різні числа в одній відповіді виглядають як поломка. */
+    + '\u2139 це ваш імпорт за останній залитий день, не Facebook.\n'
+    + (h.cap ? '\u26A0 рядків більше за ' + HUB_ROWS + ' \u2014 за цей день '
+               + 'порахував по перших.\n' : '');
+}
+
 function cardSum(p: Park): string {
   const bad = p.banned.length + p.lost.length + p.sick.length;
   return '\u{1F4CA} Зведення\n\n'
@@ -689,6 +862,7 @@ function cardSum(p: Park): string {
     + 'Оголошень активних: ' + p.ads + '\n'
     + 'Спенд сьогодні: ' + spendLine(p) + '\n'
     + convBlock(p)
+    + hubBlock(p, false)
     + (bad ? '\n\u26A0 Потребує уваги: ' + bad + '\n'
            + (p.banned.length ? 'Забанені: ' + p.banned.length + '\n' : '')
            + (p.lost.length ? 'Токен не бачить: ' + p.lost.length + '\n' : '')
@@ -702,17 +876,31 @@ function cardSum(p: Park): string {
 }
 
 function cardSpend(p: Park): string {
+  /* Порожній блок не має додавати порожнього рядка: зайвий відступ
+     читається як «тут щось мало бути». */
+  const hb = hubBlock(p, true);
   return '\u{1F4B0} Спенд сьогодні\n\n' + spendLine(p) + '\n\n'
     /* Підсумок не каже, КУДИ пішли гроші, — а наступне питання завжди
        саме це. Поки розкладу не було, за ним ішли в дашборд. */
     + cabSpendList(p)
+    + (hb ? hb + '\n' : '')
     + 'Крутять: ' + p.live + ' кабінет(ів), ' + p.ads + ' оголошень'
     + seenLine(p);
 }
 
 function cardCabs(p: Park): string {
   if (!p.total) return '\u{1F5C2} Кабінетів не знайшлось.\n\n'
-    + 'Або синхронізація ще не проходила, або токен не додано.';
+    + 'Або синхронізація ще не проходила, або токен не додано.'
+    /* Знімка Facebook немає — але в імпорті кабінети є, і сказати
+       «не знайшлось» на цьому місці означало б збрехати найгрубіше:
+       людина їх бачить у дашборді просто зараз. Статусів із імпорту
+       не буває, тож і не обіцяємо їх — кажемо, скільки кабінетів
+       крутило й за який день. */
+    + (p.hub && p.hub.cabs
+        ? '\n\n\u{1F4D1} А в дашборді за ' + p.hub.day + ' їх ' + p.hub.cabs
+          + ': спенд є, статусів у імпорті немає \u2014 за ними потрібна '
+          + 'синхронізація.'
+        : '');
   /* Тихі рахуємо відніманням, і заморожені теж треба відняти —
      інакше їхня кількість двічі потрапляє в підсумок. */
   const quiet = p.total - p.live - p.banned.length - p.lost.length
