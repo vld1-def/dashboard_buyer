@@ -1503,6 +1503,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <button onclick="crClearFilter()" title="Скинути" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
               </div>
 
+              <!-- ХОЛОДНІ КРЕАТИВИ: ті, що майже не лились, і ті, що не лились
+                   ЖОДНОГО разу. Друге важливіше й водночас недосяжне зі
+                   статистики: креатив без жодного показу не має рядка в
+                   creatives_stats узагалі. Тому єдине місце, де він існує, —
+                   папка в Drive. -->
+              <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2">
+                <button id="cr-cold" onclick="crToggleCold()"
+                  title="Creatives that barely ran, and files in Drive that never ran at all. Ignores the date range — the question is about all time."
+                  class="text-[11px] font-black uppercase transition text-slate-400 hover:text-white">\u2744 Cold</button>
+                <span class="text-[10px] font-bold text-slate-600">\u2264 $</span>
+                <input type="number" step="any" min="0" id="cr-cold-max" value="5" oninput="crColdMaxSet()"
+                  class="w-12 h-[24px] bg-white/5 border border-white/10 rounded-lg px-1.5 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
+              </div>
+
               <span id="cr-filter-count" class="text-[10px] font-bold text-slate-500 whitespace-nowrap"></span>
           </div>
         </div>
@@ -3067,7 +3081,11 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
 
   const dr = crDateRange();
   dataToUse.forEach(d => {
-    if (!crInDate(d, dr)) return;          // крео, що не лився в ці дні, у список не потрапляє
+    /* У режимі «холодних» період ігноруємо: питання «скільки воно
+       відкрутило за весь час» періоду не має, а мовчки різати по
+       поточних датах означало б показати як холодний той креатив, що
+       просто не лився цього тижня. */
+    if (!crCold && !crInDate(d, dr)) return;   // крео, що не лився в ці дні, у список не потрапляє
     const cid = d.cid || "Unknown";
     const geo = (d.geo || "").toLowerCase();
 
@@ -3116,6 +3134,24 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
     });
   }
 
+  /* ХОЛОДНІ. Спершу ріжемо тих, що лились мало, потім дописуємо тих,
+     що не лились узагалі, — їх у list просто немає звідки взяти. */
+  let coldOnly = 0;
+  if (crCold) {
+    list = list.filter(c => c.s <= crColdMax);
+    const cids = new Set(Object.keys(grouped).map(x => String(x).trim().toLowerCase()));
+    (crColdFiles || []).forEach(f => {
+      if (crFileCid(f.name, cids)) return;     // цей файл належить крео, що вже в списку
+      const nm = String(f.name).replace(/\.[^.]+$/, '').trim();
+      if (!nm) return;
+      if (query && !nm.toLowerCase().includes(query.toLowerCase())) return;
+      list.push({ cid: nm, s: 0, cl: 0, ins: 0, r: 0, dp: 0, _drive: f });
+      coldOnly++;
+    });
+    // Спершу ті, що не лились жодного разу, потім — за спендом угору.
+    list.sort((a, b) => (a._drive ? 0 : 1) - (b._drive ? 0 : 1) || a.s - b.s);
+  }
+
   // Тільки з мітками
   if (crStarOnly) list = list.filter(c => crStars.has(c.cid));
 
@@ -3131,7 +3167,22 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
   else if (tagF) list = list.filter(c => crTagsOf(c.cid).includes(tagF));
 
   const cnt = document.getElementById('cr-filter-count');
-  if (cnt) cnt.textContent = list.length === totalBefore ? `${totalBefore} creatives` : `${list.length} of ${totalBefore}`;
+  if (cnt) {
+    let txt = list.length === totalBefore ? `${totalBefore} creatives` : `${list.length} of ${totalBefore}`;
+    if (crCold) {
+      /* Кажемо три речі, і кожна з них інакше стає мовчазною вадою:
+         що період не діє, скільки з них не лились жодного разу, і що
+         з Drive ми взагалі нічого не знаємо, якщо він не налаштований. */
+      txt += ' \u00b7 all time';
+      if (crColdBusy) txt += ' \u00b7 scanning Drive…';
+      else if (crColdErr === 'not configured')
+        txt += ' \u00b7 Drive not set up — files that never ran are not shown';
+      else if (crColdErr) txt += ' \u00b7 Drive: ' + crColdErr;
+      else if (coldOnly) txt += ` \u00b7 ${coldOnly} never ran`;
+      else if (crColdFiles) txt += ' \u00b7 every file in Drive has run';
+    }
+    cnt.textContent = txt;
+  }
 
   if (list.length === 0) {
     sidebar.innerHTML = '<div class="text-center py-20 opacity-20 text-[10px] font-black uppercase tracking-widest">Нічого не знайдено</div>';
@@ -3177,6 +3228,22 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
 // Один рядок списку креативів — винесено, щоб звичайний режим і режим папок
 // малювали однаково
 function crSidebarRow(c, qEsc, gEsc, fEsc) {
+  /* ФАЙЛ, ЯКИЙ НЕ ЛИВСЯ. Його немає в статистиці, тож і клік по ньому
+     не має вести в картку: вона показала б нулі, ніби це результат, а
+     це відсутність запуску. Ведемо туди, де він справді є, — у Drive. */
+  if (c._drive) {
+    const href = String(c._drive.webViewLink || '').replace(/"/g, '&quot;');
+    const nm = String(c.cid).replace(/[&<>"]/g, x =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[x]));
+    return `<a href="${href}" target="_blank" rel="noopener"
+        title="This file is in Drive but has never had a single impression — there is no row for it in the stats at all"
+        class="w-full flex justify-between items-center gap-1.5 p-3 rounded-xl border border-dashed border-sky-500/25
+               bg-sky-500/5 transition-all text-left uppercase cursor-pointer hover:bg-sky-500/10 no-underline">
+        <span class="text-[11px] font-black truncate text-sky-200">${nm}</span>
+        <span class="flex-shrink-0 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded
+                     bg-sky-500/20 text-sky-300">never ran</span>
+      </a>`;
+  }
   {
     const isActive = currentCreativeID === c.cid;
     const cidEsc = String(c.cid).replace(/'/g, "\\'");
@@ -3582,6 +3649,98 @@ function crTogglePanel(kind) {
 // Період з шапки. Діє і на список креативів, і на цифри всередині обраного —
 // щоб «які крео лились 7 серпня» і «скільки вони дали того дня» були одним
 // і тим самим фільтром, а не двома різними.
+/* ═══════════ ХОЛОДНІ КРЕАТИВИ ═══════════
+
+   Питання просте: що в нас лежить і не крутиться. Але відповідь на
+   нього збирається з ДВОХ різних місць, і це головне тут.
+
+   1. Крео, що лилось, але мало. Воно є в creatives_stats, і його видно
+      звичайним числовим фільтром — з однією засадою: список завжди
+      ріжеться обраним періодом (crInDate), а питання «скільки він
+      відкрутив ЗА ВЕСЬ ЧАС» періоду не має. Тому в цьому режимі дати
+      ігноруються, і про це сказано вголос у лічильнику.
+
+   2. Крео, що не лилось ЖОДНОГО разу. Його в статистиці немає взагалі
+      — ні з нулем, ні як завгодно. Рядок народжує показ, а показу не
+      було. Єдине місце, де такий креатив існує, — файл у папці Drive.
+
+   Тому тут ми йдемо в Drive у зворотний бік від усього іншого коду:
+   не «знайди файл для цього cid», а «перелічи все й познач те, під що
+   немає жодного cid». Збіг рахуємо тим самим правилом, що й
+   _drivePickExact, — інакше «KG_JS_674_1» і «KG_JS_674_10» злиплись би
+   в один креатив.
+
+   Скан робиться РАЗ і на вимогу: папка команди це десятки запитів, і
+   робити їх від самого відкриття сторінки не можна. */
+let crCold = false;
+let crColdMax = 5;
+let crColdFiles = null;      // null — ще не сканували; [] — сканували, нічого немає
+let crColdErr = '';
+let crColdBusy = false;
+
+function crColdMaxSet() {
+  const v = Number(document.getElementById('cr-cold-max')?.value);
+  crColdMax = Number.isFinite(v) && v >= 0 ? v : 0;
+  if (crCold) searchCreative();
+}
+
+window.crToggleCold = async function () {
+  crCold = !crCold;
+  const b = document.getElementById('cr-cold');
+  if (b) b.classList.toggle('text-blue-400', crCold);
+  if (b) b.classList.toggle('text-slate-400', !crCold);
+  searchCreative();
+  // Скануємо лише коли увімкнули і ще не сканували цього сеансу.
+  if (crCold && crColdFiles === null && !crColdBusy) {
+    crColdBusy = true;
+    try { crColdFiles = await crDriveAll(); }
+    catch (e) { crColdErr = e.message || 'Drive error'; crColdFiles = []; }
+    crColdBusy = false;
+    searchCreative();
+  }
+};
+
+/* Усі файли папки команди та її підпапок. Папки пропускаємо, файли
+   беремо з посиланням — клік по такому рядку має відкривати сам файл,
+   бо статистики в нього немає й показувати нічого. */
+async function crDriveAll() {
+  if (!teamDriveFolderId) throw new Error('not configured');
+  const fields = 'fields=' + encodeURIComponent('files(id,name,mimeType,webViewLink)');
+  const out = [];
+  const seen = new Set();
+  const grab = async (parentId) => {
+    const q = encodeURIComponent(`'${parentId}' in parents and trashed=false`);
+    const files = await _driveList(`q=${q}&${fields}&pageSize=300`);
+    files.forEach(f => {
+      if (f.mimeType === 'application/vnd.google-apps.folder') return;
+      if (seen.has(f.id)) return;
+      seen.add(f.id);
+      out.push(f);
+    });
+  };
+  await grab(teamDriveFolderId);
+  for (const sub of await driveSubfolders()) await grab(sub.id);
+  return out;
+}
+
+/* Чи належить цей файл якомусь відомому креативу. Те саме правило, що
+   й у _drivePickExact, тільки навпаки: ріжемо імʼя файлу по межах
+   «не буква й не цифра» справа наліво й питаємо, чи є такий cid.
+   Без цього «KG_JS_674_1 -v2.mp4» вважався б окремим креативом. */
+function crFileCid(name, cids) {
+  const base = String(name).replace(/\.[^.]+$/, '').trim().toLowerCase();
+  if (!base) return '';
+  if (cids.has(base)) return base;
+  for (let i = base.length - 1; i > 0; i--) {
+    // Різати можна лише там, де далі йде НЕ буквоцифра — рівно як у
+    // _drivePickExact, інакше _674_10 зійшлося б за _674_1.
+    if (/[0-9a-z]/i.test(base[i])) continue;
+    const head = base.slice(0, i);
+    if (cids.has(head)) return head;
+  }
+  return '';
+}
+
 function crDateRange() {
   return { from: document.getElementById('cr-date-from')?.value || '',
            to:   document.getElementById('cr-date-to')?.value   || '' };
