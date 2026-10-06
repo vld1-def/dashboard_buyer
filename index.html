@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 14:05">
+  <meta name="build" content="build 06.10 14:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 14:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 14:46</div>
     </div>
   </aside>
 
@@ -15616,10 +15616,13 @@ function uqFakeMeta() {
 function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   const vf = [], args = [];
   // -ss перед -i: перемотка по контейнеру замість декодування у смітник
-  if (p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
+  // Трим — лише коли тривалість справді відома. Інакше -ss б'є навмання
+  // і може перемотати за кінець: файл на виході порожній, і швидко.
+  const durOK = Number.isFinite(meta.dur) && meta.dur > 0;
+  if (durOK && p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
   args.push('-i', 'in.mp4');
   if (cover) args.push('-i', 'cover.' + cover.ext);
-  if (p.trim) {
+  if (durOK && p.trim) {
     const left = meta.dur - p.trim.head - p.trim.tail;
     if (left > 1) args.push('-t', String(+left.toFixed(2)));
   }
@@ -15643,6 +15646,14 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
     // Після кропу чи повороту кадр уже інший, там масштаб потрібен завжди.
     if (ow !== meta.w || oh !== meta.h || p.crop || p.rotate) vf.push(`scale=${ow}:${oh}`);
   }
+  // ОСТАННІЙ ЗАПОБІЖНИК ПРО ПАРНІСТЬ СТОРІН.
+  //
+  // Вище масштаб додається з чисел проби, а проба вміє мовчки віддати
+  // нулі. Тоді кроп і поворот лишають сторону якою завгодно, а
+  // libx264 з yuv420p непарну не кодує — і весь варіант гине порожнім
+  // файлом. iw/ih беруться з самого потоку, тож цей рядок працює й там,
+  // де проба не спрацювала.
+  if (!meta.w || !meta.h) vf.push('scale=trunc(iw/2)*2:trunc(ih/2)*2');
   if (p.noise) vf.push(`noise=alls=${p.noise}:allf=t+u`);
   vf.push('setsar=1');
   if (p.fps) vf.push(`fps=${Math.max(15, Math.round(30 + p.fps))}`);
@@ -15719,12 +15730,41 @@ async function uqLoadFFmpeg(onStatus) {
 
 // Окрема копія ffmpeg. Модуль і wasm беруться з кешу браузера, тож друга
 // й наступні копії піднімаються помітно швидше за першу.
+// ЧОМУ МИ ВЗАГАЛІ СЛУХАЄМО ЖУРНАЛ.
+//
+// exec() у @ffmpeg/ffmpeg 0.12 НЕ кидає виняток, коли ffmpeg завершився
+// помилкою: він спокійно віддає код виходу, а ми його відкидали. Далі
+// readFile('out.mp4') забирав те, що лишилось — найчастіше нуль байтів, —
+// і сторінка видавала порожній файл із кнопкою «Download», без жодного
+// натяку, що щось пішло не так. Саме так виглядає «не унікалізує»:
+// варіанти ніби є, а всередині порожньо.
+//
+// Код виходу каже, ЩО зламалось, але не каже ЧОМУ. Чому — лише в журналі
+// самого ffmpeg, тож тримаємо його хвіст.
+const UQ_LOG_KEEP = 40;
+
 async function uqNewFFmpeg() {
   const { FFmpeg } = await import('./vendor/ffmpeg/index.js');
   const ff = new FFmpeg();
   const cdn = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm';
   await ff.load({ coreURL: cdn + '/ffmpeg-core.js', wasmURL: cdn + '/ffmpeg-core.wasm' });
+  ff.__log = [];
+  ff.on('log', ({ message }) => {
+    ff.__log.push(String(message || ''));
+    if (ff.__log.length > UQ_LOG_KEEP) ff.__log.shift();
+  });
   return ff;
+}
+
+// Рядок, який справді пояснює провал. Беремо ОСТАННІЙ схожий на помилку:
+// ffmpeg пише багато звичайного, а причина майже завжди в кінці.
+function uqWhy(ffw, code, data) {
+  const log = (ffw && ffw.__log) || [];
+  const bad = [...log].reverse().find(l =>
+    /error|invalid|unable|failed|no such|not found|divisible|unsupported/i.test(l));
+  const size = data ? data.length : 0;
+  return (bad ? bad.trim().slice(0, 160) : 'ffmpeg завершився кодом ' + code)
+    + (size ? '' : ' · файл на виході порожній');
 }
 
 // Скільки копій тримати одночасно. Кожна тримає в памʼяті вхідне відео
@@ -15885,8 +15925,14 @@ async function uqRun() {
             // його виняток валив увесь прогін, а в пулі ще й обривав сусідні копії
             // посеред кодування.
             const p = uqPickParams();
-            await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
-            const data = await ffw.readFile('out.mp4');
+            if (ffw.__log) ffw.__log.length = 0;
+            const code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            // Порожній файл — це не результат. Нижня межа груба навмисно:
+            // валідний mp4 навіть на секунду важить кілограми цього.
+            let data = null;
+            try { data = await ffw.readFile('out.mp4'); } catch (e) {}
+            if (code !== 0 || !data || data.length < 1024)
+              throw new Error(uqWhy(ffw, code, data));
             const took = performance.now() - vStart;
             times.push(took);
             fillRow(v, p, took, data);
