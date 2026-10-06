@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 14:58">
+  <meta name="build" content="build 06.10 16:07">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 14:58</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 16:07</div>
     </div>
   </aside>
 
@@ -22495,6 +22495,7 @@ function rlPaint() {
       </div>
       <div class="rl-when">${rlEsc(rlWords(r))}</div>
       <div class="rl-scope">from $${rlEsc(r.minSpend == null ? 10 : r.minSpend)} spent${
+        (r.geo || []).length ? ' · geo ' + rlEsc(r.geo.join('/')) : ''}${
         r.nameHas ? ' · FB name has “' + rlEsc(r.nameHas) + '”' : ''}${
         (r.cabs && r.cabs.length) ? ' · ' + r.cabs.length + ' cabinet(s)' : ' · all cabinets'}</div>
     </div>`).join('') + (rlEdit === -1 ? rlForm(rlBlank(), -1) : '');
@@ -22503,7 +22504,7 @@ function rlPaint() {
 function rlBlank() {
   return { id: 'r' + Date.now().toString(36), name: '', on: true, dry: true,
            level: 'ad', match: 'all', minSpend: 10,
-           when: [{ m: 'cpc_link', op: '>', v: 1.5 }], cabs: [], nameHas: '' };
+           when: [{ m: 'cpc_link', op: '>', v: 1.5 }], cabs: [], nameHas: '', geo: [] };
 }
 
 function rlForm(r, i) {
@@ -22525,8 +22526,8 @@ function rlForm(r, i) {
         ${RL_LEVELS.map(l => `<option value="${l.k}" ${r.level === l.k ? 'selected' : ''}>${l.label}</option>`).join('')}
       </select>
       <select class="rl-in" id="rl-f-match">
-        <option value="all" ${r.match !== 'any' ? 'selected' : ''}>all conditions</option>
-        <option value="any" ${r.match === 'any' ? 'selected' : ''}>any condition</option>
+        <option value="all" ${r.match !== 'any' ? 'selected' : ''}>AND</option>
+        <option value="any" ${r.match === 'any' ? 'selected' : ''}>OR</option>
       </select>
     </div>
     <div id="rl-conds">${r.when.map(cond).join('')}</div>
@@ -22534,11 +22535,15 @@ function rlForm(r, i) {
     <div class="rl-form-bot">
       <label class="rl-f"><span class="rl-f-l">Only from spend, $</span>
         <input class="rl-in is-num" id="rl-f-min" type="number" step="0.5" min="0.01" value="${rlEsc(r.minSpend == null ? 10 : r.minSpend)}"></label>
-      <label class="rl-f"><span class="rl-f-l">${
-        rlEsc((RL_LEVELS.find(l => l.k === r.level) || RL_LEVELS[0]).label)} name in Facebook contains</span>
-        <input class="rl-in" id="rl-f-has" placeholder="e.g. _KG_ — leave blank for any"
-          title="Filters by the name the ad (or ad set, or campaign) has in Facebook — not by the rule name above. Handy for geo: your names carry it, Facebook does not report geo on an ad."
-          value="${rlEsc(r.nameHas || '')}"></label>
+      <label class="rl-f"><span class="rl-f-l">Geo (blank = any)</span>
+        <input class="rl-in" id="rl-f-geo" placeholder="KG, UZ"
+          title="Two-letter country codes. Taken from the name in Facebook — the ad's, its ad set's or its campaign's — because Facebook does not report a country on an ad row. The code must stand on its own: Mostbet_KG and KG_15323 match, MostbetKG does not."
+          value="${rlEsc((r.geo || []).join(', '))}"></label>
+      ${r.nameHas ? `<label class="rl-f"><span class="rl-f-l">Old name filter</span>
+        <span class="rl-in" style="display:flex;align-items:center;gap:.5rem">
+          <span class="font-mono truncate" title="This rule still only looks at names containing this text. The field was replaced by Geo; the filter is kept so the rule does not silently start covering everything.">“${rlEsc(r.nameHas)}”</span>
+          <button type="button" class="rl-mini is-bad" onclick="rlDropHas()">✕</button>
+        </span></label>` : ''}
       <label class="rl-f"><span class="rl-f-l">Cabinets (blank = all)</span>
         <input class="rl-in is-wide" id="rl-f-cabs" placeholder="1149896616961527, 778" value="${rlEsc((r.cabs || []).join(', '))}"></label>
       <label class="rl-ax"><input type="checkbox" id="rl-f-live" ${r.dry === false ? 'checked' : ''}>
@@ -22567,12 +22572,26 @@ function rlFromForm() {
     match: document.getElementById('rl-f-match')?.value === 'any' ? 'any' : 'all',
     minSpend: Number.isFinite(min) && min > 0 ? min : 10,
     dry: !document.getElementById('rl-f-live')?.checked,
-    nameHas: String(document.getElementById('rl-f-has')?.value || '').trim(),
+    /* Спадкове поле лишаємо як є: мовчки його прибрати означало б
+       розширити правило, яке вміє вимикати оголошення. Прибрати можна
+       кнопкою — свідомо. */
+    nameHas: String((rlEdit >= 0 ? (rlRules[rlEdit] || {}) : {}).nameHas || '').trim(),
+    geo: String(document.getElementById('rl-f-geo')?.value || '')
+      .split(/[,\s]+/).map(x => x.trim().toUpperCase())
+      .filter(x => /^[A-Z]{2}$/.test(x)),
     cabs: String(document.getElementById('rl-f-cabs')?.value || '')
       .split(/[,\s]+/).map(x => x.replace(/^act_/, '').trim()).filter(Boolean),
     when: conds
   };
 }
+
+/* Прибрати спадковий фільтр по назві — свідомо й окремою дією.
+   Він обмежував правило, тож зникнути сам, разом із полем, не мав
+   права: правило, яке вміє вимикати оголошення, мовчки розширювати
+   не можна. */
+window.rlDropHas = function () {
+  if (rlEdit >= 0 && rlRules[rlEdit]) { rlRules[rlEdit].nameHas = ''; rlPaint(); }
+};
 
 window.rlAdd = function () { rlEdit = -1; rlPaint(); };
 window.rlOpen = function (i) { rlEdit = i; rlPaint(); };

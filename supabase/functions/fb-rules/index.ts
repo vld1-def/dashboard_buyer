@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-7';
+const FN_VERSION = 'rules-8';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -143,8 +143,36 @@ type Rule = {
   minSpend: number;
   when: Cond[];
   cabs: string[];      // порожньо — усі кабінети
-  nameHas: string;     // порожньо — будь-яка назва
+  nameHas: string;     // спадок: порожньо — будь-яка назва
+  geo: string[];       // порожньо — будь-яке гео
 };
+
+/* ГЕО — З НАЗВИ, І ЦЕ ЄДИНЕ МІСЦЕ, ДЕ ВОНО Є.
+
+   Facebook не віддає країну в рядку оголошення: гео живе в таргетингу
+   адсета, окремим запитом, і тягнути його на кожне оголошення коштувало
+   б більше, ніж уся решта прогону. Зате воно вже є в назвах — саме так
+   їх і іменують: Mostbet_KG, KG_15323, 334_KG_DV.
+
+   Шукаємо НЕ «яке тут гео», а «чи є тут КГ» — тобто перевіряємо лише ті
+   коди, які спитали в правилі. Різниця не косметична: вгадувати гео з
+   назви означає ловити BM (Бермуди) у «_BM_», AD (Андорра) у «_AD_» і
+   вимикати людині робочі оголошення. Коли ми шукаємо конкретний код,
+   такої помилки просто немає звідки взятись.
+
+   Код мусить стояти ОКРЕМИМ шматком: «KG» у Mostbet_KG — так, «KG»
+   всередині MostbetKG — ні. Інакше будь-яке слово з цими літерами
+   підходило б, а передбачуваність тут важливіша за поблажливість.
+
+   Дивимось і на батьків: оголошення зветься KG_15323, а кампанія —
+   MPlayC_KG_10708. Поки дивились лише на власну назву, «тільки KG» на
+   рівні оголошення не спрацьовувало там, де гео стоїть у кампанії —
+   тобто майже скрізь. */
+function geoHit(want: string[], names: unknown[]): boolean {
+  const hay = names.map(n => String(n || '')).join(' \u00b7 ');
+  return want.some(code =>
+    new RegExp('(?:^|[^A-Za-z0-9])' + code + '(?:[^A-Za-z0-9]|$)', 'i').test(hay));
+}
 
 /* Метрики. Кожна — з того, що прийшло в одній відповіді зі спендом:
    нічого не домішуємо з інших джерел, щоб у правилі не зустрілись
@@ -311,7 +339,10 @@ async function loadRules(base: string, hdr: Json, owner: string):
         minSpend: ruleNum(x.minSpend, 0.01, 100000, 10),
         when,
         cabs: (Array.isArray(x.cabs) ? x.cabs : []).map((c: unknown) => String(c).replace(/^act_/, '')),
-        nameHas: String(x.nameHas || '').trim().toLowerCase()
+        nameHas: String(x.nameHas || '').trim().toLowerCase(),
+        geo: (Array.isArray(x.geo) ? x.geo : [])
+          .map((g: unknown) => String(g).trim().toUpperCase())
+          .filter((g: string) => /^[A-Z]{2}$/.test(g))
       });
     });
   });
@@ -1009,9 +1040,12 @@ Deno.serve(async (req) => {
            MPlayC_KG_10708. Поки дивились лише на власну назву,
            «тільки KG» на рівні оголошення не спрацьовувало там, де гео
            стоїть у кампанії, — тобто майже скрізь. */
-        const ents = atLevel(ads, r.level).filter(e => !r.nameHas
-          || [e.name, e.adsetName, e.campaignName]
-               .some(n => String(n || '').toLowerCase().includes(r.nameHas)));
+        const ents = atLevel(ads, r.level).filter(e => {
+          const names = [e.name, e.adsetName, e.campaignName];
+          if (r.nameHas && !names.some(n => String(n || '').toLowerCase().includes(r.nameHas)))
+            return false;
+          return !r.geo.length || geoHit(r.geo, names);
+        });
         ents.forEach(e => {
           if (!ruleHits(r, e.agg)) return;
           /* Та сама сутність могла підпасти під два правила — вимикати
