@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 01.10 11:22">
+  <meta name="build" content="build 06.10 06:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3985,6 +3985,25 @@ body.is-lead-only .admin-only { display: none; }
 .rl-grp { margin-top: 18px; }
 .rl-grp-h { font-size: 11px; font-weight: 900; color: var(--text-main); margin: 0; }
 .rl-grp-s { font-size: 10px; color: var(--text-muted); margin: 2px 0 8px; line-height: 1.5; }
+/* ІСТОРІЯ НЕ РОСТЕ ВНИЗ БЕЗ КІНЦЯ.
+
+   Малювались усі сорок рядків підряд, і блок ішов за межі екрана —
+   прокрутити його було ніяк, бо прокручувалась сторінка цілком, а
+   список тягнувся далі за неї. Тепер висота обмежена приблизно пʼятьма
+   рядками, а решта доступна прокруткою всередині.
+
+   Саме max-height, а не фіксована: коли записів два, порожнього місця
+   під ними не буде. */
+.rl-log {
+  max-height: 212px;          /* ≈ 5 рядків по 38px + відступ */
+  overflow-y: auto;
+  overscroll-behavior: contain;   /* докрутив до кінця — сторінка не їде далі */
+  padding-right: 4px;
+}
+.rl-log::-webkit-scrollbar { width: 8px; }
+.rl-log::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 8px;
+}
 .rl-log-row {
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
   padding: 7px 10px; margin-bottom: 4px; border-radius: 10px;
@@ -4975,7 +4994,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 01.10 11:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 06:17</div>
     </div>
   </aside>
 
@@ -5895,7 +5914,7 @@ input.ui-in[type="range"] { padding: 0; }
       <div class="rl-grp">
         <h3 class="rl-grp-h">Last actions</h3>
         <p class="rl-grp-s">What the rules did, newest first. An eye means report-only: the rule matched but nothing was touched.</p>
-        <div id="rl-log"></div>
+        <div id="rl-log" class="rl-log"></div>
       </div>
 
     </div>
@@ -8538,18 +8557,30 @@ async function refreshPayoutsFromSQL() {
     return;
   }
 
-  // Оновлюємо глобальний об'єкт для розрахунків
+  /* ВИМКНЕНИЙ ОФЕР ХОВАЄТЬСЯ ЛИШЕ ЗІ СПИСКУ В ІМПОРТІ.
+
+     Тут раніше стояв return — і статистика лишалась без ставки: виручка,
+     ROI і прибуток по цьому оферу мовчки ставали нулем. Тобто вимикач,
+     зроблений, щоб прибрати зайвий рядок із випадайки імпорту, зачіпав
+     числа за вже відкручене. Гроші витрачені, ліди є, а в звіті нуль —
+     і жодного слова про те, чому.
+
+     Розведення дублів, заради якого фільтр і зʼявився, лишається, але
+     робиться інакше: та сама пара гео+офер двома рядками — перемагає
+     активний. Вимкнений дає ставку тільки тоді, коли активного немає. */
   globalPayouts = {};
+  const payFromActive = new Set();
   data.forEach(p => {
-    // Вимкнений оффер не дає ставку: інакше при двох рядках з однаковою назвою
-    // виграє випадковий, і виручка рахується то за однією ставкою, то за іншою
-    if (p.active === false) return;
     const geo = (p.geo || "").toUpperCase().trim();
     const offer = (p.offer || "DEFAULT").toUpperCase().trim();
-    globalPayouts[`${geo}_${offer}`] = Number(p.value);
+    const key = `${geo}_${offer}`;
+    const on = p.active !== false;
+    if (!on && (payFromActive.has(key) || globalPayouts[key] !== undefined)) return;
+    if (on) payFromActive.add(key);
+    globalPayouts[key] = Number(p.value);
     // Модель зберігаємо окремою мапою — щоб не ламати десяток місць, які
     // читають globalPayouts як просте число
-    payoutModels[`${geo}_${offer}`] = (p.model === 'spend') ? 'spend' : 'cpa';
+    payoutModels[key] = (p.model === 'spend') ? 'spend' : 'cpa';
     if (p.model !== undefined) payoutsHaveModel = true;
   });
 
@@ -14142,13 +14173,18 @@ async function gcEnsureTeamData(team) {
     sb.from('daily_stats').select('date,geo,offer,spend,regs,deposits').eq('team_name', team),
     sb.from('payouts').select('*').eq('team_name', team)
   ]);
-  const payouts = {}, models = {};
+  const payouts = {}, models = {}, fromActive = new Set();
   (payRes.data || []).forEach(p => {
-    if (p.active === false) return;   // вимкнені оффери ставку не дають
+    // Те саме правило, що й вище: вимкнений офер зникає зі списку в
+    // імпорті, а не зі статистики. Active рядок сильніший за дубль.
     const g = (p.geo||'').toUpperCase().trim();
     const o = (p.offer||'DEFAULT').toUpperCase().trim();
-    payouts[`${g}_${o}`] = Number(p.value) || 0;
-    models[`${g}_${o}`] = (p.model === 'spend') ? 'spend' : 'cpa';
+    const k = `${g}_${o}`;
+    const on = p.active !== false;
+    if (!on && (fromActive.has(k) || payouts[k] !== undefined)) return;
+    if (on) fromActive.add(k);
+    payouts[k] = Number(p.value) || 0;
+    models[k] = (p.model === 'spend') ? 'spend' : 'cpa';
   });
   gcCache[team] = { stats: statsRes.data || [], payouts, models };
 }

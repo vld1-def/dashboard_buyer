@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-3';
+const FN_VERSION = 'rules-4';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -957,8 +957,14 @@ Deno.serve(async (req) => {
       scanned += ads.length;
 
       for (const r of mine) {
-        const ents = atLevel(ads, r.level).filter(e =>
-          !r.nameHas || e.name.toLowerCase().includes(r.nameHas));
+        /* Фільтр за назвою дивиться і на БАТЬКІВ. Гео в цих назвах і
+           живе: оголошення зветься KG_3166698, а кампанія —
+           MPlayC_KG_10708. Поки дивились лише на власну назву,
+           «тільки KG» на рівні оголошення не спрацьовувало там, де гео
+           стоїть у кампанії, — тобто майже скрізь. */
+        const ents = atLevel(ads, r.level).filter(e => !r.nameHas
+          || [e.name, e.adsetName, e.campaignName]
+               .some(n => String(n || '').toLowerCase().includes(r.nameHas)));
         ents.forEach(e => {
           if (!ruleHits(r, e.agg)) return;
           /* Та сама сутність могла підпасти під два правила — вимикати
@@ -981,7 +987,14 @@ Deno.serve(async (req) => {
   }
 
   const logged = await logHits(base, hdr, hits);
-  const telegram = await tgSend(base, hdr, hits);
+  /* ПРЕВʼЮ В TELEGRAM НЕ ЙДЕ.
+
+     «Check now» — це погляд на екран: людина натиснула й дивиться
+     результат просто тут. Повідомлення дублювало побачене, а головне —
+     лягало в стрічку між плановими прогонами, і розклад починав
+     виглядати як випадковий: то раз на пів години, то двічі за
+     десять хвилин. Розклад при цьому ніколи не мінявся. */
+  const telegram = forceDry ? 'preview — not sent' : await tgSend(base, hdr, hits);
 
   return reply({
     fn: FN_VERSION, cron, rules: use.length, cabinets, ads: scanned,
