@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 07:32">
+  <meta name="build" content="build 06.10 08:25">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5016,7 +5016,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 07:32</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:25</div>
     </div>
   </aside>
 
@@ -13986,10 +13986,11 @@ document.addEventListener('keydown', e => {
 
 <div class="set-group">
             <h3 class="set-gtitle">Sync schedule</h3>
-            <p class="set-gsub">How often the dashboard walks the cabinets. The schedule itself ticks every 30 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
+            <p class="set-gsub">How often the dashboard walks the cabinets — and, with it, how often rules get a chance to act: they run right after each sync, on a snapshot that is seconds old. The schedule itself ticks every 15 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
             <div class="set-row" data-setting="sync pace interval синхронізація темп інтервал">
               <label class="set-label" for="fb-pace-day">Daytime, every</label>
               <select id="fb-pace-day" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="15">15 minutes</option>
                 <option value="30">30 minutes</option>
                 <option value="60">1 hour</option>
                 <option value="120">2 hours</option>
@@ -13999,6 +14000,7 @@ document.addEventListener('keydown', e => {
             <div class="set-row" data-setting="sync pace night ніч синхронізація">
               <label class="set-label" for="fb-pace-night">At night, every</label>
               <select id="fb-pace-night" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="15">15 minutes</option>
                 <option value="30">30 minutes</option>
                 <option value="60">1 hour</option>
                 <option value="120">2 hours</option>
@@ -14014,7 +14016,7 @@ document.addEventListener('keydown', e => {
                 <span class="set-hint" style="margin:0" id="fb-pace-tz"></span>
               </span>
             </div>
-            <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. Anything under 30 minutes needs the schedule itself changed (see the alter_job note at the bottom of FB_SYNC_CRON.sql); Facebook counts even refused requests against the limit, so faster is not always more data.</p>
+            <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. 15 minutes is as fast as the schedule ticks, so a smaller number changes nothing until you change the schedule too (the alter_job note at the bottom of FB_SYNC_CRON.sql). Facebook counts even refused requests against the limit, so faster is not always more data: 15 minutes costs twice what 30 does.</p>
           </div>
 
 <div class="set-group">
@@ -16699,7 +16701,10 @@ async function fbInspect(token) {
 
    Зсув часу пишемо разом із вікном: «ніч з 0 до 8» без нього
    означало б ніч по Гринвічу, тобто не ту, про яку думали. */
-const FB_PACE_DEF = { day: 30, night: 60, from: 0, to: 8 };
+/* 15 хвилин удень — стільки ж, скільки стукає розклад. Темп задає не
+   лише свіжість чисел: правила йдуть слідом за синхронізацією, тож це
+   водночас і те, як швидко правило встигне зупинити оголошення. */
+const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8 };
 
 window.fbPaceLoad = async function () {
   const dEl = document.getElementById('fb-pace-day');
@@ -17091,6 +17096,54 @@ window.fbAdd = async function () {
    кнопку на Cabinets, і будь-що, що зʼявиться потім, — без другої копії
    запиту, яку довелось би чинити двічі. */
 
+/* ЯКІ КАБІНЕТИ ОНОВИЛИСЬ — ПОІМЕННО.
+
+   Підсумок казав «40 ad account(s) from 3 token(s)»: число, з якого не
+   видно, чи твій кабінет серед тих сорока. А питають після Sync now
+   саме це — особливо коли кабінет щойно додали або він щойно віджив.
+
+   Порядок — по спенду вниз: з цього боку на парк і дивляться. Хто не
+   вліз у перелік, порахований числом, а не промовчаний. Account, який
+   приїхав із помилкою, стоїть окремо й зі своїм знаком: «оновлено»
+   про нього було б неправдою. */
+const FB_CABS_SHOW = 12;
+
+function fbCabMoney(v, cur) {
+  const n = Number(v) || 0;
+  if (!n) return '';
+  const s = n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return cur === 'USD' ? '$' + s : s + ' ' + (cur || '');
+}
+
+function fbCabList(j) {
+  const all = Array.isArray(j.cabs) ? j.cabs : [];
+  if (!all.length) return '';
+  const broke = all.filter(c => c.err);
+  const fine = all.filter(c => !c.err);
+  /* Усередині кабінета — пробіли, між кабінетами — крапка. Коли
+     роздільник той самий, «123 · Alpha · $45.00 · 456 · Beta» читається
+     як шість кабінетів, а не два. */
+  const one = c => fbEsc(c.id) + (c.name ? ' ' + fbEsc(c.name) : '')
+    + (fbCabMoney(c.spend, c.cur) ? ' ' + fbEsc(fbCabMoney(c.spend, c.cur)) : '');
+  const rows = fine.slice(0, FB_CABS_SHOW).map(one);
+  /* Загальну кількість беремо з cabs_total, а не з довжини переліку:
+     функція свій перелік теж обрізає, і рахувати обрізане означало б
+     сказати «60», коли їх триста. */
+  const total = Number(j.cabs_total) || all.length;
+  const hidden = total - fine.slice(0, FB_CABS_SHOW).length - broke.length;
+  return '<br><span class="opacity-70">updated: ' + rows.join(' \u00b7 ')
+    + (hidden > 0 ? ' \u00b7 \u2026and ' + hidden + ' more' : '')
+    + '</span>'
+    + (broke.length
+        ? '<br><span class="opacity-70">\u26A0 came back incomplete: '
+          + broke.slice(0, FB_CABS_SHOW).map(c => fbEsc(c.id)
+              + (c.name ? ' ' + fbEsc(c.name) : '')).join(' \u00b7 ')
+          + (broke.length > FB_CABS_SHOW
+              ? ' \u00b7 \u2026and ' + (broke.length - FB_CABS_SHOW) + ' more' : '')
+          + '</span>'
+        : '');
+}
+
 let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
@@ -17173,6 +17226,7 @@ window.fbSync = async function (say, body) {
         + (j.fn ? fbEsc(j.fn) : 'no version') + ' vs ' + fbEsc(FB_FN_WANT)
         + '). Run: supabase functions deploy fb-sync');
     tell(fbEsc(bits.join(' · '))
+      + fbCabList(j)
       + (probs.length
           ? '<br><span class="opacity-70">' + probs.slice(0, SHOW).map(fbEsc).join('<br>')
             + (probs.length > SHOW
@@ -18264,6 +18318,46 @@ function cabFromToken(fb) {
   };
 }
 
+/* ТАЙМЗОНА КАБІНЕТА — ФАКТ, І ВОНА ВЖЕ Є.
+
+   Facebook віддає timezone_name («Asia/Tashkent»), fb-sync кладе її в
+   fb_accounts від самого початку — просто ніде не показувалась. А
+   питання, за чиїм годинником вважається «сьогодні», виникає щоразу,
+   коли спенд у дашборді не збігається з Ads Manager.
+
+   Поруч із назвою показуємо зсув: «Asia/Tashkent» нічого не каже про
+   те, на скільки годин воно відрізняється від твого, а саме це й
+   потрібно. Зсув беремо в браузера, а не з таблиці: він знає про
+   перехід на літній time, а статична цифра — ні.
+
+   Порожньо — значить fb-sync ще не привозив цього кабінета; це не нуль
+   і не UTC, і вдавати, ніби ми знаємо, не можна. */
+function cabTzOffset(name) {
+  if (!name) return null;
+  try {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: name, timeZoneName: 'shortOffset' })
+      .formatToParts(new Date()).find(x => x.type === 'timeZoneName');
+    const m = /GMT([+-]\d{1,2})(?::(\d{2}))?/.exec(String(p && p.value || ''));
+    if (!m) return 0;                       // «GMT» без цифр — це рівно нуль
+    const h = Number(m[1]), min = Number(m[2] || 0);
+    return h + (h < 0 ? -min / 60 : min / 60);
+  } catch (e) { return null; }              // назви, якої браузер не знає, не вигадуємо
+}
+
+function cabTzLabel(name) {
+  const off = cabTzOffset(name);
+  if (off == null) return '';
+  const mine = -new Date().getTimezoneOffset() / 60;
+  const d = off - mine;
+  const sign = (v) => (v > 0 ? '+' : v < 0 ? '\u2212' : '');
+  const num = (v) => sign(v) + (Number.isInteger(Math.abs(v))
+    ? Math.abs(v) : Math.abs(v).toFixed(1));
+  // «UTC+5 · на 2 години пізніше за тебе» — друга половина і є відповіддю.
+  return 'UTC' + (off === 0 ? '' : num(off))
+    + (d === 0 ? ' \u00b7 same as yours'
+               : ' \u00b7 ' + Math.abs(d) + 'h ' + (d > 0 ? 'ahead of' : 'behind') + ' you');
+}
+
 /* Стан кабінета словами Facebook. unknown потрапляє в issue навмисно:
    незнайомий код — привід подивитись, а не привід малювати зелене. */
 const CAB_FB_STATE = {
@@ -18463,7 +18557,79 @@ async function cabInit() {
   if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
+  /* Підписи дописуємо ПІСЛЯ малювання, не до: сторінка не мусить чекати
+     на запис, якого людина не просила. Якщо запис пройде — перемалюємо. */
+  cabAutoFill();
   seen();
+}
+
+/* ПІДПИСИ ДОПИСУЮТЬСЯ САМІ.
+
+   Агент, браузер і БМ лежали в назві токена від самого початку, але
+   щоб вони опинились у рядку кабінета, треба було відкрити кабінет і
+   натиснути «Fill N field(s) from the token name». Тобто дані вже були,
+   а на екрані їх не було — і в групуванні по браузеру кабінет лежав у
+   «— no browser —», хоч браузер відомий.
+
+   Кнопка була чесною, але неправильною: вона питала дозволу на те, що
+   й так однозначне. Розбір назви не має варіантів: другий шматок — це
+   браузер, і іншим він не буде.
+
+   ТРИ МЕЖІ, І ЖОДНА З НИХ НЕ ПРО ЗРУЧНІСТЬ:
+
+   1. Тільки ПОРОЖНІ поля. Вписане руками завжди свіжіше за розбір
+      назви: людина могла перенести кабінет в інший браузер, а токен
+      лишився старим. Затерти це означало б загубити єдине місце, де
+      правда записана.
+   2. Тільки СВОЇ рядки. Accountи, яких ще немає в accounts_mapping,
+      тут не заводяться: заводити рядок — окреме рішення, і робити його
+      мовчки за людину не можна.
+   3. Помилку запису — вголос. Мовчки не збережене виглядає як
+      збережене, і наступного разу людина побачить порожнє поле знову,
+      не знаючи чому. */
+const CAB_AUTO = [['provider_name', 'agent'], ['profile', 'browser'], ['bm', 'bm']];
+
+async function cabAutoFill() {
+  const todo = [];
+  cabAll.forEach(c => {
+    if (!c.row || !c.row.id) return;        // чужий/ще не заведений — не наша справа
+    const patch = {};
+    CAB_AUTO.forEach(([col, from]) => {
+      const v = String((c.tok && c.tok[from]) || '').trim();
+      if (!v) return;
+      if (String(c.row[col] || '').trim()) return;   // вписане руками не чіпаємо
+      if (col !== 'provider_name' && !cabCols[col]) return;  // колонки ще немає
+      patch[col] = v;
+    });
+    if (Object.keys(patch).length) todo.push({ c, patch });
+  });
+  if (!todo.length) return;
+
+  /* Малюємо одразу, пишемо потім: рядок на екрані вже правильний, а
+     якщо запис не вдасться — повертаємо як було і кажемо про це.
+
+     ЯК БУЛО ЗАПАМʼЯТОВУЄМО ДО ЗАПИСУ В РЯДОК, а не після. Знято з
+     тесту: знімок, зроблений після Object.assign, тримав уже НОВІ
+     значення, і відкат нічого не відкочував — поле лишалось на екрані
+     заповненим, хоч у базу не потрапило. Тобто саме та мовчазна
+     неправда, проти якої тут усе й написано. */
+  todo.forEach(t => {
+    t.prev = {};
+    Object.keys(t.patch).forEach(k => t.prev[k] = t.c.row[k]);
+    Object.assign(t.c.row, t.patch);
+  });
+  cabRender();
+
+  const bad = [];
+  for (const { c, patch, prev } of todo) {
+    const { error } = await sb.from('accounts_mapping').update(patch).eq('id', c.row.id);
+    if (error) { Object.assign(c.row, prev); bad.push(error.message); }
+  }
+  if (bad.length) {
+    cabRender();
+    const msg = 'Could not fill ' + bad.length + ' cabinet(s) from the token name: ' + bad[0];
+    if (typeof toast === 'function') toast(msg, 'bad'); else console.warn(msg);
+  }
 }
 
 /* Що сказав Facebook. Окремо від accounts_mapping, бо це різні за
@@ -18486,6 +18652,7 @@ async function cabInit() {
    Тепер невідома колонка означає рівно те, чим вона є: кількох чисел
    не буде, поки не виконаєш ALTER. Решта працює. */
 const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_today,'
+  + 'timezone_name,'
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
   + 'amount_spent,sync_error,synced_at,business_name,token_id';
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
@@ -19480,6 +19647,21 @@ function cabCardOld(fb) {
                       : (a === b ? a : a + ' — ' + b) + ', as Facebook counts the day for this cabinet');
         })()}
         ${cell('State', esc(c.fb.status || '—'))}
+        ${/* За чиїм годинником цей кабінет вважає «сьогодні». Без цього
+              рядка розбіжність зі спендом в Ads Manager виглядає як
+              поламаний підрахунок, а це просто інша доба. */
+          cell('Timezone', c.fb.timezone_name
+                 ? esc(String(c.fb.timezone_name).split('/').pop().replace(/_/g, ' '))
+                   + (cabTzLabel(c.fb.timezone_name)
+                      ? ` <span class="cab-cur">${esc(cabTzLabel(c.fb.timezone_name).split(' \u00b7 ')[0])}</span>`
+                      : '')
+                 : '—',
+               c.fb.timezone_name
+                 ? c.fb.timezone_name + '\n' + cabTzLabel(c.fb.timezone_name)
+                   + '\n\nFacebook counts this cabinet\u2019s day by this clock, not yours. '
+                   + 'That is why «today» here can differ from «today» in your own reports.'
+                 : 'The sync has not brought this cabinet yet, so its clock is unknown \u2014 '
+                   + 'this is not UTC, it is «we do not know».')}
         ${/* НАРАХОВАНО Й ЩЕ НЕ СПИСАНО. Facebook віддає це полем balance,
               і воно вже лежало в базі — просто ніде не показувалось. Це
               єдине, що він каже про гроші по картці: списань списком у
@@ -19584,17 +19766,12 @@ function cabCardOld(fb) {
            class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"></div>`
     : '';
 
-  /* Кнопка зʼявляється, лише коли є що заповнити. Кнопка, яка нічого не
-     робить, гірша за її відсутність: на неї тиснуть і не розуміють, чому
-     нічого не сталось. */
-  const fillable = [['provider_name', c.tok.agent], ['profile', c.tok.browser], ['bm', c.tok.bm]]
-    .filter(([k, v]) => v && !c.row[k] && (k === 'provider_name' || cabCols[k]))
-    .map(([k]) => k);
-  const fillBtn = !fillable.length ? '' : `<button onclick="cabFillFromToken('${c.row.id}')"
-      class="w-full mb-3 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition
-             text-violet-300 hover:text-white hover:bg-violet-600"
-      style="border:1px solid rgba(139,92,246,.35)"
-      title="${cabEsc(c.tok.label)}">Fill ${fillable.length} field(s) from the token name</button>`;
+  /* КНОПКИ «Fill from the token name» БІЛЬШЕ НЕМА.
+
+     Вона питала дозволу на те, що й так однозначне: другий шматок
+     назви токена — це браузер, і іншим він не буде. Поки дозволу не
+     дали, дані вже були, а на екрані їх не було. Тепер cabAutoFill
+     дописує порожні поля сам, одразу після завантаження. */
 
 
   box.innerHTML = `<div class="card p-4 rounded-2xl">
@@ -19622,7 +19799,6 @@ function cabCardOld(fb) {
     ${c.fb && CAB_FB_STATE[String(c.fb.status || '')] ? `<p class="cab-fb-warn mb-3">
         Facebook says this one is ${esc(c.fb.status)} — the buttons above cannot undo that.</p>` : ''}
 
-    ${fillBtn}
     ${CAB_EXTRA.map(field).join('')}
 
     <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Note</label>
@@ -19679,25 +19855,6 @@ window.cabArchiveNew = async function (idEnc) {
 
 window.cabLinkTo = function (id, fbId) { return cabSaveField(id, 'fb_account_id', fbId); };
 
-/* Заповнити порожні поля з назви токена. Саме ПОРОЖНІ: те, що вписали
-   руками, завжди свіжіше за розбір назви, і затирати його не можна —
-   те саме правило, що й на статусі. */
-window.cabFillFromToken = async function (id) {
-  const c = cabAll.find(x => x.row && String(x.row.id) === String(id));
-  if (!c) return;
-  const patch = {};
-  [['provider_name', c.tok.agent], ['profile', c.tok.browser], ['bm', c.tok.bm]]
-    .forEach(([k, v]) => {
-      if (v && !c.row[k] && (k === 'provider_name' || cabCols[k])) patch[k] = v;
-    });
-  if (!Object.keys(patch).length) return;
-  const prev = {};
-  Object.keys(patch).forEach(k => prev[k] = c.row[k]);
-  Object.assign(c.row, patch);
-  cabRender();
-  const { error } = await sb.from('accounts_mapping').update(patch).eq('id', id);
-  if (error) { Object.assign(c.row, prev); cabRender(); alert('Could not save: ' + error.message); }
-};
 
 /* Зупинка всіх кампаній кабінета.
 

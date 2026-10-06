@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-5';
+const FN_VERSION = 'rules-6';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -680,22 +680,36 @@ function plural(n: number, one: string, few: string, many: string): string {
    лише коли воно не нуль. Реєстрації й депозити теж: правило могло
    ганятись саме за ними, і нуль, якого не видно, нічого не псує, а
    видимий нуль — псує рядок. */
-function metricLine(h: Hit): string {
+/* ДВА РЯДКИ, А НЕ ОДИН. Скільки відкрутилось і скільки подій — це
+   факт; CPC і CPL — ціна. В одному рядку через крапки вони зливались у
+   кашу, у якій око шукало число, за яким спрацювало правило. */
+function metricCounts(h: Hit): string {
   const a = h.agg;
   const out = [money(a.spend),
                a.leads + ' ' + plural(a.leads, 'лід', 'ліди', 'лідів')];
   if (a.regs) out.push(a.regs + ' реєстр.');
   if (a.purchases) out.push(a.purchases + ' деп.');
-  /* CPC і CPL, а не «клац» і «лід»: інакше «1 лід · лід $21.00» каже
-     словом «лід» дві різні речі підряд — кількість і ціну. А скорочення
-     тут рідніші за переклад: ними ж людина назвала свої правила. */
+  return out.join(' \u00b7 ');
+}
+
+/* CPC і CPL, а не «клац» і «лід»: інакше «1 лід · лід $21.00» каже
+   словом «лід» дві різні речі підряд — кількість і ціну. А скорочення
+   тут рідніші за переклад: ними ж людина назвала свої правила. */
+function metricPrices(h: Hit): string {
+  const a = h.agg;
+  const out: string[] = [];
   const cpc = METRICS.cpc_link(a);
   if (cpc != null && cpc !== Infinity) out.push('CPC ' + money(cpc));
   if (a.leads > 0) {
     const cpl = METRICS.cpl(a);
     if (cpl != null && cpl !== Infinity) out.push('CPL ' + money(cpl));
   }
-  return out.join(' · ');
+  return out.join(' \u00b7 ');
+}
+
+/* Лишаємо для місць, де потрібен один рядок (підсумки, журнал). */
+function metricLine(h: Hit): string {
+  return [metricCounts(h), metricPrices(h)].filter(Boolean).join(' \u00b7 ');
 }
 
 /* АДРЕСА ВЛУЧАННЯ. Без неї повідомлення каже «вимкнули KG_1» — а KG_1
@@ -706,8 +720,17 @@ function metricLine(h: Hit): string {
    Назву кампанії не повторюємо там, де сама сутність і є кампанією. */
 function whereLine(h: Hit): string {
   const camp = h.level === 'campaign' ? '' : String(h.campaignName || '').trim();
-  return 'каб. ' + (h.account || '?') + (camp ? ' · ' + camp : '');
+  /* Підписані рядки, а не «каб. 123 · Назва» одним рядком: назва
+     кампанії довга, у телефоні вона переноситься — і id кабінета
+     зливався з її хвостом. Підпис на початку рядка дає оку якір, і
+     кожен шматок адреси можна скопіювати окремо. */
+  return 'cab:  ' + (h.account || '?')
+    + (camp ? '\ncamp: ' + camp : '');
 }
+
+/* Розділювач адреси. Дві лінії роблять із адреси блок: усе між ними —
+   «де», усе під ними — «що саме й чому». */
+const TG_RULE = '\u2500'.repeat(12);
 
 /* ЧОМУ НІЧОГО НЕ ВИМКНУЛОСЬ.
 
@@ -763,8 +786,16 @@ const tgKey = (h: Hit): string => [h.ruleName, h.account,
    закінчилось одне й почалось наступне. */
 const tgMark = (h: Hit): string => h.dry ? '\u{1F441}' : h.ok ? '⛔' : '⚠';
 
-const tgOne = (h: Hit): string => tgMark(h) + ' ' + h.name
-  + '\n    ' + metricLine(h)
+/* ЩО ЦЕ ЗА СУТНІСТЬ — ПІДПИСОМ, А НЕ ДОГАДКОЮ. «⛔ Mostbet_KG_new»
+   читається як одне оголошення, хоч це могла бути кампанія на сорок.
+   Підпис перед назвою коштує чотири символи й знімає питання. */
+const TG_WHAT: Record<string, string> = {
+  ad: 'ad', adset: 'adset', campaign: 'camp' };
+
+const tgOne = (h: Hit): string =>
+  tgMark(h) + ' ' + (TG_WHAT[h.level] || h.level) + ': ' + h.name
+  + '\n    ' + metricCounts(h)
+  + (metricPrices(h) ? '\n    ' + metricPrices(h) : '')
   /* «Чому» — найцінніший рядок: саме він відповідає на «та в мене там
      інші числа». Стрілка, а не крапка: це не ще один показник, це
      пояснення рішення. */
@@ -794,7 +825,8 @@ function tgBody(hits: Hit[]): string {
     const list = by.get(k) as Hit[];
     const lv = [...new Set(list.map(h => h.level))]
       .map(l => TG_LEVEL[l] || l).join(' / ');
-    return '«' + list[0].ruleName + '» · ' + lv + '\n' + whereLine(list[0]) + '\n'
+    return 'Правило: «' + list[0].ruleName + '» \u00b7 ' + lv + '\n'
+      + TG_RULE + '\n' + whereLine(list[0]) + '\n' + TG_RULE + '\n'
       + list.map(tgOne).join('\n');
   }).join('\n\n');
 }
