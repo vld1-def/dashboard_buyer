@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 14:46">
+  <meta name="build" content="build 06.10 14:58">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5027,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 14:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 14:58</div>
     </div>
   </aside>
 
@@ -15522,12 +15522,51 @@ function uqProbe(file) {
 // параметри двох шматків мусять збігатися байт у байт.
 let uqCover = null;   // { data: Uint8Array, ext, url, name }
 
+// КАРТИНКУ ПЕРЕКЛАДАЄМО В PNG ЩЕ ТУТ, У БРАУЗЕРІ.
+//
+// Байти файлу йшли в ffmpeg як є. Для jpg і png це працювало, а на AVIF
+// (і на webp чи heic так само) ядро @ffmpeg/core просто не має декодера —
+// у нього немає ні dav1d, ні aom. Воно падало на ВХОДІ, тобто гинув не
+// кадр обкладинки, а весь варіант: «Conversion failed!» на кожному файлі
+// черги, хоч із самим відео все гаразд.
+//
+// Браузер при цьому читає AVIF давно й без питань. Тож вантажимо
+// картинку його силами й віддаємо ffmpeg готовий PNG. Так зникає цілий
+// клас «формат не підтримується»: що відкрив браузер, те й спрацює.
+//
+// PNG, а не JPEG, навмисно: обкладинка — один кадр, на вагу це не
+// впливає, зате прозорість і різкі краї не пливуть.
+async function uqCoverToPng(file) {
+  const bmp = await createImageBitmap(file);
+  const c = document.createElement('canvas');
+  c.width = bmp.width; c.height = bmp.height;
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  bmp.close && bmp.close();
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  if (!blob) throw new Error('не вдалось перетворити картинку');
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
 async function uqCoverPick(e) {
   const f = e.target.files && e.target.files[0];
   uqCoverClear(true);
   if (!f) return;
-  const buf = new Uint8Array(await f.arrayBuffer());
-  uqCover = { data: buf, ext: /png/i.test(f.type) ? 'png' : 'jpg',
+  let buf;
+  try {
+    buf = await uqCoverToPng(f);
+  } catch (err) {
+    // Браузер теж не зміг — значить формат справді чужий. Кажемо це тут,
+    // одразу, а не через півгодини чергою зламаних варіантів.
+    const prev0 = document.getElementById('uq-cover-prev');
+    if (prev0) {
+      prev0.className = 'text-[11px] font-bold text-rose-400 flex-1 min-w-0';
+      prev0.textContent = (f.type || f.name.split('.').pop()) + ': цей формат не читається — '
+        + 'збережіть обкладинку в PNG або JPG';
+    }
+    const i = document.getElementById('uq-cover'); if (i) i.value = '';
+    return;
+  }
+  uqCover = { data: buf, ext: 'png',
               url: URL.createObjectURL(f), name: f.name };
   const prev = document.getElementById('uq-cover-prev');
   if (prev) {
@@ -15756,15 +15795,35 @@ async function uqNewFFmpeg() {
   return ff;
 }
 
-// Рядок, який справді пояснює провал. Беремо ОСТАННІЙ схожий на помилку:
-// ffmpeg пише багато звичайного, а причина майже завжди в кінці.
+// ЧОМУ НЕ ПРОСТО «ОСТАННІЙ РЯДОК ІЗ СЛОВОМ error».
+//
+// Перша версія брала саме його — і щоразу витягала «Conversion failed!».
+// Це ПІДСУМОК ffmpeg, останнє, що він пише перед виходом, і він не каже
+// нічого: провалилось і провалилось. Справжня причина завжди вище,
+// окремим рядком, і підсумок її затуляв. На живому прикладі це коштувало
+// цілого кола: на екрані стояло «Conversion failed!» на кожному з пʼяти
+// файлів, а в журналі поруч лежало, що ядро не прочитало обкладинку.
+//
+// Тому спершу шукаємо рядок, який називає ЩОСЬ конкретне, і лише коли
+// такого немає — беремо останній незагальний. Хвіст журналу їде в title
+// рядка й у консоль: коротке пояснення влучає не завжди, а скопіювати
+// повний текст має бути звідки.
+// Вважаємо беззмістовними лише ті рядки, що справді нічого не додають.
+// «Error while filtering: Invalid argument» сюди НЕ входить: після
+// двокрапки там стоїть причина, і викинути такий рядок означало б
+// повторити ту саму ваду, тільки з іншого боку.
+const UQ_VAGUE = /^(conversion failed|error opening output file|at least one output file)/i;
+const UQ_REAL = /invalid|no such|not found|unknown|unsupported|decoder|matches no streams|does not contain|could not|cannot|unable|divisible|out of memory|no space/i;
+
 function uqWhy(ffw, code, data) {
-  const log = (ffw && ffw.__log) || [];
-  const bad = [...log].reverse().find(l =>
-    /error|invalid|unable|failed|no such|not found|divisible|unsupported/i.test(l));
+  const log = ((ffw && ffw.__log) || []).map(l => String(l).trim()).filter(Boolean);
+  const real = [...log].reverse().find(l => UQ_REAL.test(l) && !UQ_VAGUE.test(l));
+  const last = [...log].reverse().find(l => !UQ_VAGUE.test(l));
   const size = data ? data.length : 0;
-  return (bad ? bad.trim().slice(0, 160) : 'ffmpeg завершився кодом ' + code)
-    + (size ? '' : ' · файл на виході порожній');
+  const head = (real || last || 'ffmpeg завершився кодом ' + code).slice(0, 200);
+  const err = new Error(head + (size ? '' : ' · файл на виході порожній'));
+  err.tail = log.slice(-8).join('\n');
+  return err;
 }
 
 // Скільки копій тримати одночасно. Кожна тримає в памʼяті вхідне відео
@@ -15906,10 +15965,13 @@ async function uqRun() {
           <span class="text-[11px] font-mono text-slate-500 shrink-0">${(data.length / 1048576).toFixed(1)} МБ</span>
           <a href="${url}" download="${base}__v${v}.mp4" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Download</a>`;
       };
-      const failRow = (v, msg) => {
+      const failRow = (v, msg, tail) => {
         const row = slots[v - 1];
         row.className = 'text-[11px] font-bold text-rose-400 px-3 py-2';
         row.textContent = `v${v}: не вдалось — ${msg}`;
+        // Повний хвіст журналу — під наведенням і в консолі: коротке
+        // пояснення влучає не завжди, а скопіювати текст має бути звідки.
+        if (tail) row.title = tail;
       };
 
       // Одна копія ffmpeg тягне варіанти з черги, поки та не спорожніє.
@@ -15932,13 +15994,14 @@ async function uqRun() {
             let data = null;
             try { data = await ffw.readFile('out.mp4'); } catch (e) {}
             if (code !== 0 || !data || data.length < 1024)
-              throw new Error(uqWhy(ffw, code, data));
+              throw uqWhy(ffw, code, data);
             const took = performance.now() - vStart;
             times.push(took);
             fillRow(v, p, took, data);
             try { await ffw.deleteFile('out.mp4'); } catch (e) {}
           } catch (e) {
-            failRow(v, e.message || e);
+            failRow(v, e.message || e, e.tail);
+            if (e.tail) console.error('uq: ffmpeg\n' + e.tail);
           }
           done++;
           bar.style.width = ((done / totalNow()) * 100).toFixed(1) + '%';
