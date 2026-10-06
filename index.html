@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 08:25">
+  <meta name="build" content="build 06.10 08:35">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5016,7 +5016,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:25</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:35</div>
     </div>
   </aside>
 
@@ -5226,16 +5226,19 @@ input.ui-in[type="range"] { padding: 0; }
         <iframe id="datahub-frame" title="Data Hub"></iframe>
       </div>
 
-      <!-- Google Таблиці: збережені посилання + перегляд просто тут -->
+      <!-- Таблиці й сторінки: збережені посилання + перегляд просто тут.
+           Google Таблиці та Notion лежать В ОДНОМУ списку навмисно:
+           окремий розділ під другий список посилань не додав би нічого,
+           крім ще однієї кнопки в меню. -->
       <div id="sheets-panel" class="card hidden">
         <div class="hub-head">
           <div class="sh-picker">
             <select id="sh-select" onchange="sheetsPick(this.value)"></select>
-            <a id="sh-open" href="#" target="_blank" rel="noopener" class="sh-btn" title="Open in Google to edit">
+            <a id="sh-open" href="#" target="_blank" rel="noopener" class="sh-btn" title="Open the original in a new tab to edit it">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
               Edit
             </a>
-            <button class="sh-btn" onclick="sheetsToggleAdd()" title="Add a sheet">+ Add</button>
+            <button class="sh-btn" onclick="sheetsToggleAdd()" title="Add a Google Sheet or a Notion page">+ Add</button>
             <button class="sh-btn sh-del" onclick="sheetsRemove()" title="Remove from the list">Remove</button>
             <!-- Файл читається В БРАУЗЕРІ й нікуди не йде: ні в Supabase,
                  ні в Google. Тому кнопка стоїть поруч, а не в Files. -->
@@ -5249,7 +5252,7 @@ input.ui-in[type="range"] { padding: 0; }
         </div>
         <div id="sh-add" class="sh-add hidden">
           <input id="sh-name" placeholder="Name (e.g. Q4 budgets)">
-          <input id="sh-url" placeholder="https://docs.google.com/spreadsheets/d/...">
+          <input id="sh-url" placeholder="Google Sheets or Notion link">
           <button class="sh-btn sh-save" onclick="sheetsAdd()">Save</button>
         </div>
         <div id="sh-empty" class="sh-empty hidden"></div>
@@ -25370,8 +25373,37 @@ tmBoot();
   /* ─────────── Google Таблиці ─────────── */
   let sheets = [], sheetsIdx = 0, sheetsLoaded = false;
 
+/* ТУТ ЖИВУТЬ НЕ ЛИШЕ ТАБЛИЦІ GOOGLE.
+
+   Notion попросили «так само, як таблиці» — і це правильно: окремий
+   розділ під другий список посилань нічого не додає, крім ще однієї
+   кнопки в меню. Тому список один, і в ньому обидва види.
+
+   АЛЕ ВБУДОВУЮТЬСЯ ВОНИ НЕ ОДНАКОВО, і про це не можна промовчати.
+   Notion віддає X-Frame-Options: SAMEORIGIN на робочі сторінки
+   (notion.so/…) — браузер відмовиться їх показувати, і в рамці буде
+   БІЛА ПОРОЖНЯ ПЛОЩА без жодного слова про причину. Вбудувати можна
+   лише ОПУБЛІКОВАНУ сторінку: Share → Publish, і адреса стає
+   *.notion.site.
+
+   Тому вид посилання визначаємо за адресою, а не сподіваємось:
+   опубліковану показуємо в рамці, робочу — не вдаємо, що показали, а
+   кажемо, що зробити, і даємо кнопку відкрити в новій вкладці. Біла
+   площа замість сторінки — найгірше з можливого: вона виглядає як
+   поломка дашборда, а поломки немає. */
+  function sheetKind(u) {
+    const v = String(u || '').trim();
+    if (/\/spreadsheets\/d\/[A-Za-z0-9_-]+/.test(v)) return 'gs';
+    // Опублікована сторінка: foo.notion.site/… (і старий notion.site/…)
+    if (/^https?:\/\/([a-z0-9-]+\.)?notion\.site\//i.test(v)) return 'notion-pub';
+    // Робоча сторінка: notion.so / www.notion.so — вбудувати не дасть
+    if (/^https?:\/\/(www\.)?notion\.so\//i.test(v)) return 'notion-priv';
+    return '';
+  }
+
   // /edit не дозволяє вбудовування (X-Frame-Options), /preview — так.
   function sheetPreview(u) {
+    if (sheetKind(u) === 'notion-pub') return String(u).trim();
     const m = /\/spreadsheets\/d\/([A-Za-z0-9_-]+)/.exec(u || '');
     if (!m) return '';
     const gid = /[#&?]gid=(\d+)/.exec(u || '');
@@ -25413,9 +25445,11 @@ tmBoot();
   window.sheetsAdd = async function () {
     const name = (document.getElementById('sh-name')?.value || '').trim();
     const url = (document.getElementById('sh-url')?.value || '').trim();
-    if (!url) return alert('Paste a link to the sheet');
-    if (!sheetPreview(url)) return alert('That does not look like a Google Sheets link');
-    sheets.push({ name: name || `Sheet ${sheets.length + 1}`, url });
+    if (!url) return alert('Paste a link to a Google Sheet or a Notion page');
+    const kind = sheetKind(url);
+    if (!kind) return alert('That does not look like a Google Sheets or Notion link');
+    sheets.push({ name: name || (kind === 'gs' ? `Sheet ${sheets.length + 1}`
+                                              : `Notion ${sheets.length + 1}`), url });
     sheetsIdx = sheets.length - 1;
     document.getElementById('sh-name').value = '';
     document.getElementById('sh-url').value = '';
@@ -25427,8 +25461,12 @@ tmBoot();
   window.sheetsRemove = async function () {
     const cur = sheets[sheetsIdx];
     if (!cur) return;
-    if (!await ask({ title: 'Remove the sheet?', danger: true, ok: 'Remove',
-      body: `Remove “${cur.name}” from the list?\n\nThe sheet itself stays in Google.` })) return;
+    /* «stays in Google» було правдою, поки тут жили лише таблиці. Тепер
+       у списку й Notion, і обіцяти не те місце не можна. */
+    const where = sheetKind(cur.url) === 'gs' ? 'Google'
+                : sheetKind(cur.url).startsWith('notion') ? 'Notion' : 'its own place';
+    if (!await ask({ title: 'Remove it from the list?', danger: true, ok: 'Remove',
+      body: `Remove “${cur.name}” from the list?\n\nOnly the link goes — the page itself stays in ${where}.` })) return;
     sheets.splice(sheetsIdx, 1);
     sheetsIdx = Math.max(0, sheetsIdx - 1);
     await sheetsSave();
@@ -25454,17 +25492,49 @@ tmBoot();
       frame.classList.add('hidden');
       frame.removeAttribute('src');
       empty.classList.remove('hidden');
-      empty.innerHTML = `<p>Your Google Sheets live here.</p>
-        <p class="sh-hint">Hit “+ Add” and paste a link — it is saved for the whole team and the sheet
-        opens right here. The preview is read-only: use “Edit” to make changes.</p>`;
+      empty.innerHTML = `<p>Your Google Sheets and Notion pages live here.</p>
+        <p class="sh-hint">Hit “+ Add” and paste a link — it is saved for the whole team and opens
+        right here. The preview is read-only: use “Edit” to make changes. A Notion page has to be
+        published (Share → Publish) to show up inside the dashboard; a workspace link still gets
+        saved, it just opens in a new tab.</p>`;
       if (open) open.style.display = 'none';
+      return;
+    }
+    empty.classList.remove('hidden');
+    if (open) { open.style.display = ''; open.href = cur.url; }
+
+    /* РОБОЧА СТОРІНКА NOTION: НЕ ВДАЄМО, ЩО ПОКАЗАЛИ.
+
+       Браузер відмовить у вбудовуванні, і в рамці буде біла площа —
+       виглядає як поломка дашборда, хоч нічого не поламано. Тому
+       рамку не показуємо взагалі, а кажемо, що саме зробити. */
+    if (sheetKind(cur.url) === 'notion-priv') {
+      frame.classList.add('hidden');
+      frame.removeAttribute('src');
+      empty.innerHTML = `<p>Notion does not allow this page to be shown inside another site.</p>
+        <p class="sh-hint">This is a workspace link (notion.so). Notion blocks those from being
+        embedded anywhere — nothing is broken here, and there is no way around it from this side.
+        <br><br>To see it in the dashboard: open the page in Notion → <b>Share</b> → <b>Publish</b>,
+        then paste the <b>notion.site</b> link it gives you. Until then use “Edit” above to open it
+        in a new tab.</p>`;
+      return;
+    }
+
+    const src = sheetPreview(cur.url);
+    if (!src) {
+      /* Посилання, яке ми не вміємо вбудувати, могло потрапити в список
+         із давніших часів, коли перевірки не було. Порожня рамка
+         сказала б про це лише білим кольором. */
+      frame.classList.add('hidden');
+      frame.removeAttribute('src');
+      empty.innerHTML = `<p>This link cannot be shown here.</p>
+        <p class="sh-hint">It is neither a Google Sheets link nor a Notion page. It stays in the
+        list and “Edit” above opens it in a new tab.</p>`;
       return;
     }
     empty.classList.add('hidden');
     frame.classList.remove('hidden');
-    const src = sheetPreview(cur.url);
     if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
-    if (open) { open.style.display = ''; open.href = cur.url; }
   }
 
   /* ─────────── CSV і XLSX просто тут ───────────

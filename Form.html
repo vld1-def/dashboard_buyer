@@ -766,6 +766,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
              <div class="flex gap-3">
                 <input type="text" id="prov-acc" placeholder="Account ID" class="flex-grow">
                 <input type="number" id="prov-tz" placeholder="TZ" title="Account timezone, e.g. -8, 0, 3" class="!w-20 text-center">
+                <!-- Браузер: де цей кабінет лежить ЗАРАЗ. Facebook про це не
+                     знає нічого, а шукати кабінет без цього означає відкривати
+                     профілі по черзі. -->
+                <input type="text" id="prov-browser" placeholder="Browser" title="Which antidetect profile this cabinet lives in, e.g. AdsPower 12" class="!w-36">
                 <div class="flex gap-1 w-1/2">
                   <select id="prov-agency" class="flex-grow"></select>
                   <button onclick="promptNewAgency()" class="bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black text-white transition-all">+</button>
@@ -790,7 +794,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
              <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
                 <table class="w-full text-[13px] text-left">
                   <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
-                    <tr><th class="p-3">Account</th><th class="p-3 text-center">TZ</th><th class="p-3 text-center">Added</th><th class="p-3 text-right">Agency</th><th class="p-3"></th></tr>
+                    <tr><th class="p-3">Account</th><th class="p-3 text-center">TZ</th><th class="p-3 text-center">Browser</th><th class="p-3 text-center">Added</th><th class="p-3 text-right">Agency</th><th class="p-3"></th></tr>
                   </thead>
                   <tbody id="providers-list-body" class="divide-y divide-white/5">
                     <!-- JS Rows -->
@@ -1174,11 +1178,15 @@ async function refreshProvidersTable() {
 
   if (error) {
     console.error("Помилка акаунтів:", error);
-    body.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-400">Error loading data</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-red-400">Error loading data</td></tr>';
     return;
   }
 
   allProviders = data || []; // Зберігаємо в глобальну змінну для пошуку
+  /* select('*') віддає рядок цілком, тож наявність колонки видно по
+     самому рядку — окремого запиту до схеми не треба. Порожня таблиця
+     нічого не каже, і тоді лишаємось на тому, що знали. */
+  if (allProviders.length) provHasProfile = 'profile' in allProviders[0];
   renderProvidersTable(allProviders);
 }
 
@@ -2799,33 +2807,62 @@ async function confirmCreativeImport() {
 
 // --- НАЛАШТУВАННЯ (SETTINGS) ---
 
+/* Чи є в таблиці колонка profile. Вона додавалась пізніше (ALTER у
+   коментарі до cabinets), і в чиїйсь базі її може ще не бути. Писати в
+   неї тоді означало б завалити ВЕСЬ insert — тобто кабінет не
+   завівся б узагалі через поле, яке ніхто не просив. */
+let provHasProfile = false;
+
 async function addProvider() {
   const acc = document.getElementById('prov-acc').value;
   const agency = document.getElementById('prov-agency').value; // Значення з селектора
   const tzRaw = document.getElementById('prov-tz').value.trim();
   const timezone = tzRaw === '' ? null : parseInt(tzRaw, 10);
+  const browser = (document.getElementById('prov-browser')?.value || '').trim();
 
   if (!acc) return alert("Enter an account ID!");
 
-  const { error } = await sb.from('accounts_mapping').insert([
-    {
-      account_id: acc,
-      provider_name: agency, // ТВОЯ НАЗВА КОЛОНКИ
-      timezone: timezone,
-      team_name: currentTeam
-    }
-  ]);
+  const row = {
+    account_id: acc,
+    provider_name: agency, // ТВОЯ НАЗВА КОЛОНКИ
+    timezone: timezone,
+    team_name: currentTeam
+  };
+  if (browser && provHasProfile) row.profile = browser;
+
+  const { error } = await sb.from('accounts_mapping').insert([row]);
 
   if (error) {
     console.error("Помилка:", error);
     alert("Could not save: " + error.message);
   } else {
-    showStatus("Account Linked!");
+    /* Браузер вписали, а колонки немає — сказати про це мусимо тут:
+       мовчки збережений кабінет без браузера виглядає як збережений
+       із браузером, і наступного разу поле просто порожнє. */
+    if (browser && !provHasProfile) {
+      alert('The cabinet is linked, but the browser was not saved: this database has no '
+          + '"profile" column yet. Run in Supabase:\n\n'
+          + 'alter table accounts_mapping add column if not exists profile text;');
+    } else {
+      showStatus("Account Linked!");
+    }
     document.getElementById('prov-acc').value = '';
     document.getElementById('prov-tz').value = '';
+    const br = document.getElementById('prov-browser'); if (br) br.value = '';
     await refreshProvidersTable();
     await loadMappings();
   }
+}
+
+/* Браузер правлять так само, як TZ: клік по значенню в таблиці. Окремої
+   кнопки «зберегти» немає навмисно — кабінет переносять між профілями
+   частіше, ніж заводять, і зайвий крок тут коштував би дорожче. */
+async function updateAccountProfile(id, val) {
+  const v = String(val).replace(/\u00a0/g, ' ').trim();
+  const profile = (v === '' || v === '\u2014') ? null : v;
+  const { error } = await sb.from('accounts_mapping').update({ profile }).eq('id', id);
+  if (error) { alert("Could not save the browser: " + error.message); await refreshProvidersTable(); }
+  else { showStatus("Browser updated"); await refreshProvidersTable(); await loadMappings(); }
 }
 
 async function updateAccountTz(id, val) {
@@ -2864,7 +2901,7 @@ function renderProvidersTable(data) {
   if (!body) return console.error("❌ Не знайдено providers-list-body");
 
   if (!data || data.length === 0) {
-    body.innerHTML = '<tr><td colspan="5" class="p-4 text-center opacity-40 italic">No accounts linked yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="p-4 text-center opacity-40 italic">No accounts linked yet</td></tr>';
     return;
   }
 
@@ -2875,6 +2912,11 @@ function renderProvidersTable(data) {
         <span contenteditable="true" onblur="updateAccountTz('${r.id}', this.innerText)"
               class="inline-block min-w-[32px] px-2 py-0.5 rounded bg-white/5 text-amber-300 font-bold outline-none focus:bg-white/10 cursor-text"
               title="Click to change the timezone">${r.timezone ?? '—'}</span>
+      </td>
+      <td class="p-3 text-center">
+        <span contenteditable="true" onblur="updateAccountProfile('${r.id}', this.innerText)"
+              class="inline-block min-w-[48px] px-2 py-0.5 rounded bg-white/5 text-violet-300 font-bold outline-none focus:bg-white/10 cursor-text"
+              title="Click to change the browser profile">${(r.profile || '—').toString().replace(/</g, '&lt;')}</span>
       </td>
       <td class="p-3 text-center font-mono text-[12px] text-slate-400" title="Date added">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</td>
       <td class="p-3 text-right text-slate-300">${r.provider_name || 'Direct'}</td>
@@ -3020,7 +3062,11 @@ function showStatus(m) {
 
 function filterProviders() {
   const query = document.getElementById('acc-search').value.toLowerCase();
-  renderProvidersTable(allProviders.filter(r => r.account_id.toLowerCase().includes(query)));
+  /* Шукаємо і по браузеру: «а що в мене лежить в AdsPower 12» — таке ж
+     часте питання, як «де кабінет 123». І по агенту, поки ми тут. */
+  renderProvidersTable(allProviders.filter(r =>
+    [r.account_id, r.profile, r.provider_name]
+      .some(v => String(v || '').toLowerCase().includes(query))));
 }
 
 function filterFunnels() {
