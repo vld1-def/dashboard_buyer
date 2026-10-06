@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 06:17">
+  <meta name="build" content="build 06.10 06:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4504,6 +4504,17 @@ input.ui-in[type="range"] { padding: 0; }
   color: var(--text-muted);
 }
 .ask-body p:last-child { margin-bottom: 0; }
+.fb-proxy { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.fb-proxy.is-off { opacity: .55; font-style: italic; }
+.fb-proxy.is-on  { color: #34D399; }
+.fb-proxy.is-warn { color: #FBBF24; }
+.ask-in {
+  width: 100%; margin: 10px 0 2px; padding: 9px 11px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-main);
+  font-size: 12px; font-family: inherit;
+}
+.ask-in:focus { outline: none; border-color: var(--accent, #8B5CF6); }
 .ask-row { display: flex; gap: 8px; margin-top: 16px; }
 .ask-row button {
   flex: 1; padding: 9px 12px; border-radius: 12px; cursor: pointer;
@@ -4994,7 +5005,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 06:17</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 06:32</div>
     </div>
   </aside>
 
@@ -13132,6 +13143,10 @@ window.ask = function (opts) {
     wrap.innerHTML = `<div class="askbox" role="dialog" aria-modal="true">
         ${o.title ? `<p class="ask-title">${esc(o.title)}</p>` : ''}
         <div class="ask-body">${para(o.body)}</div>
+        ${o.input ? `<input type="${o.input.secret ? 'password' : 'text'}"
+            class="ask-in" spellcheck="false" autocomplete="off"
+            placeholder="${esc(o.input.placeholder || '')}"
+            value="${esc(o.input.value || '')}">` : ''}
         <div class="ask-row">
           ${o.only ? '' : `<button type="button" class="ask-no">${esc(o.cancel || 'Cancel')}</button>`}
           <button type="button" class="ask-yes ${o.danger ? 'is-bad' : ''}">${
@@ -13148,10 +13163,22 @@ window.ask = function (opts) {
     };
     const key = e => {
       if (e.key === 'Escape') { e.preventDefault(); close(false); }
-      else if (e.key === 'Enter') { e.preventDefault(); close(true); }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        const f = wrap.querySelector('.ask-in');
+        close(f ? f.value : true);
+      }
     };
 
-    wrap.querySelector('.ask-yes').onclick = () => close(true);
+    /* ПИТАННЯ З ПОЛЕМ. Перейменувати токен і вписати проксі — це те
+       саме питання, тільки відповідь не «так», а рядок. Окреме вікно
+       заради цього було б третім різновидом того самого, тож поле
+       живе тут, а ask повертає текст замість true.
+
+       Порожній рядок — це НЕ відмова: ним стирають проксі. Тому
+       скасування й далі повертає false, і два випадки не зливаються. */
+    const inp = wrap.querySelector('.ask-in');
+    wrap.querySelector('.ask-yes').onclick = () => close(inp ? inp.value : true);
     const no = wrap.querySelector('.ask-no');
     if (no) no.onclick = () => close(false);
     // Клік повз вікно = відмова. Для питання це безпечний бік.
@@ -13159,7 +13186,8 @@ window.ask = function (opts) {
     document.addEventListener('keydown', key, true);
 
     document.body.appendChild(wrap);
-    wrap.querySelector('.ask-yes').focus();
+    // Є поле — курсор туди: інакше перше, що робить людина, це клік у нього.
+    (wrap.querySelector('.ask-in') || wrap.querySelector('.ask-yes')).focus();
   });
 };
 
@@ -16711,7 +16739,8 @@ window.fbLoad = async function () {
   // Навмисно перелічуємо поля: select('*') спробував би дістати token,
   // а на нього немає прав — і весь запит упав би цілком.
   const { data, error } = await sb.from('fb_tokens')
-    .select('id,label,bm_id,bm_name,scopes,expires_at,accounts,status,status_note,checked_at,note')
+    .select('id,label,bm_id,bm_name,scopes,expires_at,accounts,status,status_note,checked_at,note,'
+           + 'proxy_host,proxy_ip,proxy_note,proxy_checked_at')
     .order('created_at', { ascending: false });
   if (error) {
     box.innerHTML = /fb_tokens|does not exist|schema cache/i.test(error.message)
@@ -16783,12 +16812,150 @@ window.fbPaint = function () {
         ${accs} ad account(s) · ${fbEsc(exp)}
         ${r.status_note ? ' · ' + fbEsc(r.status_note) : ''}
       </div>
+      ${fbProxyLine(r)}
       <div class="fb-acts">
         <button type="button" class="set-btn" onclick="fbShow(${r.id})">Accounts</button>
+        <button type="button" class="set-btn" onclick="fbRename(${r.id})">Rename</button>
+        <button type="button" class="set-btn" onclick="fbProxySet(${r.id})">Proxy</button>
+        ${r.proxy_host ? `<button type="button" class="set-btn"
+            onclick="fbProxyTest(${r.id})">Check proxy</button>` : ''}
         <button type="button" class="set-btn" onclick="fbDrop(${r.id})">Remove</button>
       </div>
     </div>`;
   }).join('') + fold;
+};
+
+/* ПРОКСІ — РЯДКОМ, А НЕ ЗНАЧКОМ.
+
+   Значок сказав би «проксі є». Але питання не в цьому: вписаний рядок
+   і трафік, що справді через нього пішов, — різні речі, і між ними
+   буває тиждень. Тому показуємо host:port, адресу, з якої вийшов
+   останній запит, і що сказала перевірка.
+
+   Самого рядка проксі тут немає й бути не може: у ньому логін і
+   пароль, тож база його зі сторінки не віддає взагалі (FB_TOKENS.sql).
+   Видно лише host:port, у якому нема чим скористатись. */
+function fbProxyLine(r) {
+  if (!r.proxy_host) {
+    return '<div class="fb-meta fb-proxy is-off">No proxy \u2014 this token reads Facebook '
+         + 'from the server address, same as every other one</div>';
+  }
+  const when = r.proxy_checked_at
+    ? new Date(r.proxy_checked_at).toLocaleString() : 'not checked yet';
+  const good = r.proxy_note === 'ok';
+  return `<div class="fb-meta fb-proxy ${good ? 'is-on' : 'is-warn'}">
+      \u{1F310} ${fbEsc(r.proxy_host)}
+      ${r.proxy_ip ? ' \u2192 ' + fbEsc(r.proxy_ip) : ''}
+      \u00b7 ${fbEsc(when)}
+      ${r.proxy_note && !good ? ' \u00b7 ' + fbEsc(r.proxy_note) : ''}
+    </div>`;
+}
+
+/* Назва — єдине в токені, що пишуть для себе, і єдине, що з часом
+   перестає пасувати: БМ передали, кабінети переїхали, а підпис лишився
+   старий. Перевипускати заради цього токен безглуздо. */
+window.fbRename = async function (id) {
+  const r = fbRows.find(x => x.id === id);
+  if (!r) return;
+  const name = await ask({ title: 'Rename this token', ok: 'Save',
+    body: 'How you call it between yourselves. Facebook never sees this name.',
+    input: { value: r.label || '', placeholder: 'BM Oleh \u00b7 UZ' } });
+  if (name === false) return;
+  const v = String(name).trim();
+  if (!v) { toast('A token without a name is a token you will not recognise', 'warn'); return; }
+  if (v === r.label) return;
+  const { error } = await sb.from('fb_tokens').update({ label: v }).eq('id', id);
+  if (error) { toast('Could not rename: ' + error.message, 'bad'); return; }
+  r.label = v;
+  fbPaint();
+  toast('Renamed', 'ok');
+};
+
+/* ВПИСАТИ ПРОКСІ. Порожній рядок стирає — і це не те саме, що
+   скасувати: стерти проксі треба вміти, інакше токен назавжди лишиться
+   привʼязаним до адреси, яку в тебе вже забрали. */
+window.fbProxySet = async function (id) {
+  const r = fbRows.find(x => x.id === id);
+  if (!r) return;
+  const val = await ask({ title: 'Proxy for this token', ok: 'Save',
+    body: 'Everything this token reads from Facebook will go through it.\n\n'
+        + 'host:port, host:port:user:pass, or a full URL (http:// or socks5://).\n\n'
+        + 'Leave it empty to remove the proxy. What you type is stored the way the '
+        + 'token is: the page can never read it back \u2014 only the host is shown.',
+    input: { value: '', secret: true, placeholder: '1.2.3.4:8000:user:pass' } });
+  if (val === false) return;
+  const raw = String(val).trim();
+  /* host:port дістаємо тут-таки, щоб було що показати: сам рядок назад
+     не прочитається ніколи, і без цього список мовчав би про те, що
+     проксі взагалі вписаний. */
+  const host = fbProxyHost(raw);
+  if (raw && !host) {
+    toast('Could not read that as a proxy \u2014 expected host:port, host:port:user:pass or a URL', 'warn');
+    return;
+  }
+  const patch = raw
+    ? { proxy: raw, proxy_host: host, proxy_ip: null, proxy_note: null, proxy_checked_at: null }
+    : { proxy: null, proxy_host: null, proxy_ip: null, proxy_note: null, proxy_checked_at: null };
+  const { error } = await sb.from('fb_tokens').update(patch).eq('id', id);
+  if (error) {
+    toast(/proxy/.test(error.message)
+      ? 'No proxy columns yet \u2014 run the proxy block of FB_TOKENS.sql'
+      : 'Could not save: ' + error.message, 'bad');
+    return;
+  }
+  Object.assign(r, { proxy_host: patch.proxy_host, proxy_ip: null,
+                     proxy_note: null, proxy_checked_at: null });
+  fbPaint();
+  toast(raw ? 'Saved \u2014 now press Check proxy' : 'Proxy removed', 'ok');
+};
+
+// Той самий розбір, що й у функції fb-proxy: два формати постачальників
+// і звичайний URL. Тут він потрібен рівно для показу.
+function fbProxyHost(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^[a-z0-9]+:\/\//i.test(s)) {
+    try { return new URL(s).host; } catch (e) { return ''; }
+  }
+  const p = s.split(':');
+  if (p.length === 2) return s;
+  if (p.length === 4) return p[0] + ':' + p[1];
+  return '';
+}
+
+/* ПЕРЕВІРКА. Головне в її відповіді — дві адреси: з якої виходить
+   прямо і з якої вийшло через проксі. Однакові означають, що запит
+   пішов повз проксі, і все, заради чого він додавався, не сталось. */
+window.fbProxyTest = async function (id) {
+  const r = fbRows.find(x => x.id === id);
+  if (!r) return;
+  toast('Checking ' + (r.proxy_host || 'the proxy') + '\u2026', 'info');
+  try {
+    const { data: s } = await sb.auth.getSession();
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-proxy', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json',
+                 Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+      body: JSON.stringify({ token_id: id })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (j.error) {
+      tell('Proxy check', j.error);
+      return;
+    }
+    await fbLoad();
+    tell(j.ok ? 'Proxy works' : 'Proxy did not work',
+        'Token: ' + (j.label || '') + '\n'
+      + 'Proxy: ' + (j.host || '\u2014') + '\n\n'
+      + 'Without it Facebook sees: ' + (j.direct_ip || 'could not tell') + '\n'
+      + 'Through it Facebook sees: ' + (j.proxy_ip || 'could not tell') + '\n\n'
+      + (j.note === 'ok'
+          ? 'Both addresses differ and Facebook answered through the proxy \u2014 that is what we wanted.'
+          : j.note));
+  } catch (e) {
+    tell('Proxy check', 'Could not reach the check function: ' + e.message
+      + '\n\nDeploy it first:  supabase functions deploy fb-proxy');
+  }
 };
 
 window.fbShow = function (id) {
