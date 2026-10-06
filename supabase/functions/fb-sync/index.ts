@@ -965,7 +965,15 @@ type Outcome = { accounts: number; failed: number; changed: number;
                  // і що завадило, якщо завадило.
                  snapshot: number; snapshotError: string;
                  // Чому в знімку немає доменів. Порожньо — домени на місці.
-                 linkError: string };
+                 linkError: string;
+                 /* ЯКІ САМЕ КАБІНЕТИ ОБІЙШЛИ. Підсумок казав «40 ad
+                    account(s) from 3 token(s)» — число, з якого не
+                    видно, чи твій кабінет серед тих сорока. Саме це й
+                    питають після натискання Sync now. */
+                 touched: Touched[] };
+
+type Touched = { id: string; name: string; spend: number; cur: string;
+                 status: string; err: string };
 
 /* Привід написати людині. owner — хто саме має це прочитати: кабінети
    належать конкретним баєрам, і сповіщення ходять так само. */
@@ -1003,7 +1011,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
                          deadline: number, alerts: Alert[]): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
                         days: 0, noHistory: 0, historyError: '', knownError: '',
-                        snapshot: 0, snapshotError: '', linkError: '' };
+                        snapshot: 0, snapshotError: '', linkError: '', touched: [] };
 
   let accs: Json[];
   try {
@@ -1220,6 +1228,15 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
             + ' rejected ad(s), ' + nowRej + ' in total' + stillRunning(r) });
     }
   });
+
+  /* Перелік складаємо з ТОГО САМОГО масиву, який зараз піде в базу.
+     Інакше підсумок обіцяв би оновлення там, де запис не стався. */
+  rows.forEach((r: Json) => out.touched.push({
+    id: String(r.account_id || ''), name: String(r.name || ''),
+    /* Нуль і «не приїхало» для переліку — одне й те саме: рядок
+       однаково стоятиме без суми. */
+    spend: num(r.spend_today) ?? 0, cur: String(r.currency || ''),
+    status: String(r.status || ''), err: String(r.sync_error || '') }));
 
   await pgUpsert(base, hdr, 'fb_accounts', 'created_by,account_id', rows);
   /* Історія — окремою таблицею й окремим ризиком. Її може ще не бути
@@ -1464,6 +1481,10 @@ const PACE = { day: 15, night: 60, from: 0, to: 8, tz: 180 };  // хвилини
 // і без цього запасу прогін із інтервалом 30 попадав би на 29.8 хвилини,
 // пропускався і виходив раз на годину замість двох.
 const PACE_GRACE_MS = 3 * 60_000;
+
+/* Скільки кабінетів перелічуємо у відповіді. Решта лишається числом:
+   перелік на триста рядків — це вже не підсумок. */
+const TOUCHED_MAX = 60;
 
 function paceNum(v: unknown, lo: number, hi: number, fallback: number): number {
   const n = Number(v);
@@ -1869,6 +1890,7 @@ async function handle(req: Request): Promise<Response> {
 
   const deadline = Date.now() + DEADLINE_MS;
   const alerts: Alert[] = [];
+  const touched: Touched[] = [];
   let accounts = 0, failed = 0, changed = 0, done = 0;
   let days = 0, noHistory = 0, historyError = '';
   let snapshot = 0, snapshotError = '', linkError = '';
@@ -1888,6 +1910,7 @@ async function handle(req: Request): Promise<Response> {
     }
     done++;
     accounts += r.accounts; failed += r.failed; changed += r.changed;
+    touched.push(...r.touched);
     days += r.days; noHistory += r.noHistory;
     snapshot += r.snapshot;
     if (r.snapshotError && !snapshotError) snapshotError = r.snapshotError;
@@ -1957,6 +1980,12 @@ async function handle(req: Request): Promise<Response> {
           ? 'no table yet — run FB_RULES.sql' : snapshotError)
       : snapshot + ' active ad(s)',
     telegram,
+    /* ЯКІ КАБІНЕТИ ОБІЙШЛИ — по спенду вниз, бо саме з цього боку на
+       них і дивляться. Межа є: у людини їх бувають сотні, а відповідь
+       функції читає браузер, не база. Хто не вліз — порахований, і про
+       нього сказано числом, а не промовчано. */
+    cabs: touched.sort((a, b) => b.spend - a.spend).slice(0, TOUCHED_MAX),
+    cabs_total: touched.length,
     /* Чи пішли правила слідом. Мовчати не можна з тієї ж причини, що й
        про знімок: коли секрет не прописали, правила просто не
        запускаються — і це виглядає як «правила не працюють», а шукали
