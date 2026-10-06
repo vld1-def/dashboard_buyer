@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-4';
+const FN_VERSION = 'rules-5';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -327,9 +327,40 @@ function rulesFor(list: Rule[], tokenOwner: string): Rule[] {
   return list.filter(r => r.owner === tokenOwner);
 }
 
+/* ЦІНА ЗА ОДНУ ПОДІЮ — і що стоїть у знаменнику. */
+const PER_ONE: Record<string, (a: Agg) => number> = {
+  cpl: a => a.leads, cpr: a => a.regs,
+  cpp: a => a.purchases, cpc_link: a => a.linkClicks
+};
+
+/* НЕСКІНЧЕННІСТЬ — ЦЕ «ЩЕ НЕ ЗНАЄМО», А НЕ «БІЛЬШЕ ЗА БУДЬ-ЩО».
+
+   Витрачено $2.58, лідів нуль. Ціна ліда — нескінченність, і правило
+   «лід дорожчий за $3» бачило тут збіг. Але це неправда, і неправда
+   арифметична: якби лід прийшов прямо зараз, перший і єдиний, він
+   коштував би рівно $2.58 — тобто ДЕШЕВШЕ за поріг. Щоб ціна ліда
+   справді перевищила $3, треба спершу витратити більше за $3.
+
+   Тому для ціни за одну подію при нулі подій відповідь визначена лише
+   тоді, коли спенд уже перевищив поріг. Доти це не «ні» і не «так», а
+   null — «не знаю»: у правилі з AND воно ламає весь збіг, у правилі з
+   OR просто не голосує, і жодне з двох не бреше.
+
+   Межа саме spend, бо найдешевша можлива перша подія коштує весь
+   витрачений спенд: дешевшою вона бути не може, дорожчою — скільки
+   завгодно.
+
+   CPM сюди не входить: там у знаменнику тисяча показів, і та сама
+   прикидка дала б spend × 1000 — число, яке нічого не обмежує. Для
+   порожніх показів межу ставить поріг спенду правила, а не це. */
 function condOk(c: Cond, a: Agg): boolean | null {
   const val = METRICS[c.m](a);
   if (val == null) return null;              // нічого не знаємо — не вирішуємо
+  const count = PER_ONE[c.m];
+  if (val === Infinity && count && count(a) === 0 && (c.op === '>' || c.op === '>=')) {
+    return c.op === '>' ? (a.spend > c.v ? true : null)
+                        : (a.spend >= c.v ? true : null);
+  }
   switch (c.op) {
     case '>':  return val > c.v;
     case '>=': return val >= c.v;
