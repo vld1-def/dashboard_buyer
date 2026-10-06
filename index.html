@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 08:35">
+  <meta name="build" content="build 06.10 08:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4815,6 +4815,17 @@ input.ui-in[type="range"] { padding: 0; }
   }
   #app-dock::-webkit-scrollbar { height: 0; }
 }
+
+/* Перелік кабінетів у підсумку Sync now. Моноширинний навмисно: ідентифікатори
+   стоять один під одним, і свій серед сорока знаходиться очима, а не читанням. */
+.fb-cabs {
+  display: block;
+  margin-top: .35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: .85;
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -5016,7 +5027,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:35</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 08:47</div>
     </div>
   </aside>
 
@@ -17123,29 +17134,34 @@ function fbCabList(j) {
   if (!all.length) return '';
   const broke = all.filter(c => c.err);
   const fine = all.filter(c => !c.err);
-  /* Усередині кабінета — пробіли, між кабінетами — крапка. Коли
-     роздільник той самий, «123 · Alpha · $45.00 · 456 · Beta» читається
-     як шість кабінетів, а не два. */
-  const one = c => fbEsc(c.id) + (c.name ? ' ' + fbEsc(c.name) : '')
-    + (fbCabMoney(c.spend, c.cur) ? ' ' + fbEsc(fbCabMoney(c.spend, c.cur)) : '');
-  const rows = fine.slice(0, FB_CABS_SHOW).map(one);
+  /* КОЖЕН КАБІНЕТ — СВОЇМ РЯДКОМ, із галочкою на початку. Коли вони
+     йшли через крапку одним абзацом, знайти серед сорока свій можна
+     було лише вчитуючись — а питання завжди одне й те саме: «мій
+     підтягнуло чи ні». Галочка в нульовій колонці і є тим якорем, за
+     який чіпляється око. */
+  const one = c => '\u2713 ' + fbEsc(c.id)
+    + (c.name ? ' \u00b7 ' + fbEsc(c.name) : '')
+    + (fbCabMoney(c.spend, c.cur) ? ' \u00b7 ' + fbEsc(fbCabMoney(c.spend, c.cur)) : '');
   /* Загальну кількість беремо з cabs_total, а не з довжини переліку:
      функція свій перелік теж обрізає, і рахувати обрізане означало б
      сказати «60», коли їх триста. */
   const total = Number(j.cabs_total) || all.length;
-  const hidden = total - fine.slice(0, FB_CABS_SHOW).length - broke.length;
-  return '<br><span class="opacity-70">updated: ' + rows.join(' \u00b7 ')
-    + (hidden > 0 ? ' \u00b7 \u2026and ' + hidden + ' more' : '')
+  const shown = fine.slice(0, FB_CABS_SHOW);
+  const hidden = total - shown.length - broke.length;
+  return '<br><span class="fb-cabs">' + shown.map(one).join('<br>')
+    + (hidden > 0 ? '<br><span class="opacity-60">\u2026and ' + hidden + ' more</span>' : '')
     + '</span>'
     + (broke.length
-        ? '<br><span class="opacity-70">\u26A0 came back incomplete: '
-          + broke.slice(0, FB_CABS_SHOW).map(c => fbEsc(c.id)
-              + (c.name ? ' ' + fbEsc(c.name) : '')).join(' \u00b7 ')
+        ? '<br><span class="opacity-70">'
+          + broke.slice(0, FB_CABS_SHOW).map(c => '\u00d7 ' + fbEsc(c.id)
+              + (c.name ? ' \u00b7 ' + fbEsc(c.name) : '')
+              + ' \u2014 came back incomplete').join('<br>')
           + (broke.length > FB_CABS_SHOW
-              ? ' \u00b7 \u2026and ' + (broke.length - FB_CABS_SHOW) + ' more' : '')
+              ? '<br>\u2026and ' + (broke.length - FB_CABS_SHOW) + ' more' : '')
           + '</span>'
         : '');
 }
+
 
 let fbSyncing = false;
 
@@ -17185,39 +17201,55 @@ window.fbSync = async function (say, body) {
     if (typeof fbLoad === 'function') await fbLoad();
 
     if (!j.tokens) { tell('No tokens to sync — add one in Settings first.', 'var(--warn)'); return j; }
-    const bits = [`${j.accounts} ad account(s) from ${j.tokens} token(s)`];
-    if (j.changed) bits.push(`${j.changed} changed state`);
-    if (j.failed) bits.push(`${j.failed} came back incomplete`);
-    if (j.throttled) bits.push('hit the Facebook rate limit — the rest comes in with the next hourly run');
-    if (j.more) bits.push('ran out of time, more left');
+
+    /* ПІДСУМОК — ПРО КАБІНЕТИ, А НЕ ПРО ВНУТРІШНЄ ЖИТТЯ ФУНКЦІЇ.
+
+       Раніше все йшло одним рядком через крапки: кількість, стан
+       історії витрат, що з доменами, що з Telegram, версія функції —
+       підряд, однаковим шрифтом. Серед цього тонуло єдине, заради чого
+       натискають Sync now: ЧИ ПІДТЯГНУЛО МІЙ КАБІНЕТ.
+
+       Тепер зверху галочка й кабінети поіменно, а службове — нижче, і
+       ТІЛЬКИ коли воно про негаразд. «spend history: 40 day(s)» і
+       «telegram: nothing to report» означають «усе гаразд»: писати їх
+       щоразу означає вчити не читати цей кут екрана. */
+    const head = `\u2713 ${j.accounts} cabinet(s) from ${j.tokens} token(s)`
+      + (j.changed ? ` \u00b7 ${j.changed} changed state` : '');
+
+    const warn = [];
+    if (j.failed) warn.push(`${j.failed} came back incomplete`);
+    if (j.throttled) warn.push('hit the Facebook rate limit — the rest comes in with the next run');
+    /* ДО КОГО ЧЕРГА НЕ ДІЙШЛА — ПОІМЕННО, а не «more left».
+
+       Прогін виходить достроково на власному дедлайні або на ліміті
+       Facebook, і хвіст списку лишається необійденим. Поки тут стояло
+       саме лише «ran out of time», побачити, ЧИЇ числа застаріли, було
+       ніде — а застарівали вони на тижні. */
+    if (j.skipped_total) {
+      const names = (j.skipped || []).map(fbEsc).join(', ');
+      warn.push('did not get to ' + j.skipped_total + ' token(s)'
+        + (names ? ': ' + names : '') + ' — the next run starts with them');
+    } else if (j.more) warn.push('ran out of time, more left');
     /* Історія витрат — окрема таблиця з окремою долею: її може ще не
        бути. Мовчати про це не можна, бо саме на неї спирається вибір
-       періоду на вкладці Cabinets. */
-    if (j.history) bits.push('spend history: ' + j.history);
+       періоду на вкладці Cabinets. Але «40 day(s)» — це не новина. */
+    if (j.history && !/^\d+ day\(s\)$/.test(String(j.history)))
+      warn.push('spend history: ' + j.history);
     /* Чому в знімку немає доменів. Саме тут, поруч із рештою підсумків:
        у дереві кампаній видно тільки НАСЛІДОК — ока немає, — а причину
-       знає лише відповідь функції. Поки її викидали, шукати доводилось
-       у базі, хоч вада була в полі запиту до Facebook. */
-    if (j.domains && j.domains !== 'ok') bits.push('domains: ' + j.domains);
+       знає лише відповідь функції. */
+    if (j.domains && j.domains !== 'ok') warn.push('domains: ' + j.domains);
     /* Кладемо причину туди, де видно НАСЛІДОК. У дереві кампаній
-       людина бачить «немає доменів» і не має звідки дізнатись чому:
-       відповідь приїхала сюди, у підсумок синхронізації, і жила рівно
-       доти, доки не зникне це повідомлення. Через це питання «а чому»
-       доводилось ставити й перепитувати. Тепер воно лежить поруч із
-       рештою налаштувань команди, і дерево читає його саме. */
+       людина бачить «немає доменів» і не має звідки дізнатись чому. */
     if (typeof setTeamSetting === 'function' && j.domains)
       setTeamSetting('fb_link_note', j.domains === 'ok' ? '' : String(j.domains))
         .catch(() => {});   // лічильник причин не привід завалити синхронізацію
-    /* Що сталося з Telegram. Функція рахувала це від самого початку й
-       віддавала в відповіді, а сторінка мовчки викидала — тому
-       «not configured» і «0 sent, 1 not linked» роками виглядали
-       точно як «новин немає». Тепер кажемо завжди, крім єдиного
-       випадку, коли казати справді нема чого. */
-    if (j.telegram && j.telegram !== 'nothing to report')
-      bits.push('telegram: ' + j.telegram);
-    /* Проблеми окремими рядками, але не стіною: у людини буває
-       десяток токенів, і якщо відвалились усі, десять однакових рядків
-       у кутку нічого не додають до перших трьох. */
+    /* Telegram: кажемо, лише коли НЕ склалось. «nothing to report» і
+       «N sent» означають, що все відпрацювало як задумано; «not
+       configured» і «0 sent, 1 not linked» — ні, і ось їх і видно. */
+    if (j.telegram && !/^nothing to report$|^\d+ sent$/.test(String(j.telegram)))
+      warn.push('telegram: ' + j.telegram);
+
     const probs = j.problems || [];
     const SHOW = 3;
     /* Задеплоєна функція старша за сторінку. Сказати про це треба
@@ -17228,15 +17260,21 @@ window.fbSync = async function (say, body) {
       probs.unshift('The deployed fb-sync is older than this page ('
         + (j.fn ? fbEsc(j.fn) : 'no version') + ' vs ' + fbEsc(FB_FN_WANT)
         + '). Run: supabase functions deploy fb-sync');
-    tell(fbEsc(bits.join(' · '))
+    /* Порядок рядків — за тим, як на них дивляться: спершу галочка й
+       кабінети (заради цього й натискали), потім те, що пішло не так.
+       Негаразди зі своїм знаком і приглушені — не тому, що неважливі, а
+       щоб їх було видно саме як виняток, а не як частину звіту. */
+    const dim = (mark, list, max) => !list.length ? ''
+      : '<br><span class="opacity-70">'
+        + list.slice(0, max).map(x => mark + ' ' + fbEsc(x)).join('<br>')
+        + (list.length > max ? '<br>\u2026and ' + (list.length - max) + ' more' : '')
+        + '</span>';
+
+    tell('<b>' + fbEsc(head) + '</b>'
       + fbCabList(j)
-      + (probs.length
-          ? '<br><span class="opacity-70">' + probs.slice(0, SHOW).map(fbEsc).join('<br>')
-            + (probs.length > SHOW
-                ? '<br>\u2026and ' + (probs.length - SHOW) + ' more like this' : '')
-            + '</span>'
-          : ''),
-      j.throttled || j.failed || probs.length ? 'var(--warn)' : 'var(--ok)');
+      + dim('\u26A0', warn, 4)
+      + dim('\u00d7', probs, SHOW),
+      j.throttled || j.failed || probs.length || warn.length ? 'var(--warn)' : 'var(--ok)');
     return j;
   } catch (e) {
     /* «Failed to fetch» означає рівно одне: браузер не зміг виконати
