@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 07.10 08:20">
+  <meta name="build" content="build 07.10 08:28">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5042,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 07.10 08:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 07.10 08:28</div>
     </div>
   </aside>
 
@@ -17715,7 +17715,14 @@ const FBR_EV_KEEP = [
   'complete_registration', 'purchase', 'lead', 'install', 'custom',
   'add_payment_info', 'initiate_checkout', 'add_to_cart',
   'subscribe', 'start_trial', 'submit_application', 'contact',
-  'spend_credits', 'credit_spent', 'donate'
+  'spend_credits', 'credit_spent', 'donate',
+  /* link_click тут не помилка. Строго кажучи це не конверсія, і
+     кліки по посиланню вже йдуть у файл окремим стовпчиком із
+     inline_link_clicks. Але подією вона буває потрібна: у частині
+     заливів перший крок рахують саме по ній, і тоді її вибирають у
+     слот. «Не конверсія за визначенням» — не підстава ховати те, чим
+     користуються. */
+  'link_click'
 ];
 const fbrIsConv = t => {
   const s = String(t || '').toLowerCase();
@@ -17858,18 +17865,28 @@ function fbrBlock(c) {
     return fbrEvents.filter(e => fbrAllEv || fbrIsConv(e.type) || keep.has(e.type));
   };
 
-  const evSel = ([key, label]) => {
+  const evSel = ([key, label, head]) => {
     if (fbrEvents === null) return `<p class="fbr-hint">${fbrEsc(label)}: looking…</p>`;
     const now = fbrPick(key);
     const auto = fbrMap[key] === '' ;
     const miss = auto && now && !fbrSeen(now);
+    /* Подія поза звичним для слота — наприклад link_click у «install /
+       lead». Вибір законний, але назва стовпчика при цьому НЕ стане
+       «Link clicks»: Form.html кладе число в daily_stats.installs саме
+       за заголовком, і перейменування відправило б його в колонку
+       кліків, де вже й так стоять inline_link_clicks. Тож кажемо
+       прямо, як стовпчик підпишеться, щоб це не з'ясовувалось уже у
+       файлі. */
+    const odd = now && !(FBR_GUESS[key] || []).includes(now);
     return `<label class="fbr-row"><span>${fbrEsc(label)}${
         miss ? ' <b class="fbr-warn">not seen here</b>' : ''}</span>
       <select onchange="fbrSetConv('${key}', this.value)">
         ${opt('', 'auto: ' + (now || '—'), fbrMap[key])}
         ${evOpts(key).map(e => opt(e.type, e.type + '  (' + e.n + ')', fbrMap[key])).join('')}
         ${opt('-', '— do not export —', fbrMap[key])}
-      </select></label>`;
+      </select></label>${odd ? `<p class="fbr-hint">In the file this column is still named
+        <b>${fbrEsc(fbrHead(key, head, now))}</b> — that is the header the import reads to know
+        which field the number belongs to.</p>` : ''}`;
   };
 
   /* Скільки прибрано — рахуємо по тому ж правилу, що й фільтр, і без
@@ -17881,7 +17898,7 @@ function fbrBlock(c) {
         ? `All ${fbrEvents.length} events are listed, engagement included.
            <button type="button" onclick="fbrEvFilter(true)">show conversions only</button>`
         : `${hiddenEv} engagement events hidden (likes, comments, post and page engagement,
-           views, clicks) — they are not conversions.
+           views, saves) — they are not conversions.
            <button type="button" onclick="fbrEvFilter(false)">show all ${fbrEvents.length}</button>`}</p>`
     : '';
 
