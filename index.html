@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 07.10 07:42">
+  <meta name="build" content="build 07.10 08:28">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3026,6 +3026,14 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .fbr-hint { margin-top: 6px; font-size: 9px; font-weight: 700; line-height: 1.45; color: var(--text-muted); }
 .fbr-hint:empty { display: none; }
 .fbr-hint.is-bad { color: var(--bad); }
+/* Текстова кнопка просто в підказці: місця під власний рядок тут
+   немає, а ховати перемикач під іконку — значить його не знайдуть. */
+.fbr-hint button {
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: var(--accent); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.fbr-hint button:hover { color: var(--text-main); }
 /* «Такої події тут не бачили» — підпис на самому полі, а не окремим
    рядком нижче: зв'язок із конкретним рядком має бути видно одразу. */
 .fbr-warn { color: var(--warn); font-weight: 900; letter-spacing: .06em; }
@@ -5034,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 07.10 07:42</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 07.10 08:28</div>
     </div>
   </aside>
 
@@ -17682,6 +17690,46 @@ const FBR_GUESS = {
          'mobile_app_install', 'app_install']
 };
 
+/* ЧОМУ СПИСОК ПОДІЙ КОРОТШИЙ, НІЖ ВІДДАЄ FACEBOOK.
+
+   У відповіді на кабінет приходять ВСІ action_type, які там були, —
+   і конверсії, і все підряд: post_engagement, page_engagement,
+   comment, like, post_reaction, link_click, video_view,
+   landing_page_view, photo_view. У живому кабінеті це сорок-пʼятдесят
+   рядків, із яких у справі три. Шукати серед них потрібну подію —
+   робота, якої тут не має бути.
+
+   Фільтр ПОЗИТИВНИЙ, а не список забороненого: назв «зайвого»
+   Facebook додає швидше, ніж ми встигали б їх виписувати, а назви
+   конверсій тримаються тих самих коренів роками. Усе, що містить
+   «custom», лишається навмисно: власні події пікселя й застосунку
+   (offsite_conversion.custom.123…, app_custom_event.fb_mobile_…) — це
+   якраз ті, яких ми не можемо знати на імʼя, і саме в них у частини
+   кабінетів лежить справжня конверсія.
+
+   І головне: нічого не зникає назовсім. Під списками стоїть, скільки
+   подій прибрано, і одним кліком вони повертаються. Фільтр, який тихо
+   ховає потрібне й не каже про це, коштував би дорожче за весь список
+   разом. */
+const FBR_EV_KEEP = [
+  'complete_registration', 'purchase', 'lead', 'install', 'custom',
+  'add_payment_info', 'initiate_checkout', 'add_to_cart',
+  'subscribe', 'start_trial', 'submit_application', 'contact',
+  'spend_credits', 'credit_spent', 'donate',
+  /* link_click тут не помилка. Строго кажучи це не конверсія, і
+     кліки по посиланню вже йдуть у файл окремим стовпчиком із
+     inline_link_clicks. Але подією вона буває потрібна: у частині
+     заливів перший крок рахують саме по ній, і тоді її вибирають у
+     слот. «Не конверсія за визначенням» — не підстава ховати те, чим
+     користуються. */
+  'link_click'
+];
+const fbrIsConv = t => {
+  const s = String(t || '').toLowerCase();
+  return FBR_EV_KEEP.some(k => s.includes(k));
+};
+
+let fbrAllEv = false;   // true — показати всі події, не тільки конверсії
 let fbrFor = '';        // для якого кабінета розкрито блок
 let fbrEvents = null;   // [{type,n}] — що приходить у цей кабінет
 let fbrErr = '';
@@ -17734,6 +17782,11 @@ window.fbrSetConv = async function (key, value) {
   await fbrSaveMap(key, value);
 };
 
+window.fbrEvFilter = function (on) {
+  fbrAllEv = !on;
+  cabRefresh();
+};
+
 window.fbrSetBd = function (v) {
   fbrBd = v;
 };
@@ -17769,6 +17822,7 @@ window.fbrToggle = async function (idEnc) {
   const id = decodeURIComponent(idEnc);
   if (fbrFor === id) { fbrFor = ''; cabRefresh(); return; }
   fbrFor = id;
+  fbrAllEv = false;
   fbrEvents = null;
   fbrErr = '';
   fbrMsg = { html: '', tone: '' };
@@ -17802,19 +17856,51 @@ function fbrBlock(c) {
   /* Список лишається, але вибирати нічого не треба: зверху стоїть
      «беру само» з уже підставленою подією. Він тут для кабінета, у
      якого своя конверсія — а не для того, щоб питати щоразу. */
-  const evSel = ([key, label]) => {
+  /* Вибране руками й те, що взялось само, лишаються в списку завжди —
+     навіть якщо фільтр їх не пропускає. Інакше select показав би не
+     те, що насправді піде у файл: браузер, не знайшовши значення
+     серед option, малює перший рядок. */
+  const evOpts = key => {
+    const keep = new Set([fbrMap[key], fbrPick(key)].filter(Boolean));
+    return fbrEvents.filter(e => fbrAllEv || fbrIsConv(e.type) || keep.has(e.type));
+  };
+
+  const evSel = ([key, label, head]) => {
     if (fbrEvents === null) return `<p class="fbr-hint">${fbrEsc(label)}: looking…</p>`;
     const now = fbrPick(key);
     const auto = fbrMap[key] === '' ;
     const miss = auto && now && !fbrSeen(now);
+    /* Подія поза звичним для слота — наприклад link_click у «install /
+       lead». Вибір законний, але назва стовпчика при цьому НЕ стане
+       «Link clicks»: Form.html кладе число в daily_stats.installs саме
+       за заголовком, і перейменування відправило б його в колонку
+       кліків, де вже й так стоять inline_link_clicks. Тож кажемо
+       прямо, як стовпчик підпишеться, щоб це не з'ясовувалось уже у
+       файлі. */
+    const odd = now && !(FBR_GUESS[key] || []).includes(now);
     return `<label class="fbr-row"><span>${fbrEsc(label)}${
         miss ? ' <b class="fbr-warn">not seen here</b>' : ''}</span>
       <select onchange="fbrSetConv('${key}', this.value)">
         ${opt('', 'auto: ' + (now || '—'), fbrMap[key])}
-        ${fbrEvents.map(e => opt(e.type, e.type + '  (' + e.n + ')', fbrMap[key])).join('')}
+        ${evOpts(key).map(e => opt(e.type, e.type + '  (' + e.n + ')', fbrMap[key])).join('')}
         ${opt('-', '— do not export —', fbrMap[key])}
-      </select></label>`;
+      </select></label>${odd ? `<p class="fbr-hint">In the file this column is still named
+        <b>${fbrEsc(fbrHead(key, head, now))}</b> — that is the header the import reads to know
+        which field the number belongs to.</p>` : ''}`;
   };
+
+  /* Скільки прибрано — рахуємо по тому ж правилу, що й фільтр, і без
+     огляду на вибране: число має відповідати на питання «чого я не
+     бачу», а не на «скільком слотам це не підійшло». */
+  const hiddenEv = (fbrEvents || []).filter(e => !fbrIsConv(e.type)).length;
+  const evMore = (fbrEvents && fbrEvents.length && hiddenEv)
+    ? `<p class="fbr-hint">${fbrAllEv
+        ? `All ${fbrEvents.length} events are listed, engagement included.
+           <button type="button" onclick="fbrEvFilter(true)">show conversions only</button>`
+        : `${hiddenEv} engagement events hidden (likes, comments, post and page engagement,
+           views, saves) — they are not conversions.
+           <button type="button" onclick="fbrEvFilter(false)">show all ${fbrEvents.length}</button>`}</p>`
+    : '';
 
   const noEvents = fbrEvents && !fbrEvents.length && !fbrErr
     ? `<p class="fbr-hint">Facebook reported no conversions at all in this cabinet over the last
@@ -17830,6 +17916,7 @@ function fbrBlock(c) {
       </select></label>
 
     ${FBR_CONV.map(evSel).join('')}
+    ${evMore}
     ${noEvents}
     ${fbrErr ? `<p class="fbr-hint is-bad">${fbrErr}</p>` : ''}
 
