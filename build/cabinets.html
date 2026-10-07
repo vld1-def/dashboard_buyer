@@ -1,0 +1,80 @@
+<!-- ═══════════ CABINETS ═══════════ -->
+<div id="cabinets-section" class="card p-5 rounded-3xl shadow-xl">
+  <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
+    <div>
+      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Cabinets</h2>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- Скільки відкручено за вибраний період. Кнопка, а не підпис:
+           натиснув — і замість зведеного в долари числа видно, з яких
+           валют воно складене. -->
+      <button type="button" id="cab-sum" class="cab-sum" onclick="cabSumToggle()"></button>
+      <select id="cab-group" onchange="cabSetGroup(this.value)"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
+        <option value="agent">Group: agent</option>
+        <option value="state">Group: state</option>
+        <option value="profile">Group: browser</option>
+        <option value="bm">Group: BM</option>
+        <option value="">No grouping</option>
+      </select>
+      <!-- Перемикача зрізу тут більше немає. Сторінка показує кабінети,
+           які бачить токен, і тільки їх; решта ховається, а рядок над
+           таблицею каже, скільки їх і як подивитись. Три кнопки замість
+           цього змушували щоразу вибирати те, що й так має бути за
+           замовчуванням. -->
+      <!-- Період, за який рахуємо витрати. Малюється з cabinets.js:
+           вибір і його підпис мають жити в одному місці, інакше
+           заголовок стовпчика колись розійдеться з тим, що в ньому. -->
+      <div id="cab-range" class="cab-range"></div>
+      <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
+      <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
+           ходять сюди. У налаштуваннях така сама лишається навмисно: щойно додав
+           токен — хочеться натиснути відразу, не йдучи нікуди. -->
+      <!-- Правила автопаузи — сюди, а не окремим пунктом меню: вони
+           про цей самий парк, і відкривати їх ходять звідси. Панеллю
+           праворуч, як і картка кабінета. -->
+      <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
+        title="Rules that switch off ads on their own">Rules</button>
+      <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
+        title="Ask Facebook right now instead of waiting for the hourly run"><span
+          class="cab-sync-lbl">Sync now</span><span id="cab-sync-ago" class="cab-syncago"></span></button>
+    </div>
+  </div>
+
+  <!-- Результат синхронізації. Порожній, поки нічого не запускали —
+       місця не займає. -->
+
+  <div id="cab-tiles" class="mb-4"></div>
+
+  <!-- Стрічка змін переїхала в тости: зайшов, побачив, воно зникло саме.
+       Вузол лишається — у ньому зʼявляється хіба що попередження, що
+       журнал недоступний. Історія конкретного кабінета — у його панелі. -->
+  <div id="cab-feed"></div>
+
+  <!-- cab-row — щоб на телефоні цей ряд міг перенестись: списку,
+       картці й правилам там нема як стояти поруч. -->
+  <div class="cab-row flex gap-4 items-start">
+    <div id="cab-list" class="flex-1 min-w-0 space-y-1.5"></div>
+    <div id="cab-detail" class="hidden w-[330px] shrink-0"></div>
+    <!-- Ширина тут, а не класом w-[420px]: довільні значення Tailwind
+         існують лише якщо їх знайшов збирач, і варто класу не потрапити
+         в збірку — панель роздувається на всю таблицю. На цьому вже
+         обпеклись із панеллю кабінета. -->
+    <div id="rules-panel" class="hidden shrink-0" style="width:452px"></div>
+  </div>
+
+  <!-- Що всередині вибраного кабінета: кампанії, адсети, оголошення з
+       їхніми сьогоднішніми числами. Під таблицею, а не в панелі
+       праворуч, бо тут потрібні стовпчики, а не вузька смуга.
+
+       Кнопка стоїть тут, у самому низу блока, а не в картці кабінета:
+       відкриває вона те, що зʼявиться просто під нею, і лінія, яка й
+       так відділяла цей шматок, тепер відділяє її разом із ним. -->
+  <div id="cab-inside-bar" class="hidden"></div>
+  <div id="cab-inside" class="hidden"></div>
+
+  <!-- Сторінки, з яких крутять ці кабінети. Під таблицею, а не над:
+       спершу те, за чим приходять щодня, потім те, на що дивляться,
+       коли виникло питання «а звідки воно взагалі йде». -->
+</div>

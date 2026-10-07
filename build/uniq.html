@@ -1,0 +1,72 @@
+<!-- ═══════════ УНІКАЛІЗАТОР: ЗОБРАЖЕННЯ ═══════════
+     Друга половина Uniqueizer'а: відео крутить ffmpeg, статику —
+     canvas. Живуть в одному вікні, бо це одна задача, і шукати їх у
+     двох різних місцях меню немає жодного сенсу.
+
+     Усе відбувається в браузері: жоден байт картинки нікуди не
+     відправляється й ніде не зберігається. -->
+<div id="ui-pane" class="hidden space-y-4">
+
+    <div class="ui-head-acts">
+      <button type="button" class="ui-btn is-main" onclick="uiGen()">Generate variants</button>
+      <button type="button" class="ui-btn" onclick="uiZip()">Download .zip</button>
+      <button type="button" class="ui-btn" onclick="uiClear()">Clear</button>
+    </div>
+
+    <div>
+
+      <label class="ui-drop" id="ui-drop">
+        <input type="file" id="ui-files" accept="image/png,image/jpeg,image/webp" multiple
+               onchange="uiPick(this.files)" hidden>
+        <span class="ui-drop-i">+</span>
+        <span class="ui-drop-t">Drop images here, or click to choose</span>
+        <span class="ui-drop-s">PNG, JPEG, WebP · they stay on this computer</span>
+      </label>
+
+      <div class="ui-ctl">
+        <label class="ui-f">
+          <span class="ui-f-l">Variants per image</span>
+          <input type="number" id="ui-n" min="1" max="40" value="5" class="ui-in">
+        </label>
+        <label class="ui-f">
+          <span class="ui-f-l">Save as</span>
+          <select id="ui-fmt" class="ui-in" onchange="uiFmtChanged()">
+            <option value="image/jpeg">JPEG</option>
+            <option value="image/png">PNG</option>
+          </select>
+        </label>
+        <label class="ui-f" id="ui-q-wrap">
+          <span class="ui-f-l">JPEG quality <span id="ui-q-v">92</span></span>
+          <input type="range" id="ui-q" min="60" max="100" value="92" class="ui-in"
+                 oninput="document.getElementById('ui-q-v').textContent = this.value">
+        </label>
+        <label class="ui-f">
+          <span class="ui-f-l">Name prefix</span>
+          <input type="text" id="ui-prefix" class="ui-in" placeholder="from the file name">
+        </label>
+        <label class="ui-f">
+          <span class="ui-f-l">Overlay text</span>
+          <input type="text" id="ui-text" class="ui-in" placeholder="optional, e.g. 18+">
+        </label>
+      </div>
+
+      <div class="ui-axes" id="ui-axes">
+        <span class="ui-axes-l">Vary</span>
+        <label class="ui-ax"><input type="checkbox" id="ui-ax-crop" checked><span>Crop 1–4%</span></label>
+        <label class="ui-ax"><input type="checkbox" id="ui-ax-rot" checked><span>Tilt ±0.8°</span></label>
+        <label class="ui-ax"><input type="checkbox" id="ui-ax-noise" checked><span>Grain</span></label>
+        <label class="ui-ax"><input type="checkbox" id="ui-ax-color" checked><span>Colour</span></label>
+        <label class="ui-ax"><input type="checkbox" id="ui-ax-vig"><span>Vignette</span></label>
+        <label class="ui-ax"><input type="checkbox" id="ui-ax-over"><span>Overlay</span></label>
+      </div>
+
+      <p class="ui-note" id="ui-note"></p>
+      <div class="ui-grid" id="ui-out"></div>
+
+      <p class="ui-hint">
+        The number on each variant is how far its fingerprint moved from the original — a perceptual hash
+        distance out of 64. Under 5 means the picture is, to a machine, the same one; a real variant sits
+        higher. Metadata is gone either way: a canvas cannot carry EXIF over.
+      </p>
+    </div>
+</div>

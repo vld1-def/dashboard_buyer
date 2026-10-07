@@ -1,0 +1,434 @@
+<div id="settings-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/65 backdrop-blur-sm" onclick="closeSettingsModal()"></div>
+
+  <div class="set-shell relative w-full max-w-4xl flex flex-col overflow-hidden">
+
+    <!-- ── Шапка: пошук замість того, щоб пам'ятати, у якій вкладці що лежить ── -->
+    <div class="set-head">
+      <div class="flex items-center gap-2.5 shrink-0">
+        <svg class="w-4 h-4" style="color:var(--accent)" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88V10a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/>
+        </svg>
+        <h2 class="set-title">Settings</h2>
+      </div>
+      <div class="set-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="set-search" placeholder="Find a setting…" oninput="setFilter(this.value)" autocomplete="off">
+        <button type="button" id="set-search-clear" onclick="setFilter('', true)" title="Clear">&times;</button>
+      </div>
+      <span id="set-saved" class="set-saved">Saved</span>
+      <button onclick="closeSettingsModal()" class="set-x" title="Close (Esc)">&times;</button>
+    </div>
+
+    <div class="set-body">
+      <!-- ── Ліва колонка розділів ── -->
+      <nav class="set-nav" id="set-nav">
+        <button type="button" id="stab-general"      class="set-navitem active-stab" onclick="switchSettingsTab('general')">
+          <span class="set-ico">⚙</span>General</button>
+        <button type="button" id="stab-layout"       class="set-navitem" onclick="switchSettingsTab('layout')">
+          <span class="set-ico">🗂</span>Layout</button>
+        <button type="button" id="stab-payouts"      class="set-navitem" onclick="switchSettingsTab('payouts')">
+          <span class="set-ico">💰</span>Payouts</button>
+        <button type="button" id="stab-access"       class="set-navitem" onclick="switchSettingsTab('access')">
+          <span class="set-ico">🔐</span>Team access</button>
+        <button type="button" id="stab-integrations" class="set-navitem" onclick="switchSettingsTab('integrations')">
+          <span class="set-ico">🔌</span>Integrations</button>
+      </nav>
+
+      <!-- ── Права колонка ── -->
+      <div id="set-panes" class="set-panes custom-scrollbar">
+
+        <!-- GENERAL -->
+        <section id="spanel-general" class="set-pane">
+          <div class="set-group">
+            <h3 class="set-gtitle">Monthly spend target</h3>
+            <p class="set-gsub">How much you plan to spend this month — the progress bar above the chart is measured against it.</p>
+            <div class="set-row" data-setting="monthly spend target budget план бюджет">
+              <label class="set-label" for="target-input">Target, $</label>
+              <input type="number" id="target-input" oninput="updateTarget()" class="set-input w-44" placeholder="40000">
+            </div>
+          </div>
+
+          <div class="set-group">
+            <h3 class="set-gtitle">Chart</h3>
+            <p class="set-gsub">How the main Cashflow Overview chart is drawn.</p>
+            <div class="set-row" data-setting="chart style графік стиль bars line area">
+              <label class="set-label" for="chart-style">Style</label>
+              <select id="chart-style" onchange="setChartStyle(this.value)" class="set-input w-44">
+                <option value="bars">Bars</option>
+                <option value="line">Smooth line</option>
+                <option value="sharp">Sharp line</option>
+                <option value="area">Filled area</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <!-- LAYOUT -->
+        <section id="spanel-layout" class="set-pane hidden">
+          <div class="set-group">
+            <div class="set-ghead">
+              <div>
+                <h3 class="set-gtitle">Pages</h3>
+                <p class="set-gsub">The pages in the sidebar. Turned off here, a page disappears from the menu too. Names match the sidebar one to one.</p>
+              </div>
+              <div class="set-bulk">
+                <button type="button" onclick="setBulk('#grp-blocks', true)">All on</button>
+                <button type="button" onclick="setBulk('#grp-blocks', false)">All off</button>
+              </div>
+            </div>
+            <div id="grp-blocks">
+              <label class="set-row set-toggle" data-setting="heatmap weekly analysis тепл тижден">
+                <span class="set-label"><span class="set-ico">&#128197;</span>Heatmap</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-heatmap" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="creatives creative analyzer креатив">
+                <span class="set-label"><span class="set-ico">&#127912;</span>Creatives</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-creatives" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій">
+                <span class="set-label"><span class="set-ico">&#128241;</span>Geo Breakdown</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-device-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк">
+                <span class="set-label"><span class="set-ico">&#128452;</span>Cabinets</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-cabinets" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="domains домени">
+                <span class="set-label"><span class="set-ico">&#127760;</span>Domains</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-domains" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="expenses витрати розходи">
+                <span class="set-label"><span class="set-ico">&#128184;</span>Expenses</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-expenses" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="report builder звіт">
+                <span class="set-label"><span class="set-ico">&#128202;</span>Report Builder</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-report" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+              <!-- Team бачать лише тімлід і адмін, тож і перемикач показуємо
+                   тільки їм: рядок, який керує сторінкою, якої в людини
+                   немає, — це не налаштування, а загадка. data-team, а не
+                   клас: за ним і ховаємо (див. design.css). -->
+              <label class="set-row set-toggle" data-team data-setting="team lead команда тімлід">
+                <span class="set-label"><span class="set-ico">&#128101;</span>Team</span>
+                <span class="toggle-switch"><input type="checkbox" id="toggle-team" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="set-group">
+            <h3 class="set-gtitle">Dashboard widgets</h3>
+            <p class="set-gsub">Blocks on the Dashboard page itself, not pages of their own.</p>
+            <div id="grp-dash">
+            </div>
+          </div>
+
+          <div class="set-group">
+            <div class="set-ghead">
+              <div>
+                <h3 class="set-gtitle">Sidebar tools</h3>
+                <p class="set-gsub">The lower half of the sidebar. These open panels, not pages, so they have their own switch — and it is yours alone, not the team’s.</p>
+              </div>
+              <div class="set-bulk">
+                <button type="button" onclick="setBulk('#grp-tools', true)">All on</button>
+                <button type="button" onclick="setBulk('#grp-tools', false)">All off</button>
+              </div>
+            </div>
+            <div id="grp-tools">
+              <label class="set-row set-toggle" data-setting="campaigns data hub кампанії дані">
+                <span class="set-label"><span class="set-ico">&#128451;</span>Campaigns</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-hub-dataset" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="records записи">
+                <span class="set-label"><span class="set-ico">&#128196;</span>Records</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-hub-records" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="sheets таблиці гугл">
+                <span class="set-label"><span class="set-ico">&#128209;</span>Sheets</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-sheets" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
+              </label>
+              <label class="set-row set-toggle" data-setting="sources providers джерела агенції">
+                <span class="set-label"><span class="set-ico">&#128268;</span>Sources</span>
+                <span class="toggle-switch"><input type="checkbox" id="tool-hub-providers" checked onchange="sbToolSet(this)"><span class="toggle-slider"></span></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="set-group">
+            <h3 class="set-gtitle">Menu buttons</h3>
+            <p class="set-gsub">Which buttons stay in the bottom dock.</p>
+            <div id="dock-hide-list"></div>
+          </div>
+
+          <!-- Групування й фільтри — про те саме: що лишається в шапці
+               звіту. Тримаємо їх одним блоком у дві колонки, бо поруч їх
+               і порівнюють; двадцять рядків у стовпчик — це чотири
+               екрани гортання в розділі, де решта груп по вісім. -->
+          <div class="set-group">
+            <div class="set-ghead">
+              <div>
+                <h3 class="set-gtitle">Report Builder</h3>
+                <p class="set-gsub">What stays in the report header. A grouping chip switched off leaves the header — and the report stops grouping by it; one always stays. A filter switched off leaves too, and whatever was picked in it is cleared: a hidden filter must not keep narrowing the report.</p>
+              </div>
+            </div>
+            <div class="set-cols2">
+              <div class="set-col">
+                <div class="set-chead">
+                  <h4 class="set-ctitle">Grouping</h4>
+                  <div class="set-bulk">
+                    <button type="button" onclick="setBulk('#rb-dims-list', true)">All on</button>
+                    <button type="button" onclick="setBulk('#rb-dims-list', false)">All off</button>
+                  </div>
+                </div>
+                <div id="rb-dims-list"></div>
+              </div>
+              <div class="set-col">
+                <div class="set-chead">
+                  <h4 class="set-ctitle">Filters</h4>
+                  <div class="set-bulk">
+                    <button type="button" onclick="setBulk('#rb-filters-list', true)">All on</button>
+                    <button type="button" onclick="setBulk('#rb-filters-list', false)">All off</button>
+                  </div>
+                </div>
+                <div id="rb-filters-list"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- PAYOUTS -->
+        <section id="spanel-payouts" class="set-pane hidden">
+          <div class="set-group">
+            <h3 class="set-gtitle">Payouts per geo</h3>
+            <p class="set-gsub">Rate per deposit or a share of spend — revenue and Net Profit are derived from this.</p>
+            <div class="set-addrow">
+              <input type="text"   id="payout-geo"    placeholder="UA"    class="set-input uppercase" style="flex:0 0 78px">
+              <input type="text"   id="payout-offer"  placeholder="Offer" class="set-input" style="flex:1 1 auto;min-width:0">
+              <input type="number" id="payout-value"  placeholder="25"    class="set-input" style="flex:0 0 92px">
+              <button type="button" onclick="addGeoPayout()" class="set-btn set-btn-primary">Add</button>
+            </div>
+            <div id="geo-payouts-list" class="set-list custom-scrollbar"></div>
+          </div>
+        </section>
+
+        <!-- ACCESS -->
+        <section id="spanel-access" class="set-pane hidden">
+          <div class="set-group">
+            <h3 class="set-gtitle">Team lead password</h3>
+            <p class="set-gsub">The team lead opens the dashboard in view-only mode with this password.</p>
+            <div class="set-addrow">
+              <input type="text" id="tl-password-input" placeholder="Set password…" class="set-input" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveTeamLeadPassword()" class="set-btn set-btn-primary">Save</button>
+            </div>
+            <p id="tl-link-hint" class="set-hint break-all"></p>
+          </div>
+
+          <div class="set-group">
+            <div class="set-ghead">
+              <div>
+                <h3 class="set-gtitle">Team lead can see</h3>
+                <p class="set-gsub">Anything not switched on here stays hidden from the team lead.</p>
+              </div>
+              <div class="set-bulk">
+                <button type="button" onclick="setBulk('#grp-tl', true)">All on</button>
+                <button type="button" onclick="setBulk('#grp-tl', false)">All off</button>
+              </div>
+            </div>
+            <div id="grp-tl">
+              <label class="set-row set-toggle" data-setting="kpi cards картки"><span class="set-label">KPI Cards</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-kpi" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="performance trend графік"><span class="set-label">Performance Trend</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-chart" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="geo performance гео колонка"><span class="set-label">Geo Performance</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="heatmap weekly analysis тепл тижден"><span class="set-label">Heatmap</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-heatmap" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="creatives creative analyzer креатив"><span class="set-label">Creatives</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій"><span class="set-label">Geo Breakdown</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-cabinets" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="domains домени"><span class="set-label">Domains</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-domains" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="expenses витрати розходи"><span class="set-label">Expenses</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-expenses" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="report builder звіт"><span class="set-label">Report Builder</span>
+                <span class="toggle-switch"><input type="checkbox" id="tl-show-report" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
+            </div>
+          </div>
+        </section>
+
+        <!-- INTEGRATIONS -->
+        <section id="spanel-integrations" class="set-pane hidden">
+
+          <!-- Підвкладки. Токенів FB з часом стає багато, і тримати їх
+               поруч із двома одноразовими налаштуваннями означає
+               гортати повз них щоразу. Порядок за частотою звернень:
+               токени змінюються постійно, Drive і бот — раз. -->
+          <div class="set-subtabs">
+            <button type="button" id="isub-fb" class="set-subtab" onclick="setSubTab('fb')">
+              Facebook<span id="fb-count" class="set-subcount hidden"></span></button>
+            <button type="button" id="isub-tg" class="set-subtab" onclick="setSubTab('tg')">Telegram</button>
+            <button type="button" id="isub-drive" class="set-subtab" onclick="setSubTab('drive')">Google Drive</button>
+          </div>
+
+          <div id="isub-pane-fb" class="set-subpane">
+<div class="set-group">
+            <h3 class="set-gtitle">Facebook tokens</h3>
+            <p class="set-gsub">System user tokens: where the dashboard reads stats from, and what it pauses campaigns with.</p>
+
+            <div class="set-addrow" data-setting="facebook token фейсбук токен bm бм">
+              <input type="text" id="fb-label-input" placeholder="Name — e.g. Oleh&#39;s BM" class="set-input" style="flex:0 0 200px;min-width:0">
+              <input type="password" id="fb-token-input" placeholder="System user token" class="set-input font-mono" style="flex:1 1 auto;min-width:0" autocomplete="off">
+              <button type="button" onclick="fbAdd()" class="set-btn set-btn-amber">Check &amp; add</button>
+            </div>
+            <p id="fb-add-status" class="set-hint"></p>
+
+            <div id="fb-filter-wrap" class="set-addrow mt-2 hidden">
+              <input type="text" id="fb-filter" oninput="fbPaint()" placeholder="Filter by name, BM or account id" class="set-input" style="flex:1 1 auto;min-width:0">
+            </div>
+            <div id="fb-list" class="fb-list mt-2"></div>
+
+            <p class="set-hint opacity-60">
+              The token is checked against Facebook the moment you add it — you see its permissions, expiry and how many
+              ad accounts it can reach. Nobody can read it back afterwards, you included: the database grants no access to
+              that column, and only the server function retrieves it. Where to get a token: see FB_TOKENS.sql.
+            </p>
+            <p class="set-hint opacity-60">
+              What those tokens actually pull &mdash; cabinet state, today&#39;s spend, what is live inside &mdash; lives on the
+              Cabinets page, together with the Sync now button. Name a token
+              <span class="font-mono">Agent_Browser_BMid</span> and the dashboard fills in the agent, the browser number and
+              the BM for every cabinet it sees.
+            </p>
+          </div>
+
+<div class="set-group">
+            <h3 class="set-gtitle">Sync schedule</h3>
+            <p class="set-gsub">How often the dashboard walks the cabinets — and, with it, how often rules get a chance to act: they run right after each sync, on a snapshot that is seconds old. The schedule itself ticks every 15 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
+            <div class="set-row" data-setting="sync pace interval синхронізація темп інтервал">
+              <label class="set-label" for="fb-pace-day">Daytime, every</label>
+              <select id="fb-pace-day" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="120">2 hours</option>
+                <option value="240">4 hours</option>
+              </select>
+            </div>
+            <div class="set-row" data-setting="sync pace night ніч синхронізація">
+              <label class="set-label" for="fb-pace-night">At night, every</label>
+              <select id="fb-pace-night" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="120">2 hours</option>
+                <option value="240">4 hours</option>
+              </select>
+            </div>
+            <div class="set-row" data-setting="night window вікно ночі години">
+              <span class="set-label">Night lasts from / to</span>
+              <span class="flex items-center gap-2">
+                <input type="number" id="fb-pace-from" min="0" max="23" onchange="fbPaceSave()" class="set-input" style="width:64px">
+                <span class="set-hint" style="margin:0">—</span>
+                <input type="number" id="fb-pace-to" min="0" max="23" onchange="fbPaceSave()" class="set-input" style="width:64px">
+                <span class="set-hint" style="margin:0" id="fb-pace-tz"></span>
+              </span>
+            </div>
+            <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. 15 minutes is as fast as the schedule ticks, so a smaller number changes nothing until you change the schedule too (the alter_job note at the bottom of FB_SYNC_CRON.sql). Facebook counts even refused requests against the limit, so faster is not always more data: 15 minutes costs twice what 30 does.</p>
+          </div>
+
+<div class="set-group">
+            <h3 class="set-gtitle">Comments under ads</h3>
+            <p class="set-gsub">The scheduled run walks the cabinets, finds comments written since it last looked, and sends them to Telegram.</p>
+
+            <label class="set-row set-toggle" data-setting="comments autohide коментарі ховати">
+              <span class="set-label">Hide new comments automatically</span>
+              <span class="toggle-switch"><input type="checkbox" id="fc-autohide" onchange="fcSaveAutoHide()"><span class="toggle-slider"></span></span></label>
+
+            <p class="set-hint">Hiding is reversible: only its author keeps seeing the comment, and they are not told.
+              You can put it back from the cabinet panel at any time. <b>Deleting is never automatic</b> &mdash; that stays a
+              button you press yourself, because there is no way back from it.</p>
+            <p class="set-hint opacity-60">The first pass over a cabinet hides nothing and reports nothing: it only notes the
+              time. Otherwise turning this on would bury you in comments from six months ago and hide half a year of
+              conversation in one go.</p>
+          </div>
+
+          </div>
+
+          <div id="isub-pane-tg" class="set-subpane">
+<div class="set-group">
+            <h3 class="set-gtitle">Telegram alerts</h3>
+            <p class="set-gsub">Where the dashboard reports what changed: cabinets that got banned, went quiet, or were launched and never started spending.</p>
+
+            <div class="set-addrow" data-setting="telegram bot бот телеграм username">
+              <input type="text" id="tg-bot-input" placeholder="Bot username, without @" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveTelegramBot()" class="set-btn set-btn-amber">Save</button>
+            </div>
+            <p class="set-hint">The name BotFather gave you. Shared by the team — each buyer connects their own chat to the same bot.</p>
+
+            <div class="set-addrow mt-2" data-setting="telegram connect підключити зв'язати">
+              <button type="button" id="tg-link-btn" onclick="tgConnect()" class="set-btn set-btn-amber hidden">Connect Telegram</button>
+              <button type="button" id="tg-unlink-btn" onclick="tgUnlink()" class="set-btn hidden">Disconnect</button>
+            </div>
+            <p id="tg-link-status" class="set-hint">Loading…</p>
+
+            <!-- Перевірка звʼязку. Стоїть тут, поруч із прив'язкою, бо
+                 питання «а воно взагалі працює?» виникає одразу після
+                 неї, а не колись потім у іншій вкладці. -->
+            <div class="set-addrow mt-2" data-setting="telegram test тест перевірка">
+              <button type="button" id="tg-test-btn" onclick="tgTest()" class="set-btn"
+                title="Asks the fb-sync function to send one message to your chat — the same route the real alerts take">Send a test message</button>
+            </div>
+            <p id="tg-test-status" class="set-hint"></p>
+            <p class="set-hint opacity-60">You get alerts about your own domains only. The link is personal and works once — do not pass it on.</p>
+
+            <div id="grp-tg" class="mt-3">
+              <label class="set-row set-toggle" data-setting="telegram ban бан"><span class="set-label">Cabinet banned or restricted</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-ban" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="telegram silent тиша"><span class="set-label">Cabinet went quiet</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-silent" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="telegram nospend не крутить"><span class="set-label">Launched but not spending</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-nospend" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+              <label class="set-row set-toggle" data-setting="telegram daily зведення"><span class="set-label">Daily summary</span>
+                <span class="toggle-switch"><input type="checkbox" id="tg-ev-daily" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
+            </div>
+
+            <div class="set-addrow mt-3" style="display:block;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.22);border-radius:12px;padding:10px 12px">
+              <p class="set-hint" style="margin:0">
+                <b style="color:#FCD34D">The bot token is not stored here — on purpose.</b><br>
+                This page is a static site: anything saved in it can be read by anyone who opens the dashboard.
+                The token lives in Supabase secrets, next to the function that sends the messages — see TELEGRAM.sql.
+                What is stored here is only the bot name, which is public anyway.<br>
+                The toggles above cover cabinet alerts, which are not built yet. Domain alerts work already:
+                they run with the nightly check and report only what got worse.
+              </p>
+            </div>
+          </div>
+          </div>
+
+          <div id="isub-pane-drive" class="set-subpane">
+          <div class="set-group">
+            <h3 class="set-gtitle">Google Drive preview</h3>
+            <p class="set-gsub">This team’s creatives folder. The link must be shared with anyone who has it.</p>
+            <div class="set-addrow" data-setting="drive folder папка креативи">
+              <input type="url" id="drive-folder-input" placeholder="https://drive.google.com/drive/folders/…" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveDriveFolder()" class="set-btn set-btn-amber">Save</button>
+            </div>
+            <p id="drive-folder-status" class="set-hint"></p>
+            <div class="set-addrow mt-3" data-setting="drive api key ключ">
+              <input type="text" id="drive-api-key-input" placeholder="API key: AIza…" class="set-input font-mono" style="flex:1 1 auto;min-width:0">
+              <button type="button" onclick="saveDriveApiKey()" class="set-btn set-btn-amber">Save</button>
+            </div>
+            <p class="set-hint">console.cloud.google.com → Enable Drive API → Credentials → API Key</p>
+          </div>
+          </div>
+        </section>
+
+        <p id="set-empty" class="set-empty hidden">Nothing matches</p>
+      </div>
+    </div>
+  </div>
+</div>

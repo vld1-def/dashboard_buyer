@@ -1,0 +1,3738 @@
+
+/* ══════════════════════════════════════════════════════════════════
+   DESIGN LAYER — новий вигляд поверх наявних компонентних стилів.
+   Все нижче свідомо йде останнім у блоці стилів, щоб перебивати старі
+   правила без правок у кожному з них.
+   ══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:          #0A0A0C;
+  --bg-soft:     #0E0E11;
+  --surface:     #121216;
+  --surface-2:   #17171C;
+  --surface-3:   #1E1E24;
+  /* Смуга в дереві кампаній. Власний тон, а не --surface-3: той самий
+     колір носять смуга прокрутки й наведення в доці, і посунувши його
+     заради таблиці, ми посунули б і їх. Тут потрібна різниця, якої
+     вистачає оку на сусідніх рядках і не більше: надто світла смуга
+     читається як виділення, тобто як «цей рядок чимось особливий». */
+  --cd-band:     #191920;
+  --border:      rgba(255,255,255,.07);
+  --border-2:    rgba(255,255,255,.13);
+  --text-main:   #E9E9EC;
+  --text-muted:  #8A8A95;
+  --accent:      #8B5CF6;
+  --ok:          #22C55E;
+  --warn:        #EAB308;
+  --bad:         #EF4444;
+  --info:        #3B82F6;
+  --radius:      14px;
+  --zoom:        .9;   /* має збігатися з body { zoom } нижче */
+  --sb-w:        238px;
+  --tb-h:        62px;
+  color-scheme: dark;
+}
+
+
+body {
+  background: var(--bg) !important;
+  background-image: none !important;
+  color: var(--text-main);
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding: 0 !important;
+  margin: 0;
+  zoom: .9;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─────────── Каркас: сайдбар + контент ─────────── */
+.app-shell { display: flex; align-items: flex-start; min-height: 100vh; }
+
+.app-sidebar {
+  width: var(--sb-w); flex: 0 0 var(--sb-w);
+  position: sticky; top: 0;
+  /* Під body{zoom:.9} одиниця vh масштабується разом із рештою, і 100vh
+     давало лише 90% екрана — звідси ділення на --zoom. */
+  height: calc(100vh / var(--zoom));
+  background: var(--bg-soft);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  z-index: 60;
+}
+.app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.app-content { padding: 12px 14px 104px; }
+
+/* ─────────── Скрол — тільки всередині ───────────
+
+   Досі гортався весь документ. Сайдбар тримався на sticky й лишався на
+   місці, а от усе, що стоїть угорі контенту, — фільтри, вкладки, шапки
+   таблиць — їхало вгору й зникало. На довгому звіті це означало
+   мотати назад щоразу, коли треба змінити період.
+
+   Тепер вікно не гортається взагалі: прокручується рівно та колонка, у
+   якій лежить вміст. Сайдбар і все, що над контентом, стоять завжди.
+
+   overscroll-behavior: contain — щоб, догортавши до низу блоку, не
+   почати тягнути за собою сторінку (на тачпаді це виглядає як ривок).
+
+   Ділення на --zoom — з тієї ж причини, що й у сайдбара: під
+   body { zoom: .9 } сто vh дають на екрані лише дев'яносто. */
+html, body { height: 100%; overflow: hidden; }
+.app-shell { height: calc(100vh / var(--zoom)); overflow: hidden; }
+.app-main { height: 100%; min-height: 0; overflow: hidden; }
+.app-content { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+.sb-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; height: var(--tb-h);
+  border-bottom: 1px solid var(--border); flex: 0 0 var(--tb-h);
+}
+.sb-logo {
+  width: 30px; height: 30px; border-radius: 9px; flex: 0 0 30px;
+  display: grid; place-items: center; color: #fff;
+  background: linear-gradient(145deg, #8B5CF6, #4F46E5);
+  box-shadow: 0 4px 14px -4px rgba(139,92,246,.7);
+}
+.sb-logo svg { width: 17px; height: 17px; }
+.sb-brand-name { font-size: 15px; font-weight: 800; letter-spacing: -.02em; color: var(--text-main); }
+
+.sb-scroll { flex: 1; overflow-y: auto; padding: 14px 10px 8px; min-height: 0; }
+.sb-cap {
+  font-size: 9px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--text-muted); opacity: .65; padding: 0 8px; margin: 14px 0 6px;
+  /* Висота задана явно, хоч текст і однорядковий: від auto перехід не
+     працює, і в компактному режимі підписи розділів зникали стрибком —
+     список смикався вгору посеред руху панелі. */
+  height: 13px; line-height: 13px; overflow: hidden;
+}
+.sb-cap:first-child { margin-top: 0; }
+
+.sb-item {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 9px 11px; border-radius: 10px; margin-bottom: 2px;
+  color: var(--text-muted); font-size: 13px; font-weight: 600;
+  text-align: left; transition: background .15s, color .15s;
+  border: 1px solid transparent; cursor: pointer;
+}
+.sb-item:hover { background: rgba(255,255,255,.045); color: var(--text-main); }
+.sb-item.is-active {
+  background: var(--surface-2); color: var(--text-main);
+  border-color: var(--border);
+}
+.sb-item.is-active svg { color: var(--accent); }
+.sb-item svg { width: 18px; height: 18px; flex: 0 0 18px; stroke-width: 1.7; }
+/* Підпис у власному елементі — щоб його можна було анімувати. Але
+   прозорий він усе одно займає своє місце, а в компактному режимі це
+   60-70 зайвих пікселів у кнопці завширшки 42: іконку просто
+   виштовхувало за лівий край панелі.
+
+   Тому разом із прозорістю тиснемо й ширину. max-width, а не width:
+   від auto перехід не працює, а від фіксованого значення — так.
+   min-width:0 обов'язковий: без нього гнучкий елемент відмовляється
+   стискатись нижче за свій вміст, і max-width:0 не діє взагалі. */
+.sb-lbl, .sb-brand-name, .sb-search span {
+  display: inline-block; white-space: nowrap; overflow: hidden;
+  max-width: 220px; min-width: 0;
+}
+body.sb-compact .sb-lbl,
+body.sb-compact .sb-brand-name,
+body.sb-compact .sb-search span { max-width: 0; }
+/* Підказка ⌘K — окремий випадок: у неї власні падінги й рамка, і
+   max-width:0 їх не чіпає. Чотирнадцять пікселів порожнечі лишались у
+   кнопці завширшки 42 і зсували іконку пошуку з центру. */
+body.sb-compact .sb-search .tb-kbd {
+  padding-left: 0; padding-right: 0; border-width: 0;
+}
+.sb-item .sb-badge {
+  margin-left: auto; font-size: 10px; font-weight: 800;
+  background: var(--surface-3); color: var(--text-muted);
+  padding: 1px 6px; border-radius: 6px;
+}
+
+.sb-foot { padding: 10px; border-top: 1px solid var(--border); flex: 0 0 auto; }
+
+/* Топбар прибрано: <header> лишається лише носієм панелі інструментів,
+   яку buildDock() переносить у плаваючий док. */
+.app-topbar-hidden { display: none; }
+
+/* Кнопка меню на вузьких екранах (топбара з бургером більше немає) */
+.mob-burger {
+  display: none; align-items: center; gap: 9px; margin-bottom: 14px;
+  padding: 9px 13px; border-radius: 11px; font-size: 13px; font-weight: 700;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-main);
+}
+.mob-burger svg { width: 18px; height: 18px; stroke-width: 1.9; }
+
+/* Пошук у сайдбарі */
+.sb-search {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0 10px; height: 34px; margin-bottom: 4px;
+  color: var(--text-muted); transition: border-color .15s;
+}
+.sb-search:hover { border-color: var(--border-2); }
+.sb-search svg { width: 15px; height: 15px; flex: 0 0 15px; stroke-width: 1.9; }
+.sb-search span { font-size: 12.5px; font-weight: 500; flex: 1; text-align: left; }
+/* Підказка ⌘K — теж span, тож flex:1 вище розтягував її на пів кнопки:
+   вісімдесят пікселів замість тридцяти. Чіпу розтягуватись нема чого. */
+.sb-search .tb-kbd { flex: 0 0 auto; text-align: right; }
+.tb-kbd {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
+}
+
+/* Смуга місячного таргету під топбаром */
+#milestone-container {
+  margin: 0 0 16px !important;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 16px !important;
+}
+#milestone-container .ms-cap {
+  display: block; text-align: center; margin-bottom: 7px;
+  font-size: 9px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+#monthly-spend-label { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
+#milestone-container .relative.w-full { background: var(--surface-3) !important; border-color: var(--border) !important; height: 6px !important; }
+#milestone-fill { background: linear-gradient(90deg, #6366F1, #8B5CF6, #C084FC) !important; box-shadow: 0 0 18px rgba(139,92,246,.45) !important; }
+
+/* ─────────── Картки ─────────── */
+.card {
+  background: var(--surface) !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.025) inset, 0 10px 30px -22px rgba(0,0,0,.9) !important;
+}
+.card::before { display: none !important; }
+/* Старі товсті кольорові верхні бордери секцій — у новому дизайні їх немає */
+.card[class*="border-t-"] { border-top-width: 1px !important; border-top-color: var(--border) !important; }
+
+/* Заголовки панелей: без капслока й курсиву */
+.card h2, .card h3, .app-content h2 {
+  text-transform: none !important; font-style: normal !important;
+  letter-spacing: -.015em !important; font-weight: 700 !important;
+}
+.card h2 { font-size: 15px !important; }
+.card h2 + p, .panel-sub {
+  font-size: 10px !important; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-muted) !important;
+}
+
+/* ─────────── KPI ─────────── */
+#kpi-row { gap: 8px !important; }
+.kpi-card {
+  position: relative;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 13px 15px;
+  min-height: 104px; display: flex; flex-direction: column; justify-content: center;
+}
+.kpi-card::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(130% 120% at 100% 0%, var(--glow, transparent) 0%, transparent 58%);
+}
+/* Піднімаємо вміст над градієнтним сяйвом ::after, але не чіпаємо
+   абсолютно спозиціоновані нащадки (тултіп розбивки спенду) — інакше
+   вони повертались у потік і розтягували всю сітку KPI. */
+.kpi-card > *:not(.absolute) { position: relative; z-index: 1; }
+.kpi-head { display: flex; align-items: center; gap: 8px; }
+.kpi-ico {
+  width: 25px; height: 25px; flex: 0 0 25px; border-radius: 8px;
+  display: grid; place-items: center; background: var(--glow); color: var(--accent);
+}
+.kpi-ico svg { width: 14px; height: 14px; stroke-width: 2; }
+.kpi-label { font-size: 11.5px; font-weight: 600; color: var(--text-muted); }
+.kpi-value {
+  font-size: 25px; font-weight: 800; letter-spacing: -.03em; margin-top: 7px;
+  font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.kpi-delta { font-size: 11px; font-weight: 800; margin-left: 6px; white-space: nowrap; }
+.kpi-delta.is-up { color: var(--ok); } .kpi-delta.is-down { color: var(--bad); }
+.kpi-delta.is-flat { color: var(--text-muted); opacity: .6; }
+/* Стрілка має тулитись до числа, а не тягнути картку вшир */
+.kpi-delta { flex: 0 0 auto; }
+.kpi-foot { margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
+.kpi-foot b { font-weight: 800; }
+.kpi-card:hover { z-index: 60; }
+
+/* ─────────── Поля вводу / кнопки ─────────── */
+input[type="date"], input[type="number"], input[type="text"], input[type="url"], select, textarea {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 9px !important;
+  color: var(--text-main) !important;
+  font-size: 12px !important; font-weight: 600;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: rgba(139,92,246,.55) !important;
+  box-shadow: 0 0 0 3px rgba(139,92,246,.12) !important; outline: none !important;
+}
+select option { background: var(--surface-2); color: var(--text-main); }
+.card .bg-black\/20, .card .bg-white\/\[0\.02\], .card .bg-gray-500\/10 {
+  background: var(--surface-2) !important;
+}
+
+/* ─────────── Таблиці ─────────── */
+#rb-table thead th {
+  padding: 11px 16px !important; font-size: 10px !important;
+  background: var(--surface-2) !important; color: var(--text-muted) !important;
+  letter-spacing: .12em; backdrop-filter: none !important; border-bottom: 1px solid var(--border) !important;
+}
+
+/* ─────────── Скролбари ─────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 8px; backdrop-filter: none; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
+.custom-scrollbar::-webkit-scrollbar { width: 6px; }
+
+/* ─────────── Модалки ─────────── */
+.modal-overlay { background: rgba(0,0,0,.62) !important; backdrop-filter: blur(6px) !important; }
+
+/* ─────────── Плаваючий док інструментів ─────────── */
+#app-dock {
+  background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 18px 50px -20px rgba(0,0,0,.9) !important;
+  backdrop-filter: blur(18px) !important;
+}
+#app-dock .dk { border-radius: 11px !important; color: var(--text-muted) !important; }
+#app-dock .dk:hover { background: var(--surface-3) !important; color: var(--text-main) !important; }
+#app-dock .dk.primary {
+  background: linear-gradient(145deg, #8B5CF6, #4F46E5) !important; color: #fff !important;
+}
+#app-dock .dk-sep { background: var(--border) !important; }
+
+/* ─────────── Командна панель (⌘K) ─────────── */
+#cmd-overlay {
+  position: fixed; inset: 0; z-index: 300; display: none;
+  background: rgba(0,0,0,.6); backdrop-filter: blur(6px);
+  align-items: flex-start; justify-content: center; padding-top: 12vh;
+}
+#cmd-overlay.open { display: flex; }
+#cmd-box {
+  width: min(560px, 92vw); background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px -30px rgba(0,0,0,.95);
+}
+#cmd-input {
+  width: 100%; background: transparent !important; border: 0 !important;
+  border-bottom: 1px solid var(--border) !important; border-radius: 0 !important;
+  padding: 15px 18px !important; font-size: 14px !important; font-weight: 500 !important;
+  box-shadow: none !important;
+}
+#cmd-list { max-height: 340px; overflow-y: auto; padding: 6px; }
+.cmd-row {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 9px 12px; border-radius: 9px; font-size: 13px; font-weight: 600;
+  color: var(--text-muted); text-align: left; cursor: pointer;
+}
+.cmd-row svg { width: 16px; height: 16px; flex: 0 0 16px; stroke-width: 1.8; }
+.cmd-row.is-sel, .cmd-row:hover { background: var(--surface-2); color: var(--text-main); }
+.cmd-row small { margin-left: auto; font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; opacity: .6; }
+
+/* ─────────── Нижні інсайт-картки ─────────── */
+.ins-row {
+  display: flex; align-items: center; gap: 11px; padding: 9px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.ins-row:last-child { border-bottom: 0; }
+.ins-chip {
+  width: 30px; height: 30px; flex: 0 0 30px; border-radius: 9px;
+  display: grid; place-items: center; font-size: 10px; font-weight: 800;
+  background: var(--surface-3); color: var(--text-main);
+}
+.ins-main { min-width: 0; flex: 1; }
+.ins-t { font-size: 12.5px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ins-s { font-size: 10.5px; font-weight: 600; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ins-v { font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ins-pill {
+  font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px;
+  text-transform: uppercase; letter-spacing: .06em; white-space: nowrap;
+}
+.pill-ok   { background: rgba(34,197,94,.14);  color: #4ADE80; }
+.pill-warn { background: rgba(234,179,8,.14);  color: #FACC15; }
+.pill-bad  { background: rgba(239,68,68,.14);  color: #F87171; }
+.pill-mute { background: var(--surface-3);     color: var(--text-muted); }
+
+/* ─────────── Адаптив ─────────── */
+@media (max-width: 1100px) {
+  .app-sidebar {
+    position: fixed; left: 0; top: 0; transform: translateX(-100%);
+    /* Виїзд тією ж кривою, що й на десктопі, — панель одна й та сама,
+       і рухатись вона має однаково. */
+    transition: transform .32s cubic-bezier(.34, 1.06, .5, 1);
+    box-shadow: 0 0 60px rgba(0,0,0,.6);
+  }
+  body.sb-open .app-sidebar { transform: none; }
+  /* Затемнення позаду. Раніше воно виникало миттєво разом із класом —
+     панель їхала плавно, а фон під нею стрибав. Тепер обидва рухи
+     однієї тривалості. */
+  .app-shell::after {
+    content: ''; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0,0,0,.55);
+    opacity: 0; pointer-events: none;
+    transition: opacity .32s ease;
+  }
+  body.sb-open .app-shell::after { opacity: 1; pointer-events: auto; }
+  .mob-burger { display: inline-flex; }
+}
+@media (max-width: 760px) {
+  .app-content { padding: 10px 10px 104px; }
+  .app-topbar { padding: 0 12px; gap: 10px; }
+  .kpi-value { font-size: 22px; }
+}
+
+/* Стара шапка ховається цілком, тож із її правил лишається тільки
+   sync-бейдж — він був fixed-пігулкою в кутку екрана. */
+#last-sync-badge { display: none !important; }
+
+/* KPI-картки вирівнюємо по верху — у макеті всі заголовки на одній лінії */
+.kpi-card { justify-content: flex-start !important; }
+
+/* Скролбар: у старому шарі колір із !important, тому перебиваємо так само */
+::-webkit-scrollbar-thumb { background: var(--surface-3) !important; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-2) !important; }
+
+/* ─────────── Поля дат ───────────
+   Старий шар прибивав їм color:#f1f5f9 !important — на світлій темі текст
+   ставав білим по білому. Тут вертаємо кольори на токени. */
+input[type="date"] {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-main) !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  border-radius: 9px; padding: 7px 10px;
+}
+input[type="date"]:hover { background: var(--surface-3) !important; border-color: var(--border-2) !important; }
+input[type="date"]:focus {
+  background: var(--surface-2) !important; border-color: rgba(139,92,246,.55) !important;
+  box-shadow: 0 0 0 3px rgba(139,92,246,.12) !important;
+}
+input[type="date"]::-webkit-datetime-edit-text { color: var(--text-muted); }
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field { color: var(--text-main); }
+::-webkit-calendar-picker-indicator { filter: none; opacity: .55; }
+
+/* ─────────── Data Hub: Form.html усередині сторінки ─────────── */
+/* ВИСОТА. Панель міряється від екрана, і на ноуті цього замало:
+   всередині лежить ціла сторінка імпорту, і вона починає крутитись у
+   вікні заввишки з долоню — прокрутка в прокрутці, найгірше, що буває
+   з вкладеною сторінкою.
+
+   Тому два числа. Відняте від екрана зменшено з 54 до 24: решта була
+   запасом на те, чого там немає. А min-height ставить підлогу — на
+   низькому екрані панель переростає його, і крутиться СТОРІНКА, а не
+   вміст iframe. Прокрутка одна, і вона там, де її шукають. */
+#datahub-panel {
+  display: flex; flex-direction: column; overflow: hidden;
+  height: calc(100vh / var(--zoom) - 24px);
+  min-height: 900px;
+  margin-bottom: 16px;
+}
+#datahub-panel.hidden { display: none; }
+.hub-head {
+  display: flex; align-items: center; gap: 12px; flex: 0 0 auto;
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+}
+.hub-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.hub-tabs button {
+  padding: 7px 14px; border-radius: 9px; font-size: 12px; font-weight: 700;
+  color: var(--text-muted); border: 1px solid transparent; transition: .15s;
+}
+.hub-tabs button:hover { color: var(--text-main); background: var(--surface-2); }
+.hub-tabs button.is-active {
+  background: var(--surface-2); color: var(--text-main); border-color: var(--border);
+}
+.hub-close {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; color: var(--text-muted);
+  padding: 7px 11px; border-radius: 9px; border: 1px solid var(--border); transition: .15s;
+}
+.hub-close:hover { color: var(--text-main); border-color: var(--border-2); }
+.hub-close svg { width: 13px; height: 13px; stroke-width: 2.2; }
+#datahub-frame { flex: 1; width: 100%; border: 0; background: transparent; display: block; }
+/* Док ховаємо ЛИШЕ там, де є свій: у Form.html власне плаваюче меню, і
+   два таких на екрані накладались би одне на одне. Довго це правило
+   стояло на hub-open, тобто на будь-якій панелі, — і Таблиці, у яких
+   свого дока немає, лишались без меню просто за компанію. */
+body.dock-off #app-dock { display: none !important; }
+body.hub-open .app-content { padding-bottom: 14px; }
+/* Док лишився — значить він плаває над низом панелі. Вкорочуємо її
+   рівно на його висоту з відступом: інакше останні рядки таблиці
+   ховались би під ним, і це виглядало б як обрізані дані. */
+body.hub-open:not(.dock-off) #sheets-panel,
+body.hub-open:not(.dock-off) #datahub-panel { height: calc(100vh / var(--zoom) - 54px - 78px); }
+/* Мінімальна висота тягла панель під док незалежно від розрахунку вище:
+   900px на екрані 900px — це рівно весь екран, і останній ряд рамки
+   лягав під меню. */
+body.hub-open:not(.dock-off) #datahub-panel { min-height: 0; }
+
+/* ─────────── Google Таблиці ─────────── */
+#sheets-panel {
+  display: flex; flex-direction: column; overflow: hidden;
+  height: calc(100vh / var(--zoom) - 54px); margin-bottom: 16px;
+}
+#sheets-panel.hidden { display: none; }
+.sh-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#sh-select { min-width: 190px; max-width: 320px; }
+.sh-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; padding: 7px 11px; border-radius: 9px;
+  border: 1px solid var(--border); color: var(--text-muted); transition: .15s;
+}
+.sh-btn:hover { color: var(--text-main); border-color: var(--border-2); }
+.sh-btn svg { width: 13px; height: 13px; stroke-width: 2; }
+.sh-del:hover { color: #F87171; border-color: rgba(239,68,68,.4); }
+.sh-save {
+  background: rgba(139,92,246,.16); border-color: rgba(139,92,246,.35); color: #C4B5FD;
+}
+.sh-add {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+}
+.sh-add.hidden { display: none; }
+.sh-add input { flex: 1; min-width: 180px; }
+.sh-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; text-align: center; padding: 40px 24px;
+  font-size: 14px; font-weight: 700; color: var(--text-main);
+}
+.sh-empty.hidden { display: none; }
+.sh-empty .sh-hint {
+  font-size: 12px; font-weight: 500; color: var(--text-muted);
+  max-width: 460px; line-height: 1.6;
+}
+#sh-frame { flex: 1; width: 100%; border: 0; background: #fff; display: block; }
+#sh-frame.hidden { display: none; }
+
+/* ── CSV і XLSX просто тут ──
+   Системний вибір файлів ховаємо власним правилом, а не класом
+   Tailwind: він єдине, що стоїть між людиною й чужорідним віджетом,
+   і покладатись на чужу бібліотеку в цьому не варто. */
+#sh-file { display: none !important; }
+.sh-filebar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); flex: 0 0 auto;
+}
+.sh-filebar.hidden { display: none; }
+.sh-fname {
+  font-size: 11px; font-weight: 900; color: var(--text-main);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sh-rows { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.sh-tabs {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 3px 7px; font-size: 10px; font-weight: 800; color: var(--text-main);
+  outline: none; cursor: pointer;
+}
+.sh-note { font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 18px; }
+.sh-table { flex: 1; min-height: 0; overflow: auto; background: var(--surface); }
+.sh-table.hidden { display: none; }
+.sh-grid { border-collapse: separate; border-spacing: 0; font-size: 11px; white-space: nowrap; }
+/* Шапка лишається на місці: на файлі в дві тисячі рядків без неї
+   через екран уже не видно, у якому ти стовпчику. */
+.sh-grid th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-3); color: var(--text-main);
+  font-weight: 900; text-align: left; padding: 6px 10px;
+  border-bottom: 1px solid var(--border-2); border-right: 1px solid var(--border);
+}
+.sh-grid td {
+  padding: 5px 10px; color: var(--text-main); font-weight: 600;
+  border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis;
+}
+.sh-grid tr:hover td { background: var(--surface-2); }
+/* Номер рядка теж липкий, і теж не з примхи: гортаючи вбік, легко
+   загубити, у якому ти рядку. */
+.sh-grid .sh-n {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--surface-3); color: var(--text-muted);
+  font-variant-numeric: tabular-nums; font-weight: 800;
+  text-align: right; padding: 5px 8px; min-width: 42px;
+}
+.sh-grid th.sh-n { z-index: 3; }
+/* Номер рядка він же кнопка вибору: окрема галочка коштувала б
+   стовпчика, а на телефоні кожен стовпчик на вагу. */
+.sh-grid .sh-n.is-pick { cursor: pointer; user-select: none; }
+.sh-grid .sh-n.is-pick:hover { color: var(--text-main); background: var(--surface-2); }
+.sh-grid tr.is-sel td { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
+.sh-grid tr.is-sel td.sh-n {
+  background: color-mix(in srgb, var(--accent) 30%, var(--surface));
+  color: var(--text-main);
+}
+.sh-grid tr.is-sel:hover td { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+
+/* Підсумок. Знизу, бо дивляться на нього ПІСЛЯ того, як виділили.
+   Гортається вбік: стовпчиків із числами буває багато, і ховати
+   частину означало б, що сума знайшлась не для всього. */
+.sh-sum {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px; border-top: 1px solid var(--border-2);
+  background: var(--surface-2); overflow-x: auto; white-space: nowrap;
+}
+.sh-sum.hidden { display: none; }
+.sh-sum-n {
+  font-size: 10px; font-weight: 900; color: var(--accent);
+  text-transform: uppercase; letter-spacing: .08em; flex: 0 0 auto;
+}
+.sh-sum-i {
+  font-size: 11px; font-weight: 700; color: var(--text-main); flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.sh-sum-i b { color: var(--text-muted); font-weight: 800; margin-right: 4px; }
+/* Скільки з виділених рядків узагалі мали тут число. Показуємо лише
+   коли їх менше, ніж рядків: мовчазна сума по половині стовпчика
+   виглядала б як сума по всьому. */
+.sh-sum-i i { color: var(--text-muted); font-style: normal; font-size: 10px; }
+/* Пропущені стовпчики — тоном тихіше за суми: це пояснення, а не
+   показник, але мовчати про них не можна. */
+.sh-skip { color: var(--text-muted); font-weight: 600; cursor: help; }
+.sh-hint {
+  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  opacity: .8; flex: 0 0 auto;
+}
+
+/* ─────────── Компактніші секції ───────────
+   Стара розмітка несе і власні mb-6/mb-8, і space-y-4 контейнера —
+   відступи складались. Лишаємо один. Внутрішні паддінги й висоти
+   таблиць теж тиснемо, щоб на екран влазило більше. */
+#dashboard-content > * { margin-bottom: 0 !important; margin-top: 0 !important; }
+#dashboard-content .card.p-6 { padding: 15px !important; }
+#dashboard-content .card.p-5 { padding: 14px !important; }
+#dashboard-content .card > .mb-6 { margin-bottom: 12px !important; }
+#dashboard-content .card > .mb-5 { margin-bottom: 10px !important; }
+
+#rb-table-wrap { max-height: 400px !important; }
+#creative-analyzer-section [class*="max-h-["] { max-height: 320px !important; }
+
+/* Заголовки секцій нижчі: у макеті це один рядок, а не блок на три */
+#dashboard-content .card h2 + p { margin-top: 1px; }
+/* Гео-колонка підлаштовується під висоту графіка (syncGeoHeight). Після
+   стискання графіків у неї лишалось менше двох рядків — тримаємо мінімум. */
+#geo-sidebar-col { min-height: 300px; }
+body.route-dash #geo-sidebar-col { min-height: 0; }
+/* Мітка активного зрізу на картці Total Spend */
+.kpi-lens {
+  margin-left: auto; font-size: 9px; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-muted); white-space: nowrap;
+}
+.kpi-lens.is-on { background: rgba(139,92,246,.18); color: #C4B5FD; }
+
+/* Роутер: блок, що не належить поточній сторінці. Окремий клас, щоб не
+   конфліктувати з .hidden — ним керують налаштування віджетів. */
+.route-off { display: none !important; }
+
+/* ─────────── Сторінка «Дашборд» на всю висоту екрана ───────────
+   Чотири блоки — таргет, KPI, графіки, інсайти — ділять вікно по
+   вертикалі, без порожнечі знизу й без прокрутки. На низьких екранах
+   вимикаємо: там краще звичайний потік зі скролом, ніж сплюснуті картки.
+   Так само й на вузьких: до 1024px сітка складається в одну колонку,
+   і фіксовані пропорції рядків сплющили б графік. */
+@media (min-height: 700px) and (min-width: 1024px) {
+  body.route-dash .app-content {
+    height: calc(100vh / var(--zoom));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 92px;   /* під плаваючий док: він лишає всього ~8px запасу */
+    overflow: hidden;
+  }
+  body.route-dash #milestone-container { flex: 0 0 auto; margin-bottom: 0 !important; }
+  body.route-dash #dashboard-content {
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  body.route-dash #kpi-row { flex: 0 0 auto; }
+
+  /* Тепер це один блок на дві сітки-рядки: графік зверху, інсайти під ним,
+     а гео праворуч перекриває обидва рядки. Графіку даємо трохи більше висоти. */
+  body.route-dash #charts-row {
+    flex: 1 1 auto; min-height: 0; align-items: stretch;
+    grid-template-rows: minmax(0, 2.1fr) minmax(0, 1fr);
+  }
+  /* Якщо інсайти сховані (не адмін / вимкнений віджет) — лишається один рядок,
+     інакше гео тягнулося б через порожню половину. */
+  body.route-dash #charts-row:has(> #insights-row.hidden),
+  body.route-dash #charts-row:has(> #insights-row.route-off) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  body.route-dash #insights-row { min-height: 0; }
+
+  /* Картка графіка: шапка фіксована, полотно забирає решту */
+  body.route-dash #chart-main-col { display: flex; flex-direction: column; min-height: 0; }
+  body.route-dash #chart-main-col > div:last-child {
+    flex: 1 1 auto; height: auto !important; min-height: 0;
+  }
+
+  /* Гео більше не рівняється по графіку інлайновою висотою — тягнеться сіткою
+     на всю висоту обох рядків */
+  body.route-dash #geo-sidebar-col { height: auto !important; min-height: 0; }
+
+  /* Інсайти: заголовок на місці, список прокручується всередині */
+  body.route-dash #insights-row > .card { display: flex; flex-direction: column; min-height: 0; }
+  body.route-dash #insights-row > .card > div:last-child {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  }
+}
+
+/* ─────────── Без ховер-ефекту на блоках ───────────
+   Старий шар піднімав і підсвічував кожну картку-секцію під курсором.
+   На щільному дашборді це смикає екран, тому лишаємо статику. */
+#dashboard-content > .card:hover,
+#dashboard-content .grid > .card:hover,
+#kpi-row > .card:hover,
+.kpi-card:hover {
+  transform: none !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 1px 0 rgba(255,255,255,.025) inset, 0 10px 30px -22px rgba(0,0,0,.9) !important;
+}
+/* z-index лишаємо: ним тултіп розбивки спенду лягає поверх сусідів */
+.kpi-card:hover { z-index: 60; }
+
+/* ─────────── Витрати ─────────── */
+.exp-save {
+  display: block; width: 100%; margin-top: 12px;
+  background: rgba(139,92,246,.16); border: 1px solid rgba(139,92,246,.35);
+  color: #C4B5FD; font-size: 11px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .1em;
+  padding: 10px; border-radius: 10px; transition: .15s;
+}
+.exp-save:hover { background: rgba(139,92,246,.26); color: #fff; }
+.exp-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.exp-wrap { max-height: 420px; overflow-y: auto; }
+
+/* ДВІ КОЛОНКИ ВИТРАТ. Форма додавання жила зверху й займала повну
+   ширину заради трьох полів, а список — те, заради чого сюди й
+   заходять — починався під нею й одразу тікав за нижній край.
+
+   Тепер як у кабінетах: головне ліворуч на всю висоту, а те, чим із ним
+   працюють, — сталою смугою праворуч. Смуга не зникає: додавати витрати
+   тут доводиться щодня, і ховати форму за кнопкою означало б додати
+   клік до кожної.
+
+   Ширина задана ТУТ, а не класом w-[330px] у розмітці — з тієї самої
+   причини, що й у панелі кабінетів: довільні значення Tailwind існують
+   лише якщо їх знайшов збирач, і варто класу не потрапити в збірку, як
+   смуга роздувається до найдовшого свого рядка й накриває таблицю. */
+.exp-cols { display: flex; gap: 14px; align-items: flex-start; }
+#exp-list-card { flex: 1 1 auto; min-width: 0; }
+#exp-add { flex: 0 0 330px; width: 330px; }
+/* Поля в колонку: у смузі на 330px три поля поруч стають нечитними. */
+.exp-form { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 12px; }
+
+@media (max-width: 1100px) {
+  /* На вузькому екрані смуга праворуч просто нема куди — складаємось
+     назад у стовпчик, і список лишається першим.
+
+     align-items тут обовʼязковий: у стовпчику flex-start означає «по
+     ширині вмісту», і картки з'їхались би у вузькі колонки посеред
+     порожнього екрана. */
+  .exp-cols { flex-direction: column; align-items: stretch; }
+  #exp-add { flex: 0 0 auto; width: auto; }
+}
+#exp-table { width: 100%; border-collapse: collapse; }
+#exp-table th {
+  position: sticky; top: 0; background: var(--surface-2); z-index: 1;
+  text-align: left; padding: 9px 16px; font-size: 10px; font-weight: 800;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+#exp-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+#exp-table tbody tr:last-child td { border-bottom: 0; }
+.exp-date { font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+/* Вибір категорії витрати. П'ять кнопок замість випадайки: один клік
+   замість двох, усі варіанти видно одразу, і — головне — в <option>
+   не можна покласти SVG, лише текст. З випадайкою іконки були б
+   неможливі в принципі. */
+/* ─────────── Підвкладки всередині розділу налаштувань ─────────── */
+.set-subtabs {
+  display: flex; gap: 4px; margin: 0 0 14px;
+  padding: 3px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.set-subtab {
+  flex: 1 1 auto; padding: 7px 12px; border-radius: 8px;
+  font-size: 11px; font-weight: 800; letter-spacing: .03em;
+  color: var(--text-muted); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  transition: color .15s, background .15s;
+}
+.set-subtab:hover { color: var(--text-main); }
+.set-subtab.is-on { color: var(--text-main); background: var(--surface); }
+.set-subcount {
+  font-size: 9px; font-weight: 800; padding: 1px 5px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-muted);
+}
+
+/* Невидима підвкладка — саме класом, а не hidden: у режимі пошуку
+   (#set-panes.searching) правило нижче повертає всі панелі назад, і
+   пошук по налаштуваннях знаходить рядки в усіх трьох, не знаючи про
+   існування підвкладок узагалі. */
+.set-subpane.sub-off { display: none; }
+#set-panes.searching .set-subpane.sub-off { display: revert; }
+/* Самі перемикачі в режимі пошуку зайві: панелі й так усі відкриті. */
+#set-panes.searching .set-subtabs { display: none; }
+
+/* ─────────── Токени Facebook ─────────── */
+/* Список росте, вікно налаштувань — ні. Після приблизно семи рядків
+   починається власна прокрутка, а не розтягування модалки. */
+.fb-list { max-height: 320px; overflow-y: auto; }
+.fb-row {
+  display: grid; gap: 2px 10px; align-items: center;
+  grid-template-columns: 1fr auto;
+  padding: 10px 12px; margin-bottom: 6px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+/* Мертвий токен лишається читабельним, але видно, що він не в грі. */
+.fb-row.is-dead { opacity: .62; border-style: dashed; }
+/* Рядок, за яким згорнуті мертві токени. Виглядає як підпис, а не як
+   кнопка дії: натискати його щодня ніхто не мусить. */
+.fb-fold {
+  display: block; width: 100%; text-align: left;
+  margin-top: 2px; padding: 7px 12px; border-radius: 10px;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-muted); background: transparent;
+  border: 1px dashed var(--border);
+}
+.fb-fold:hover { color: var(--text-main); border-color: var(--border-2); }
+.fb-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* Кружечок кольором стану: зелений — працює, жовтий — бракує прав,
+   червоний — протух чи відкликаний. Це перше, на що дивишся. */
+.fb-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.fb-label { font-size: 12px; font-weight: 800; color: var(--text-main);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-bm { font-size: 10px; font-weight: 700; color: var(--text-muted);
+         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-meta { grid-column: 1; font-size: 10px; color: var(--text-muted); }
+.fb-acts { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 6px; }
+.fb-acts .set-btn { font-size: 9px; padding: 5px 9px; }
+
+/* Сьогоднішні витрати стоять праворуч і в одній колонці: список
+   кабінетів читають саме по них, і числа, які гуляють по рядку від довжини
+   назви, порівняти оком неможливо. tabular-nums з тієї ж причини. */
+.fb-nums { grid-column: 2; grid-row: 1 / span 2; text-align: right; min-width: 0; }
+.fb-spend { display: block; font-size: 12px; font-weight: 800; color: var(--text-main);
+            font-variant-numeric: tabular-nums; }
+.fb-unit { display: block; font-size: 9px; font-weight: 700; letter-spacing: .08em;
+           text-transform: uppercase; color: var(--text-muted); }
+.fb-warn { color: var(--warn); }
+
+.exp-cats {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;
+}
+.exp-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border-radius: 10px; cursor: pointer;
+  font-size: 11px; font-weight: 800; letter-spacing: .02em;
+  color: var(--text-muted);
+  background: var(--surface-2); border: 1px solid var(--border);
+  transition: color .15s, background .15s, border-color .15s, transform .12s;
+}
+.exp-chip:hover { color: var(--text-main); transform: translateY(-1px); }
+/* --cat приходить із розмітки: у кожної категорії свій колір, і той
+   самий колір у таблиці, щоб око зв'язувало їх без підписів. */
+.exp-chip.is-on {
+  color: var(--cat);
+  background: color-mix(in srgb, var(--cat) 14%, transparent);
+  border-color: color-mix(in srgb, var(--cat) 45%, transparent);
+}
+.exp-chip svg { width: 15px; height: 15px; flex: 0 0 15px; }
+
+.exp-cat { font-weight: 800; font-size: 11px; display: inline-flex;
+           align-items: center; gap: 6px; }
+.exp-ico { width: 13px; height: 13px; flex: 0 0 13px; }
+.exp-desc { color: var(--text-muted); }
+.exp-amount { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.exp-del { color: rgba(239,68,68,.45); font-size: 12px; transition: .15s; }
+.exp-del:hover { color: #EF4444; }
+.exp-empty {
+  padding: 28px; text-align: center; font-size: 11px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .12em; color: var(--text-muted); opacity: .6;
+}
+.exp-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface-2);
+}
+.exp-foot span:first-child {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted);
+}
+#exp-total { font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+
+/* Гео-колонка заповнює свою висоту до низу */
+#geo-sidebar-col { display: flex; flex-direction: column; }
+#geo-list { flex: 1 1 auto; min-height: 0; }
+
+/* СПИСОК ВИТРАТ — НА ВСЮ ВИСОТУ ЕКРАНА.
+   Висоту самої сторінки тримає спільний каркас вище; тут лише роздаємо
+   її всередині. align-items у .exp-cols обовʼязково stretch: при
+   flex-start (як у базовому правилі) картка списку заввишки зі свої
+   рядки, тобто при трьох витратах — смужка на 150px посеред екрана.
+   Форма справді тягнутись не має — їй лишаємо flex-start окремо, бо
+   тягнути порожнечу під кнопкою «Save» нема сенсу.
+
+   Порядок усередині картки: шапка і підсумок стоять, гортається тільки
+   .exp-wrap — і його стелю в 420px тут треба знімати, інакше список
+   впирався б у неї, а під ним знову лежала б порожнеча. */
+body[data-route="expenses"] #dashboard-content > #expenses-section {
+  display: flex; flex-direction: column; overflow: hidden;
+}
+body[data-route="expenses"] .exp-cols {
+  flex: 1 1 auto; min-height: 0; align-items: stretch;
+}
+body[data-route="expenses"] #exp-list-card {
+  min-height: 0; display: flex; flex-direction: column;
+}
+body[data-route="expenses"] #exp-add {
+  align-self: flex-start; max-height: 100%; overflow-y: auto;
+}
+body[data-route="expenses"] .exp-head,
+body[data-route="expenses"] .exp-foot { flex: 0 0 auto; }
+body[data-route="expenses"] .exp-wrap { flex: 1 1 auto; min-height: 0; max-height: none; }
+
+@media (max-width: 1100px) {
+  /* У стовпчику тягнутись по висоті нема куди — обидві картки йдуть
+     природною висотою, а гортання лишається всередині списку. */
+  body[data-route="expenses"] #exp-add { align-self: stretch; }
+}
+
+/* Цифри однакової ширини — щоб суми не «стрибали» при оновленні */
+body { font-variant-numeric: tabular-nums; }
+
+
+/* ─────────── Дашборд: гео праворуч на два рядки ───────────
+   Коли гео вимкнене в налаштуваннях, четверта колонка лишалась би порожньою,
+   тому графік та інсайти розтягуємо на всю ширину. */
+@media (min-width: 1024px) {
+  #charts-row:has(> #geo-sidebar-col.hidden) > #chart-main-col,
+  #charts-row:has(> #geo-sidebar-col.hidden) > #insights-row,
+  #charts-row:has(> #geo-sidebar-col.collapsed) > #chart-main-col,
+  #charts-row:has(> #geo-sidebar-col.collapsed) > #insights-row {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Інсайти всередині сітки графіка: без зовнішнього відступу, який лишився
+   від часів, коли це був окремий рядок сторінки. */
+#insights-row { margin-top: 0 !important; }
+
+/* ─────────── Гео на вузьких екранах ───────────
+   До 1024px сітка складається в одну колонку, і гео більше нема з чим
+   рівнятись: без обмеження список тягнеться на півтори тисячі пікселів,
+   а стара max-width лишала його вузьким посеред порожнього рядка. */
+@media (max-width: 1023px) {
+  #geo-sidebar-col { max-width: none; max-height: 420px; }
+}
+
+/* ─────────── Компактний сайдбар ───────────
+   Вузька смуга з самими іконками. Підписи ховаємо через font-size: 0 —
+   у пунктів меню текст лежить голим текстовим вузлом після <svg>, і
+   зачепити його селектором інакше не вийшло б без переробки розмітки.
+   SVG має власні width/height, тож нульовий кегль його не чіпає. */
+body.sb-compact { --sb-w: 64px; }
+
+/* gap у нуль — із тієї ж причини, що й у пошуку нижче: підпис поруч
+   із лого має max-width:0, але лишається елементом flex, і проміжок
+   у 10px між ним та лого нікуди не дівається. Лого через це стояло
+   на п'ять пікселів лівіше за центр смуги. */
+body.sb-compact .sb-brand { padding: 0; justify-content: center; gap: 0; }
+/* Прозорість і ширину задано вище, поруч із рештою підписів. */
+
+body.sb-compact .sb-scroll { padding: 10px 8px 8px; }
+/* Підписи розділів: висоту прибираємо, але не миттєво — разом із
+   прозорістю, щоб список не смикався. */
+body.sb-compact .sb-cap { height: 0; margin: 0; padding: 0; }
+/* Замість підписів розділів — тонка риска, щоб групи не злипались */
+body.sb-compact .sb-cap + .sb-item { margin-top: 10px; position: relative; }
+body.sb-compact .sb-cap + .sb-item::before {
+  content: ''; position: absolute; left: 10px; right: 10px; top: -6px;
+  height: 1px; background: var(--border);
+}
+
+body.sb-compact .sb-item {
+  gap: 0; justify-content: center; padding: 10px 0;
+}
+/* Підпис прибирає .sb-lbl нижче — не кеглем, а прозорістю й зсувом.
+   Тут лишається тільки те, що стосується самої кнопки. */
+body.sb-compact .sb-item .sb-badge {
+  font-size: 9px; margin: 0;
+  position: absolute; transform: translate(14px, -12px); padding: 0 4px;
+}
+body.sb-compact .sb-item { position: relative; }
+
+/* gap теж у нуль: три проміжки по 8px між іконкою й двома підписами
+   лишались і в компактному, зсуваючи іконку вліво від центру. */
+body.sb-compact .sb-search { justify-content: center; padding: 0; gap: 0; height: 36px; }
+
+
+body.sb-compact .sb-foot { padding: 8px 8px 10px; }
+
+/* Перемикач: у розгорнутому стані стрілка «згорнути», у компактному — навпаки */
+.sb-toggle svg { transition: transform .2s ease; }
+body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
+
+/* На вузьких екранах сайдбар і так виїжджає поверх контенту —
+   там компактний режим лише заважав би, тож розгортаємо назад. */
+@media (max-width: 1100px) {
+  body.sb-compact { --sb-w: 238px; }
+  body.sb-compact .sb-brand-name,
+  body.sb-compact .sb-cap,
+  body.sb-compact .sb-search span { display: revert; }
+  body.sb-compact .sb-item { font-size: 13px; gap: 11px; justify-content: flex-start; padding: 9px 11px; }
+  body.sb-compact .sb-item .sb-badge { position: static; transform: none; margin-left: auto; font-size: 10px; padding: 1px 6px; }
+  body.sb-compact .sb-cap + .sb-item::before { display: none; }
+  body.sb-compact .sb-search { justify-content: flex-start; padding: 0 10px; }
+  body.sb-compact .sb-brand { padding: 0 16px; justify-content: flex-start; }
+}
+
+
+/* ─────────── Щільніша сітка ───────────
+   Проміжки між блоками з'їдали помітну частину екрана, а на дашборді
+   кожен зекономлений піксель іде просто в висоту графіка: рядки сітки
+   задані частками, тож усе, що не витрачено на gap, дістається блокам. */
+#charts-row { gap: 10px !important; }
+#insights-row { gap: 10px !important; }
+
+/* ─────────── Налаштування ───────────
+   Було: вузьке вікно на 512px і три вкладки, у яких усе змішано —
+   щоб знайти один перемикач, доводилось пригадувати, де він лежить.
+   Стало: колонка розділів ліворуч, вміст праворуч і пошук по всіх
+   розділах одразу. */
+.set-shell {
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 20px; box-shadow: 0 30px 90px -30px rgba(0,0,0,.9);
+  height: min(660px, 86vh);
+}
+.set-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 14px 0 18px; height: 56px; flex: 0 0 56px;
+  border-bottom: 1px solid var(--border);
+}
+.set-title { font-size: 13px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; color: var(--text-main); }
+
+.set-search { position: relative; flex: 1 1 auto; min-width: 0; max-width: 340px; }
+.set-search svg {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  width: 14px; height: 14px; color: var(--text-muted); pointer-events: none;
+}
+.set-search input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 7px 26px 7px 30px;
+  font-size: 12px; font-weight: 600; color: var(--text-main); outline: none;
+}
+.set-search input:focus { border-color: var(--accent); }
+#set-search-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 18px; border-radius: 6px; line-height: 1;
+  color: var(--text-muted); font-size: 15px; display: none;
+}
+.set-search.has-q #set-search-clear { display: block; }
+#set-search-clear:hover { color: var(--text-main); background: var(--surface-3); }
+
+.set-saved {
+  margin-left: auto; font-size: 10px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .12em; color: var(--ok);
+  opacity: 0; transition: opacity .2s;
+}
+.set-saved.show { opacity: 1; }
+.set-x { color: var(--text-muted); font-size: 22px; line-height: 1; padding: 0 4px; }
+.set-x:hover { color: var(--text-main); }
+
+.set-body { display: flex; flex: 1 1 auto; min-height: 0; }
+.set-nav {
+  flex: 0 0 186px; border-right: 1px solid var(--border);
+  padding: 12px 10px; display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto;
+}
+.set-navitem {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 9px 11px; border-radius: 10px; text-align: left;
+  font-size: 12.5px; font-weight: 700; color: var(--text-muted);
+  border: 1px solid transparent; transition: background .15s, color .15s;
+}
+.set-navitem:hover { background: var(--surface-2); color: var(--text-main); }
+.set-navitem.active-stab {
+  background: var(--surface-2); color: var(--text-main); border-color: var(--border);
+}
+.set-ico { font-size: 14px; line-height: 1; }
+
+.set-panes { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 16px 18px 22px; }
+.set-group { margin-bottom: 22px; }
+.set-group:last-child { margin-bottom: 0; }
+.set-ghead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.set-gtitle { font-size: 12px; font-weight: 900; color: var(--text-main); letter-spacing: -.01em; }
+.set-gsub { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin: 2px 0 10px; }
+.set-bulk { display: flex; gap: 6px; flex: 0 0 auto; }
+.set-bulk button {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  padding: 4px 9px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.set-bulk button:hover { color: var(--text-main); border-color: var(--border-2); }
+
+.set-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 9px 11px; border-radius: 10px; margin-bottom: 2px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.set-toggle { cursor: pointer; }
+.set-toggle:hover { border-color: var(--border-2); }
+.set-label {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 12.5px; font-weight: 700; color: var(--text-main);
+  min-width: 0;
+}
+.set-input {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 7px 10px;
+  font-size: 12px; font-weight: 700; color: var(--text-main); outline: none;
+}
+.set-input:focus { border-color: var(--accent); }
+.set-addrow { display: flex; gap: 6px; align-items: center; }
+.set-btn {
+  flex: 0 0 auto; padding: 7px 14px; border-radius: 10px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: #fff; white-space: nowrap;
+}
+.set-btn-primary { background: var(--accent); }
+.set-btn-primary:hover { filter: brightness(1.12); }
+.set-btn-amber { background: #D97706; }
+.set-btn-amber:hover { filter: brightness(1.12); }
+/* Список офферів більше не має власного скролу: вкладений скрол усередині
+   панелі, яка й сама прокручується, — найгірший варіант із можливих. */
+.set-list { margin-top: 10px; }
+.set-hint { font-size: 10px; color: var(--text-muted); line-height: 1.55; margin-top: 7px; }
+.set-empty {
+  text-align: center; padding: 40px 0; font-size: 12px;
+  font-weight: 700; color: var(--text-muted);
+}
+
+/* ДВІ КОЛОНКИ В ОДНІЙ ГРУПІ НАЛАШТУВАНЬ.
+   Для списків, які читають поруч, а не один за одним: групування й
+   фільтри звіту — це двадцять рядків, і в стовпчик вони перетворюють
+   розділ на кілометр гортання.
+   align-items: start обовʼязковий — інакше коротша колонка розтягнеться
+   на висоту довшої, і її рядки роз'їдуться порожнечею. */
+.set-cols2 {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 4px 16px; align-items: start;
+}
+.set-col { min-width: 0; }
+.set-chead {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 2px 7px; margin-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.set-ctitle {
+  font-size: 10px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted); margin: 0;
+}
+@media (max-width: 860px) {
+  /* У вузькому вікні дві колонки по 330px не влазять — складаємось
+     у стовпчик, підзаголовки лишаються роздільниками. */
+  .set-cols2 { grid-template-columns: 1fr; gap: 0; }
+  .set-col + .set-col { margin-top: 14px; }
+}
+
+/* Режим пошуку: показуємо всі розділи одразу, ховаємо порожні */
+.set-panes.searching .set-pane { display: block; }
+.set-panes.searching .set-pane.no-hit { display: none; }
+.set-panes.searching .set-group.no-hit { display: none; }
+.set-row.no-hit { display: none; }
+
+/* Перемикач сторінки Team. Вона є тільки в тімліда й адміна, тож і
+   рядок у налаштуваннях показуємо лише їм — інакше людина вмикала б
+   сторінку, якої в неї все одно не з'явиться.
+
+   :not(.no-hit) тут обов'язковий: без нього це правило перебивало б
+   пошук по налаштуваннях, і рядок Team лишався б видимим у будь-якій
+   вибірці, хоч би що шукали. */
+.set-row[data-team] { display: none; }
+body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
+/* Колонка, у якій пошук нічого не лишив, ховається разом зі своїм
+   підзаголовком: інакше поруч із знайденим висіла б порожня «Filters»
+   з кнопками, які нічим не керують. Групу цілком ховає setFilter. */
+.set-panes.searching .set-col:not(:has(.set-row:not(.no-hit))) { display: none; }
+
+/* Одиниця результату — поруч із числом, не замість нього. Дрібним і
+   тьмяним: вона пояснює, а не сперечається за увагу з самим числом. */
+/* БЕЗ text-transform. Він тут стояв і зіпсував рівно те, заради чого
+   підпис і додавався: «LPV» перетворювалось на «lpv», а мала «l» на
+   телефоні — просто вертикальна риска, і читалось це як «ipv».
+   Підпис, який не можна прочитати, гірший за його відсутність:
+   людина бачить незнайоме слово й вирішує, що число зламане. */
+.cd-unit { display: block; font-size: 9px; font-weight: 700;
+           color: var(--text-muted); letter-spacing: .02em;
+           line-height: 1.1; margin-top: 1px; }
+
+/* Архів, що загубився дорогою. Помітно, але не криком: це не
+   катастрофа, це підказка, куди дивитись. */
+.cab-archlost {
+  margin: 8px 0 0; padding: 7px 10px; border-radius: 9px;
+  font-size: 11px; font-weight: 700; line-height: 1.4;
+  color: var(--warn); background: rgba(234,179,8,.10);
+  border: 1px solid rgba(234,179,8,.28);
+}
+
+/* ── мітки всередині файла ── */
+/* Кнопка, що не виглядає кнопкою: у тексті файла рамка й фон рвали б
+   рядок, а мітка має читатись як частина рядка, просто помітна. */
+.fl-t { background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+        font: inherit; line-height: inherit; border-radius: 3px; }
+.fl-t-cab { color: var(--accent); font-weight: 700; }
+.fl-t-tag { color: var(--info); font-weight: 700; }
+.fl-t:hover { text-decoration: underline; }
+.fl-t:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+.fl-chip { display: inline-block; margin: 0 4px 0 0; padding: 1px 6px;
+           border-radius: 999px; font-size: 10.5px; font-weight: 700;
+           border: 1px solid var(--border-2); white-space: nowrap; }
+.fl-chip.is-cab { color: var(--accent); }
+.fl-chip.is-tag { color: var(--info); }
+.fl-chip.is-more { color: var(--text-muted); }
+
+/* ── правка текстового файла ── */
+.fl-txt-bar { display: flex; align-items: center; gap: 8px;
+              flex-wrap: wrap; margin: 0 0 8px; }
+/* Пояснення стоїть ПОРУЧ із кнопкою, а не під полем: попередження про
+   зміну кодування має бути прочитане до натискання, а не після. */
+.fl-txt-why { font-size: 11.5px; color: var(--text-muted); line-height: 1.35; }
+.fl-ta { width: 100%; min-height: 46vh; resize: vertical;
+         box-sizing: border-box; padding: 10px 12px;
+         background: var(--surface); color: var(--text-main);
+         border: 1px solid var(--border); border-radius: 9px;
+         font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         /* Перенос НЕ вмикаємо: у файлах з акаунтами рядок — це запис,
+            і розірваний навпіл він читається як два. */
+         white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+.fl-ta:focus { outline: none; border-color: var(--accent); }
+
+@media (max-width: 720px) {
+  .set-body { flex-direction: column; }
+  .set-nav {
+    flex: 0 0 auto; flex-direction: row; overflow-x: auto;
+    border-right: none; border-bottom: 1px solid var(--border);
+  }
+  .set-navitem { width: auto; white-space: nowrap; }
+  .set-search { max-width: none; }
+}
+
+/* ═══════════ Спільний шар для модалок старого вигляду ═══════════
+   Bonus Calculator, Daily Reports і Quick Links лишались з попереднього
+   дизайну: захардкоджений #0f172a, сині/бурштинові рамки, курсивні
+   заголовки. Переписувати їхню розмітку означало б чіпати десятки
+   обробників, тож натомість перекриваємо вигляд токенами теми. */
+
+/* ── Оболонка ── */
+#bonus-modal > div:last-child,
+#report-modal > .card {
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 30px 90px -30px rgba(0,0,0,.9) !important;
+}
+#bonus-modal .absolute.inset-0,
+#report-modal.modal-overlay { backdrop-filter: blur(6px); }
+
+/* ── Шапки ── */
+#bonus-modal > div:last-child > div:first-child,
+#report-modal > .card > div:first-child {
+  background: transparent !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 13px 16px !important;
+  text-transform: none !important;
+}
+#bonus-modal h2,
+#report-modal h2 {
+  font-size: 13px !important; font-weight: 900 !important;
+  font-style: normal !important; letter-spacing: .14em !important;
+  text-transform: uppercase !important; color: var(--text-main) !important;
+}
+#bonus-modal .w-9.h-9 {
+  width: 30px !important; height: 30px !important; border-radius: 9px !important;
+  background: var(--surface-2) !important;
+}
+#bonus-modal .w-9.h-9 svg { color: var(--accent) !important; }
+
+/* ── Вкладки бонусів — як розділи налаштувань, тільки горизонтально ── */
+#bonus-modal .bonus-stab {
+  color: var(--text-muted) !important; border-bottom: 2px solid transparent !important;
+  font-weight: 800 !important; letter-spacing: .1em !important;
+}
+#bonus-modal .bonus-stab:hover { color: var(--text-main) !important; }
+#bonus-modal .active-bonus-stab {
+  color: var(--text-main) !important; border-bottom-color: var(--accent) !important;
+}
+#bonus-modal .flex.border-b { border-bottom-color: var(--border) !important; }
+
+/* ── Картки-секції всередині ── */
+#bonus-modal .bg-white\/\[0\.02\],
+#bonus-modal .bg-black\/20 {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+}
+#bonus-modal .bg-white\/\[0\.02\] > p:first-child,
+#bonus-modal .grid > span {
+  color: var(--text-muted) !important; letter-spacing: .12em !important;
+}
+#bonus-modal .divide-white\/\[0\.03\] > * + * { border-top-color: var(--border) !important; }
+
+/* ── Поля вводу ── */
+#bonus-modal input[type="number"],
+#report-modal textarea,
+#links-menu input[type="text"],
+#links-menu input[type="url"] {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  color: var(--text-main) !important;
+  text-transform: none !important;
+}
+#bonus-modal input[type="number"]:focus,
+#report-modal textarea:focus,
+#links-menu input:focus { border-color: var(--accent) !important; }
+
+/* ── Кнопки ── */
+#bonus-modal button.bg-blue-600,
+#report-modal button.bg-blue-600 {
+  background: var(--accent) !important; border-radius: 10px !important;
+}
+#bonus-modal button.bg-blue-600:hover,
+#report-modal button.bg-blue-600:hover { filter: brightness(1.12); background: var(--accent) !important; }
+#report-modal .rounded-xl[class*="border-"] { border-radius: 10px !important; }
+
+/* ── Quick Links: та сама панель, що й решта спливайок ── */
+#links-menu {
+  width: 288px;
+  background: var(--bg-soft) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 24px 60px -24px rgba(0,0,0,.85) !important;
+  padding: 12px !important;
+}
+#links-menu > p:first-child {
+  color: var(--text-muted) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+#links-menu .border-t { border-top-color: var(--border) !important; }
+#links-menu .rounded-xl.border {
+  background: var(--surface-2) !important; border-color: var(--border) !important;
+  border-radius: 10px !important;
+}
+#links-menu .rounded-xl.border span:first-child {
+  border-right-color: var(--border) !important; color: var(--text-muted) !important;
+}
+#links-menu button[onclick="addQuickLink()"] {
+  background: var(--accent) !important; border: none !important;
+  color: #fff !important; border-radius: 10px !important;
+  padding: 7px 12px !important; font-size: 10px !important;
+  letter-spacing: .1em !important; line-height: 1.2 !important;
+}
+#links-menu button[onclick="addQuickLink()"]:hover { filter: brightness(1.12); }
+#links-menu label span { color: var(--text-muted) !important; }
+#ql-list { max-height: 280px; }
+#links-menu .ql-item {
+  border-radius: 10px; padding: 7px 9px;
+  border: 1px solid transparent; transition: background .15s, border-color .15s;
+}
+#links-menu .ql-item:hover { background: var(--surface-2); border-color: var(--border); }
+#links-menu .ql-name { color: var(--text-main); font-weight: 700; font-size: 12.5px; }
+
+/* ─────────── Daily Reports: самі звіти ───────────
+   Раніше шар чіпав лише оболонку й шапку, тож на око нічого не мінялось:
+   весь екран модалки — це список звітів, а він лишався старим. */
+#report-modal > .card { height: min(680px, 88vh); }
+#report-modal > .card > div:last-child { padding: 16px 18px !important; }
+
+/* Поле нового звіту */
+#new-report-input {
+  border-radius: 12px !important; padding: 12px 14px !important;
+  font-size: 14px !important; line-height: 1.55 !important;
+}
+#report-modal label[class*="indigo"] {
+  background: var(--surface-2) !important; border-color: var(--border) !important;
+  color: var(--text-muted) !important; border-radius: 10px !important;
+  padding: 8px 12px !important; font-size: 11.5px !important;
+}
+#report-modal label[class*="indigo"]:hover { color: var(--text-main) !important; }
+#report-modal button[onclick="submitNewReport()"] {
+  border-radius: 10px !important; font-size: 12.5px !important;
+  padding: 9px 16px !important; text-transform: uppercase !important;
+}
+
+/* Картка одного звіту */
+#report-list-container > div {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 11px 12px !important;
+  gap: 6px !important;
+  margin-bottom: 8px !important;
+}
+#report-list-container > div:hover { border-color: var(--border-2) !important; }
+/* Дата: була синя розрядка — робимо спокійний бейдж */
+#report-list-container .text-blue-500 { color: var(--text-main) !important; }
+#report-list-container span[id^="report-arrow-"] { color: var(--text-muted) !important; }
+#report-list-container .cursor-pointer { padding: 2px !important; border-radius: 8px !important; }
+#report-list-container .cursor-pointer:hover { background: var(--surface-2) !important; }
+/* Текст звіту — те, заради чого модалку й відкривають, тож найбільший тут */
+#report-list-container [id^="report-content-"] {
+  font-size: 14.5px !important; line-height: 1.65 !important;
+  padding: 3px 4px 5px !important;
+}
+#report-list-container .report-block {
+  font-size: 14px !important; line-height: 1.55 !important;
+  padding: 9px 13px !important;
+}
+#report-list-container .rb-normal { padding: 5px 0 !important; }
+/* Дата над звітом читалась гірше за все: 10px розрядкою */
+#report-list-container .text-\[10px\] { font-size: 12px !important; letter-spacing: .06em !important; }
+#report-list-container .img-count-badge { font-size: 10.5px !important; padding: 2px 8px !important; }
+/* Порожній стан — як у решті інтерфейсу, без курсиву на пів екрана */
+#report-list-container > .text-center {
+  padding: 46px 0 !important; opacity: 1 !important;
+  font-style: normal !important; font-size: 13.5px !important;
+  font-weight: 700 !important; color: var(--text-muted) !important;
+}
+/* Кнопки Copy / PDF у шапці — однаковий розмір і радіус */
+#report-modal > .card > div:first-child button[class*="rounded-xl"] {
+  border-radius: 9px !important; padding: 6px 11px !important;
+  font-size: 11px !important;
+}
+
+/* ─────────── Зліпок місяця ─────────── */
+.mc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 8px; }
+.mc-cell {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 9px 11px;
+}
+.mc-cell .k {
+  display: block; font-size: 9px; font-weight: 900; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px;
+}
+.mc-cell .v { font-size: 15px; font-weight: 800; color: var(--text-main); }
+.mc-row {
+  display: grid; grid-template-columns: 1fr auto auto auto; gap: 12px;
+  align-items: center; padding: 9px 11px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); margin-bottom: 4px;
+}
+.mc-row.is-click { cursor: pointer; }
+.mc-row.is-click:hover { border-color: var(--border-2); }
+.mc-row .m { font-size: 13px; font-weight: 800; color: var(--text-main); }
+.mc-row .w { font-size: 10.5px; color: var(--text-muted); }
+.mc-row .p { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mc-del {
+  font-size: 15px; line-height: 1; color: var(--text-muted);
+  padding: 0 4px; border-radius: 6px;
+}
+.mc-del:hover { color: var(--bad); background: var(--surface-3); }
+/* Порівняння: збіг приглушений, розбіжність підсвічена */
+.mc-drow {
+  display: grid; grid-template-columns: 1fr 110px 110px 110px; gap: 10px;
+  padding: 7px 11px; border-radius: 9px; font-size: 12.5px;
+  border: 1px solid transparent;
+}
+.mc-drow.head { color: var(--text-muted); font-size: 9px; font-weight: 900;
+  letter-spacing: .12em; text-transform: uppercase; padding-bottom: 4px; }
+.mc-drow .n { color: var(--text-main); font-weight: 700; }
+.mc-drow .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.mc-drow.moved { background: var(--surface); border-color: var(--border-2); }
+.mc-drow.moved .d { color: var(--bad); }
+.mc-drow.same .d { color: var(--text-muted); opacity: .5; }
+
+/* ─────────── Зарплатна чернетка ─────────── */
+.ps-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ps-k {
+  display: block; font-size: 9px; font-weight: 900; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px;
+}
+.ps-sheet {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 6px 4px;
+}
+.ps-line {
+  display: grid; grid-template-columns: 1fr auto; gap: 14px;
+  padding: 8px 12px; font-size: 13px; align-items: baseline;
+}
+.ps-line .l { color: var(--text-muted); font-weight: 600; }
+.ps-line .r { color: var(--text-main); font-weight: 800; font-variant-numeric: tabular-nums; }
+.ps-line .sub { display: block; font-size: 10.5px; color: var(--text-muted); opacity: .75; margin-top: 2px; }
+.ps-line.minus .r { color: var(--bad); }
+.ps-line.total {
+  border-top: 1px solid var(--border); margin-top: 4px; padding-top: 12px;
+}
+.ps-line.total .l { color: var(--text-main); font-weight: 900; text-transform: uppercase;
+  letter-spacing: .1em; font-size: 11px; }
+.ps-line.total .r { font-size: 20px; color: var(--ok); }
+.ps-line.total.neg .r { color: var(--bad); }
+@media (max-width: 640px) { .ps-controls { grid-template-columns: 1fr; } }
+
+/* ─────────── Тости ───────────
+   Було 28 викликів alert(): кожен блокує сторінку модальним вікном
+   браузера, виглядає як системна помилка і не показує двох повідомлень
+   поспіль. Тост говорить те саме, нічого не перебиваючи. */
+#toast-wrap {
+  position: fixed; right: 16px; bottom: 96px; z-index: 100000;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  max-width: min(380px, calc(100vw - 32px)); pointer-events: none;
+}
+.toast {
+  pointer-events: auto; cursor: pointer;
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-left: 3px solid var(--text-muted);
+  border-radius: 12px; padding: 11px 14px;
+  box-shadow: 0 18px 44px -18px rgba(0,0,0,.85);
+  font-size: 12.5px; font-weight: 600; line-height: 1.5;
+  color: var(--text-main); white-space: pre-line;
+  animation: toast-in .18s ease-out;
+}
+.toast:hover { border-color: var(--border-2); }
+.toast.is-error { border-left-color: var(--bad); }
+.toast.is-ok    { border-left-color: var(--ok); }
+.toast.is-warn  { border-left-color: #EAB308; }
+.toast .tt {
+  display: block; font-size: 9px; font-weight: 900; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 3px;
+}
+.toast.out { animation: toast-out .16s ease-in forwards; }
+@keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } }
+@keyframes toast-out { to   { opacity: 0; transform: translateX(16px); } }
+@media (max-width: 760px) {
+  #toast-wrap { right: 10px; left: 10px; bottom: 92px; max-width: none; }
+}
+
+/* Geo Breakdown → Costs.
+   Базова картка тримає 420px зі скролом — це правильно для таблиць, але
+   чотири графіки в таку висоту не влазять і ховаються під внутрішній скрол.
+   Селектор id+class навмисне сильніший за Tailwind-класи grid-cols-* на
+   тому самому елементі, тому порядок підключення CDN нічого не вирішує. */
+#device-geo-content.dg-cost {
+  max-height: none;
+  overflow: visible;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 1280px) {
+  #device-geo-content.dg-cost { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Штамп збірки в підвалі сайдбара. Має бути помітно менш яскравим за
+   кнопки поруч — це довідка, а не елемент керування. У компактному
+   режимі ховається разом із рештою підписів. */
+.sb-build {
+  margin-top: 8px; padding: 0 12px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted);
+  opacity: .5; white-space: nowrap; overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+body.sb-compact .sb-build { display: none; }
+
+/* Смужка «сторінка застаріла». Стоїть над усім, включно з модалками,
+   бо поки її не побачили — будь-яка інша робота йде на старій версії. */
+#stale-bar {
+  position: fixed; z-index: 2147483000;
+  left: 50%; transform: translateX(-50%); top: 12px;
+  display: flex; align-items: center; gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 9px 10px 9px 16px; border-radius: 14px;
+  background: #B45309; color: #FFF7ED;
+  border: 1px solid rgba(255,255,255,.22);
+  box-shadow: 0 12px 34px rgba(0,0,0,.45);
+  font-size: 11.5px; font-weight: 700; letter-spacing: .01em;
+}
+#stale-bar b { font-weight: 900; font-variant-numeric: tabular-nums; }
+#stale-bar button {
+  flex: none; cursor: pointer;
+  padding: 6px 14px; border-radius: 9px; border: 0;
+  background: #FFF7ED; color: #7C2D12;
+  font-size: 10.5px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .08em;
+}
+#stale-bar button:hover { background: #fff; }
+@media (max-width: 640px) {
+  #stale-bar { flex-direction: column; align-items: stretch; text-align: center; padding: 12px; }
+}
+
+/* ─── КАРКАС ВИСОТИ ДЛЯ ВСІХ СТОРІНОК, КРІМ ДАШБОРДА ───
+   Сторінка не гортається — гортається блок усередині неї. Це стосується
+   кожного роута, а не тих, кому колись не поталанило.
+
+   Раніше тут стояв один min-height у «100vh − 54px»: він лікував
+   протилежну болячку (єдиний видимий блок лишався вузькою смужкою
+   вгорі, а під ним був екран порожнечі). Але .app-content має ще 116px
+   власних відступів — 12 зверху і 104 знизу під плаваючий док, — тож
+   блок заввишки 100vh−54px виходив на шість десятків пікселів вищий
+   за вікно, і сторінка гортались. Далі кожна сторінка лікувала це
+   власним height: calc(): звіти й кабінети — мінус 116, домени —
+   мінус 42 (де арифметика теж не сходилась), а гео, хітмап, креативи
+   й лайв-таблиця не лікувались ніяк.
+
+   Тепер висоту тримає одне місце: .app-content має сталу висоту й не
+   гортається, #dashboard-content тягнеться, єдиний видимий блок займає
+   залишок і гортає свій вміст усередині себе. Сторінкам лишається
+   описувати лише те, що в них усередині. Ділення на --zoom — бо 100vh
+   у зумленому body дає лише 90% екрана. */
+body[data-route]:not([data-route="dash"]) .app-content {
+  height: calc(100vh / var(--zoom));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 92px;   /* під плаваючий док: він лишає лише ~8px запасу */
+}
+body[data-route]:not([data-route="dash"]) #dashboard-content {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
+}
+body[data-route]:not([data-route="dash"]) #dashboard-content > :not(.route-off) {
+  flex: 1 1 auto;
+  min-height: 0;          /* без цього flex-дитина не стискається і скрол не вмикається */
+  overflow: auto;         /* смугу бере на себе блок, а не сторінка */
+}
+
+/* ── Report Builder на всю висоту ────────────────────────────────────
+   Таблиця жила у вікні на 400px (правило вище, у компактних картках),
+   і при довгому звіті доводилось скролити всередині маленької коробки,
+   а під нею лишалась порожнеча на пів екрана. Тепер на власній сторінці
+   картка — колонка на всю висоту: шапка з групуванням і фільтрами
+   стоїть на місці, скролиться сама таблиця, а її шапка липка.
+   116px — це padding .app-content: 12px зверху і 104px знизу під
+   плаваючий док. Ділення на --zoom, бо 100vh у зумленому body дає
+   лише 90% екрана. */
+body[data-route="reports"] #dashboard-content > #report-builder-section {
+  display: flex;
+  flex-direction: column;
+  /* Скрол бере на себе сама таблиця, а картка лишається видимою наскрізь:
+     інакше випадайка вибору колонок зрізалась би її краєм. */
+  overflow: visible;
+}
+body[data-route="reports"] #report-builder-section > .p-5 { flex: none; }
+body[data-route="reports"] #rb-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;            /* без цього flex-дитина не стискається і скрол не вмикається */
+  max-height: none !important;
+  overflow: auto;
+}
+body[data-route="reports"] #rb-table thead th {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface-2);
+}
+body[data-route="reports"] #rb-cols-menu { z-index: 120; }
+
+/* ─── Report Builder: підсумок завжди перед очима ───
+   Рядок Total переїхав у <tfoot> і липне до нижнього краю вікна таблиці,
+   поки список гортається під ним. Фон обовʼязково непрозорий — інакше
+   крізь нього просвічували б рядки, що проїжджають знизу. */
+#rb-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 6;              /* > 5 у липкого thead: на стику виграє підсумок */
+  background: var(--surface-2);
+}
+
+/* ─── Geo Breakdown: вікно сталої висоти ───
+   Картка росла під вміст вкладки, тож при перемиканні вікно стрибало:
+   Offers давав 380 px, Placements — 750, і кнопки вкладок щоразу їхали
+   разом із ним. Тепер висота задана жорстко, а довгий вміст гортається
+   всередині (смугу скролу тримає .overflow-y-auto у розмітці).
+
+   Ділення на --zoom обовʼязкове: картка лежить усередині body { zoom: .9 },
+   тож її власні 90vh дають на екрані лише 81 %. max-height перебиваємо
+   теж — інакше клас max-h-[90vh] з розмітки зріже цю висоту назад. */
+#geo-details-modal > .card {
+  /* 710px — це рівно та висота, яку вкладка Costs брала собі сама, коли
+     картка ще росла під вміст (640 px на екрані: 710 × zoom .9). Беремо її
+     за еталон, бо Costs відкривається першою.
+     min() зі 90vh — щоб на низькому екрані вікно не вилазило за межі:
+     ділення на --zoom тут з тієї ж причини, що й у height (картка живе
+     всередині body { zoom: .9 }, її власні 90vh дали б лише 81 % екрана). */
+  height: min(710px, calc(90vh / var(--zoom)));
+  max-height: min(710px, calc(90vh / var(--zoom)));
+}
+
+/* Вкладка Costs заповнює вікно по висоті. Без цього під чотирма графіками
+   лишалось пів екрана порожнечі — вікно ж тепер сталої висоти, а картки
+   були по 168 px і не росли.
+   :not(.hidden) обовʼязкове: display:flex за id переміг би .hidden, яким
+   switchGeoTab ховає неактивні вкладки, і вони світились би всі разом. */
+#geo-panel-costs:not(.hidden) { height: 100%; display: flex; }
+#geo-panel-costs > #geo-cost-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: 1fr;     /* два ряди ділять висоту порівну */
+}
+.gm-card { display: flex; flex-direction: column; min-height: 0; }
+.gm-canvas-box { height: 168px; }                    /* запасна висота поза сіткою */
+.gm-card > .gm-canvas-box { flex: 1 1 auto; height: auto; min-height: 120px; }
+
+/* ─── Cabinets ───
+   Щільна таблиця, а не список: кабінетів десятки, і задача — побачити
+   весь парк одним екраном. Кольором світиться тільки крапка стану;
+   на сорока рядках кричати мають одиниці, інакше не кричить жоден. */
+.cab-tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
+.cab-tbl thead th {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface);
+  padding: 8px 10px;
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left; white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none;
+}
+.cab-tbl thead th:hover { color: var(--text-main); }
+.cab-tbl .ta-r { text-align: right; }
+.cab-tbl .ta-c { text-align: center; }
+.cab-tr > td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+.cab-tr { cursor: pointer; }
+.cab-tr:hover > td { background: var(--surface-2); }
+.cab-tr.is-sel > td { background: rgba(139,92,246,.14); }
+.cab-state { font-size: 11.5px; font-weight: 800; }
+/* СТОВПЧИК «ACCOUNT». Усе в ньому йшло одним потоком услід за
+   номером, а номери різної довжини — тож профіль, браузер і значок
+   джерела починались у кожному рядку на іншому місці, і читати
+   стовпчик очима згори вниз було неможливо.
+
+   Вирівнюють два inline-block зі сталою шириною: значок джерела
+   (він перший — однакової ширини й стоїть поруч зі стовпчиком стану,
+   про який і говорить) і сам номер. Мітки після них починаються в
+   усіх рядках на одній вертикалі.
+
+   САМЕ inline-block, а не flex на комірці. Колонка має width:1%,
+   тобто «стиснись до вмісту», і флекс-контейнер своєї природної
+   ширини таблиці не віддає — стовпчик схлопувався до 23 пікселів
+   разом із усім, що в ньому. Inline-block цю ширину віддає.
+
+   Ширину слота рахує cabinets.js із найдовшого номера, що справді є в
+   таблиці, і кладе у --cab-id-w. Стала ширина теж вирівнювала б, але в
+   команді з короткими номерами лишала б півтори сотні пікселів
+   порожнечі в кожному рядку. 17ch — запасне значення, якщо змінної
+   раптом немає: під шістнадцятизначний номер Facebook плюс запас. */
+.cab-id {
+  display: inline-block; min-width: var(--cab-id-w, 17ch);
+  font-size: 13.5px; font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.cab-dim { color: var(--text-muted); font-weight: 600; }
+.cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.cab-na { color: var(--text-muted); opacity: .35; }
+/* Число, під яким є розбивка. Підказка без будь-якої ознаки —
+   це підказка, про яку ніхто ніколи не дізнається. */
+.cab-num.has-tip { cursor: help; border-bottom: 1px dotted var(--border); }
+
+/* Колонки State й Account стискаються по вмісту, щоб ✎ і ↗ трималися
+   чіпа профілю, а не висіли посеред порожнечі. Запас забирає Agent —
+   там він читається як звичайне поле, а не як діра в рядку. */
+.cab-tbl th:nth-child(1), .cab-tbl td:nth-child(1),
+.cab-tbl th:nth-child(2), .cab-tbl td:nth-child(2) { width: 1%; }
+.cab-tbl th:nth-child(3), .cab-tbl td:nth-child(3) { width: auto; }
+
+/* Заголовок групи — окремий рядок на всю ширину таблиці */
+.cab-grp > td {
+  padding: 12px 10px 5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.cab-grp-name { font-size: 11px; font-weight: 900; letter-spacing: .1em;
+                text-transform: uppercase; color: var(--text-main); }
+/* Прогін по одній групі чи одному кабінету. Тихий, поки на нього не
+   навели: це дія «коли треба», а не те, заради чого дивляться список. */
+.cab-grp-sync {
+  margin-left: 10px; padding: 1px 8px; border-radius: 7px;
+  font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-muted); background: var(--surface-2);
+  border: 1px solid var(--border); cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.cab-grp-sync:hover { color: var(--text); border-color: var(--accent, #8b5cf6); }
+/* Видалення — та сама форма, інший колір на наведенні: дія незворотна
+   для рядка, і плутати її з прогоном не варто. */
+.cab-grp-sync.is-drop:hover { color: #f87171; border-color: rgba(248,113,113,.5); }
+
+.cab-grp-sub  { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-left: 8px; }
+
+.cab-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; }
+.cab-chip {
+  display: inline-block; margin-left: 6px;
+  font-size: 10px; font-weight: 800; letter-spacing: .05em;
+  padding: 1px 6px; border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+}
+.cab-src {
+  display: inline-block; width: 15px; text-align: center;
+  font-size: 11px; color: var(--text-muted); opacity: .5;
+}
+/* ⟳ проти ✎ — це не прикраса, а єдине, що на рядку відрізняє
+   статус, який щогодини підтвердив Facebook, від того, який хтось
+   клацнув три місяці тому. Тому живий — помітніший. */
+.cab-src.is-live { color: var(--ok); opacity: .75; }
+/* Значення, виведене з назви токена, а не вписане руками.
+   Відрізняється навмисно: інакше через тиждень ніхто не скаже, чи це
+   збережене поле, чи здогадка. */
+.cab-auto { opacity: .55; font-style: italic; }
+.cab-chip.is-auto { opacity: .6; border-style: dashed; }
+
+/* Перемикач зрізу: All / Live / Old */
+.cab-srcsel {
+  display: inline-flex; gap: 2px; padding: 2px; border-radius: 12px;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+}
+.cab-srcsel button {
+  padding: 6px 10px; border-radius: 10px; border: 0; background: transparent;
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: background .15s, color .15s;
+}
+.cab-srcsel button:hover { color: var(--text-main); }
+.cab-srcsel button.is-on { background: var(--surface-3); color: var(--text-main); }
+.cab-srcsel #cab-src-fb.is-on { color: var(--ok); }
+.cab-srcn { opacity: .5; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* ─── Sync now ───
+   Кнопка з двох частин: дія і відповідь на питання «а це свіже?».
+   Розділені рискою й проміжком, бо це різні речі: підпис не міняється
+   ніколи, час — щохвилини. Раніше класу .cab-syncago не існувало
+   взагалі, тож час прилипав до слова без пробілу й успадковував розмір
+   підпису. */
+.cab-sync {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: 12px; cursor: pointer;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  color: var(--text-main); transition: border-color .15s, background .15s;
+}
+.cab-sync:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+.cab-sync:disabled { opacity: .45; cursor: default; }
+.cab-sync-lbl {
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+}
+.cab-syncago {
+  padding-left: 8px; border-left: 1px solid var(--border);
+  font-size: 9px; font-weight: 700; color: var(--text-muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* Нема що сказати про свіжість — нема й риски: розділювач у порожнечу
+   виглядає як недомальована кнопка. */
+.cab-syncago:empty { display: none; }
+
+/* ─── Скільки відкручено ───
+   Кнопка в тому ж ряду, що й групування й період: це елемент керування,
+   а не заголовок. Число крупніше за решту підписів, бо заради нього на
+   кнопку й дивляться; валюта й період поруч дрібним. */
+.cab-sum {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  padding: 6px 12px; border-radius: 12px; cursor: pointer;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  transition: border-color .15s, background .15s;
+}
+.cab-sum:hover { border-color: var(--accent); background: var(--surface-2); }
+.cab-sum-n {
+  font-size: 14px; font-weight: 900; letter-spacing: -.01em;
+  color: var(--text-main); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.cab-sum-k {
+  font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap;
+}
+/* Приблизність позначаємо знаком, а не дрібним шрифтом у підказці:
+   зведене з чотирьох валют число мусить сказати про себе саме — і
+   сказати там, де на нього дивляться. */
+.cab-sum-approx { color: var(--text-muted); font-weight: 900; }
+
+/* Вибір періоду. Ті самі сегменти, що й у зрізі за джерелом — це
+   сусідні перемикачі однієї ваги, і виглядати вони мають однаково.
+   Ручні дати зʼявляються лише в режимі Custom: два порожні поля
+   поруч із пресетами щодня питали б «а мені їх заповнювати?». */
+.cab-range { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cab-range-days {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; font-weight: 900; color: var(--text-muted);
+}
+.cab-range-days input {
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  border-radius: 10px; padding: 5px 8px;
+  font-size: 10px; font-weight: 700; color: var(--text-main);
+  outline: none; color-scheme: dark;
+}
+.cab-range-days input:focus { border-color: var(--accent); }
+
+/* ─────────── Експорт звіту кабінета ───────────
+   Живе в панелі кабінета, тож усе вузьке: підпис зліва, поле справа,
+   в один стовпчик. Кнопка «Download CSV» виділена кольором акценту —
+   це те, заради чого блок відкривали. */
+.fbr-open, .fbr-go {
+  width: 100%; margin-top: 8px; padding: 8px 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: border-color .15s, color .15s;
+}
+.fbr-open:hover { border-color: var(--accent); color: var(--text-main); }
+.fbr-go { border-color: var(--accent); color: var(--text-main); }
+.fbr-go:hover { background: var(--accent); color: #fff; }
+.fbr-go:disabled { opacity: .45; cursor: default; background: var(--surface-2); color: var(--text-muted); }
+
+.fbr {
+  margin-top: 10px; padding: 10px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.fbr-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 8px;
+}
+.fbr-head button {
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 15px; line-height: 1; cursor: pointer;
+}
+.fbr-head button:hover { color: var(--bad); }
+.fbr-row { display: block; margin-bottom: 6px; }
+.fbr-row span {
+  display: block; margin-bottom: 3px;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.fbr-row select {
+  width: 100%; background: rgba(0, 0, 0, .25); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px 8px;
+  font-size: 10px; font-weight: 700; color: var(--text-main);
+  outline: none; cursor: pointer;
+}
+.fbr-row select:focus { border-color: var(--accent); }
+.fbr-hint { margin-top: 6px; font-size: 9px; font-weight: 700; line-height: 1.45; color: var(--text-muted); }
+.fbr-hint:empty { display: none; }
+.fbr-hint.is-bad { color: var(--bad); }
+/* Текстова кнопка просто в підказці: місця під власний рядок тут
+   немає, а ховати перемикач під іконку — значить його не знайдуть. */
+.fbr-hint button {
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: var(--accent); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.fbr-hint button:hover { color: var(--text-main); }
+/* «Такої події тут не бачили» — підпис на самому полі, а не окремим
+   рядком нижче: зв'язок із конкретним рядком має бути видно одразу. */
+.fbr-warn { color: var(--warn); font-weight: 900; letter-spacing: .06em; }
+
+/* ─── Превʼю експорту ───
+   Файл, який пішов у теку завантажень, подивитись уже ніколи — його
+   відкривають один раз, в імпорті. Тому те саме показуємо на екрані,
+   на всю ширину: вузька панель кабінета для таблиці з чотирнадцяти
+   стовпчиків не годиться. */
+#fbr-prev {
+  position: fixed; inset: 0; z-index: 300; display: flex;
+  align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0, 0, 0, .62); backdrop-filter: blur(6px);
+}
+.fbr-prev-card {
+  display: flex; flex-direction: column; min-height: 0;
+  width: min(1200px, 100%); max-height: 100%;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 18px; padding: 16px;
+}
+.fbr-prev-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.fbr-prev-title { font-size: 12px; font-weight: 900; color: var(--text-main); font-family: ui-monospace, monospace; }
+.fbr-prev-sub {
+  margin-top: 2px; font-size: 10px; font-weight: 700; color: var(--text-muted);
+}
+.fbr-prev-head button {
+  border: 0; background: transparent; color: var(--text-muted);
+  font-size: 22px; line-height: 1; cursor: pointer;
+}
+.fbr-prev-head button:hover { color: var(--bad); }
+
+.fbr-prev-scroll {
+  flex: 1 1 auto; min-height: 0; margin-top: 12px; overflow: auto;
+  border: 1px solid var(--border); border-radius: 12px;
+}
+.fbr-prev-tbl { width: 100%; border-collapse: collapse; font-size: 10px; white-space: nowrap; }
+.fbr-prev-tbl th, .fbr-prev-tbl td { padding: 5px 9px; border-bottom: 1px solid var(--border); }
+.fbr-prev-tbl thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2); color: var(--text-muted);
+  font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  text-align: left;
+}
+.fbr-prev-tbl tbody td { color: var(--text-main); font-weight: 600; }
+.fbr-prev-tbl tbody tr:hover td { background: rgba(255, 255, 255, .03); }
+/* Підсумок прилипає знизу: заради нього превʼю й відкривають — звірити
+   спенд із тим, що показує Ads Manager. */
+.fbr-prev-tbl tfoot td {
+  position: sticky; bottom: 0; background: var(--surface-2);
+  color: var(--text-main); font-weight: 900; border-top: 1px solid var(--border);
+  font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+}
+.fbr-prev-tbl .ta-r { text-align: right; font-variant-numeric: tabular-nums; }
+.fbr-prev-na { color: var(--text-muted); opacity: .5; }
+
+.fbr-prev-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.fbr-prev-acts button {
+  padding: 9px 18px; border-radius: 12px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.fbr-prev-acts button:hover { color: var(--text-main); border-color: var(--accent); }
+.fbr-prev-acts button.is-go { border-color: var(--accent); color: var(--text-main); }
+.fbr-prev-acts button.is-go:hover { background: var(--accent); color: #fff; }
+
+/* ─── Коментарі під оголошеннями — D
+   Стрічка в панелі кабінета, тож усе дрібне й із власною прокруткою:
+   коментарів буває сотня, а панель одна. Схований коментар притлумлено
+   — він уже не на людях, і привертати ним увагу вдруге нема сенсу. */
+.fcm-all {
+  display: flex; align-items: center; gap: 6px; margin: 2px 0 6px;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer;
+}
+.fcm-list {
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(0, 0, 0, .2);
+}
+.fcm-row {
+  display: flex; gap: 6px; padding: 6px 7px; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.fcm-row:last-child { border-bottom: 0; }
+.fcm-row:hover { background: rgba(255, 255, 255, .03); }
+.fcm-row.is-on { background: rgba(139, 92, 246, .12); }
+.fcm-row.is-hidden { opacity: .5; }
+.fcm-row input { margin-top: 2px; accent-color: var(--accent); }
+.fcm-body { min-width: 0; flex: 1 1 auto; }
+.fcm-top {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  font-size: 9px; font-weight: 700; color: var(--text-muted);
+}
+.fcm-top b { color: var(--text-main); font-weight: 900; }
+.fcm-tag {
+  padding: 0 4px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+}
+.fcm-text {
+  display: block; margin: 2px 0; font-size: 10px; font-weight: 600; line-height: 1.4;
+  color: var(--text-main); overflow-wrap: anywhere;
+}
+.fcm-ad {
+  display: block; font-size: 8px; font-weight: 700; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fcm-acts { display: flex; gap: 4px; margin-top: 8px; }
+.fcm-acts button {
+  flex: 1 1 0; padding: 7px 4px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface-2);
+  font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-muted); cursor: pointer; transition: border-color .15s, color .15s;
+}
+.fcm-acts button:hover:not(:disabled) { border-color: var(--accent); color: var(--text-main); }
+.fcm-acts button.is-bad { color: var(--bad); border-color: rgba(239, 68, 68, .3); }
+.fcm-acts button.is-bad:hover:not(:disabled) { background: var(--bad); color: #fff; border-color: var(--bad); }
+.fcm-acts button:disabled { opacity: .35; cursor: default; }
+
+/* Чому Сторінка закрита. Попередження, а не аварія: решта коментарів
+   однаково показується, і фарбувати це в червоне означало б сказати,
+   що зламалось усе. */
+.fcm-blocked {
+  margin: 2px 0 8px; padding: 8px 10px; border-radius: 12px;
+  background: rgba(245, 158, 11, .08); border: 1px solid rgba(245, 158, 11, .22);
+}
+.fcm-blocked-head {
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--warn); margin-bottom: 5px;
+}
+.fcm-blocked-row {
+  font-size: 9px; font-weight: 600; line-height: 1.5; color: var(--text-muted);
+  margin-top: 5px; overflow-wrap: anywhere;
+}
+.fcm-blocked-row b { color: var(--text-main); font-weight: 900; }
+
+/* «Кабінет зник, а фільтр його ховає». Клікабельне — бо єдина розумна
+   реакція на цей рядок одна: піти й подивитись. */
+  margin-bottom: 8px; padding: 8px 12px; border-radius: 12px; cursor: pointer;
+  background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .28);
+  font-size: 10px; font-weight: 800; color: var(--warn);
+}
+  margin-left: 6px; text-decoration: underline; text-underline-offset: 2px;
+}
+  margin: 10px 0 0; padding: 0; background: none; border: 0;
+  font-size: 9px; font-weight: 700; color: var(--text-muted); opacity: .7;
+}
+
+/* ─── Сторінка кабінета ───
+   Окремим блоком під списком це займало пів екрана й відповідало на
+   питання, якого ніхто не ставить. Тут — рядок у картці кабінета:
+   назва, доступ і перехід. Сторінка без доступу притлумлена й обведена
+   попереджально: під нею не вийде прибрати коментар, і знати про це
+   треба до того, як він там з'явиться. */
+
+.cab-pg-wrap { margin-top: 8px; }
+.cab-pg {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; margin-top: 4px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  text-decoration: none; transition: background .15s;
+}
+.cab-pg:hover { background: var(--surface-3); }
+.cab-pg.is-closed { background: rgba(245,158,11,.06); border-color: rgba(245,158,11,.22); }
+.cab-pg-name {
+  flex: 1; min-width: 0; font-size: 11px; font-weight: 800; color: var(--text-main);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cab-pg-tag {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--warn);
+}
+.cab-pg-go { font-size: 11px; font-weight: 900; color: var(--text-muted); }
+.cab-pg:hover .cab-pg-go { color: var(--text-main); }
+.cab-pg-note { margin-top: 8px; font-size: 9px; font-weight: 700; color: var(--text-muted); }
+
+/* ─────────── Плитки-фільтри (Cabinets і Domains) ───────────
+   Були прямокутники, підсвічені кільцем і brightness. Кільце читалось
+   як фокус, brightness — як наведення, і «що зараз вибрано» доводилось
+   вгадувати. Тепер увімкнений фільтр залитий своїм кольором, вимкнений
+   ні, і сплутати їх неможливо.
+
+   Колір приходить змінними: --flt (сам колір), --flt-soft (заливка),
+   --flt-bd (рамка). Завдяки цьому файл нічого не знає про перелік
+   станів, а кожна сторінка передає свої.
+
+   Плитка з нулем притлумлена навмисно: фільтр, який нічого не покаже,
+   не має виглядати так само запрошувально, як той, де сім банів. */
+.flt {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 10px; border-radius: 12px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  transition: background .16s, border-color .16s, transform .16s;
+  text-align: left; min-width: 0;
+}
+.flt:hover { border-color: var(--flt-bd, var(--border)); transform: translateY(-1px); }
+.flt-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: 0 0 7px;
+  background: var(--flt, var(--text-muted));
+  transition: box-shadow .16s;
+}
+.flt-name {
+  font-size: 9px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.flt-n {
+  margin-left: auto; font-size: 15px; font-weight: 900; line-height: 1;
+  color: var(--flt, var(--text-main)); font-variant-numeric: tabular-nums;
+}
+.flt.is-zero { opacity: .4; }
+.flt.is-zero:hover { opacity: .7; }
+.flt.is-on {
+  background: var(--flt-soft, var(--surface-3));
+  border-color: var(--flt, var(--border));
+}
+.flt.is-on .flt-name { color: var(--text-main); }
+.flt.is-on .flt-dot { box-shadow: 0 0 0 3px var(--flt-soft, transparent); }
+.flt-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px;
+}
+
+/* Блок «що каже Facebook» у бічній панелі. Відділений рамкою
+   навмисно: це єдине місце на панелі, де числа не твої й не зі
+   звітів, і плутати їх із сусідніми не можна. */
+.cab-fb {
+  margin-top: 4px; padding: 10px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.cab-fb-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px;
+}
+.cab-fb-head span { font-weight: 700; letter-spacing: 0; text-transform: none; opacity: .7; }
+.cab-fb-note { margin-top: 6px; font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.cab-fb-warn { margin-top: 6px; font-size: 10px; font-weight: 700; color: var(--warn); }
+.cab-link {
+  margin-left: 4px;
+  font-size: 13px; font-weight: 900; line-height: 1;
+  padding: 2px 5px; border-radius: 6px;
+  color: var(--text-muted); text-decoration: none;
+  transition: color .15s, background .15s;
+}
+.cab-link:hover { color: #fff; background: rgba(139,92,246,.35); }
+.cab-link.is-off { opacity: .2; cursor: default; }
+
+/* Кнопка копіювання домена — перед самим доменом, бо копіюють частіше,
+   ніж відкривають, а шукати її в кінці рядка різної довжини незручно.
+
+   Іконкою, а не емодзі: емодзі малює операційна система, у кожної воно
+   своє, і ні розмір, ні колір під тему не підженеш. SVG успадковує
+   currentColor і поводиться як звичайний текст.
+
+   Розмір і положення тут, а не класами в розмітці: довільні значення
+   Tailwind двічі підводили саме на структурі. */
+.dm-copy {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 21px; height: 21px; margin-right: 7px; vertical-align: -5px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface-2); color: var(--text-muted);
+  opacity: .5; cursor: pointer;
+  transition: opacity .15s, color .15s, background .15s, border-color .15s;
+}
+.dm-copy svg { width: 12px; height: 12px; display: block; }
+/* Галочка лежить поверх іконки й чекає свого класу. */
+.dm-copy .i-done { display: none; }
+/* Поки на рядок не навели, кнопка ледь помітна: у списку на сотні
+   доменів колонка з яскравих кнопок читається гірше за самі домени. */
+.cab-tr:hover .dm-copy, .dm-copy:focus-visible { opacity: 1; }
+.dm-copy:hover {
+  opacity: 1; color: #fff;
+  background: rgba(139,92,246,.22); border-color: rgba(139,92,246,.55);
+}
+.dm-copy.is-done {
+  opacity: 1; color: var(--ok);
+  background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.5);
+}
+.dm-copy.is-done .i-copy { display: none; }
+.dm-copy.is-done .i-done { display: block; }
+
+/* Сторінка кабінетів росте на всю висоту, скролиться сам список —
+   так само, як зроблено в Report Builder. */
+body[data-route="cabinets"] #dashboard-content > #cabinets-section {
+  display: flex;
+  flex-direction: column;
+  /* Гортаються список і панель, кожне окремо, — не картка цілком. */
+  overflow: hidden;
+}
+body[data-route="cabinets"] #cabinets-section > .flex.gap-4 {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+body[data-route="cabinets"] #cab-list,
+body[data-route="cabinets"] #cab-detail {
+  max-height: 100%;
+  overflow: auto;
+}
+
+/* Ширина бічної панелі тримається ТУТ, а не класом w-[330px] у розмітці.
+   Довільні значення Tailwind існують лише якщо їх знайшов збирач; варто
+   класу не потрапити в збірку — і панель роздувається до max-content
+   свого найдовшого абзацу, накриваючи собою таблицю. Структурний розмір
+   не повинен залежати від того, чи встиг хтось перегенерувати CSS. */
+#cab-detail, #dm-detail { flex: 0 0 330px; width: 330px; }
+
+/* Екран першого запуску. Позиція й z-index — ТУТ, а не класами z-[998]
+   у розмітці: довільні значення Tailwind існують лише якщо їх знайшов
+   збирач, і варто класу не потрапити в збірку, як «накладка» тихо
+   лягає під вміст сторінки. Видно її при цьому лишається, тож у коді
+   все ніби працює. Один раз на цьому вже обпеклись із шириною панелі. */
+#team-first-run {
+  position: fixed; inset: 0; z-index: 998;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: var(--bg);
+}
+#team-first-run.hidden { display: none; }
+#team-first-run > .card { width: 100%; max-width: 380px; }
+
+/* ═══════════ ЕКРАН ЗАВАНТАЖЕННЯ ═══════════
+
+   До нього сторінка показувала себе недобудованою: каркас уже
+   намальований, у шапці «Loading…», у смузі прогресу чуже число
+   ($40,000 за замовчуванням), а посеред колонки крутилось коліщатко.
+   Виглядало це не як завантаження, а як поламані дані — тим паче що
+   числа-заглушки читаються як справжні.
+
+   Тому накриваємо все матовим склом: видно, що сторінка є й вона
+   жива, але читати з неї поки нічого. Блюр тут не прикраса — він
+   прибирає саме ту ваду, через яку заглушку можна було сплутати з
+   даними.
+
+   z-index навмисно НИЖЧИЙ за екран входу (999) і за перший запуск
+   (998): обидва вони непрозорі на весь екран, тож просто накривають
+   скло собою. Ховати й повертати його вручну не треба — а отже,
+   немає й шансу забути повернути. */
+#boot {
+  position: fixed; inset: 0; z-index: 990;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+  backdrop-filter: blur(26px) saturate(115%);
+  -webkit-backdrop-filter: blur(26px) saturate(115%);
+  transition: opacity .38s ease, backdrop-filter .38s ease;
+}
+
+/* Без підтримки backdrop-filter розмивати нічим — тоді краще чесно
+   закрити фон, ніж лишити напівпрозорий серпанок поверх заглушок. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #boot { background: var(--bg); }
+}
+
+/* Зникає плавно, і лише після цього йде з дерева — щоб не перехоплювати
+   кліки по вже готовому дашборду. */
+#boot.is-done { opacity: 0; backdrop-filter: blur(0); pointer-events: none; }
+
+.boot-box {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; width: 100%; max-width: 260px; text-align: center;
+}
+
+.boot-logo {
+  width: 54px; height: 54px; border-radius: 17px;
+  display: grid; place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--info));
+  box-shadow: 0 10px 34px color-mix(in srgb, var(--accent) 38%, transparent);
+  animation: boot-breathe 2.4s ease-in-out infinite;
+}
+.boot-logo svg { width: 27px; height: 27px; }
+
+/* Дихання, а не обертання: коліщатко, що крутиться, однаково виглядає
+   і коли все йде добре, і коли все зависло. */
+@keyframes boot-breathe {
+  0%, 100% { transform: scale(1);    box-shadow: 0 10px 34px color-mix(in srgb, var(--accent) 38%, transparent); }
+  50%      { transform: scale(1.06); box-shadow: 0 14px 42px color-mix(in srgb, var(--accent) 55%, transparent); }
+}
+
+.boot-name {
+  margin: 0; font-size: 13px; font-weight: 900;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--text-main);
+}
+
+.boot-bar {
+  width: 100%; height: 3px; border-radius: 3px; overflow: hidden;
+  background: var(--border-2);
+}
+#boot-fill {
+  height: 100%; width: 6%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--info), var(--accent));
+  transition: width .45s cubic-bezier(.3, .9, .3, 1);
+}
+
+/* Смуга показує справжні кроки завантаження, а не таймер. Тому підпис
+   під нею потрібен: «щось іде» без «що саме» не відрізнити від «зависло». */
+#boot-step {
+  margin: 0; min-height: 13px;
+  font-size: 9px; font-weight: 800; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-logo { animation: none; }
+  #boot, #boot-fill { transition: none; }
+}
+@media (max-width: 1100px) {
+  #cab-detail, #dm-detail { flex: 0 0 280px; width: 280px; }
+}
+
+/* Домени — той самий каркас, що й кабінети: таблиця тягнеться, панель
+   фіксована, обидві скролять усередині себе, а не сторінкою. */
+body[data-route="domains"] #dashboard-content > #domains-section {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;       /* як у кабінетах: гортають список і панель */
+}
+body[data-route="domains"] #dashboard-content > #domains-section > .flex.gap-4 {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+body[data-route="domains"] #dm-list,
+body[data-route="domains"] #dm-detail {
+  max-height: 100%;
+  overflow: auto;
+}
+
+/* Кабінет, якого токен уже не бачить. Числа в ньому справжні, але
+   заморожені на мить, коли його бачили останній раз, — тож вони
+   притлумлені. Не приховані: саме по них і приходять сюди, коли треба
+   згадати, скільки той кабінет відкрутив. */
+.cab-tr.is-frozen .cab-num,
+.cab-tr.is-frozen .cab-dim { opacity: .55; }
+.cab-tr.is-frozen .cab-id { text-decoration: line-through; text-decoration-color: rgba(168,85,247,.5); }
+
+/* ═══════════ ЩО ВСЕРЕДИНІ КАБІНЕТА ═══════════
+   Блок під таблицею: кампанії, адсети, оголошення з числами. Висоту
+   ділить із таблицею — своя третина екрана й власний скрол, щоб
+   таблиця кабінетів не поїхала під нього цілком. */
+/* Смуга з кнопкою — у самому низу блока кабінетів. Лінія на ній, бо
+   саме вона тепер відділяє нижній шматок; нутро приростає під нею. */
+/* Один рядок на все: кнопка, номер кабінета, стрічка стану, вкладки й
+   фільтр. Вкладки притискаємо праворуч — ліворуч те, ПРО ЩО мова,
+   праворуч те, ЯК це показати.
+
+   flex-wrap лишаємо: на вузькому екрані рядок має перенестись, а не
+   виштовхнути вкладки за край, де до них не дотягнутись. */
+#cab-inside-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+#cab-inside-bar .cd-tabs { margin-left: auto; }
+/* Стрічка стану більше не має власного рядка, тож не дає їй розсувати
+   сусідів: вона тут найменш важлива з трьох. */
+#cab-inside-bar .cd-s { flex: 0 1 auto; }
+#cab-inside {
+  /* min-width: 0 — щоб широка таблиця всередині тягнула свою смугу
+     прокрутки, а не розсувала сторінку. */
+  flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  margin-top: 10px;
+}
+/* display на id б'є .hidden від Tailwind — саме через це блок колись
+   «ховався», лишаючись на екрані. Тому ховання прописане поіменно, як
+   і в решті панелей цього файлу. */
+#cab-inside.hidden, #cab-inside-bar.hidden { display: none; }
+/* .cd-head більше не малюється: і стрічка стану, і вкладки переїхали
+   в #cab-inside-bar, до кнопки. Правило лишаємо на випадок, якщо
+   блок колись повернуть, — але висоти воно вже не коштує. */
+.cd-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex: 0 0 auto; margin-bottom: 8px; min-height: 24px;
+}
+.cd-h { font-size: 12px; font-weight: 900; color: var(--text-main); margin: 0; }
+.cd-s { font-size: 10px; color: var(--text-muted); margin: 0; min-width: 0; }
+.cd-tabs { display: flex; gap: 5px; flex: 0 0 auto; align-items: center; }
+
+/* «Тільки активні». Поруч із вкладками, бо це теж про те, що саме
+   показано. Вигляд не як у кнопок навмисно: вкладки перемикають
+   ВИГЛЯД, а це ховає РЯДКИ — різні речі, і плутати їх не варто. */
+.cd-only {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px 3px 6px; border-radius: 8px; cursor: pointer;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); border: 1px solid transparent;
+}
+.cd-only:hover { color: var(--text-main); border-color: var(--border); }
+.cd-only input { width: 12px; height: 12px; accent-color: var(--accent); cursor: pointer; }
+.cd-only:has(input:checked) {
+  color: var(--text-main); border-color: var(--border-2); background: var(--surface-2);
+}
+.cd-tab {
+  padding: 5px 11px; border-radius: 9px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.cd-tab:hover { color: var(--text-main); }
+.cd-tab.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+/* Висота — стеля, а не «скільки вийде»: пів екрана таблиці там, де
+   людина зайшла по експорт, це перешкода, а не показ даних.
+
+   Але 320px були надто скупі. Підсумок липне до низу ОБЛАСТІ ГОРТАННЯ,
+   а не блока, — тож поки та область була нижчою за блок, між підсумком
+   і краєм лишалась порожнеча, і липкість виглядала зламаною, хоч
+   працювала. Стеля від висоти вікна прибирає саме цю порожнечу: тепер
+   таблиця добирає доступне, а підсумок стоїть там, де його й шукають —
+   унизу.
+
+   min() лишає й другу стелю в пікселях: на дуже високому екрані 58vh
+   перетворилось би на тисячу пікселів таблиці, а це вже знову
+   перешкода. */
+/* ВИСОТА ФІКСОВАНА, а не «скільки вийде». Це те саме рішення, що й в
+   Ads Manager, і воно розвʼязує дві вади одразу.
+
+   Перша: підсвічений підсумок липне до низу ОБЛАСТІ ГОРТАННЯ. Поки та
+   область стискалась під вміст, її низ був там, де закінчилась
+   таблиця, — і між підсумком і краєм блока лишалась порожнеча. Липкість
+   виглядала зламаною, хоч працювала. При сталій висоті низ області
+   завжди в тому самому місці, тож підсумок завжди притиснутий.
+
+   Друга: блок стрибав у висоту, коли розгортали дерево. Розгортання —
+   це «хочу подивитись усередину», а не «посунь мені пів сторінки»;
+   усе, що нижче, від одного кліку їхало вниз на кілька екранів.
+
+   Ціна відома: у кабінеті на три рядки під ними лишиться порожньо.
+   Це свідомий обмін — стала сторінка варта дорожче за щільність у
+   найменшому з кабінетів. */
+.cd-wrap {
+  flex: 0 0 auto; min-height: 0; overflow: auto;
+  height: min(calc(58vh - 20px), 540px);
+}
+/* height: 100% — щоб рядок-заповнювач мав від чого відштовхуватись.
+   Для таблиці це не стеля, а підлога: вміст вищий за неї розтягує її
+   далі, тож довгий список від цього не стискається. */
+.cd-tbl { width: 100%; border-collapse: collapse; min-width: 1180px; height: 100%; }
+/* Забирає весь залишок висоти й тим штовхає підсумок до низу. Коли
+   залишку немає — стискається в нуль і зникає з очей. */
+.cd-fill { height: 100%; }
+.cd-fill td { padding: 0; border: 0; }
+.cd-tbl tr.cd-fill:hover td { background: transparent; }
+.cd-tbl th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface-2);
+  padding: 6px 8px; text-align: left;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.cd-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
+.cd-tbl tr:hover td { background: var(--surface-2); }
+/* Назва прилипає до лівого краю: стовпчиків тепер тринадцять, і без
+   цього, догортавши до «Cost per reg», не видно, чий це рядок. */
+.cd-tbl th:first-child, .cd-tbl td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--surface);
+}
+.cd-tbl th:first-child { z-index: 3; background: var(--surface-2); }
+.cd-tbl tr:hover td:first-child { background: var(--surface-2); }
+.cd-name {
+  font-weight: 700; color: var(--text-main);
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Глибина в дереві — відступом, а не рамками: рядків багато, і кожна
+   зайва лінія робить таблицю схожою на сітку, а не на список. */
+.cd-d1 .cd-name { padding-left: 24px; }
+.cd-d2 .cd-name { padding-left: 46px; }
+.cd-d1 .cd-name, .cd-d2 .cd-name { font-weight: 600; }
+.cd-d2 .cd-name { color: var(--text-muted); }
+/* Трикутник малюємо рамкою, а не символом: «▸» є не в кожному шрифті, і
+   там, де його немає, у назві зʼявляється порожній прямокутник. */
+.cd-twist {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px;
+  background: none; border: 0; padding: 0;
+}
+.cd-twist::before {
+  content: ''; border: 4px solid transparent; border-left-color: var(--text-muted);
+  margin-left: 4px; transition: transform .12s ease;
+}
+.cd-twist.is-on::before { transform: rotate(90deg); border-left-color: var(--accent); }
+.cd-twist:hover::before { border-left-color: var(--text-main); }
+.cd-can { cursor: pointer; }
+.cd-leaf { pointer-events: none; }
+.cd-leaf::before { content: none; }
+.cd-cnt {
+  margin-left: 7px; font-size: 9px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-muted); text-transform: uppercase;
+}
+/* У списку оголошень батьків більше нема над рядком — тож пишемо їх у
+   рядку: без них «Mostbet_KG_1» не має адреси. */
+.cd-where { margin-left: 7px; font-size: 9.5px; font-weight: 600; color: var(--text-muted); }
+.cab-inside-btn {
+  padding: 6px 12px; border-radius: 10px; flex: 0 0 auto;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.cab-inside-btn:hover { color: var(--text-main); border-color: var(--accent); }
+.cab-inside-who { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+/* Назви ще немає — показуємо id, але так, щоб це не читалось як назва. */
+.cd-noname { color: var(--text-muted); font-weight: 600; font-style: italic; }
+.cd-num { font-variant-numeric: tabular-nums; color: var(--text-main); }
+/* Стан оголошення. Червоне — ввімкнене, але не крутиться: саме це й
+   шукають очима, тож воно має бити в око, а не ховатись у ряду. */
+.cd-sts { display: inline-flex; align-items: center; white-space: nowrap; }
+.cd-st {
+  display: inline-block; margin-right: 4px; padding: 2px 7px; border-radius: 7px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .05em;
+  white-space: nowrap;
+}
+.cd-st-ok   { background: rgba(34,197,94,.14);  color: #4ADE80; }
+.cd-st-bad  { background: rgba(239,68,68,.16);  color: #F87171; }
+.cd-st-wait { background: rgba(250,204,21,.14); color: #FACC15; }
+.cd-st-na   { background: var(--surface-2); color: var(--text-muted); }
+/* Вимкнене — не біда, а рішення: сірий, а не червоний. Червоним воно
+   читалось би як поломка, і кожен свідомо вимкнений адсет вимагав би
+   уваги, якої не вартий. */
+.cd-st-off  { background: rgba(148,163,184,.16); color: #94A3B8; }
+/* Власний стан рядка, на відміну від розкладу його дітей. Обведення, а
+   не інший колір: колір тут уже зайнятий сенсом «наскільки погано». */
+.cd-st.is-self { box-shadow: inset 0 0 0 1px currentColor; }
+.cd-warn { color: #F87171; font-weight: 800; }
+.cd-spend { font-weight: 800; }
+.cd-na { color: var(--text-muted); opacity: .5; }
+/* Нескінченність — це «гроші пішли, результату немає». Помітно, бо саме
+   ці рядки й вимикають правила. */
+.cd-inf { color: #F87171; font-weight: 800; }
+
+/* СМУГИ ПІД КАМПАНІЮ.
+
+   У дереві три рівні, і на екрані вони зливаються в стіну: де
+   скінчилась одна кампанія й почалась наступна, видно хіба по відступу
+   назви — а відступ ліворуч, коли очі вже поїхали вправо, до чисел.
+   Через це рядок легко прочитати не під тією кампанією.
+
+   Тому кожна друга кампанія разом зі своїми адсетами й оголошеннями
+   отримує світліше тло. Виходить блок, який видно одним поглядом, не
+   читаючи назв.
+
+   Різниця навмисно мала. Це МЕЖА МІЖ ГРУПАМИ, а не оцінка: тло, яке
+   впадає в око, читалось би як «тут щось не так», хоч воно означає
+   лише «це вже інша кампанія». Спершу тут і стояла оцінка —
+   дорожче/дешевше за середнє, — і вона відповідала на питання, якого
+   не ставили: числа для оцінки в таблиці й так є, бракувало саме межі.
+
+   Перша комірка липка й має власне тло — без окремого правила смуга
+   обривалась би на ній, і саме там, де читають назви. */
+/* Обидві смуги задані ЯВНО й непрозоро. Прозорий відтінок тут не
+   годиться: перша комірка липка, і крізь неї було б видно, як під нею
+   їде вміст, коли таблицю гортають убік. */
+.cd-r td, .cd-r td:first-child { background: var(--surface); }
+.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--cd-band); }
+/* Наведення бере середній відтінок: він світліший за звичайний рядок і
+   темніший за смугу, тож курсор видно в обох — а не лише в одній. */
+.cd-tbl tr.cd-r:hover td,
+.cd-tbl tr.cd-r:hover td:first-child { background: var(--surface-2); }
+/* Вибраний рядок лишається впізнаваним у будь-якій смузі: смуга
+   акценту ліворуч сильніша за різницю тла. */
+.cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* Чому немає ока. Тоном як «not running» — це те саме: те, що варто
+   знати, не шукаючи, але не тривога. */
+.cd-nodom { color: var(--text-muted); cursor: help; border-bottom: 1px dotted var(--border-2); }
+
+/* Око й домен. Око бліде, поки закрите: це не та дія, по яку сюди
+   йдуть, і кричати про себе воно не повинно. */
+.cd-eye {
+  flex: 0 0 auto; width: 14px; height: 14px; padding: 0; margin-left: 6px;
+  background: none; border: 0; cursor: pointer; opacity: .45;
+  color: var(--text-muted); line-height: 0;
+}
+.cd-eye svg { width: 14px; height: 14px; display: block; }
+.cd-eye:hover { opacity: 1; color: var(--text-main); }
+.cd-eye.is-on { opacity: 1; color: var(--accent); }
+.cd-dom {
+  flex: 0 0 auto; margin-left: 5px; font-size: 10px; font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-muted); letter-spacing: .06em;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cd-dom.is-on { color: var(--accent); letter-spacing: 0; }
+/* «/day» і «total» біля бюджету. Тихіше за саме число: число читають,
+   підпис лише уточнює, за який період воно. */
+.cd-bq { color: var(--text-muted); font-weight: 700; margin-left: 2px; }
+
+/* ПІДСУМОК — липкий до низу таблиці, як шапка до верху. Таблиця
+   скролиться всередині себе, і рядок, який поїхав угору разом із
+   вмістом, не відповідає на питання «а скільки всього» саме тоді, коли
+   його й ставлять — гортаючи довгий список.
+
+   z-index на 1 менший за шапку: на стику виграє шапка, бо назви
+   стовпчиків потрібні, щоб прочитати сам підсумок. */
+.cd-tot td {
+  position: sticky; bottom: 0; z-index: 1;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border-2);
+  font-weight: 900; color: var(--text-main);
+  padding: 7px 8px;
+}
+.cd-tot td:first-child {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted);
+}
+/* Прочерки в підсумку тлумлені так само, як у рядках: «немає» не має
+   важити більше за число поруч. */
+.cd-tot .cd-na { font-weight: 700; }
+
+/* МУЛЬТИВИБІР. Галочка живе в комірці назви разом із трикутником, тому
+   тримаємо її вузькою і притискаємо до тексту: власного стовпчика на
+   неї немає, а зайві пікселі тут з'їдають ширину назви.
+
+   Відступ у дереві (.cd-d1/.cd-d2) зсуває галочку разом із назвою — це
+   навмисно: так видно, до якого рівня належить вибраний рядок. */
+.cd-mk {
+  width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
+  accent-color: var(--accent); cursor: pointer; flex: 0 0 auto;
+}
+/* Вибраний рядок підсвічуємо смугою зліва, а не фоном: фон уже зайнятий
+   під :hover, і два фони поспіль читаються як один. */
+.cd-r.is-mk td { background: var(--surface-2); }
+.cd-r.is-mk td:first-child {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* Смуга дії. Стоїть між шапкою й таблицею, а не над карткою: дія
+   стосується рядків, і від них її відводити не можна.
+
+   Не липка: коли таблицю гортають, смуга їде вгору разом зі списком —
+   але вибір нікуди не дівається, а липкий рядок тут конкурував би з
+   липкою шапкою таблиці й підсумком унизу. */
+.cd-mkbar {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 6px 9px; margin-bottom: 7px;
+  border: 1px solid var(--border-2); border-radius: 10px;
+  background: var(--surface-2);
+}
+.cd-mkn {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-main); margin-right: 2px;
+}
+/* ПЕРЕМИКАЧ, як в Ads Manager. Раніше тут стояла кнопка «Stop», яка
+   вміла одне й нічого не показувала: після натискання рядок виглядав
+   так само, і незрозуміло було навіть, чи спрацювало.
+
+   Ширину й висоту тримаємо в пікселях, а не в em: рядок таблиці й так
+   щільний, а перемикач, який росте від шрифту, розсував би його. */
+.cd-sw {
+  position: relative; display: inline-block;
+  width: 30px; height: 17px; border-radius: 999px;
+  background: var(--surface-3); border: 1px solid var(--border-2);
+  transition: background .15s ease, border-color .15s ease;
+  vertical-align: middle;
+}
+.cd-sw-k {
+  position: absolute; top: 2px; left: 2px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform .15s ease, background .15s ease;
+}
+.cd-sw.is-on { background: rgba(34,197,94,.22); border-color: rgba(34,197,94,.45); }
+.cd-sw.is-on .cd-sw-k { background: #22C55E; transform: translateX(13px); }
+.cd-sw:hover { border-color: var(--text-muted); }
+.cd-sw[disabled] { opacity: .45; }
+/* Стану ще не знаємо — не вдаємо, що знаємо. Пунктир каже «тут щось
+   буде», і тим відрізняє «вимкнено» від «не приїхало». */
+.cd-sw.is-na { border-style: dashed; }
+.cd-sw.is-na .cd-sw-k { background: var(--border-2); }
+.cd-empty { font-size: 11px; color: var(--text-muted); font-style: italic; margin: 6px 0; }
+
+/* ─────────── Сторінка тімліда ───────────
+   Той самий словник, що й на сторінці кабінетів: червоне — «горить»,
+   приглушене — «не знаємо». Розходитись їм не можна, бо дивиться на
+   обидві та сама людина. */
+.tm-team {
+  padding: 5px 11px; border-radius: 10px; background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-main);
+}
+.tm-rg {
+  padding: 5px 11px; border-radius: 10px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.tm-rg:hover { color: var(--text-main); }
+.tm-rg.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+
+.tm-fire { display: flex; flex-wrap: wrap; gap: 6px; }
+.tm-fire-ok {
+  font-size: 10px; font-weight: 700; color: var(--text-muted); font-style: italic;
+}
+.tm-chip {
+  display: inline-block; padding: 3px 9px; border-radius: 8px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .05em;
+  white-space: nowrap;
+}
+.tm-chip-bad  { background: rgba(239,68,68,.16);  color: #F87171; }
+.tm-chip-warn { background: rgba(250,204,21,.14); color: #FACC15; }
+.tm-chip + .tm-chip { margin-left: 4px; }
+
+.tm-wrap { overflow: auto; max-height: 460px; }
+.tm-tbl { width: 100%; border-collapse: collapse; min-width: 760px; }
+.tm-tbl th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface-2);
+  padding: 6px 8px; text-align: left;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.tm-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
+.tm-r { cursor: pointer; }
+.tm-r:hover td { background: var(--surface-2); }
+.tm-r.is-on td { background: var(--surface-3); }
+.tm-name { font-weight: 800; color: var(--text-main); }
+/* Людини немає в team_members — показуємо уривок uuid, але так, щоб не
+   читалось як ім'я. */
+.tm-unknown { font-family: ui-monospace, monospace; font-weight: 600; color: var(--text-muted); }
+.tm-num { font-variant-numeric: tabular-nums; color: var(--text-main); }
+.tm-spend { font-weight: 800; }
+.tm-na { color: var(--text-muted); opacity: .5; }
+.tm-inf { color: #F87171; font-weight: 800; }
+.tm-empty { font-size: 11px; color: var(--text-muted); font-style: italic; margin: 8px 0; }
+/* Незаповнений created_by — найчастіша причина порожньої сторінки, і
+   мовчати про неї не можна. */
+.tm-warn {
+  font-size: 10px; font-weight: 700; color: #FACC15; margin: 0 0 8px;
+  background: rgba(250,204,21,.08); border: 1px solid rgba(250,204,21,.25);
+  border-radius: 10px; padding: 7px 10px; line-height: 1.5;
+}
+.tm-h {
+  margin: 12px 0 5px; font-size: 9px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .12em; color: var(--text-muted);
+}
+.tm-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 10px; }
+.tm-bar-l { flex: 0 0 82px; font-weight: 700; color: var(--text-main);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-bar-t { flex: 1 1 auto; height: 6px; border-radius: 4px; background: var(--surface-2); }
+.tm-bar-t i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+.tm-bar-v { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--text-muted);
+            font-weight: 800; }
+/* Легенда графіка. Своя, а не Chart.js: там вона з'їдає висоту, якої в
+   смузі на 180 пікселів і так немає. */
+.tm-legend { display: flex; flex-wrap: wrap; gap: 10px; }
+.tm-leg { display: inline-flex; align-items: center; gap: 5px;
+          font-size: 9.5px; font-weight: 800; color: var(--text-muted); }
+.tm-leg i { width: 8px; height: 8px; border-radius: 3px; flex: 0 0 8px; }
+.tm-list { margin: 0; padding-left: 15px; font-size: 10.5px; color: var(--text-main); }
+.tm-list li { margin-bottom: 3px; }
+.tm-list span { color: var(--text-muted); }
+
+/* Пункт меню видно лише тімліду й адміну. Це ввічливість, а не захист:
+   справжня межа стоїть у політиках бази. */
+.sb-item[data-nav="team"] { display: none; }
+body.is-lead .sb-item[data-nav="team"] { display: flex; }
+
+/* А в самого тімліда в меню рівно одна сторінка — його власна.
+   Ховати сторінки баєра по одній програшно: наступний блок, який
+   хтось додасть, знову став би видимим за замовчуванням. Тому тут
+   навпаки — ховаємо все, крім Team.
+
+   Адміна це не стосується: дашборд його власний. */
+body.is-lead-only .sb-item[data-nav]:not([data-nav="team"]),
+body.is-lead-only .sb-item[data-hub],
+body.is-lead-only .sb-item[data-sheet],
+body.is-lead-only .sb-cap { display: none; }
+
+/* І все, що в шапці позначене admin-only: перемикач команд, бонуси,
+   тексти, унікалізатор, швидкі посилання. Клас там стояв і раніше — але
+   ховав його тільки старий режим ?view=teamlead, тож новому тімліду все
+   це лишалось видимим.
+
+   Перемикач команд ховаємо й з іншої причини: у тімліда команда одна,
+   і кнопка, яка нічого не перемикає, виглядає як поломка — натиснув,
+   сторінка перезавантажилась, нічого не змінилось. */
+body.is-lead-only .admin-only { display: none; }
+
+/* Кнопка «Rules» у шапці кабінетів. Виглядає як решта кнопок панелі,
+   а увімкненою світиться, бо панель праворуч може бути й закритою — і
+   тоді незрозуміло, чи вона взагалі є. */
+.cab-rules {
+  padding: 8px 12px; border-radius: 12px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: rgba(0,0,0,.25); border: 1px solid var(--border); color: var(--text-muted);
+}
+.cab-rules:hover { color: var(--text-main); border-color: var(--border-2); }
+.cab-rules.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+
+/* ═══════════ ПРАВИЛА АВТОМАТИЧНОГО ВИМИКАННЯ ═══════════
+   Той самий каркас, що в унікалізатора: шапка стоїть, гортається вміст. */
+/* Панель праворуч на сторінці кабінетів: висота обмежена тим самим
+   вікном, що й таблиця, гортається лише вміст. */
+.rl-wrap { display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
+.rl-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; flex: 0 0 auto; margin-bottom: 10px;
+}
+.rl-x {
+  flex: 0 0 auto; font-size: 18px; line-height: 1;
+  color: var(--text-muted); background: transparent; border: 0;
+}
+.rl-x:hover { color: #F87171; }
+.rl-acts { display: flex; gap: 6px; flex: 0 0 auto; margin-bottom: 10px; }
+.rl-btn {
+  padding: 8px 14px; border-radius: 10px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.rl-btn:hover { color: var(--text-main); border-color: var(--border-2); }
+.rl-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
+.rl-btn.is-main:hover { filter: brightness(1.12); }
+.rl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.rl-note { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; min-height: 14px; }
+
+.rl-row {
+  padding: 10px 12px; margin-bottom: 6px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+/* Вимкнене правило лишається на місці й читабельним: його вимикають
+   на час, а не назавжди. */
+.rl-row.is-off { opacity: .55; border-style: dashed; }
+.rl-row-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rl-name { font-size: 12.5px; font-weight: 800; color: var(--text-main); }
+.rl-tag {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
+}
+/* «live» — єдина мітка кольором: саме вона означає, що правило справді
+   вимикає рекламу, і сплутати її зі звітом не має бути можливості. */
+.rl-tag.is-live { background: rgba(239,68,68,.16); border-color: rgba(239,68,68,.4); color: #F87171; }
+.rl-tag.is-dim { opacity: .7; }
+.rl-row-acts { margin-left: auto; display: flex; gap: 5px; }
+.rl-mini {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  padding: 4px 8px; border-radius: 8px;
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
+}
+.rl-mini:hover { color: var(--text-main); border-color: var(--border-2); }
+.rl-mini.is-bad:hover { color: #F87171; border-color: rgba(239,68,68,.4); }
+.rl-when { font-size: 11.5px; font-weight: 700; color: var(--text-main); margin-top: 5px; }
+.rl-scope { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+.rl-form {
+  padding: 12px; margin-bottom: 8px; border-radius: 12px;
+  background: var(--surface-3); border: 1px solid var(--accent);
+}
+.rl-form-top, .rl-form-bot { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+/* У панелі на 420px три поля в рядок не стають — хай кожне займає свою
+   ширину й переноситься, а не тисне сусіда до трьох символів. */
+.rl-form-bot .rl-f { flex: 1 1 150px; }
+.rl-form-bot .rl-f .rl-in { width: 100%; }
+.rl-form-bot { margin-top: 8px; }
+.rl-form-acts { display: flex; gap: 6px; margin-top: 10px; }
+/* Рядок умови мусить лишатись ОДНИМ рядком. Хрестик, який перестрибнув
+   униз, читається як окрема кнопка «видалити щось» — а він про ту
+   умову, поруч з якою стояв.
+
+   Ламався він не сам: список метрик виріс («Cost per registration»
+   довше за все, що там було), а селект без стелі розтягується під
+   найдовший свій пункт і виштовхує сусідів. Тому метриці — гнучка
+   ширина з правом стискатись, а не природна. */
+.rl-cond { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+.rl-cond > .rl-in[data-f="m"] { flex: 1 1 150px; min-width: 0; }
+.rl-cond > .rl-mini { flex: 0 0 auto; margin-left: auto; }
+.rl-in {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
+  padding: 6px 9px; font-size: 11.5px; font-weight: 700; color: var(--text-main); outline: none;
+}
+.rl-in:focus { border-color: var(--accent); }
+.rl-in.is-wide { flex: 1 1 200px; min-width: 0; }
+.rl-in.is-num { width: 92px; }
+.rl-in.is-op { width: 62px; }
+.rl-f { display: flex; flex-direction: column; gap: 3px; }
+.rl-f-l {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted);
+}
+.rl-ax {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 6px 10px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; color: var(--text-main);
+}
+.rl-ax:has(input:checked) { border-color: rgba(239,68,68,.45); color: #F87171; }
+.rl-ax input { width: 13px; height: 13px; accent-color: #EF4444; }
+
+.rl-grp { margin-top: 18px; }
+.rl-grp-h { font-size: 11px; font-weight: 900; color: var(--text-main); margin: 0; }
+.rl-grp-s { font-size: 10px; color: var(--text-muted); margin: 2px 0 8px; line-height: 1.5; }
+/* ІСТОРІЯ НЕ РОСТЕ ВНИЗ БЕЗ КІНЦЯ.
+
+   Малювались усі сорок рядків підряд, і блок ішов за межі екрана —
+   прокрутити його було ніяк, бо прокручувалась сторінка цілком, а
+   список тягнувся далі за неї. Тепер висота обмежена приблизно пʼятьма
+   рядками, а решта доступна прокруткою всередині.
+
+   Саме max-height, а не фіксована: коли записів два, порожнього місця
+   під ними не буде. */
+.rl-log {
+  max-height: 212px;          /* ≈ 5 рядків по 38px + відступ */
+  overflow-y: auto;
+  overscroll-behavior: contain;   /* докрутив до кінця — сторінка не їде далі */
+  padding-right: 4px;
+}
+.rl-log::-webkit-scrollbar { width: 8px; }
+.rl-log::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 8px;
+}
+.rl-log-row {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 7px 10px; margin-bottom: 4px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: 11px;
+}
+.rl-log-row.is-dry { opacity: .72; border-style: dashed; }
+.rl-log-row.is-bad { border-color: rgba(239,68,68,.35); }
+.rl-log-m { flex: 0 0 auto; }
+.rl-log-n { font-weight: 800; color: var(--text-main); }
+.rl-log-lv, .rl-log-r, .rl-log-t { font-size: 10px; color: var(--text-muted); }
+.rl-log-x { font-size: 10px; font-weight: 700; color: var(--text-main); opacity: .8; }
+.rl-log-t { margin-left: auto; }
+.rl-log-e { flex: 1 1 100%; font-size: 10px; color: #F87171; }
+.rl-empty { font-size: 11px; color: var(--text-muted); font-style: italic; margin: 6px 0; }
+.rl-hint { font-size: 10px; color: var(--text-muted); line-height: 1.6; margin: 14px 0 0; }
+
+/* Перемикач «Відео / Зображення» в Uniqueizer'і. */
+.uq-tabs { display: flex; gap: 6px; }
+.uq-tab {
+  padding: 7px 14px; border-radius: 10px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.uq-tab:hover { color: var(--text-main); }
+.uq-tab.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+
+/* ═══════════ УНІКАЛІЗАТОР СТАТИКИ ═══════════
+   Сторінка-інструмент: шапка стоїть, гортається лише сітка варіантів —
+   як у решти сторінок після спільного каркаса висоти. */
+.ui-wrap { display: flex; flex-direction: column; min-height: 0; }
+.ui-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex: 0 0 auto; margin-bottom: 12px;
+}
+.ui-head-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+.ui-btn {
+  padding: 8px 14px; border-radius: 10px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+}
+.ui-btn:hover { color: var(--text-main); border-color: var(--border-2); }
+.ui-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
+.ui-btn.is-main:hover { filter: brightness(1.12); }
+.ui-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+
+.ui-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 22px; margin-bottom: 12px; cursor: pointer;
+  border: 1.5px dashed var(--border-2); border-radius: 16px;
+  background: var(--surface-2);
+}
+.ui-drop:hover, .ui-drop.is-over { border-color: var(--accent); background: var(--surface-3); }
+.ui-drop-i { font-size: 20px; font-weight: 900; color: var(--accent); line-height: 1; }
+.ui-drop-t { font-size: 12.5px; font-weight: 800; color: var(--text-main); }
+.ui-drop-s { font-size: 10px; color: var(--text-muted); }
+
+.ui-ctl { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-bottom: 10px; }
+.ui-f { display: flex; flex-direction: column; gap: 4px; }
+.ui-f.is-off { opacity: .35; pointer-events: none; }
+.ui-f-l {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--text-muted);
+}
+.ui-in {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 10px; width: 150px;
+  font-size: 12px; font-weight: 700; color: var(--text-main); outline: none;
+}
+.ui-in:focus { border-color: var(--accent); }
+input.ui-in[type="number"] { width: 90px; }
+input.ui-in[type="range"] { padding: 0; }
+
+.ui-axes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; }
+.ui-axes-l {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--text-muted);
+}
+.ui-ax {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 5px 10px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-size: 11px; font-weight: 700; color: var(--text-main);
+}
+.ui-ax:has(input:checked) { border-color: var(--accent); background: var(--accent-soft, var(--surface-3)); }
+.ui-ax input { width: 13px; height: 13px; accent-color: var(--accent); }
+
+.ui-note { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; min-height: 14px; }
+.ui-group { margin-bottom: 18px; }
+.ui-group-h {
+  font-size: 11px; font-weight: 900; color: var(--text-main);
+  margin: 0 0 8px; display: flex; align-items: baseline; gap: 8px;
+}
+.ui-group-s { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+/* Плитки самі переносяться: варіантів може бути і п'ять, і сорок. */
+.ui-row { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.ui-cell {
+  position: relative; margin: 0; border-radius: 12px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.ui-cell.is-src { border-style: dashed; }
+/* Варіант, який для машини лишився тим самим. Червона рамка тут не
+   прикраса: саме його залили б, думаючи, що зробили роботу. */
+.ui-cell.is-same { border-color: rgba(239,68,68,.55); }
+.ui-cell img { display: block; width: 100%; height: 132px; object-fit: cover; background: #000; }
+.ui-cell figcaption { padding: 6px 8px; display: flex; flex-direction: column; gap: 1px; }
+.ui-cell-n {
+  font-size: 10px; font-weight: 800; color: var(--text-main);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ui-cell-m { font-size: 9px; font-weight: 700; color: var(--text-muted); }
+.ui-badge {
+  position: absolute; top: 6px; left: 6px;
+  padding: 2px 6px; border-radius: 999px;
+  font-size: 10px; font-weight: 900;
+  background: rgba(0,0,0,.62); color: #fff; backdrop-filter: blur(2px);
+}
+.ui-cell.is-same .ui-badge { background: rgba(239,68,68,.85); }
+.ui-dl {
+  position: absolute; top: 6px; right: 6px;
+  width: 22px; height: 22px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 900; text-decoration: none;
+  background: rgba(0,0,0,.62); color: #fff; opacity: 0; transition: opacity .12s;
+}
+.ui-cell:hover .ui-dl { opacity: 1; }
+.ui-hint { font-size: 10px; color: var(--text-muted); line-height: 1.6; margin: 4px 0 0; }
+
+/* ─── Легкі появи ─────────────────────────────────────────────────────
+   Анімуємо ТІЛЬКИ opacity і transform: обидві властивості композитор
+   рахує на відеокарті, без перерахунку розкладки. Нічого важкого —
+   blur, box-shadow, height, width — навмисне не чіпаємо.
+
+   Показ і сховок у дашборді скрізь зроблені через classList.toggle
+   ('hidden'), тобто display:none, а display сам по собі не переходить.
+   Рятують дві речі: transition-behavior: allow-discrete (display
+   тримається, поки йде затухання) і @starting-style (стан, з якого
+   починається поява). Завдяки їм жодного виклику в JS правити не
+   довелось — анімація лишилась цілком у CSS.
+
+   Модалкам даємо саме затухання, без масштабу. У гео-модалці графіки
+   міряють свою ширину одразу після зняття .hidden, а transform міняє
+   те, що повертає getBoundingClientRect — полотна створювались би на
+   півтора відсотка вужчими й такими б і лишились. Меню й бічній панелі
+   зсув не шкодить, там нічого не міряється.
+
+   Перемикання сторінок (.route-off) не чіпаємо: там за один перехід
+   міняються всі секції одразу, і анімувати довелось би вісім елементів
+   замість одного. */
+
+@media (prefers-reduced-motion: no-preference) {
+
+  /* Повноекранні вікна й панелі — саме затухання */
+  .modal-overlay, #settings-modal, #bonus-modal, #close-modal,
+  #datahub-panel, #sheets-panel {
+    transition: opacity .16s ease, display .16s allow-discrete;
+  }
+  .modal-overlay.hidden, #settings-modal.hidden, #bonus-modal.hidden,
+  #close-modal.hidden, #datahub-panel.hidden, #sheets-panel.hidden {
+    opacity: 0;
+  }
+  @starting-style {
+    .modal-overlay:not(.hidden), #settings-modal:not(.hidden),
+    #bonus-modal:not(.hidden), #close-modal:not(.hidden),
+    #datahub-panel:not(.hidden), #sheets-panel:not(.hidden) { opacity: 0; }
+  }
+
+  /* Випадайки — коротше й з крихітним зсувом униз */
+  #month-menu, #team-menu, #rb-cols-menu {
+    transition: opacity .12s ease, transform .12s ease, display .12s allow-discrete;
+    transform: translateY(0);
+  }
+  #month-menu.hidden, #team-menu.hidden, #rb-cols-menu.hidden {
+    opacity: 0; transform: translateY(-4px);
+  }
+  @starting-style {
+    #month-menu:not(.hidden), #team-menu:not(.hidden), #rb-cols-menu:not(.hidden) {
+      opacity: 0; transform: translateY(-4px);
+    }
+  }
+
+  /* Панель кабінета чи домена під'їжджає збоку */
+  #cab-detail, #dm-detail {
+    transition: opacity .14s ease, transform .14s ease, display .14s allow-discrete;
+    transform: translateX(0);
+  }
+  #cab-detail.hidden, #dm-detail.hidden { opacity: 0; transform: translateX(6px); }
+  @starting-style {
+    #cab-detail:not(.hidden), #dm-detail:not(.hidden) { opacity: 0; transform: translateX(6px); }
+  }
+
+  /* Палітра ⌘K показується класом .open, а не .hidden */
+  #cmd-overlay {
+    opacity: 0;
+    transition: opacity .14s ease, display .14s allow-discrete;
+  }
+  #cmd-overlay.open { opacity: 1; }
+  @starting-style { #cmd-overlay.open { opacity: 0; } }
+
+  #cmd-box { transition: transform .14s ease; transform: translateY(0); }
+  @starting-style { #cmd-overlay.open #cmd-box { transform: translateY(-6px); } }
+}
+
+/* ─── Появи, частина друга: самі вікна, сайдбар, вкладки ───
+   Карткам вікон даємо зсув по вертикалі, а НЕ масштаб. Це принципово:
+   getBoundingClientRect повертає трансформовану рамку, тож scale змінив
+   би ширину й висоту, і графіки в гео-модалці, які міряють себе одразу
+   після відкриття, створились би не того розміру. Чистий translate
+   рамку не міняє — рухає, але не розтягує. */
+@media (prefers-reduced-motion: no-preference) {
+
+  .modal-overlay > div,
+  #settings-modal > div,
+  #bonus-modal > div,
+  #close-modal > div {
+    transition: transform .18s cubic-bezier(.2,.7,.3,1), opacity .18s ease;
+    transform: translateY(0);
+  }
+  .modal-overlay.hidden > div,
+  #settings-modal.hidden > div,
+  #bonus-modal.hidden > div,
+  #close-modal.hidden > div { transform: translateY(-10px); opacity: 0; }
+  @starting-style {
+    .modal-overlay:not(.hidden) > div,
+    #settings-modal:not(.hidden) > div,
+    #bonus-modal:not(.hidden) > div,
+    #close-modal:not(.hidden) > div { transform: translateY(-10px); opacity: 0; }
+  }
+
+  /* ─────────── Сайдбар ───────────
+
+     Ширина живе у --sb-w, компактний режим просто міняє змінну. Крива
+     не ease, а з невеликим перельотом: панель ніби має вагу й
+     доїжджає, а не просто гасне на місці.
+
+     Підписи раніше душились через font-size:0 — голому текстовому
+     вузлу не задаси ні прозорості, ні зсуву. Тепер кожен загорнутий у
+     .sb-lbl, і вони з'являються каскадом згори вниз.
+
+     Асиметрія навмисна. РОЗГОРТАННЯ: панель їде, підписи наздоганяють
+     її з затримкою і по черзі — око встигає прочитати рух. ЗГОРТАННЯ:
+     підписи зникають миттєво й усі разом, бо якщо тягнути їх, вони
+     ще мить стирчать із панелі, яка вже вужча за них, і це виглядає
+     як поломка. Те саме правило, що й у вкладках Geo. */
+  /* РОЗГОРТАННЯ — крива з невеликим перельотом: панель приїжджає й
+     трішки доважує, ніби має інерцію. */
+  .app-sidebar {
+    transition: width .34s cubic-bezier(.34, 1.08, .5, 1),
+                flex-basis .34s cubic-bezier(.34, 1.08, .5, 1);
+  }
+  .sb-item {
+    transition: background .15s, color .15s,
+                gap .26s cubic-bezier(.34, 1.08, .5, 1),
+                padding .26s cubic-bezier(.34, 1.08, .5, 1);
+  }
+
+  /* ЗГОРТАННЯ — та сама крива тут читається як дефект: переліт означає,
+     що панель на мить стає ВУЖЧОЮ за кінцеві 64px і відскакує назад.
+     Коли щось приїжджає, це схоже на вагу; коли їде геть — на поламану
+     верстку. Тому назад — рішуче й без відскоку, і трохи швидше. */
+  body.sb-compact .app-sidebar {
+    transition: width .26s cubic-bezier(.4, 0, .2, 1),
+                flex-basis .26s cubic-bezier(.4, 0, .2, 1);
+  }
+  body.sb-compact .sb-item {
+    transition: background .15s, color .15s,
+                gap .2s cubic-bezier(.4, 0, .2, 1),
+                padding .2s cubic-bezier(.4, 0, .2, 1);
+  }
+  body.sb-compact .sb-toggle svg { transition: transform .26s cubic-bezier(.4, 0, .2, 1); }
+  .sb-brand, .sb-search, .sb-scroll, .sb-foot { transition: padding .3s ease; }
+
+  /* Розгортання: підпис виїжджає зліва вслід за панеллю. */
+  .sb-lbl, .sb-brand-name, .sb-search span, .sb-cap {
+    transition: opacity .2s ease, max-width .3s cubic-bezier(.34, 1.08, .5, 1),
+                transform .3s cubic-bezier(.34, 1.08, .5, 1);
+  }
+  /* Згортання: разом і одразу, без каскаду й без затримок. max-width
+     трохи довший за прозорість — текст має встигнути зникнути раніше,
+     ніж його обріже край. */
+  body.sb-compact .sb-lbl,
+  body.sb-compact .sb-brand-name,
+  body.sb-compact .sb-search span {
+    opacity: 0; transform: translateX(-10px);
+    transition: opacity .1s ease, max-width .18s ease, transform .1s ease;
+    transition-delay: 0ms;
+  }
+  body.sb-compact .sb-cap {
+    opacity: 0; transform: translateX(-10px);
+    transition: opacity .1s ease, transform .1s ease,
+                height .2s cubic-bezier(.4, 0, .2, 1),
+                margin .2s cubic-bezier(.4, 0, .2, 1),
+                padding .2s cubic-bezier(.4, 0, .2, 1);
+    transition-delay: 0ms;
+  }
+
+  /* Каскад — лише на появі. Ті самі 14 мс між сусідами, що й у решті
+     списків дашборда.
+
+     body:not(.sb-compact) тут не для краси: без нього ці правила
+     специфічніші за швидке згортання нижче (три класи проти двох із
+     елементом), затримка лишається й на закритті — і підписи ще
+     стирчать із панелі, яка вже вдвічі вужча. */
+  body:not(.sb-compact) .sb-scroll > :nth-child(1) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(1) { transition-delay: 40ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(2) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(2) { transition-delay: 54ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(3) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(3) { transition-delay: 68ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(4) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(4) { transition-delay: 82ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(5) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(5) { transition-delay: 96ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(6) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(6) { transition-delay: 110ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(7) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(7) { transition-delay: 124ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(8) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(8) { transition-delay: 138ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(9) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(9) { transition-delay: 152ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(10) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(10) { transition-delay: 166ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(11) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(11) { transition-delay: 180ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(12) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(12) { transition-delay: 194ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(13) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(13) { transition-delay: 208ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(14) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(14) { transition-delay: 222ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(15) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(15) { transition-delay: 236ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(16) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(16) { transition-delay: 250ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(17) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(17) { transition-delay: 264ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(18) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(18) { transition-delay: 278ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(19) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(19) { transition-delay: 292ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(20) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(20) { transition-delay: 306ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(21) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(21) { transition-delay: 320ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(22) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(22) { transition-delay: 334ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(23) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(23) { transition-delay: 348ms; }
+  body:not(.sb-compact) .sb-scroll > :nth-child(24) .sb-lbl,
+  body:not(.sb-compact) .sb-scroll > .sb-cap:nth-child(24) { transition-delay: 362ms; }
+
+  /* Стрілка перемикача крутиться тією ж кривою, що й панель: інакше
+     вона доїжджає раніше й видно, що це дві різні анімації. */
+  .sb-toggle svg { transition: transform .34s cubic-bezier(.34, 1.08, .5, 1); }
+
+  /* Вкладки всередині гео-модалки — саме затухання, без зсуву:
+     на вкладці Costs полотна міряють себе під час показу. */
+  /* Вкладки Geo Breakdown: стара зникає МИТТЄВО, нова зʼявляється повільно.
+     Перехресне згасання тут виглядало погано — на час анімації обидві
+     панелі лишались у потоці одночасно, і вміст модалки смикався. Тому в
+     transition свідомо немає ні display, ні allow-discrete: вихід не
+     анімуємо взагалі, анімуємо лише появу. */
+  #geo-panel-funnels, #geo-panel-offers, #geo-panel-devices,
+  #geo-panel-placements, #geo-panel-creatives, #geo-panel-costs {
+    transition: opacity .34s ease;
+  }
+  @starting-style {
+    #geo-panel-funnels:not(.hidden), #geo-panel-offers:not(.hidden),
+    #geo-panel-devices:not(.hidden), #geo-panel-placements:not(.hidden),
+    #geo-panel-creatives:not(.hidden), #geo-panel-costs:not(.hidden) { opacity: 0; }
+  }
+}
+
+/* ═══════════ ЖУРНАЛ ЗМІН КАБІНЕТІВ ═══════════ */
+
+/* Лічильник на пункті «Cabinets». Червоний — лише коли справді горить
+   (бан або проблема); решта змін лишається нейтральною, інакше значок
+   перестає щось означати. */
+.sb-item .sb-badge.is-alert {
+  background: rgba(239,68,68,.18); color: #F87171;
+  border: 1px solid rgba(239,68,68,.35);
+}
+
+/* Смуга «що змінилось, поки тебе не було» — над вмістом, на всіх сторінках. */
+#ev-banner { margin-bottom: 12px; }
+.ev-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.ev-bar.is-bad {
+  background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.30);
+}
+.ev-bar-main { flex: 1 1 320px; min-width: 0; }
+.ev-bar-head {
+  font-size: 11px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-main); margin-bottom: 6px;
+}
+.ev-bar-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ev-chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 3px 8px; border-radius: 8px;
+  background: var(--surface-3); border: 1px solid var(--border);
+  font-size: 11px; font-weight: 700;
+}
+.ev-chip b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-main); }
+.ev-chip i { font-style: normal; font-size: 10px; color: var(--text-muted); }
+.ev-more { color: var(--text-muted); }
+.ev-bar-act { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ev-btn {
+  padding: 6px 12px; border-radius: 10px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: var(--accent); color: #fff; border: none; transition: filter .15s;
+}
+.ev-btn:hover { filter: brightness(1.12); }
+.ev-x {
+  width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
+  color: var(--text-muted); font-size: 18px; line-height: 1;
+  background: transparent; border: 1px solid var(--border); transition: color .15s, border-color .15s;
+}
+.ev-x:hover { color: #F87171; border-color: rgba(239,68,68,.4); }
+
+/* Рядок історії — і в бічній панелі, і в спільній стрічці. */
+.ev-row {
+  display: flex; align-items: baseline; gap: 7px;
+  padding: 4px 0; font-size: 11px; font-weight: 700;
+  border-top: 1px solid var(--border);
+}
+.ev-row:first-of-type { border-top: none; }
+.ev-dot { font-size: 14px; line-height: 1; }
+.ev-row-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-main); flex: 0 0 auto;
+}
+.ev-row-txt { flex: 1 1 auto; min-width: 0; }
+.ev-dim { color: var(--text-muted); }
+.ev-tag {
+  font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); background: var(--surface-2);
+  padding: 1px 5px; border-radius: 5px; max-width: 160px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ev-row-at { flex: 0 0 auto; font-size: 10px; color: var(--text-muted); }
+
+.ev-panel { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.ev-panel-head {
+  font-size: 9px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted); margin-bottom: 4px;
+}
+
+/* Спільна стрічка на сторінці кабінетів — згорнута за замовчуванням. */
+.ev-feed-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 7px 11px; border-radius: 10px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 10px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .1em;
+  transition: color .15s, border-color .15s;
+}
+.ev-feed-btn:hover { color: var(--text-main); }
+.ev-feed {
+  margin-top: 6px; padding: 4px 11px; max-height: 260px; overflow-y: auto;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+}
+.ev-off { padding: 8px 0; font-size: 10px; font-weight: 700; color: var(--text-muted); }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Смуга зʼявляється тим самим рухом, що й вікна: зсув, не масштаб. */
+  #ev-banner:not(.hidden) .ev-bar { animation: evIn .28s cubic-bezier(.2,.7,.3,1) both; }
+  @keyframes evIn { from { opacity: 0; transform: translateY(-8px); } }
+  .ev-feed { animation: evIn .22s ease both; }
+}
+
+/* ─── Питання (замість confirm браузера) ───
+   Те саме вікно, що й решта сторінки: та сама картка, ті самі кнопки.
+   Розмито тло, а не затемнено начорно: видно, що сторінка на місці й
+   нікуди не поділась — питання не аварія. */
+
+.askwrap {
+  position: fixed; inset: 0; z-index: 9000;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  background: rgba(6, 6, 12, .62); backdrop-filter: blur(3px);
+  animation: ask-in .12s ease-out;
+}
+@keyframes ask-in { from { opacity: 0 } to { opacity: 1 } }
+.askbox {
+  width: 100%; max-width: 380px; padding: 18px;
+  border-radius: 20px; background: var(--surface-1); border: 1px solid var(--border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+}
+.ask-title {
+  margin: 0 0 8px; font-size: 12px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--text-main);
+}
+.ask-body p {
+  margin: 0 0 8px; font-size: 11px; font-weight: 700; line-height: 1.55;
+  color: var(--text-muted);
+}
+.ask-body p:last-child { margin-bottom: 0; }
+.fb-proxy { display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; }
+.fb-proxy.is-off { opacity: .55; font-style: italic; }
+.fb-proxy.is-on  { color: #34D399; }
+.fb-proxy.is-warn { color: #FBBF24; }
+.ask-in {
+  width: 100%; margin: 10px 0 2px; padding: 9px 11px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-main);
+  font-size: 12px; font-family: inherit;
+}
+.ask-in:focus { outline: none; border-color: var(--accent, #8B5CF6); }
+.ask-row { display: flex; gap: 8px; margin-top: 16px; }
+.ask-row button {
+  flex: 1; padding: 9px 12px; border-radius: 12px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+  transition: background .15s, color .15s;
+}
+.ask-row button:hover { background: var(--surface-3); color: var(--text-main); }
+.ask-yes { background: #7C3AED !important; border-color: #7C3AED !important; color: #fff !important; }
+.ask-yes:hover { filter: brightness(1.12); }
+/* Незворотне — червоним. Колір тут єдине, що встигають прочитати. */
+.ask-yes.is-bad { background: #DC2626 !important; border-color: #DC2626 !important; }
+
+/* Валюта поруч із карткою: тим самим шрифтом, але притлумлена — вона
+   уточнює суму, а не є сумою. */
+.cab-cur { color: var(--text-muted); font-weight: 900; }
+/* «was» поруч із карткою: та сама приглушена подача, що й валюта, але
+   з відступом — інакше злипається з номером. */
+.cab-cur + .cab-cur, .cd-was { margin-left: 5px; }
+.cab-fb .cab-cur { margin-left: 5px; }
+
+/* ═══════════ МІТКИ Й ПОСИЛАННЯ У ЗВІТАХ ═══════════
+   Три різні сутності, тому три різні кольори: мітка дня фіолетова,
+   номер креатива сірий із фіолетовим хвостом тега, посилання синє.
+   Однаковий вигляд робив би з них один список, яким вони не є. */
+
+.rp-tags { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.rp-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; border-radius: 8px;
+  background: rgba(139, 92, 246, .16); border: 1px solid rgba(139, 92, 246, .32);
+  color: #c4b5fd; font-size: 10px; font-weight: 900; text-transform: none;
+}
+.rp-chip button { border: 0; background: none; color: inherit; cursor: pointer; opacity: .5; line-height: 1; }
+.rp-chip button:hover { opacity: 1; }
+/* Поле ховається, поки в нього не влучили: порожній інпут у кожному
+   рядку списку читається як незаповнена форма. */
+.rp-tag-add {
+  width: 52px; padding: 1px 6px; border-radius: 8px;
+  background: transparent; border: 1px dashed var(--border); color: var(--text-muted);
+  font-size: 10px; font-weight: 800; outline: none; opacity: .45; transition: opacity .15s, width .15s;
+}
+.rp-tag-add:hover, .rp-tag-add:focus { opacity: 1; width: 110px; border-style: solid; border-color: var(--accent); }
+
+.rp-cid {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  padding: 0 5px; border-radius: 7px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em;
+}
+.rp-cid:hover { border-color: var(--accent); color: var(--text-main); }
+/* Стрілка після номера: чип не просто підсвічує знайдене, він кудись
+   веде, і це має бути видно до кліку, а не після. */
+.rp-cid:after { content: "\2197"; font-size: .8em; opacity: .45; }
+.rp-cid:hover:after { opacity: 1; }
+.rp-cid-t { font-style: normal; font-weight: 900; font-size: 9px; color: #c4b5fd; }
+.rp-cid-t.is-off { color: var(--text-muted); opacity: .6; }
+
+.rp-link {
+  display: inline-block; padding: 1px 8px; margin: 0 2px; border-radius: 8px;
+  background: rgba(59, 130, 246, .14); border: 1px solid rgba(59, 130, 246, .32);
+  color: #93c5fd; font-weight: 800; text-decoration: none;
+}
+.rp-link:hover { background: rgba(59, 130, 246, .26); color: #dbeafe; }
+
+
+/* ═══════════ ПІДКАЗКА ПРО СИНТАКСИС ЗВІТУ ═══════════
+   Наведення, а не модалка: те, що читають раз на місяць, не варте
+   кліку, а те, що читають щодня, не має заважати. tabindex + :focus
+   дає те саме з клавіатури й на дотик, де наведення не буває. */
+
+.rp-help { position: relative; display: inline-flex; outline: none; }
+.rp-help-i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px; cursor: help;
+  border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-muted); font-size: 11px; font-weight: 900; font-style: italic;
+  transition: color .15s, border-color .15s;
+}
+.rp-help:hover .rp-help-i, .rp-help:focus .rp-help-i { color: var(--text-main); border-color: var(--accent); }
+
+.rp-help-box {
+  position: absolute; top: 28px; right: 0; z-index: 60; width: 330px;
+  display: none; padding: 12px 14px; border-radius: 16px;
+  background: var(--surface-1); border: 1px solid var(--border);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, .5);
+  text-transform: none; letter-spacing: 0;
+}
+.rp-help:hover .rp-help-box, .rp-help:focus .rp-help-box { display: block; }
+.rp-help-box > b {
+  display: block; margin-bottom: 8px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-main);
+}
+.rp-help-box i {
+  display: block; margin-bottom: 5px; font-style: normal;
+  font-size: 11px; font-weight: 600; line-height: 1.45; color: var(--text-muted);
+}
+.rp-help-box i b { color: var(--text-main); font-weight: 800; }
+/* Сам знак показуємо так, як він виглядатиме в рядку: підказка про
+   розмітку, набрана однаковим шрифтом, нічого не підказує. */
+.rp-help-box em {
+  display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 5px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-style: normal;
+  font-weight: 800; color: var(--text-main);
+}
+.rp-help-box em.is-ok   { color: #34D399; border-color: rgba(52, 211, 153, .35); }
+.rp-help-box em.is-bad  { color: #F87171; border-color: rgba(248, 113, 113, .35); }
+.rp-help-box em.is-warn { color: #FBBF24; border-color: rgba(251, 191, 36, .35); }
+.rp-help-box em.is-plan { color: #818CF8; border-color: rgba(129, 140, 248, .35); }
+.rp-help-box u {
+  display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 10px; font-weight: 700; color: var(--text-muted); opacity: .8;
+  text-decoration: none;
+}
+
+/* ═══════════ ФАЙЛОВИЙ ПРОВІДНИК ═══════════
+   Вікно, як Sheets і Data Hub. Файли лежать у приватному бакеті —
+   чому саме так, написано у FILES.sql. */
+.fl-bar { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; }
+/* Сам <input type="file"> не показуємо ніколи: кнопка «+ Upload»
+   виглядає як решта кнопок, а системний елемент вибору файлів —
+   ні. Ховаємо власним правилом, а не класом Tailwind: воно тут
+   єдине, що стоїть між людиною й чужорідним віджетом. */
+#fl-input { display: none !important; }
+.fl-count { font-size: 10px; color: var(--text-muted); font-weight: 700; }
+.fl-btn {
+  padding: 6px 12px; border-radius: 10px; flex: 0 0 auto;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+  text-decoration: none; display: inline-flex; align-items: center;
+}
+.fl-btn:hover { color: var(--text-main); border-color: var(--border-2); }
+.fl-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
+.fl-empty { font-size: 11px; color: var(--text-muted); padding: 18px 2px; }
+
+/* Кидати файл можна на все вікно: коли він уже в руці, цілитись у
+   маленьку мішень — зайва робота, а промах поверх сторінки відкрив би
+   його у вкладці й загубив те, що було на екрані. */
+.fl-drop {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  border: 1px dashed transparent; border-radius: 12px; padding: 4px;
+}
+.fl-drop.is-over {
+  border-color: var(--accent); background: rgba(139, 92, 246, .06);
+}
+
+/* Сітка, а не таблиця: стовпчиків сім, і всі, крім назви й нотатки,
+   вузькі та передбачувані. */
+.fl-tbl { display: flex; flex-direction: column; }
+.fl-row {
+  display: grid; align-items: center; gap: 10px;
+  grid-template-columns: 76px minmax(0, 1.6fr) 130px minmax(0, 1fr) 62px 78px auto;
+  padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 11.5px;
+}
+.fl-row:hover { background: var(--surface-2); }
+.fl-kind {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; text-align: center;
+}
+.fl-name {
+  font-weight: 700; color: var(--text-main); text-align: left;
+  background: none; border: 0; padding: 0; font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.fl-name:hover { color: var(--accent); }
+.fl-cab { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fl-note {
+  font-size: 10.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fl-at { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fl-acts { display: flex; gap: 5px; justify-content: flex-end; }
+.fl-mini {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  padding: 4px 8px; border-radius: 8px; text-decoration: none;
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
+  display: inline-flex; align-items: center;
+}
+.fl-mini:hover { color: var(--text-main); border-color: var(--border-2); }
+.fl-mini.is-bad:hover { color: #F87171; border-color: rgba(239, 68, 68, .4); }
+
+.fl-form {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: 12px; padding: 12px; margin-bottom: 12px;
+}
+.fl-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fl-f-l {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted);
+}
+.fl-in {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+  padding: 6px 9px; font-size: 11.5px; font-weight: 700; color: var(--text-main); outline: none;
+  /* <select> має власну, трохи більшу висоту, ніж <input>. Без спільної
+     стелі рядок їде сходинкою на два пікселі — помітно саме тому, що
+     поля стоять поруч. */
+  box-sizing: border-box; min-height: 28px;
+}
+.fl-in:focus { border-color: var(--accent); }
+/* Розтягуватись має ПОЛЕ, а не сам інпут. Різниця не дрібна: .fl-f
+   стоїть колонкою, тож flex на інпуті ріс не вшир, а вгору, і 280px
+   ставали не шириною, а висотою — звідси й коробки на пів екрана. */
+.fl-f.is-wide { flex: 1 1 280px; min-width: 240px; }
+.fl-form-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* Перегляд. Висота стала: рамка не вміє казати, скільки їй треба, а
+   стрибок висоти від кожного відкриття зіпсував би вікно. */
+.fl-view-box {
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: 12px; padding: 10px; margin-bottom: 12px;
+}
+.fl-view-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.fl-view-t {
+  font-size: 11.5px; font-weight: 800; color: var(--text-main); flex: 1 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fl-frame {
+  width: 100%; height: min(58vh, 560px); border: 0; border-radius: 10px;
+  background: var(--surface);
+}
+/* Картинку вписуємо, а не розтягуємо: креатив треба побачити цілим. */
+.fl-img {
+  display: block; max-width: 100%; max-height: min(58vh, 560px);
+  margin: 0 auto; border-radius: 10px; object-fit: contain;
+}
+.fl-view-s { font-size: 10px; color: var(--text-muted); margin: 8px 0 0; }
+.fl-txt {
+  margin: 0; max-height: 52vh; overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px; line-height: 1.55; color: var(--text-main);
+  white-space: pre-wrap; word-break: break-word;
+  background: var(--surface-2); border-radius: 8px; padding: 10px 12px;
+}
+.fl-where {
+  font-size: 9px; color: var(--text-muted); margin: 3px 0 0;
+  font-weight: 700; letter-spacing: .02em;
+}
+#fl-view.hidden { display: none; }
+
+#files-modal.hidden { display: none; }
+
+/* ═══════════ ТЕЛЕФОН ═══════════
+
+   Досі сторінка була зроблена під монітор і на телефоні просто
+   обрізалась: список кабінетів у 732px, панель правил у 452px і
+   таблиця кампаній, де сама назва займала 320 пікселів із 383. Тобто
+   видно було назву — і нічого більше, а по цифри сюди й заходять.
+
+   Нічого не ховаємо: усі стовпчики лишаються, просто доходити до них
+   треба вбік. Сховати на телефоні те, що є на моніторі, означало б, що
+   з телефона дашборд відповідає на менше питань, ніж насправді вміє. */
+@media (max-width: 720px) {
+  /* Список, картка й правила стають одне під одним: поруч їм на 390
+     пікселях нема як стояти, і правила просто виїжджали за екран. */
+  .cab-row { flex-wrap: wrap; }
+  #rules-panel, #cab-detail { width: 100% !important; }
+  /* Список кабінетів ширший за екран — гортаємо вбік, а не обрізаємо.
+     Обрізане виглядає як «даних немає», прокрутка — як «дані далі».
+     Скролер саме навколо таблиці: у #cab-list живе ще й розбір кабінета
+     зі своєю прокруткою, і другий скролер навколо нього заважав би. */
+  .cab-scroll { overflow-x: auto; }
+
+  /* Назва кампанії. Головна вада на телефоні: 340px стелі з'їдали
+     майже весь екран, і поруч із нею не лишалось місця під жодну
+     цифру. 44vw лишає більшу половину ширини числам. */
+  .cd-name { max-width: 44vw; }
+  /* Відступи дерева вдвічі менші: на телефоні кожні десять пікселів
+     ліворуч — це десять пікселів, яких бракує назві. */
+  .cd-d1 .cd-name { padding-left: 12px; }
+  .cd-d2 .cd-name { padding-left: 24px; }
+  .cd-tbl td, .cd-tbl th { padding: 6px 6px; }
+  /* Стовпчиків п'ятнадцять, і на вузькому екрані вони й так тісні:
+     менша стеля робить прокрутку коротшою, не з'їдаючи читабельність. */
+  .cd-tbl { min-width: 1000px; }
+  /* Висоти даємо більше: горизонталі на телефоні бракує, вертикалі — ні. */
+  .cd-wrap { height: min(calc(72vh - 20px), 620px); }
+
+  /* Док не влазить у ряд — гортаємо його, а не обрізаємо кнопки.
+     Обрізана кнопка виглядає як кнопка, якої немає. */
+  #app-dock {
+    overflow-x: auto !important; max-width: calc(100vw - 16px) !important;
+    justify-content: flex-start !important;
+  }
+  #app-dock::-webkit-scrollbar { height: 0; }
+}
+
+/* Перелік кабінетів у підсумку Sync now. Моноширинний навмисно: ідентифікатори
+   стоять один під одним, і свій серед сорока знаходиться очима, а не читанням. */
+.fb-cabs {
+  display: block;
+  margin-top: .35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: .85;
+}
