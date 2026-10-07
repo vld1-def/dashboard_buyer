@@ -1681,6 +1681,33 @@ function apParseMask(mask, parts, adName, country) {
    окремо: мовчки залити пів-імпорту з гео «??» — найгірше, що тут може
    статись, і про це треба сказати вголос. */
 let pwaMissed = 0;
+/* ГЕО З МАСКИ, ЯКЕ НЕ Є ГЕО.
+
+   Маска може видати на місці {geo} що завгодно — номер, хвіст назви,
+   частину крео. Досі таке значення все одно ставало гео: toGeoCode
+   обрізав «2087290858548700» до «20» і йшов далі, а колонка Country
+   чи введене при імпорті значення не бралися взагалі — маска ж уже
+   щось «знайшла». Рядки залітали з гео «20» або «2», офер по такому
+   гео не підставлявся (бо оферів для «2» ні в кого немає), і єдиним
+   слідом був один console.warn.
+
+   Тепер значення з маски приймається лише якщо це справді код країни
+   або назва, яку ми знаємо. Інакше беремо те, що дає звіт — і рахуємо
+   такі рядки, щоб сказати про них вголос: тихе гео «20» помітно вже
+   аж у звітах за місяць. */
+let geoMaskBad = 0;
+function geoPick(fromMask, fromReport) {
+  const mask = String(fromMask || '').trim();
+  if (mask) {
+    const code = toGeoCode(mask);
+    if (/^[A-Za-z]{2}$/.test(code)) return code;
+    geoMaskBad++;
+  }
+  return toGeoCode(fromReport) || '';
+}
+// Скільки рядків дістали офер із назви — щоб було видно, що він узявся
+// сам, а не «завжди так було».
+let offerFromNameHits = 0;
 /* ДВІ РЕЧІ, ЯКИХ ТУТ БРАКУВАЛО, І ЧЕРЕЗ ЯКІ ГЕО «НЕ ВПІЗНАВАЛОСЬ».
 
    Перша: колонка Country. APP-режим давно бере її як запасний варіант,
@@ -1695,7 +1722,7 @@ let pwaMissed = 0;
    не проганяв. */
 function parsePwaCampaign(campName, country) {
   const r = apParseMask(pwaMask, String(campName || '').split('_'), '', country || '');
-  const geo = toGeoCode((r && r.geo) || country || '');
+  const geo = geoPick(r && r.geo, country);
   /* Промах шаблону рахуємо окремо від гео: колонка Country могла
      врятувати гео, але ktid із назви однаково не дістали, і мовчати про
      це не можна. */
@@ -1752,6 +1779,36 @@ function matchOffer(raw) {
   if (!s) return '';
   for (const o of knownOffers) if (s.includes(o.toLowerCase())) return o;
   return '';
+}
+
+/* ОФЕР ІЗ НАЗВИ — І ЧОМУ ЦЕ ПРАЦЮЄ ЛИШЕ ТАМ, ДЕ Є ТЕКСТ.
+
+   У звіті Facebook офера немає й не буде: це наше поняття, не їхнє.
+   Досі він лишався порожнім і мав приїхати або з Keitaro, або з
+   єдиного кандидата по гео. Коли Keitaro не заливають, а в гео оферів
+   два — рядок доводилось заповнювати руками, хоч бренд стоїть просто
+   в назві кампанії.
+
+   В APP-режимі {app} — це і є бренд, той самий, під яким офер лежить
+   у payouts. У PWA на тому місці номер воронки (10708), і орієнтуватись
+   по ньому неможливо — там беремо назву воронки з мапінгу, вона теж
+   текст. Нема ні того, ні того — лишається порожньо, як і було.
+
+   Беремо тільки однозначний збіг. Два різних офери в одному рядку —
+   це вибір, і зробити його за людину означало б тихо приписати частину
+   виручки не тому оферу. «22bet» усередині «22bet[crash]» другим
+   кандидатом не рахується: це той самий офер, лише коротшою назвою, і
+   виграє довша — так само, як у matchOffer. */
+function offerFromName(raw) {
+  const s = String(raw || '').toLowerCase();
+  const best = matchOffer(s);
+  if (!best) return '';
+  const low = best.toLowerCase();
+  const other = knownOffers.some(o => {
+    const l = o.toLowerCase();
+    return l !== low && !low.includes(l) && s.includes(l);
+  });
+  return other ? '' : best;
 }
 
 // Keitaro віддає розміщення ОДНИМ рядком ("Instagram_Reels", "Audience_Network_Native"),
@@ -2087,7 +2144,9 @@ function renderFxReport(used) {
 function renderAgentReport(noAgent, hidden) {
   const el = document.getElementById('agent-report');
   if (!el) return;
-  if (!noAgent.size && !hidden.size && !pwaMissed) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  if (!noAgent.size && !hidden.size && !pwaMissed && !offerFromNameHits && !geoMaskBad) {
+    el.classList.add('hidden'); el.innerHTML = ''; return;
+  }
   const chips = arr => [...arr].slice(0, 20).map(a =>
       `<span class="inline-block px-1.5 py-0.5 rounded bg-black/30 font-mono text-[10px] ml-1">${a}</span>`).join('')
     + (arr.size > 20 ? `<span class="opacity-50"> …+${arr.size - 20} more</span>` : '');
@@ -2105,6 +2164,23 @@ function renderAgentReport(noAgent, hidden) {
     <span class="font-mono text-rose-200">${pwaMask}</span> — their KTID became <b>0</b>.
     Geo was taken from the <b>Country</b> column where the report had one; where it did not, geo is <b>??</b>.
     Fix the pattern in <b>Settings &rarr; PWA</b> and import again.</div></div>`);
+  /* Зсунута маска — найдорожча мовчазна помилка тут: дані заливаються,
+     виглядають справжніми, і тільки гео в них — обрізаний номер. */
+  if (geoMaskBad) parts.push(`<div class="flex gap-2 items-start text-rose-300">
+    <span>&#9888;&#65039;</span><div>In <b>${geoMaskBad}</b> rows the <b>{geo}</b> slot of the
+    ${trafficMode === 'app' ? 'APP' : 'PWA'} pattern held something that is not a country
+    (a number, a tail of the name) &mdash; geo was taken from the report instead.
+    The pattern is shifted: fix it in <b>Settings &rarr; ${trafficMode === 'app' ? 'APP' : 'PWA'}</b>.
+    <span class="text-slate-500">Until you do, the funnel (KTID) is read from the wrong slot too.</span></div></div>`);
+
+  /* Офер, підставлений сам, виглядає в прев'ю точно так само, як
+     вибраний руками. Тож кажемо, скільки рядків його дістали й звідки —
+     інакше залишається тільки вірити на слово. */
+  if (offerFromNameHits) parts.push(`<div class="flex gap-2 items-start text-slate-300">
+    <span>&#127991;</span><div>Offer filled in from the campaign name for <b>${offerFromNameHits}</b> rows
+    (${trafficMode === 'app' ? 'the <b>{app}</b> token, then the funnel name' : 'the funnel name'}) &mdash;
+    only where exactly one of your offers matched.
+    <span class="text-slate-500">Check the <b>Offer</b> column before importing; you can change any row.</span></div></div>`);
   el.innerHTML = parts.join('');
   el.classList.remove('hidden');
 }
@@ -2426,6 +2502,8 @@ async function processCampaignData(map, lines) {
   const fxUsed = {};   // для звіту: скільки і за яким курсом перерахували
   const accNoAgent = new Set(), accHiddenAgent = new Set();
   pwaMissed = 0;
+  offerFromNameHits = 0;
+  geoMaskBad = 0;
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
@@ -2435,9 +2513,6 @@ async function processCampaignData(map, lines) {
     const date = row[map.endDate] || row[map.date] || '';
     const country = map.geo !== -1 ? row[map.geo] : '';
 
-    // Offer тепер пустий, щоб ти заповнював сам (або підставиться з Keitaro)
-    const offer = "";
-
     let geo, ktid, accName, cid;
     if (trafficMode === 'app') {
       // APP: назва кампанії — токени через "_", позиції задані в налаштуваннях
@@ -2445,7 +2520,7 @@ async function processCampaignData(map, lines) {
       ktid = a.app || '0';                          // назва апки грає роль KTID
       accName = a.acc || row[map.acc] || 'Unknown'; // якщо позиції немає — з колонки
       cid = a.cid || 'No CID';
-      geo = toGeoCode(a.geo) || '??';
+      geo = geoPick(a.geo, country) || '??';
     } else {
       // PWA: Mbank_KG_10708-4d07_30/07_L5 — позиції задані шаблоном
       const w = parsePwaCampaign(campName, country);
@@ -2458,6 +2533,13 @@ async function processCampaignData(map, lines) {
     // [Постачальник] у назві воронки — це лише мітка для вибору профілю сабів,
     // у дані вона не йде, щоб воронка збігалася зі старими записами.
     const funnelName = apFunnelClean(mappingDB.funnels[ktid]) || 'Unknown (' + ktid + ')';
+
+    /* Офер за назвою: в APP спершу сама назва апки, потім воронка; у
+       PWA тільки воронка. Keitaro, якщо його заливають, однаково
+       переб'є це значення при злитті — там дані точніші. */
+    const offer = (trafficMode === 'app' ? offerFromName(ktid) : '') || offerFromName(funnelName);
+    if (offer) offerFromNameHits++;
+
     const mappedAgent = mappingDB.providers[accName];
     // Акаунт без привʼязки мовчки стає Direct(0%) — комісія агента просто
     // не рахується. Збираємо такі, щоб показати після імпорту.

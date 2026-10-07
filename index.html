@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.10 18:47">
+  <meta name="build" content="build 07.10 07:42">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5034,7 +5034,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.10 18:47</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 07.10 07:42</div>
     </div>
   </aside>
 
@@ -17638,6 +17638,25 @@ const FBR_CONV = [
   ['inst', 'Install / lead', 'Leads']
 ];
 
+/* ЗАГОЛОВОК МУСИТЬ НАЗИВАТИ ТЕ, ЩО В КОЛОНЦІ.
+
+   Третій слот приймає і лід, і інсталь застосунку — у даних дашборда
+   це одне поле (daily_stats.installs), тож Form.html заводить туди
+   обидві назви однаково. Через це заголовок довго стояв сталим:
+   «Leads» хоч ти вибери mobile_app_install.
+
+   Для імпорту це справді нічого не міняло. Для людини — міняло все:
+   вибираєш install, відкриваєш файл, а там Leads, і єдиний спосіб
+   перевірити, що пішло насправді, — звіряти числа руками.
+
+   Тепер заголовок іде за вибраною подією. Для APP-режиму це ще й
+   точніше: коли у файлі поруч стоять обидві колонки, імпорт віддає
+   перевагу «App installs» — тож назва, що збігається з подією, веде
+   число туди, куди й задумано. */
+const FBR_INSTALL_EVENTS = ['mobile_app_install', 'app_install'];
+const fbrHead = (key, label, type) =>
+  (key === 'inst' && FBR_INSTALL_EVENTS.includes(type)) ? 'App installs' : label;
+
 /* ЩО БЕРЕТЬСЯ САМО.
 
    Спершу вибір був обовʼязковий: три списки, і поки в них не ткнеш,
@@ -17909,7 +17928,7 @@ function fbrTable(rows, cur, bd) {
   FBR_CONV.forEach(([key, , label]) => {
     const type = fbrPick(key);
     if (!type) return;   // сказали не вивантажувати
-    head.push(label);
+    head.push(fbrHead(key, label, type));
     take.push(r => fbrAction(r, type));
   });
 
