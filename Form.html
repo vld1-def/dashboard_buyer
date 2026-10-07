@@ -1681,6 +1681,30 @@ function apParseMask(mask, parts, adName, country) {
    окремо: мовчки залити пів-імпорту з гео «??» — найгірше, що тут може
    статись, і про це треба сказати вголос. */
 let pwaMissed = 0;
+/* ГЕО З МАСКИ, ЯКЕ НЕ Є ГЕО.
+
+   Маска може видати на місці {geo} що завгодно — номер, хвіст назви,
+   частину крео. Досі таке значення все одно ставало гео: toGeoCode
+   обрізав «2087290858548700» до «20» і йшов далі, а колонка Country
+   чи введене при імпорті значення не бралися взагалі — маска ж уже
+   щось «знайшла». Рядки залітали з гео «20» або «2», офер по такому
+   гео не підставлявся (бо оферів для «2» ні в кого немає), і єдиним
+   слідом був один console.warn.
+
+   Тепер значення з маски приймається лише якщо це справді код країни
+   або назва, яку ми знаємо. Інакше беремо те, що дає звіт — і рахуємо
+   такі рядки, щоб сказати про них вголос: тихе гео «20» помітно вже
+   аж у звітах за місяць. */
+let geoMaskBad = 0;
+function geoPick(fromMask, fromReport) {
+  const mask = String(fromMask || '').trim();
+  if (mask) {
+    const code = toGeoCode(mask);
+    if (/^[A-Za-z]{2}$/.test(code)) return code;
+    geoMaskBad++;
+  }
+  return toGeoCode(fromReport) || '';
+}
 // Скільки рядків дістали офер із назви — щоб було видно, що він узявся
 // сам, а не «завжди так було».
 let offerFromNameHits = 0;
@@ -1698,7 +1722,7 @@ let offerFromNameHits = 0;
    не проганяв. */
 function parsePwaCampaign(campName, country) {
   const r = apParseMask(pwaMask, String(campName || '').split('_'), '', country || '');
-  const geo = toGeoCode((r && r.geo) || country || '');
+  const geo = geoPick(r && r.geo, country);
   /* Промах шаблону рахуємо окремо від гео: колонка Country могла
      врятувати гео, але ktid із назви однаково не дістали, і мовчати про
      це не можна. */
@@ -2120,7 +2144,7 @@ function renderFxReport(used) {
 function renderAgentReport(noAgent, hidden) {
   const el = document.getElementById('agent-report');
   if (!el) return;
-  if (!noAgent.size && !hidden.size && !pwaMissed && !offerFromNameHits) {
+  if (!noAgent.size && !hidden.size && !pwaMissed && !offerFromNameHits && !geoMaskBad) {
     el.classList.add('hidden'); el.innerHTML = ''; return;
   }
   const chips = arr => [...arr].slice(0, 20).map(a =>
@@ -2140,6 +2164,15 @@ function renderAgentReport(noAgent, hidden) {
     <span class="font-mono text-rose-200">${pwaMask}</span> — their KTID became <b>0</b>.
     Geo was taken from the <b>Country</b> column where the report had one; where it did not, geo is <b>??</b>.
     Fix the pattern in <b>Settings &rarr; PWA</b> and import again.</div></div>`);
+  /* Зсунута маска — найдорожча мовчазна помилка тут: дані заливаються,
+     виглядають справжніми, і тільки гео в них — обрізаний номер. */
+  if (geoMaskBad) parts.push(`<div class="flex gap-2 items-start text-rose-300">
+    <span>&#9888;&#65039;</span><div>In <b>${geoMaskBad}</b> rows the <b>{geo}</b> slot of the
+    ${trafficMode === 'app' ? 'APP' : 'PWA'} pattern held something that is not a country
+    (a number, a tail of the name) &mdash; geo was taken from the report instead.
+    The pattern is shifted: fix it in <b>Settings &rarr; ${trafficMode === 'app' ? 'APP' : 'PWA'}</b>.
+    <span class="text-slate-500">Until you do, the funnel (KTID) is read from the wrong slot too.</span></div></div>`);
+
   /* Офер, підставлений сам, виглядає в прев'ю точно так само, як
      вибраний руками. Тож кажемо, скільки рядків його дістали й звідки —
      інакше залишається тільки вірити на слово. */
@@ -2470,6 +2503,7 @@ async function processCampaignData(map, lines) {
   const accNoAgent = new Set(), accHiddenAgent = new Set();
   pwaMissed = 0;
   offerFromNameHits = 0;
+  geoMaskBad = 0;
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
@@ -2486,7 +2520,7 @@ async function processCampaignData(map, lines) {
       ktid = a.app || '0';                          // назва апки грає роль KTID
       accName = a.acc || row[map.acc] || 'Unknown'; // якщо позиції немає — з колонки
       cid = a.cid || 'No CID';
-      geo = toGeoCode(a.geo) || '??';
+      geo = geoPick(a.geo, country) || '??';
     } else {
       // PWA: Mbank_KG_10708-4d07_30/07_L5 — позиції задані шаблоном
       const w = parsePwaCampaign(campName, country);
