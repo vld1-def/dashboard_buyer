@@ -1,0 +1,68 @@
+<!-- ═══════════ DOMAINS ═══════════ -->
+<div id="domains-section" class="card p-5 rounded-3xl shadow-xl">
+  <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
+    <div>
+      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Domains</h2>
+      <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Which domain serves which PWA, and whether it still answers</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button onclick="dmCheck()" id="dm-check-btn"
+        title="Real HTTP codes, Google blacklists and filtering DNS — from the server. Checks the whole list and skips domains already flagged; filter or search first to check exactly those rows, flagged ones included. No server — falls back to a browser check that can only tell whether a domain answers."
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-emerald-300 hover:text-white hover:bg-emerald-600"
+        style="border:1px solid rgba(16,185,129,.35)">Check</button>
+      <button onclick="dmTestAlert()" id="dm-test-btn"
+        title="Sends one Telegram message to you only, in the exact shape a real alert takes: the domain, what happened to it, and which cabinets and campaigns are live on it right now. Nothing is checked and nothing is paused."
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-muted-dynamic hover:text-white"
+        style="border:1px solid var(--border)">Test alert</button>
+      <button onclick="dmCheckHelp()"
+        title="What the check needs, and what to do when the server does not answer"
+        class="px-2 py-2 rounded-xl text-[10px] font-black transition text-muted-dynamic hover:text-white"
+        style="border:1px solid var(--border)">?</button>
+      <span id="dm-quota" class="hidden text-[9px] font-black uppercase tracking-widest cursor-help"></span>
+      <button onclick="dmTogglePaste()"
+        class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-dynamic hover:brightness-125"
+        style="background:var(--surface-2);border:1px solid var(--border)">Paste list</button>
+      <select id="dm-group" onchange="dmSetGroup(this.value)"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
+        <option value="pwa">Group: PWA</option>
+        <option value="status">Group: status</option>
+        <option value="">No grouping</option>
+      </select>
+      <input id="dm-search" oninput="dmRender()" placeholder="Domain, PWA, note…"
+        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
+    </div>
+  </div>
+
+  <div id="dm-tiles" class="mb-4"></div>
+
+  <!-- Вставка списку з текстового файлу -->
+  <div id="dm-paste" class="hidden mb-4">
+    <div class="rounded-2xl p-4" style="background:var(--surface-2);border:1px solid var(--border)">
+      <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <p class="text-[10px] font-black uppercase tracking-widest" style="color:var(--text-muted)">Paste your list</p>
+        <select id="dm-paste-group" onchange="dmPastePreview()"
+          class="bg-black/25 border border-white/10 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
+          <option value="">Group: from the text</option>
+        </select>
+      </div>
+      <p class="text-[10px] font-bold mb-2" style="color:var(--text-muted)">A line without a dot is read as a PWA name, everything under it belongs to that PWA.
+        Bullets, numbering, <span class="font-mono">https://</span> and paths are stripped. Several domains on one line are fine.</p>
+      <textarea id="dm-paste-text" rows="8" oninput="dmPastePreview()" spellcheck="false"
+        class="w-full bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[11px] font-mono text-dynamic outline-none focus:border-violet-500"
+        placeholder="Melbet&#10;  melbet-eg1.com&#10;  melbet-eg2.com&#10;&#10;Mostbet&#10;  mostbet-uz1.top"></textarea>
+      <div id="dm-paste-preview" class="text-[11px] font-bold mt-2" style="color:var(--text-muted)"></div>
+      <div class="flex gap-2 mt-3">
+        <button onclick="dmPasteSave()" id="dm-paste-save"
+          class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-violet-600 text-white hover:brightness-110 transition">Add</button>
+        <button onclick="dmTogglePaste()"
+          class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest text-muted-dynamic hover:text-white transition"
+          style="background:var(--surface-3)">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex gap-4 items-start">
+    <div id="dm-list" class="flex-1 min-w-0"></div>
+    <div id="dm-detail" class="hidden w-[330px] shrink-0"></div>
+  </div>
+</div>

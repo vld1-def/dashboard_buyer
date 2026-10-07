@@ -1,0 +1,478 @@
+<!-- ═══════════ ЕКРАН ЗАВАНТАЖЕННЯ ═══════════
+
+     Стоїть у розмітці, а не створюється скриптом, і саме тому працює:
+     window.onload спрацьовує ПІСЛЯ всіх ресурсів, тож намальований з
+     JS лоадер з'явився б аж тоді, коли ховати вже нічого. А приховати
+     треба саме проміжок до нього — той, де каркас уже видно, а чисел
+     у ньому ще немає.
+
+     Кроки тут справжні: смугу рухає сам процес завантаження, а не
+     таймер. Підроблений прогрес показує 90% і на живій сторінці, і на
+     мертвій — тобто не показує нічого. -->
+<div id="boot">
+  <div class="boot-box">
+    <div class="boot-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+    </div>
+    <p class="boot-name">Dashboard</p>
+    <div class="boot-bar"><div id="boot-fill"></div></div>
+    <p id="boot-step">Starting</p>
+  </div>
+</div>
+<script>
+/* Визначаємо одразу, а не в onload: до onload ще треба дожити, і саме
+   на шляху туди ці функції потрібні. */
+(function () {
+  var box = document.getElementById('boot'), gone = false;
+
+  window.bootStep = function (label, pct) {
+    if (gone || !box) return;
+    var s = document.getElementById('boot-step'), f = document.getElementById('boot-fill');
+    if (s && label) s.textContent = label;
+    if (f && pct)   f.style.width = pct + '%';
+    arm();                       // крок зроблено — відлік починається заново
+  };
+
+  window.bootDone = function () {
+    if (gone || !box) return;
+    // Спершу добиваємо смугу до кінця, і лише потім ставимо прапорець:
+    // після нього bootStep уже нічого не робить.
+    bootStep(null, 100);
+    gone = true;
+    clearTimeout(t);
+    box.classList.add('is-done');
+    // Прибираємо з дерева після згасання: невидиме скло на весь екран
+    // ловило б кліки по дашборду під собою.
+    setTimeout(function () { box.remove(); }, 420);
+  };
+
+  /* Запобіжник. Що завгодно може не відповісти — Supabase, CDN, мережа
+     в метро, — і тоді людина лишиться перед матовим склом без жодного
+     способу його прибрати. Напівпорожній дашборд гірший за дашборд із
+     даними, але кращий за глуху стіну.
+
+     Рахуємо ПРОСТІЙ, а не загальний час: кожен крок відлік обнуляє.
+     Інакше повільне, але живе завантаження ми б обривали посеред
+     роботи — а саме воно й буває на поганій мережі, тобто там, де
+     скло потрібне найбільше.
+
+     І не рахуємо зовсім, поки чекаємо на людину: форма входу й екран
+     першого запуску лежать ПОВЕРХ скла, тож із того боку нічого не
+     «зависло» — там просто нічого не ввели. Зняти скло тоді означало б
+     зняти його непомітно, і після входу дашборд добудовувався б у
+     людини на очах. */
+  var t = null;
+  function waiting() {
+    return ['login-overlay', 'team-first-run'].some(function (id) {
+      var el = document.getElementById(id);
+      return el && getComputedStyle(el).display !== 'none';
+    });
+  }
+  function arm() {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      if (gone) return;
+      if (waiting()) return arm();
+      bootStep('Taking longer than usual', 100);
+      bootDone();
+    }, 20000);
+  }
+  arm();
+})();
+</script>
+
+<div class="app-shell">
+
+  <!-- ════════════ SIDEBAR ════════════ -->
+  <aside class="app-sidebar" id="app-sidebar">
+    <div class="sb-brand">
+      <div class="sb-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+      </div>
+      <span class="sb-brand-name" id="sb-team-name">Dashboard</span>
+    </div>
+
+    <div class="sb-scroll custom-scrollbar">
+      <button class="sb-search" onclick="cmdOpen()" title="Search pages and tools">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <span>Search…</span>
+        <span class="tb-kbd">⌘K</span>
+      </button>
+
+      <p class="sb-cap">Overview</p>
+      <button class="sb-item is-active" data-nav="" onclick="navGo('')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span class="sb-lbl">Dashboard</span>
+      </button>
+      <button class="sb-item" data-nav="heatmap" onclick="navGo('heatmap')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span class="sb-lbl">Heatmap</span>
+      </button>
+      <button class="sb-item" data-nav="creatives" onclick="navGo('creatives')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z"/></svg>
+        <span class="sb-lbl">Creatives</span>
+      </button>
+      <button class="sb-item" data-nav="geo" onclick="navGo('geo')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
+        <span class="sb-lbl">Geo Breakdown</span>
+      </button>
+      <button class="sb-item" data-nav="cabinets" onclick="navGo('cabinets')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M2 12h20"/></svg>
+        <span class="sb-lbl">Cabinets</span>
+        <span id="cab-badge" class="sb-badge" style="display:none"></span>
+      </button>
+      <button class="sb-item" data-nav="domains" onclick="navGo('domains')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.8 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.8-3.8-9S9.5 5.7 12 3z"/></svg>
+        <span class="sb-lbl">Domains</span>
+      </button>
+      <button class="sb-item" data-nav="expenses" onclick="navGo('expenses')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2M12 7v10"/></svg>
+        <span class="sb-lbl">Expenses</span>
+      </button>
+      <!-- Сторінка тімліда. Пункт схований, поки роль не сказала інше
+           (див. .sb-item[data-nav="team"] у design.css); справжня межа
+           все одно стоїть у політиках бази, а не тут. -->
+      <button class="sb-item" data-nav="team" onclick="navGo('team')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="sb-lbl">Team</span>
+      </button>
+      <button class="sb-item" data-nav="reports" onclick="navGo('reports')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+        <span class="sb-lbl">Report Builder</span>
+      </button>
+
+
+      <p class="sb-cap admin-only">Data Hub</p>
+      <button class="sb-item admin-only" data-hub="dataset" onclick="hubOpen('dataset', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m-5 5 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <span class="sb-lbl">Campaigns</span>
+      </button>
+      <button class="sb-item admin-only" data-hub="records" onclick="hubOpen('records', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10c0 2.2 3.6 4 8 4s8-1.8 8-4V7"/><path d="M4 7c0 2.2 3.6 4 8 4s8-1.8 8-4-3.6-4-8-4-8 1.8-8 4z"/><path d="M20 12c0 2.2-3.6 4-8 4s-8-1.8-8-4"/></svg>
+        <span class="sb-lbl">Records</span>
+      </button>
+      <button class="sb-item admin-only" data-sheet="1" onclick="sheetsOpen()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        <span class="sb-lbl">Sheets</span>
+      </button>
+      <button class="sb-item admin-only" data-hub="providers" onclick="hubOpen('providers', this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h12"/><circle cx="17" cy="18" r="2.5"/></svg>
+        <span class="sb-lbl">Sources</span>
+      </button>
+    </div>
+
+    <div class="sb-foot">
+      <button class="sb-item sb-toggle" onclick="toggleCompact()" title="Collapse the sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/><path d="M4 4v16"/></svg>
+        <span class="sb-lbl">Collapse</span>
+      </button>
+      <button class="sb-item admin-only" onclick="openSettingsModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88V10a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>
+        <span class="sb-lbl">Settings</span>
+      </button>
+      <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
+           «а чи та в мене версія» — дата підставляється при складанні. -->
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">BUILD__STAMP__</div>
+    </div>
+  </aside>
+
+  <!-- Перший запуск: у нового баєра ще немає жодного рядка, тож і назви
+       команди взятись нізвідки. Питаємо один раз, до завантаження даних. -->
+  <div id="team-first-run" class="hidden">
+    <div class="card p-7 rounded-3xl">
+      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic mb-1">Name your workspace</h2>
+      <p class="text-[11px] font-bold mb-4 leading-relaxed" style="color:var(--text-muted)">
+        Everything you add — campaigns, payouts, cabinets — is filed under this name.
+        Only you see your own data; the name is just how it is labelled. You can change it later.</p>
+      <input id="team-first-input" placeholder="e.g. your nickname or team"
+        class="w-full bg-black/25 border border-white/10 rounded-xl px-3 py-2.5 text-[13px] font-bold text-dynamic outline-none focus:border-violet-500"
+        autocomplete="off" spellcheck="false">
+      <p id="team-first-err" class="hidden text-[10px] font-bold text-rose-400 mt-1.5">At least 3 characters.</p>
+      <button onclick="teamFirstSave()"
+        class="w-full mt-4 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest bg-violet-600 text-white hover:brightness-110 transition">
+        Continue</button>
+    </div>
+  </div>
+
+  <!-- ════════════ MAIN ════════════ -->
+  <div class="app-main">
+
+    <!-- Топбар прибрано. <header> лишається прихованим носієм панелі
+         інструментів: buildDock() бере саме header.children[1] і переносить
+         її у плаваючий док, а #main-title читає решта коду. -->
+    <header class="app-topbar-hidden">
+      <div class="tb-left">
+        <h1 id="main-title">Dashboard <span>Loading...</span></h1>
+      </div>
+
+      <!--TOOLBAR-->
+    </header>
+
+    <div class="app-content">
+
+      <button class="mob-burger" onclick="toggleSidebar()" title="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <span id="mob-team-name">Dashboard</span>
+      </button>
+
+      <!-- «Що змінилось, поки тебе не було». Живе над вмістом, а не на
+           сторінці кабінетів: про бан треба знати навіть тому, хто туди
+           не заходить. Порожній — не займає місця. -->
+      <div id="ev-banner" class="hidden"></div>
+
+      <!-- Data Hub: Form.html у тій самій сторінці. Той самий Supabase і той самий
+           selected_team у localStorage, тож команда й дані спільні. -->
+      <div id="datahub-panel" class="card hidden">
+        <div class="hub-head">
+          <div class="hub-tabs">
+            <button data-hub="dataset"   onclick="hubOpen('dataset')">Campaigns</button>
+            <button data-hub="records"   onclick="hubOpen('records')">Records</button>
+            <button data-hub="providers" onclick="hubOpen('providers')">Sources</button>
+          </div>
+          <button class="hub-close" onclick="hubClose()" title="Back to dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
+            Dashboard
+          </button>
+        </div>
+        <iframe id="datahub-frame" title="Data Hub"></iframe>
+      </div>
+
+      <!-- Таблиці й сторінки: збережені посилання + перегляд просто тут.
+           Google Таблиці та Notion лежать В ОДНОМУ списку навмисно:
+           окремий розділ під другий список посилань не додав би нічого,
+           крім ще однієї кнопки в меню. -->
+      <div id="sheets-panel" class="card hidden">
+        <div class="hub-head">
+          <div class="sh-picker">
+            <select id="sh-select" onchange="sheetsPick(this.value)"></select>
+            <a id="sh-open" href="#" target="_blank" rel="noopener" class="sh-btn" title="Open the original in a new tab to edit it">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>
+              Edit
+            </a>
+            <button class="sh-btn" onclick="sheetsToggleAdd()" title="Add a Google Sheet or a Notion page">+ Add</button>
+            <button class="sh-btn sh-del" onclick="sheetsRemove()" title="Remove from the list">Remove</button>
+            <!-- Файл читається В БРАУЗЕРІ й нікуди не йде: ні в Supabase,
+                 ні в Google. Тому кнопка стоїть поруч, а не в Files. -->
+            <button class="sh-btn" onclick="shPick()" title="Open a CSV or XLSX from this computer. The file is read here and is not uploaded anywhere.">+ Open file</button>
+            <input type="file" id="sh-file" accept=".csv,.tsv,.txt,.xlsx,.xls" onchange="shChose(this.files&&this.files[0])">
+          </div>
+          <button class="hub-close" onclick="sheetsClose()" title="Back to dashboard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M6 18 18 6M6 6l12 12"/></svg>
+            Dashboard
+          </button>
+        </div>
+        <div id="sh-add" class="sh-add hidden">
+          <input id="sh-name" placeholder="Name (e.g. Q4 budgets)">
+          <input id="sh-url" placeholder="Google Sheets or Notion link">
+          <button class="sh-btn sh-save" onclick="sheetsAdd()">Save</button>
+        </div>
+        <div id="sh-empty" class="sh-empty hidden"></div>
+        <!-- Смуга відкритого файла: назва, аркуші, скільки рядків. -->
+        <div id="sh-filebar" class="sh-filebar hidden"></div>
+        <div id="sh-table" class="sh-table hidden"></div>
+        <!-- Підсумок виділеного. Знизу, як у таблицях: дивляться на
+             нього після того, як виділили, а не перед. -->
+        <div id="sh-sum" class="sh-sum hidden"></div>
+        <iframe id="sh-frame" title="Google Sheet"></iframe>
+      </div>
+
+      <!-- Місячний таргет -->
+      <div id="milestone-container">
+        <p class="ms-cap">Monthly Spend Target <span id="header-month-display"></span></p>
+        <!-- mb-1 замість mb-2: рівно чотири пікселі менше, і зняті вони
+             з порожнечі між числом і смугою, а не з самого тексту. -->
+        <div class="flex justify-between items-end gap-3 mb-1">
+          <h3 id="monthly-spend-label">$0 / $40,000</h3>
+          <span id="next-rank-info" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">Left: $40,000</span>
+        </div>
+        <div class="relative w-full h-1.5 bg-slate-800/60 rounded-full overflow-hidden border border-white/5">
+          <div id="milestone-fill" class="h-full w-0 transition-all duration-1000 ease-out rounded-full"></div>
+        </div>
+      </div>
+
+      <div id="loader" class="flex flex-col items-center py-32 text-muted-dynamic font-bold uppercase text-[10px] tracking-[0.3em]">
+        <div class="w-10 h-10 border-4 border-violet-500/15 border-t-violet-500 rounded-full animate-spin mb-4"></div>Intel Loading...
+      </div>
+
+      <div id="dashboard-content" class="hidden space-y-4">
+
+        <!-- ═══════ KPI ═══════ -->
+        <div id="kpi-row" class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+
+          <!-- SPEND -->
+          <div class="kpi-card group cursor-pointer" onclick="kpiLensCycle()"
+               title="Click to slice by payout model: all → CPA → spend %" style="--accent:#8B5CF6;--glow:rgba(139,92,246,.16)">
+            <div class="kpi-head">
+              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20M6 15h4"/></svg></span>
+              <span class="kpi-label">Total Spend</span>
+              <span id="kpi-lens-tag" class="kpi-lens">All</span>
+            </div>
+            <p id="kpi-spend" class="kpi-value">$0.00</p>
+            <p class="kpi-foot">
+              <span id="kpi-comm" class="text-violet-400">+$0.00 fees</span><br>
+              <span id="kpi-expenses-line" class="text-rose-400">-$0.00 (Expenses)</span>
+            </p>
+            <div class="absolute top-full left-0 mt-2 w-64 rounded-2xl p-4 z-[100] opacity-0 pointer-events-none group-hover:opacity-100 transition-all" style="background:var(--surface-2);border:1px solid var(--border-2);box-shadow:0 24px 60px -24px rgba(0,0,0,.95)">
+              <div id="spend-agency-wrap">
+                <p class="text-[10px] font-black text-violet-400 uppercase tracking-[0.18em] mb-3 border-b border-white/5 pb-2">Spend by Agency</p>
+                <div id="spend-breakdown-list" class="space-y-2"></div>
+              </div>
+              <p class="text-[10px] font-black text-rose-400 uppercase tracking-[0.18em] mt-4 mb-3 border-b border-white/5 pb-2">Expenses by Category</p>
+              <div id="expenses-breakdown" class="space-y-1.5"></div>
+            </div>
+          </div>
+
+          <!-- REGS -->
+          <div class="kpi-card" style="--accent:#3B82F6;--glow:rgba(59,130,246,.14)">
+            <div class="kpi-head">
+              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></span>
+              <span class="kpi-label">Total Regs</span>
+            </div>
+            <p id="kpi-regs" class="kpi-value">0</p>
+            <p class="kpi-foot">Registrations this period</p>
+          </div>
+
+          <!-- DEPOSITS -->
+          <div class="kpi-card" style="--accent:#22C55E;--glow:rgba(34,197,94,.14)">
+            <div class="kpi-head">
+              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v.01M18 14v.01"/></svg></span>
+              <span class="kpi-label">Total Deposits</span>
+            </div>
+            <p id="kpi-deposits" class="kpi-value">0</p>
+            <p class="kpi-foot">Deposits this period</p>
+          </div>
+
+          <!-- R2D -->
+          <div class="kpi-card" style="--accent:#EC4899;--glow:rgba(236,72,153,.13)">
+            <div class="kpi-head">
+              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span>
+              <span class="kpi-label">Conversion R2D</span>
+            </div>
+            <p id="kpi-r2d" class="kpi-value">0%</p>
+            <p id="r2d-status" class="kpi-foot">No data</p>
+          </div>
+
+          <!-- NET PROFIT -->
+          <div class="kpi-card group cursor-pointer" onclick="kpiNetCycle()"
+               title="Клік: Gross (виручка − спенд) → Net (мінус витрати)"
+               style="--accent:#10B981;--glow:rgba(16,185,129,.16)">
+            <div class="kpi-head">
+              <span class="kpi-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg></span>
+              <span class="kpi-label">Net Profit</span>
+              <span id="kpi-net-tag" class="kpi-lens">Gross</span>
+            </div>
+            <p class="flex items-baseline"><span id="kpi-profit" class="kpi-value text-emerald-400">$0.00</span><span id="delta-profit" class="kpi-delta"></span></p>
+            <p class="kpi-foot">
+              <span id="kpi-roi">ROI: 0%</span><br>
+              <span id="kpi-profit-total" title="Total revenue">Revenue: $0.00</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- ═══════ CASHFLOW + ГЕО ═══════ -->
+        <div id="charts-row" class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+
+          <!-- Cashflow Overview -->
+          <div id="chart-main-col" class="card p-5 lg:col-start-1 lg:col-span-3 lg:row-start-1 transition-all duration-500 ease-in-out">
+            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 mb-1">
+              <div>
+                <h2 id="chart-title">Cashflow Overview</h2>
+                <p class="panel-sub">Spend and net profit by day</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="flex items-center gap-2 p-1 rounded-xl text-[10px] font-bold" style="background:var(--surface-2);border:1px solid var(--border)">
+                  <input type="date" id="chart-from" onchange="applyChartFilter()" class="!bg-transparent !border-0 outline-none">
+                  <span class="opacity-25">/</span>
+                  <input type="date" id="chart-to" onchange="applyChartFilter()" class="!bg-transparent !border-0 outline-none">
+                </div>
+                <div class="flex p-1 rounded-xl" style="background:var(--surface-2);border:1px solid var(--border)">
+                  <button id="btn-daily" onclick="changeChartMode('daily')" class="px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all bg-violet-600 text-white">Daily</button>
+                  <button id="btn-geo" onclick="changeChartMode('geo')" class="px-4 py-1.5 rounded-lg text-[11px] font-bold transition-all text-muted-dynamic hover:text-violet-400">Geo</button>
+                </div>
+              </div>
+            </div>
+            <div class="h-[180px] md:h-[200px] w-full relative"><canvas id="chart-trend"></canvas></div>
+          </div>
+
+          <!-- Geo Performance -->
+          <div id="geo-sidebar-col" class="card p-4 lg:col-start-4 lg:col-span-1 lg:row-start-1 lg:row-span-2 flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
+            <div class="mb-3 pb-3" style="border-bottom:1px solid var(--border)">
+              <h2 class="mb-2">Geo Performance</h2>
+              <div class="flex items-center gap-1.5 text-[10px] font-bold">
+                <div class="flex items-center gap-1 px-2 py-1.5 rounded-lg flex-1 min-w-0" style="background:var(--surface-2);border:1px solid var(--border)">
+                  <input type="date" id="geo-filter-from" onchange="applyGeoFilter()" class="!bg-transparent !border-0 outline-none w-full min-w-0">
+                  <span class="opacity-25">/</span>
+                  <input type="date" id="geo-filter-to" onchange="applyGeoFilter()" class="!bg-transparent !border-0 outline-none w-full min-w-0">
+                </div>
+              </div>
+            </div>
+            <div class="space-y-2 overflow-y-auto flex-1 min-h-0 pr-1.5 custom-scrollbar text-dynamic" id="geo-list"></div>
+
+          </div>
+
+          <!-- ═══════ ІНСАЙТИ ═══════ -->
+          <div id="insights-row" class="lg:col-start-1 lg:col-span-3 lg:row-start-2 grid grid-cols-1 md:grid-cols-2 gap-4 admin-only">
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-1">
+              <h2>Open tasks</h2>
+              <button onclick="toggleTaskModal()" class="panel-sub hover:text-violet-400 transition">All →</button>
+            </div>
+            <div id="ins-tasks" class="mt-2"></div>
+          </div>
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-1">
+              <h2>Top geo by profit</h2>
+              <span class="panel-sub">This period</span>
+            </div>
+            <div id="ins-top" class="mt-2"></div>
+          </div>
+        </div>
+        </div>
+
+        <!-- ═══════ ВИТРАТИ ═══════ -->
+        <!-- Список ліворуч, форма додавання — постійною смугою праворуч,
+             як панель у кабінетах. Раніше форма стояла зверху на всю
+             ширину заради трьох полів, а список — те, заради чого сюди
+             заходять — починався під нею. -->
+        <div id="expenses-section" class="route-off">
+          <div class="exp-cols">
+            <div class="card overflow-hidden" id="exp-list-card">
+              <div class="exp-head">
+                <div>
+                  <h2>Expenses this month</h2>
+                  <p class="panel-sub">Counted in Net Profit</p>
+                </div>
+                <select id="exp-month" onchange="expLoad()" class="rev-select"></select>
+              </div>
+              <div class="exp-wrap custom-scrollbar">
+                <table id="exp-table">
+                  <thead>
+                    <tr><th>Date</th><th>Category</th><th>Note</th><th class="text-right">Amount</th><th></th></tr>
+                  </thead>
+                  <tbody id="exp-body"></tbody>
+                </table>
+              </div>
+              <div class="exp-foot">
+                <span>Month total</span>
+                <span id="exp-total">$0.00</span>
+              </div>
+            </div>
+
+            <div class="card p-5" id="exp-add">
+              <h2>Add an expense</h2>
+              <p class="panel-sub">Anything outside ad spend</p>
+              <div class="exp-form">
+                <input type="date" id="exp-date">
+                <input type="number" id="exp-amount" placeholder="Amount ($)" min="0" step="0.01">
+                <input type="text" id="exp-desc" placeholder="Note — e.g. FB top-up">
+              </div>
+              <!-- Категорій усього п'ять, тож рядок кнопок замість випадайки:
+                   один клік замість двох, і видно всі варіанти одразу. А ще в
+                   <option> не можна покласти SVG — лише текст, тому з
+                   випадайкою іконки були б неможливі в принципі. -->
+              <div id="exp-cats" class="exp-cats"></div>
+              <input type="hidden" id="exp-category" value="accounts">
+              <button onclick="expAdd()" class="exp-save">+ Save expense</button>
+            </div>
+          </div>
+        </div>
