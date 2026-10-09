@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html class="dark" id="main-html">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Roles &amp; Access</title>
+  <base target="_top">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="icon" type="image/png" href="icon.png">
+  <style>
+    :root {
+      --bg-color: #020617;
+      --glass-bg: rgba(30, 41, 59, 0.4);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f1f5f9;
+    }
+    body {
+      background-color: var(--bg-color);
+      background-image:
+        radial-gradient(at 0% 0%, rgba(239, 68, 68, 0.10) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.12) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+    }
+    .card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, .3);
+      border-radius: 1.25rem;
+    }
+    input, select {
+      background: rgba(255, 255, 255, .05) !important;
+      border: 1px solid rgba(255, 255, 255, .1) !important;
+      color: var(--text-main) !important;
+      border-radius: .6rem;
+      padding: .35rem .55rem;
+      font-size: 12px;
+      font-weight: 700;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: rgba(139, 92, 246, .6) !important; }
+    select option { background: #0b1120; }
+    th {
+      font-size: 9px; font-weight: 900; text-transform: uppercase;
+      letter-spacing: .12em; color: #64748b; text-align: left;
+      padding: .6rem .75rem; border-bottom: 1px solid var(--glass-border);
+    }
+    td { padding: .5rem .75rem; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 12px; }
+    tr:last-child td { border-bottom: 0; }
+    .pill {
+      display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+      font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+    }
+    .r-admin     { background: rgba(239,68,68,.15);  color: #fca5a5; }
+    .r-lead      { background: rgba(139,92,246,.15); color: #c4b5fd; }
+    .r-buyer     { background: rgba(59,130,246,.15); color: #93c5fd; }
+    .r-assistant { background: rgba(34,197,94,.15);  color: #86efac; }
+    .btn {
+      border: 1px solid rgba(255,255,255,.12); border-radius: .6rem;
+      padding: .35rem .8rem; font-size: 10px; font-weight: 900;
+      text-transform: uppercase; letter-spacing: .1em; cursor: pointer;
+      background: rgba(255,255,255,.04); color: var(--text-main);
+    }
+    .btn:hover { border-color: rgba(139,92,246,.6); }
+    .btn.go { border-color: rgba(34,197,94,.45); color: #86efac; }
+    .btn.go:hover { background: rgba(34,197,94,.12); }
+    .btn:disabled { opacity: .4; cursor: default; }
+    .hint { font-size: 10px; font-weight: 700; line-height: 1.5; color: #64748b; }
+    .warn { color: #fca5a5; }
+    .ok   { color: #86efac; }
+    .sw { display: flex; align-items: center; gap: .4rem; font-size: 11px; font-weight: 700; }
+    .sw input { width: auto; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<div class="max-w-6xl mx-auto px-4 py-8 space-y-6">
+
+  <header class="flex items-start justify-between gap-4 flex-wrap">
+    <div>
+      <h1 class="text-2xl font-black tracking-tight">Roles &amp; Access</h1>
+      <p class="hint mt-1">Admin only. Team: <b id="hd-team" class="text-violet-300">—</b>
+        · you: <b id="hd-me" class="text-violet-300">—</b></p>
+    </div>
+    <a href="index.html" class="btn">← Dashboard</a>
+  </header>
+
+  <div id="gate" class="card p-6 hidden">
+    <p id="gate-text" class="text-sm font-bold"></p>
+    <p class="hint mt-2" id="gate-hint"></p>
+  </div>
+
+  <main id="app" class="space-y-6 hidden">
+
+    <!-- ══════════ БЛОК 1 ══════════ -->
+    <section class="card p-5">
+      <div class="flex items-baseline justify-between gap-3 flex-wrap mb-1">
+        <h2 class="text-sm font-black uppercase tracking-widest">Хто є хто</h2>
+        <button class="btn" onclick="amLoad()">Reload</button>
+      </div>
+      <p class="hint mb-4">
+        Людина з'являється тут після свого першого входу в дашборд — тоді він
+        заводить їй рядок як <b>buyer</b>. Звідси роль і міняють: з браузера
+        це може зробити тільно адмін, і це тримає тригер у базі, а не ця сторінка.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full" id="am-tbl">
+          <thead><tr>
+            <th>Хто</th><th>Роль</th><th>Команда</th><th>Начальник</th>
+            <th class="text-right">·</th>
+          </tr></thead>
+          <tbody id="am-body"></tbody>
+        </table>
+      </div>
+      <p id="am-msg" class="hint mt-3"></p>
+    </section>
+
+    <!-- ══════════ БЛОК 2 ══════════ -->
+    <section class="card p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest mb-1">Вкладки за роллю</h2>
+      <p class="hint mb-1">
+        Що показувати в дашборді кожній ролі. Адмін бачить усе завжди — рядка
+        для нього тут немає навмисно, щоб не можна було замкнути себе.
+      </p>
+      <p class="hint warn mb-4">
+        ⚠️ Це <b>зручність, а не доступ</b>. Схована вкладка — це схований div:
+        хто захоче, відкриє його з консолі за секунду. Справжня межа — політики
+        в базі (<b>ADMIN_ROLES.sql</b>), і вона від цих галочок не залежить.
+        Тут вирішують, що людині показувати, а не що їй дозволено.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full" id="ra-tbl">
+          <thead><tr><th>Роль</th><th id="ra-head"></th></tr></thead>
+          <tbody id="ra-body"></tbody>
+        </table>
+      </div>
+      <div class="flex items-center gap-3 mt-4">
+        <button class="btn go" id="ra-save" onclick="raSave()">Save</button>
+        <span id="ra-msg" class="hint"></span>
+      </div>
+    </section>
+
+    <!-- ══════════ БЛОК 3 ══════════ -->
+    <section class="card p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest mb-1">Що з цього випливає</h2>
+      <p class="hint mb-4">
+        Це читається з бази, а не написано тут: нижче те, що справді роблять
+        політики. Якщо рядок розходиться з очікуваним — виконано не той SQL.
+      </p>
+      <table class="w-full">
+        <thead><tr><th>Роль</th><th>Бачить дані</th><th>По чому</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill r-admin">admin</span></td>
+              <td>усі команди</td><td class="hint">can_read_team → true</td></tr>
+          <tr><td><span class="pill r-lead">lead</span></td>
+              <td>свою команду цілком</td><td class="hint">can_read_team(team_name)</td></tr>
+          <tr><td><span class="pill r-buyer">buyer</span></td>
+              <td>своє <b>+ свого асистента</b></td><td class="hint">can_read_mine(created_by)</td></tr>
+          <tr><td><span class="pill r-assistant">assistant</span></td>
+              <td>тільки своє</td><td class="hint">created_by = auth.uid()</td></tr>
+        </tbody>
+      </table>
+      <p class="hint mt-4" id="ck-msg">Перевіряю…</p>
+    </section>
+
+  </main>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://zsfumuiajrytmeycbtnn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentTeam = '';
+let myUid = '';
+let amRows = [];
+
+/* Вкладки, які взагалі можна ховати. Список мусить збігатися з
+   маршрутами дашборда (ROUTES у widgets.js): якщо тут з'явиться назва,
+   якої там немає, галочка нічого не зробить і збрехатиме. */
+const TABS = [
+  ['',          'Dashboard'],
+  ['cabinets',  'Cabinets'],
+  ['creatives', 'Creatives'],
+  ['geo',       'Geo / Device'],
+  ['heatmap',   'Heatmap'],
+  ['reports',   'Reports'],
+  ['domains',   'Domains'],
+  ['expenses',  'Expenses'],
+  ['team',      'Team'],
+  ['hub',       'Data Hub'],
+  ['sheets',    'Sheets']
+];
+// Адміна тут немає навмисно: йому видно все, і замкнути себе не можна.
+const ROLES = ['lead', 'buyer', 'assistant'];
+const esc = v => String(v == null ? '' : v)
+  .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const gate = (text, hint) => {
+  document.getElementById('app').classList.add('hidden');
+  const g = document.getElementById('gate');
+  g.classList.remove('hidden');
+  document.getElementById('gate-text').innerHTML = text;
+  document.getElementById('gate-hint').innerHTML = hint || '';
+};
+
+async function getTeamSetting(key) {
+  try {
+    const { data } = await sb.from('team_settings')
+      .select('value').eq('team_name', currentTeam).eq('key', key).limit(1);
+    return data && data.length > 0 ? data[0].value : null;
+  } catch (e) { return null; }
+}
+
+/* ПОРОЖНІЙ УСПІХ — НЕ УСПІХ.
+   PostgREST на upsert/update, який не зачепив жодного рядка, віддає
+   пустий успіх, а не помилку. Тому всюди .select(): якщо нічого не
+   повернулось, зберегти не вдалось, і сказати про це треба одразу. */
+async function setTeamSetting(key, value) {
+  const { data, error } = await sb.from('team_settings')
+    .upsert({ team_name: currentTeam, key, value }, { onConflict: 'team_name,key' })
+    .select('key');
+  if (error) throw error;
+  if (!data || !data.length) throw new Error('нічого не збереглось — права на team_settings');
+  return true;
+}
+
+/* ─────────── БЛОК 1: люди й роли ─────────── */
+
+window.amLoad = async function () {
+  const body = document.getElementById('am-body');
+  body.innerHTML = '<tr><td colspan="5" class="hint">Loading…</td></tr>';
+  const { data, error } = await sb.from('team_members')
+    .select('user_id, name, role, team_name, parent_id');
+  if (error) {
+    body.innerHTML = `<tr><td colspan="5" class="hint warn">${esc(error.message)}</td></tr>`;
+    return;
+  }
+  const rank = { admin: 1, lead: 2, buyer: 3, assistant: 4 };
+  amRows = (data || []).slice().sort((a, b) =>
+    (rank[a.role] || 9) - (rank[b.role] || 9) ||
+    String(a.name || '').localeCompare(String(b.name || '')));
+  amRender();
+};
+
+function amRender() {
+  const body = document.getElementById('am-body');
+  if (!amRows.length) {
+    body.innerHTML = '<tr><td colspan="5" class="hint">Нікого ще немає. Люди з\'являються тут після першого входу в дашборд.</td></tr>';
+    return;
+  }
+  // Начальником може бути тільно баєр — те саме правило, що в тригері.
+  const buyers = amRows.filter(r => r.role === 'buyer');
+  body.innerHTML = amRows.map((r, i) => {
+    const isMe = r.user_id === myUid;
+    const asst = r.role === 'assistant';
+    return `<tr data-i="${i}">
+      <td>
+        <input value="${esc(r.name || '')}" placeholder="${esc(r.user_id.slice(0, 8))}…"
+               oninput="amEdit(${i},'name',this.value)" style="width:150px">
+        ${isMe ? '<span class="pill r-admin ml-2">це ви</span>' : ''}
+      </td>
+      <td>
+        <select onchange="amEdit(${i},'role',this.value)" ${isMe ? 'disabled title="Свою роль із цієї сторінки не змінити — інакше можна замкнути себе"' : ''}>
+          ${['admin', 'lead', 'buyer', 'assistant'].map(x =>
+            `<option value="${x}"${x === r.role ? ' selected' : ''}>${x}</option>`).join('')}
+        </select>
+      </td>
+      <td><input value="${esc(r.team_name || '')}" placeholder="IMPROVE"
+                 oninput="amEdit(${i},'team_name',this.value)" style="width:120px"></td>
+      <td>
+        ${asst ? `<select onchange="amEdit(${i},'parent_id',this.value)">
+            <option value="">— вибрати баєра —</option>
+            ${buyers.map(b => `<option value="${b.user_id}"${b.user_id === r.parent_id ? ' selected' : ''}>${
+              esc(b.name || b.user_id.slice(0, 8))}</option>`).join('')}
+          </select>`
+          : '<span class="hint">—</span>'}
+      </td>
+      <td class="text-right">
+        <button class="btn go" onclick="amSave(${i})">Save</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+window.amEdit = function (i, field, value) {
+  if (!amRows[i]) return;
+  amRows[i][field] = field === 'parent_id' ? (value || null) : value;
+  // Роль змінили — перемалювати, щоб з'явився або зник вибір начальника.
+  if (field === 'role') amRender();
+};
+
+window.amSave = async function (i) {
+  const r = amRows[i];
+  const msg = document.getElementById('am-msg');
+  if (!r) return;
+  /* Те саме правило, що в тригері, але сказане ДО запиту: інакше
+     людина отримує помилку з Postgres замість підказки. Тригер
+     лишається головним — тут ми лише не змушуємо в нього впиратись. */
+  if (r.role === 'assistant' && !r.parent_id) {
+    msg.className = 'hint warn mt-3';
+    msg.textContent = 'Асистенту треба вибрати баєра — без цього база відмовить.';
+    return;
+  }
+  const patch = {
+    name: (r.name || '').trim() || null,
+    role: r.role,
+    team_name: (r.team_name || '').trim() || null,
+    parent_id: r.role === 'assistant' ? r.parent_id : null
+  };
+  const { data, error } = await sb.from('team_members')
+    .update(patch).eq('user_id', r.user_id).select('user_id');
+  msg.className = 'hint mt-3';
+  if (error) {
+    msg.className = 'hint warn mt-3';
+    msg.textContent = 'Не збереглось: ' + error.message;
+    return;
+  }
+  if (!data || !data.length) {
+    msg.className = 'hint warn mt-3';
+    msg.innerHTML = 'Нічого не змінилось. Найімовірніше не виконано <b>БЛОК 5</b> ' +
+                    'з ADMIN_ROLES.sql — без політики запису адмін теж нічого не пише.';
+    return;
+  }
+  msg.className = 'hint ok mt-3';
+  msg.textContent = 'Збережено: ' + (patch.name || r.user_id.slice(0, 8));
+  amLoad();
+};
+
+/* ─────────── БЛОК 2: вкладки за роллю ─────────── */
+
+let raAcc = {};
+
+function raRender() {
+  document.getElementById('ra-head').innerHTML =
+    TABS.map(([, label]) => `<span class="inline-block mr-4">${esc(label)}</span>`).join('');
+  document.getElementById('ra-body').innerHTML = ROLES.map(role => `
+    <tr>
+      <td><span class="pill r-${role}">${role}</span></td>
+      <td>
+        <div class="flex flex-wrap gap-4">
+          ${TABS.map(([key, label]) => `
+            <label class="sw">
+              <input type="checkbox" data-role="${role}" data-tab="${key}"
+                     ${(raAcc[role] || {})[key] === false ? '' : 'checked'}>
+              <span>${esc(label)}</span>
+            </label>`).join('')}
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+window.raSave = async function () {
+  const btn = document.getElementById('ra-save');
+  const msg = document.getElementById('ra-msg');
+  const next = {};
+  ROLES.forEach(r => { next[r] = {}; });
+  document.querySelectorAll('#ra-body input[type=checkbox]').forEach(el => {
+    next[el.dataset.role][el.dataset.tab] = el.checked;
+  });
+  btn.disabled = true;
+  msg.className = 'hint';
+  msg.textContent = 'Saving…';
+  try {
+    await setTeamSetting('role_access', JSON.stringify(next));
+    raAcc = next;
+    msg.className = 'hint ok';
+    msg.textContent = 'Збережено. Людина побачить зміну після перезавантаження дашборда.';
+  } catch (e) {
+    msg.className = 'hint warn';
+    msg.textContent = 'Не збереглось: ' + (e.message || e);
+  }
+  btn.disabled = false;
+};
+
+/* ─────────── БЛОК 3: чи справді виконано SQL ─────────── */
+
+async function ckRun() {
+  const el = document.getElementById('ck-msg');
+  const miss = [];
+  // Пробуємо самі функції. Немає — значить файл не виконано, і вся
+  // сторінка вище показує те, чого в базі нема.
+  try {
+    const { error } = await sb.rpc('can_read_mine', { row_author: myUid });
+    if (error) miss.push('can_read_mine');
+  } catch (e) { miss.push('can_read_mine'); }
+  try {
+    const { error } = await sb.rpc('my_role');
+    if (error) miss.push('my_role');
+  } catch (e) { miss.push('my_role'); }
+
+  if (!miss.length) {
+    el.className = 'hint ok mt-4';
+    el.textContent = 'Функції доступу на місці — таблиця вище описує те, що справді в базі.';
+    return;
+  }
+  el.className = 'hint warn mt-4';
+  el.innerHTML = 'У базі немає: <b>' + miss.map(esc).join(', ') + '</b>. ' +
+    'Це означає, що ' + (miss.includes('my_role') ? 'TEAM_ROLES.sql' : 'ADMIN_ROLES.sql') +
+    ' не виконано, і правила вище поки лише на папері.';
+}
+
+/* ─────────── старт ─────────── */
+
+window.onload = async function () {
+  let session = null;
+  try { ({ data: { session } } = await sb.auth.getSession()); } catch (e) {}
+  if (!session) {
+    gate('Треба увійти.', 'Відкрийте <a href="index.html" class="underline">дашборд</a>, увійдіть і повертайтесь.');
+    return;
+  }
+  try {
+    const { data: u } = await sb.auth.getUser();
+    myUid = (u && u.user && u.user.id) || '';
+    document.getElementById('hd-me').textContent = (u && u.user && u.user.email) || myUid.slice(0, 8);
+  } catch (e) {}
+
+  currentTeam = localStorage.getItem('selected_team') || '';
+  document.getElementById('hd-team').textContent = currentTeam || '—';
+
+  /* Роль питаємо в БАЗИ, а не в localStorage: інакше «адміном» став би
+     будь-хто, хто вміє відкрити консоль. Сторінка все одно лише
+     зручність — писати не дасть політика, — але показувати чуже дерево
+     ролей тому, хто не адмін, теж ні до чого. */
+  let role = 'buyer';
+  try {
+    const { data, error } = await sb.rpc('my_role');
+    if (error) throw error;
+    role = String(data || 'buyer');
+  } catch (e) {
+    gate('Не вдалось дізнатись роль.',
+         'Схоже, <b>TEAM_ROLES.sql</b> не виконано: функції <code>my_role()</code> у базі немає. ' +
+         'Деталі: ' + esc(e.message || e));
+    return;
+  }
+  if (role !== 'admin') {
+    gate('Ця сторінка для адміна.',
+         'Ваша роль: <b>' + esc(role) + '</b>. Якщо це помилка — роль ставить адмін ' +
+         'на цій самій сторінці, або руками через <b>БЛОК 6</b> у ADMIN_ROLES.sql.');
+    return;
+  }
+
+  document.getElementById('app').classList.remove('hidden');
+  try { raAcc = JSON.parse((await getTeamSetting('role_access')) || '{}') || {}; } catch (e) { raAcc = {}; }
+  raRender();
+  await amLoad();
+  await ckRun();
+};
+</script>
+</body>
+</html>

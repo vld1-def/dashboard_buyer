@@ -46,6 +46,86 @@
 
   window.toggleSidebar = () => document.body.classList.toggle('sb-open');
 
+  /* ═══════════ РОЛЬ ЦІЄЇ ЛЮДИНИ ═══════════
+
+     Роль питаємо в БАЗИ (my_role()), не в localStorage: інакше
+     «адміном» став би будь-хто, хто вміє відкрити консоль.
+
+     ⚠️ ЩО ЦЕ ХОВАЄ І ЧОГО НЕ ЗАХИЩАЄ. Нижче ми знімаємо вкладки, яких
+     ролі не показують. Це ЗРУЧНІСТЬ, а не доступ: схована вкладка —
+     схований div, і хто захоче, покаже його з консолі за секунду.
+     Справжня межа — політики в базі (SECURITY_BUYERS.sql, TEAM_ROLES.sql,
+     ADMIN_ROLES.sql): навіть відкривши вкладку, людина побачить у ній
+     рівно ті рядки, які їй віддає Postgres. Якби тут був єдиний бар'єр,
+     це була б дірка, а не налаштування.
+
+     TEAM_ROLES.sql не виконано — my_role() у базі немає, і ми не
+     робимо нічого. Поведінка тоді така сама, як до ролей: мовчки
+     ховати півдашборда через відсутню функцію було б найгіршим
+     із можливих варіантів. */
+  window.myRole = 'buyer';
+
+  window.roleBoot = async function () {
+    try {
+      const { data, error } = await sb.rpc('my_role');
+      if (error) throw error;
+      window.myRole = String(data || 'buyer');
+    } catch (e) {
+      console.warn('ролі не налаштовані (my_role):', e.message || e);
+      return;
+    }
+    document.body.classList.toggle('is-role-admin', window.myRole === 'admin');
+
+    /* Свій рядок у team_members. Без нього адмін не має звідки взяти
+       user_id: auth.users із браузера не читається, і кожного нового
+       довелось би заводити руками в SQL. Політика insert_self дозволяє
+       рівно це й рівно собі — роль там прибита до 'buyer'.
+
+       Рядок уже є — insert впаде на primary key. Це нормальний хід
+       подій, а не помилка, тож тихо. */
+    try {
+      const { data: u } = await sb.auth.getUser();
+      const uid = u && u.user && u.user.id;
+      if (uid) await sb.from('team_members')
+        .insert({ user_id: uid, team_name: currentTeam, role: 'buyer' });
+    } catch (e) {}
+
+    if (window.myRole === 'admin') return;   // адміну не ховаємо нічого
+
+    let acc = {};
+    try { acc = JSON.parse((await getTeamSetting('role_access')) || '{}') || {}; } catch (e) {}
+    const mine = acc[window.myRole];
+    if (!mine) return;                       // для цієї ролі нічого не задано
+
+    // false — явно знято галочку. Відсутній ключ означає «показувати»:
+    // нова вкладка не має зникати в усіх, бо її ще не бачила ця таблиця.
+    const off = k => mine[k] === false;
+
+    Object.entries(ROUTES).forEach(([key, r]) => {
+      if (!off(key)) return;
+      if (r.section) document.getElementById(r.section)?.classList.add('hidden');
+      // Панелі (Data Hub, Sheets) syncNavVisibility не бачить — у них
+      // немає section, тож прибираємо їхні кнопки самі.
+      if (r.panel) {
+        document.querySelectorAll(`.sb-item[data-nav="${key}"]`)
+          .forEach(b => { b.style.display = 'none'; });
+        if (key === 'hub') document.querySelectorAll('.sb-item[data-hub]')
+          .forEach(b => { b.style.display = 'none'; });
+      }
+    });
+    if (typeof syncNavVisibility === 'function') syncNavVisibility();
+
+    /* Сам Дашборд теж можна зняти — асистенту, якому потрібен лише
+       Data Hub. Тоді треба й перевести його на першу дозволену
+       сторінку: syncNavVisibility у такому разі відправляє на '',
+       тобто рівно на той екран, якого немає. */
+    if (off('')) {
+      DASH_BLOCKS.forEach(id => document.getElementById(id)?.classList.add('hidden'));
+      const firstOk = Object.keys(ROUTES).find(k => k && !off(k));
+      if (firstOk) go(firstOk); 
+    }
+  };
+
   /* ═══════════ ЧИЙ ЦЕ БРАУЗЕР ═══════════
 
      Вихід з акаунта (siteLogout) робив signOut і перезавантажував
