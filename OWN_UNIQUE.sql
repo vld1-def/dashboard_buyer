@@ -56,8 +56,139 @@
 --  Дані не змінюються й не видаляються — міняються лише індекси.
 --
 --  Де запускати: Supabase Dashboard → SQL Editor → New query → Run.
---  Блоки по одному, згори вниз.
+--
+--  ЯКЩО НЕМАЄ ЧАСУ РОЗБИРАТИСЬ — одразу під цією шапкою стоїть
+--  БЛОК 0: вставив, поміняв одну назву команди, натиснув Run, і все.
+--  Решта блоків нижче — те саме, але покроково, щоб дивитись на кожну
+--  дію окремо. Вони потрібні, лише якщо БЛОК 0 на чомусь зупиниться.
 -- ============================================================
+
+
+-- ════════════════════════════════════════════════════════════
+--  ▶ БЛОК 0 — УСЕ ОДРАЗУ (один Run)
+--
+--  Робить три речі поспіль:
+--    1. якщо одне налаштування збережене під різними назвами команди —
+--       лишає одне (під твоєю поточною; якщо такого немає — найновіше,
+--       і проставляє йому твою команду);
+--    2. переводить унікальність на власника;
+--    3. прибирає стару унікальність по команді.
+--
+--  Прибрані рядки зберігаються ЦІЛКОМ у public._own_dropped — разом зі
+--  значеннями. Нічого не зникає без сліду.
+--
+--  Запускати можна скільки завгодно разів: другий запуск не знайде,
+--  що робити.
+-- ════════════════════════════════════════════════════════════
+
+drop table if exists public._own_dropped;
+create table public._own_dropped (
+  "таблиця" text, "id" bigint, "команда" text, "налаштування" text,
+  "автор" uuid, "значення" text);
+
+drop table if exists public._own_all;
+create table public._own_all ("крок" text, "таблиця" text, "що саме" text, "рядків" bigint);
+
+do $$
+declare
+  TEAM constant text := 'IMPROVE';   -- ⬅ ⬅ ⬅ ОДНЕ, ЩО ТРЕБА ПОМІНЯТИ:
+                                     --        назва команди з лівої панелі дашборда
+  tbl  text; cols text; cols2 text; nm text; r record; n bigint; dflt text;
+begin
+  foreach tbl in array array['payouts', 'team_settings'] loop
+    cols  := case tbl when 'payouts' then 'created_by, geo, offer' else 'created_by, key' end;
+    cols2 := case tbl when 'payouts' then 'geo, offer' else 'key' end;
+    nm    := case tbl when 'payouts' then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
+                      else 'key' end;
+
+    -- Рядки без автора сторінка не прочитає, і on conflict їх не знайде.
+    select column_default into dflt from information_schema.columns
+     where table_schema = 'public' and table_name = tbl and column_name = 'created_by';
+    if dflt is null or dflt not like '%auth.uid()%' then
+      raise exception
+        'У «%» колонка created_by не має default auth.uid() — виконайте крок 5 зі '
+        'SECURITY_BUYERS.sql, тоді поверніться сюди.', tbl;
+    end if;
+
+    -- 1. зберегти зайві ЦІЛКОМ, потім прибрати
+    execute format($f$
+      insert into public._own_dropped
+      select %1$L, id, team_name, %2$s, created_by, %3$s
+        from (select *, row_number() over (partition by created_by, %4$s
+                order by (team_name = %5$L) desc, id desc) rn
+                from public.%1$I where created_by is not null) q
+       where rn > 1$f$,
+      tbl, nm, case tbl when 'payouts' then 'value::text' else 'value' end, cols2, TEAM);
+
+    execute format($f$
+      delete from public.%1$I t
+       using (select id, row_number() over (partition by created_by, %2$s
+                order by (team_name = %3$L) desc, id desc) rn
+                from public.%1$I where created_by is not null) q
+       where q.id = t.id and q.rn > 1$f$, tbl, cols2, TEAM);
+    get diagnostics n = row_count;
+    if n > 0 then
+      insert into public._own_all values ('1. зайві копії прибрано', tbl, cols2, n);
+    end if;
+
+    -- уцілілий під старою назвою — перевести, інакше сторінка його не прочитає
+    execute format($f$
+      update public.%1$I t set team_name = %2$L
+       where t.created_by is not null and t.team_name is distinct from %2$L
+         and exists (select 1 from public._own_dropped d
+                      where d."таблиця" = %1$L and d."автор" = t.created_by)$f$, tbl, TEAM);
+    get diagnostics n = row_count;
+    if n > 0 then
+      insert into public._own_all values ('2. уцілілий переведено на ' || TEAM, tbl, 'team_name', n);
+    end if;
+
+    -- 2. новий ключ СПЕРШУ, старий потім: якщо новий не стане, таблиця
+    --    лишиться зі старим, а не зовсім без унікальності
+    execute format('create unique index if not exists %I on public.%I (%s)',
+                   tbl || '_owner_uidx', tbl, cols);
+    insert into public._own_all values ('3. новий ключ по власнику', tbl, cols, 1);
+
+    -- 3. прибрати все старе, до чого входить team_name
+    for r in
+      select c.conname as x, true as is_c
+        from pg_constraint c
+        join pg_class t on t.oid = c.conrelid
+        join pg_namespace ns on ns.oid = t.relnamespace
+       where ns.nspname = 'public' and t.relname = tbl and c.contype = 'u'
+         and exists (select 1 from unnest(c.conkey) k
+                     join pg_attribute a on a.attrelid = t.oid and a.attnum = k
+                      where a.attname = 'team_name')
+      union all
+      select ic.relname, false
+        from pg_index i
+        join pg_class ic on ic.oid = i.indexrelid
+        join pg_class t on t.oid = i.indrelid
+        join pg_namespace ns on ns.oid = t.relnamespace
+       where ns.nspname = 'public' and t.relname = tbl and i.indisunique
+         and not exists (select 1 from pg_constraint c where c.conindid = i.indexrelid)
+         and exists (select 1 from unnest(i.indkey) k
+                     join pg_attribute a on a.attrelid = t.oid and a.attnum = k
+                      where a.attname = 'team_name')
+    loop
+      if r.is_c then execute format('alter table public.%I drop constraint %I', tbl, r.x);
+      else           execute format('drop index public.%I', r.x);
+      end if;
+      insert into public._own_all values ('4. стара унікальність прибрана', tbl, r.x, 1);
+    end loop;
+  end loop;
+end $$;
+
+--  ⬇ ЩО ЗРОБЛЕНО. Якщо тут порожньо — блок не виконався.
+select * from public._own_all order by "крок", "таблиця";
+
+--  ⬇ ЩО ПРИБРАНО (значення збережені цілком — на випадок, якщо вибір
+--     виявиться не тим). Порожньо — значить, прибирати не було чого.
+select * from public._own_dropped order by "таблиця", "налаштування", "id";
+
+--  Після цього: Ctrl+Shift+R на дашборді — і додавай ставку як завжди.
+--  Нижче те саме покроково; потрібне, лише якщо тут щось зупинилось.
+
+
 
 
 -- ════════════════════════════════════════════════════════════
