@@ -847,7 +847,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           </div>
           <p class="text-[10px] opacity-40 font-bold mb-5">Column names in your Keitaro export. They differ from team to team — type them exactly as they appear in the CSV header.</p>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Account</label><input type="text" id="km-acc" placeholder="Sub ID 5"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Account <span class="text-slate-600">· PWA</span></label><input type="text" id="km-acc" placeholder="Sub ID 3"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Account <span class="text-slate-600">· APP</span></label><input type="text" id="km-acc-app" placeholder="Sub ID 20"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Campaign</label><input type="text" id="km-camp" placeholder="Sub ID 1"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Funnel</label><input type="text" id="km-funnel" placeholder="Sub ID 2"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Creative <span class="text-slate-600">· PWA</span></label><input type="text" id="km-cr" placeholder="Sub ID 3"></div>
@@ -1265,7 +1266,23 @@ let lastFbParse = null;  // {map, lines} — щоб перерахувати, я
    APP іншим, і одне поле на обидва режими означало б переписувати його
    щоразу при перемиканні — а одного разу забути й залити креативи
    чужого режиму, не помітивши. */
-const KM_DEFAULT = { acc:'Sub ID 5', camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
+/* КОЛОНКИ KEITARO. Файл один і той самий під PWA і під APP — міняються
+   лише саби, у яких лежить те саме поняття. Тому там, де колонка
+   залежить від режиму, їх дві: acc/accApp і cr/crApp.
+
+   Акаунт: під PWA це Sub ID 3, під APP — Sub ID 20. Перевірено на
+   справжній вигрузці: у 132 PWA-рядках Sub ID 20 порожній, а Sub ID 3
+   тримає назви кабінетів (KG_VD_516, SY_AB_652); у 44 APP-рядках —
+   навпаки (UZ_VD_951, UZ_JS_682).
+
+   Раніше тут стояв один acc = Sub ID 5, тобто числовий id. У
+   accounts_mapping ключі — назви кабінетів, а не id, тож рядок із
+   таким acc не знаходив таймзони й ТИХО ВИПАДАВ зі злиття
+   (unlinked.add(acc); continue). Один режим працював лише тому, що
+   значення в налаштуваннях команди було виправлено руками — під другий
+   режим та сама клітинка вже не підходила. */
+const KM_DEFAULT = { acc:'Sub ID 3', accApp:'Sub ID 20',
+                     camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
@@ -1277,7 +1294,8 @@ async function loadKeitaroMap() {
     if (data && data.length) keitaroMap = { ...KM_DEFAULT, ...JSON.parse(data[0].value) };
   } catch (e) { console.warn('keitaro_map:', e.message); }
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
-  set('km-acc', keitaroMap.acc); set('km-camp', keitaroMap.camp); set('km-funnel', keitaroMap.funnel);
+  set('km-acc', keitaroMap.acc); set('km-acc-app', keitaroMap.accApp);
+  set('km-camp', keitaroMap.camp); set('km-funnel', keitaroMap.funnel);
   set('km-cr', keitaroMap.cr); set('km-cr-app', keitaroMap.crApp);
   set('km-plc', keitaroMap.plc); set('km-offer', keitaroMap.offer);
   set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
@@ -1287,7 +1305,9 @@ async function loadKeitaroMap() {
 
 async function saveKeitaroMap() {
   const g = id => (document.getElementById(id)?.value || '').trim();
-  const m = { acc:g('km-acc')||KM_DEFAULT.acc, camp:g('km-camp')||KM_DEFAULT.camp,
+  const m = { acc:g('km-acc')||KM_DEFAULT.acc,
+              accApp:g('km-acc-app')||KM_DEFAULT.accApp,
+              camp:g('km-camp')||KM_DEFAULT.camp,
               funnel:g('km-funnel')||KM_DEFAULT.funnel, cr:g('km-cr')||KM_DEFAULT.cr,
               crApp:g('km-cr-app')||KM_DEFAULT.crApp,
               plc:g('km-plc')||KM_DEFAULT.plc, offer:g('km-offer')||KM_DEFAULT.offer,
@@ -1937,7 +1957,19 @@ function parseKeitaro(content) {
     if (i === -1) i = h.findIndex(x => x.includes(n));
     return i;
   };
-  const iAcc = col(keitaroMap.acc), iCamp = col(keitaroMap.camp);
+  /* Акаунт — за режимом. Той самий прийом, що нижче для креатива:
+     немає APP-колонки — відкочуємось на PWA-саб і кажемо це вголос.
+     Мовчазний відкот тут найдорожчий: рядки з невідомим акаунтом
+     просто випадають зі злиття, і це виглядає як «Keitaro не
+     підтягнувся», а не як неправильна колонка. */
+  let iAcc = col(keitaroMap.acc);
+  if (trafficMode === 'app') {
+    const iAccApp = col(keitaroMap.accApp);
+    if (iAccApp >= 0) iAcc = iAccApp;
+    else console.warn('Keitaro: APP account column "' + keitaroMap.accApp
+      + '" not found — falling back to "' + keitaroMap.acc + '"');
+  }
+  const iCamp = col(keitaroMap.camp);
   /* Креатив беремо за режимом трафіку. Якщо APP-колонки у звіті немає
      — відкочуємось на PWA-саб і кажемо це в консоль: мовчазний відкат
      залив би креативи не з того стовпчика, і всі вони виглядали б як

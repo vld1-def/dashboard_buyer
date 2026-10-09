@@ -74,6 +74,9 @@
       console.warn('ролі не налаштовані (my_role):', e.message || e);
       return;
     }
+    // Позначка ролі на body. Пункту меню за нею більше немає — сторінка
+    // ролей відкривається тільно прямою адресою Admin.html, і в меню її
+    // не видно нікому, навіть адміну.
     document.body.classList.toggle('is-role-admin', window.myRole === 'admin');
 
     /* Свій рядок у team_members. Без нього адмін не має звідки взяти
