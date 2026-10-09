@@ -2187,7 +2187,11 @@ function parseKeitaro(content) {
   const byAccount = {}, byCampaign = {}, byCreative = {}, byDaily = {};
   // Розбивка по офферах — потрібна, щоб рознести спенд FB між офферами у спліті
   const byDailyOffer = {};
-  const offerHits = new Set(), offerMisses = new Set();
+  /* Невпізнані офери — не просто список назв, а з цифрами: скільком
+     інсталам і депозитам вони належать. Без цифр «не розпізнано» легко
+     прочитати як дрібницю, а насправді саме через це рядок не ділиться
+     по оферах і весь спенд лягає на той офер, що впізнався. */
+  const offerHits = new Set(), offerMisses = {};
   const ktPlacements = {};
   const days = new Set(), unlinked = new Set();
   const add = (obj, key, ins, reg, dep, extra) => {
@@ -2248,7 +2252,11 @@ function parseKeitaro(content) {
     const offer = iOff >= 0 ? matchOffer(r[iOff]) : '';
     if (iOff >= 0) {
       const raw = String(r[iOff] || '').trim();
-      if (raw) (offer ? offerHits : offerMisses).add(offer || raw);
+      if (raw && offer) offerHits.add(offer);
+      else if (raw) {
+        const m = offerMisses[raw] || (offerMisses[raw] = { installs: 0, regs: 0, deps: 0 });
+        m.installs += ins; m.regs += reg; m.deps += dep;
+      }
     }
     if (offer) {
       const dk = mergeKey(localDay, acc, geo, ktid);
@@ -2260,15 +2268,16 @@ function parseKeitaro(content) {
 
     }
   }
-  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyOffer, ktPlacements, days, unlinked };
+  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyOffer, ktPlacements,
+                 days, unlinked, offerMisses };
 
   if (iOff >= 0) {
-    console.log('Offers: matched', [...offerHits], '| не розпізнано', [...offerMisses]);
-    if (!offerHits.size && offerMisses.size) {
+    console.log('Offers: matched', [...offerHits], '| не розпізнано', offerMisses);
+    if (!offerHits.size && Object.keys(offerMisses).length) {
       alert([
         'The file has an offer column, but no name matched the team offers.',
         '',
-        'In the file: ' + [...offerMisses].slice(0, 3).join(' | '),
+        'In the file: ' + Object.keys(offerMisses).slice(0, 3).join(' | '),
         'In the database: ' + (knownOffers.join(', ') || '(empty — add offers in Settings → Offers)')
       ].join(String.fromCharCode(10)));
     }
@@ -2533,6 +2542,27 @@ function renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives }) {
     parts.push(line('⛔', 'text-rose-300 mt-2',
       `<b>${missKt.length}</b> creatives exist in Keitaro but have no row in the FB report — they will not be imported` +
       (lostDeps ? `, losing <b>${lostDeps}</b> dep.` : '') + `:<br>${list(missKt)}`));
+  }
+  /* ОФЕР, ЯКОГО НЕМА В БАЗІ, — НАЙТИХІША З ТУТЕШНІХ ПОЛОМОК.
+
+     matchOffer віддає тільно те, що є у payouts. Немає в базі
+     «Boostwin» — його рядки йдуть у загальні інстали, але в розбивку
+     по оферах не потрапляють. У групі лишається один офер, ділити
+     нічого, і людина бачить ОДИН рядок замість двох — при тому, що
+     депозити другого офера вже приписані першому. Досі про це було
+     сказано лише в console.log, та й то списком назв без цифр. */
+  const miss = Object.entries(keitaroAgg.offerMisses || {});
+  if (miss.length) {
+    const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const md = sum(miss.map(([, v]) => v), v => v.deps);
+    parts.push(line('🏷️', 'text-amber-300 mt-2',
+      `<b>${miss.length}</b> offer name(s) from the file are not among your offers, so their rows ` +
+      `are not split by offer` + (md ? ` and <b>${md}</b> dep. end up on the neighbouring offer` : '') + `:<br>` +
+      miss.slice(0, 8).map(([k, v]) =>
+        `<span class="inline-block px-1.5 py-0.5 rounded bg-black/30 font-mono text-[10px] ml-1">${tx(k)}` +
+        `<span class="opacity-40"> ${v.installs} ins · ${v.deps} dep</span></span>`).join('') +
+      (miss.length > 8 ? `<span class="opacity-50"> …+${miss.length - 8} more</span>` : '') +
+      `<br><span class="opacity-60">Add them in Settings → Offers — until then the row keeps a single offer.</span>`));
   }
   if (crDeps !== ktDeps) {
     parts.push(line('🔎', 'text-slate-500 mt-2',
@@ -2838,8 +2868,28 @@ async function processCampaignData(map, lines) {
     // date|acc|geo|ktid розійдеться (див. campParse).
     const p = campParse(campName, row[map.cid], country);
     const geo = p.geo, ktid = p.ktid;
+    /* КАБІНЕТ — ІЗ КОЛОНКИ, А НЕ З НАЗВИ КАМПАНІЇ.
+
+       Тут був той самий недогляд, що з апкою. Під APP кабінет брався
+       СПЕРШУ зі слота {acc} маски, і лише потім із колонки. А на боці
+       Keitaro він завжди з колонки Sub ID 5. Два різні джерела для
+       одного поля ключа — і сходились вони тільно там, де маска
+       випадково вгадала позицію.
+
+       А маска на його неймінгу зсунута, це вже доведено: саме через
+       зсув зʼявився appCid (слот {cid} віддавав «UZ»). Зсунений на
+       токен {acc} віддає що завгодно — хвіст назви, апку, номер, — і
+       ключ date|acc не збігається з Keitaro НІКОЛИ. Злиття не
+       знаходить групу, спліту по оферах нема що розносити, і замість
+       двох рядків (Pinco + Boostwin) лишається один, із цифрами
+       самого Facebook.
+
+       У звіті FB кабінет лежить окремою колонкою («Account ID») — тим
+       самим числом, що в Keitaro у Sub ID 5. Її й беремо першою.
+       Маска лишається запасним варіантом: якщо колонки у вигрузці
+       немає, поведінка та, що була. */
     const accName = trafficMode === 'app'
-      ? (p.acc || row[map.acc] || 'Unknown')   // якщо позиції немає — з колонки
+      ? (row[map.acc] || p.acc || 'Unknown')
       : row[map.acc];
     const cid = (trafficMode === 'app'
       ? appCid(p.cid, row[map.cid]) : row[map.cid]) || 'No CID';
