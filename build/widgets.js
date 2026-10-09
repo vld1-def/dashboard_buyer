@@ -97,6 +97,7 @@
     try {
       const { data: u } = await sb.auth.getUser();
       const uid = u && u.user && u.user.id;
+      window.myUid = uid || '';
       if (uid) {
         const { error } = await sb.from('team_members')
           .insert({ user_id: uid, team_name: currentTeam, role: 'buyer' });
@@ -163,6 +164,60 @@
       DASH_BLOCKS.forEach(id => document.getElementById(id)?.classList.add('hidden'));
       const firstOk = Object.keys(ROUTES).find(k => k && !off(k));
       if (firstOk) go(firstOk); 
+    }
+  };
+
+  /* ═══════════ ЧОМУ АСИСТЕНТА НЕ ВИДНО ═══════════
+
+     Асистент заводить рядки, баєр їх не бачить — і причин рівно дві,
+     обидві не в коді, а в стані бази:
+
+       1. не виконано БЛОК 4 з ADMIN_ROLES.sql — тоді RLS взагалі не
+          віддає чужі рядки, і прийде лише своє;
+       2. у рядків асистента ІНША назва команди — тоді їх відрізає
+          фільтр team_name ще до того, як RLS щось вирішує.
+
+     Відрізнити ці дві ззовні неможливо: і там, і там на екрані просто
+     менше даних. Тому питаємо базу без фільтра команди: якщо рядки
+     асистента є, але під іншою назвою — це друге; якщо їх немає
+     зовсім — перше.
+
+     Один запит на завантаження, і лише коли асистент справді є. Без
+     цього дашборд показував би неповну суму й не казав ні слова — а
+     неповна сума у звіті, який подають, найдорожче з усього. */
+  window.assistantCheck = async function () {
+    const mine = Object.keys(window.whoName || {}).filter(u => u !== (window.myUid || ''));
+    const assistants = mine.length;
+    if (!assistants) return;                       // асистента немає — нічого й питати
+
+    const seen = new Set((window.rawData || []).map(r => String(r.created_by || '')));
+    const theirs = mine.filter(u => seen.has(u));
+    if (theirs.length) return;                     // дані вже тут, усе добре
+
+    let elsewhere = [];
+    try {
+      /* Без .eq('team_name') — саме в цьому сенс перевірки. Беремо
+         мінімум полів і один рядок на автора: питання «чи є вони
+         взагалі», а не «скільки їх». */
+      const { data, error } = await sb.from('daily_stats')
+        .select('team_name, created_by').limit(2000);
+      if (error) throw error;
+      elsewhere = [...new Set((data || [])
+        .filter(r => mine.includes(String(r.created_by || '')))
+        .map(r => String(r.team_name || '—')))]
+        .filter(t => t !== currentTeam);
+    } catch (e) {
+      console.warn('перевірка асистента не вдалась:', e.message || e);
+      return;
+    }
+
+    if (elsewhere.length) {
+      toast('Дані асистента є, але під іншою назвою команди: '
+        + elsewhere.join(', ') + '. Ваша — ' + currentTeam
+        + '. Через це вони не потрапляють у звіт. Виправити можна в Admin.html.', 'warn', 15000);
+    } else {
+      toast('Рядків асистента не видно зовсім. Схоже, не виконано БЛОК 4 '
+        + 'з ADMIN_ROLES.sql — без нього база не віддає чужі рядки.', 'warn', 15000);
     }
   };
 
