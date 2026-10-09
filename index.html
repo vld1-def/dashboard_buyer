@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.10 13:34">
+  <meta name="build" content="build 09.10 15:38">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5042,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 13:34</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 15:38</div>
     </div>
   </aside>
 
@@ -8800,20 +8800,36 @@ async function addGeoPayout() {
   if (g && v) {
     console.log("Saving payout:", { team: currentTeam, geo: g, offer: o, val: v });
 
-    // Використовуємо upsert. 
-    // Якщо в базі вже є такий team_name + geo + offer — він оновить value.
-    const { error } = await sb.from('payouts').upsert({ 
-        team_name: currentTeam, 
-        geo: g, 
-        offer: o, 
-        value: Number(v) 
-      }, { 
-        onConflict: 'team_name, geo, offer' 
-      });
+    /* КЛЮЧ ПО ВЛАСНИКУ, А НЕ ПО КОМАНДІ.
+
+       Тут стояло on conflict (team_name, geo, offer) — один рядок на всю
+       команду. А видимість у payouts рахується по АВТОРУ: політики на
+       цій таблиці лише own_* (SECURITY_BUYERS.sql крок 6), бо це гроші.
+
+       Два правила не сходились: рядок один на команду, бачить його один
+       автор. Щойно асистент завів UZ/Pinco, баєр цього рядка не бачив —
+       у списку порожньо, — додавав як новий, upsert натикався на
+       невидимий рядок і отримував «new row violates row-level security
+       policy (USING expression)». Тобто сторінка не давала додати те,
+       чого для неї не існує.
+
+       Тепер ключ (created_by, geo, offer): у кожного свій рядок. Рівно
+       так само вже зроблено для доменів (domains_owner_domain_idx), з
+       тим самим поясненням — payouts тоді просто пропустили.
+
+       created_by шлемо явно, коли знаємо: у бази є default auth.uid(),
+       але з явним значенням ціль конфлікту визначена напевно, навіть
+       якщо default десь не проставили. */
+    const row = { team_name: currentTeam, geo: g, offer: o, value: Number(v) };
+    if (window.myUid) row.created_by = window.myUid;
+
+    const { error } = await sb.from('payouts').upsert(row,
+      { onConflict: 'created_by, geo, offer' });
 
     if (error) {
-      console.error("409 Conflict Fix Error:", error);
-      alert("Error: " + error.message);
+      console.error("payouts upsert:", error);
+      alert("Error: " + error.message
+        + (typeof keyHint === 'function' ? keyHint(error) : ''));
     } else {
       // Очищуємо поля
       document.getElementById('payout-geo').value = '';
@@ -9526,13 +9542,30 @@ async function getTeamSetting(key) {
     return data && data.length > 0 ? data[0].value : null;
   } catch(e) { return null; }
 }
+/* ⚠️ ТУТ МОВЧАЛО ВСЕ, ЩО ЗБЕРІГАЄТЬСЯ ЧЕРЕЗ ЦЮ ФУНКЦІЮ.
+
+   Через неї йдуть правила FB, темп синку, закриття місяця, розрахунок
+   виплат, теги креативів — два десятки місць. А тут стояв try/catch
+   без перевірки error: PostgREST відмову не кидає винятком, він
+   повертає її в полі error. Тобто будь-яка відмова бази означала, що
+   налаштування просто не збереглось, і ніде про це не було сказано —
+   ні на екрані, ні в консолі.
+
+   Ключ тут теж переведено на власника: (created_by, key) замість
+   (team_name, key), з тієї самої причини, що й у виплатах вище. */
 async function setTeamSetting(key, value) {
-  try {
-    await sb.from('team_settings').upsert(
-      { team_name: currentTeam, key, value },
-      { onConflict: 'team_name,key' }
-    );
-  } catch(e) { console.warn('team_settings not available:', e.message); }
+  const row = { team_name: currentTeam, key, value };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('team_settings').upsert(row,
+    { onConflict: 'created_by,key' });
+  if (!error) return true;
+  const hint = typeof keyHint === 'function' ? keyHint(error) : '';
+  console.warn('team_settings: «' + key + '» не збереглось —',
+    error.message || error.code, hint);
+  if (typeof toast === 'function')
+    toast('Налаштування «' + key + '» не збереглось: '
+      + (error.message || error.code) + hint);
+  return false;
 }
 
 // ===== SITE PASSWORD =====
@@ -25730,6 +25763,41 @@ tmBoot();
      крок 3, коли колонки ще не підписували. Якби такі рядки вважались
      чужими, у людини зникла б уся історія до ролей — і це була б
      найтихіша з можливих поломок. */
+  /* ЧОМУ ЗБЕРЕЖЕННЯ НЕ ПРОЙШЛО — СЛОВАМИ, А НЕ КОДОМ POSTGRES.
+
+     Три відмови тут виглядають для людини однаково («не зберігається»),
+     а причини в них різні, і жодну не видно з екрана:
+
+       42501 / row-level security — рядок у базі Є, але чужий. Тобі його
+         не видно (політики на payouts і team_settings лише own_*), тому
+         на сторінці порожньо, ти додаєш як нове, а upsert натикається на
+         нього й пробує оновити. Саме це й бачив користувач:
+         «new row violates row-level security policy (USING expression)».
+
+       42P10 — база ще на ключі по команді, а сторінка вже на ключі по
+         власнику (або навпаки). Буває рівно один раз: між деплоєм
+         сторінки й виконанням OWN_UNIQUE.sql.
+
+       23505 — дублікат за старим ключем.
+
+     All три лагодяться одним файлом, тому його й називаємо. */
+  window.keyHint = function (error) {
+    const code = String((error && error.code) || '');
+    const msg  = String((error && error.message) || '');
+    if (code === '42P10' || /no unique or exclusion constraint/i.test(msg))
+      return '\n\nБаза ще на старому ключі (по команді), а сторінка вже на новому '
+           + '(по власнику). Виконай OWN_UNIQUE.sql, тоді Ctrl+Shift+R.';
+    if (code === '42501' || /row-level security/i.test(msg))
+      return '\n\nТакий рядок у базі вже є, але він чужий: RLS не дає його '
+           + 'перезаписати, і тобі його не видно — тому в списку порожньо. '
+           + 'Виконай OWN_UNIQUE.sql: після нього в кожного свій рядок, '
+           + 'і ніхто нікого не блокує.';
+    if (code === '23505')
+      return '\n\nТакий рядок уже є. Виконай OWN_UNIQUE.sql — він переводить '
+           + 'унікальність на власника.';
+    return '';
+  };
+
   window.isMyRow = function (r) {
     const u = String((r && r.created_by) || '');
     return !u || !window.myUid || u === String(window.myUid);
