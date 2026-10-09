@@ -1914,19 +1914,31 @@ function campParse(campName, adName, country, count) {
    byDailyOffer не знаходив нічого, і офер лишався порожнім. Сам
    matchOffer тут не винен — він однаковий на оба режими і працює.
 
-   Апку Keitaro віддає окремим стовпцем (Sub ID 4: pfb10964) — звідти
-   її й беремо. А гео у FB під APP приходить зі слота {geo} маски,
-   який на цьому неймінгу дає «2»; geoPick таке відкидає, колонки
-   Country у звіті FB немає, і на боці FB лишається «??» — тоді як
-   Keitaro по своїй колонці Country знає «UZ». Половинки різні з
-   самого початку, тому гео з ключа йде геть.
+   Гео у FB під APP приходить зі слота {geo} маски, який на цьому
+   неймінгу дає «2»; geoPick таке відкидає, колонки Country у звіті FB
+   немає, і на боці FB лишається «??» — тоді як Keitaro по своїй
+   колонці Country знає «UZ». Половинки різні з самого початку.
 
-   Залишок — день + акаунт + апка — групу визначає однозначно: одна
-   апка крутиться під одне гео. Регістр апки приводимо до нижнього:
-   у Keitaro ті самі апки трапляються і як pfb10964, і як BFB10964. */
+   АПКИ В КЛЮЧІ ТЕЖ НЕМАЄ, і це не лінь. Апка — єдине поле, яке два
+   боки читають з РІЗНИХ МІСЦЬ: Keitaro з колонки Sub ID 4, а FB — з
+   4-го токена назви кампанії. Збігаються вони лише там, де стоїть
+   дослівно той самий ідентифікатор, а в живих вигрузках у Sub ID 4
+   лежить то апка (CW10995), то плейсмент (Instagram_Reels) — бо PWA
+   і APP приходять одним файлом. Ставити таке в ключ означає ставити
+   злиття в залежність від того, чим саме сьогодні заповнений сабак.
+
+   Тому під APP групу визначають день і КАБІНЕТ. Номер кабінета —
+   єдине, що в Keitaro (Sub ID 5) і у FB (Account ID) є одним і тим
+   самим числом, без масок і без розбору назв. Знайшли кабінет 123,
+   побачили під ним два офери — обидва й розносимо, рівно як у PWA.
+
+   Коли в кабінеті за день крутилось дві апки, їхні цифри з Keitaro
+   зливаються в одну групу й розходяться по рядках FB пропорційно
+   спенду (див. злиття). Це приблизніше, ніж по апках, — але по апках
+   вони не сходились ніяк, а порожній офер гірший за розподілений. */
 function mergeKey(date, acc, geo, ktid) {
   return trafficMode === 'app'
-    ? `${date}|${acc}|${String(ktid || '').toLowerCase()}`
+    ? `${date}|${acc}`
     : `${date}|${acc}|${geo}|${ktid}`;
 }
 // Скільки рядків дістали офер із назви — щоб було видно, що він узявся
@@ -2158,17 +2170,12 @@ function parseKeitaro(content) {
           '\n\nFix the names in Settings → Keitaro Mapping.');
     keitaroAgg = null; return;
   }
-  /* Під APP саме назва апки й зшиває Keitaro з Facebook. Немає її —
-     ключ зводиться до day|acc, усі апки акаунта злипаються в один
-     рядок, і депозити роз'їжджаються по чужих оферах. Мовчати про це
-     не можна: тихо залитий такий імпорт потім не відрізнити. */
-  if (trafficMode === 'app' && iKtApp < 0) {
-    alert('Keitaro: the App column "' + keitaroMap.app + '" is not in the file.'
-        + '\n\nIn APP mode the app name is what joins Keitaro to Facebook — '
-        + 'without it the deposits will not attach to the spend.'
-        + '\n\nThe file header has: ' + sp(lines[0]).join(', ')
-        + '\n\nFix the name in Settings → Keitaro Mapping → App.');
-  }
+  /* Назва апки в ключ злиття не входить (див. mergeKey) — вона йде
+     тільки у воронку й у підпис рядка кампанії. Тому її відсутність
+     злиття не ламає, і зупиняти через неї імпорт нема за що. */
+  if (trafficMode === 'app' && iKtApp < 0)
+    console.warn('Keitaro: app column "' + keitaroMap.app
+      + '" not found — the funnel of APP rows will stay unknown');
   if (trafficMode === 'app' && iCountry < 0)
     console.warn('Keitaro: country column "' + keitaroMap.country
       + '" not found — geo of APP rows stays "??"');
