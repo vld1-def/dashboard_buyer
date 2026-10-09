@@ -1317,13 +1317,20 @@ let lastFbParse = null;  // {map, lines} — щоб перерахувати, я
 // done — повний текст у рядок статусу на успіх (не «label + saved»:
 // одне зі збережень насправді є видаленням профілю).
 async function tsSave(key, value, done) {
-  /* Ключ по власнику: (created_by, key). Чому не по команді —
-     див. OWN_UNIQUE.sql: рядок був один на команду, а видно його
-     одному автору, тож чужий рядок блокував твій і не показувався. */
+  /* ⚠️ КЛЮЧ ПО КОМАНДІ — (team_name, key), і це навмисно.
+
+     Якийсь час тут стояло (created_by, key). Відкотили: на власника
+     переходять ЛИШЕ виплати (OWN_UNIQUE.sql), а team_settings
+     лишається як була. Ключ у коді мусить збігатися з базою точно —
+     інакше Postgres не зберігає нічого й каже «there is no unique or
+     exclusion constraint matching the ON CONFLICT specification».
+
+     Чужий рядок тут лагодиться TEAM_SETTINGS_OWN.sql — передачею
+     рядка, а не зміною ключа. */
   const row = { team_name: currentTeam, key, value: JSON.stringify(value) };
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row,
-    { onConflict: 'created_by,key' });
+    { onConflict: 'team_name,key' });
   if (!error) { showStatus(done || (key + ' saved')); return true; }
   const code = String(error.code || '');
   const msg = String(error.message || '');
@@ -1331,13 +1338,13 @@ async function tsSave(key, value, done) {
   // Єдиний раз, коли це трапляється, — між деплоєм сторінки й виконанням
   // OWN_UNIQUE.sql: база ще на старому ключі, сторінка вже на новому.
   if (code === '42P10' || /no unique or exclusion constraint/i.test(msg))
-    hint = '\n\nThe database is still on the old key (by team) while this page is'
-         + ' already on the new one (by owner). Run OWN_UNIQUE.sql, then Ctrl+Shift+R.';
+    hint = '\n\nThe key this page saves by does not match the one in the database.'
+         + ' If OWN_UNIQUE.sql was run for team_settings as well, this page needs'
+         + ' (created_by, key) here instead of (team_name, key).';
   else if (code === '23505' || code === '42501' || /row-level security/i.test(msg))
     hint = `\n\nThe row "${key}" already exists in the database but belongs to`
          + ' someone else, so RLS will not let it be overwritten — and you cannot see it.'
-         + '\nRun OWN_UNIQUE.sql: after it everyone has their own row and nobody'
-         + ' blocks anybody.';
+         + '\nRun TEAM_SETTINGS_OWN.sql — it shows whose the rows are and hands them over.';
   alert('Not saved: ' + (msg || code || 'unknown error') + hint);
   return false;
 }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.10 15:38">
+  <meta name="build" content="build 09.10 16:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5042,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 15:38</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 16:32</div>
     </div>
   </aside>
 
@@ -8829,7 +8829,7 @@ async function addGeoPayout() {
     if (error) {
       console.error("payouts upsert:", error);
       alert("Error: " + error.message
-        + (typeof keyHint === 'function' ? keyHint(error) : ''));
+        + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : ''));
     } else {
       // Очищуємо поля
       document.getElementById('payout-geo').value = '';
@@ -9551,15 +9551,24 @@ async function getTeamSetting(key) {
    налаштування просто не збереглось, і ніде про це не було сказано —
    ні на екрані, ні в консолі.
 
-   Ключ тут теж переведено на власника: (created_by, key) замість
-   (team_name, key), з тієї самої причини, що й у виплатах вище. */
+   ⚠️ КЛЮЧ ТУТ ЛИШАЄТЬСЯ ПО КОМАНДІ — (team_name, key).
+
+   Якийсь time тут стояло (created_by, key), як у виплатах. Для
+   team_settings це відкотили за рішенням власника дашборда: на
+   власника переходять ЛИШЕ виплати. Ключ у коді мусить збігатися з
+   тим, що в базі, байт у байт — інакше Postgres відповідає
+   «there is no unique or exclusion constraint matching the ON CONFLICT
+   specification» і не зберігає нічого.
+
+   Чужий рядок тут лагодиться не зміною ключа, а передачею самого
+   рядка — TEAM_SETTINGS_OWN.sql. */
 async function setTeamSetting(key, value) {
   const row = { team_name: currentTeam, key, value };
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row,
-    { onConflict: 'created_by,key' });
+    { onConflict: 'team_name,key' });
   if (!error) return true;
-  const hint = typeof keyHint === 'function' ? keyHint(error) : '';
+  const hint = typeof keyHint === 'function' ? keyHint(error, 'TEAM_SETTINGS_OWN.sql') : '';
   console.warn('team_settings: «' + key + '» не збереглось —',
     error.message || error.code, hint);
   if (typeof toast === 'function')
@@ -25781,20 +25790,28 @@ tmBoot();
        23505 — дублікат за старим ключем.
 
      All три лагодяться одним файлом, тому його й називаємо. */
-  window.keyHint = function (error) {
+  window.keyHint = function (error, fix) {
     const code = String((error && error.code) || '');
     const msg  = String((error && error.message) || '');
+    /* Лагодиться це різними файлами, і плутати їх не можна:
+
+         виплати       — OWN_UNIQUE.sql: ключ переведено на власника,
+                         тож у кожного свій рядок;
+         налаштування  — TEAM_SETTINGS_OWN.sql: ключ лишився по команді
+                         (так вирішено навмисно), тож чужий рядок
+                         лагодиться не зміною ключа, а передачею рядка.
+
+       Тому той, хто викликає, і каже, що називати. */
+    const file = fix || 'OWN_UNIQUE.sql';
     if (code === '42P10' || /no unique or exclusion constraint/i.test(msg))
-      return '\n\nБаза ще на старому ключі (по команді), а сторінка вже на новому '
-           + '(по власнику). Виконай OWN_UNIQUE.sql, тоді Ctrl+Shift+R.';
+      return '\n\nКлюч у базі не збігається з тим, по якому зберігає сторінка. '
+           + 'Виконай ' + file + ', тоді Ctrl+Shift+R.';
     if (code === '42501' || /row-level security/i.test(msg))
       return '\n\nТакий рядок у базі вже є, але він чужий: RLS не дає його '
            + 'перезаписати, і тобі його не видно — тому в списку порожньо. '
-           + 'Виконай OWN_UNIQUE.sql: після нього в кожного свій рядок, '
-           + 'і ніхто нікого не блокує.';
+           + 'Лагодиться файлом ' + file + '.';
     if (code === '23505')
-      return '\n\nТакий рядок уже є. Виконай OWN_UNIQUE.sql — він переводить '
-           + 'унікальність на власника.';
+      return '\n\nТакий рядок уже є. Лагодиться файлом ' + file + '.';
     return '';
   };
 
