@@ -92,8 +92,30 @@ create table public._own_dropped (
   "таблиця" text, "id" text, "команда" text, "налаштування" text,
   "автор" uuid, "значення" text);
 
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._own_dropped enable row level security;
+
 drop table if exists public._own_all;
 create table public._own_all ("крок" text, "таблиця" text, "що саме" text, "рядків" bigint);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._own_all enable row level security;
 
 do $$
 declare
@@ -230,6 +252,15 @@ select * from public._own_all order by "крок", "таблиця";
 select * from public._own_dropped order by "таблиця", "налаштування", "id";
 
 --  Після цього: Ctrl+Shift+R на дашборді — і додавай ставку як завжди.
+--
+--  ⬇ І ПРИБЕРИ ЗВІТИ, КОЛИ ПЕРЕГЛЯНУВ. У _own_dropped лежать справжні
+--     значення прибраних рядків — зокрема site_password і tl_password.
+--     RLS їх уже закриває, але найнадійніша таблиця — та, якої немає:
+--
+--       drop table if exists public._own_dropped, public._own_all,
+--                            public._own_check, public._own_log,
+--                            public._own_fixed;
+--
 --  Нижче те саме покроково; потрібне, лише якщо тут щось зупинилось.
 
 
@@ -256,6 +287,17 @@ select * from public._own_dropped order by "таблиця", "налаштува
 drop table if exists public._own_check;
 create table public._own_check (
   "таблиця" text, "біда" text, "автор" text, "що саме" text, "рядків" bigint);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._own_check enable row level security;
 
 insert into public._own_check
 select 'payouts', 'зіткнення: два рядки на одну пару',
@@ -365,8 +407,30 @@ create table public._own_dropped (
   "таблиця" text, "id" text, "команда" text, "налаштування" text,
   "автор" uuid, "значення" text);
 
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._own_dropped enable row level security;
+
 drop table if exists public._own_fixed;
 create table public._own_fixed ("таблиця" text, "що зроблено" text, "що саме" text, "рядків" bigint);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._own_fixed enable row level security;
 
 do $$
 declare
@@ -469,6 +533,17 @@ select * from public._own_dropped order by "таблиця", "налаштува
 
 drop table if exists public._own_log;
 create table public._own_log ("таблиця" text, "що зроблено" text, "що саме" text);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._own_log enable row level security;
 
 do $$
 declare
@@ -586,5 +661,8 @@ select t.relname  as "таблиця",
    and t.relname in ('payouts', 'team_settings')
  order by 1, 2;
 
---  Прибрати службові таблиці, коли все переглянули:
---      drop table if exists public._own_check, public._own_log;
+--  Прибрати службові таблиці, коли все переглянули (у _own_dropped —
+--  справжні значення, зокрема паролі):
+--      drop table if exists public._own_dropped, public._own_all,
+--                           public._own_check, public._own_log,
+--                           public._own_fixed;
