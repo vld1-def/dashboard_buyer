@@ -1060,6 +1060,25 @@ window.onload = async () => {
 
   // Назву команди задає дашборд при першому вході. Підставляти тут щось
   // своє не можна: імпорт залив би дані під чужим ярликом.
+  /* Кеш у браузері міг лишитись від іншого акаунта: вихід не чистив
+     localStorage, і selected_team тут лежав чужий. Імпорт під чужою
+     назвою команди — найдорожче, що можна зробити цією сторінкою, тож
+     перевіряємо, кому належить кеш, і при розбіжності відправляємо на
+     дашборд: повне прибирання робить він (cacheGuard), дублювати
+     список ключів у двох файлах — напрошуватись на розбіжність. */
+  try {
+    const { data: u } = await sb.auth.getUser();
+    const uid = (u && u.user && u.user.id) || '';
+    const was = localStorage.getItem('cache_uid') || '';
+    if (uid && was && was !== uid) {
+      localStorage.removeItem('selected_team');
+      localStorage.removeItem('traffic_mode');
+      alert('This browser still had another account\u2019s workspace. Opening the dashboard to pick yours.');
+      location.href = 'index.html';
+      return;
+    }
+  } catch (e) { /* не дізнались — поводимось як раніше */ }
+
   currentTeam = localStorage.getItem('selected_team') || '';
   if (!currentTeam) { alert('Open the dashboard first — it asks what to call your workspace.'); location.href = 'index.html'; return; }
   const display = document.getElementById('active-team-display');
@@ -1696,14 +1715,44 @@ let pwaMissed = 0;
    такі рядки, щоб сказати про них вголос: тихе гео «20» помітно вже
    аж у звітах за місяць. */
 let geoMaskBad = 0;
-function geoPick(fromMask, fromReport) {
+function geoPick(fromMask, fromReport, count) {
   const mask = String(fromMask || '').trim();
   if (mask) {
     const code = toGeoCode(mask);
     if (/^[A-Za-z]{2}$/.test(code)) return code;
-    geoMaskBad++;
+    // Рахуємо лише розбір FB-звіту: у звіті Keitaro ті самі назви
+    // кампаній, і подвійний облік назвав би в 2 рази більше рядків.
+    if (count !== false) geoMaskBad++;
   }
   return toGeoCode(fromReport) || '';
+}
+
+/* ОДИН РОЗБІР НАЗВИ КАМПАНІЇ НА ОБА ЗВІТИ.
+
+   Ключ злиття з Keitaro — date|acc|geo|ktid. Щоб він зійшовся, гео і
+   ktid мусять дістатись з назви кампанії ОДНАКОВО по обидва боки.
+   Так і було задумано — про це навіть написано в коментарі над
+   злиттям, — але насправді FB-бік розбирав назву за режимом трафіку,
+   а бік Keitaro завжди за PWA-шаблоном.
+
+   У PWA це одне й те саме, тому там усе працювало. В APP — ні:
+   FB давав ktid = {app} ('pfb10964') і гео з APP-маски, Keitaro —
+   ktid зі слота {ktid} PWA-шаблону й гео з нього ж. Ключі не
+   збігались НІКОЛИ, тож byDailyOffer не знаходив нічого, спліт по
+   оферах не мав що розносити, і офер лишався порожнім. Не тому що
+   звіт Keitaro інший — він точно такий самий; тому що його читали не
+   тим шаблоном.
+
+   Тепер розбір один на два боки. Розійтись знову вони не можуть:
+   шаблон вибирає одна функція, і обидва виклики йдуть через неї. */
+function campParse(campName, adName, country, count) {
+  if (trafficMode === 'app') {
+    const a = parseAppCampaign(campName, adName || '', country || '');
+    return { geo: geoPick(a.geo, country, count) || '??', ktid: a.app || '0',
+             acc: a.acc || '', cid: a.cid || '' };
+  }
+  const w = parsePwaCampaign(campName, country);
+  return { geo: w.geo, ktid: w.ktid, acc: '', cid: '' };
 }
 // Скільки рядків дістали офер із назви — щоб було видно, що він узявся
 // сам, а не «завжди так було».
@@ -1953,7 +2002,7 @@ function parseKeitaro(content) {
     // FB-парсер. Інакше ключ злиття date|acc|geo|ktid розійдеться, і
     // депозити з Keitaro просто не приклеяться до витрат з Facebook.
     const campRaw = String(r[iCamp] || '');
-    const { geo, ktid } = parsePwaCampaign(campRaw);
+    const { geo, ktid } = campParse(campRaw, '', '', false);
     const cr = (r[iCr] || '').trim();
     const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
     const funnel = apFunnelClean(mappingDB.funnels[funRaw] || mappingDB.funnels[ktid]) || funRaw || '—';
@@ -2513,22 +2562,14 @@ async function processCampaignData(map, lines) {
     const date = row[map.endDate] || row[map.date] || '';
     const country = map.geo !== -1 ? row[map.geo] : '';
 
-    let geo, ktid, accName, cid;
-    if (trafficMode === 'app') {
-      // APP: назва кампанії — токени через "_", позиції задані в налаштуваннях
-      const a = parseAppCampaign(campName, row[map.cid], country);
-      ktid = a.app || '0';                          // назва апки грає роль KTID
-      accName = a.acc || row[map.acc] || 'Unknown'; // якщо позиції немає — з колонки
-      cid = a.cid || 'No CID';
-      geo = geoPick(a.geo, country) || '??';
-    } else {
-      // PWA: Mbank_KG_10708-4d07_30/07_L5 — позиції задані шаблоном
-      const w = parsePwaCampaign(campName, country);
-      geo = w.geo;
-      ktid = w.ktid;
-      accName = row[map.acc];
-      cid = row[map.cid] || 'No CID';
-    }
+    // Той самий розбір, що й на боці Keitaro — інакше ключ злиття
+    // date|acc|geo|ktid розійдеться (див. campParse).
+    const p = campParse(campName, row[map.cid], country);
+    const geo = p.geo, ktid = p.ktid;
+    const accName = trafficMode === 'app'
+      ? (p.acc || row[map.acc] || 'Unknown')   // якщо позиції немає — з колонки
+      : row[map.acc];
+    const cid = (trafficMode === 'app' ? p.cid : row[map.cid]) || 'No CID';
 
     // [Постачальник] у назві воронки — це лише мітка для вибору профілю сабів,
     // у дані вона не йде, щоб воронка збігалася зі старими записами.

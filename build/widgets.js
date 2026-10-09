@@ -46,6 +46,57 @@
 
   window.toggleSidebar = () => document.body.classList.toggle('sb-open');
 
+  /* ═══════════ ЧИЙ ЦЕ БРАУЗЕР ═══════════
+
+     Вихід з акаунта (siteLogout) робив signOut і перезавантажував
+     сторінку — і не чистив localStorage. Тож наступний користувач у
+     тому самому браузері діставав чужу назву команди (selected_team),
+     чужі перемикачі видимості блоків (tl_access, dashboard_visibility),
+     чужий режим трафіку й чужі налаштування таблиць.
+
+     Виглядало це як «не всі дані підтягуються»: запити йшли з чужим
+     team_name і не повертали нічого, а половина блоків була схована
+     прапорцями попереднього власника браузера. В інкогніто все було на
+     місці рівно тому, що там цього кешу немає.
+
+     Тому запам'ятовуємо, КОМУ належить кеш. Зійшлось — нічого не
+     чіпаємо. Не зійшлось — знімаємо все, що привʼязане до акаунта чи
+     команди, і перезавантажуємось: частину цих значень уже прочитали
+     при старті, тож просто перемалювати недосить.
+
+     Косметику браузера (chart_style, sb_compact) не чіпаємо — вона про
+     пристрій, а не про людину. */
+  const CACHE_OWN = [
+    'selected_team', 'selected_dashboard_month', 'tl_access',
+    'dashboard_visibility', 'traffic_mode', 'kpi_lens', 'kpi_net',
+    'rb_cols', 'rb_tree', 'cab_range', 'cab_sum_raw', 'cd_only_live',
+    'settings_tab', 'set_isub', 'drive_api_key', 'fx_rates'
+  ];
+
+  window.cacheGuard = async function () {
+    let uid = '';
+    try {
+      const { data } = await sb.auth.getUser();
+      uid = (data && data.user && data.user.id) || '';
+    } catch (e) { return; }      // не знаємо, хто це — краще не чіпати нічого
+    if (!uid) return;
+
+    let was = '';
+    try {
+      was = localStorage.getItem('cache_uid') || '';
+      localStorage.setItem('cache_uid', uid);
+    } catch (e) { return; }      // немає сховища — немає й проблеми
+    if (was === uid) return;
+
+    CACHE_OWN.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+    // Порожнє was — просто перший вхід у цьому браузері, чистити було
+    // нічого й перезавантажуватись ні до чого.
+    if (!was) return;
+    // uid уже записаний, тож це рівно одне перезавантаження, не цикл.
+    location.reload();
+    await new Promise(() => {});  // далі завантаження не пускаємо
+  };
+
   /* ═══════════ ПЕРШИЙ ЗАПУСК ═══════════
      Раніше дашборд мовчки підставляв «Makeberry» усім, у кого в браузері
      ще нічого не вибрано. Поки баєр був один — не заважало. Тепер кожен
@@ -401,28 +452,28 @@
         ${expIcon(k)}<span>${EXP_LABELS[k]}</span></button>`).join('');
   }
 
-  let expReady = false;
-
   const money2 = n => '$' + Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  /* ОДИН ФІЛЬТР МІСЯЦЯ НА ДАШБОРД, А НЕ ДВА.
+
+     Тут стояв власний список місяців. Він дублював фільтр дашборда, і
+     два незалежні перемикачі на одному екрані — це спосіб подивитись
+     на витрати одного місяця поруч із профітом іншого й нічого не
+     запідозрити.
+
+     Тепер місяць один: той, що вибраний у дашборді. Порожній фільтр
+     («усі місяці») означає тут поточний — підсумок витрат за всю
+     історію не має сенсу в рядку «Counted in Net Profit». */
+  const expMonth = () => {
+    let m = '';
+    try { m = String(currentMonthFilter || '').slice(0, 7); } catch (e) {}
+    return /^\d{4}-\d{2}$/.test(m) ? m : new Date().toISOString().slice(0, 7);
+  };
+
   window.expInit = async function () {
-    const sel = document.getElementById('exp-month');
     const dateEl = document.getElementById('exp-date');
     if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
     expCatsRender();
-    if (sel && !expReady) {
-      expReady = true;
-      let months = [];
-      try {
-        const { data } = await sb.from('expenses').select('date').eq('team_name', currentTeam);
-        months = [...new Set((data || []).map(r => String(r.date || '').slice(0, 7)).filter(Boolean))].sort().reverse();
-      } catch (e) { /* лишиться тільки поточний місяць */ }
-      const now = new Date().toISOString().slice(0, 7);
-      if (!months.includes(now)) months.unshift(now);
-      sel.innerHTML = months.map(m => `<option value="${m}">${m}</option>`).join('');
-      // Відкриваємо на місяці, вибраному в дашборді, якщо він у списку
-      try { if (months.includes(currentMonthFilter)) sel.value = currentMonthFilter; } catch (e) {}
-    }
     expLoad();
   };
 
@@ -430,7 +481,9 @@
     const body = document.getElementById('exp-body');
     const totalEl = document.getElementById('exp-total');
     if (!body) return;
-    const month = document.getElementById('exp-month')?.value || new Date().toISOString().slice(0, 7);
+    const month = expMonth();
+    const label = document.getElementById('exp-month-label');
+    if (label) label.textContent = month;
 
     let rows = null;
     try {
@@ -446,7 +499,7 @@
     }
 
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="5" class="exp-empty">No expenses this month</td></tr>';
+      body.innerHTML = `<tr><td colspan="5" class="exp-empty">No expenses in ${month}</td></tr>`;
       if (totalEl) totalEl.textContent = '$0.00';
       return;
     }

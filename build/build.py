@@ -886,6 +886,11 @@ rest = sub(rest,
   """  const authed = await checkSiteAuth();
   if (!authed) return;
 
+  // Кеш у браузері міг лишитись від іншого акаунта — зняти його треба
+  // ДО того, як питати назву команди, інакше питати буде нічого:
+  // selected_team уже лежить, тільки чужий.
+  if (typeof cacheGuard === 'function') await cacheGuard();
+
   // У нового користувача ще немає жодного рядка, а отже й назви команди.
   // Питаємо один раз, до першого запиту за даними.
   if (typeof teamFirstRun === 'function') {
@@ -893,6 +898,22 @@ rest = sub(rest,
     if (picked) currentTeam = picked;
   }""",
   'перший запуск: гачок')
+
+# Витрати йдуть за місяцем дашборда, а власного перемикача більше не
+# мають — отже, при зміні місяця панель треба перемалювати звідси.
+# Інакше в ній лишаються числа попереднього місяця під новим підписом.
+rest = sub(rest,
+  "  if (typeof rbRender === 'function') rbRender();\n  if (typeof renderCreativeSidebar === 'function') {",
+  """  if (typeof rbRender === 'function') rbRender();
+  // Витрати фільтруються тим самим місяцем, свого перемикача в них немає.
+  // Смикаємо лише коли панель відкрита: інакше це запит у базу на кожне
+  // перемикання місяця.
+  if (typeof expLoad === 'function'
+      && !document.getElementById('expenses-section')?.classList.contains('route-off')) {
+    expLoad();
+  }
+  if (typeof renderCreativeSidebar === 'function') {""",
+  'витрати за місяцем дашборда')
 
 rest = sub(rest,
   "  localStorage.setItem('dashboard_visibility', JSON.stringify(settings));\n  applyTeamLeadSections();\n}",
