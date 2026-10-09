@@ -896,7 +896,11 @@ rest = sub(rest,
   if (typeof teamFirstRun === 'function') {
     const picked = await teamFirstRun();
     if (picked) currentTeam = picked;
-  }""",
+  }
+
+  // Роль і вкладки за роллю — після того, як відома команда: звідти
+  // читається role_access.
+  if (typeof roleBoot === 'function') await roleBoot();""",
   'перший запуск: гачок')
 
 # Витрати йдуть за місяцем дашборда, а власного перемикача більше не
