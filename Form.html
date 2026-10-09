@@ -855,7 +855,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                  поле на обидва режими означало б переписувати його
                  щоразу при перемиканні — і колись забути. -->
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Creative <span class="text-slate-600">· APP</span></label><input type="text" id="km-cr-app" placeholder="Sub ID 20"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1.5">Platform (placement)</label><input type="text" id="km-plc" placeholder="Sub ID 4"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1.5">Platform (placement) <span class="text-slate-600">· PWA</span></label><input type="text" id="km-plc" placeholder="Sub ID 4"></div>
+            <!-- Гео та апка під APP приходять окремими стовпцями: у
+                 колонці кампанії Keitaro віддає лише перший токен
+                 назви (див. mergeKey), і дістати їх звідти неможливо. -->
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">App <span class="text-slate-600">· APP</span></label><input type="text" id="km-app" placeholder="Sub ID 4" title="Стовпець із назвою апки — pfb10964, CW10995"></div>
+            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Country <span class="text-slate-600">· APP</span></label><input type="text" id="km-country" placeholder="Country" title="Гео для APP береться з цього стовпця: Uzbekistan → UZ"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Offer</label><input type="text" id="km-offer" placeholder="Offer"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Day</label><input type="text" id="km-day" placeholder="Day"></div>
             <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Hour</label><input type="text" id="km-hour" placeholder="Hour"></div>
@@ -1366,6 +1371,7 @@ async function tsRead(keys) {
 const KM_DEFAULT = { acc:'Sub ID 5',
                      camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
+                     country:'Country', app:'Sub ID 4',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
 
@@ -1379,6 +1385,7 @@ async function loadKeitaroMap() {
   set('km-camp', keitaroMap.camp); set('km-funnel', keitaroMap.funnel);
   set('km-cr', keitaroMap.cr); set('km-cr-app', keitaroMap.crApp);
   set('km-plc', keitaroMap.plc); set('km-offer', keitaroMap.offer);
+  set('km-country', keitaroMap.country); set('km-app', keitaroMap.app);
   set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
   set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
   set('km-tz', keitaroMap.tz);
@@ -1391,6 +1398,8 @@ async function saveKeitaroMap() {
               funnel:g('km-funnel')||KM_DEFAULT.funnel, cr:g('km-cr')||KM_DEFAULT.cr,
               crApp:g('km-cr-app')||KM_DEFAULT.crApp,
               plc:g('km-plc')||KM_DEFAULT.plc, offer:g('km-offer')||KM_DEFAULT.offer,
+              country:g('km-country')||KM_DEFAULT.country,
+              app:g('km-app')||KM_DEFAULT.app,
               day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
               ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
               dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10) };
@@ -1885,6 +1894,41 @@ function campParse(campName, adName, country, count) {
   const w = parsePwaCampaign(campName, country);
   return { geo: w.geo, ktid: w.ktid, acc: '', cid: '' };
 }
+
+/* КЛЮЧ ЗЛИТТЯ FB ↔ KEITARO — ОДИН НА ЧОТИРИ МІСЦЯ.
+
+   Під PWA він той самий, що й був: date|acc|geo|ktid. Назва кампанії
+   в Keitaro там та сама, що у FB, тому обидві половинки ключа
+   дістаються однаково, і міняти нічого не треба.
+
+   Під APP гео з ключа ВИКИНУТО. Не тому що воно не потрібне — тому
+   що зійтися воно не може в принципі:
+
+     FB      cy638t_8wxg7hf7_58ck6MfJ_pfb10964_2087290858548700_UZ_2
+     Keitaro cy638t
+
+   У колонці кампанії Keitaro віддає ЛИШЕ ПЕРШИЙ ТОКЕН назви. Ні
+   апки, ні акаунта, ні гео в ньому немає — розбирати нема чого, і
+   campParse чесно віддавав заглушку geo='??', ktid='0'. Ключ
+   date|acc|??|0 проти date|acc|??|pfb10964 не збігався НІКОЛИ, тому
+   byDailyOffer не знаходив нічого, і офер лишався порожнім. Сам
+   matchOffer тут не винен — він однаковий на оба режими і працює.
+
+   Апку Keitaro віддає окремим стовпцем (Sub ID 4: pfb10964) — звідти
+   її й беремо. А гео у FB під APP приходить зі слота {geo} маски,
+   який на цьому неймінгу дає «2»; geoPick таке відкидає, колонки
+   Country у звіті FB немає, і на боці FB лишається «??» — тоді як
+   Keitaro по своїй колонці Country знає «UZ». Половинки різні з
+   самого початку, тому гео з ключа йде геть.
+
+   Залишок — день + акаунт + апка — групу визначає однозначно: одна
+   апка крутиться під одне гео. Регістр апки приводимо до нижнього:
+   у Keitaro ті самі апки трапляються і як pfb10964, і як BFB10964. */
+function mergeKey(date, acc, geo, ktid) {
+  return trafficMode === 'app'
+    ? `${date}|${acc}|${String(ktid || '').toLowerCase()}`
+    : `${date}|${acc}|${geo}|${ktid}`;
+}
 // Скільки рядків дістали офер із назви — щоб було видно, що він узявся
 // сам, а не «завжди так було».
 let offerFromNameHits = 0;
@@ -2089,6 +2133,15 @@ function parseKeitaro(content) {
      рядків FB, де вже стоїть справжній «Instagram Reels» із самого
      звіту. Тому в APP беремо плейсмент лише з FB і не чіпаємо його. */
   const iPlc = trafficMode === 'app' ? -1 : col(keitaroMap.plc);
+  /* Гео та апка під APP — окремими стовпцями, а не з назви кампанії:
+     у колонці кампанії лежить один токен (див. mergeKey). Якщо поле
+     App у налаштуваннях вказує на стовпець, якого в файлі немає,
+     відкочуємось на стовпець плейсмента — історично апка лежить саме
+     там (Sub ID 4). */
+  const iCountry = col(keitaroMap.country);
+  const iKtApp = trafficMode === 'app'
+    ? (col(keitaroMap.app) >= 0 ? col(keitaroMap.app) : col(keitaroMap.plc))
+    : -1;
   console.log('Keitaro offer column:', iOff >= 0 ? `"${sp(lines[0])[iOff]}"` : `НЕ ЗНАЙДЕНО (шукали "${keitaroMap.offer}")`,
               '| відомі оффери команди:', knownOffers);
   const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
@@ -2105,6 +2158,20 @@ function parseKeitaro(content) {
           '\n\nFix the names in Settings → Keitaro Mapping.');
     keitaroAgg = null; return;
   }
+  /* Під APP саме назва апки й зшиває Keitaro з Facebook. Немає її —
+     ключ зводиться до day|acc, усі апки акаунта злипаються в один
+     рядок, і депозити роз'їжджаються по чужих оферах. Мовчати про це
+     не можна: тихо залитий такий імпорт потім не відрізнити. */
+  if (trafficMode === 'app' && iKtApp < 0) {
+    alert('Keitaro: the App column "' + keitaroMap.app + '" is not in the file.'
+        + '\n\nIn APP mode the app name is what joins Keitaro to Facebook — '
+        + 'without it the deposits will not attach to the spend.'
+        + '\n\nThe file header has: ' + sp(lines[0]).join(', ')
+        + '\n\nFix the name in Settings → Keitaro Mapping → App.');
+  }
+  if (trafficMode === 'app' && iCountry < 0)
+    console.warn('Keitaro: country column "' + keitaroMap.country
+      + '" not found — geo of APP rows stays "??"');
 
   // Ключі мають збігатися з тим, як FB реально агрегує:
   //   daily     -> date|acc|geo|ktid   (кампанії L1..L10 зливаються в одну групу)
@@ -2137,11 +2204,20 @@ function parseKeitaro(content) {
     const localDay = `${ld.getUTCFullYear()}-${String(ld.getUTCMonth() + 1).padStart(2, '0')}-${String(ld.getUTCDate()).padStart(2, '0')}`;
     days.add(localDay);
 
-    // geo та ktid дістаємо з назви кампанії тим самим шаблоном, що й
-    // FB-парсер. Інакше ключ злиття date|acc|geo|ktid розійдеться, і
-    // депозити з Keitaro просто не приклеяться до витрат з Facebook.
+    /* Під PWA geo та ktid дістаємо з назви кампанії тим самим
+       шаблоном, що й FB-парсер — інакше ключ злиття розійдеться.
+       Під APP у цій колонці лежить один токен назви, з якого не
+       дістати нічого (див. mergeKey), тому апку беремо зі свого
+       стовпця, а гео — з Country: «Uzbekistan» → «UZ». */
     const campRaw = String(r[iCamp] || '');
-    const { geo, ktid } = campParse(campRaw, '', '', false);
+    let geo, ktid;
+    if (trafficMode === 'app') {
+      geo = toGeoCode(iCountry >= 0 ? String(r[iCountry] || '').trim() : '') || '??';
+      ktid = (iKtApp >= 0 ? String(r[iKtApp] || '').trim() : '') || '0';
+    } else {
+      const cp = campParse(campRaw, '', '', false);
+      geo = cp.geo; ktid = cp.ktid;
+    }
     const cr = (r[iCr] || '').trim();
     const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
     const funnel = apFunnelClean(mappingDB.funnels[funRaw] || mappingDB.funnels[ktid]) || funRaw || '—';
@@ -2159,7 +2235,7 @@ function parseKeitaro(content) {
       const pv = String(r[iPlc] || '').trim();
       if (pv && !pv.startsWith('{')) ktPlacements[crKey] = pv;
     }
-    add(byDaily,    `${localDay}|${acc}|${geo}|${ktid}`, ins, reg, dep);
+    add(byDaily,    mergeKey(localDay, acc, geo, ktid), ins, reg, dep);
 
     // офер із рядка Keitaro (напр. "[Riddick's Partners] Zazino KG | Reg | Anna")
     const offer = iOff >= 0 ? matchOffer(r[iOff]) : '';
@@ -2168,7 +2244,7 @@ function parseKeitaro(content) {
       if (raw) (offer ? offerHits : offerMisses).add(offer || raw);
     }
     if (offer) {
-      const dk = `${localDay}|${acc}|${geo}|${ktid}`;
+      const dk = mergeKey(localDay, acc, geo, ktid);
       ((byDailyOffer[dk] = byDailyOffer[dk] || {})[offer] =
         byDailyOffer[dk][offer] || { installs: 0, regs: 0, deps: 0 });
       byDailyOffer[dk][offer].installs += ins;
@@ -2200,10 +2276,43 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   }
   let hitD = 0, hitC = 0;
 
+  /* ЩОДЕННІ РЯДКИ — ГРУПОЮ, А НЕ ПООДИНЦІ.
+
+     Раніше кожен FB-рядок брав цифри Keitaro як свої повні. Поки гео
+     було в ключі, рядок на ключ був завжди один — так і виходило. Під
+     APP гео з ключа прибрано (див. mergeKey), і на один ключ тепер
+     може лягти кілька рядків FB: та сама апка того самого дня з
+     різним гео в назві. Віддати кожному повні цифри означало б
+     порахувати депозити двічі — рівно та помилка, якої тут найменше
+     хочеться. Тому ділимо пропорційно спенду, як давно зроблено для
+     креативів, а залишок від округлення віддаємо останньому рядку,
+     щоб сума точно збіглася з Keitaro. Коли рядок у групі один — а в
+     PWA це завжди так — цифри лишаються точними, без округлень. */
+  const dGroups = {};
   Object.values(dailyAgg).forEach(row => {
-    const k = `${row.date}|${row.acc}|${row.geo}|${row._ktid}`;
+    const k = mergeKey(row.date, row.acc, row.geo, row._ktid);
+    (dGroups[k] = dGroups[k] || []).push(row);
+  });
+  const dWeight = new Map();   // рядок → його частка в групі
+  Object.entries(dGroups).forEach(([k, rows]) => {
+    const tot = rows.reduce((a, r) => a + (r.spend || 0), 0);
+    rows.forEach(r => dWeight.set(r, rows.length === 1 ? 1
+      : (tot > 0 ? (r.spend || 0) / tot : 1 / rows.length)));
     const kt = keitaroAgg.byDaily[k];
-    if (kt) { row.installs = kt.installs; row.regs = kt.regs; row.deps = kt.deps; hitD++; }
+    if (!kt) return;
+    hitD += rows.length;
+    rows.forEach(r => {
+      const w = dWeight.get(r);
+      r.installs = w === 1 ? kt.installs : Math.round(kt.installs * w);
+      r.regs     = w === 1 ? kt.regs     : Math.round(kt.regs * w);
+      r.deps     = w === 1 ? kt.deps     : Math.round(kt.deps * w);
+    });
+    if (rows.length > 1) {
+      const last = rows[rows.length - 1];
+      last.installs += kt.installs - rows.reduce((a, r) => a + r.installs, 0);
+      last.regs     += kt.regs     - rows.reduce((a, r) => a + r.regs, 0);
+      last.deps     += kt.deps     - rows.reduce((a, r) => a + r.deps, 0);
+    }
   });
 
   // Креативи: якщо на (день,акаунт,креатив) кілька рядків (девайси) — ділимо пропорційно кліками
@@ -2251,7 +2360,7 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   // ── Розподіл спенду між офферами ──
   // FB не знає оффера, Keitaro знає. У спліті один FB-рядок треба рознести
   // на кілька рядків пропорційно інсталам (= унікальним клікам) кожного оффера.
-  const splitByOffer = (rows, offersOf, keyOf) => {
+  const splitByOffer = (rows, offersOf, keyOf, weightOf) => {
     const out = [];
     let splits = 0;
     rows.forEach(row => {
@@ -2273,8 +2382,13 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
         const spend = last ? +(row.spend - spentSoFar).toFixed(2)
                            : +(row.spend * share).toFixed(2);
         spentSoFar += spend;
+        // Цифри оффера — теж на частку рядка в групі, інакше під APP
+        // кожен рядок групи забрав би собі всі інсталли оффера.
+        const w = weightOf ? (weightOf(row) || 1) : 1;
         out.push({ ...row, offer: name, spend,
-                   installs: o.installs, regs: o.regs, deps: o.deps });
+                   installs: w === 1 ? o.installs : Math.round(o.installs * w),
+                   regs:     w === 1 ? o.regs     : Math.round(o.regs * w),
+                   deps:     w === 1 ? o.deps     : Math.round(o.deps * w) });
       });
     });
     return { out, splits };
@@ -2283,7 +2397,8 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   // Кампанії (daily) ділимо по офферах — там спенд справді треба рознести.
   const dRes = splitByOffer(Object.values(dailyAgg),
     k => keitaroAgg.byDailyOffer?.[k],
-    r => `${r.date}|${r.acc}|${r.geo}|${r._ktid}`);
+    r => mergeKey(r.date, r.acc, r.geo, r._ktid),
+    r => dWeight.get(r));
 
   // Креативи по офферах НЕ розбиваємо і оффер їм не проставляємо:
   // один CID має кілька рядків (девайс × плейсмент), і будь-який розподіл там
