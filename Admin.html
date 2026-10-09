@@ -102,11 +102,39 @@
         <h2 class="text-sm font-black uppercase tracking-widest">Хто є хто</h2>
         <button class="btn" onclick="amLoad()">Reload</button>
       </div>
-      <p class="hint mb-4">
-        Людина з'являється тут після свого першого входу в дашборд — тоді він
+      <p class="hint mb-3">
+        Людина з'являється тут після свого <b>першого входу в дашборд</b> — тоді він
         заводить їй рядок як <b>buyer</b>. Звідси роль і міняють: з браузера
-        це може зробити тільно адмін, і це тримає тригер у базі, а не ця сторінка.
+        це може зробити тільки адмін, і це тримає тригер у базі, а не ця сторінка.
       </p>
+      <p class="hint mb-4">
+        Нікого не бачите, крім себе? Значить вони ще не заходили після оновлення —
+        або не виконано <b>БЛОК 5</b> з ADMIN_ROLES.sql, і тоді самі вони завестись
+        не можуть. Чекати не обов'язково: UUID людини є в
+        <b>Supabase → Authentication → Users</b>, і її можна додати звідси.
+      </p>
+
+      <!-- Додати руками. Потрібно саме тому, що auth.users із браузера не
+           читається: сторінка не може сама показати список зареєстрованих
+           і мусить спитати UUID. Додаємо завжди як buyer — роль і
+           начальника міняють уже в таблиці нижче, де тригер бази не дасть
+           зібрати криве дерево. -->
+      <div class="flex flex-wrap items-end gap-2 mb-4 pb-4" style="border-bottom:1px solid var(--glass-border)">
+        <div>
+          <label class="hint block mb-1">UUID із Supabase → Authentication</label>
+          <input id="ad-uid" placeholder="00000000-0000-0000-0000-000000000000" style="width:330px">
+        </div>
+        <div>
+          <label class="hint block mb-1">Імʼя</label>
+          <input id="ad-name" placeholder="Taras" style="width:140px">
+        </div>
+        <div>
+          <label class="hint block mb-1">Команда</label>
+          <input id="ad-team" placeholder="IMPROVE" style="width:130px">
+        </div>
+        <button class="btn go" onclick="amAdd()">Додати як buyer</button>
+        <span id="ad-msg" class="hint"></span>
+      </div>
       <div class="overflow-x-auto">
         <table class="w-full" id="am-tbl">
           <thead><tr>
@@ -287,6 +315,38 @@ function amRender() {
   }).join('');
 }
 
+/* UUID перевіряємо ДО запиту: інакше Postgres віддасть
+   «invalid input syntax for type uuid», і людина гадатиме, що зламалась
+   сторінка, а не що вона вставила не те. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+window.amAdd = async function () {
+  const msg = document.getElementById('ad-msg');
+  const uid = (document.getElementById('ad-uid').value || '').trim();
+  const name = (document.getElementById('ad-name').value || '').trim();
+  const team = (document.getElementById('ad-team').value || '').trim() || currentTeam;
+  const bad = t => { msg.className = 'hint warn'; msg.textContent = t; };
+  if (!UUID_RE.test(uid)) return bad('Це не UUID. Візьміть його в Supabase → Authentication → Users → User UID.');
+  if (amRows.some(r => r.user_id === uid)) return bad('Ця людина вже в списку.');
+
+  const { data, error } = await sb.from('team_members')
+    .insert({ user_id: uid, team_name: team || null, name: name || null, role: 'buyer' })
+    .select('user_id');
+  if (error) {
+    // 23503 — немає такого користувача в auth.users: типова причина, і
+    // «foreign key violation» людині нічого не каже.
+    return bad(error.code === '23503'
+      ? 'Такого користувача немає в Authentication. Спершу він має зареєструватись.'
+      : 'Не додалось: ' + error.message);
+  }
+  if (!data || !data.length) return bad('Нічого не додалось — найімовірніше не виконано БЛОК 5 з ADMIN_ROLES.sql.');
+  msg.className = 'hint ok';
+  msg.textContent = 'Додано: ' + (name || uid.slice(0, 8)) + '. Роль і начальника змініть у таблиці нижче.';
+  document.getElementById('ad-uid').value = '';
+  document.getElementById('ad-name').value = '';
+  amLoad();
+};
+
 window.amEdit = function (i, field, value) {
   if (!amRows[i]) return;
   amRows[i][field] = field === 'parent_id' ? (value || null) : value;
@@ -446,6 +506,8 @@ window.onload = async function () {
 
   document.getElementById('app').classList.remove('hidden');
   try { raAcc = JSON.parse((await getTeamSetting('role_access')) || '{}') || {}; } catch (e) { raAcc = {}; }
+  const teamEl = document.getElementById('ad-team');
+  if (teamEl && currentTeam) teamEl.value = currentTeam;
   raRender();
   await amLoad();
   await ckRun();

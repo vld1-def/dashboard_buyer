@@ -84,14 +84,30 @@
        довелось би заводити руками в SQL. Політика insert_self дозволяє
        рівно це й рівно собі — роль там прибита до 'buyer'.
 
-       Рядок уже є — insert впаде на primary key. Це нормальний хід
-       подій, а не помилка, тож тихо. */
+       ⚠️ ЦЕЙ БЛОК УЖЕ РАЗ МОВЧАВ, І ЦЕ БУЛА МОЯ ПОМИЛКА. Тут стояв
+       try/catch без перевірки error — а PostgREST відмову НЕ кидає
+       винятком, він повертає її в полі error. Тож коли політики
+       insert_self у базі немає (не виконано БЛОК 5 з ADMIN_ROLES.sql),
+       рядок не заводився, людина не з'являлась у списку на Admin.html,
+       і про це не було сказано ніде: ні на екрані, ні в консолі.
+
+       Тепер мовчимо РІВНО в одному випадку — рядок уже є (23505,
+       дублікат первинного ключа). Це справді нормальний хід подій.
+       Будь-яка інша відмова називається вголос разом із причиною. */
     try {
       const { data: u } = await sb.auth.getUser();
       const uid = u && u.user && u.user.id;
-      if (uid) await sb.from('team_members')
-        .insert({ user_id: uid, team_name: currentTeam, role: 'buyer' });
-    } catch (e) {}
+      if (uid) {
+        const { error } = await sb.from('team_members')
+          .insert({ user_id: uid, team_name: currentTeam, role: 'buyer' });
+        if (error && error.code !== '23505') console.warn(
+          'team_members: свій рядок не завівся, тож у Admin.html вас не буде видно. '
+          + 'Найімовірніше не виконано БЛОК 5 з ADMIN_ROLES.sql. '
+          + (error.message || error.code || ''));
+      }
+    } catch (e) {
+      console.warn('team_members: свій рядок не завівся —', e.message || e);
+    }
 
     if (window.myRole === 'admin') return;   // адміну не ховаємо нічого
 
