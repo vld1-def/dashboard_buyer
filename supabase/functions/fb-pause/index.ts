@@ -24,6 +24,20 @@
    Вимкнення без ids, навпаки, лишається: «зупинити кабінет» — дія
    осмислена й потрібна саме тоді, коли розбиратись нема коли.
 
+   ЩЕ ОДНА ЗМІНА — БЮДЖЕТ. {budget:<число>, ids:[один id]} міняє денний
+   або довічний бюджет кампанії чи адсета. Вона живе тут, а не в новій
+   функції, бо вся обережність уже побудована саме тут: токен людини,
+   кабінет мусить бути її, id мусить бути у знімку цього кабінета.
+   Заводити це вдруге поруч означало б мати два місця, де можна
+   помилитись.
+
+   Три правила, які не з Facebook, а наші:
+     • міняємо тільки ТОЙ бюджет, який уже є (денний лишається денним);
+     • де бюджету немає — відмовляємо: поставити його означало б
+       перевести кабінет між CBO та ABO, а це не «зміна бюджету»;
+     • не більше ніж у 10 разів за раз. Друкарська помилка в цьому полі
+       витрачає справжні гроші, і зробити її легше за все.
+
    Розгортання:
      supabase functions deploy fb-pause
 */
@@ -96,6 +110,60 @@ async function activeCampaigns(token: string, actId: string): Promise<Json[]> {
    самий запис status, просто з іншим значенням. Батьків він не чіпає,
    тож увімкнене оголошення у вимкненій кампанії так і лишиться
    невидимим — і це правильно: ми ввімкнули рівно те, що просили. */
+/* ═══ ЩО САМЕ МІНЯЄМО І ЧИ МОЖНА — ОДНІЄЮ ФУНКЦІЄЮ ═══
+
+   Винесено з обробника навмисно: тут арифметика про справжні гроші, і
+   її треба мати змогу перевірити окремо — без Deno, без Facebook і без
+   бази. Нічого не читає й нічого не шле: на вході рядки знімка, на
+   виході або відмова, або точний план запису.
+
+   Усі три правила — наші, не Facebook:
+     • міняємо той бюджет, який уже є (денний лишається денним);
+     • де бюджету немає — відмова (це CBO↔ABO, а не зміна числа);
+     • не більше ніж удесятеро за крок (зайвий нуль коштує грошей). */
+type BudgetPlan =
+  | { error: string }
+  | { id: string; name: string; kind: string; field: string;
+      curMinor: number; newMinor: number; same: boolean };
+
+export function budgetPlan(snap: Json[], id: string, want: number): BudgetPlan {
+  const pick = (d: unknown, l: unknown) => {
+    const dn = d === null || d === undefined || d === '' ? null : Number(d);
+    const ln = l === null || l === undefined || l === '' ? null : Number(l);
+    if (Number.isFinite(dn) && (dn as number) > 0) return { v: dn as number, f: 'daily_budget' };
+    if (Number.isFinite(ln) && (ln as number) > 0) return { v: ln as number, f: 'lifetime_budget' };
+    return null;
+  };
+  const asCamp = snap.find(r => String(r.campaign_id || '') === id);
+  const asSet  = snap.find(r => String(r.adset_id || '') === id);
+
+  let kind = '', name = '', b: { v: number; f: string } | null = null;
+  if (asCamp) {
+    kind = 'campaign'; name = String(asCamp.campaign_name || id);
+    b = pick(asCamp.campaign_daily_budget, asCamp.campaign_lifetime_budget);
+  } else if (asSet) {
+    kind = 'ad set'; name = String(asSet.adset_name || id);
+    b = pick(asSet.adset_daily_budget, asSet.adset_lifetime_budget);
+  } else {
+    return { error: id + ': not a campaign or ad set in the snapshot of this cabinet — '
+      + 'press Sync now, then try again' };
+  }
+  if (!b) return { error: 'this ' + kind + ' has no budget of its own — '
+    + 'the budget sits on the other level (CBO/ABO). Change it there, '
+    + 'or set it up in Ads Manager.' };
+
+  const curMinor = b.v;
+  const newMinor = Math.round(want * 100);
+  if (newMinor < 100) return { error:
+    'the smallest budget this will set is 1.00 — Facebook has its own minimum per currency '
+    + 'and will refuse anything below it anyway' };
+  if (newMinor > curMinor * 10 || newMinor * 10 < curMinor) return { error:
+    'that is more than a tenfold change in one step (now ' + (curMinor / 100).toFixed(2)
+    + ', asked ' + (newMinor / 100).toFixed(2) + '). If you mean it, do it in two steps.' };
+
+  return { id, name, kind, field: b.f, curMinor, newMinor, same: newMinor === curMinor };
+}
+
 async function pauseBatch(token: string, ids: string[], on = false):
     Promise<{ ok: string[]; bad: { id: string; why: string }[] }> {
   const want = on ? 'status=ACTIVE' : 'status=PAUSED';
@@ -156,10 +224,20 @@ async function handle(req: Request): Promise<Response> {
      через випадково зібраний масив. */
   let wantIds: string[] = [];
   let turnOn = false;
+  /* Бюджет у ТИХ САМИХ одиницях, що й на екрані (долари, не центи):
+     сторінка показує budget/100, тож назад множимо на 100. Для валют
+     без копійок (JPY, KRW) це було б не так — таких кабінетів тут
+     немає, і коли зʼявляться, перерахунок доведеться брати з валюти
+     кабінета, а не вважати сотню константою. */
+  let wantBudget: number | null = null;
   try {
     const body = await req.json();
     accountId = String(body?.account_id || '').replace(/\D/g, '');
     turnOn = body?.on === true;
+    if (body?.budget !== undefined && body?.budget !== null) {
+      const b = Number(body.budget);
+      wantBudget = Number.isFinite(b) ? b : NaN;
+    }
     wantIds = (Array.isArray(body?.ids) ? body.ids : [])
       .map((x: unknown) => String(x).trim())
       .filter((x: string) => /^\d+$/.test(x))
@@ -171,6 +249,17 @@ async function handle(req: Request): Promise<Response> {
      запит, якого не існує, не повинен навіть починати роботу. */
   if (turnOn && !wantIds.length) return reply({
     error: 'switching on needs an explicit list: there is no "turn everything back on"' }, 400);
+  /* Бюджет — завжди про ОДИН обʼєкт. Пакетна зміна бюджету не існує як
+     осмислена дія: кампанії різні, і одне число на всіх — це не те, що
+     хтось справді хотів. Перевіряємо тут, до будь-якого походу кудись. */
+  if (wantBudget !== null) {
+    if (!Number.isFinite(wantBudget) || wantBudget <= 0) return reply({
+      error: 'budget must be a positive number' }, 400);
+    if (wantIds.length !== 1) return reply({
+      error: 'changing a budget takes exactly one id' }, 400);
+    if (turnOn) return reply({
+      error: 'budget and switching on are separate actions — send them separately' }, 400);
+  }
 
   const hdr: Json = { apikey: svc, Authorization: 'Bearer ' + svc,
                       'content-type': 'application/json' };
@@ -209,6 +298,76 @@ async function handle(req: Request): Promise<Response> {
   if (!scopes.includes('ads_management')) return reply({
     error: 'the token "' + tok.label + '" can only read: it has no ads_management. '
          + 'Add that permission to the system user and re-add the token.' }, 400);
+
+  /* ═══════════ ЗМІНА БЮДЖЕТУ ═══════════
+
+     Окрема гілка, яка завершується сама: нижче починається зупинка, і
+     змішувати їх не можна — там інша перевірка id і інший запис у
+     журнал.
+
+     Усе, що потрібно знати про обʼєкт, уже лежить у знімку цього
+     кабінета: і те, що він наш, і на якому він рівні, і який у нього
+     бюджет зараз. Тому в Facebook іде рівно один запис — і лише після
+     того, як усі «а чи можна» відповіли «так». */
+  if (wantBudget !== null) {
+    const id = wantIds[0];
+    let snap: Json[] = [];
+    try {
+      snap = await pgGet(base, hdr, 'fb_ad_today'
+        + '?select=ad_id,name,adset_id,adset_name,campaign_id,campaign_name,'
+        + 'campaign_daily_budget,campaign_lifetime_budget,'
+        + 'adset_daily_budget,adset_lifetime_budget'
+        + '&created_by=eq.' + encodeURIComponent(me.id)
+        + '&account_id=eq.' + encodeURIComponent(accountId));
+    } catch (e) {
+      const msg = (e as Error).message;
+      /* Колонок бюджету може не бути — база старіша за сторінку. Це не
+         те саме, що «немає знімка», і лікується іншим, тож і кажемо
+         інше. */
+      return reply({ error: /budget/i.test(msg)
+        ? 'this database has no budget columns in fb_ad_today yet — run block 1 of FB_RULES.sql'
+        : /fb_ad_today|does not exist|42P01/i.test(msg)
+        ? 'the snapshot table does not exist yet — run block 1 of FB_RULES.sql'
+        : msg }, 400);
+    }
+
+    const plan = budgetPlan(snap, id, wantBudget);
+    if ('error' in plan) return reply({ error: plan.error }, 400);
+    const { name, kind, field, curMinor, newMinor } = plan;
+    if (plan.same) return reply({ budget: true, changed: false, id, name, kind,
+      field, was: curMinor / 100, now: curMinor / 100, note: 'already that much' });
+
+    const res = await fetch(GRAPH + '/' + encodeURIComponent(id), {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ access_token: tok.token, [field]: String(newMinor) }).toString()
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j || j.error) return reply({
+      error: 'Facebook refused: ' + String(j?.error?.message || 'HTTP ' + res.status) }, 502);
+
+    /* Журнал — тим самим шляхом, що й зупинка: через тиждень питання
+       «хто це поміняв» виникає рівно так само. */
+    if (acc.team_name) {
+      try {
+        await fetch(base + '/rest/v1/account_events', {
+          method: 'POST',
+          headers: { ...hdr, Prefer: 'return=minimal' },
+          body: JSON.stringify([{
+            team_name: acc.team_name, account_id: accountId,
+            kind: 'pause', to_state: 'budget',
+            note: kind + ' "' + name + '" ' + field.replace('_budget', '')
+                + ' budget ' + (curMinor / 100).toFixed(2) + ' → ' + (newMinor / 100).toFixed(2)
+                + (me.email ? ' by ' + me.email : ''),
+            source: 'fb'
+          }])
+        });
+      } catch (_e) { /* журнал — надбудова */ }
+    }
+
+    return reply({ budget: true, changed: true, id, name, kind, field,
+                   was: curMinor / 100, now: newMinor / 100 });
+  }
 
   let live: Json[];
   if (wantIds.length) {

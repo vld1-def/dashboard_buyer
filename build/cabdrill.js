@@ -1349,7 +1349,7 @@ function cdRow(n, depth, band) {
         title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
         >${mark}${twist}${label}${cdDom(n, key)}${count}</td>
     <td>${cdChips(n)}</td>
-    <td class="ta-r cd-num">${cdBudgetText(n.budget)}</td>
+    <td class="ta-r cd-num">${cdBudgetCell(n)}</td>
     <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
     <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${result}</td>
     <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${perResult}</td>
@@ -1449,6 +1449,117 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
    багато — по одному на кожне оголошення, — тож правити треба всі, що
    її стосуються, інакше наступне ж перемальовування візьме стан із
    сусіднього рядка й поверне вимикач назад. */
+/* ═══════════ ЗМІНА БЮДЖЕТУ ═══════════
+
+   Міняти можна рівно там, де бюджет СВІЙ. Facebook тримає його на
+   одному рівні: або на кампанії (CBO), або на адсетах (ABO) — і в
+   таблиці це вже видно, бо порожня клітинка означає «бюджет на іншому
+   рівні». Тому клікабельна лише заповнена: пропонувати «постав
+   бюджет» там, де його немає, означало б пропонувати перебудову
+   кабінета під виглядом зміни числа.
+
+   В оголошень бюджету немає ніколи — їх не чіпаємо взагалі. */
+function cdBudgetCell(n) {
+  const txt = cdBudgetText(n.budget);
+  if (!n.budget || (n.kind !== 'campaign' && n.kind !== 'ad set')) return txt;
+  const nameEnc = encodeURIComponent(n.name || n.id);
+  return `<button type="button" class="cd-bud" onclick="event.stopPropagation();`
+    + ` cdBudgetEdit('${cdEsc(n.id)}', '${cdEsc(nameEnc)}')"`
+    + ` title="Change this ${n.kind} budget in Facebook">${txt}</button>`;
+}
+
+/* Ввід і підтвердження — окремими кроками, як у cdFlip. Тут це не
+   формальність: зайвий нуль у цьому полі витрачає справжні гроші, і
+   єдине, що стоїть між друкарською помилкою й витратами, — екран, де
+   видно БУЛО і СТАНЕ.
+
+   Саму межу («не більше ніж удесятеро за крок») тримає функція
+   fb-pause, а не ця сторінка: сторінку можна обійти, функцію ні. */
+window.cdBudgetEdit = async function (id, nameEnc) {
+  const name = decodeURIComponent(nameEnc);
+  const cur = cdBudgetOf(id);
+  if (!cur) return;
+  const per = cur.kind === 'daily' ? 'per day' : 'total';
+
+  const raw = prompt(`New ${cur.kind} budget for “${name}” (${per}), `
+    + `now ${cur.v.toFixed(2)}:`, String(cur.v));
+  if (raw === null) return;
+  const v = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(v) || v <= 0) {
+    if (typeof toast === 'function') toast('Not a budget: ' + raw, 'error');
+    return;
+  }
+  if (Math.abs(v - cur.v) < 0.005) return;        // те саме число
+
+  const up = v > cur.v;
+  const go = typeof ask === 'function'
+    ? await ask({ title: 'Change the budget?', danger: up, ok: 'Change',
+        body: `${name}\n\n${cur.kind} budget ${per}:\n`
+            + `${cur.v.toFixed(2)}  →  ${v.toFixed(2)}\n\n`
+            + (up ? 'It starts spending more as soon as Facebook accepts this.'
+                  : 'Delivery may slow down right away.') })
+    : confirm(`Change ${cur.kind} budget of "${name}" from ${cur.v.toFixed(2)} to ${v.toFixed(2)}?`);
+  if (!go) return;
+
+  cdBusy = true; cdPaint();
+  try {
+    const { data: s } = await sb.auth.getSession();
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json',
+                 Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+      body: JSON.stringify({ account_id: cdAcc, ids: [id], budget: v })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+    if (j.changed) {
+      /* Знімок про це ще не знає — він приїде наступною синхронізацією.
+         Правимо рядок у себе: це не вигадане число, а те, що Facebook
+         щойно підтвердив. Так само, як після перемикача. */
+      cdSetBudget(id, j.now);
+      if (typeof toast === 'function')
+        toast(`Budget: ${Number(j.was).toFixed(2)} → ${Number(j.now).toFixed(2)} · ${name}`);
+    } else if (typeof toast === 'function') {
+      toast(j.note || 'Budget not changed', 'error');
+    }
+  } catch (e) {
+    if (typeof toast === 'function') toast('Budget not changed: ' + (e.message || e), 'error');
+  } finally {
+    cdBusy = false; cdPaint();
+  }
+};
+
+/* Поточний бюджет — з тих самих рядків знімка, з яких його бере
+   cdTree. Окремої мапи вузлів немає: дерево збирається заново на
+   кожен рендер, і тримати поруч другу копію означало б мати два місця,
+   які можуть розійтися. */
+function cdBudgetOf(id) {
+  for (const r of cdRows) {
+    if (String(r.campaign_id) === String(id))
+      return cdBudget(r.campaign_daily_budget, r.campaign_lifetime_budget);
+    if (String(r.adset_id) === String(id))
+      return cdBudget(r.adset_daily_budget, r.adset_lifetime_budget);
+  }
+  return null;
+}
+
+/* Те саме, що cdSetOwn, тільки для бюджету: правимо рядки знімка, з
+   яких дерево збирається заново. Пишемо в копійки, бо саме з них
+   cdBudget рахує показане число. */
+function cdSetBudget(id, units) {
+  const minor = Math.round(Number(units) * 100);
+  cdRows.forEach(r => {
+    if (String(r.campaign_id) === String(id)) {
+      if (Number(r.campaign_daily_budget) > 0) r.campaign_daily_budget = minor;
+      else if (Number(r.campaign_lifetime_budget) > 0) r.campaign_lifetime_budget = minor;
+    }
+    if (String(r.adset_id) === String(id)) {
+      if (Number(r.adset_daily_budget) > 0) r.adset_daily_budget = minor;
+      else if (Number(r.adset_lifetime_budget) > 0) r.adset_lifetime_budget = minor;
+    }
+  });
+}
+
 function cdSetOwn(id, state) {
   cdRows.forEach(r => {
     if (String(r.campaign_id) === String(id)) {
