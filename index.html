@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.10 09:41">
+  <meta name="build" content="build 09.10 13:34">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5042,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 09:41</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 13:34</div>
     </div>
   </aside>
 
@@ -6584,8 +6584,14 @@ function switchTeam(teamName) {
   }
 
   // 3. Якщо помилок немає, працюємо з даними
-  rawData = stats || [];
-  console.log(`✅ Отримано записів: ${rawData.length}`);
+  // Повний набір (своє + асистента) — для Report Builder.
+  window.rawDataAll = stats || [];
+  // Звужений (лише своє) — для решти дашборда. Див. isMyRow у widgets.js.
+  rawData = (typeof onlyMine === 'function') ? onlyMine(window.rawDataAll) : window.rawDataAll;
+  window.rawData = rawData;
+  console.log(`✅ Отримано записів: ${window.rawDataAll.length}`
+    + (window.rawDataAll.length !== rawData.length
+       ? ` (своїх ${rawData.length}, решта — лише в Report Builder)` : ''));
 
   // 4. ОНОВЛЮЄМО ФІЛЬТРИ ГЕО (Важливо для Heatmap та Live Table)
   populateGeoFilter(rawData);
@@ -6664,7 +6670,9 @@ async function sbFetchAll(table, build) {
   console.log(`🎨 Creativeів завантажено: ${crData.length}`);
 
   // Зберігаємо в глобальну змінну (переконайся, що let creativesRawData = []; оголошена зверху)
-  creativesRawData = crData || [];
+  window.creativesRawDataAll = crData || [];
+  creativesRawData = (typeof onlyMine === 'function')
+    ? onlyMine(window.creativesRawDataAll) : window.creativesRawDataAll;
   window.creativesRawData = creativesRawData;
 
   await loadCreativeStars();
@@ -11751,8 +11759,8 @@ function renderGeoCostTab(geo) {
   const day = {};
   const at = d => (day[d] || (day[d] = { s: 0, i: 0, r: 0, d: 0, cs: 0, cl: 0 }));
 
-  // rawData — лексичний let у тому ж блоці, а не властивість window
-  // (window.rawData не існує взагалі). Беремо через typeof, щоб код не
+  // rawData — лексичний let у тому ж блоці; window.rawData тримається
+  // синхронно з ним (loadData), але не був там завжди. Беремо через typeof, щоб код не
   // зламався, якщо колись поїде в окремий <script>.
   const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : (window.rawData || []);
   const crea  = (typeof creativesRawData !== 'undefined' && creativesRawData)
@@ -12315,10 +12323,13 @@ async function deleteDbDay(tab, date) {
   if (error) { alert('Error: ' + error.message); return; }
   if (tab === 'stats') {
     rawData = rawData.filter(d => d.date !== date);
+    window.rawData = rawData;
+    window.rawDataAll = (window.rawDataAll || []).filter(d => d.date !== date);
     applyGlobalFilter();
   } else {
     creativesRawData = creativesRawData.filter(d => d.date !== date);
     window.creativesRawData = creativesRawData;
+    window.creativesRawDataAll = (window.creativesRawDataAll || []).filter(d => d.date !== date);
     renderCreativeSidebar();
   }
   loadDbLogsTab(tab);
@@ -12331,10 +12342,13 @@ async function deleteDbAll(tab) {
   if (error) { alert('Error: ' + error.message); return; }
   if (tab === 'stats') {
     rawData = [];
+    window.rawData = rawData;
+    window.rawDataAll = [];
     applyGlobalFilter();
   } else {
     creativesRawData = [];
     window.creativesRawData = [];
+    window.creativesRawDataAll = [];
     renderCreativeSidebar();
   }
   loadDbLogsTab(tab);
@@ -12561,7 +12575,7 @@ const RB_CR_ONLY = new Set(['dev','plat','plc','crea']);
    це вже інший масив, і кеш сам собою прострочується. */
 let rbCrCache = { src: null, rows: null };
 function rbCrRows(){
-  const src = window.creativesRawData || [];
+  const src = window.creativesRawDataAll || window.creativesRawData || [];
   if (rbCrCache.src === src) return rbCrCache.rows;
   rbCrCache = { src, rows: src.map(c=>({...c, deposits:c.deps,
     offer:c.offer||'DEFAULT', agent:c.agent||'—'})) };
@@ -12581,7 +12595,7 @@ function rbRows(skip, forceCr){
   // Device/платформа/плейсмент живуть у creatives_stats → при такому фільтрі/групуванні рахуємо по ньому
   const needCr = forceCr || rbNeedsCreatives()
     || [...RB_CR_ONLY].some(k => k !== skip && rbSel[k].size);
-  const src = needCr ? rbCrRows() : (rawData||[]);
+  const src = needCr ? rbCrRows() : (window.rawDataAll || rawData || []);
 
   return src.filter(r=>{
     if(from && r.date < from) return false;
@@ -12735,7 +12749,7 @@ function rbPopulateOpts(){
      один одного: вибір у сусідньому знімав би галочки тут, ті в свою
      чергу розширювали б сусідній, і набір поїхав би сам собою. */
   RB_FILTERS.forEach(f=>{
-    const src = RB_CR_ONLY.has(f.k) ? rbCrRows() : (rawData||[]);
+    const src = RB_CR_ONLY.has(f.k) ? rbCrRows() : (window.rawDataAll || rawData || []);
     const ok = new Set(src.map(RB_VAL[f.k]));
     [...rbSel[f.k]].forEach(v=>{ if(!ok.has(v)) rbSel[f.k].delete(v); });
   });
@@ -13392,6 +13406,35 @@ window.toastStep = function () {
 
   let done = false, last = 0;
 
+  /* ЧОМУ В АДРЕСІ ВИСІВ ?v=1791539148227 — І ЧОМУ БІЛЬШЕ НЕ ВИСИТИМЕ.
+
+     Це Date.now() у мілісекундах. Його додає кнопка Reload зі смужки
+     вище: location.reload() у частині браузерів усе одно віддає копію
+     з кеша, а адреса, якої браузер іще не бачив, — ні. Тобто цифра не
+     налаштування й не версія, вона просто одноразова й унікальна.
+
+     Одноразова — а лишалась назавжди: далі ця адреса ставала твоєю
+     закладкою, і хвіст їхав за нею в кожне наступне відкриття. Ніякої
+     шкоди, але виглядає як щось важливе, чого воно не означає.
+
+     Тому прибираємо хвіст, щойно переконались, що сторінка справді
+     свіжа: своє діло він зробив. Саме після перевірки, а не одразу —
+     інакше F5 на вже почищеній адресі міг знову витягти копію з кеша,
+     і кнопку довелось би тиснути вдруге.
+
+     replaceState не перезавантажує й не додає запису в історію: у полі
+     адреси просто стає чисто. */
+  function dropStamp() {
+    try {
+      const u = new URL(location.href);
+      if (!u.searchParams.has('v')) return;
+      u.searchParams.delete('v');
+      history.replaceState(history.state, '', u.pathname + (u.search || '') + u.hash);
+    } catch (e) {
+      // Немає History API — лишаємо адресу як є: це косметика.
+    }
+  }
+
   async function check() {
     if (done) return;
     // Вкладку можна перемикати десятки разів на хвилину — не смикаємо
@@ -13404,6 +13447,7 @@ window.toastStep = function () {
       if (!r.ok) return;
       const live = (await r.text()).trim();
       if (live && live !== mine) { done = true; banner(live); }
+      else if (live === mine) dropStamp();
     } catch (e) {
       // Немає мережі або файлу — мовчимо: це діагностика, а не функція.
     }
@@ -25664,6 +25708,34 @@ tmBoot();
      із можливих варіантів. */
   window.myRole = 'buyer';
 
+  /* ═══════════ ЧИЙ РЯДОК — І ДЕ ЦЕ МАЄ ЗНАЧЕННЯ ═══════════
+
+     RLS після ADMIN_ROLES.sql віддає баєру його рядки ПЛЮС рядки його
+     асистента (can_read_mine). Це правильно для бази, але я зробив із
+     цього неправильний висновок у дашборді: дозволив злитим даним
+     розійтись по ВСІХ віджетах — KPI, графіки, хітмап, креативи, гео,
+     закриття місяця. Тобто чужий спенд почав підмішуватись у числа,
+     які людина читає як свої.
+
+     Насправді зливати треба рівно в одному місці — Report Builder:
+     саме звідти подають звіт, і там же є вимір «Buyer», щоб той самий
+     звіт можна було розділити назад. Решта дашборда — суто своє.
+
+     Тому дані тримаємо двома наборами:
+       rawDataAll / creativesRawDataAll — усе, що віддала база;
+       rawData    / creativesRawData    — лише своє.
+     Report Builder бере перший, усі інші — другий.
+
+     Рядок без created_by — НЕ чужий. Це імпорт до SECURITY_BUYERS.sql
+     крок 3, коли колонки ще не підписували. Якби такі рядки вважались
+     чужими, у людини зникла б уся історія до ролей — і це була б
+     найтихіша з можливих поломок. */
+  window.isMyRow = function (r) {
+    const u = String((r && r.created_by) || '');
+    return !u || !window.myUid || u === String(window.myUid);
+  };
+  window.onlyMine = function (rows) { return (rows || []).filter(window.isMyRow); };
+
   window.roleBoot = async function () {
     try {
       const { data, error } = await sb.rpc('my_role');
@@ -25823,7 +25895,10 @@ tmBoot();
     const assistants = mine.length;
     if (!assistants) return;                       // асистента немає — нічого й питати
 
-    const seen = new Set((window.rawData || []).map(r => String(r.created_by || '')));
+    /* Дивимось на ПОВНИЙ набір (rawDataAll), а не на звужений: rawData
+       тепер містить лише своє за визначенням, і по ньому перевірка
+       «чи дійшли рядки асистента» завжди давала б «ні». */
+    const seen = new Set((window.rawDataAll || []).map(r => String(r.created_by || '')));
     const theirs = mine.filter(u => seen.has(u));
     if (theirs.length) return;                     // дані вже тут, усе добре
 
