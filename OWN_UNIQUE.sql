@@ -101,6 +101,7 @@ declare
                                      --        назва команди з лівої панелі дашборда
   tbl  text; cols text; cols2 text; nm text; r record; n bigint; dflt text;
   ord  text;   -- чим визначаємо «найновіший»: див. нижче
+  idc  text;   -- чим розрізняємо рядки: id або ctid, див. нижче
 begin
   -- Обидві таблиці: і виплати, і налаштування команди. Сторінка
   -- зберігає їх по тих самих стовпцях (created_by, …) — ключ у коді
@@ -111,13 +112,36 @@ begin
     nm    := case tbl when 'payouts' then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
                       else 'key' end;
 
+    /* ⚠️ НІЧОГО НЕ ПРИПУСКАЄМО ПРО ФОРМУ ТАБЛИЦІ.
+
+       Тут двічі поспіль була та сама помилка — я вирішував, які
+       стовпці є, замість того щоб спитати базу:
+
+         1) «id — bigint» → у payouts він uuid, блок упав;
+         2) «id є завжди» → у team_settings його НЕМАЄ зовсім, і
+            Postgres відповів «column "id" does not exist. There is a
+            column named "id" in table "_own_dropped", but it cannot be
+            referenced from this part of the query» — тобто ім'я
+            знайшлось лише в цільовій таблиці звіту.
+
+       Тому чим розрізняти рядки, вирішує сама база. Немає id —
+       беремо ctid: він є в КОЖНОЇ звичайної таблиці Postgres і в межах
+       одного запиту однозначно вказує на рядок. */
+    select case when exists (select 1 from information_schema.columns
+                              where table_schema = 'public' and table_name = tbl
+                                and column_name = 'id')
+                then 'id' else 'ctid' end
+      into idc;
+
     /* ЧИМ МІРЯТИ «НАЙНОВІШИЙ». По id це правда лише тоді, коли id —
        число, що зростає. У payouts він uuid, і там порядок за id
-       випадковий. Тому, якщо в таблиці є created_at, міряємо ним. */
+       випадковий; ctid теж не про вік. Тому, якщо в таблиці є
+       created_at, міряємо ним, а id/ctid лишається тайбрейком. */
     select case when exists (select 1 from information_schema.columns
                               where table_schema = 'public' and table_name = tbl
                                 and column_name = 'created_at')
-                then 'created_at desc nulls last, id desc' else 'id desc' end
+                then 'created_at desc nulls last, ' || idc || ' desc'
+                else idc || ' desc' end
       into ord;
 
     -- Рядки без автора сторінка не прочитає, і on conflict їх не знайде.
@@ -132,19 +156,20 @@ begin
     -- 1. зберегти зайві ЦІЛКОМ, потім прибрати
     execute format($f$
       insert into public._own_dropped
-      select %1$L, id::text, team_name, %2$s, created_by, %3$s
-        from (select *, row_number() over (partition by created_by, %4$s
+      select %1$L, rid::text, team_name, %2$s, created_by, %3$s
+        from (select *, %7$s as rid, row_number() over (partition by created_by, %4$s
                 order by (team_name = %5$L) desc, %6$s) rn
                 from public.%1$I where created_by is not null) q
        where rn > 1$f$,
-      tbl, nm, case tbl when 'payouts' then 'value::text' else 'value' end, cols2, TEAM, ord);
+      tbl, nm, case tbl when 'payouts' then 'value::text' else 'value' end,
+      cols2, TEAM, ord, idc);
 
     execute format($f$
       delete from public.%1$I t
-       using (select id, row_number() over (partition by created_by, %2$s
+       using (select %5$s as rid, row_number() over (partition by created_by, %2$s
                 order by (team_name = %3$L) desc, %4$s) rn
                 from public.%1$I where created_by is not null) q
-       where q.id = t.id and q.rn > 1$f$, tbl, cols2, TEAM, ord);
+       where q.rid = t.%5$s and q.rn > 1$f$, tbl, cols2, TEAM, ord, idc);
     get diagnostics n = row_count;
     if n > 0 then
       insert into public._own_all values ('1. зайві копії прибрано', tbl, cols2, n);
@@ -296,14 +321,17 @@ select * from public._own_check order by "таблиця", "біда", "що с�
 --
 --  «однакові» порівнює min і max значення в групі: count(distinct)
 --  усередині віконної функції Postgres не вміє.
-select q."налаштування", q.id, q."команда",
+select q."налаштування", q."рядок", q."команда",
        case when q.rn = 1 then '← ЦЕЙ ЛИШИТЬСЯ' else 'прибереться' end as "що буде",
        q."всього", q."однакові", q."значення (початок)"
+  /* ctid, а не id: у team_settings стовпця id немає зовсім. ctid є в
+     кожної звичайної таблиці й однозначно вказує на рядок у межах
+     запиту. Той самий порядок, що й у БЛОЦІ 1Б. */
   from (select s.key                                  as "налаштування",
-               s.id,
+               s.ctid::text                           as "рядок",
                s.team_name                            as "команда",
                row_number() over (partition by s.created_by, s.key
-                 order by (s.team_name = 'IMPROVE') desc, s.id desc) as rn,
+                 order by (s.team_name = 'IMPROVE') desc, s.ctid desc) as rn,
                count(*)      over (partition by s.created_by, s.key) as "всього",
                min(s.value)  over (partition by s.created_by, s.key)
                  = max(s.value) over (partition by s.created_by, s.key) as "однакові",
@@ -345,6 +373,7 @@ declare
   TEAM constant text := 'IMPROVE';         -- ⬅ та сама назва команди, що в БЛОЦІ 1А
   tbl  text;
   cols text;
+  idc  text;   -- id або ctid — те саме, що в БЛОЦІ 0
   n    bigint;
 begin
   -- Обидві таблиці: і виплати, і налаштування команди. Сторінка
@@ -353,27 +382,33 @@ begin
   foreach tbl in array array['payouts', 'team_settings'] loop
     cols := case tbl when 'payouts' then 'geo, offer' else 'key' end;
 
-    /* Тут «найновіший» міряється по id — на відміну від БЛОКУ 0, який
-       бере created_at, коли той у таблиці є. Так зроблено навмисно:
-       БЛОК 1А показує той самий порядок, і ці два мусять збігатися
-       між собою. Для team_settings id числовий, тож порядок правдивий. */
+    -- Чим розрізняти рядки — питаємо базу, як і в БЛОЦІ 0.
+    select case when exists (select 1 from information_schema.columns
+                              where table_schema = 'public' and table_name = tbl
+                                and column_name = 'id')
+                then 'id' else 'ctid' end
+      into idc;
+
+    /* Тут «найновіший» міряється по idc, а не по created_at — на
+       відміну від БЛОКУ 0. Навмисно: БЛОК 1А показує той самий
+       порядок, і ці два мусять збігатися між собою. */
     -- 1. зберегти те, що приберемо — ЦІЛКОМ
     execute format($f$
       insert into public._own_dropped
-      select %1$L, id::text, team_name,
+      select %1$L, rid::text, team_name,
              %2$s,
              created_by,
              %3$s
-        from (select *, row_number() over (
+        from (select *, %6$s as rid, row_number() over (
                 partition by created_by, %4$s
-                order by (team_name = %5$L) desc, id desc) rn
+                order by (team_name = %5$L) desc, %6$s desc) rn
                 from public.%1$I where created_by is not null) q
        where rn > 1$f$,
       tbl,
       case tbl when 'payouts' then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
                else 'key' end,
       case tbl when 'payouts' then 'value::text' else 'value' end,
-      cols, TEAM);
+      cols, TEAM, idc);
     get diagnostics n = row_count;
     if n > 0 then
       insert into public._own_fixed values (tbl, 'збережено у _own_dropped', 'перед видаленням', n);
@@ -382,11 +417,11 @@ begin
     -- 2. прибрати зайві
     execute format($f$
       delete from public.%1$I t
-       using (select id, row_number() over (
+       using (select %4$s as rid, row_number() over (
                 partition by created_by, %2$s
-                order by (team_name = %3$L) desc, id desc) rn
+                order by (team_name = %3$L) desc, %4$s desc) rn
                 from public.%1$I where created_by is not null) q
-       where q.id = t.id and q.rn > 1$f$, tbl, cols, TEAM);
+       where q.rid = t.%4$s and q.rn > 1$f$, tbl, cols, TEAM, idc);
     get diagnostics n = row_count;
     if n > 0 then
       insert into public._own_fixed values (tbl, 'зайві рядки прибрано', cols, n);
