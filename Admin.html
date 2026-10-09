@@ -377,7 +377,16 @@ window.amSave = async function (i) {
   msg.className = 'hint mt-3';
   if (error) {
     msg.className = 'hint warn mt-3';
-    msg.textContent = 'Не збереглось: ' + error.message;
+    /* 23514 — обмеження в таблиці. Практично завжди це
+       team_members_role_ok, який у TEAM_ROLES.sql знав лише три роли:
+       буде саме так, якщо виконано TEAM_ROLES, а ADMIN_ROLES ще ні.
+       Повідомлення Postgres тут правдиве, але людині з нього не
+       зрозуміти, що саме робити. */
+    msg.innerHTML = error.code === '23514'
+      ? 'Не збереглось: у базі обмеження ще не знає ролі <b>assistant</b>. '
+        + 'Виконайте <b>БЛОК 1</b> з ADMIN_ROLES.sql — він розширює '
+        + 'team_members_role_ok на всі чотири роли.'
+      : 'Не збереглось: ' + esc(error.message);
     return;
   }
   if (!data || !data.length) {
