@@ -252,6 +252,20 @@ create policy team_members_admin_write on public.team_members
   using (public.my_role() = 'admin')
   with check (public.my_role() = 'admin');
 
+/*  ІМʼЯ АСИСТЕНТА, А НЕ ЙОГО UUID.
+
+    БЛОК 4 дав баєру ЧИТАТИ рядки свого асистента. Але підписати їх
+    іменем він не може: політики на team_members — це «свій рядок»
+    (read_self) і «своя команда» (read_team), а read_team для баєра
+    віддає false. Тобто дані видно, а хто їх залив — ні, і розріз у
+    Report Builder показував би голий uuid.
+
+    Та сама функція, що й у БЛОЦІ 4 — тож права на дані й права на
+    імена не можуть розійтись: розійтись їм просто нічим.            */
+drop policy if exists team_members_read_mine on public.team_members;
+create policy team_members_read_mine on public.team_members
+  for select using (public.can_read_mine(user_id));
+
 drop policy if exists team_members_insert_self on public.team_members;
 create policy team_members_insert_self on public.team_members
   for insert to authenticated

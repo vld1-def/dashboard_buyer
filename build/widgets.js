@@ -109,6 +109,27 @@
       console.warn('team_members: свій рядок не завівся —', e.message || e);
     }
 
+    /* ХТО ЗАЛИВ РЯДОК. Потрібно, щоб у Report Builder розріз по людях
+       показував імена, а не uuid. Один запит на завантаження сторінки:
+       список людей міняється раз на місяць, а рядків у звіті десятки
+       тисяч, і ходити в базу за кожним — безглуздо.
+
+       Політика team_members_read_mine віддає баєру свій рядок і рядки
+       своїх асистентів, і більше нічого. Якщо її немає (не виконано
+       ADMIN_ROLES.sql), мапа лишиться з одним собою — розріз просто не
+       зʼявиться, бо ділити нема на кого. */
+    window.whoName = window.whoName || {};
+    try {
+      const { data, error } = await sb.from('team_members').select('user_id, name');
+      if (error) throw error;
+      (data || []).forEach(m => {
+        window.whoName[m.user_id] = String(m.name || '').trim() || m.user_id.slice(0, 8);
+      });
+    } catch (e) {
+      console.warn('team_members: імена не завантажились, розріз по людях буде без них —',
+                   e.message || e);
+    }
+
     if (window.myRole === 'admin') return;   // адміну не ховаємо нічого
 
     let acc = {};
