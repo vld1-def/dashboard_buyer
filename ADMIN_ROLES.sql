@@ -59,6 +59,33 @@ create index if not exists team_members_parent_idx
   on public.team_members(parent_id) where parent_id is not null;
 
 
+/*  ЧЕТВЕРТА РОЛЬ МУСИТЬ БУТИ ДОЗВОЛЕНА Й У ТАБЛИЦІ.
+
+    TEAM_ROLES.sql поставив обмеження team_members_role_ok на ТРИ роли:
+    buyer, lead, admin. Асистента тоді не існувало. Перша редакція цього
+    файлу про нього забула — додала роль у тригер і в сторінку, але не в
+    обмеження. Наслідок був рівно той, що й має бути: збереження падало
+    вголос, із назвою обмеження.
+
+        new row for relation "team_members" violates
+        check constraint "team_members_role_ok"
+
+    Обмеження лишається (воно тримає роль навіть якщо тригер колись
+    знесуть), але тепер знає всі чотири. not valid — з тієї самої
+    причини, що й у TEAM_ROLES.sql: старі рядки могли мати будь-що, і
+    перевіряти їх заднім числом означало б впасти на тому, чого ми не
+    писали.
+
+    ⚠️ ЦЕЙ ПЕРЕЛІК ТЕПЕР У ДВОХ МІСЦЯХ: тут і в тригері БЛОКУ 3.
+    Розійтись вони не можуть тихо — це перевіряє тест (roles.mjs
+    звіряє обидва списки), бо саме така розбіжність і привела до
+    помилки вище.                                                      */
+alter table public.team_members drop constraint if exists team_members_role_ok;
+alter table public.team_members
+  add constraint team_members_role_ok
+  check (role in ('buyer', 'assistant', 'lead', 'admin')) not valid;
+
+
 -- ════════════════════════════════════════════════════════════
 --  ▶ БЛОК 2 — головний вимикач для пари баєр↔асистент
 --
@@ -275,6 +302,10 @@ select m.role, coalesce(m.name, '—') as "хто", m.team_name as "команд
 --  Тригер на місці:
 --      select tgname from pg_trigger
 --       where tgrelid = 'public.team_members'::regclass and not tgisinternal;
+--
+--  Обмеження знає всі чотири роли (у виводі мусить бути «assistant»):
+--      select pg_get_constraintdef(oid) from pg_constraint
+--       where conname = 'team_members_role_ok';
 
 --  Що дерево кривим не стане — перевіряється спробою. Обидва запити
 --  МУСЯТЬ впасти з помилкою; якщо хоч один пройшов, БЛОК 3 не виконано:
