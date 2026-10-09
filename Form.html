@@ -1317,20 +1317,28 @@ let lastFbParse = null;  // {map, lines} — щоб перерахувати, я
 // done — повний текст у рядок статусу на успіх (не «label + saved»:
 // одне зі збережень насправді є видаленням профілю).
 async function tsSave(key, value, done) {
-  const { error } = await sb.from('team_settings').upsert(
-    { team_name: currentTeam, key, value: JSON.stringify(value) },
-    { onConflict: 'team_name,key' });
+  /* Ключ по власнику: (created_by, key). Чому не по команді —
+     див. OWN_UNIQUE.sql: рядок був один на команду, а видно його
+     одному автору, тож чужий рядок блокував твій і не показувався. */
+  const row = { team_name: currentTeam, key, value: JSON.stringify(value) };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('team_settings').upsert(row,
+    { onConflict: 'created_by,key' });
   if (!error) { showStatus(done || (key + ' saved')); return true; }
   const code = String(error.code || '');
-  const own = code === '23505' || code === '42501'
-    || /row-level security|duplicate key/i.test(String(error.message || ''));
-  alert('Not saved: ' + (error.message || code || 'unknown error')
-    + (own
-      ? `\n\nThe row "${key}" for team "${currentTeam}" already exists in the database`
-        + ' but belongs to someone else, so RLS will not let it be overwritten.'
-        + ' Rows like this are left over from merging two team names into one.'
-        + '\nRun TEAM_SETTINGS_OWN.sql — it shows whose they are and hands them over.'
-      : ''));
+  const msg = String(error.message || '');
+  let hint = '';
+  // Єдиний раз, коли це трапляється, — між деплоєм сторінки й виконанням
+  // OWN_UNIQUE.sql: база ще на старому ключі, сторінка вже на новому.
+  if (code === '42P10' || /no unique or exclusion constraint/i.test(msg))
+    hint = '\n\nThe database is still on the old key (by team) while this page is'
+         + ' already on the new one (by owner). Run OWN_UNIQUE.sql, then Ctrl+Shift+R.';
+  else if (code === '23505' || code === '42501' || /row-level security/i.test(msg))
+    hint = `\n\nThe row "${key}" already exists in the database but belongs to`
+         + ' someone else, so RLS will not let it be overwritten — and you cannot see it.'
+         + '\nRun OWN_UNIQUE.sql: after it everyone has their own row and nobody'
+         + ' blocks anybody.';
+  alert('Not saved: ' + (msg || code || 'unknown error') + hint);
   return false;
 }
 

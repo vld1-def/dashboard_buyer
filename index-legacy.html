@@ -4222,20 +4222,36 @@ async function addGeoPayout() {
   if (g && v) {
     console.log("Saving payout:", { team: currentTeam, geo: g, offer: o, val: v });
 
-    // Використовуємо upsert. 
-    // Якщо в базі вже є такий team_name + geo + offer — він оновить value.
-    const { error } = await sb.from('payouts').upsert({ 
-        team_name: currentTeam, 
-        geo: g, 
-        offer: o, 
-        value: Number(v) 
-      }, { 
-        onConflict: 'team_name, geo, offer' 
-      });
+    /* КЛЮЧ ПО ВЛАСНИКУ, А НЕ ПО КОМАНДІ.
+
+       Тут стояло on conflict (team_name, geo, offer) — один рядок на всю
+       команду. А видимість у payouts рахується по АВТОРУ: політики на
+       цій таблиці лише own_* (SECURITY_BUYERS.sql крок 6), бо це гроші.
+
+       Два правила не сходились: рядок один на команду, бачить його один
+       автор. Щойно асистент завів UZ/Pinco, баєр цього рядка не бачив —
+       у списку порожньо, — додавав як новий, upsert натикався на
+       невидимий рядок і отримував «new row violates row-level security
+       policy (USING expression)». Тобто сторінка не давала додати те,
+       чого для неї не існує.
+
+       Тепер ключ (created_by, geo, offer): у кожного свій рядок. Рівно
+       так само вже зроблено для доменів (domains_owner_domain_idx), з
+       тим самим поясненням — payouts тоді просто пропустили.
+
+       created_by шлемо явно, коли знаємо: у бази є default auth.uid(),
+       але з явним значенням ціль конфлікту визначена напевно, навіть
+       якщо default десь не проставили. */
+    const row = { team_name: currentTeam, geo: g, offer: o, value: Number(v) };
+    if (window.myUid) row.created_by = window.myUid;
+
+    const { error } = await sb.from('payouts').upsert(row,
+      { onConflict: 'created_by, geo, offer' });
 
     if (error) {
-      console.error("409 Conflict Fix Error:", error);
-      alert("Помилка: " + error.message);
+      console.error("payouts upsert:", error);
+      alert("Помилка: " + error.message
+        + (typeof keyHint === 'function' ? keyHint(error) : ''));
     } else {
       // Очищуємо поля
       document.getElementById('payout-geo').value = '';
@@ -4721,13 +4737,30 @@ async function getTeamSetting(key) {
     return data && data.length > 0 ? data[0].value : null;
   } catch(e) { return null; }
 }
+/* ⚠️ ТУТ МОВЧАЛО ВСЕ, ЩО ЗБЕРІГАЄТЬСЯ ЧЕРЕЗ ЦЮ ФУНКЦІЮ.
+
+   Через неї йдуть правила FB, темп синку, закриття місяця, розрахунок
+   виплат, теги креативів — два десятки місць. А тут стояв try/catch
+   без перевірки error: PostgREST відмову не кидає винятком, він
+   повертає її в полі error. Тобто будь-яка відмова бази означала, що
+   налаштування просто не збереглось, і ніде про це не було сказано —
+   ні на екрані, ні в консолі.
+
+   Ключ тут теж переведено на власника: (created_by, key) замість
+   (team_name, key), з тієї самої причини, що й у виплатах вище. */
 async function setTeamSetting(key, value) {
-  try {
-    await sb.from('team_settings').upsert(
-      { team_name: currentTeam, key, value },
-      { onConflict: 'team_name,key' }
-    );
-  } catch(e) { console.warn('team_settings not available:', e.message); }
+  const row = { team_name: currentTeam, key, value };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('team_settings').upsert(row,
+    { onConflict: 'created_by,key' });
+  if (!error) return true;
+  const hint = typeof keyHint === 'function' ? keyHint(error) : '';
+  console.warn('team_settings: «' + key + '» не збереглось —',
+    error.message || error.code, hint);
+  if (typeof toast === 'function')
+    toast('Налаштування «' + key + '» не збереглось: '
+      + (error.message || error.code) + hint);
+  return false;
 }
 
 // ===== SITE PASSWORD =====
