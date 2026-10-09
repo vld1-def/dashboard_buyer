@@ -4251,7 +4251,7 @@ async function addGeoPayout() {
     if (error) {
       console.error("payouts upsert:", error);
       alert("Помилка: " + error.message
-        + (typeof keyHint === 'function' ? keyHint(error) : ''));
+        + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : ''));
     } else {
       // Очищуємо поля
       document.getElementById('payout-geo').value = '';
@@ -4746,15 +4746,24 @@ async function getTeamSetting(key) {
    налаштування просто не збереглось, і ніде про це не було сказано —
    ні на екрані, ні в консолі.
 
-   Ключ тут теж переведено на власника: (created_by, key) замість
-   (team_name, key), з тієї самої причини, що й у виплатах вище. */
+   ⚠️ КЛЮЧ ТУТ ЛИШАЄТЬСЯ ПО КОМАНДІ — (team_name, key).
+
+   Якийсь час тут стояло (created_by, key), як у виплатах. Для
+   team_settings це відкотили за рішенням власника дашборда: на
+   власника переходять ЛИШЕ виплати. Ключ у коді мусить збігатися з
+   тим, що в базі, байт у байт — інакше Postgres відповідає
+   «there is no unique or exclusion constraint matching the ON CONFLICT
+   specification» і не зберігає нічого.
+
+   Чужий рядок тут лагодиться не зміною ключа, а передачею самого
+   рядка — TEAM_SETTINGS_OWN.sql. */
 async function setTeamSetting(key, value) {
   const row = { team_name: currentTeam, key, value };
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row,
-    { onConflict: 'created_by,key' });
+    { onConflict: 'team_name,key' });
   if (!error) return true;
-  const hint = typeof keyHint === 'function' ? keyHint(error) : '';
+  const hint = typeof keyHint === 'function' ? keyHint(error, 'TEAM_SETTINGS_OWN.sql') : '';
   console.warn('team_settings: «' + key + '» не збереглось —',
     error.message || error.code, hint);
   if (typeof toast === 'function')

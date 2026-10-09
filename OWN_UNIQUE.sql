@@ -33,7 +33,12 @@
 --  ЩО РОБИТЬ ЦЕЙ ФАЙЛ. Переводить унікальність на власника:
 --
 --      payouts        (team_name, geo, offer)  →  (created_by, geo, offer)
---      team_settings  (team_name, key)         →  (created_by, key)
+--
+--  ТІЛЬКИ ВИПЛАТИ. team_settings має рівно ту саму поломку, і блоки
+--  нижче вміють її теж, але за замовчуванням не чіпають: так вирішено.
+--  Там чужий рядок лагодиться інакше — TEAM_SETTINGS_OWN.sql передає
+--  його тобі, не міняючи ключа. Як увімкнути team_settings і що саме
+--  при цьому доведеться поміняти у сторінці — написано в БЛОЦІ 0.
 --
 --  Тоді в кожного свій рядок, і ніхто нікого не блокує — рівно так,
 --  як уже зроблено для доменів у SECURITY_BUYERS.sql:
@@ -47,8 +52,8 @@
 --  пропустили. Це той самий недогляд, лише в інших двох таблицях.
 --
 --  ⚠️ ВИКОНАТИ ЦЕ ТРЕБА РАЗОМ ІЗ ОНОВЛЕННЯМ СТОРІНКИ. Сторінка
---  зберігає через on conflict саме по цих стовпцях: нова сторінка зі
---  старим ключем (чи навпаки) отримає від Postgres
+--  зберігає ставки через on conflict саме по цих стовпцях: нова
+--  сторінка зі старим ключем (чи навпаки) отримає від Postgres
 --  «there is no unique or exclusion constraint matching the ON
 --  CONFLICT specification». Сторінка це розпізнає й назве цей файл,
 --  але краще не доводити: виконай блоки, тоді Ctrl+Shift+R.
@@ -95,7 +100,13 @@ declare
                                      --        назва команди з лівої панелі дашборда
   tbl  text; cols text; cols2 text; nm text; r record; n bigint; dflt text;
 begin
-  foreach tbl in array array['payouts', 'team_settings'] loop
+  -- ⬅ ТІЛЬКИ ВИПЛАТИ. team_settings лишається на ключі по команді
+  --    навмисно; чужий рядок там лагодить TEAM_SETTINGS_OWN.sql.
+  --    Якщо колись захочеш і її — допиши сюди , 'team_settings',
+  --    І ТОДІ Ж поміняй у сторінці onConflict 'team_name,key' на
+  --    'created_by,key' (index-legacy.html і Form.html): ключ у
+  --    коді мусить збігатися з базою, інакше не збережеться нічого.
+  foreach tbl in array array['payouts'] loop
     cols  := case tbl when 'payouts' then 'created_by, geo, offer' else 'created_by, key' end;
     cols2 := case tbl when 'payouts' then 'geo, offer' else 'key' end;
     nm    := case tbl when 'payouts' then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
@@ -326,7 +337,13 @@ declare
   cols text;
   n    bigint;
 begin
-  foreach tbl in array array['payouts', 'team_settings'] loop
+  -- ⬅ ТІЛЬКИ ВИПЛАТИ. team_settings лишається на ключі по команді
+  --    навмисно; чужий рядок там лагодить TEAM_SETTINGS_OWN.sql.
+  --    Якщо колись захочеш і її — допиши сюди , 'team_settings',
+  --    І ТОДІ Ж поміняй у сторінці onConflict 'team_name,key' на
+  --    'created_by,key' (index-legacy.html і Form.html): ключ у
+  --    коді мусить збігатися з базою, інакше не збережеться нічого.
+  foreach tbl in array array['payouts'] loop
     cols := case tbl when 'payouts' then 'geo, offer' else 'key' end;
 
     -- 1. зберегти те, що приберемо — ЦІЛКОМ
@@ -416,7 +433,13 @@ declare
   bad   bigint;
   dflt  text;
 begin
-  foreach tbl in array array['payouts', 'team_settings'] loop
+  -- ⬅ ТІЛЬКИ ВИПЛАТИ. team_settings лишається на ключі по команді
+  --    навмисно; чужий рядок там лагодить TEAM_SETTINGS_OWN.sql.
+  --    Якщо колись захочеш і її — допиши сюди , 'team_settings',
+  --    І ТОДІ Ж поміняй у сторінці onConflict 'team_name,key' на
+  --    'created_by,key' (index-legacy.html і Form.html): ключ у
+  --    коді мусить збігатися з базою, інакше не збережеться нічого.
+  foreach tbl in array array['payouts'] loop
     cols  := case tbl when 'payouts' then 'created_by, geo, offer'
                       else 'created_by, key' end;
     cols2 := case tbl when 'payouts' then 'geo, offer' else 'key' end;
