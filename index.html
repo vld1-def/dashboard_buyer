@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.10 09:01">
+  <meta name="build" content="build 09.10 09:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5042,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 09:01</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 09:17</div>
     </div>
   </aside>
 
@@ -12446,6 +12446,10 @@ const RB_DIMS = [
   // creatives_stats, тож і групування, і фільтр по ньому переводять
   // звіт на цю таблицю (див. rbNeedsCreatives і RB_CR_ONLY).
   { key:'creative',  label:'Creative' },
+  /* Хто залив рядок. Зʼявляється у списку лише тоді, коли ділити є на
+     кого (див. rbVisDims): поки асистента немає, це вимір з одним
+     значенням, тобто зайвий рядок у шапці й нічого більше. */
+  { key:'buyer',     label:'Buyer' },
 ];
 const RB_COLS = [
   { key:'spend',    label:'Spend',    fmt:v=>'$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) },
@@ -12478,8 +12482,14 @@ const rbHidLoad = k => { try { return new Set(JSON.parse(localStorage.getItem(k)
 const rbHidSave = (k, set) => { try { localStorage.setItem(k, JSON.stringify([...set])); } catch(e){} };
 let rbDimsOff = rbHidLoad(RB_HID_DIM_KEY);
 let rbFiltOff = rbHidLoad(RB_HID_FLT_KEY);
-const rbVisDims = () => RB_DIMS.filter(d=>!rbDimsOff.has(d.key));
-const rbVisFilters = () => RB_FILTERS.filter(f=>!rbFiltOff.has(f.k));
+/* «Buyer» має сенс лише в того, у кого є асистент. whoName тримає
+   себе плюс своїх асистентів (політика team_members_read_mine), тож
+   один запис означає «ділити нема на кого». Ховаємо вимір і фільтр
+   разом: інакше можна було б відфільтрувати по людині, не маючи змоги
+   побачити розріз. */
+const rbSolo = () => Object.keys(window.whoName || {}).length < 2;
+const rbVisDims = () => RB_DIMS.filter(d=>!rbDimsOff.has(d.key) && !(d.key==='buyer' && rbSolo()));
+const rbVisFilters = () => RB_FILTERS.filter(f=>!rbFiltOff.has(f.k) && !(f.k==='buyer' && rbSolo()));
 
 let rbGroups = ['geo'];
 // Групування рівнями: перший вимір — батьківський рядок, наступні розкриваються
@@ -12515,6 +12525,7 @@ const RB_FILTERS = [
   // Creative останній: список у нього найдовший, і відкривають його рідше,
   // ніж гео чи акаунт.
   { k:'crea',  label:'All creatives' },
+  { k:'buyer', label:'All buyers' },
 ];
 const rbSel = {}, rbOpts = {};
 RB_FILTERS.forEach(f => { rbSel[f.k] = new Set(); rbOpts[f.k] = []; });
@@ -12535,6 +12546,7 @@ const RB_VAL = {
   plat:  r => prettyPlatform(r.platform),
   plc:   r => prettyPlacement(r.placement),
   crea:  r => String(r.cid||'').trim(),
+  buyer: r => String(r.created_by||''),
 };
 // Device, платформа, плейсмент і креатив живуть лише в creatives_stats
 const RB_CR_ONLY = new Set(['dev','plat','plc','crea']);
@@ -12678,6 +12690,13 @@ function rbDimVal(r,dim){
   if(dim==='platform') return prettyPlatform(r.platform) || '—';
   if(dim==='placement') return placementLabel(r);   // "Instagram · Feed"
   if(dim==='creative') return String(r.cid||'').trim() || '—';
+  // Імена беремо з whoName (заповнює roleBoot). Немає імені — показуємо
+  // початок uuid, а не порожнє: рядок усе одно чийсь.
+  if(dim==='buyer'){
+    const u=String(r.created_by||'');
+    if(!u) return '—';
+    return (window.whoName && window.whoName[u]) || u.slice(0,8);
+  }
   return String(r[dim] ?? '—') || '—';
 }
 // Групування по девайсу/платформі/плейсменту теж потребує creatives_stats
@@ -25684,6 +25703,27 @@ tmBoot();
       }
     } catch (e) {
       console.warn('team_members: свій рядок не завівся —', e.message || e);
+    }
+
+    /* ХТО ЗАЛИВ РЯДОК. Потрібно, щоб у Report Builder розріз по людях
+       показував імена, а не uuid. Один запит на завантаження сторінки:
+       список людей міняється раз на місяць, а рядків у звіті десятки
+       тисяч, і ходити в базу за кожним — безглуздо.
+
+       Політика team_members_read_mine віддає баєру свій рядок і рядки
+       своїх асистентів, і більше нічого. Якщо її немає (не виконано
+       ADMIN_ROLES.sql), мапа лишиться з одним собою — розріз просто не
+       зʼявиться, бо ділити нема на кого. */
+    window.whoName = window.whoName || {};
+    try {
+      const { data, error } = await sb.from('team_members').select('user_id, name');
+      if (error) throw error;
+      (data || []).forEach(m => {
+        window.whoName[m.user_id] = String(m.name || '').trim() || m.user_id.slice(0, 8);
+      });
+    } catch (e) {
+      console.warn('team_members: імена не завантажились, розріз по людях буде без них —',
+                   e.message || e);
     }
 
     if (window.myRole === 'admin') return;   // адміну не ховаємо нічого

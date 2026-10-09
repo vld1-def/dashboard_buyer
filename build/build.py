@@ -903,6 +903,65 @@ rest = sub(rest,
   if (typeof roleBoot === 'function') await roleBoot();""",
   'перший запуск: гачок')
 
+# ── РОЗРІЗ ЗВІТУ ПО ЛЮДЯХ ──
+# Баєр після ADMIN_ROLES.sql читає рядки свого асистента, і вони вже
+# лягають в один звіт разом із його власними — бо відбір іде лише по
+# team_name. Це й треба за замовчуванням: звіт подають один, і скільки
+# в тебе асистентів — нікого не обходить.
+#
+# Чого бракувало — можливості РОЗДІЛИТИ, коли треба подивитись, хто
+# скільки зробив. Додаємо вимір і фільтр «Buyer» по created_by.
+rest = sub(rest,
+  "  { key:'creative',  label:'Creative' },\n];",
+  """  { key:'creative',  label:'Creative' },
+  /* Хто залив рядок. Зʼявляється у списку лише тоді, коли ділити є на
+     кого (див. rbVisDims): поки асистента немає, це вимір з одним
+     значенням, тобто зайвий рядок у шапці й нічого більше. */
+  { key:'buyer',     label:'Buyer' },
+];""",
+  'Report Builder: вимір Buyer')
+
+rest = sub(rest,
+  "  if(dim==='creative') return String(r.cid||'').trim() || '—';",
+  """  if(dim==='creative') return String(r.cid||'').trim() || '—';
+  // Імена беремо з whoName (заповнює roleBoot). Немає імені — показуємо
+  // початок uuid, а не порожнє: рядок усе одно чийсь.
+  if(dim==='buyer'){
+    const u=String(r.created_by||'');
+    if(!u) return '—';
+    return (window.whoName && window.whoName[u]) || u.slice(0,8);
+  }""",
+  'Report Builder: значення виміру Buyer')
+
+rest = sub(rest,
+  "  { k:'crea',  label:'All creatives' },\n];",
+  """  { k:'crea',  label:'All creatives' },
+  { k:'buyer', label:'All buyers' },
+];""",
+  'Report Builder: фільтр Buyer')
+
+rest = sub(rest,
+  "  crea:  r => String(r.cid||'').trim(),\n};",
+  """  crea:  r => String(r.cid||'').trim(),
+  buyer: r => String(r.created_by||''),
+};""",
+  'Report Builder: відбір по Buyer')
+
+# Вимір і фільтр ховаються, поки ділити нема на кого: один автор — це
+# не розріз, а зайвий пункт у двох меню.
+rest = sub(rest,
+  "const rbVisDims = () => RB_DIMS.filter(d=>!rbDimsOff.has(d.key));\n"
+  "const rbVisFilters = () => RB_FILTERS.filter(f=>!rbFiltOff.has(f.k));",
+  """/* «Buyer» має сенс лише в того, у кого є асистент. whoName тримає
+   себе плюс своїх асистентів (політика team_members_read_mine), тож
+   один запис означає «ділити нема на кого». Ховаємо вимір і фільтр
+   разом: інакше можна було б відфільтрувати по людині, не маючи змоги
+   побачити розріз. */
+const rbSolo = () => Object.keys(window.whoName || {}).length < 2;
+const rbVisDims = () => RB_DIMS.filter(d=>!rbDimsOff.has(d.key) && !(d.key==='buyer' && rbSolo()));
+const rbVisFilters = () => RB_FILTERS.filter(f=>!rbFiltOff.has(f.k) && !(f.k==='buyer' && rbSolo()));""",
+  'Report Builder: Buyer лише коли є асистент')
+
 # Витрати йдуть за місяцем дашборда, а власного перемикача більше не
 # мають — отже, при зміні місяця панель треба перемалювати звідси.
 # Інакше в ній лишаються числа попереднього місяця під новим підписом.
