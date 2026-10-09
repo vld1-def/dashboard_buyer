@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.10 16:32">
+  <meta name="build" content="build 09.10 17:07">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5042,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 16:32</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 17:07</div>
     </div>
   </aside>
 
@@ -7942,9 +7942,11 @@ async function crMimeOf(cid) {
     const f = await driveFindCreative(cid);
     return f ? f.mimeType : '';
   }
-  const url = `${APPS_SCRIPT_URL}?name=${encodeURIComponent(cid)}`;
-  const data = await (await fetch(url)).json();
-  return data && data.found ? data.mimeType : '';
+  /* Папку не вказано — формат невідомий, і це чесна відповідь.
+     Тут стояв похід у СПІЛЬНУ папку через Apps Script: пошук ішов по
+     чужому Drive за назвою, і «UZ_VD_951» міг збігтися з чим завгодно
+     чужим. Формат від такого збігу записувався як свій. */
+  return '';
 }
 
 /* Пройтись по всьому, що ще не відоме точно. По черзі, а не пачкою:
@@ -9298,7 +9300,6 @@ async function deleteBonusTier(id) {
 // ===== END BONUS CALCULATOR =====
 
 // ===== GOOGLE DRIVE PREVIEW =====
-const DRIVE_FOLDER_ID = '1He656yAwfQOTOkgORZ6pBUtDI0iGfF9T'; // дефолт (fallback)
 const DRIVE_API_KEY = 'AIzaSyAiyUXj3HYrT7-XM2Kwht_sx-L4DsKhu_o';
 let teamDriveFolderId = null; // папка ЦІЄЇ команди (team_settings.drive_folder)
 
@@ -9326,7 +9327,7 @@ async function saveDriveFolder() {
   if (!raw) { // порожнє = скинути на дефолт
     await setTeamSetting('drive_folder', '');
     teamDriveFolderId = null;
-    if (status) status.textContent = 'Reset — the shared folder is used.';
+    if (status) status.textContent = 'Скинуто — прев\'ю креативів вимкнено.';
     return;
   }
   const id = parseDriveFolderId(raw);
@@ -9344,10 +9345,14 @@ async function loadDriveFolderSetting() {
   const status = document.getElementById('drive-folder-status');
   if (status) status.textContent = teamDriveFolderId
     ? `✓ Папка команди ${currentTeam} підключена`
-    : 'Using the shared folder (default).';
+    : 'Папку не вказано — прев\'ю креативів вимкнено.';
 }
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzfVUGUXi3nUXlm4fAb8ItzMcZ8p-1Z6_VSfX0u7T8gdZbojZlP8x7l2QVQiEFEZCkl/exec';
+/* APPS_SCRIPT_URL і DRIVE_FOLDER_ID прибрані навмисно. Це був запасний
+   шлях у СПІЛЬНУ папку, коли команда не вказала свою: пошук по чужому
+   Drive за назвою креатива. Збіг назв там випадковий, а виглядав як
+   знайдений креатив — саме це й бачив користувач. Немає своєї папки —
+   немає прев'ю, і так і сказано. */
 
 // ── Пошук креатива в папці команди: корінь → підпапка гео (перші 2 літери CID) ──
 const _driveGeoFolders = {};   // кеш: 'KG' -> folderId
@@ -9481,10 +9486,18 @@ async function loadCreativePreview(creativeName) {
             viewUrl: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view` }
         : { found: false };
     } else {
-      // Спільна папка (дефолт) — через Apps Script
-      const url = `${APPS_SCRIPT_URL}?name=${encodeURIComponent(creativeName)}`;
-      const resp = await fetch(url);
-      data = await resp.json();
+      /* ПАПКИ НЕМА — НЕ ШУКАЄМО НІДЕ.
+
+         Тут був запасний шлях у спільну папку через Apps Script. Він
+         і давав «випадкові креативи»: шукалось по ЧУЖОМУ Drive за
+         назвою, тож під «UZ_VD_951» міг знайтись чийсь сторонній
+         файл — і показувався як твій креатив.
+
+         Нічого не знайти краще, ніж знайти чуже. */
+      el.innerHTML = '<p class="text-[10px] text-slate-600 py-3 px-4 text-center">'
+        + 'Google Drive folder is not set — add it in <b>Settings &rarr; Integrations</b>'
+        + ' to see creative previews.</p>';
+      return;
     }
 
     if (!data.found) {
@@ -9551,24 +9564,26 @@ async function getTeamSetting(key) {
    налаштування просто не збереглось, і ніде про це не було сказано —
    ні на екрані, ні в консолі.
 
-   ⚠️ КЛЮЧ ТУТ ЛИШАЄТЬСЯ ПО КОМАНДІ — (team_name, key).
+   КЛЮЧ ПО ВЛАСНИКУ — (created_by, key), як і у виплатах.
 
-   Якийсь time тут стояло (created_by, key), як у виплатах. Для
-   team_settings це відкотили за рішенням власника дашборда: на
-   власника переходять ЛИШЕ виплати. Ключ у коді мусить збігатися з
-   тим, що в базі, байт у байт — інакше Postgres відповідає
-   «there is no unique or exclusion constraint matching the ON CONFLICT
-   specification» і не зберігає нічого.
+   Ходило туди-сюди: спершу по власнику, потім відкотили на команду,
+   тепер знову по власнику — і цього разу не навмання. Причина
+   побачена на живому: рядок app_profiles під цією командою завів
+   асистент, баєру його не видно (політики тут лише own_*), і
+   зберегти своє він не міг узагалі. Ключ по команді означав один
+   рядок налаштувань на двох людей; по власнику — у кожного свій.
 
-   Чужий рядок тут лагодиться не зміною ключа, а передачею самого
-   рядка — TEAM_SETTINGS_OWN.sql. */
+   Ключ у коді мусить збігатися з базою байт у байт: інакше Postgres
+   відповідає «there is no unique or exclusion constraint matching the
+   ON CONFLICT specification» і не зберігає нічого. Тому ця правка
+   їде РАЗОМ з OWN_UNIQUE.sql, де team_settings повернули в список. */
 async function setTeamSetting(key, value) {
   const row = { team_name: currentTeam, key, value };
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row,
-    { onConflict: 'team_name,key' });
+    { onConflict: 'created_by,key' });
   if (!error) return true;
-  const hint = typeof keyHint === 'function' ? keyHint(error, 'TEAM_SETTINGS_OWN.sql') : '';
+  const hint = typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : '';
   console.warn('team_settings: «' + key + '» не збереглось —',
     error.message || error.code, hint);
   if (typeof toast === 'function')

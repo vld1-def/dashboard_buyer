@@ -1317,20 +1317,19 @@ let lastFbParse = null;  // {map, lines} — щоб перерахувати, я
 // done — повний текст у рядок статусу на успіх (не «label + saved»:
 // одне зі збережень насправді є видаленням профілю).
 async function tsSave(key, value, done) {
-  /* ⚠️ КЛЮЧ ПО КОМАНДІ — (team_name, key), і це навмисно.
+  /* КЛЮЧ ПО ВЛАСНИКУ — (created_by, key).
 
-     Якийсь час тут стояло (created_by, key). Відкотили: на власника
-     переходять ЛИШЕ виплати (OWN_UNIQUE.sql), а team_settings
-     лишається як була. Ключ у коді мусить збігатися з базою точно —
-     інакше Postgres не зберігає нічого й каже «there is no unique or
-     exclusion constraint matching the ON CONFLICT specification».
+     Рядок app_profiles під спільною назвою команди завів асистент;
+     баєру його не видно (на team_settings лише політики own_*), тож
+     зберегти своє він не міг узагалі. Ключ по команді означав одні
+     налаштування розбору на двох людей — по власнику в кожного свої.
 
-     Чужий рядок тут лагодиться TEAM_SETTINGS_OWN.sql — передачею
-     рядка, а не зміною ключа. */
+     Ключ мусить збігатися з базою точно, інакше Postgres не зберігає
+     нічого. Тому це їде разом з OWN_UNIQUE.sql. */
   const row = { team_name: currentTeam, key, value: JSON.stringify(value) };
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row,
-    { onConflict: 'team_name,key' });
+    { onConflict: 'created_by,key' });
   if (!error) { showStatus(done || (key + ' saved')); return true; }
   const code = String(error.code || '');
   const msg = String(error.message || '');
@@ -1344,7 +1343,7 @@ async function tsSave(key, value, done) {
   else if (code === '23505' || code === '42501' || /row-level security/i.test(msg))
     hint = `\n\nThe row "${key}" already exists in the database but belongs to`
          + ' someone else, so RLS will not let it be overwritten — and you cannot see it.'
-         + '\nRun TEAM_SETTINGS_OWN.sql — it shows whose the rows are and hands them over.';
+         + '\nRun OWN_UNIQUE.sql: after it everyone has their own settings row.';
   alert('Not saved: ' + (msg || code || 'unknown error') + hint);
   return false;
 }
