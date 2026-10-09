@@ -124,6 +124,8 @@ declare
   tbl  text; cols text; cols2 text; nm text; r record; n bigint; dflt text;
   ord  text;   -- чим визначаємо «найновіший»: див. нижче
   idc  text;   -- чим розрізняємо рядки: id або ctid, див. нижче
+  have boolean;  -- чи така унікальність уже є
+  nulls bigint;  -- рядків без автора: заважають первинному ключу
 begin
   -- Обидві таблиці: і виплати, і налаштування команди. Сторінка
   -- зберігає їх по тих самих стовпцях (created_by, …) — ключ у коді
@@ -208,19 +210,45 @@ begin
       insert into public._own_all values ('2. уцілілий переведено на ' || TEAM, tbl, 'team_name', n);
     end if;
 
-    -- 2. новий ключ СПЕРШУ, старий потім: якщо новий не стане, таблиця
-    --    лишиться зі старим, а не зовсім без унікальності
-    execute format('create unique index if not exists %I on public.%I (%s)',
-                   tbl || '_owner_uidx', tbl, cols);
-    insert into public._own_all values ('3. новий ключ по власнику', tbl, cols, 1);
+    /* 2. новий ключ СПЕРШУ, старий потім: якщо новий не стане, таблиця
+       лишиться зі старим, а не зовсім без унікальності.
+
+       Спершу дивимось, чи такої унікальності вже немає: після вдалого
+       підвищення до первинного ключа (нижче) індекс перейменовується
+       на <таблиця>_pkey, і повторний запуск інакше завів би поруч
+       другий такий самий. */
+    select exists (
+      select 1 from pg_index i
+      join pg_class ic on ic.oid = i.indexrelid
+      join pg_class t  on t.oid  = i.indrelid
+      join pg_namespace ns on ns.oid = t.relnamespace
+      where ns.nspname = 'public' and t.relname = tbl and i.indisunique
+        and (select array_agg(a.attname::text order by k.ord)
+               from unnest(i.indkey) with ordinality as k(attnum, ord)
+               join pg_attribute a on a.attrelid = t.oid and a.attnum = k.attnum)
+            = string_to_array(replace(cols, ' ', ''), ',')
+    ) into have;
+    if have then
+      insert into public._own_all values ('3. ключ по власнику вже був', tbl, cols, 1);
+    else
+      execute format('create unique index if not exists %I on public.%I (%s)',
+                     tbl || '_owner_uidx', tbl, cols);
+      insert into public._own_all values ('3. новий ключ по власнику', tbl, cols, 1);
+    end if;
 
     -- 3. прибрати все старе, до чого входить team_name
     for r in
+      /* ⚠️ І 'p' ТЕЖ. Первинний ключ — це теж унікальність, просто з
+         іншим contype. Перша редакція шукала лише 'u', і через це
+         team_settings_pkey на (team_name, key) лишався жити: новий
+         ключ по власнику зʼявлявся, старий нікуди не дівався, і
+         збереження впиралось у «duplicate key value violates unique
+         constraint "team_settings_pkey"». */
       select c.conname as x, true as is_c
         from pg_constraint c
         join pg_class t on t.oid = c.conrelid
         join pg_namespace ns on ns.oid = t.relnamespace
-       where ns.nspname = 'public' and t.relname = tbl and c.contype = 'u'
+       where ns.nspname = 'public' and t.relname = tbl and c.contype in ('u', 'p')
          and exists (select 1 from unnest(c.conkey) k
                      join pg_attribute a on a.attrelid = t.oid and a.attnum = k
                       where a.attname = 'team_name')
@@ -241,6 +269,38 @@ begin
       end if;
       insert into public._own_all values ('4. стара унікальність прибрана', tbl, r.x, 1);
     end loop;
+
+    /* 5. ПОВЕРНУТИ ПЕРВИННИЙ КЛЮЧ, ЯКЩО МОЖНА.
+
+       Коли старою унікальністю був саме PRIMARY KEY, після кроку 4
+       таблиця лишається без нього. Postgres це переживе, а ось
+       редактор таблиць Supabase правити рядки руками вже не дасть —
+       йому потрібен ключ. Тому пробуємо підвищити новий індекс.
+
+       Вийде не завжди: первинний ключ не терпить null, а created_by
+       буває порожнім у рядків, заведених до SECURITY_BUYERS.sql крок 3.
+       Перевірено виконанням: Postgres відповідає «column created_by
+       contains null values». Це не привід завалити весь блок —
+       унікальність уже на місці й працює. Тому не мовчимо, а кажемо,
+       скільки таких рядків і що з ними зробити. */
+    execute format('select count(*) from public.%I where created_by is null', tbl)
+      into nulls;
+    if not have then
+      if nulls > 0 then
+        insert into public._own_all values (
+          '5. первинного ключа НЕМАЄ: рядків без автора', tbl,
+          'проставте created_by або приберіть їх і запустіть блок ще раз', nulls);
+      else
+        begin
+          execute format('alter table public.%I add constraint %I primary key using index %I',
+                         tbl, tbl || '_pkey', tbl || '_owner_uidx');
+          insert into public._own_all values ('5. первинний ключ по власнику', tbl, cols, 1);
+        exception when others then
+          insert into public._own_all values (
+            '5. первинний ключ не став (унікальність усе одно є)', tbl, sqlerrm, 0);
+        end;
+      end if;
+    end if;
   end loop;
 end $$;
 
@@ -601,11 +661,12 @@ begin
 
     -- 4. прибрати все старе, до чого входить team_name
     for r in
+      -- 'p' теж: первинний ключ — та сама унікальність, інший contype.
       select c.conname as nm, true as is_constraint
         from pg_constraint c
         join pg_class t  on t.oid = c.conrelid
         join pg_namespace ns on ns.oid = t.relnamespace
-       where ns.nspname = 'public' and t.relname = tbl and c.contype = 'u'
+       where ns.nspname = 'public' and t.relname = tbl and c.contype in ('u', 'p')
          and exists (select 1 from unnest(c.conkey) k
                      join pg_attribute a on a.attrelid = t.oid and a.attnum = k
                       where a.attname = 'team_name')
