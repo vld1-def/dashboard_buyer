@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.10 08:36">
+  <meta name="build" content="build 09.10 08:45">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3880,10 +3880,6 @@ body[data-route="domains"] #dm-detail {
    справжня межа стоїть у політиках бази. */
 .sb-item[data-nav="team"] { display: none; }
 body.is-lead .sb-item[data-nav="team"] { display: flex; }
-/* Роли й доступи — лише адміну. Клас ставить roleBoot, прочитавши
-   my_role() у базі; з localStorage роль не беремо навмисно. */
-#sb-admin { display: none; }
-body.is-role-admin #sb-admin { display: flex; }
 
 /* А в самого тімліда в меню рівно одна сторінка — його власна.
    Ховати сторінки баєра по одній програшно: наступний блок, який
@@ -5010,17 +5006,6 @@ input.ui-in[type="range"] { padding: 0; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="sb-lbl">Team</span>
       </button>
-      <!-- Роли й доступи. Окрема сторінка, а не вкладка: вона не про
-           дані, а про те, хто їх бачить, і змішувати це з аналітикою —
-           значить рано чи пізно натиснути не те. Без data-nav навмисно:
-           syncNavVisibility ходить по маршрутах, а в цього пункту
-           маршруту немає — це посилання. Схований, поки roleBoot не
-           поставить body.is-role-admin; справжня межа все одно в
-           політиках бази. -->
-      <a class="sb-item" id="sb-admin" href="Admin.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg>
-        <span class="sb-lbl">Roles</span>
-      </a>
       <button class="sb-item" data-nav="reports" onclick="navGo('reports')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
         <span class="sb-lbl">Report Builder</span>
@@ -5057,7 +5042,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 08:36</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.10 08:45</div>
     </div>
   </aside>
 
@@ -25666,6 +25651,9 @@ tmBoot();
       console.warn('ролі не налаштовані (my_role):', e.message || e);
       return;
     }
+    // Позначка ролі на body. Пункту меню за нею більше немає — сторінка
+    // ролей відкривається тільно прямою адресою Admin.html, і в меню її
+    // не видно нікому, навіть адміну.
     document.body.classList.toggle('is-role-admin', window.myRole === 'admin');
 
     /* Свій рядок у team_members. Без нього адмін не має звідки взяти
