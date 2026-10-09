@@ -87,6 +87,17 @@ order by "чиє" desc, s.key;
 drop table if exists public._ts_log;
 create table public._ts_log ("налаштування" text, "було чиє" text, "значення (початок)" text);
 
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._ts_log enable row level security;
+
 do $$
 declare
   TEAM    constant text := 'IMPROVE';                                   -- ⬅ та сама команда

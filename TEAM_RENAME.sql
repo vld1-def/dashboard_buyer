@@ -45,6 +45,17 @@
 drop table if exists public._rename_report;
 create table public._rename_report ("таблиця" text, "рядків зі старою назвою" bigint);
 
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._rename_report enable row level security;
+
 do $$
 declare t text; n bigint;
 begin
@@ -90,6 +101,17 @@ select * from public._rename_report order by 2 desc, 1;
 
 drop table if exists public._rename_done;
 create table public._rename_done ("таблиця" text, "перейменовано рядків" bigint);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._rename_done enable row level security;
 
 do $$
 declare t text; n bigint; clash bigint;
@@ -137,6 +159,17 @@ select * from public._rename_done order by 2 desc, 1;
 
 drop table if exists public._rename_left;
 create table public._rename_left ("таблиця" text, "лишилось рядків" bigint);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._rename_left enable row level security;
 
 do $$
 declare t text; n bigint;
@@ -225,6 +258,17 @@ create table public._merge_report (
   "таблиця" text, "ключ" text, "зіткнень" bigint,
   "ваших" bigint, "чужих" bigint, "що буде" text);
 
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._merge_report enable row level security;
+
 do $$
 declare
   OLD_TEAM constant text := 'OlehV';            -- ⬅ стара назва (чия приходить)
@@ -304,6 +348,17 @@ select * from public._merge_report order by "зіткнень" desc, "табли
 
 drop table if exists public._merge_log;
 create table public._merge_log ("таблиця" text, "що зроблено" text, "рядків" bigint);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ. У Supabase нові таблиці в public доступні ролі
+-- authenticated за замовчуванням, а в цих звітах лежать СПРАВЖНІ
+-- значення — зокрема site_password і tl_password. Службова таблиця не
+-- має бути відкритішою за ту, з якої її наповнили.
+--
+-- RLS без жодної політики не віддає НІЧОГО, і цього достатньо: власник
+-- таблиці тут postgres, а PostgREST ходить як anon/authenticated. Саме
+-- revoke не пишемо навмисно — він вимагав би, щоб ці ролі існували, і
+-- на звичайному Postgres блок падав би на неіснуючій ролі.
+alter table public._merge_log enable row level security;
 
 do $$
 declare
