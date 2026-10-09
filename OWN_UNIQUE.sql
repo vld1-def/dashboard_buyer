@@ -88,7 +88,9 @@
 
 drop table if exists public._own_dropped;
 create table public._own_dropped (
-  "таблиця" text, "id" bigint, "команда" text, "налаштування" text,
+  -- id тут text навмисно: у payouts він uuid, у team_settings bigint,
+  -- і одна службова таблиця мусить прийняти і те, і те.
+  "таблиця" text, "id" text, "команда" text, "налаштування" text,
   "автор" uuid, "значення" text);
 
 drop table if exists public._own_all;
@@ -99,6 +101,7 @@ declare
   TEAM constant text := 'IMPROVE';   -- ⬅ ⬅ ⬅ ОДНЕ, ЩО ТРЕБА ПОМІНЯТИ:
                                      --        назва команди з лівої панелі дашборда
   tbl  text; cols text; cols2 text; nm text; r record; n bigint; dflt text;
+  ord  text;   -- чим визначаємо «найновіший»: див. нижче
 begin
   -- ⬅ ТІЛЬКИ ВИПЛАТИ. team_settings лишається на ключі по команді
   --    навмисно; чужий рядок там лагодить TEAM_SETTINGS_OWN.sql.
@@ -112,6 +115,15 @@ begin
     nm    := case tbl when 'payouts' then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
                       else 'key' end;
 
+    /* ЧИМ МІРЯТИ «НАЙНОВІШИЙ». По id це правда лише тоді, коли id —
+       число, що зростає. У payouts він uuid, і там порядок за id
+       випадковий. Тому, якщо в таблиці є created_at, міряємо ним. */
+    select case when exists (select 1 from information_schema.columns
+                              where table_schema = 'public' and table_name = tbl
+                                and column_name = 'created_at')
+                then 'created_at desc nulls last, id desc' else 'id desc' end
+      into ord;
+
     -- Рядки без автора сторінка не прочитає, і on conflict їх не знайде.
     select column_default into dflt from information_schema.columns
      where table_schema = 'public' and table_name = tbl and column_name = 'created_by';
@@ -124,19 +136,19 @@ begin
     -- 1. зберегти зайві ЦІЛКОМ, потім прибрати
     execute format($f$
       insert into public._own_dropped
-      select %1$L, id, team_name, %2$s, created_by, %3$s
+      select %1$L, id::text, team_name, %2$s, created_by, %3$s
         from (select *, row_number() over (partition by created_by, %4$s
-                order by (team_name = %5$L) desc, id desc) rn
+                order by (team_name = %5$L) desc, %6$s) rn
                 from public.%1$I where created_by is not null) q
        where rn > 1$f$,
-      tbl, nm, case tbl when 'payouts' then 'value::text' else 'value' end, cols2, TEAM);
+      tbl, nm, case tbl when 'payouts' then 'value::text' else 'value' end, cols2, TEAM, ord);
 
     execute format($f$
       delete from public.%1$I t
        using (select id, row_number() over (partition by created_by, %2$s
-                order by (team_name = %3$L) desc, id desc) rn
+                order by (team_name = %3$L) desc, %4$s) rn
                 from public.%1$I where created_by is not null) q
-       where q.id = t.id and q.rn > 1$f$, tbl, cols2, TEAM);
+       where q.id = t.id and q.rn > 1$f$, tbl, cols2, TEAM, ord);
     get diagnostics n = row_count;
     if n > 0 then
       insert into public._own_all values ('1. зайві копії прибрано', tbl, cols2, n);
@@ -324,7 +336,9 @@ select q."налаштування", q.id, q."команда",
 
 drop table if exists public._own_dropped;
 create table public._own_dropped (
-  "таблиця" text, "id" bigint, "команда" text, "налаштування" text,
+  -- id тут text навмисно: у payouts він uuid, у team_settings bigint,
+  -- і одна службова таблиця мусить прийняти і те, і те.
+  "таблиця" text, "id" text, "команда" text, "налаштування" text,
   "автор" uuid, "значення" text);
 
 drop table if exists public._own_fixed;
@@ -346,10 +360,14 @@ begin
   foreach tbl in array array['payouts'] loop
     cols := case tbl when 'payouts' then 'geo, offer' else 'key' end;
 
+    /* Тут «найновіший» міряється по id — на відміну від БЛОКУ 0, який
+       бере created_at, коли той у таблиці є. Так зроблено навмисно:
+       БЛОК 1А показує той самий порядок, і ці два мусять збігатися
+       між собою. Для team_settings id числовий, тож порядок правдивий. */
     -- 1. зберегти те, що приберемо — ЦІЛКОМ
     execute format($f$
       insert into public._own_dropped
-      select %1$L, id, team_name,
+      select %1$L, id::text, team_name,
              %2$s,
              created_by,
              %3$s
