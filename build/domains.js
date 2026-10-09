@@ -20,6 +20,14 @@ const DM_STATE = {
   down:     { label: 'No answer',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.10)',  bd: 'rgba(239,68,68,.25)' },
   unknown:  { label: 'Not checked',  dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' }
 };
+/* Статус, якого ми не знаємо, — це «не перевіряли», а не падіння.
+   DM_STATE[r.status || 'unknown'] ламалось на будь-якому рядку з чужим
+   статусом: порожній рядок підміняли, а невідомий — ні, і одна така
+   комірка валила РЕНДЕР УСІЄЇ сторінки доменів із «cannot read
+   properties of undefined». Статуси пише Edge Function, тобто
+   змінитись вони можуть без нас. */
+const dmState = v => DM_STATE[v] || DM_STATE.unknown;
+
 // Зверху те, що вимагає дії.
 const DM_ORDER = ['danger', 'notfound', 'down', 'ok', 'unknown'];
 const DM_BAD = ['danger', 'notfound', 'down'];
@@ -635,7 +643,9 @@ function dmPick(idEnc) {
 }
 function dmSortBy(k) {
   if (dmSort.key === k) dmSort.dir = -dmSort.dir;
-  else dmSort = { key: k, dir: k === 'status' ? 1 : 1 };
+  // Для дат перший клік має показувати свіже, а не найстаріше: питання
+  // завжди «що останнє», і змушувати клікати двічі тут нема за що.
+  else dmSort = { key: k, dir: (k === 'added' || k === 'checked') ? -1 : 1 };
   dmRender();
 }
 
@@ -700,7 +710,12 @@ function dmRender() {
   const val = {
     status: r => rank(r.status), domain: r => String(r.domain || ''),
     pwa: r => String(r.pwa || ''), ktid: r => String(r.ktid || ''),
-    geo: r => String(r.geo || ''), checked: r => String(r.checked_at || '')
+    geo: r => String(r.geo || ''), checked: r => String(r.checked_at || ''),
+    /* Порядок додавання. Інші стовпчики сортуються за тим, що в них
+       видно; цей — за created_at, якого в таблиці немає, зате саме він
+       відповідає на питання «що я заводив останнім». Домени заводять
+       пачками під один залив, і пачка в списку лежить разом. */
+    added: r => String(r.created_at || '')
   };
   const get = val[dmSort.key] || val.status;
   shown = shown.slice().sort((a, b) => {
@@ -721,14 +736,14 @@ function dmRender() {
      найдовший підпис у найменш цікавої групи. */
   const keyOf = r => dmGroup === 'pwa'
                      ? (r.pwa ? r.pwa + (r.geo ? ' · ' + r.geo : '') : '— no PWA —')
-                   : dmGroup === 'status' ? DM_STATE[r.status || 'unknown'].label
+                   : dmGroup === 'status' ? dmState(r.status).label
                    : '';
   const groups = {};
   shown.forEach(r => (groups[keyOf(r)] = groups[keyOf(r)] || []).push(r));
 
   const arrow = k => dmSort.key === k ? (dmSort.dir < 0 ? ' ↓' : ' ↑') : '';
   const th = (k, label, cls) => `<th class="${cls || ''}" onclick="dmSortBy('${k}')">${label}${arrow(k)}</th>`;
-  const COLS = 7;
+  const COLS = 8;   // + Added
 
   list.innerHTML = `<table class="cab-tbl">
     <thead><tr>
@@ -737,6 +752,7 @@ function dmRender() {
       ${th('pwa', 'PWA')}
       ${th('geo', 'Geo', 'ta-c')}
       ${th('ktid', 'KTID')}
+      ${th('added', 'Added', 'ta-r')}
       ${th('checked', 'Checked', 'ta-r')}
       <th class="ta-c">·</th>
     </tr></thead><tbody>
@@ -753,7 +769,7 @@ function dmRender() {
 }
 
 function dmRowHtml(r) {
-  const S = DM_STATE[r.status || 'unknown'];
+  const S = dmState(r.status);
   const enc = encodeURIComponent(String(r.id)).replace(/'/g, '%27');
   return `<tr class="cab-tr ${String(dmSel) === String(r.id) ? 'is-sel' : ''}" onclick="dmPick('${enc}')">
     <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${S.label}${
@@ -767,6 +783,8 @@ function dmRowHtml(r) {
     <td class="cab-dim">${dmEsc(r.pwa) || '—'}</td>
     <td class="ta-c cab-dim">${dmEsc(r.geo) || '—'}</td>
     <td class="cab-dim" title="${dmEsc(r.campaign || '')}">${dmEsc(r.ktid) || '—'}</td>
+    <td class="ta-r cab-dim" title="${dmEsc(String(r.created_at || '').replace('T', ' ').slice(0, 16))}">${
+      dmAgo(r.created_at)}</td>
     <td class="ta-r cab-dim">${dmAgo(r.checked_at)}</td>
     <td class="ta-c"><button onclick="event.stopPropagation();dmCheckOne('${enc}')"
       class="cab-link" title="Check this one">&#8635;</button></td>
@@ -778,7 +796,7 @@ function dmDetail(r) {
   if (!box) return;
   if (!r) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   box.classList.remove('hidden');
-  const S = DM_STATE[r.status || 'unknown'];
+  const S = dmState(r.status);
   const enc = encodeURIComponent(String(r.id));
   box.innerHTML = `<div class="card p-4 rounded-2xl">
     <div class="flex items-start justify-between gap-2 mb-3">
