@@ -37,45 +37,94 @@
 --  Спершу порахуємо, не змінюючи нічого: де лежить 'Makeberry' і
 --  скільки там рядків. Якщо тут порожньо — перейменовувати нема чого.
 
+--  ⚠️ ЗВІТ — ТАБЛИЦЕЮ, А НЕ ЧЕРЕЗ RAISE NOTICE. DO-блок не повертає
+--  рядків ніколи, а notice редактор Supabase не показує — тож перша
+--  редакція цього кроку виглядала як «Success. No rows returned»,
+--  тобто ніяк. Видно її було лише в psql.
+
+drop table if exists public._rename_report;
+create table public._rename_report ("таблиця" text, "рядків зі старою назвою" bigint);
+
 do $$
 declare t text; n bigint;
 begin
   for t in
     select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'team_name'
+       and table_name not in ('_rename_report', '_merge_report', '_merge_log')
      order by table_name
   loop
     execute format('select count(*) from public.%I where team_name = %L', t, 'Makeberry')
       into n;
     if n > 0 then
-      raise notice '% → % рядків', t, n;
+      insert into public._rename_report values (t, n);
     end if;
   end loop;
+
+  if not exists (select 1 from public._rename_report) then
+    insert into public._rename_report values ('— старої назви в базі немає —', 0);
+  end if;
 end $$;
+
+--  ⬇ ОСЬ ЦЕ Й Є ЗВІТ. Якщо тут порожньо — блок не виконався.
+select * from public._rename_report order by 2 desc, 1;
 
 
 -- ════════════════════════════════════════════════════════════
 --  КРОК 2. Перейменувати
 -- ════════════════════════════════════════════════════════════
---  Виконувати, коли крок 1 показав очікуване. Кожен рядок у NOTICE —
---  скільки рядків справді змінилось у цій таблиці.
+--  Виконувати, коли крок 1 показав очікуване. Кожен рядок у звіті
+--  внизу — скільки рядків справді змінилось у цій таблиці.
+--
+--  ⚠️ ЦЕЙ БЛОК — ТІЛЬКИ ДЛЯ ПЕРЕЙМЕНУВАННЯ, НЕ ДЛЯ ЗЛИТТЯ.
+--  Якщо нова назва ВЖЕ Є в даних, простий update упреться в
+--  унікальність і впаде:
+--
+--      duplicate key value violates unique constraint
+--      Key (team_name, geo, offer)=(IMPROVE, UZ, Pinco) already exists
+--
+--  Це не поломка, а інша задача: дві назви треба ЗЛИТИ, вирішивши по
+--  кожному налаштуванню, чиє головне. Для цього є блоки ЗЛИТТЯ в кінці
+--  файлу. Щоб ніхто не дізнавався про це з помилки Postgres, блок
+--  спершу сам перевіряє й зупиняється з поясненням.
+
+drop table if exists public._rename_done;
+create table public._rename_done ("таблиця" text, "перейменовано рядків" bigint);
 
 do $$
-declare t text; n bigint;
+declare t text; n bigint; clash bigint;
 begin
+  execute format('select count(*) from public.daily_stats where team_name = %L', 'Improve')
+    into clash;
+  if clash > 0 then
+    raise exception
+      'Назва «%» вже є в даних (% рядків у daily_stats). Це ЗЛИТТЯ, а не '
+      'перейменування: простий update упреться в унікальність. Виконуйте '
+      'блоки «ЗЛИТТЯ, КРОК 1» і «ЗЛИТТЯ, КРОК 2» у кінці цього файлу — '
+      'вони вирішують зіткнення за автором рядка.', 'Improve', clash;
+  end if;
   for t in
     select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'team_name'
+       and table_name not in ('_rename_report', '_rename_done',
+                              '_merge_report', '_merge_log')
      order by table_name
   loop
     execute format('update public.%I set team_name = %L where team_name = %L',
                    t, 'Improve', 'Makeberry');
     get diagnostics n = row_count;
     if n > 0 then
-      raise notice '% → перейменовано % рядків', t, n;
+      insert into public._rename_done values (t, n);
     end if;
   end loop;
+
+  if not exists (select 1 from public._rename_done) then
+    insert into public._rename_done values ('— нічого не знайшлось під старою назвою —', 0);
+  end if;
 end $$;
+
+--  ⬇ ОСЬ ЦЕ Й Є ЗВІТ. Якщо тут порожньо — блок не виконався.
+select * from public._rename_done order by 2 desc, 1;
 
 
 -- ════════════════════════════════════════════════════════════
@@ -86,22 +135,33 @@ end $$;
 --  мовчки підганяти регістр під збіг означало б зачепити те, чого ми
 --  не бачили.
 
+drop table if exists public._rename_left;
+create table public._rename_left ("таблиця" text, "лишилось рядків" bigint);
+
 do $$
 declare t text; n bigint;
 begin
   for t in
     select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'team_name'
+       and table_name not in ('_rename_report', '_rename_done', '_rename_left',
+                              '_merge_report', '_merge_log')
      order by table_name
   loop
     execute format('select count(*) from public.%I where team_name = %L', t, 'Makeberry')
       into n;
     if n > 0 then
-      raise notice 'ЛИШИЛОСЬ: % → % рядків', t, n;
+      insert into public._rename_left values (t, n);
     end if;
   end loop;
-  raise notice 'перевірку завершено';
+
+  if not exists (select 1 from public._rename_left) then
+    insert into public._rename_left values ('— чисто, старої назви не лишилось —', 0);
+  end if;
 end $$;
+
+--  ⬇ ОСЬ ЦЕ Й Є ЗВІТ. Один рядок «чисто» — це успіх.
+select * from public._rename_left order by 2 desc, 1;
 
 
 -- ════════════════════════════════════════════════════════════
@@ -151,8 +211,19 @@ select team_name, count(*) as rows from public.daily_stats group by 1 order by 2
 --  ▶ ЗЛИТТЯ, КРОК 1 — подивитись, що саме зіткнеться
 --
 --  Нічого не міняє. Показує: у якій таблиці, за яким ключем, скільки
---  рядків, і головне — чиї вони.
+--  рядків і чиї вони.
+--
+--  ⚠️ ЧОМУ ТУТ ТАБЛИЦЯ, А НЕ RAISE NOTICE. Перша редакція писала все
+--  через notice — і в SQL Editor Supabase це виглядало як «Success.
+--  No rows returned», тобто ніяк. DO-блок рядків не повертає ніколи, а
+--  notice редактор не показує; їх видно лише в psql. Тож звіт тепер
+--  складається в таблицю, і останній select її показує.
 -- ════════════════════════════════════════════════════════════
+
+drop table if exists public._merge_report;
+create table public._merge_report (
+  "таблиця" text, "ключ" text, "зіткнень" bigint,
+  "ваших" bigint, "чужих" bigint, "що буде" text);
 
 do $$
 declare
@@ -169,6 +240,7 @@ begin
       cross join lateral unnest(i.indkey) with ordinality as k(attnum, ord)
       join pg_attribute a on a.attrelid = c.oid and a.attnum = k.attnum
      where ns.nspname = 'public' and i.indisunique and c.relkind = 'r'
+       and c.relname not like '\_%'   -- службові таблиці звітів
      group by c.relname, i.indexrelid
     having 'team_name' = any(array_agg(a.attname))
   loop
@@ -193,15 +265,26 @@ begin
         'select count(*) from public.%1$I o join public.%1$I n on %2$s
           where o.team_name = %3$L and n.team_name = %4$L and n.created_by = %5$L',
         r.tbl, cond, OLD_TEAM, NEW_TEAM, MY_UUID) into mine;
-      raise notice '% за ключем (%): % зіткнень, із них ваших %, чужих %',
-        r.tbl, array_to_string(cols, ', '), n, mine, n - mine;
+      insert into public._merge_report values (
+        r.tbl, array_to_string(cols, ', '), n, mine, n - mine,
+        case when mine = n then 'копії асистента приберуться, ваше лишиться'
+             when mine = 0 then 'НІЧОГО не чіпатимемо — двійник створив не ви'
+             else format('%s приберуться, %s лишаться вам на рішення', mine, n - mine) end);
     else
-      raise notice '% за ключем (%): % зіткнень, автора в таблиці немає — не чіпатимемо',
-        r.tbl, array_to_string(cols, ', '), n;
+      insert into public._merge_report values (
+        r.tbl, array_to_string(cols, ', '), n, null, null,
+        'у таблиці немає created_by — не чіпатимемо');
     end if;
   end loop;
-  raise notice 'огляд завершено; нічого не змінено';
+
+  if not exists (select 1 from public._merge_report) then
+    insert into public._merge_report values
+      ('—', '—', 0, 0, 0, 'зіткнень немає: можна переходити до КРОКУ 2');
+  end if;
 end $$;
+
+--  ⬇ ОСЬ ЦЕ Й Є ЗВІТ. Якщо тут порожньо — блок не виконався.
+select * from public._merge_report order by "зіткнень" desc, "таблиця";
 
 
 -- ════════════════════════════════════════════════════════════
@@ -209,17 +292,18 @@ end $$;
 --
 --  Прибирається РІВНО те, чий двійник під новою назвою створений вами.
 --
---  ⚠️ ПЕРЕНОСИТЬСЯ ВСЕ, ЩО МОЖЕ ПЕРЕНЕСТИСЬ. Перша редакція цього блоку
---  просто робила update по кожній таблиці — і падала на першому ж
---  зіткненні, яке лишилось нерозвʼязаним. Через це не переносилось
---  НІЧОГО, включно з daily_stats, де жодних зіткнень і бути не може.
---  Перевірено на живій базі: одна таблиця без created_by (sync_logs)
---  зупиняла весь блок.
+--  ⚠️ ПЕРЕНОСИТЬСЯ ВСЕ, ЩО МОЖЕ ПЕРЕНЕСТИСЬ. Перша редакція просто
+--  робила update по кожній таблиці — і падала на першому ж зіткненні,
+--  яке лишилось нерозвʼязаним. Через це не переносилось НІЧОГО,
+--  включно з daily_stats, де жодних зіткнень бути не може. Перевірено
+--  на живій базі: одна таблиця без created_by зупиняла весь блок.
 --
---  Тому тепер рядок, який уперся б в унікальність, лишається на місці
---  під старою назвою, а все інше переїжджає. У кінці сказано, що саме
---  лишилось — це і є той короткий список, який вирішують руками.
+--  Тому рядок, який уперся б в унікальність, лишається на місці під
+--  старою назвою, а все інше переїжджає. Внизу — звіт, що саме сталось.
 -- ════════════════════════════════════════════════════════════
+
+drop table if exists public._merge_log;
+create table public._merge_log ("таблиця" text, "що зроблено" text, "рядків" bigint);
 
 do $$
 declare
@@ -232,6 +316,8 @@ begin
   for t in
     select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'team_name'
+       and table_name not in ('_merge_report', '_merge_log',
+                              '_rename_report', '_rename_done', '_rename_left')
      order by table_name
   loop
     select exists (select 1 from information_schema.columns
@@ -267,7 +353,7 @@ begin
           t, cond, OLD_TEAM, NEW_TEAM, MY_UUID);
         get diagnostics dropped = row_count;
         if dropped > 0 then
-          raise notice 'прибрано зайвих копій у %: %', t, dropped;
+          insert into public._merge_log values (t, 'прибрано зайвих копій', dropped);
         end if;
       end if;
 
@@ -287,19 +373,27 @@ begin
                         else ' and ' || array_to_string(guards, ' and ') end);
     get diagnostics moved = row_count;
     if moved > 0 then
-      raise notice 'перенесено % → %: % рядків', t, NEW_TEAM, moved;
+      insert into public._merge_log values (t, 'перенесено під ' || NEW_TEAM, moved);
     end if;
 
     execute format('select count(*) from public.%I where team_name = %L', t, OLD_TEAM)
       into stuck;
     if stuck > 0 then
-      raise warning '% — % рядків лишились під «%»: їхній двійник створений не вами. '
-                    'Гляньте й вирішіть руками, чиє налаштування головне.',
-                    t, stuck, OLD_TEAM;
+      insert into public._merge_log values
+        (t, 'ЛИШИЛОСЬ під ' || OLD_TEAM || ' — двійник створений не вами, вирішіть руками', stuck);
     end if;
   end loop;
-  raise notice 'злиття завершено';
+
+  if not exists (select 1 from public._merge_log) then
+    insert into public._merge_log values ('—', 'нічого не знайдено під старою назвою', 0);
+  end if;
 end $$;
+
+--  ⬇ ОСЬ ЦЕ Й Є ЗВІТ.
+select * from public._merge_log order by "таблиця", "що зроблено";
+
+--  Прибрати службові таблиці, коли все переглянули:
+--      drop table if exists public._merge_report, public._merge_log;
 
 
 --  ⚠️ І ОДРАЗУ ПІСЛЯ ЦЬОГО — у браузері асистента перемкнути команду на

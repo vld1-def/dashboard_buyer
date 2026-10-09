@@ -65,6 +65,34 @@
      із можливих варіантів. */
   window.myRole = 'buyer';
 
+  /* ═══════════ ЧИЙ РЯДОК — І ДЕ ЦЕ МАЄ ЗНАЧЕННЯ ═══════════
+
+     RLS після ADMIN_ROLES.sql віддає баєру його рядки ПЛЮС рядки його
+     асистента (can_read_mine). Це правильно для бази, але я зробив із
+     цього неправильний висновок у дашборді: дозволив злитим даним
+     розійтись по ВСІХ віджетах — KPI, графіки, хітмап, креативи, гео,
+     закриття місяця. Тобто чужий спенд почав підмішуватись у числа,
+     які людина читає як свої.
+
+     Насправді зливати треба рівно в одному місці — Report Builder:
+     саме звідти подають звіт, і там же є вимір «Buyer», щоб той самий
+     звіт можна було розділити назад. Решта дашборда — суто своє.
+
+     Тому дані тримаємо двома наборами:
+       rawDataAll / creativesRawDataAll — усе, що віддала база;
+       rawData    / creativesRawData    — лише своє.
+     Report Builder бере перший, усі інші — другий.
+
+     Рядок без created_by — НЕ чужий. Це імпорт до SECURITY_BUYERS.sql
+     крок 3, коли колонки ще не підписували. Якби такі рядки вважались
+     чужими, у людини зникла б уся історія до ролей — і це була б
+     найтихіша з можливих поломок. */
+  window.isMyRow = function (r) {
+    const u = String((r && r.created_by) || '');
+    return !u || !window.myUid || u === String(window.myUid);
+  };
+  window.onlyMine = function (rows) { return (rows || []).filter(window.isMyRow); };
+
   window.roleBoot = async function () {
     try {
       const { data, error } = await sb.rpc('my_role');
@@ -224,7 +252,10 @@
     const assistants = mine.length;
     if (!assistants) return;                       // асистента немає — нічого й питати
 
-    const seen = new Set((window.rawData || []).map(r => String(r.created_by || '')));
+    /* Дивимось на ПОВНИЙ набір (rawDataAll), а не на звужений: rawData
+       тепер містить лише своє за визначенням, і по ньому перевірка
+       «чи дійшли рядки асистента» завжди давала б «ні». */
+    const seen = new Set((window.rawDataAll || []).map(r => String(r.created_by || '')));
     const theirs = mine.filter(u => seen.has(u));
     if (theirs.length) return;                     // дані вже тут, усе добре
 

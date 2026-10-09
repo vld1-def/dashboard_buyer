@@ -38,8 +38,8 @@ function renderGeoCostTab(geo) {
   const day = {};
   const at = d => (day[d] || (day[d] = { s: 0, i: 0, r: 0, d: 0, cs: 0, cl: 0 }));
 
-  // rawData — лексичний let у тому ж блоці, а не властивість window
-  // (window.rawData не існує взагалі). Беремо через typeof, щоб код не
+  // rawData — лексичний let у тому ж блоці; window.rawData тримається
+  // синхронно з ним (loadData), але не був там завжди. Беремо через typeof, щоб код не
   // зламався, якщо колись поїде в окремий <script>.
   const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : (window.rawData || []);
   const crea  = (typeof creativesRawData !== 'undefined' && creativesRawData)

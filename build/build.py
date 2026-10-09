@@ -914,11 +914,87 @@ rest = sub(rest,
   const months = getAvailableMonths(rawData);""",
   'перевірка: чому асистента не видно')
 
+# ── ЧУЖІ РЯДКИ ЖИВУТЬ ТІЛЬКИ В REPORT BUILDER ──
+# RLS віддає баєру рядки його асистента, і я дав їм розійтись по всьому
+# дашборду: KPI, графіки, хітмап, креативи, гео, закриття місяця — усе
+# почало рахувати разом із чужим спендом. Це не те, що потрібно: злиття
+# має сенс рівно там, де подають звіт, і де є вимір «Buyer», щоб
+# розділити назад.
+#
+# Тому набір ділиться надвоє одразу після завантаження: rawDataAll —
+# усе, що віддала база (для Report Builder), rawData — лише своє (для
+# решти). Хто мій, вирішує window.isMyRow із widgets.js.
+rest = sub(rest,
+  "  rawData = stats || [];\n"
+  "  console.log(`✅ Отримано записів: ${rawData.length}`);",
+  """  // Повний набір (своє + асистента) — для Report Builder.
+  window.rawDataAll = stats || [];
+  // Звужений (лише своє) — для решти дашборда. Див. isMyRow у widgets.js.
+  rawData = (typeof onlyMine === 'function') ? onlyMine(window.rawDataAll) : window.rawDataAll;
+  window.rawData = rawData;
+  console.log(`✅ Отримано записів: ${window.rawDataAll.length}`
+    + (window.rawDataAll.length !== rawData.length
+       ? ` (своїх ${rawData.length}, решта — лише в Report Builder)` : ''));""",
+  'дані: свої окремо від асистентських')
+
+rest = sub(rest,
+  "  creativesRawData = crData || [];\n"
+  "  window.creativesRawData = creativesRawData;",
+  """  window.creativesRawDataAll = crData || [];
+  creativesRawData = (typeof onlyMine === 'function')
+    ? onlyMine(window.creativesRawDataAll) : window.creativesRawDataAll;
+  window.creativesRawData = creativesRawData;""",
+  'креативи: свої окремо від асистентських')
+
+# Report Builder — єдине місце, якому потрібен повний набір.
+rest = sub(rest,
+  "  const src = needCr ? rbCrRows() : (rawData||[]);",
+  "  const src = needCr ? rbCrRows() : (window.rawDataAll || rawData || []);",
+  'Report Builder рахує по повному набору')
+
+rest = sub(rest,
+  "    const src = RB_CR_ONLY.has(f.k) ? rbCrRows() : (rawData||[]);",
+  "    const src = RB_CR_ONLY.has(f.k) ? rbCrRows() : (window.rawDataAll || rawData || []);",
+  'списки фільтрів Report Builder — по повному набору')
+
+rest = sub(rest,
+  "  const src = window.creativesRawData || [];",
+  "  const src = window.creativesRawDataAll || window.creativesRawData || [];",
+  'креативи Report Builder — по повному набору')
+
+# Видалення дня/усього чистить обидва набори: інакше рядок зникав з
+# дашборда, але лишався у звіті.
+rest = sub(rest,
+  "    rawData = rawData.filter(d => d.date !== date);\n    applyGlobalFilter();",
+  """    rawData = rawData.filter(d => d.date !== date);
+    window.rawData = rawData;
+    window.rawDataAll = (window.rawDataAll || []).filter(d => d.date !== date);
+    applyGlobalFilter();""",
+  'видалення дня: чистимо й повний набір')
+
+rest = sub(rest,
+  "    creativesRawData = creativesRawData.filter(d => d.date !== date);\n"
+  "    window.creativesRawData = creativesRawData;",
+  """    creativesRawData = creativesRawData.filter(d => d.date !== date);
+    window.creativesRawData = creativesRawData;
+    window.creativesRawDataAll = (window.creativesRawDataAll || []).filter(d => d.date !== date);""",
+  'видалення дня креативів: чистимо й повний набір')
+
+rest = sub(rest,
+  "    rawData = [];\n    applyGlobalFilter();",
+  "    rawData = [];\n    window.rawData = rawData;\n    window.rawDataAll = [];\n    applyGlobalFilter();",
+  'видалення всього: чистимо й повний набір')
+
+rest = sub(rest,
+  "    creativesRawData = [];\n    window.creativesRawData = [];",
+  "    creativesRawData = [];\n    window.creativesRawData = [];\n    window.creativesRawDataAll = [];",
+  'видалення всіх креативів: чистимо й повний набір')
+
 # ── РОЗРІЗ ЗВІТУ ПО ЛЮДЯХ ──
-# Баєр після ADMIN_ROLES.sql читає рядки свого асистента, і вони вже
-# лягають в один звіт разом із його власними — бо відбір іде лише по
-# team_name. Це й треба за замовчуванням: звіт подають один, і скільки
-# в тебе асистентів — нікого не обходить.
+# У Report Builder рядки баєра та його асистента лягають в один звіт —
+# це й треба за замовчуванням: звіт подають один, і скільки в тебе
+# асистентів, нікого не обходить. Решта дашборда чужого не бачить
+# (див. блок вище).
 #
 # Чого бракувало — можливості РОЗДІЛИТИ, коли треба подивитись, хто
 # скільки зробив. Додаємо вимір і фільтр «Buyer» по created_by.

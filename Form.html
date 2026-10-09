@@ -1285,7 +1285,70 @@ let lastFbParse = null;  // {map, lines} — щоб перерахувати, я
    виглядає як кабінет. Акаунт від того переставав знаходитись у
    accounts_mapping, і рядки тихо випадали зі злиття — рівно те, що я
    нібито лагодив. Тому відповідність вище тепер прибита тестом
-   (ktacc.mjs) до самих файлів, а не до чийогось прочитання. */
+   (ktmap.mjs) до самих файлів, а не до чийогось прочитання. */
+/* ═══════════ ЗАПИС І ЧИТАННЯ team_settings — ЧЕРЕЗ ОДНУ ПАРУ ═══════════
+
+   ⚠️ ТУТ МОВЧАЛИ П'ЯТЬ МІСЦЬ ПІДРЯД, І ЦЕ МОЯ ПОМИЛКА — ТА САМА, ЩО
+   ВЖЕ БУЛА В roleBoot.
+
+   PostgREST відмову НЕ кидає винятком: він повертає її в полі error.
+   А тут усюди стояло
+
+     try { await sb.from('team_settings').upsert(...); showStatus('saved'); }
+     catch (e) { alert(...) }
+
+   — тобто catch не ловив НІЧОГО, і на екран ішло «saved» навіть тоді,
+   коли база не записала жодного рядка. Саме так виглядала скарга
+   «зберігаю, а воно не зберігається»: налаштування APP не зберігались,
+   і сторінка про це сказала «saved».
+
+   ЧОМУ САМЕ ВІДМОВЛЯЄ. Унікальність у team_settings — (team_name, key),
+   а політики зі SECURITY_BUYERS.sql пускають до рядка лише його автора
+   (created_by = auth.uid()). Після злиття двох назв команди в одну під
+   новою назвою лишились рядки, заведені ІНШОЮ людиною: читати їх RLS
+   не дає (тому в полях стоять дефолти), а upsert натикається на їхній
+   унікальний ключ і теж не проходить. Полагодити це в коді не можна —
+   лагодиться в базі, блоком TEAM_SETTINGS_OWN.sql, тому помилка прямо
+   його й називає.
+
+   Читання так само перевіряємо: відмова на select давала тишу й
+   дефолтні значення в полях — тобто виглядала як «налаштувань ще
+   немає», хоча вони є й просто не наші. */
+// done — повний текст у рядок статусу на успіх (не «label + saved»:
+// одне зі збережень насправді є видаленням профілю).
+async function tsSave(key, value, done) {
+  const { error } = await sb.from('team_settings').upsert(
+    { team_name: currentTeam, key, value: JSON.stringify(value) },
+    { onConflict: 'team_name,key' });
+  if (!error) { showStatus(done || (key + ' saved')); return true; }
+  const code = String(error.code || '');
+  const own = code === '23505' || code === '42501'
+    || /row-level security|duplicate key/i.test(String(error.message || ''));
+  alert('Not saved: ' + (error.message || code || 'unknown error')
+    + (own
+      ? `\n\nThe row "${key}" for team "${currentTeam}" already exists in the database`
+        + ' but belongs to someone else, so RLS will not let it be overwritten.'
+        + ' Rows like this are left over from merging two team names into one.'
+        + '\nRun TEAM_SETTINGS_OWN.sql — it shows whose they are and hands them over.'
+      : ''));
+  return false;
+}
+
+/* Повертає масив рядків. Відмову не ховаємо: повертаємо null, і той,
+   хто викликав, знає різницю між «немає налаштувань» і «не дали». */
+async function tsRead(keys) {
+  const { data, error } = await sb.from('team_settings')
+    .select('key, value').eq('team_name', currentTeam).in('key', keys);
+  if (error) {
+    alert('Could not read the settings for team "' + currentTeam + '": '
+      + (error.message || error.code)
+      + '\nThe fields below show defaults, not what is in the database —'
+      + ' saving over them would be a guess. Run TEAM_SETTINGS_OWN.sql.');
+    return null;
+  }
+  return data || [];
+}
+
 const KM_DEFAULT = { acc:'Sub ID 5',
                      camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
@@ -1294,9 +1357,8 @@ let keitaroMap = { ...KM_DEFAULT };
 
 async function loadKeitaroMap() {
   try {
-    const { data } = await sb.from('team_settings')
-      .select('value').eq('team_name', currentTeam).eq('key', 'keitaro_map').limit(1);
-    if (data && data.length) keitaroMap = { ...KM_DEFAULT, ...JSON.parse(data[0].value) };
+    const rows = await tsRead(['keitaro_map']);
+    if (rows && rows.length) keitaroMap = { ...KM_DEFAULT, ...JSON.parse(rows[0].value) };
   } catch (e) { console.warn('keitaro_map:', e.message); }
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
   set('km-acc', keitaroMap.acc);
@@ -1320,13 +1382,8 @@ async function saveKeitaroMap() {
               dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10) };
   if (isNaN(m.tz)) m.tz = KM_DEFAULT.tz;
   keitaroMap = m;
-  try {
-    await sb.from('team_settings').upsert(
-      { team_name: currentTeam, key: 'keitaro_map', value: JSON.stringify(m) },
-      { onConflict: 'team_name,key' });
-    showStatus('Keitaro mapping saved');
-    if (lastFbParse && keitaroAgg) processCampaignData(lastFbParse.map, lastFbParse.lines);
-  } catch (e) { alert('Could not save: ' + e.message); }
+  if (await tsSave('keitaro_map', m, 'Keitaro mapping saved')
+      && lastFbParse && keitaroAgg) processCampaignData(lastFbParse.map, lastFbParse.lines);
 }
 
 function normCamp(s) { return String(s || '').toLowerCase().replace(/[\s_]+/g, '_').trim(); }
@@ -1403,9 +1460,7 @@ let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
 
 async function loadAppParse() {
   try {
-    const { data } = await sb.from('team_settings')
-      .select('key, value').eq('team_name', currentTeam)
-      .in('key', ['app_parse', 'app_profiles', 'pwa_parse']);
+    const data = await tsRead(['app_parse', 'app_profiles', 'pwa_parse']);
     (data || []).forEach(r => {
       if (r.key === 'app_parse')    appParse    = JSON.parse(r.value) || {};
       if (r.key === 'app_profiles') appProfiles = JSON.parse(r.value) || {};
@@ -1474,47 +1529,53 @@ async function apAddProfile() {
   if (appProfiles[n]) { apCurrent = n; apRenderProfileSelect(); apSelectProfile(); return; }
   appProfiles[n] = apCfgFromForm();      // стартує з того, що зараз у формі
   apCurrent = n;
-  await apSaveProfiles();
+  /* Не записалось — відкочуємо й себе. Інакше профіль жив би лише в цій
+     вкладці: на екрані є, у базі немає, і зникав би при перезавантаженні
+     без жодного слова. */
+  if (!await apSaveProfiles(`Provider "${n}" added — now configure its subs`)) {
+    delete appProfiles[n]; apCurrent = ''; apRenderProfileSelect(); return;
+  }
   apRenderProfileSelect();
   apFillForm(apCfgOf(n));
   renderApPreview();
   apRenderProfilesList();
-  showStatus(`Provider "${n}" added — now configure its subs`);
 }
 
 async function apDeleteProfile() {
   if (!apCurrent) return alert('The default profile cannot be deleted — pick a provider first.');
   if (!confirm(`Delete the profile "${apCurrent}»?`)) return;
+  const gone = apCurrent, cfg = appProfiles[apCurrent];
   delete appProfiles[apCurrent];
   apCurrent = '';
-  await apSaveProfiles();
+  // Так само навпаки: не записалось — профіль мусить лишитись на екрані,
+  // бо в базі він лишився.
+  if (!await apSaveProfiles('Profile deleted')) {
+    appProfiles[gone] = cfg; apCurrent = gone; apRenderProfileSelect(); return;
+  }
   apRenderProfileSelect();
   apFillForm(apCfgOf(''));
   renderApPreview();
   apRenderProfilesList();
-  showStatus('Profile deleted');
 }
 
-async function apSaveProfiles() {
-  await sb.from('team_settings').upsert(
-    { team_name: currentTeam, key: 'app_profiles', value: JSON.stringify(appProfiles) },
-    { onConflict: 'team_name,key' });
+async function apSaveProfiles(done) {
+  return tsSave('app_profiles', appProfiles, done || 'Profiles saved');
 }
 
 async function saveAppParse() {
   const cfg = apCfgFromForm();
   try {
+    let ok;
     if (apCurrent) {
       appProfiles[apCurrent] = cfg;
-      await apSaveProfiles();
-      showStatus(`Subs for "${apCurrent}" saved`);
+      ok = await apSaveProfiles(`Subs for "${apCurrent}" saved`);
     } else {
       appParse = cfg;
-      await sb.from('team_settings').upsert(
-        { team_name: currentTeam, key: 'app_parse', value: JSON.stringify(appParse) },
-        { onConflict: 'team_name,key' });
-      showStatus('APP parsing saved');
+      ok = await tsSave('app_parse', appParse, 'APP parsing saved');
     }
+    // Не збереглось — перемальовувати прев'ю й перечитувати звіт новим
+    // шаблоном не можна: на екрані вийшло б, ніби все записалось.
+    if (!ok) return;
     renderApPreview();
     apRenderProfilesList();
     if (lastFbParse) processCampaignData(lastFbParse.map, lastFbParse.lines);
@@ -1563,11 +1624,8 @@ async function savePwaParse() {
     return;
   }
   try {
-    await sb.from('team_settings').upsert(
-      { team_name: currentTeam, key: 'pwa_parse', value: JSON.stringify({ mask }) },
-      { onConflict: 'team_name,key' });
+    if (!await tsSave('pwa_parse', { mask }, 'PWA parsing saved')) return;
     pwaMask = mask;
-    showStatus('PWA parsing saved');
     renderPwaPreview();
     // Уже розібраний звіт перечитуємо новим шаблоном — щоб результат було
     // видно одразу, а не після повторного завантаження файлу.
@@ -1749,6 +1807,41 @@ function geoPick(fromMask, fromReport, count) {
     if (count !== false) geoMaskBad++;
   }
   return toGeoCode(fromReport) || '';
+}
+
+/* КРЕАТИВ, ЯКИЙ НЕ Є КРЕАТИВОМ — ТА САМА ПОЛОМКА, ЩО З ГЕО.
+
+   Типовий APP-шаблон за замовчуванням — *_*_*_{app}_{acc}_{cid}_{geo}.
+   На справжній назві
+
+     cy638t_8wxg7hf7_58ck6MfJ_pfb10964_2087290858548700_UZ_2
+
+   він віддає cid = «UZ», бо креатива в цьому неймінгу немає зовсім:
+   позиції зсунуті на токен. Гео в такому разі ми вже ловимо (geoPick),
+   а креатив — ні: «UZ» тихо ставав назвою креатива для ВСІХ рядків,
+   Creative Analyzer показував один гігантський «UZ», і жодного слова
+   про це не було сказано ніде.
+
+   Хто тут головний — визначено даними, а не здогадкою: у FB колонка
+   «Ad name» і є креатив. Це прибито тестом ktmap.mjs на двох справжніх
+   вигрузках: FB «ad name» перетинається з Keitaro Sub ID 20 і НЕ
+   перетинається з Sub ID 5. Тому:
+
+     є колонка Ad name — креатив беремо з неї;
+     немає — беремо те, що дав {cid} у шаблоні.
+
+   А коли шаблон дав СВОЄ значення й воно не збіглося з Ad name — це і
+   є ознака зсунутого шаблону. Рахуємо такі рядки й кажемо про них
+   після імпорту, рівно як про гео. */
+let cidMaskBad = 0;
+function appCid(fromMask, fromReport, count) {
+  const rep = String(fromReport || '').trim();
+  const msk = String(fromMask || '').trim();
+  if (!rep) return msk;
+  // apParseMask сам підставляє Ad name, коли {cid} у шаблоні немає, —
+  // тоді msk === rep і розходження немає.
+  if (msk && msk !== rep && count !== false) cidMaskBad++;
+  return rep;
 }
 
 /* ОДИН РОЗБІР НАЗВИ КАМПАНІЇ НА ОБА ЗВІТИ.
@@ -2225,7 +2318,8 @@ function renderFxReport(used) {
 function renderAgentReport(noAgent, hidden) {
   const el = document.getElementById('agent-report');
   if (!el) return;
-  if (!noAgent.size && !hidden.size && !pwaMissed && !offerFromNameHits && !geoMaskBad) {
+  if (!noAgent.size && !hidden.size && !pwaMissed && !offerFromNameHits
+      && !geoMaskBad && !cidMaskBad) {
     el.classList.add('hidden'); el.innerHTML = ''; return;
   }
   const chips = arr => [...arr].slice(0, 20).map(a =>
@@ -2253,6 +2347,15 @@ function renderAgentReport(noAgent, hidden) {
     (a number, a tail of the name) &mdash; geo was taken from the report instead.
     The pattern is shifted: fix it in <b>Settings &rarr; ${trafficMode === 'app' ? 'APP' : 'PWA'}</b>.
     <span class="text-slate-500">Until you do, the funnel (KTID) is read from the wrong slot too.</span></div></div>`);
+
+  /* Той самий зсув, але по креативу. Раніше про це не було ні слова:
+     креативом ставав шматок назви («UZ»), і всі рядки збирались в один. */
+  if (cidMaskBad) parts.push(`<div class="flex gap-2 items-start text-rose-300">
+    <span>&#9888;&#65039;</span><div>In <b>${cidMaskBad}</b> rows the <b>{cid}</b> slot of the APP pattern
+    held something other than the ad &mdash; the creative was taken from the <b>Ad name</b> column instead.
+    The pattern is shifted: fix it in <b>Settings &rarr; APP</b>, or drop <span class="font-mono">{cid}</span>
+    from it if the creative is not in the campaign name at all.
+    <span class="text-slate-500">The data is correct either way &mdash; the Ad name column wins.</span></div></div>`);
 
   /* Офер, підставлений сам, виглядає в прев'ю точно так само, як
      вибраний руками. Тож кажемо, скільки рядків його дістали й звідки —
@@ -2585,6 +2688,7 @@ async function processCampaignData(map, lines) {
   pwaMissed = 0;
   offerFromNameHits = 0;
   geoMaskBad = 0;
+  cidMaskBad = 0;
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
@@ -2601,7 +2705,8 @@ async function processCampaignData(map, lines) {
     const accName = trafficMode === 'app'
       ? (p.acc || row[map.acc] || 'Unknown')   // якщо позиції немає — з колонки
       : row[map.acc];
-    const cid = (trafficMode === 'app' ? p.cid : row[map.cid]) || 'No CID';
+    const cid = (trafficMode === 'app'
+      ? appCid(p.cid, row[map.cid]) : row[map.cid]) || 'No CID';
 
     // [Постачальник] у назві воронки — це лише мітка для вибору профілю сабів,
     // у дані вона не йде, щоб воронка збігалася зі старими записами.
@@ -3260,17 +3365,14 @@ let allAgencies = [];
 
 async function loadHiddenAgents() {
   try {
-    const { data } = await sb.from('team_settings')
-      .select('value').eq('team_name', currentTeam).eq('key', 'hidden_agents').limit(1);
-    hiddenAgents = new Set(data && data.length ? (JSON.parse(data[0].value) || []) : []);
+    const rows = await tsRead(['hidden_agents']);
+    hiddenAgents = new Set(rows && rows.length ? (JSON.parse(rows[0].value) || []) : []);
   } catch (e) { hiddenAgents = new Set(); }
 }
 
 async function saveHiddenAgents() {
   try {
-    await sb.from('team_settings').upsert(
-      { team_name: currentTeam, key: 'hidden_agents', value: JSON.stringify([...hiddenAgents]) },
-      { onConflict: 'team_name,key' });
+    await tsSave('hidden_agents', [...hiddenAgents], 'Hidden agents saved');
   } catch (e) { alert('Could not save: ' + e.message); }
 }
 
