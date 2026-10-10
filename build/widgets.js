@@ -403,25 +403,63 @@
      побачить (їх фільтрує RLS по автору), але писав би свої рядки під
      чужим ярликом.
 
-     Тому: якщо вибору немає — дивимось, чи є в людини власні дані, і
-     лише коли їх зовсім немає, питаємо назву. Наявних користувачів це
-     не чіпає: у них selected_team уже лежить у localStorage. */
+     Тому: якщо вибору немає — ВИЗНАЧАЄМО її по uid, і лише коли по
+     ньому не знайшлось нічого, питаємо.
+
+     ⚠️ СПИТАТИ ТУТ — НАЙГІРШЕ, ЩО МОЖЕ СТАТИСЬ, І ЦЕ ВЖЕ СТАЛОСЬ.
+     Назва команди лежала ТІЛЬКИ в localStorage. Будь-яка зміна акаунта
+     чистить його (cacheGuard вище), і людину питало знову — при тому
+     що в базі її команда є. Введе на літеру інакше — і дані нікуди не
+     зникли, просто лежать під іншим ярликом: запити йдуть з новим
+     team_name і не повертають нічого. Виглядає як втрата даних, а
+     насправді розбіжність у назві.
+
+     Тому спершу team_members: там рядок людини з її team_name, і
+     політика team_members_read_self віддає його власнику завжди. Це
+     єдине надійне джерело — назва привʼязана до uid, а не до браузера.
+
+     Потім — власні дані, як запасний шлях: у когось рядок у
+     team_members могло не завестись (не виконано БЛОК 5 з
+     ADMIN_ROLES.sql), але імпорти вже є, і назва команди лежить у них.
+
+     І лише коли не знайшлось нічого — питаємо. */
   window.teamFirstRun = function () {
     return new Promise(async resolve => {
       let saved = '';
       try { saved = localStorage.getItem('selected_team') || ''; } catch (e) {}
       if (saved) return resolve(saved);
 
-      // Після RLS цей запит бачить лише власні рядки — тобто якщо щось
-      // повернулось, назва команди в людини вже є, питати нема про що.
+      const take = name => {
+        const v = String(name || '').trim();
+        if (!v) return false;
+        try { localStorage.setItem('selected_team', v); } catch (e) {}
+        resolve(v);
+        return true;
+      };
+
+      /* ▸ 1. По uid — свій рядок у team_members. */
       try {
-        const { data } = await sb.from('daily_stats').select('team_name').limit(1);
-        const found = data && data[0] && String(data[0].team_name || '').trim();
-        if (found) {
-          try { localStorage.setItem('selected_team', found); } catch (e) {}
-          return resolve(found);
+        const { data: u } = await sb.auth.getUser();
+        const uid = (u && u.user && u.user.id) || '';
+        if (uid) {
+          const { data, error } = await sb.from('team_members')
+            .select('team_name').eq('user_id', uid).limit(1);
+          if (error) throw error;
+          if (data && data[0] && take(data[0].team_name)) return;
         }
-      } catch (e) { /* немає звʼязку — краще спитати, ніж підставити чуже */ }
+      } catch (e) {
+        console.warn('team_members: назву команди по uid не дістали —', e.message || e);
+      }
+
+      /* ▸ 2. Запасний шлях — власні дані. Після RLS ці запити бачать
+         лише свої рядки, тож знайдена назва точно своя. Дивимось обидві
+         таблиці: буває, що залиті тільно креативи. */
+      for (const t of ['daily_stats', 'creatives_stats']) {
+        try {
+          const { data } = await sb.from(t).select('team_name').limit(1);
+          if (data && data[0] && take(data[0].team_name)) return;
+        } catch (e) { /* немає звʼязку — краще спитати, ніж підставити чуже */ }
+      }
 
       const box = document.getElementById('team-first-run');
       if (!box) return resolve('');
