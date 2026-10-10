@@ -1074,6 +1074,11 @@ window.onload = async () => {
   try {
     const { data: u } = await sb.auth.getUser();
     const uid = (u && u.user && u.user.id) || '';
+    /* Свій uid тут уже був — діставався для перевірки кеша й помирав
+       разом із цим try. А він потрібен далі: по ньому Records показує
+       ТІЛЬКИ свої рядки. Не дізнались uid — нижче нічого не фільтруємо,
+       як і було. */
+    window.myUid = uid;
     const was = localStorage.getItem('cache_uid') || '';
     if (uid && was && was !== uid) {
       localStorage.removeItem('selected_team');
@@ -3702,10 +3707,35 @@ async function recLoad() {
   // від запиту, тому все, що далі першої тисячі, у таблицю просто не потрапляло.
   let data;
   try {
-    data = await sbFetchAll(recCurrentTable, q => q
-      .eq('team_name', currentTeam)
+    /* ТІЛЬКИ СВОЇ РЯДКИ.
+
+       Тут стояв лише team_name — а команда це і ти, і асистент. RLS на
+       daily_stats дає читати командні рядки (це потрібно Report
+       Builder), тож у Records приїжджало все підряд: своє поруч із
+       чужим, без жодної позначки, хто що залив.
+
+       Домовленість така: спільний набір живе В ОДНОМУ МІСЦІ — у Report
+       Builder. Усе інше, Records зокрема, показує рядки свого автора.
+
+       Правило «мій рядок» те саме, що в дашборді (isMyRow у
+       build/widgets.js): рядок без автора вважається своїм. Інакше
+       зникла б уся історія, залита до того, як зʼявився created_by, —
+       а це його ж дані. Прибито тестом recmine.mjs, щоб дві копії
+       правила не розʼїхались.
+
+       Фільтр серверний, а не після вибірки: sbFetchAll ходить по
+       сторінках по 1000, і відсіювати чуже вже на клієнті означало б
+       протягувати через мережу всю команду, щоб потім викинути. */
+    const mine = window.myUid
+      ? `created_by.is.null,created_by.eq.${window.myUid}`
+      : '';
+    data = await sbFetchAll(recCurrentTable, q => {
+      let x = q.eq('team_name', currentTeam);
+      if (mine) x = x.or(mine);
+      return x
       .order('date', { ascending: false })
-      .order('id', { ascending: true }));   // другий ключ — щоб сторінки не «пливли»
+      .order('id', { ascending: true });   // другий ключ — щоб сторінки не «пливли»
+    });
   } catch (error) {
     console.error('❌ Records load:', error);
     if (tbody) tbody.innerHTML = `<tr><td class="p-8 text-center text-rose-400 text-xs font-black" colspan="20">Error: ${error.message}</td></tr>`;
