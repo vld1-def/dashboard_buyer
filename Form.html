@@ -1053,6 +1053,42 @@ const keywords = {
   placement: ['platform position', 'позиція платформи', 'позиция платформы', 'placement', 'плейсмент', 'розміщення', 'размещение', 'ad placement', 'місце показу', 'место показа']
 };
 
+/* ХТО Я — ПИТАЄМО ОДИН РАЗ, І ЦЕ МОЖНА ДОЧЕКАТИСЬ.
+
+   ⚠️ ТУТ БУЛИ ПЕРЕГОНИ, І ЧЕРЕЗ НИХ RECORDS ПРИ ПЕРШОМУ ВІДКРИТТІ
+   ПОКАЗУВАВ ЧУЖІ РЯДКИ.
+
+   window.onload нижче — async. Вона доходить до першого await
+   (sb.auth.getSession) і ВІДДАЄ КЕРУВАННЯ, хоч подія load уже
+   вважається обробленою. У цю ж мить дашборд, який щойно дочекався
+   load в iframe, викликає switchMode('records') → recLoad(). А
+   window.myUid на той момент ще не присвоєний: getUser() не
+   повернувся. Фільтра по власнику немає — і в таблицю сиплеться вся
+   команда. Натиснув Refresh — onload уже дорахувала, uid є, фільтр
+   працює. Рівно те, що видно на екрані.
+
+   Лагодиться не порядком викликів (його тут ніхто не контролює: дві
+   сторінки, два життєвих цикли), а обіцянкою: хто потребує uid —
+   чекає на неї. Виток до бази все одно один, бо результат кешується.
+
+   Не дізнались — скидаємо кеш обіцянки, щоб наступний виклик мав
+   право перепитати, а не жив із порожнім uid до перезавантаження. */
+let uidPromise = null;
+function uidReady() {
+  if (!uidPromise) uidPromise = (async () => {
+    try {
+      const { data: u } = await sb.auth.getUser();
+      window.myUid = (u && u.user && u.user.id) || '';
+    } catch (e) {
+      window.myUid = '';
+      uidPromise = null;
+      console.warn('uid:', e.message);
+    }
+    return window.myUid || '';
+  })();
+  return uidPromise;
+}
+
 // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
 // 2. Онови window.onload, щоб вона викликала завантаження офферів
 window.onload = async () => {
@@ -1072,13 +1108,8 @@ window.onload = async () => {
      дашборд: повне прибирання робить він (cacheGuard), дублювати
      список ключів у двох файлах — напрошуватись на розбіжність. */
   try {
-    const { data: u } = await sb.auth.getUser();
-    const uid = (u && u.user && u.user.id) || '';
-    /* Свій uid тут уже був — діставався для перевірки кеша й помирав
-       разом із цим try. А він потрібен далі: по ньому Records показує
-       ТІЛЬКИ свої рядки. Не дізнались uid — нижче нічого не фільтруємо,
-       як і було. */
-    window.myUid = uid;
+    // Та сама обіцянка, що й у Records: виток до бази один на сторінку.
+    const uid = await uidReady();
     const was = localStorage.getItem('cache_uid') || '';
     if (uid && was && was !== uid) {
       localStorage.removeItem('selected_team');
@@ -3726,9 +3757,12 @@ async function recLoad() {
        Фільтр серверний, а не після вибірки: sbFetchAll ходить по
        сторінках по 1000, і відсіювати чуже вже на клієнті означало б
        протягувати через мережу всю команду, щоб потім викинути. */
-    const mine = window.myUid
-      ? `created_by.is.null,created_by.eq.${window.myUid}`
-      : '';
+    /* ЧЕКАЄМО на uid, а не питаємо, чи він випадково вже є: дашборд
+       відкриває цю вкладку раніше, ніж onload доходить до getUser
+       (див. uidReady). Саме на цьому Records і показував чужі рядки
+       до першого Refresh. */
+    const uid = await uidReady();
+    const mine = uid ? `created_by.is.null,created_by.eq.${uid}` : '';
     data = await sbFetchAll(recCurrentTable, q => {
       let x = q.eq('team_name', currentTeam);
       if (mine) x = x.or(mine);
