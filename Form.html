@@ -832,13 +832,27 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-purple-500 bg-slate-900/40">
              <h3 class="text-xl font-black uppercase italic mb-6 text-purple-400 tracking-tight">Funnel Mapper</h3>
              <div class="flex gap-3">
-                <input type="text" id="fun-name" placeholder="Funnel Name — e.g. Mostbet [AppCloud]" title="For APP: put the app provider in square brackets — the sub parsing profile is picked by it" class="flex-grow">
-                <input type="text" id="fun-ktid" placeholder="KTID / app name" class="w-1/3 text-center">
+                <input type="text" id="fun-name" oninput="funProvSync()" placeholder="Funnel Name — e.g. Mostbet [AppCloud]" title="For APP: put the app provider in square brackets — the sub parsing profile is picked by it" class="flex-grow">
+                <!-- Гео воронки. Найбільше потрібне під APP: за ним видно,
+                     під яке гео налаштована прілка, і саме за ним список
+                     апок у «Прілках» звужується до потрібних. -->
+                <input type="text" id="fun-geo" placeholder="GEO" maxlength="4"
+                       title="Під яке гео ця воронка. Потрібно, щоб у Прілках список апок звужувався за гео" class="!w-20 text-center uppercase">
+                <input type="text" id="fun-ktid" placeholder="KTID / app name" class="w-1/4 text-center">
                 <label class="flex items-center gap-1.5 cursor-pointer shrink-0 px-2" title="Mark as APP — then KTID holds the app name">
-                  <input type="checkbox" id="fun-is-app" class="!w-4 !h-4 !p-0 accent-orange-500">
+                  <input type="checkbox" id="fun-is-app" onchange="funProvSync()" class="!w-4 !h-4 !p-0 accent-orange-500">
                   <span class="text-[10px] font-black uppercase text-orange-400">APP</span>
                 </label>
                 <button onclick="addFunnelMapping()" class="bg-purple-600 hover:bg-purple-500 px-8 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
+             </div>
+             <!-- Теги постачальників прілок. Постачальник живе в квадратних
+                  дужках назви («Crazy Wheel [satorapps]»), тому теги збираємо
+                  з уже збережених воронок: вписувати їх окремо не треба,
+                  клік по тегу сам підставляє дужки в назву. -->
+             <div id="fun-prov-wrap" class="hidden mt-4 flex flex-wrap items-center gap-2">
+                <span class="text-[10px] font-black uppercase text-slate-500 tracking-[0.15em] shrink-0">Постачальник</span>
+                <span id="fun-prov-tags" class="flex flex-wrap gap-1.5"></span>
+                <span id="fun-prov-hint" class="hidden text-[10px] text-amber-400/80 italic"></span>
              </div>
           </div>
 
@@ -851,7 +865,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
              <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
                 <table class="w-full text-[13px] text-left">
                   <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
-                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-right">KTID</th><th class="p-3"></th></tr>
+                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-center">GEO</th><th class="p-3 text-right">KTID</th><th class="p-3"></th></tr>
                   </thead>
                   <tbody id="funnels-list-body" class="divide-y divide-white/5">
                     <!-- JS Rows -->
@@ -3394,15 +3408,28 @@ async function addFunnelMapping() {
   if (!name || !ktid) return alert("Fill fields!");
 
   const isApp = !!document.getElementById('fun-is-app')?.checked;
+  const geo = (document.getElementById('fun-geo')?.value || '').trim().toUpperCase();
   const { error } = await sb.from('funnels_mapping').upsert({
-    ktid: ktid, funnel_name: name, team_name: currentTeam, is_app: isApp
+    ktid: ktid, funnel_name: name, team_name: currentTeam, is_app: isApp, geo: geo
   });
 
-  if (error) { alert('Could not save the funnel: ' + error.message); return; }
+  if (error) {
+    /* Колонки geo може ще не бути — тоді PostgREST каже «column … does
+       not exist» або «could not find the 'geo' column … in the schema
+       cache». Називаємо файл, який це лагодить, замість сирої помилки:
+       з неї не видно, що робити. */
+    const m = String(error.message || '');
+    alert('Could not save the funnel: ' + m
+      + (/geo/i.test(m) && /(does not exist|schema cache)/i.test(m)
+         ? '\n\nУ funnels_mapping ще немає колонки geo. Виконай FUNNEL_GEO.sql, тоді Ctrl+Shift+R.'
+         : ''));
+    return;
+  }
   if (!error) {
     showStatus("Funnel Mapped!");
     document.getElementById('fun-name').value = '';
     document.getElementById('fun-ktid').value = '';
+    const g = document.getElementById('fun-geo'); if (g) g.value = '';
     const ap = document.getElementById('fun-is-app'); if (ap) ap.checked = false;
     await refreshFunnelsTable(); 
     await loadMappings(); 
@@ -3445,12 +3472,74 @@ async function deleteAccountMapping(id) {
   const { error } = await sb.from('accounts_mapping').delete().eq('id', id);
   if (!error) { showStatus("Account mapping removed"); refreshProvidersTable(); }
 }
+/* Постачальник прілки записаний у квадратних дужках назви воронки —
+   «Crazy Wheel [satorapps]». Окремої колонки немає, і саме з цих дужок
+   його читають і Прілки (apProvOf), і профілі парсингу сабок. */
+function funProvOf(name) {
+  const m = String(name || '').match(/\[([^\]]+)\]/);
+  return m ? m[1].trim() : '';
+}
+
+/* Список тегів = всі постачальники, які вже зустрічались у APP-воронках.
+   Порівнюємо в нижньому регістрі, а показуємо як уперше написали. */
+function funProvList() {
+  const seen = new Map();
+  (allFunnels || []).forEach(f => {
+    if (!f.is_app) return;
+    const prov = funProvOf(f.funnel_name);
+    if (prov && !seen.has(prov.toLowerCase())) seen.set(prov.toLowerCase(), prov);
+  });
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/* Клік по тегу або замінює дужки в назві, або додає їх у кінець. */
+function funProvSet(prov) {
+  const el = document.getElementById('fun-name');
+  if (!el) return;
+  const cur = String(el.value || '');
+  el.value = funProvOf(cur)
+    ? cur.replace(/\[[^\]]*\]/, '[' + prov + ']')
+    : (cur.trim() + ' [' + prov + ']').trim();
+  funProvSync();
+  el.focus();
+}
+
+function funProvSync() {
+  const wrap = document.getElementById('fun-prov-wrap');
+  if (!wrap) return;
+  const isApp = !!document.getElementById('fun-is-app')?.checked;
+  wrap.classList.toggle('hidden', !isApp);
+  if (!isApp) return;
+
+  const cur  = funProvOf(document.getElementById('fun-name')?.value).toLowerCase();
+  const list = funProvList();
+  const tags = document.getElementById('fun-prov-tags');
+  if (tags) tags.innerHTML = list.map(prov => {
+    const on = prov.toLowerCase() === cur;
+    return `<button type="button" onclick="funProvSet(${JSON.stringify(prov).replace(/"/g, '&quot;')})"
+      class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase border transition-all ${on
+        ? 'bg-orange-500/25 text-orange-300 border-orange-500/50'
+        : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'}"
+      title="Підставити [${prov}] у назву воронки">${prov}</button>`;
+  }).join('');
+
+  const hint = document.getElementById('fun-prov-hint');
+  if (!hint) return;
+  // Два різні «нічого немає»: або постачальників ще ніде не вписували,
+  // або теги є, але в цій назві дужок поки нема.
+  const msg = !list.length
+    ? 'Тегів ще немає — впиши постачальника в дужках: Crazy Wheel [satorapps]'
+    : (cur ? '' : 'Вибери тег або впиши дужки в назві вручну');
+  hint.textContent = msg;
+  hint.classList.toggle('hidden', !msg);
+}
+
 function renderFunnelsTable(data) {
   const body = document.getElementById('funnels-list-body');
   if (!body) return console.error("❌ Не знайдено funnels-list-body");
 
   if (!data || data.length === 0) {
-    body.innerHTML = '<tr><td colspan="3" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="4" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
     return;
   }
 
@@ -3458,6 +3547,7 @@ function renderFunnelsTable(data) {
     <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
       <td class="p-3 font-bold text-purple-300">${r.funnel_name || '—'}
         ${r.is_app ? '<span class="ml-1.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">APP</span>' : ''}</td>
+      <td class="p-3 text-center font-black text-emerald-300">${r.geo ? String(r.geo).toUpperCase() : '<span class="opacity-25">—</span>'}</td>
       <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
       <td class="p-3 text-right">
         <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
@@ -3604,7 +3694,12 @@ function filterProviders() {
 
 function filterFunnels() {
   const query = document.getElementById('funnel-search').value.toLowerCase();
-  renderFunnelsTable(allFunnels.filter(r => r.funnel_name.toLowerCase().includes(query) || r.ktid.toLowerCase().includes(query)));
+  // Шукаємо й по гео: «які воронки в нас під UZ» — питання не рідше,
+  // ніж пошук за назвою.
+  renderFunnelsTable(allFunnels.filter(r =>
+    String(r.funnel_name || '').toLowerCase().includes(query)
+    || String(r.ktid || '').toLowerCase().includes(query)
+    || String(r.geo || '').toLowerCase().includes(query)));
 }
   // Функція для зміни або створення нової команди прямо у формі
 function promptNewTeam() {
@@ -3735,6 +3830,7 @@ async function refreshFunnelsTable() {
 
   allFunnels = data || []; // Зберігаємо в глобальну змінну для пошуку
   renderFunnelsTable(allFunnels);
+  funProvSync(); // список тегів живе з таблиці — оновлюємо разом з нею
 }
 
 /* ============================================================

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 10:02">
+  <meta name="build" content="build 13.10 12:02">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5135,7 +5135,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 10:02</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 12:02</div>
     </div>
   </aside>
 
@@ -5657,7 +5657,7 @@ input.ui-in[type="range"] { padding: 0; }
                   <div class="grid grid-cols-2 gap-1">
                     <button onclick="crQuickDate('today')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Today</button>
                     <button onclick="crQuickDate('yesterday')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">Yesterday</button>
-                    <button onclick="crQuickDate('7')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">7 days</button>
+                    <button onclick="crQuickDate('month')" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">This month</button>
                     <button onclick="crClearDates()" class="text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition">Reset</button>
                   </div>
                 </div>
@@ -8401,7 +8401,11 @@ function crQuickDate(kind) {
   const from = document.getElementById('cr-date-from'), to = document.getElementById('cr-date-to');
   if (kind === 'today')      { from.value = d(0); to.value = d(0); }
   else if (kind === 'yesterday') { from.value = d(1); to.value = d(1); }
-  else                       { from.value = d(6); to.value = d(0); }
+  /* Місяць, а не останні N днів: план і таргет у нас місячні, тож
+     «скільки вже відлито» рахують від першого числа. Початок беремо як
+     «сьогодні мінус (число − 1) днів» — тим самим d(), щоб межа місяця
+     лягала так само, як решта кнопок. */
+  else { const u = new Date(); u.setUTCDate(1); from.value = u.toISOString().slice(0, 10); to.value = d(0); }
   searchCreative();
 }
 
@@ -14878,7 +14882,7 @@ function gcDiff(geo, results) {
         <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
-        <input id="ap-search" oninput="apRender()" placeholder="Пошук: назва, KTID, діплінк…"
+        <input id="ap-search" oninput="apRender()" placeholder="Пошук: гео, постачальник, неймінг…"
           class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
         <button onclick="apNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
         <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
@@ -14931,11 +14935,15 @@ const AP_MODES = {
   fixed: 'Фіксована',
   app:   'Апка — KTID вибраної',
   acc:   'Акаунт',
-  geo:   'Гео',
+  geo:   'Гео — з поля «Гео»',
   cid:   'Креатив'
 };
-// Що лягає в сабку для макросних режимів, які підставляє трекер.
-const AP_MACRO = { geo: '{geo}', cid: '{creative}' };
+/* Що лягає в сабку для режимів, які підставляє ТРЕКЕР, а не ми.
+   Гео сюди більше не входить: воно є в самому шаблоні (поле «Гео»),
+   тому підставляємо його ми — так само, як KTID вибраної апки. */
+const AP_MACRO = { cid: '{creative}' };
+// Режими, яким не треба вписувати значення: воно береться саме.
+const AP_NOVAL = { app: 1, geo: 1, cid: 1 };
 
 /* ═══════════ ПІДСТАНОВКА ═══════════
 
@@ -14946,10 +14954,11 @@ const AP_MACRO = { geo: '{geo}', cid: '{creative}' };
    Що підставляється:
 
      {app}     KTID апки, вибраної списком над неймінгом
+     {geo}     гео самого шаблону — поле «Гео» в редакторі
      {subN}    значення фіксованої сабки N
      {acc}     номер кабінета, якщо сабка «Акаунт» налаштована
-     решта     лишається як є — це плейсхолдери трекера ({geo},
-               {creative}), їх підставляє він сам на кліку
+     решта     лишається як є — це плейсхолдери трекера
+               ({creative}), їх підставляє він сам на кліку
 
    Фіксовані сабки підставляються САМІ: вписав Sub 2 = 8wxg7hf7 — і він
    уже стоїть у неймінгу всюди, де є {sub2}. Тримати те саме значення
@@ -14958,12 +14967,17 @@ const AP_MACRO = { geo: '{geo}', cid: '{creative}' };
 function apResolve(it, ktid) {
   const subs = it.subs || [];
   const map = {};
+  /* Гео шаблону — таке саме джерело, як вибрана апка: воно вже стоїть у
+     записі, тому {geo} підставляємо ми, а не трекер. */
+  const geo = String(it.geo || '').trim().toUpperCase();
   subs.forEach(x => {
     if (x.mode === 'fixed' && x.value) map['sub' + x.n] = x.value;
     if (x.mode === 'app') map['sub' + x.n] = ktid || '';
+    if (x.mode === 'geo') map['sub' + x.n] = geo;
     if (x.mode === 'acc' && x.value) map['sub' + x.n] = x.value;
   });
   if (ktid) map.app = ktid;
+  if (geo) map.geo = geo;
   const accSub = subs.find(x => x.mode === 'acc' && x.value);
   if (accSub) map.acc = accSub.value;
 
@@ -15013,7 +15027,7 @@ async function apLoad() {
   try {
     const [ts, fn, ac] = await Promise.all([
       sb.from('team_settings').select('value').eq('key', 'app_links').limit(1),
-      sb.from('funnels_mapping').select('ktid, funnel_name').eq('team_name', currentTeam),
+      sb.from('funnels_mapping').select('ktid, funnel_name, geo, is_app').eq('team_name', currentTeam),
       sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam)
     ]);
     if (ts.error) throw ts.error;
@@ -15085,7 +15099,7 @@ function apRender() {
   const rows = apItems.filter(it =>
     (!apGeo || (it.geo || '—').toUpperCase() === apGeo) &&
     (!apProv || (it.provider || '—') === apProv) &&
-    (!q || [it.title, it.app, it.naming, it.deeplink, it.provider, it.note]
+    (!q || [it.geo, it.provider, it.naming, it.deeplink, it.note, it.title]
             .some(v => String(v || '').toLowerCase().includes(q))));
 
   if (!rows.length) {
@@ -15108,15 +15122,19 @@ function apRender() {
   const picks = apPickRead();
   el.innerHTML = rows.map(it => {
     const ktid = picks[it.id] || '';
+    const ff = apFunnelsFor(it);
     const r = apResolve(it, ktid);
-    const subs = (it.subs || []).filter(x => x && x.mode && (x.value || AP_MACRO[x.mode]));
-    const title = it.title || it.app || '(без назви)';
+    const subs = (it.subs || []).filter(x => x && x.mode && (x.value || AP_NOVAL[x.mode]));
+    /* Шапка — це гео й постачальник, і більше нічого. Окрема «назва
+       шаблону» лише дублювала б їх: прілку шукають саме по цій парі, а
+       відрізняє шаблони неймінг, який стоїть відразу під шапкою. */
+    const geo = (it.geo || '').toUpperCase();
     return `
     <div class="bg-black/20 border border-white/5 rounded-2xl p-3">
       <div class="flex items-start justify-between gap-2 flex-wrap">
-        <p class="text-[12px] font-black text-white truncate min-w-0">${apEsc(title)}
-          <span class="text-[10px] font-bold text-emerald-300 ml-1.5">${apEsc((it.geo || '').toUpperCase())}</span>
-          ${it.provider ? `<span class="text-[10px] font-bold text-slate-500 ml-1">· ${apEsc(it.provider)}</span>` : ''}
+        <p class="text-[12px] font-black text-white truncate min-w-0">
+          <span class="text-emerald-300">${apEsc(geo || '—')}</span>
+          ${it.provider ? `<span class="text-slate-400 ml-1.5">· ${apEsc(it.provider)}</span>` : ''}
         </p>
         <div class="flex items-center gap-1.5 shrink-0">
           <button onclick="apEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
@@ -15124,17 +15142,21 @@ function apRender() {
         </div>
       </div>
 
-      <!-- Вибір апки — НАД неймінгом: її KTID лягає в нього сам. -->
+      <!-- Вибір апки — НАД неймінгом: її KTID лягає в нього сам.
+           У списку лише апки цього постачальника й цього гео. -->
       <div class="flex items-center gap-2 mt-2">
         <span class="text-[9px] font-black uppercase tracking-widest text-emerald-300 shrink-0 w-16">Апка</span>
         <select onchange="apPickSet('${it.id}', this.value)"
           class="flex-1 min-w-0 bg-black/30 border border-emerald-500/30 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-emerald-500">
           <option value="">— вибери апку —</option>
-          ${apFunnels.map(f => `<option value="${apEsc(f.ktid)}"${
-            String(f.ktid) === String(ktid) ? ' selected' : ''}>${apEsc(f.funnel_name || f.ktid)}</option>`).join('')}
+          ${ff.list.map(f => `<option value="${apEsc(f.ktid)}"${
+            String(f.ktid) === String(ktid) ? ' selected' : ''}>${apEsc(apFunnelLabel(f))}</option>`).join('')}
         </select>
         ${ktid ? `<code class="text-[11px] font-mono text-emerald-300 shrink-0">${apEsc(ktid)}</code>` : ''}
       </div>
+      ${ff.empty ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
+        Під «${apEsc(it.provider || '—')}» і гео ${apEsc((it.geo || '—').toUpperCase())} апок не знайшлось — показано всі.
+        Впиши гео воронкам у Form → Settings → Funnels.</p>` : ''}
 
       ${it.naming ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Неймінг</span>
@@ -15152,9 +15174,10 @@ function apRender() {
 
       ${subs.length ? `<details class="mt-2 pt-2 border-t border-white/5">
         <summary class="text-[9px] font-black uppercase tracking-widest text-slate-500 cursor-pointer hover:text-slate-300 transition">Сабки · ${subs.length}</summary>
-        <div class="grid grid-cols-[auto_auto_1fr_auto] gap-x-2 gap-y-1 items-center mt-2">
+        <div class="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] gap-x-2 gap-y-1 items-center mt-2">
         ${subs.map(x => {
           const val = x.mode === 'app' ? (ktid || '{app}')
+                    : x.mode === 'geo' ? (geo || '{geo}')
                     : AP_MACRO[x.mode] ? AP_MACRO[x.mode] : x.value;
           const hint = x.mode === 'app' ? apFunnelName(ktid)
                      : x.mode === 'acc' ? apAccLabel(x.value) : '';
@@ -15162,7 +15185,7 @@ function apRender() {
             <span class="text-[9px] font-black uppercase tracking-widest ${
               x.mode === 'fixed' ? 'text-slate-600' : 'text-emerald-400'}">${
               x.mode === 'fixed' ? 'фікс' : 'макро'}</span>
-            <code class="text-[11px] font-mono text-slate-200 truncate" title="${apEsc(hint || val)}">${apEsc(val)}${
+            <code class="text-[11px] font-mono text-slate-200 break-all" title="${apEsc(hint || val)}">${apEsc(val)}${
               hint ? `<span class="text-slate-500 font-sans"> · ${apEsc(hint)}</span>` : ''}</code>
             ${copyBtn(val, 'Скопіювати значення')}`;
         }).join('')}
@@ -15171,6 +15194,51 @@ function apRender() {
       ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
     </div>`;
   }).join('');
+}
+
+/* ЯКІ АПКИ ПОКАЗУВАТИ В ЦЬОМУ ШАБЛОНІ.
+
+   Показувати весь парк — означає щоразу шукати серед сотні рядків те,
+   що в цього постачальника й під це гео фізично одне-два. Тому список
+   звужуємо двома ознаками самого шаблону:
+
+     постачальник  із квадратних дужок назви воронки — «[AppCloud]».
+                   Так постачальник уже позначається в Form, і вводити
+                   його вдруге окремою колонкою означало б два джерела
+                   однієї ознаки.
+     гео           колонка geo у funnels_mapping (FUNNEL_GEO.sql).
+
+   ⚠️ ЧОГО ТУТ НЕМАЄ НАВМИСНО: звуження «за замовчуванням ховаємо все,
+   чого не знаємо». Воронка без гео або без дужок не виключається —
+   порожнє поле означає «не вказано», а не «не підходить». Інакше
+   додавання колонки geo тихо спустошило б списки всім, хто її ще не
+   заповнив.
+
+   А якщо після звуження не лишилось нічого — показуємо весь парк і
+   кажемо це рядком. Порожня випадайка виглядає як поломка. */
+function apProvOf(f) {
+  const m = String(f.funnel_name || '').match(/\[([^\]]+)\]/);
+  return m ? m[1].trim() : '';
+}
+function apFunnelsFor(it) {
+  const prov = String(it.provider || '').trim().toLowerCase();
+  const geo  = String(it.geo || '').trim().toUpperCase();
+  const fit = apFunnels.filter(f => {
+    const fp = apProvOf(f).toLowerCase();
+    const fg = String(f.geo || '').trim().toUpperCase();
+    if (prov && fp && fp !== prov) return false;
+    if (geo && fg && fg !== geo) return false;
+    return true;
+  });
+  return fit.length ? { list: fit, narrowed: fit.length < apFunnels.length }
+                    : { list: apFunnels, narrowed: false, empty: true };
+}
+// Підпис у списку: назва, гео й KTID — щоб число було видно відразу,
+// не відкриваючи нічого.
+function apFunnelLabel(f) {
+  const g = String(f.geo || '').trim().toUpperCase();
+  return (g ? g + ' · ' : '') + (f.funnel_name || f.ktid)
+       + (f.ktid ? '  —  ' + f.ktid : '');
 }
 
 function apFunnelName(ktid) {
@@ -15201,7 +15269,7 @@ async function apCopy(ev, btn) {
 function apNew() {
   apEditId = null;
   apShowEditor({ geo: apGeo, provider: apProv === '—' ? '' : apProv,
-                 title: '', naming: '', deeplink: '', note: '', subs: [] });
+                 naming: '', deeplink: '', note: '', subs: [] });
 }
 function apEdit(id) {
   const it = apItems.find(x => x.id === id);
@@ -15226,10 +15294,12 @@ function apShowEditor(v) {
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-emerald-500/[0.06] border border-emerald-500/25 rounded-2xl p-3 space-y-2">
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+      <!-- Гео й постачальник — усе, що ідентифікує шаблон. Поля «Назва
+           шаблону» тут немає навмисно: воно повторювало б цю ж пару, а
+           відрізняє шаблони неймінг. -->
+      <div class="grid grid-cols-2 gap-2">
         <input id="ap-f-geo" list="ap-dl-geo" value="${apEsc(v.geo)}" placeholder="Гео (UZ)" class="${inp} uppercase">
         <input id="ap-f-prov" list="ap-dl-prov" value="${apEsc(v.provider)}" placeholder="Постачальник" class="${inp}">
-        <input id="ap-f-title" value="${apEsc(v.title || v.app || '')}" placeholder="Назва шаблону" class="${inp}">
       </div>
       ${dl('ap-dl-geo', apItems.map(i => (i.geo || '').toUpperCase()))}
       ${dl('ap-dl-prov', apItems.map(i => i.provider).concat(
@@ -15241,14 +15311,15 @@ function apShowEditor(v) {
              placeholder="Діплінк (необовʼязково): app://open?sub={app}">
       <p class="text-[10px] text-slate-500 font-bold leading-relaxed">
         <b class="text-emerald-300">{app}</b> — KTID апки, вибраної списком над готовим неймінгом.
+        <b class="text-emerald-300">{geo}</b> — гео з поля «Гео» вище.
         <b class="text-emerald-300">{sub2}</b> — значення фіксованої сабки 2: вписав її нижче — вона вже в неймінгу.
-        <b class="text-slate-400">{geo}</b> і <b class="text-slate-400">{creative}</b> лишаються трекеру.
+        <b class="text-slate-400">{creative}</b> лишається трекеру.
       </p>
       <input id="ap-f-note" value="${apEsc(v.note)}" class="${inp} w-full" placeholder="Нотатка для себе">
 
       <div class="pt-1">
         <p class="text-[9px] font-black uppercase tracking-widest text-emerald-300 mb-1.5">Сабки трекера</p>
-        <p class="text-[10px] text-slate-500 font-bold mb-2">Фіксована — стала; вона сама підставиться в неймінг і діплінк замість {subN}. «Апка» бере KTID тієї, що вибрана над неймінгом. «Акаунт» — номер кабінета зі списку. Гео й креатив лишаються плейсхолдерами трекера.</p>
+        <p class="text-[10px] text-slate-500 font-bold mb-2">Фіксована — стала; вона сама підставиться в неймінг і діплінк замість {subN}. «Апка» бере KTID тієї, що вибрана над неймінгом. «Гео» — з поля «Гео» вище. «Акаунт» — номер кабінета зі списку. Креатив лишається плейсхолдером трекера.</p>
         <div id="ap-subs" class="space-y-1"></div>
         <button onclick="apSubAdd()" class="mt-2 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 transition">+ сабка</button>
       </div>
@@ -15262,7 +15333,7 @@ function apShowEditor(v) {
   apSubsDraft = (v.subs || []).map(x => ({ ...x }));
   if (!apSubsDraft.length) apSubsDraft = [{ n: 1, mode: 'fixed', value: '' }];
   apSubsRender();
-  document.getElementById('ap-f-title').focus();
+  document.getElementById('ap-f-geo').focus();
 }
 
 let apSubsDraft = [];
@@ -15297,23 +15368,33 @@ function apSubsRender() {
           ${apAccounts.map(a => `<option value="${apEsc(a.account_id)}"${
             String(a.account_id) === String(x.value) ? ' selected' : ''}>${apEsc(apAccLabel(a.account_id))}</option>`).join('')}
         </select>`;
+    } else if (x.mode === 'geo') {
+      // Гео бере шаблон — те саме поле, що в шапці редактора.
+      const g = (document.getElementById('ap-f-geo')?.value || '').trim().toUpperCase();
+      valField = `<code class="text-[11px] font-mono text-emerald-300 px-2 py-1">${
+        g ? apEsc(g) + ' — гео шаблону' : 'гео шаблону (впиши поле «Гео»)'}</code>`;
     } else if (AP_MACRO[x.mode]) {
       valField = `<code class="text-[11px] font-mono text-emerald-300 px-2 py-1">${apEsc(AP_MACRO[x.mode])}</code>`;
     } else {
       valField = `<input class="${inp} w-full font-mono" value="${apEsc(x.value)}"
           oninput="apSubSetVal(${i}, this.value)" placeholder="значення">`;
     }
-    return `<div class="grid grid-cols-[72px_120px_1fr_auto] gap-1.5 items-center">
-      <select class="${inp}" onchange="apSubSet(${i}, 'n', +this.value)">
-        ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
-          `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
-      </select>
-      <select class="${inp}" onchange="apSubSet(${i}, 'mode', this.value)">
-        ${Object.entries(AP_MODES).map(([k, lbl]) =>
-          `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
-      </select>
-      ${valField}
-      <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
+    /* Значення — окремим рядком на всю ширину. В один рядок із двома
+       випадайками воно лишалось вузьким, і довга сабка ховалась у полі:
+       видно хвіст, а не те, що вписано. */
+    return `<div class="rounded-xl bg-black/15 border border-white/5 p-1.5 space-y-1">
+      <div class="grid grid-cols-[72px_minmax(0,1fr)_auto] gap-1.5 items-center">
+        <select class="${inp}" onchange="apSubSet(${i}, 'n', +this.value)">
+          ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
+            `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
+        </select>
+        <select class="${inp} w-full" onchange="apSubSet(${i}, 'mode', this.value)">
+          ${Object.entries(AP_MODES).map(([k, lbl]) =>
+            `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
+        </select>
+        <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
+      </div>
+      <div class="min-w-0">${valField}</div>
     </div>`;
   }).join('');
 }
@@ -15325,16 +15406,14 @@ async function apSubmit() {
   const rec = {
     geo: val('ap-f-geo').toUpperCase(),
     provider: val('ap-f-prov'),
-    title: val('ap-f-title'),
     naming: val('ap-f-naming'),
     deeplink: val('ap-f-deeplink'),
     note: val('ap-f-note'),
     // Порожні сабки не зберігаємо: вони потім виглядають як налаштоване.
     subs: apSubsDraft
-      .filter(x => x.mode && (x.value || AP_MACRO[x.mode]))
-      .map(x => ({ n: x.n, mode: x.mode, value: AP_MACRO[x.mode] ? '' : x.value }))
+      .filter(x => x.mode && (x.value || AP_NOVAL[x.mode]))
+      .map(x => ({ n: x.n, mode: x.mode, value: AP_NOVAL[x.mode] ? '' : x.value }))
   };
-  if (!rec.title) { alert('Без назви шаблон знайти потім неможливо.'); return; }
   if (!rec.naming) { alert('Шаблон без неймінгу нічого не дасть — саме його ти й копіюєш.'); return; }
 
   if (apEditId) Object.assign(apItems.find(x => x.id === apEditId) || {}, rec);
@@ -17159,6 +17238,7 @@ function renderAccountsModal() {
     (!q ||
       String(r.account_id || '').toLowerCase().includes(q) ||
       String(r.provider_name || '').toLowerCase().includes(q) ||
+      String(r.profile || '').toLowerCase().includes(q) ||
       String(r.status_note || '').toLowerCase().includes(q)));
 
   if (!rows.length) {
@@ -17168,7 +17248,11 @@ function renderAccountsModal() {
   }
 
   const GRID = 'grid gap-x-3 items-center';
-  const COLS = 'grid-template-columns: minmax(140px,1.3fr) minmax(90px,1fr) 52px 84px 210px minmax(120px,1.4fr);';
+  /* Браузер (профіль антидетекта) стоїть поряд з агентом: питання
+     «де цей кабінет відкривати» виникає разом із питанням «чий він»,
+     і йти за цим у Form → Accounts означало б два вікна на один
+     погляд. Колонка читальна: профіль міняють там, де його й задають. */
+  const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 84px 210px minmax(110px,1.3fr);';
   // проблемні — зверху, щоб не шукати їх у довгому списку
   const order = { ban: 0, problem: 1, active: 2 };
   rows.sort((a, b) => order[accStatusOf(a)] - order[accStatusOf(b)] ||
@@ -17176,8 +17260,8 @@ function renderAccountsModal() {
 
   body.innerHTML = `
     <div class="${GRID} px-4 pb-2" style="${COLS}">
-      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','TZ','Added','Status','Note'].map((h, i) =>
-        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${i === 2 || i === 3 ? 'text-center' : ''}">${h}</span>`).join('')}
+      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','Browser','TZ','Added','Status','Note'].map(h =>
+        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' || h === 'Added' ? 'text-center' : ''}">${h}</span>`).join('')}
     </div>
     <div class="space-y-1.5">
       ${rows.map(r => {
@@ -17185,6 +17269,7 @@ function renderAccountsModal() {
         return `<div class="bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-2.5 ${GRID}" style="${COLS}">
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
           <span class="text-[12px] font-bold text-slate-400 truncate">${r.provider_name || '—'}</span>
+          <span class="text-[12px] font-bold text-violet-300 truncate" title="${(r.profile || '').replace(/"/g, '&quot;')}">${r.profile || '<span class="opacity-25">—</span>'}</span>
           <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>
           <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Date the account was added">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>
           <div class="flex gap-1">
