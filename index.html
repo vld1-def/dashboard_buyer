@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 10.10 12:42">
+  <meta name="build" content="build 13.10 06:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3945,6 +3945,38 @@ body.is-lead-only .admin-only { display: none; }
 .rl-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
 .rl-btn.is-main:hover { filter: brightness(1.12); }
 .rl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+
+/* ⚠️ ВИСОТА ПАНЕЛІ ПРАВИЛ — І ЧОМУ ОДНОГО max-height НА .rl-wrap БУЛО
+   НЕ ДОСИТЬ.
+
+   У .rl-wrap стоїть max-height: 100%, і виглядало це як готова стеля.
+   Але відсоток рахується від висоти БАТЬКА, а #rules-panel висоти не
+   мав: він flex-елемент ряду з align-items: flex-start, тобто росте
+   під вміст. Відсоток від авто-висоти браузер читає як «без
+   обмеження» — і панель тягнулась на всю висоту списку правил разом
+   із журналом, виїжджала за екран, а нижня частина ставала
+   недосяжною: гортався документ, а не вміст панелі.
+
+   Тому стелю ставимо САМІЙ панелі — від ряду, у якого висота
+   визначена. Це той самий прийом, що вже працює вище для #cab-list і
+   #cab-detail. А .rl-wrap робимо flex-елементом: тоді внутрішню
+   прокрутку рахує flexbox, без жодних відсотків.
+
+   display: flex пишемо лише для :not(.hidden). Селектор із id
+   сильніший за Tailwind-івський .hidden, тож без цієї обмовки панель
+   було б видно ЗАВЖДИ, і закрити її стало б неможливо.
+
+   До 720px ряд переноситься (див. медіа-запит нижче): список, картка
+   й правила стають одне під одним, і стелі від висоти ряду мати там
+   не повинні — інакше панель сплющиться. */
+@media (min-width: 721px) {
+  body[data-route="cabinets"] #rules-panel:not(.hidden) {
+    display: flex; min-height: 0; max-height: 100%;
+  }
+  body[data-route="cabinets"] #rules-panel > .rl-wrap {
+    flex: 1 1 auto; min-height: 0;
+  }
+}
 .rl-note { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; min-height: 14px; }
 
 .rl-row {
@@ -5050,7 +5082,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 10.10 12:42</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 06:46</div>
     </div>
   </aside>
 
