@@ -1635,6 +1635,15 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       </button>
       <div id="cr-panel-trend" class="hidden px-4 pb-4"></div>
     </div>
+    <!-- Воронка — на всю ширину: назви на кшталт «Mbank KG 10708» у
+         півколонки не влізають і обрізаються до безглуздого. -->
+    <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden lg:col-span-2">
+      <button onclick="crTogglePanel('funnels')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
+        <span class="text-[10px] font-black uppercase tracking-widest text-teal-400 text-left">На яких воронках крутився</span>
+        <span id="cr-arrow-funnels" class="text-[10px] text-slate-500 transition-transform shrink-0">▶</span>
+      </button>
+      <div id="cr-panel-funnels" class="hidden px-4 pb-4"></div>
+    </div>
     <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden lg:col-span-2">
       <button onclick="crTogglePanel('accounts')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
         <span class="text-[10px] font-black uppercase tracking-widest text-amber-400 text-left">По кабінетах — це каб чи рандом</span>
@@ -3031,7 +3040,10 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
     const matchesSearch = !query || cid.toLowerCase().includes(query.toLowerCase());
 
     if (matchesGeo && matchesSearch) {
-      if (!grouped[cid]) grouped[cid] = { cid, s: 0, cl: 0, ins: 0, r: 0, dp: 0 };
+      if (!grouped[cid]) grouped[cid] = { cid, s: 0, cl: 0, ins: 0, r: 0, dp: 0, fn: new Set() };
+      // Воронки збираємо тут-таки: у списку їх видно при наведенні, а
+      // повну розбивку з цифрами дає розгортайка у вибраному креативі.
+      { const f = String(d.funnel || '').trim(); if (f) grouped[cid].fn.add(f); }
       grouped[cid].s  += Number(d.spend)    || 0;
       grouped[cid].cl += Number(d.clicks)   || 0;
       grouped[cid].ins+= Number(d.installs) || 0;
@@ -3204,7 +3216,10 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
               f.guess ? 'bg-white/5 text-slate-500' : 'bg-blue-500/20 text-blue-300'}">${
               f.v === 'video' ? 'VID' : 'STA'}</span>`;
         })()}
-        <span class="text-[10px] font-black truncate flex-1">${c.cid}${crTagsOf(c.cid).length
+        <span class="text-[10px] font-black truncate flex-1" title="${
+          c.fn && c.fn.size
+            ? 'Воронки: ' + [...c.fn].sort().join(', ').replace(/"/g, '&quot;')
+            : 'Воронка в даних не вказана'}">${c.cid}${crTagsOf(c.cid).length
           ? `<span class="ml-1.5 normal-case font-bold text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 align-middle">${crTagsOf(c.cid)[0]}${crTagsOf(c.cid).length>1?' +'+(crTagsOf(c.cid).length-1):''}</span>`
           : ''}</span>
         <span class="text-[10px] font-bold opacity-60 flex-shrink-0">$${Math.round(c.s)}</span>
@@ -3741,6 +3756,7 @@ function crCurrentRows() {
 function crRenderPanels() {
   if (crOpenPanels.has('placements')) crRenderPlacementsPanel();
   if (crOpenPanels.has('trend'))      crRenderTrendPanel();
+  if (crOpenPanels.has('funnels'))    crRenderFunnelsPanel();
   if (crOpenPanels.has('accounts'))   crRenderAccountsPanel();
 }
 
@@ -3781,6 +3797,65 @@ function crRenderPlacementsPanel() {
       </div>`).join('')}
     ${best ? `<p class="text-[12px] font-bold text-emerald-400 mt-2.5 pt-2 border-t border-white/5">
         Cheapest deposit: <b>${best[0]}</b> — CPA ${cost(best[1].s, best[1].d)}</p>` : ''}`;
+}
+
+/* ── ВОРОНКА × КРЕАТИВ ──
+
+   Питання було просте: на якій воронці цей креатив працював і з яким
+   результатом. Дані для цього вже лежали в creatives_stats — колонка
+   funnel заповнюється при імпорті поруч із cid і гео, — але ніде не
+   показувались: по воронках різався лише загальний звіт, не креативи.
+
+   Той самий каркас, що в панелі плейсментів: ті самі стовпці, те саме
+   сортування за спендом і той самий рядок про найдешевший депозит —
+   щоб дві панелі читались однаково, а не кожна по-своєму.
+
+   Рядки беремо через crCurrentRows(), тож вибраний кабінет і гео
+   діють і тут: «на яких воронках це крео працювало НА ЦЬОМУ кабінеті»
+   — питання не менш часте за загальне. */
+function crFunnelRows() {
+  const map = {};
+  crCurrentRows().forEach(r => {
+    const k = String(r.funnel || '').trim() || '—';
+    const m = map[k] || (map[k] = { s:0, cl:0, i:0, r:0, d:0, days:new Set() });
+    m.s += Number(r.spend)||0;  m.cl += Number(r.clicks)||0;
+    m.i += Number(r.installs)||0; m.r += Number(r.regs)||0; m.d += Number(r.deps)||0;
+    if (r.date) m.days.add(r.date);
+  });
+  return Object.entries(map).sort((a,b) => b[1].s - a[1].s);
+}
+
+function crRenderFunnelsPanel() {
+  const el = document.getElementById('cr-panel-funnels');
+  if (!el) return;
+  const list = crFunnelRows();
+  /* «—» як єдина воронка означає, що в рядках її просто немає. Це не
+     те саме, що «крутився на одній воронці», і плутати їх не можна:
+     перше — дірка в даних, друге — факт про креатив. */
+  if (!list.length || (list.length === 1 && list[0][0] === '—')) {
+    el.innerHTML = `<p class="text-[12px] opacity-40 py-3">Для цього креатива воронка в даних не вказана — у рядках creatives_stats порожня колонка funnel. Залий звіт ще раз: воронка підставляється з мапінгу за ktid.</p>`;
+    return;
+  }
+  const maxS = Math.max(...list.map(([,m]) => m.s), 1);
+  const best = list.filter(([,m]) => m.d > 0).sort((a,b) => (a[1].s/a[1].d) - (b[1].s/b[1].d))[0];
+  const cost = (s,n) => n ? '$' + (s/n).toFixed(2) : '—';
+  el.innerHTML = `
+    <div class="grid grid-cols-7 gap-1 text-[11px] uppercase tracking-widest text-slate-500 font-black pb-1.5 border-b border-white/5 mb-1">
+      <span class="col-span-2">Funnel</span><span class="text-right">Днів</span><span class="text-right">Spend</span>
+      <span class="text-right">Inst / CPI</span><span class="text-right">Reg / CPL</span><span class="text-right">Dep / CPA</span>
+    </div>
+    ${list.map(([k,m]) => `
+      <div class="grid grid-cols-7 gap-1 text-[13px] py-1.5 items-center relative">
+        <div class="absolute inset-y-0 left-0 rounded bg-teal-500/10" style="width:${m.s/maxS*100}%"></div>
+        <span class="col-span-2 relative font-bold text-slate-200 truncate" title="${String(k).replace(/"/g,'&quot;')}">${k}</span>
+        <span class="relative text-right font-mono text-slate-500">${m.days.size}</span>
+        <span class="relative text-right font-black text-white font-mono">$${Math.round(m.s).toLocaleString()}</span>
+        <span class="relative text-right font-mono"><b class="text-cyan-300">${m.i}</b> <span class="text-slate-500">${cost(m.s,m.i)}</span></span>
+        <span class="relative text-right font-mono"><b class="text-blue-400">${m.r}</b> <span class="text-slate-500">${cost(m.s,m.r)}</span></span>
+        <span class="relative text-right font-mono"><b class="${m.d?'text-green-500':'text-slate-600'}">${m.d}</b> <span class="text-slate-500">${cost(m.s,m.d)}</span></span>
+      </div>`).join('')}
+    ${best && list.length > 1 ? `<p class="text-[12px] font-bold text-emerald-400 mt-2.5 pt-2 border-t border-white/5">
+        Найдешевший депозит: <b>${best[0]}</b> — CPA ${cost(best[1].s, best[1].d)}</p>` : ''}`;
 }
 
 // Агрегація по днях — спільна для панелі і для розгорнутого вікна,
