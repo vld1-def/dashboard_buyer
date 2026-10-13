@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 07:17">
+  <meta name="build" content="build 13.10 08:31">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3946,6 +3946,59 @@ body.is-lead-only .admin-only { display: none; }
 .rl-btn.is-main:hover { filter: brightness(1.12); }
 .rl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
 
+/* ═══════════ ДОВІДКА В УНІКАЛІЗАТОРІ ═══════════
+   Іконка біля хрестика; підказка — на наведення й на фокус із
+   клавіатури (без :focus-within її не дістати з Tab).
+
+   ФОН НЕПРОЗОРИЙ — і це не косметика. Під вікном лежать кадри відео
+   й сітка варіантів; на напівпрозорому фоні цей текст просто не
+   читався. Тому суцільний колір і тінь, а не blur.
+
+   Позиція — від правого краю іконки: вікно впирається в праву межу
+   екрана, і підказка, вирівняна по центру, виїжджала б за нього. */
+.uq-help { position: relative; display: flex; }
+.uq-help-i {
+  width: 20px; height: 20px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 900; font-style: italic;
+  background: rgba(139,92,246,.18); border: 1px solid rgba(139,92,246,.45);
+  color: #c4b5fd; cursor: help; padding: 0; line-height: 1;
+}
+.uq-help:hover .uq-help-i { background: rgba(139,92,246,.32); color: #fff; }
+.uq-help-box {
+  position: absolute; top: calc(100% + 8px); right: -4px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 520px); overflow-y: auto;
+  /* Непрозорий фон: var(--surface) буває з альфою, тому колір прямий. */
+  background: #11131a; border: 1px solid rgba(139,92,246,.35);
+  border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.6);
+  text-align: left; z-index: 20;
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+  transition: opacity .14s, transform .14s, visibility .14s;
+}
+.uq-help:hover .uq-help-box,
+.uq-help:focus-within .uq-help-box { opacity: 1; visibility: visible; transform: translateY(0); }
+.uq-help-h {
+  font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: #c4b5fd; margin: 0 0 8px;
+}
+.uq-help-s {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .14em;
+  color: var(--text-muted); margin: 12px 0 6px;
+}
+.uq-help-p { font-size: 11px; line-height: 1.5; color: var(--text-muted); margin: 0 0 8px; }
+.uq-help-dl { margin: 0; font-size: 11px; line-height: 1.45; }
+.uq-help-dl dt { font-weight: 900; color: var(--text-main); margin-top: 6px; }
+.uq-help-dl dt:first-child { margin-top: 0; }
+.uq-help-dl dd { margin: 1px 0 0; color: var(--text-muted); }
+
+/* На телефоні вікно вузьке — підказку розтягуємо на всю його ширину,
+   інакше вона або вилізе за екран, або стане смугою в три слова. */
+@media (max-width: 560px) {
+  .uq-help-box { position: fixed; left: 16px; right: 16px; width: auto; top: 76px; }
+}
+
 /* ⚠️ ВИСОТА ПАНЕЛІ ПРАВИЛ — І ЧОМУ ОДНОГО max-height НА .rl-wrap БУЛО
    НЕ ДОСИТЬ.
 
@@ -5082,7 +5135,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 07:17</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 08:31</div>
     </div>
   </aside>
 
@@ -14765,7 +14818,54 @@ function gcDiff(geo, results) {
         <h2 class="text-xl font-black italic tracking-tighter text-violet-400">Uniqueizer</h2>
         <p id="uq-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Video · processed in the browser, files are never uploaded</p>
       </div>
-      <button onclick="closeUniqModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+      <!-- Довідка біля хрестика. Підказка показується при наведенні на
+           іконку й НЕ прозора: на кадрах відео під нею прозорий фон
+           робив текст нечитабельним. -->
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <div class="uq-help">
+          <button type="button" class="uq-help-i" aria-label="Що тут до чого">i</button>
+          <div class="uq-help-box custom-scrollbar">
+            <p class="uq-help-h">Що тут до чого</p>
+            <p class="uq-help-p">Усе рахується у твоєму браузері. Жоден файл нікуди не
+              відправляється — ні на наш сервер, ні до Facebook.</p>
+
+            <p class="uq-help-s">Загальне</p>
+            <dl class="uq-help-dl">
+              <dt>Відеофайли</dt><dd>Можна вибрати кілька одразу — вони стають у чергу.</dd>
+              <dt>Варіантів на файл</dt><dd>Скільки різних копій зробити з кожного файлу. У кожної свої випадкові значення, тому вони відрізняються й між собою.</dd>
+              <dt>Сила</dt><dd>Готовий набір меж: слабка, середня, сильна. Підставляє числа в усі поля нижче — далі їх можна правити руками.</dd>
+              <dt>Якість</dt><dd>CRF кодека: менше число — краща картинка й більший файл.</dd>
+              <dt>Чистити метадані</dt><dd>Прибирає з файлу все службове: чим зроблено, коли, якою програмою. Інакше в контейнері лишаються сліди на кшталт «Lavf» і «VideoHandler».</dd>
+            </dl>
+
+            <p class="uq-help-s">Що саме змінюється</p>
+            <dl class="uq-help-dl">
+              <dt>Кроп</dt><dd>Зрізає з країв і масштабує назад. Найсильніше змінює відбиток кадру.</dd>
+              <dt>Поворот</dt><dd>Нахиляє кадр на частки градуса. Кроп після повороту сам прибирає чорні кути.</dd>
+              <dt>Колір</dt><dd>Гама, насиченість, контраст і тон — усі чотири зсуваються випадково в межах цього числа.</dd>
+              <dt>Кадри</dt><dd>Міняє частоту кадрів на виході.</dd>
+              <dt>Гучність</dt><dd>Зсуває рівень звуку в децибелах, у плюс або в мінус.</dd>
+              <dt>Довжина</dt><dd>Обрізає трохи з початку й з кінця відео.</dd>
+              <dt>Розмір кадру</dt><dd>Трохи інша роздільність на виході. Сторони лишаються парними — інакше відео не закодується.</dd>
+            </dl>
+            <p class="uq-help-p">Галочка біля кожного пункту вимикає його зовсім. Число — це МЕЖА:
+              кожен варіант отримує своє випадкове значення в її межах, а не рівно її.</p>
+
+            <p class="uq-help-s">Картинки</p>
+            <dl class="uq-help-dl">
+              <dt>Кроп, Нахил, Зерно, Колір</dt><dd>Те саме, що для відео, тільно на статиці.</dd>
+              <dt>Вінʼєтка</dt><dd>Легке затемнення по краях.</dd>
+              <dt>Накладка</dt><dd>Домальовує текст із поля «Overlay text».</dd>
+              <dt>Число на варіанті</dt><dd>Наскільки відбиток відʼїхав від оригіналу (зі 64). Менше 5 — для машини це та сама картинка.</dd>
+            </dl>
+
+            <p class="uq-help-p">Перший запуск тягне ядро ffmpeg (~32 МБ) — далі воно
+              лежить у кеші браузера. Довге відео рахується довго: це справжнє
+              перекодування, а не копія файлу.</p>
+          </div>
+        </div>
+        <button onclick="closeUniqModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+      </div>
     </div>
 
     <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 space-y-5">

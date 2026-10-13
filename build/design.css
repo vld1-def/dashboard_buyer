@@ -2837,6 +2837,59 @@ body.is-lead-only .admin-only { display: none; }
 .rl-btn.is-main:hover { filter: brightness(1.12); }
 .rl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
 
+/* ═══════════ ДОВІДКА В УНІКАЛІЗАТОРІ ═══════════
+   Іконка біля хрестика; підказка — на наведення й на фокус із
+   клавіатури (без :focus-within її не дістати з Tab).
+
+   ФОН НЕПРОЗОРИЙ — і це не косметика. Під вікном лежать кадри відео
+   й сітка варіантів; на напівпрозорому фоні цей текст просто не
+   читався. Тому суцільний колір і тінь, а не blur.
+
+   Позиція — від правого краю іконки: вікно впирається в праву межу
+   екрана, і підказка, вирівняна по центру, виїжджала б за нього. */
+.uq-help { position: relative; display: flex; }
+.uq-help-i {
+  width: 20px; height: 20px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 900; font-style: italic;
+  background: rgba(139,92,246,.18); border: 1px solid rgba(139,92,246,.45);
+  color: #c4b5fd; cursor: help; padding: 0; line-height: 1;
+}
+.uq-help:hover .uq-help-i { background: rgba(139,92,246,.32); color: #fff; }
+.uq-help-box {
+  position: absolute; top: calc(100% + 8px); right: -4px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 520px); overflow-y: auto;
+  /* Непрозорий фон: var(--surface) буває з альфою, тому колір прямий. */
+  background: #11131a; border: 1px solid rgba(139,92,246,.35);
+  border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.6);
+  text-align: left; z-index: 20;
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+  transition: opacity .14s, transform .14s, visibility .14s;
+}
+.uq-help:hover .uq-help-box,
+.uq-help:focus-within .uq-help-box { opacity: 1; visibility: visible; transform: translateY(0); }
+.uq-help-h {
+  font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: #c4b5fd; margin: 0 0 8px;
+}
+.uq-help-s {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .14em;
+  color: var(--text-muted); margin: 12px 0 6px;
+}
+.uq-help-p { font-size: 11px; line-height: 1.5; color: var(--text-muted); margin: 0 0 8px; }
+.uq-help-dl { margin: 0; font-size: 11px; line-height: 1.45; }
+.uq-help-dl dt { font-weight: 900; color: var(--text-main); margin-top: 6px; }
+.uq-help-dl dt:first-child { margin-top: 0; }
+.uq-help-dl dd { margin: 1px 0 0; color: var(--text-muted); }
+
+/* На телефоні вікно вузьке — підказку розтягуємо на всю його ширину,
+   інакше вона або вилізе за екран, або стане смугою в три слова. */
+@media (max-width: 560px) {
+  .uq-help-box { position: fixed; left: 16px; right: 16px; width: auto; top: 76px; }
+}
+
 /* ⚠️ ВИСОТА ПАНЕЛІ ПРАВИЛ — І ЧОМУ ОДНОГО max-height НА .rl-wrap БУЛО
    НЕ ДОСИТЬ.
 
