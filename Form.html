@@ -342,6 +342,29 @@ thead[class*="sticky"], thead[class*="bg-slate-8"] {
 /* .hidden має перемагати display:grid дока */
 #app-dock .dk.hidden, #app-dock .hidden { display: none !important; }
 
+/* ═══════════ СМУГА ПРО ЗБЕРЕЖЕННЯ ═══════════
+   Позиція, шар і прозорість для кліків — ТУТ, а не класами
+   bottom-6 right-6 z-[200] pointer-events-none у розмітці. Причини
+   дві, і обидві вже кусали цей проєкт:
+
+   1. Довільні значення Tailwind (z-[200], max-w-[…]) існують лише
+      поки їх хтось згенерував. Варто класу не доїхати — і смуга
+      лягає під модалки або розтягується на всю ширину.
+   2. .hidden у Tailwind це звичайний display:none без !important.
+      Його перебивав інлайновий style="display:block", який ставила
+      стара showStatus, — і смуга не ховалась НІКОЛИ, накриваючи
+      кнопки під прев'ю імпорту. Тепер !important тут, і жодна
+      інлайнова властивість більше її не воскресить. */
+#status {
+  position: fixed; right: 24px; bottom: 24px; left: auto; top: auto;
+  transform: none; z-index: 200;
+  max-width: min(420px, calc(100vw - 48px));
+  /* Клік проходить крізь неї навіть поки вона видима: позиція дає
+     «найчастіше не заважає», а це — «не заважає ніколи». */
+  pointer-events: none;
+}
+#status.hidden { display: none !important; }
+
 /* Geo Breakdown — фіксована висота зі скролом */
 #device-geo-content {
   max-height: 420px; overflow-y: auto; padding-right: 6px;
@@ -976,7 +999,16 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     </div>
     
     <!-- STATUS TOAST -->
-    <div id="status" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden p-4 px-10 rounded-2xl bg-blue-600 text-white font-black uppercase text-xs shadow-2xl z-[200]"></div>
+    <!-- Повідомлення про збереження — у ПРАВИЙ НИЖНІЙ кут, а не по
+         центру: по центру воно накривало кнопки під прев'ю імпорту, і
+         по них не можна було клікнути.
+
+         pointer-events-none — щоб навіть поки воно видиме, клік
+         проходив крізь нього. Позиція вирішує «найчастіше не
+         заважає», а це — «не заважає ніколи». -->
+    <!-- Позиція, шар і pointer-events — у <style> вище, навмисно.
+         Тут лишається тільно вигляд. -->
+    <div id="status" class="hidden p-3 px-6 rounded-2xl bg-blue-600 text-white font-black uppercase text-xs shadow-2xl"></div>
   </div>
 <script>
   // --- НАЛАШТУВАННЯ SUPABASE ---
@@ -3534,12 +3566,31 @@ function setupDragAndDrop(t) {
   };
 }
 
-function showStatus(m) { 
-  const s = document.getElementById('status'); 
-  s.innerText = m; 
-  s.classList.remove('hidden'); 
-  s.style.display = "block";
-  setTimeout(() => { s.classList.add('hidden'); }, 4000); 
+/* ⚠️ ВОНО НЕ ХОВАЛОСЬ ЗОВСІМ — І САМЕ ТОМУ ЗАВАЖАЛО КЛІКАТИ.
+
+   Тут стояло s.style.display = "block", а ховалось через
+   s.classList.add('hidden'). Інлайновий style СИЛЬНІШИЙ за клас: у
+   Tailwind .hidden це звичайне display:none без !important. Тобто
+   після першого ж повідомлення смуга лишалась на екрані НАЗАВЖДИ —
+   таймер відпрацьовував, клас додавався, і нічого не змінювалось.
+
+   Ззовні це виглядало як «воно накладається і не дає натиснути
+   кнопку», бо по центру знизу під ним рівно кнопки прев'ю імпорту.
+
+   Тепер видимістю керує один клас, інлайнового display немає.
+
+   І таймер один: showStatus викликається з 25 місць, а при швидких
+   повідомленнях поспіль старий таймер гасив смугу, на якій уже стояв
+   новий текст. */
+let statusT = null;
+function showStatus(m) {
+  const s = document.getElementById('status');
+  if (!s) return;
+  s.innerText = m;
+  s.style.removeProperty('display');   // слід від старої версії, якщо лишився
+  s.classList.remove('hidden');
+  clearTimeout(statusT);
+  statusT = setTimeout(() => s.classList.add('hidden'), 4000);
 }
 
 function filterProviders() {

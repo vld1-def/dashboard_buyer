@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 10.10 12:42">
+  <meta name="build" content="build 13.10 09:06">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3945,6 +3945,91 @@ body.is-lead-only .admin-only { display: none; }
 .rl-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
 .rl-btn.is-main:hover { filter: brightness(1.12); }
 .rl-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 4px; }
+
+/* ═══════════ ДОВІДКА В УНІКАЛІЗАТОРІ ═══════════
+   Іконка біля хрестика; підказка — на наведення й на фокус із
+   клавіатури (без :focus-within її не дістати з Tab).
+
+   ФОН НЕПРОЗОРИЙ — і це не косметика. Під вікном лежать кадри відео
+   й сітка варіантів; на напівпрозорому фоні цей текст просто не
+   читався. Тому суцільний колір і тінь, а не blur.
+
+   Позиція — від правого краю іконки: вікно впирається в праву межу
+   екрана, і підказка, вирівняна по центру, виїжджала б за нього. */
+.uq-help { position: relative; display: flex; }
+.uq-help-i {
+  width: 20px; height: 20px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 900; font-style: italic;
+  background: rgba(139,92,246,.18); border: 1px solid rgba(139,92,246,.45);
+  color: #c4b5fd; cursor: help; padding: 0; line-height: 1;
+}
+.uq-help:hover .uq-help-i { background: rgba(139,92,246,.32); color: #fff; }
+.uq-help-box {
+  position: absolute; top: calc(100% + 8px); right: -4px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(60vh, 520px); overflow-y: auto;
+  /* Непрозорий фон: var(--surface) буває з альфою, тому колір прямий. */
+  background: #11131a; border: 1px solid rgba(139,92,246,.35);
+  border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.6);
+  text-align: left; z-index: 20;
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+  transition: opacity .14s, transform .14s, visibility .14s;
+}
+.uq-help:hover .uq-help-box,
+.uq-help:focus-within .uq-help-box { opacity: 1; visibility: visible; transform: translateY(0); }
+.uq-help-h {
+  font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: #c4b5fd; margin: 0 0 8px;
+}
+.uq-help-s {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .14em;
+  color: var(--text-muted); margin: 12px 0 6px;
+}
+.uq-help-p { font-size: 11px; line-height: 1.5; color: var(--text-muted); margin: 0 0 8px; }
+.uq-help-dl { margin: 0; font-size: 11px; line-height: 1.45; }
+.uq-help-dl dt { font-weight: 900; color: var(--text-main); margin-top: 6px; }
+.uq-help-dl dt:first-child { margin-top: 0; }
+.uq-help-dl dd { margin: 1px 0 0; color: var(--text-muted); }
+
+/* На телефоні вікно вузьке — підказку розтягуємо на всю його ширину,
+   інакше вона або вилізе за екран, або стане смугою в три слова. */
+@media (max-width: 560px) {
+  .uq-help-box { position: fixed; left: 16px; right: 16px; width: auto; top: 76px; }
+}
+
+/* ⚠️ ВИСОТА ПАНЕЛІ ПРАВИЛ — І ЧОМУ ОДНОГО max-height НА .rl-wrap БУЛО
+   НЕ ДОСИТЬ.
+
+   У .rl-wrap стоїть max-height: 100%, і виглядало це як готова стеля.
+   Але відсоток рахується від висоти БАТЬКА, а #rules-panel висоти не
+   мав: він flex-елемент ряду з align-items: flex-start, тобто росте
+   під вміст. Відсоток від авто-висоти браузер читає як «без
+   обмеження» — і панель тягнулась на всю висоту списку правил разом
+   із журналом, виїжджала за екран, а нижня частина ставала
+   недосяжною: гортався документ, а не вміст панелі.
+
+   Тому стелю ставимо САМІЙ панелі — від ряду, у якого висота
+   визначена. Це той самий прийом, що вже працює вище для #cab-list і
+   #cab-detail. А .rl-wrap робимо flex-елементом: тоді внутрішню
+   прокрутку рахує flexbox, без жодних відсотків.
+
+   display: flex пишемо лише для :not(.hidden). Селектор із id
+   сильніший за Tailwind-івський .hidden, тож без цієї обмовки панель
+   було б видно ЗАВЖДИ, і закрити її стало б неможливо.
+
+   До 720px ряд переноситься (див. медіа-запит нижче): список, картка
+   й правила стають одне під одним, і стелі від висоти ряду мати там
+   не повинні — інакше панель сплющиться. */
+@media (min-width: 721px) {
+  body[data-route="cabinets"] #rules-panel:not(.hidden) {
+    display: flex; min-height: 0; max-height: 100%;
+  }
+  body[data-route="cabinets"] #rules-panel > .rl-wrap {
+    flex: 1 1 auto; min-height: 0;
+  }
+}
 .rl-note { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; min-height: 14px; }
 
 .rl-row {
@@ -5050,7 +5135,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 10.10 12:42</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 09:06</div>
     </div>
   </aside>
 
@@ -5186,6 +5271,12 @@ input.ui-in[type="range"] { padding: 0; }
     </button>
 
     <!-- Uniqueizer — варіанти відеокреативів -->
+    <!-- Прілки: неймінги, діплінки й сабки. Іконка телефона — сюди
+         ходять за тим, що веде в саму апку. -->
+    <button onclick="openAppsModal()" class="p-2 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition admin-only" title="Прілки">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2zm3 17h4"/></svg>
+    </button>
+
     <button onclick="openUniqModal()" class="p-2 card rounded-xl shadow-md text-violet-400 hover:bg-gray-500/10 transition admin-only" title="Uniqueizer">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
     </button>
@@ -5756,6 +5847,15 @@ input.ui-in[type="range"] { padding: 0; }
         <span id="cr-arrow-trend" class="text-[10px] text-slate-500 transition-transform shrink-0">▶</span>
       </button>
       <div id="cr-panel-trend" class="hidden px-4 pb-4"></div>
+    </div>
+    <!-- Воронка — на всю ширину: назви на кшталт «Mbank KG 10708» у
+         півколонки не влізають і обрізаються до безглуздого. -->
+    <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden lg:col-span-2">
+      <button onclick="crTogglePanel('funnels')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
+        <span class="text-[10px] font-black uppercase tracking-widest text-teal-400 text-left">На яких воронках крутився</span>
+        <span id="cr-arrow-funnels" class="text-[10px] text-slate-500 transition-transform shrink-0">▶</span>
+      </button>
+      <div id="cr-panel-funnels" class="hidden px-4 pb-4"></div>
     </div>
     <div class="bg-black/20 rounded-2xl border border-white/5 overflow-hidden lg:col-span-2">
       <button onclick="crTogglePanel('accounts')" class="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-white/[0.03] transition">
@@ -7617,7 +7717,10 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
     const matchesSearch = !query || cid.toLowerCase().includes(query.toLowerCase());
 
     if (matchesGeo && matchesSearch) {
-      if (!grouped[cid]) grouped[cid] = { cid, s: 0, cl: 0, ins: 0, r: 0, dp: 0 };
+      if (!grouped[cid]) grouped[cid] = { cid, s: 0, cl: 0, ins: 0, r: 0, dp: 0, fn: new Set() };
+      // Воронки збираємо тут-таки: у списку їх видно при наведенні, а
+      // повну розбивку з цифрами дає розгортайка у вибраному креативі.
+      { const f = String(d.funnel || '').trim(); if (f) grouped[cid].fn.add(f); }
       grouped[cid].s  += Number(d.spend)    || 0;
       grouped[cid].cl += Number(d.clicks)   || 0;
       grouped[cid].ins+= Number(d.installs) || 0;
@@ -7790,7 +7893,10 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
               f.guess ? 'bg-white/5 text-slate-500' : 'bg-blue-500/20 text-blue-300'}">${
               f.v === 'video' ? 'VID' : 'STA'}</span>`;
         })()}
-        <span class="text-[10px] font-black truncate flex-1">${c.cid}${crTagsOf(c.cid).length
+        <span class="text-[10px] font-black truncate flex-1" title="${
+          c.fn && c.fn.size
+            ? 'Воронки: ' + [...c.fn].sort().join(', ').replace(/"/g, '&quot;')
+            : 'Воронка в даних не вказана'}">${c.cid}${crTagsOf(c.cid).length
           ? `<span class="ml-1.5 normal-case font-bold text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 align-middle">${crTagsOf(c.cid)[0]}${crTagsOf(c.cid).length>1?' +'+(crTagsOf(c.cid).length-1):''}</span>`
           : ''}</span>
         <span class="text-[10px] font-bold opacity-60 flex-shrink-0">$${Math.round(c.s)}</span>
@@ -8327,6 +8433,7 @@ function crCurrentRows() {
 function crRenderPanels() {
   if (crOpenPanels.has('placements')) crRenderPlacementsPanel();
   if (crOpenPanels.has('trend'))      crRenderTrendPanel();
+  if (crOpenPanels.has('funnels'))    crRenderFunnelsPanel();
   if (crOpenPanels.has('accounts'))   crRenderAccountsPanel();
 }
 
@@ -8367,6 +8474,65 @@ function crRenderPlacementsPanel() {
       </div>`).join('')}
     ${best ? `<p class="text-[12px] font-bold text-emerald-400 mt-2.5 pt-2 border-t border-white/5">
         Cheapest deposit: <b>${best[0]}</b> — CPA ${cost(best[1].s, best[1].d)}</p>` : ''}`;
+}
+
+/* ── ВОРОНКА × КРЕАТИВ ──
+
+   Питання було просте: на якій воронці цей креатив працював і з яким
+   результатом. Дані для цього вже лежали в creatives_stats — колонка
+   funnel заповнюється при імпорті поруч із cid і гео, — але ніде не
+   показувались: по воронках різався лише загальний звіт, не креативи.
+
+   Той самий каркас, що в панелі плейсментів: ті самі стовпці, те саме
+   сортування за спендом і той самий рядок про найдешевший депозит —
+   щоб дві панелі читались однаково, а не кожна по-своєму.
+
+   Рядки беремо через crCurrentRows(), тож вибраний кабінет і гео
+   діють і тут: «на яких воронках це крео працювало НА ЦЬОМУ кабінеті»
+   — питання не менш часте за загальне. */
+function crFunnelRows() {
+  const map = {};
+  crCurrentRows().forEach(r => {
+    const k = String(r.funnel || '').trim() || '—';
+    const m = map[k] || (map[k] = { s:0, cl:0, i:0, r:0, d:0, days:new Set() });
+    m.s += Number(r.spend)||0;  m.cl += Number(r.clicks)||0;
+    m.i += Number(r.installs)||0; m.r += Number(r.regs)||0; m.d += Number(r.deps)||0;
+    if (r.date) m.days.add(r.date);
+  });
+  return Object.entries(map).sort((a,b) => b[1].s - a[1].s);
+}
+
+function crRenderFunnelsPanel() {
+  const el = document.getElementById('cr-panel-funnels');
+  if (!el) return;
+  const list = crFunnelRows();
+  /* «—» як єдина воронка означає, що в рядках її просто немає. Це не
+     те саме, що «крутився на одній воронці», і плутати їх не можна:
+     перше — дірка в даних, друге — факт про креатив. */
+  if (!list.length || (list.length === 1 && list[0][0] === '—')) {
+    el.innerHTML = `<p class="text-[12px] opacity-40 py-3">Для цього креатива воронка в даних не вказана — у рядках creatives_stats порожня колонка funnel. Залий звіт ще раз: воронка підставляється з мапінгу за ktid.</p>`;
+    return;
+  }
+  const maxS = Math.max(...list.map(([,m]) => m.s), 1);
+  const best = list.filter(([,m]) => m.d > 0).sort((a,b) => (a[1].s/a[1].d) - (b[1].s/b[1].d))[0];
+  const cost = (s,n) => n ? '$' + (s/n).toFixed(2) : '—';
+  el.innerHTML = `
+    <div class="grid grid-cols-7 gap-1 text-[11px] uppercase tracking-widest text-slate-500 font-black pb-1.5 border-b border-white/5 mb-1">
+      <span class="col-span-2">Funnel</span><span class="text-right">Днів</span><span class="text-right">Spend</span>
+      <span class="text-right">Inst / CPI</span><span class="text-right">Reg / CPL</span><span class="text-right">Dep / CPA</span>
+    </div>
+    ${list.map(([k,m]) => `
+      <div class="grid grid-cols-7 gap-1 text-[13px] py-1.5 items-center relative">
+        <div class="absolute inset-y-0 left-0 rounded bg-teal-500/10" style="width:${m.s/maxS*100}%"></div>
+        <span class="col-span-2 relative font-bold text-slate-200 truncate" title="${String(k).replace(/"/g,'&quot;')}">${k}</span>
+        <span class="relative text-right font-mono text-slate-500">${m.days.size}</span>
+        <span class="relative text-right font-black text-white font-mono">$${Math.round(m.s).toLocaleString()}</span>
+        <span class="relative text-right font-mono"><b class="text-cyan-300">${m.i}</b> <span class="text-slate-500">${cost(m.s,m.i)}</span></span>
+        <span class="relative text-right font-mono"><b class="text-blue-400">${m.r}</b> <span class="text-slate-500">${cost(m.s,m.r)}</span></span>
+        <span class="relative text-right font-mono"><b class="${m.d?'text-green-500':'text-slate-600'}">${m.d}</b> <span class="text-slate-500">${cost(m.s,m.d)}</span></span>
+      </div>`).join('')}
+    ${best && list.length > 1 ? `<p class="text-[12px] font-bold text-emerald-400 mt-2.5 pt-2 border-t border-white/5">
+        Найдешевший депозит: <b>${best[0]}</b> — CPA ${cost(best[1].s, best[1].d)}</p>` : ''}`;
 }
 
 // Агрегація по днях — спільна для панелі і для розгорнутого вікна,
@@ -10809,6 +10975,17 @@ async function loadMonthlyTarget() {
 
   console.log(`[Target] team=${currentTeam} month=${currentMonthFilter}`, { data, error });
 
+  /* Відмову читання теж не ковтаємо. Раніше будь-яка помилка просто
+     скочувалась на localStorage, і людина бачила СВОЄ старе число,
+     вважаючи його тим, що в базі. Різниця важлива: у браузері воно
+     живе до першої чистки кеша. */
+  if (error) {
+    console.error('settings read:', error);
+    if (typeof toast === 'function')
+      toast('Monthly target was read from the browser, not the database: '
+            + (error.message || error.code), 'warn', 9000);
+  }
+
   if (!error && data && data.length > 0 && data[0].monthly_spend_target != null) {
     targetInput.value = data[0].monthly_spend_target;
   } else {
@@ -10820,19 +10997,54 @@ async function loadMonthlyTarget() {
   }
 }
 
-async function updateTarget() {
+/* Ціль пишеться не на кожну натиснуту клавішу.
+
+   oninput спрацьовує на кожен символ: набрав «40000» — пʼять запитів
+   до бази, і стільки ж повідомлень, якщо щось не так. Тому в базу
+   йдемо через 600 мс після того, як перестали друкувати. У
+   localStorage кладемо відразу — він безкоштовний, і при
+   перезавантаженні значення не губиться навіть якщо до бази не
+   дійшло. */
+let targetSaveT = null;
+function updateTarget() {
   const val = Number(document.getElementById('target-input').value) || 40000;
   const lsKey = `monthly_spend_target_${currentTeam}_${currentMonthFilter}`;
   localStorage.setItem(lsKey, val);
-  try {
-    await sb.from('settings').upsert(
-      { team_name: currentTeam, month: currentMonthFilter, monthly_spend_target: val },
-      { onConflict: 'team_name,month' }
-    );
-  } catch(e) {
-    console.warn('settings table not available, using localStorage only');
-  }
   if (window.filteredDataCache) updateMilestones(window.filteredDataCache);
+  clearTimeout(targetSaveT);
+  targetSaveT = setTimeout(() => targetSave(val), 600);
+}
+
+async function targetSave(val) {
+  /* ⚠️ ТУТ МОВЧАЛИ, І ЦЕ ТА САМА ПОМИЛКА, ЩО ВЖЕ БУЛА В payouts,
+     team_settings І roleBoot.
+
+     Стояло try/catch без перевірки error. PostgREST відмову НЕ кидає
+     винятком — він повертає її в полі error, тож catch не ловив
+     НІЧОГО. Ціль мовчки лишалась тільно в localStorage: у себе все
+     виглядало збереженим, а в базі рядка не було.
+
+     ДРУГА ПОЛОВИНА — КЛЮЧ. Стояло onConflict: 'team_name,month', тобто
+     унікальність по КОМАНДІ, тоді як видимість у settings по АВТОРУ
+     (own_select: created_by = auth.uid(), SECURITY_BUYERS.sql крок 6).
+     Один рядок на команду, видимий одному баєру: другий ні побачити
+     його не може, ні перезаписати — RLS не дає ON CONFLICT DO UPDATE
+     торкнутись чужого рядка, і приходить 42501. Рівно та сама
+     поломка, що була з payouts (UZ/Pinco) і team_settings.
+
+     Тому ключ по власнику, і база мусить мати такий самий — його
+     ставить OWN_UNIQUE.sql. Поки не виконано, keyHint скаже це
+     словами, а не кодом помилки. */
+  const row = { team_name: currentTeam, month: currentMonthFilter,
+                monthly_spend_target: val };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('settings').upsert(row, { onConflict: 'created_by,month' });
+  if (!error) return;
+  console.error('settings upsert:', error);
+  const msg = 'Monthly target not saved: ' + (error.message || error.code)
+            + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : '');
+  if (typeof toast === 'function') toast(msg, 'error', 12000);
+  else alert(msg);
 }
 
 // Закриття меню при кліку в іншому місці
@@ -14647,6 +14859,427 @@ function gcDiff(geo, results) {
 // ===== END GEO COMPARE =====
 </script>
 
+
+<!-- ═══════════ ПРІЛКИ · неймінги, діплінки, сабки ═══════════
+     Довідник того, під що ми ллємо: по гео й постачальниках.
+
+     ЧОМУ ЦЕ ОКРЕМЕ ВІКНО, А НЕ ЩЕ ОДНА ВКЛАДКА В НАЛАШТУВАННЯХ.
+     У налаштуваннях лежать маски розбору — вони відповідають на
+     питання «як прочитати те, що вже залито». Тут навпаки: що саме
+     вписати, коли створюєш кампанію. Ті самі слоти, протилежний
+     напрямок, і змішувати їх в одному екрані означало б щоразу
+     згадувати, у який бік ти зараз дивишся. -->
+<div id="apps-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
+     onclick="if(event.target===this) closeAppsModal()">
+  <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh">
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
+      <div>
+        <h2 class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
+        <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <input id="ap-search" oninput="apRender()" placeholder="Пошук: назва, KTID, діплінк…"
+          class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
+        <button onclick="apNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Прілка</button>
+        <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
+      </div>
+    </div>
+
+    <div class="flex-1 min-h-0 flex">
+      <!-- Дерево: гео → постачальник -->
+      <div class="w-56 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar p-3 space-y-1" id="ap-tree"></div>
+      <div class="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4">
+        <div id="ap-editor" class="hidden mb-4"></div>
+        <div id="ap-list" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════ ПРІЛКИ · неймінги, діплінки, сабки ═══════════
+
+   ЩО ТУТ ЗБЕРІГАЄТЬСЯ. Під кожну прілку: гео, постачальник, назва,
+   KTID, шаблон неймінгу кампанії, діплінк і набір сабок трекера.
+
+   ДВА ВИДИ САБОК, І В ЦЬОМУ ВСЯ СУТЬ ЕКРАНА:
+
+     фіксована   стала, яку просто копіюєш у трекер (8wxg7hf7)
+     макросна    підставляється з контексту заливу
+
+   Макросні не вписуються руками. Для апки вибираєш воронку зі
+   списку — у списку видно НАЗВУ («[Riddick's Partners] Pinco UZ»),
+   а в сабку лягає KTID. Так само акаунт: видно кабінет із
+   постачальником, лягає його номер. Гео й крео лишаються
+   плейсхолдерами — їх підставляє сам трекер на кліку.
+
+   Чому саме так: KTID і номер кабінета — це те, що мусить зійтися з
+   даними в базі, і вибирати їх руками означає рано чи пізно
+   вписати цифру з іншої воронки. Назву ж людина тримає в голові, а
+   не число.
+
+   ЗБЕРІГАННЯ. team_settings, ключ app_links, одним JSON. Ключ там
+   по власнику (created_by, key) — отже в кожного свій довідник, як і
+   з ставками й місячною ціллю.                                    */
+
+let apItems = [], apGeo = '', apProv = '', apEditId = null;
+let apFunnels = [], apAccounts = [];      // довідники для макросних сабок
+let apLoaded = false;
+
+const AP_SUBS = 20;                        // Sub ID 1..20, як у Keitaro
+const AP_MODES = {
+  fixed: 'Фіксована',
+  app:   'Апка (KTID)',
+  acc:   'Акаунт',
+  geo:   'Гео',
+  cid:   'Креатив'
+};
+// Що лягає в сабку для макросних режимів, які підставляє трекер.
+const AP_MACRO = { geo: '{geo}', cid: '{creative}' };
+
+const apEsc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+async function openAppsModal() {
+  document.getElementById('apps-modal').classList.remove('hidden');
+  if (!apLoaded) { apLoaded = true; await apLoad(); }
+  apRenderTree(); apRender();
+}
+function closeAppsModal() {
+  document.getElementById('apps-modal').classList.add('hidden');
+}
+
+/* Довідники тягнемо разом із записами: без них макросні сабки нічого
+   не запропонують, а показати порожній список і промовчати — найгірше,
+   що тут можна зробити. */
+async function apLoad() {
+  const sub = document.getElementById('ap-sub');
+  try {
+    const [ts, fn, ac] = await Promise.all([
+      sb.from('team_settings').select('value').eq('key', 'app_links').limit(1),
+      sb.from('funnels_mapping').select('ktid, funnel_name').eq('team_name', currentTeam),
+      sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam)
+    ]);
+    if (ts.error) throw ts.error;
+    apItems = ts.data && ts.data[0] ? (JSON.parse(ts.data[0].value) || []) : [];
+    if (fn.error) console.warn('funnels_mapping:', fn.error.message);
+    if (ac.error) console.warn('accounts_mapping:', ac.error.message);
+    apFunnels = (fn.data || []).slice().sort((a, b) =>
+      String(a.funnel_name || '').localeCompare(String(b.funnel_name || ''), 'uk'));
+    apAccounts = (ac.data || []).slice().sort((a, b) =>
+      String(a.account_id || '').localeCompare(String(b.account_id || '')));
+    if (sub) sub.textContent = `${apItems.length} прілок · ${apFunnels.length} воронок · ${apAccounts.length} кабінетів`;
+  } catch (e) {
+    apItems = [];
+    if (sub) sub.textContent = 'не завантажилось: ' + (e.message || e.code || e);
+    console.error('app_links load:', e);
+  }
+}
+
+async function apSave() {
+  const row = { team_name: currentTeam, key: 'app_links', value: JSON.stringify(apItems) };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+  if (!error) return true;
+  /* PostgREST відмову не кидає винятком — перевіряємо error. Без цього
+     прілка зникала б при наступному відкритті, а на екрані все
+     виглядало б збереженим. Той самий недогляд уже був у payouts,
+     team_settings і місячній цілі. */
+  console.error('app_links save:', error);
+  const msg = 'Не збереглось: ' + (error.message || error.code)
+            + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : '');
+  if (typeof toast === 'function') toast(msg, 'error', 12000); else alert(msg);
+  return false;
+}
+
+/* ─────────── дерево гео → постачальник ─────────── */
+function apRenderTree() {
+  const el = document.getElementById('ap-tree');
+  if (!el) return;
+  const byGeo = {};
+  apItems.forEach(it => {
+    const g = (it.geo || '—').toUpperCase();
+    (byGeo[g] = byGeo[g] || new Set()).add(it.provider || '—');
+  });
+  const geos = Object.keys(byGeo).sort();
+  const btn = (label, active, onclick, pad, count) => `
+    <div onclick="${onclick}" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
+         ${active ? 'bg-emerald-600 text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
+      <span class="text-[11px] font-black uppercase truncate">${apEsc(label)}</span>
+      ${count != null ? `<span class="text-[10px] font-bold opacity-60">${count}</span>` : ''}
+    </div>`;
+  let html = btn('Усі', !apGeo && !apProv, "apPick('','')", 8, apItems.length);
+  geos.forEach(g => {
+    const n = apItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
+    html += btn(g, apGeo === g && !apProv, `apPick('${apEsc(g)}','')`, 8, n);
+    if (apGeo === g) [...byGeo[g]].sort().forEach(p => {
+      const np = apItems.filter(i => (i.geo || '—').toUpperCase() === g && (i.provider || '—') === p).length;
+      html += btn(p, apProv === p, `apPick('${apEsc(g)}','${apEsc(p)}')`, 22, np);
+    });
+  });
+  el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
+}
+function apPick(g, p) { apGeo = g; apProv = p; apRenderTree(); apRender(); }
+
+/* ─────────── список ─────────── */
+function apRender() {
+  const el = document.getElementById('ap-list');
+  if (!el) return;
+  const q = (document.getElementById('ap-search')?.value || '').toLowerCase().trim();
+  const rows = apItems.filter(it =>
+    (!apGeo || (it.geo || '—').toUpperCase() === apGeo) &&
+    (!apProv || (it.provider || '—') === apProv) &&
+    (!q || [it.app, it.ktid, it.naming, it.deeplink, it.provider, it.note]
+            .some(v => String(v || '').toLowerCase().includes(q))));
+
+  if (!rows.length) {
+    el.innerHTML = `<p class="text-[12px] opacity-40 py-6">${apItems.length
+      ? 'За цим фільтром нічого немає.'
+      : 'Жодної прілки ще немає. «+ Прілка» — і вписуй неймінг.'}</p>`;
+    return;
+  }
+
+  const copyBtn = (v, title) => !v ? '' :
+    `<button onclick="apCopy(event, this)" data-v="${apEsc(v)}" title="${title}"
+       class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі</button>`;
+
+  el.innerHTML = rows.map(it => {
+    const subs = (it.subs || []).filter(x => x && x.mode && (x.value || AP_MACRO[x.mode]));
+    return `
+    <div class="bg-black/20 border border-white/5 rounded-2xl p-3">
+      <div class="flex items-start justify-between gap-2 flex-wrap">
+        <div class="min-w-0">
+          <p class="text-[13px] font-black text-white truncate">${apEsc(it.app || '(без назви)')}
+            <span class="text-[10px] font-bold text-emerald-300 ml-1.5">${apEsc((it.geo || '').toUpperCase())}</span>
+            ${it.provider ? `<span class="text-[10px] font-bold text-slate-500 ml-1">· ${apEsc(it.provider)}</span>` : ''}
+          </p>
+          ${it.ktid ? `<p class="text-[10px] font-mono text-slate-500 mt-0.5">KTID ${apEsc(it.ktid)}${
+            apFunnelName(it.ktid) ? ` · ${apEsc(apFunnelName(it.ktid))}` : ''}</p>` : ''}
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="apEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
+          <button onclick="apDelete('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/30 transition">×</button>
+        </div>
+      </div>
+
+      ${it.naming ? `<div class="flex items-center gap-2 mt-2">
+        <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Неймінг</span>
+        <code class="text-[11px] font-mono text-slate-200 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate">${apEsc(it.naming)}</code>
+        ${copyBtn(it.naming, 'Скопіювати неймінг')}</div>` : ''}
+
+      ${it.deeplink ? `<div class="flex items-center gap-2 mt-1.5">
+        <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Діплінк</span>
+        <code class="text-[11px] font-mono text-sky-300 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate">${apEsc(it.deeplink)}</code>
+        ${copyBtn(it.deeplink, 'Скопіювати діплінк')}</div>` : ''}
+
+      ${subs.length ? `<div class="mt-2 pt-2 border-t border-white/5">
+        <div class="grid grid-cols-[auto_auto_1fr_auto] gap-x-2 gap-y-1 items-center">
+        ${subs.map(x => {
+          const val = x.mode === 'fixed' || x.mode === 'app' || x.mode === 'acc'
+            ? x.value : AP_MACRO[x.mode];
+          const hint = x.mode === 'app' ? apFunnelName(x.value)
+                     : x.mode === 'acc' ? apAccLabel(x.value) : '';
+          return `<span class="text-[10px] font-black text-slate-500">Sub ${x.n}</span>
+            <span class="text-[9px] font-black uppercase tracking-widest ${
+              x.mode === 'fixed' ? 'text-slate-600' : 'text-emerald-400'}">${
+              x.mode === 'fixed' ? 'фікс' : 'макро'}</span>
+            <code class="text-[11px] font-mono text-slate-200 truncate" title="${apEsc(hint || val)}">${apEsc(val)}${
+              hint ? `<span class="text-slate-500 font-sans"> · ${apEsc(hint)}</span>` : ''}</code>
+            ${copyBtn(val, 'Скопіювати значення')}`;
+        }).join('')}
+        </div></div>` : ''}
+
+      ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function apFunnelName(ktid) {
+  const f = apFunnels.find(x => String(x.ktid) === String(ktid));
+  return f ? f.funnel_name : '';
+}
+function apAccLabel(id) {
+  const a = apAccounts.find(x => String(x.account_id) === String(id));
+  return a ? (a.provider_name ? a.account_id + ' · ' + a.provider_name : a.account_id) : '';
+}
+
+/* Копіювання з підтвердженням на самій кнопці: без нього незрозуміло,
+   чи клік узагалі спрацював, і люди тиснуть удруге. */
+async function apCopy(ev, btn) {
+  ev.stopPropagation();
+  const v = btn.getAttribute('data-v') || '';
+  try { await navigator.clipboard.writeText(v); } catch (e) {
+    const t = document.createElement('textarea');
+    t.value = v; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } finally { t.remove(); }
+  }
+  const was = btn.textContent;
+  btn.textContent = 'ок'; btn.classList.add('text-emerald-400');
+  setTimeout(() => { btn.textContent = was; btn.classList.remove('text-emerald-400'); }, 1200);
+}
+
+/* ─────────── редактор ─────────── */
+function apNew() {
+  apEditId = null;
+  apShowEditor({ geo: apGeo, provider: apProv === '—' ? '' : apProv,
+                 app: '', ktid: '', naming: '', deeplink: '', note: '', subs: [] });
+}
+function apEdit(id) {
+  const it = apItems.find(x => x.id === id);
+  if (it) { apEditId = id; apShowEditor(it); }
+}
+function apCancel() { apEditId = null; document.getElementById('ap-editor').classList.add('hidden'); }
+
+function apShowEditor(v) {
+  const el = document.getElementById('ap-editor');
+  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-emerald-500';
+  const dl = (id, items) => `<datalist id="${id}">${
+    [...new Set(items)].filter(Boolean).map(x => `<option value="${apEsc(x)}"></option>`).join('')}</datalist>`;
+
+  // Воронки у списку — назвою; у значення йде KTID.
+  const funOpts = sel => apFunnels.map(f =>
+    `<option value="${apEsc(f.ktid)}"${String(f.ktid) === String(sel) ? ' selected' : ''}>${
+      apEsc(f.funnel_name || f.ktid)}</option>`).join('');
+
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="bg-emerald-500/[0.06] border border-emerald-500/25 rounded-2xl p-3 space-y-2">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <input id="ap-f-geo" list="ap-dl-geo" value="${apEsc(v.geo)}" placeholder="Гео (UZ)" class="${inp} uppercase">
+        <input id="ap-f-prov" list="ap-dl-prov" value="${apEsc(v.provider)}" placeholder="Постачальник" class="${inp}">
+        <input id="ap-f-app" value="${apEsc(v.app)}" placeholder="Назва прілки" class="${inp}">
+        <select id="ap-f-ktid" class="${inp}">
+          <option value="">KTID — вибери воронку</option>
+          ${funOpts(v.ktid)}
+        </select>
+      </div>
+      ${dl('ap-dl-geo', apItems.map(i => (i.geo || '').toUpperCase()))}
+      ${dl('ap-dl-prov', apItems.map(i => i.provider).concat(
+          apFunnels.map(f => (String(f.funnel_name || '').match(/\[([^\]]+)\]/) || [])[1])))}
+
+      <input id="ap-f-naming" value="${apEsc(v.naming)}" class="${inp} w-full font-mono"
+             placeholder="Неймінг кампанії: cy638t_8wxg7hf7_{cid}_{app}_{acc}_{geo}_1">
+      <input id="ap-f-deeplink" value="${apEsc(v.deeplink)}" class="${inp} w-full font-mono"
+             placeholder="Діплінк (необовʼязково)">
+      <input id="ap-f-note" value="${apEsc(v.note)}" class="${inp} w-full" placeholder="Нотатка для себе">
+
+      <div class="pt-1">
+        <p class="text-[9px] font-black uppercase tracking-widest text-emerald-300 mb-1.5">Сабки трекера</p>
+        <p class="text-[10px] text-slate-500 font-bold mb-2">Фіксована — стала, яку копіюєш як є. Макросна — підставляється з контексту: для апки й кабінета вибираєш зі списку назву, а в сабку лягає KTID або номер кабінета.</p>
+        <div id="ap-subs" class="space-y-1"></div>
+        <button onclick="apSubAdd()" class="mt-2 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 transition">+ сабка</button>
+      </div>
+
+      <div class="flex gap-2 pt-1">
+        <button onclick="apSubmit()" class="bg-emerald-600 hover:bg-emerald-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зберегти</button>
+        <button onclick="apCancel()" class="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-3 transition">Скасувати</button>
+      </div>
+    </div>`;
+
+  apSubsDraft = (v.subs || []).map(x => ({ ...x }));
+  if (!apSubsDraft.length) apSubsDraft = [{ n: 1, mode: 'fixed', value: '' }];
+  apSubsRender();
+  document.getElementById('ap-f-app').focus();
+}
+
+let apSubsDraft = [];
+function apSubAdd() {
+  const used = new Set(apSubsDraft.map(x => x.n));
+  let n = 1; while (used.has(n) && n < AP_SUBS) n++;
+  apSubsDraft.push({ n, mode: 'fixed', value: '' });
+  apSubsRender();
+}
+function apSubDel(i) { apSubsDraft.splice(i, 1); apSubsRender(); }
+function apSubSet(i, field, val) {
+  apSubsDraft[i][field] = val;
+  // Зміна режиму міняє і те, ЧИМ заповнюється значення, тож старе
+  // прибираємо: KTID у полі «фіксована» виглядав би як свідомий вибір.
+  if (field === 'mode') apSubsDraft[i].value = '';
+  apSubsRender();
+}
+
+function apSubsRender() {
+  const el = document.getElementById('ap-subs');
+  if (!el) return;
+  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-emerald-500';
+  el.innerHTML = apSubsDraft.map((x, i) => {
+    let valField;
+    if (x.mode === 'app') {
+      valField = `<select class="${inp} w-full" onchange="apSubSetVal(${i}, this.value)">
+          <option value="">— воронка —</option>
+          ${apFunnels.map(f => `<option value="${apEsc(f.ktid)}"${
+            String(f.ktid) === String(x.value) ? ' selected' : ''}>${apEsc(f.funnel_name || f.ktid)}</option>`).join('')}
+        </select>`;
+    } else if (x.mode === 'acc') {
+      valField = `<select class="${inp} w-full" onchange="apSubSetVal(${i}, this.value)">
+          <option value="">— кабінет —</option>
+          ${apAccounts.map(a => `<option value="${apEsc(a.account_id)}"${
+            String(a.account_id) === String(x.value) ? ' selected' : ''}>${apEsc(apAccLabel(a.account_id))}</option>`).join('')}
+        </select>`;
+    } else if (AP_MACRO[x.mode]) {
+      valField = `<code class="text-[11px] font-mono text-emerald-300 px-2 py-1">${apEsc(AP_MACRO[x.mode])}</code>`;
+    } else {
+      valField = `<input class="${inp} w-full font-mono" value="${apEsc(x.value)}"
+          oninput="apSubSetVal(${i}, this.value)" placeholder="значення">`;
+    }
+    return `<div class="grid grid-cols-[72px_120px_1fr_auto] gap-1.5 items-center">
+      <select class="${inp}" onchange="apSubSet(${i}, 'n', +this.value)">
+        ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
+          `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
+      </select>
+      <select class="${inp}" onchange="apSubSet(${i}, 'mode', this.value)">
+        ${Object.entries(AP_MODES).map(([k, lbl]) =>
+          `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
+      </select>
+      ${valField}
+      <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
+    </div>`;
+  }).join('');
+}
+// Значення міняємо без перемальовування: input інакше губив би курсор.
+function apSubSetVal(i, v) { apSubsDraft[i].value = v; }
+
+async function apSubmit() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const rec = {
+    geo: val('ap-f-geo').toUpperCase(),
+    provider: val('ap-f-prov'),
+    app: val('ap-f-app'),
+    ktid: val('ap-f-ktid'),
+    naming: val('ap-f-naming'),
+    deeplink: val('ap-f-deeplink'),
+    note: val('ap-f-note'),
+    // Порожні сабки не зберігаємо: вони потім виглядають як налаштоване.
+    subs: apSubsDraft
+      .filter(x => x.mode && (x.value || AP_MACRO[x.mode]))
+      .map(x => ({ n: x.n, mode: x.mode, value: AP_MACRO[x.mode] ? '' : x.value }))
+  };
+  if (!rec.app) { alert('Без назви прілки запис знайти потім неможливо.'); return; }
+
+  if (apEditId) Object.assign(apItems.find(x => x.id === apEditId) || {}, rec);
+  else apItems.unshift({ id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec });
+
+  /* Малюємо лише коли справді збереглось. Інакше прілка стояла б у
+     списку до перезавантаження — і зникала б потім без жодного слова. */
+  if (!await apSave()) { if (!apEditId) apItems.shift(); return; }
+  apEditId = null;
+  document.getElementById('ap-editor').classList.add('hidden');
+  const sub = document.getElementById('ap-sub');
+  if (sub) sub.textContent = `${apItems.length} прілок · ${apFunnels.length} воронок · ${apAccounts.length} кабінетів`;
+  apRenderTree(); apRender();
+}
+
+async function apDelete(id) {
+  const it = apItems.find(x => x.id === id);
+  if (!confirm('Видалити «' + (it && it.app || id) + '»?')) return;
+  const keep = apItems;
+  apItems = apItems.filter(x => x.id !== id);
+  if (!await apSave()) { apItems = keep; return; }
+  apRenderTree(); apRender();
+}
+</script>
+
+
 <!-- ===== TEXTS · банк текстів по гео і слотах ===== -->
 <div id="texts-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
      onclick="if(event.target===this) closeTextsModal()">
@@ -14687,7 +15320,54 @@ function gcDiff(geo, results) {
         <h2 class="text-xl font-black italic tracking-tighter text-violet-400">Uniqueizer</h2>
         <p id="uq-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Video · processed in the browser, files are never uploaded</p>
       </div>
-      <button onclick="closeUniqModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+      <!-- Довідка біля хрестика. Підказка показується при наведенні на
+           іконку й НЕ прозора: на кадрах відео під нею прозорий фон
+           робив текст нечитабельним. -->
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <div class="uq-help">
+          <button type="button" class="uq-help-i" aria-label="Що тут до чого">i</button>
+          <div class="uq-help-box custom-scrollbar">
+            <p class="uq-help-h">Що тут до чого</p>
+            <p class="uq-help-p">Усе рахується у твоєму браузері. Жоден файл нікуди не
+              відправляється — ні на наш сервер, ні до Facebook.</p>
+
+            <p class="uq-help-s">Загальне</p>
+            <dl class="uq-help-dl">
+              <dt>Відеофайли</dt><dd>Можна вибрати кілька одразу — вони стають у чергу.</dd>
+              <dt>Варіантів на файл</dt><dd>Скільки різних копій зробити з кожного файлу. У кожної свої випадкові значення, тому вони відрізняються й між собою.</dd>
+              <dt>Сила</dt><dd>Готовий набір меж: слабка, середня, сильна. Підставляє числа в усі поля нижче — далі їх можна правити руками.</dd>
+              <dt>Якість</dt><dd>CRF кодека: менше число — краща картинка й більший файл.</dd>
+              <dt>Чистити метадані</dt><dd>Прибирає з файлу все службове: чим зроблено, коли, якою програмою. Інакше в контейнері лишаються сліди на кшталт «Lavf» і «VideoHandler».</dd>
+            </dl>
+
+            <p class="uq-help-s">Що саме змінюється</p>
+            <dl class="uq-help-dl">
+              <dt>Кроп</dt><dd>Зрізає з країв і масштабує назад. Найсильніше змінює відбиток кадру.</dd>
+              <dt>Поворот</dt><dd>Нахиляє кадр на частки градуса. Кроп після повороту сам прибирає чорні кути.</dd>
+              <dt>Колір</dt><dd>Гама, насиченість, контраст і тон — усі чотири зсуваються випадково в межах цього числа.</dd>
+              <dt>Кадри</dt><dd>Міняє частоту кадрів на виході.</dd>
+              <dt>Гучність</dt><dd>Зсуває рівень звуку в децибелах, у плюс або в мінус.</dd>
+              <dt>Довжина</dt><dd>Обрізає трохи з початку й з кінця відео.</dd>
+              <dt>Розмір кадру</dt><dd>Трохи інша роздільність на виході. Сторони лишаються парними — інакше відео не закодується.</dd>
+            </dl>
+            <p class="uq-help-p">Галочка біля кожного пункту вимикає його зовсім. Число — це МЕЖА:
+              кожен варіант отримує своє випадкове значення в її межах, а не рівно її.</p>
+
+            <p class="uq-help-s">Картинки</p>
+            <dl class="uq-help-dl">
+              <dt>Кроп, Нахил, Зерно, Колір</dt><dd>Те саме, що для відео, тільно на статиці.</dd>
+              <dt>Вінʼєтка</dt><dd>Легке затемнення по краях.</dd>
+              <dt>Накладка</dt><dd>Домальовує текст із поля «Overlay text».</dd>
+              <dt>Число на варіанті</dt><dd>Наскільки відбиток відʼїхав від оригіналу (зі 64). Менше 5 — для машини це та сама картинка.</dd>
+            </dl>
+
+            <p class="uq-help-p">Перший запуск тягне ядро ffmpeg (~32 МБ) — далі воно
+              лежить у кеші браузера. Довге відео рахується довго: це справжнє
+              перекодування, а не копія файлу.</p>
+          </div>
+        </div>
+        <button onclick="closeUniqModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+      </div>
     </div>
 
     <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-5 space-y-5">
@@ -14841,15 +15521,21 @@ function gcDiff(geo, results) {
           <div class="text-[9px] font-black uppercase tracking-widest text-violet-400">Cover frame</div>
           <div class="text-[9px] font-bold text-slate-500 mt-0.5">optional &middot; the hook people see first</div>
         </div>
-        <input type="file" id="uq-cover" accept="image/*" onchange="uqCoverPick(event)"
+        <input type="file" id="uq-cover" accept="image/*,video/*" onchange="uqCoverPick(event)"
           class="text-[11px] font-bold text-slate-300 flex-1 min-w-0 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-violet-600/80 file:text-white file:font-black file:uppercase file:text-[9px] file:cursor-pointer">
         <div id="uq-cover-prev" class="hidden"></div>
         <div class="flex items-center gap-2 shrink-0">
           <label class="text-[9px] font-black uppercase tracking-widest text-slate-500"
-                 title="How long the cover stays on screen. 0.1s is about three frames.">Hold</label>
+                 id="uq-cover-hold-l"
+                 title="Картинка: скільки вона тримається в кадрі. Відео: скільки взяти з його початку наперед.">Hold</label>
           <input type="number" id="uq-cover-dur" min="0.04" max="3" step="0.02" value="0.1"
             class="w-16 bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs font-bold text-white outline-none focus:border-violet-500">
           <span class="text-[9px] font-bold text-slate-500">s</span>
+          <label id="uq-cover-tail-l" class="hidden items-center gap-1.5 cursor-pointer"
+                 title="Cover довший за HOLD — решту приклеїти в кінець нашого відео">
+            <input type="checkbox" id="uq-cover-tail" class="uq-chk">
+            <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">+ хвіст у кінець</span>
+          </label>
           <button onclick="uqCoverClear()" id="uq-cover-clear"
             class="hidden text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-400 transition">Remove</button>
         </div>
@@ -15607,6 +16293,51 @@ async function uqCoverPick(e) {
   const f = e.target.files && e.target.files[0];
   uqCoverClear(true);
   if (!f) return;
+
+  /* ВІДЕО — ІНША ІСТОРІЯ, НІЖ КАРТИНКА.
+
+     Картинка накладається поверх перших десятих секунди й тривалості
+     не міняє. Відео приклеюється: HOLD секунд спереду, решта — у
+     кінець, якщо стоїть галочка. Тому тут розвилка, а не спільний
+     шлях: перетворювати відео в PNG (uqCoverToPng) означало б узяти з
+     нього один кадр і тихо викинути решту. */
+  if (/^video\//.test(f.type || '') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(f.name)) {
+    try {
+      const m = await uqProbe(f);
+      const ext = (f.name.match(/\.([a-z0-9]+)$/i) || [, 'mp4'])[1].toLowerCase();
+      uqCover = { kind: 'video', data: new Uint8Array(await f.arrayBuffer()), ext,
+                  url: URL.createObjectURL(f), name: f.name,
+                  srcDur: m.dur, w: m.w, h: m.h };
+      const hold = document.getElementById('uq-cover-dur');
+      if (hold) {
+        // Для відео межа — його власна тривалість, і крок грубіший:
+        // сотими частками секунди хук не міряють.
+        hold.max = m.dur.toFixed(2); hold.step = '0.1';
+        if (parseFloat(hold.value) < 0.5 || parseFloat(hold.value) > m.dur)
+          hold.value = Math.min(3, m.dur).toFixed(1);
+      }
+      document.getElementById('uq-cover-hold-l')?.setAttribute('title',
+        'Скільки взяти з ПОЧАТКУ цього відео наперед. Решта піде в кінець, якщо поставити галочку.');
+      const tl = document.getElementById('uq-cover-tail-l');
+      if (tl) { tl.classList.remove('hidden'); tl.classList.add('flex'); }
+      const prevV = document.getElementById('uq-cover-prev');
+      if (prevV) {
+        prevV.className = 'text-[11px] font-bold text-violet-300 flex-1 min-w-0 truncate';
+        prevV.textContent = `відео · ${m.w}×${m.h} · ${m.dur.toFixed(1)}с`;
+      }
+      document.getElementById('uq-cover-clear')?.classList.remove('hidden');
+    } catch (err) {
+      uqCover = null;
+      const bad = document.getElementById('uq-cover-prev');
+      if (bad) {
+        bad.className = 'text-[11px] font-bold text-rose-400 flex-1 min-w-0';
+        bad.textContent = 'це відео не читається браузером — спробуй mp4';
+      }
+      const i = document.getElementById('uq-cover'); if (i) i.value = '';
+    }
+    return;
+  }
+
   let buf;
   try {
     buf = await uqCoverToPng(f);
@@ -15639,12 +16370,34 @@ function uqCoverClear(keepInput) {
   const prev = document.getElementById('uq-cover-prev');
   if (prev) { prev.className = 'hidden'; prev.innerHTML = ''; }
   document.getElementById('uq-cover-clear')?.classList.add('hidden');
+  const tl = document.getElementById('uq-cover-tail-l');
+  if (tl) { tl.classList.add('hidden'); tl.classList.remove('flex'); }
+  const hold = document.getElementById('uq-cover-dur');
+  if (hold) { hold.max = '3'; hold.step = '0.02'; }
   if (!keepInput) { const i = document.getElementById('uq-cover'); if (i) i.value = ''; }
 }
 
 function uqCoverDur() {
   const v = parseFloat((document.getElementById('uq-cover-dur') || {}).value);
+  // Картинка: до 3с, бо довше в кадрі вона вже не хук, а пауза.
+  // Відео: до його власної тривалості — більше взяти просто нізвідки.
+  if (uqCover && uqCover.kind === 'video')
+    return Math.min(uqCover.srcDur, Math.max(0, isNaN(v) ? 0 : v));
   return Math.min(3, Math.max(0.04, v || 0.1));
+}
+
+/* Що саме приклеїмо: голова, хвіст, обидва — чи нічого.
+
+   Менше за 0.05с — це не сегмент, а артефакт округлення: ffmpeg на
+   такому trim дає нуль кадрів, і concat падає на порожньому вході. */
+function uqCoverPlan() {
+  if (!uqCover || uqCover.kind !== 'video') return null;
+  const head = uqCoverDur();
+  const tailOn = !!(document.getElementById('uq-cover-tail') || {}).checked;
+  const tail = tailOn ? +(uqCover.srcDur - head).toFixed(3) : 0;
+  const plan = { head: head >= 0.05 ? +head.toFixed(3) : 0,
+                 tail: tail >= 0.05 ? tail : 0 };
+  return (plan.head || plan.tail) ? plan : null;
 }
 
 // Кожна копія ffmpeg має власну файлову систему, і writeFile ВІДЧІПЛЮЄ
@@ -15714,13 +16467,13 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   // Трим — лише коли тривалість справді відома. Інакше -ss б'є навмання
   // і може перемотати за кінець: файл на виході порожній, і швидко.
   const durOK = Number.isFinite(meta.dur) && meta.dur > 0;
+  const concatMode = !!(cover && cover.kind === 'video' && cover.plan);
+  const trimLeft = (durOK && p.trim) ? meta.dur - p.trim.head - p.trim.tail : 0;
   if (durOK && p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
+  if (concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
   args.push('-i', 'in.mp4');
   if (cover) args.push('-i', 'cover.' + cover.ext);
-  if (durOK && p.trim) {
-    const left = meta.dur - p.trim.head - p.trim.tail;
-    if (left > 1) args.push('-t', String(+left.toFixed(2)));
-  }
+  if (!concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
   if (p.rotate) vf.push(`rotate=${p.rotate}*PI/180:fillcolor=black`);
   const cropF = 1 - ((p.crop || 0) + (p.rotate ? Math.min(4, Math.abs(p.rotate) * 2) : 0)) / 100;
   if (cropF < 1) vf.push(`crop=iw*${cropF.toFixed(4)}:ih*${cropF.toFixed(4)}`);
@@ -15765,7 +16518,82 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   // не менша за кадр, а зайве overlay просто зрізає. Так у кадрі не буває
   // чорних полів, хоч би яких пропорцій була картинка.
   // eof_action=repeat: у картинки один кадр, без цього вона зникла б одразу.
-  if (cover) {
+  /* ВІДЕО-COVER: СКЛЕЙКА, А НЕ НАКЛАДКА.
+
+     Картинка нижче малюється поверх кадру й тривалості не міняє.
+     Відео треба приставити — а для concat усі сегменти мусять мати
+     однакову роздільність, SAR і частоту кадрів, інакше фільтр просто
+     відмовиться їх зводити.
+
+     ТРИ РІШЕННЯ, ЯКІ ТУТ НЕ ОЧЕВИДНІ:
+
+     1. Звук cover не йде — на його секундах тиша з anullsrc. Так
+        просили, і так простіше: зводити два різні рівні означало б, що
+        хук перебиває звук самого креатива.
+
+     2. Cover проходить через ТІ САМІ фільтри унікалізації. Якби він
+        клеївся байт-у-байт, перші секунди ВСІХ варіантів стали б
+        ідентичними — ми власноруч робили б шматок, однаковий у всіх
+        креативів, тобто перекреслювали сенс усього вікна.
+
+     3. Інші пропорції обрізаються по центру під кадр креатива
+        (increase + crop), а не вписуються зі смугами: чорні смуги у
+        фіді читаються як зламане відео.
+
+     Обріз нашого відео (p.trim) робиться ТУТ, у графі, а не вхідними
+     -ss/-t: ті різали б уже склеєний результат, тобто й cover заодно. */
+  if (cover && cover.kind === 'video' && cover.plan) {
+    const pl = cover.plan;
+    const R = p.fps ? Math.max(15, Math.round(30 + p.fps)) : 30;
+    const W = meta.w || 1080, H = meta.h || 1920;
+    // vf уже містить і масштаб, і setsar, і fps — беремо його як є для
+    // нашого відео, а cover приводимо до того самого кадру окремо.
+    const fit = `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+              + `crop=${W}:${H},setsar=1,fps=${R}`;
+    // Фільтри унікалізації без масштабу: для cover розмір задає fit.
+    const uniq = vf.filter(x => !/^scale=|^setsar=|^fps=/.test(x));
+    const u = uniq.length ? uniq.join(',') + ',' : '';
+
+    const fc = [];
+    const two = pl.head > 0 && pl.tail > 0;
+    if (two) fc.push('[1:v]split=2[c1][c2]');
+    if (pl.head > 0)
+      fc.push(`${two ? '[c1]' : '[1:v]'}trim=0:${pl.head},setpts=PTS-STARTPTS,${u}${fit}[cv1]`);
+    if (pl.tail > 0)
+      fc.push(`${two ? '[c2]' : '[1:v]'}trim=${pl.head}:${(pl.head + pl.tail).toFixed(3)},`
+            + `setpts=PTS-STARTPTS,${u}${fit}[cv2]`);
+    fc.push(`[0:v]${vf.join(',')},fps=${R}[mv]`);
+
+    const vSeg = [];
+    if (pl.head > 0) vSeg.push('[cv1]');
+    vSeg.push('[mv]');
+    if (pl.tail > 0) vSeg.push('[cv2]');
+    fc.push(`${vSeg.join('')}concat=n=${vSeg.length}:v=1:a=0[vout]`);
+
+    /* Звук. Якщо в нашому відео дорожки немає, графа для звуку теж
+       немає — інакше ffmpeg падає на мітці [0:a], якої не існує.
+       Дізнатись це наперед із браузера надійно не виходить, тому
+       прапорець ставить сам прогін після першої відмови. */
+    if (!cover.noAudio) {
+      const af = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
+      if (two) fc.push('[2:a]asplit=2[s1][s2]');
+      if (pl.head > 0)
+        fc.push(`${two ? '[s1]' : '[2:a]'}atrim=0:${pl.head},asetpts=PTS-STARTPTS,${af}[sa1]`);
+      if (pl.tail > 0)
+        fc.push(`${two ? '[s2]' : '[2:a]'}atrim=0:${pl.tail},asetpts=PTS-STARTPTS,${af}[sa2]`);
+      fc.push(`[0:a]${p.volume ? `volume=${p.volume}dB,` : ''}${af}[ma]`);
+      const aSeg = [];
+      if (pl.head > 0) aSeg.push('[sa1]');
+      aSeg.push('[ma]');
+      if (pl.tail > 0) aSeg.push('[sa2]');
+      fc.push(`${aSeg.join('')}concat=n=${aSeg.length}:v=0:a=1[aout]`);
+      // anullsrc дописуємо ТРЕТІМ входом — порядок мусить збігатися з
+      // мітками [2:a] вище.
+      args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+    }
+    args.push('-filter_complex', fc.join(';'), '-map', '[vout]');
+    args.push('-map', cover.noAudio ? '0:a?' : '[aout]');
+  } else if (cover) {
     // -ss перед -i перемотує, але НЕ обнуляє часові мітки: у фільтр кадри
     // заходять із t, що починається з величини перемотки, а не з нуля.
     // Тому поріг рахуємо від неї, інакше умова хибна з першого ж кадру.
@@ -15780,7 +16608,7 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   } else if (vf.length) {
     args.push('-vf', vf.join(','));
   }
-  if (p.volume) args.push('-af', `volume=${p.volume}dB`);
+  if (p.volume && !concatMode) args.push('-af', `volume=${p.volume}dB`);
   // -fflags +bitexact прибирає тег мукcера (Lavf), а handler_name доводиться
   // гасити окремо — інакше в контейнері лишаються «VideoHandler»/«SoundHandler»
   if (metaMode === 'strip') {
@@ -15803,8 +16631,11 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   return args;
 }
 
-function uqDescribe(p) {
+function uqDescribe(p, plan) {
   const bits = [];
+  if (plan) bits.push('cover ' + [plan.head ? '+' + plan.head + 'с спереду' : '',
+                                 plan.tail ? '+' + plan.tail + 'с у кінець' : '']
+                                .filter(Boolean).join(' / '));
   if (p.crop)   bits.push(`кроп ${p.crop}%`);
   if (p.rotate) bits.push(`поворот ${p.rotate}°`);
   if (p.color)  bits.push(`колір γ${p.color.gamma > 0 ? '+' : ''}${p.color.gamma} s${p.color.sat > 0 ? '+' : ''}${p.color.sat}`);
@@ -15923,7 +16754,14 @@ async function uqRun() {
   const metaMode = (document.getElementById('uq-meta') || {}).value || 'fake';
   // Знімок налаштувань обкладинки на весь прогін: якщо її поміняти
   // посеред черги, половина варіантів вийшла б з іншим кадром.
-  const coverArg = uqCover ? { ext: uqCover.ext, dur: uqCoverDur() } : null;
+  /* План склейки знімаємо ОДИН раз на весь запуск. Якби поля читались
+     на кожному варіанті, зміна HOLD посеред черги дала б половину
+     файлів з одним початком, половину з іншим — і розібрати потім, де
+     який, уже неможливо. */
+  const coverArg = uqCover
+    ? { ext: uqCover.ext, dur: uqCoverDur(), kind: uqCover.kind || 'image',
+        plan: uqCoverPlan(), noAudio: false }
+    : null;
   const statusEl = document.getElementById('uq-status');
   const barWrap = document.getElementById('uq-bar'), bar = document.getElementById('uq-bar-fill');
   const res = document.getElementById('uq-results');
@@ -16016,7 +16854,7 @@ async function uqRun() {
         const row = slots[v - 1];
         row.className = 'flex items-center gap-3 bg-white/[0.03] border border-white/5 rounded-xl px-3 py-2 mb-1.5';
         row.innerHTML = `<span class="text-[12px] font-black text-white shrink-0">v${v}</span>
-          <span class="text-[11px] font-bold text-slate-400 flex-1 min-w-0 truncate" title="${uqDescribe(p)}">${uqDescribe(p)}</span>
+          <span class="text-[11px] font-bold text-slate-400 flex-1 min-w-0 truncate" title="${uqDescribe(p, coverArg && coverArg.plan)}">${uqDescribe(p, coverArg && coverArg.plan)}</span>
           <span class="text-[11px] font-mono text-slate-600 shrink-0">${uqFmt(took)}</span>
           <span class="text-[11px] font-mono text-slate-500 shrink-0">${(data.length / 1048576).toFixed(1)} МБ</span>
           <a href="${url}" download="${base}__v${v}.mp4" class="shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition">Download</a>`;
@@ -16044,7 +16882,16 @@ async function uqRun() {
             // посеред кодування.
             const p = uqPickParams();
             if (ffw.__log) ffw.__log.length = 0;
-            const code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            let code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            /* «matches no streams» при склейці означає рівно одне: у
+               цьому відео немає звукової дорожки, а ми просили її
+               зводити. Це не причина завалити файл — перебираємо без
+               звуку й запам'ятовуємо, щоб не повторювати спробу на
+               кожному варіанті. */
+            if (code !== 0 && coverArg && coverArg.plan && !coverArg.noAudio) {
+              coverArg.noAudio = true;
+              code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            }
             // Порожній файл — це не результат. Нижня межа груба навмисно:
             // валідний mp4 навіть на секунду важить кілограми цього.
             let data = null;
@@ -16370,7 +17217,9 @@ function dcRenderWarn(unlinked) {
     text:'M4 6h16M4 10h16M4 14h10M4 18h7',
     settings:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
     logout:'M17 16l4-4m0 0-4-4m4 4H7m6 4v1a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v1',
-    plus:'M12 5v14M5 12h14'
+    plus:'M12 5v14M5 12h14',
+    // Телефон: прілка — це те, що веде в апку, а не ще один звіт.
+    phone:'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm3 17h4'
   };
   const ICON_BY_TITLE = [
     [/month|місяц/i,'calendar'], [/performance summary|screenshot/i,'camera'],
@@ -16378,6 +17227,8 @@ function dcRenderWarn(unlinked) {
     [/change log/i,'clock'], [/quick link/i,'bookmark'], [/bonus/i,'coins'],
     [/db logs/i,'database'], [/geo compare/i,'compare'], [/перевірка/i,'clipboard'],
     [/^accounts$/i,'users'], [/uniqueizer/i,'film'], [/^texts$/i,'text'], [/^files$/i,'folder'],
+    // Прілки — телефон: сюди ходять за тим, що веде в саму апку.
+    [/прілк|^apps$/i,'phone'],
     [/settings/i,'settings'], [/вийти|logout/i,'logout']
   ];
   const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="${p}"/></svg>`;
