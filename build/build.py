@@ -1398,6 +1398,307 @@ rest = sub(rest,
   "            const took",
   'унікалізатор: readFile лише один раз')
 
+# ═══════════ COVER FRAME ПРИЙМАЄ Й ВІДЕО ═══════════
+#
+# Cover frame дотепер була СТАТИЧНА КАРТИНКА, накладена поверх перших
+# десятих секунди: вона міняла прев'ю й не чіпала тривалість. Просили
+# інше — друге ВІДЕО, приклеєне до нашого:
+#
+#   HOLD      скільки взяти з ПОЧАТКУ cover наперед
+#   галочка   додати ВЕСЬ РЕШТУ cover у кінець
+#
+# Тобто cover розрізається в точці HOLD, і дві половинки разом дають
+# рівно його повну тривалість — сума не залежить від HOLD:
+#
+#   cover 30с, HOLD 5с,  наше 60с  →   5 + 60 + 25 = 1:30
+#   cover 30с, HOLD 12с, наше 60с  →  12 + 60 + 18 = 1:30
+#
+# Картинка лишається як була: той самий контрол, та сама поведінка.
+# Тип вибирає сам файл, а не окремий перемикач — два контроли під одну
+# думку означали б, що колись увімкнуть обидва.
+
+rest = sub(rest,
+  'id="uq-cover" accept="image/*"',
+  'id="uq-cover" accept="image/*,video/*"',
+  'cover: приймає й відео')
+
+rest = sub(rest,
+  """          <label class="text-[9px] font-black uppercase tracking-widest text-slate-500"
+                 title="How long the cover stays on screen. 0.1s is about three frames.">Hold</label>""",
+  """          <label class="text-[9px] font-black uppercase tracking-widest text-slate-500"
+                 id="uq-cover-hold-l"
+                 title="Картинка: скільки вона тримається в кадрі. Відео: скільки взяти з його початку наперед.">Hold</label>""",
+  'cover: підпис Hold отримує id')
+
+# Галочка «залишок у кінець» — тільно для відео, тому прихована до вибору.
+rest = sub(rest,
+  """          <button onclick="uqCoverClear()" id="uq-cover-clear"
+            class="hidden text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-400 transition">Remove</button>""",
+  """          <label id="uq-cover-tail-l" class="hidden items-center gap-1.5 cursor-pointer"
+                 title="Cover довший за HOLD — решту приклеїти в кінець нашого відео">
+            <input type="checkbox" id="uq-cover-tail" class="uq-chk">
+            <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">+ хвіст у кінець</span>
+          </label>
+          <button onclick="uqCoverClear()" id="uq-cover-clear"
+            class="hidden text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-400 transition">Remove</button>""",
+  'cover: галочка хвоста')
+
+# ── вибір файлу: відео йде своїм шляхом, картинка — як була ──
+rest = sub(rest,
+  """  const f = e.target.files && e.target.files[0];
+  uqCoverClear(true);
+  if (!f) return;
+  let buf;
+  try {
+    buf = await uqCoverToPng(f);""",
+  """  const f = e.target.files && e.target.files[0];
+  uqCoverClear(true);
+  if (!f) return;
+
+  /* ВІДЕО — ІНША ІСТОРІЯ, НІЖ КАРТИНКА.
+
+     Картинка накладається поверх перших десятих секунди й тривалості
+     не міняє. Відео приклеюється: HOLD секунд спереду, решта — у
+     кінець, якщо стоїть галочка. Тому тут розвилка, а не спільний
+     шлях: перетворювати відео в PNG (uqCoverToPng) означало б узяти з
+     нього один кадр і тихо викинути решту. */
+  if (/^video\//.test(f.type || '') || /\.(mp4|mov|webm|m4v|avi|mkv)$/i.test(f.name)) {
+    try {
+      const m = await uqProbe(f);
+      const ext = (f.name.match(/\.([a-z0-9]+)$/i) || [, 'mp4'])[1].toLowerCase();
+      uqCover = { kind: 'video', data: new Uint8Array(await f.arrayBuffer()), ext,
+                  url: URL.createObjectURL(f), name: f.name,
+                  srcDur: m.dur, w: m.w, h: m.h };
+      const hold = document.getElementById('uq-cover-dur');
+      if (hold) {
+        // Для відео межа — його власна тривалість, і крок грубіший:
+        // сотими частками секунди хук не міряють.
+        hold.max = m.dur.toFixed(2); hold.step = '0.1';
+        if (parseFloat(hold.value) < 0.5 || parseFloat(hold.value) > m.dur)
+          hold.value = Math.min(3, m.dur).toFixed(1);
+      }
+      document.getElementById('uq-cover-hold-l')?.setAttribute('title',
+        'Скільки взяти з ПОЧАТКУ цього відео наперед. Решта піде в кінець, якщо поставити галочку.');
+      const tl = document.getElementById('uq-cover-tail-l');
+      if (tl) { tl.classList.remove('hidden'); tl.classList.add('flex'); }
+      const prevV = document.getElementById('uq-cover-prev');
+      if (prevV) {
+        prevV.className = 'text-[11px] font-bold text-violet-300 flex-1 min-w-0 truncate';
+        prevV.textContent = `відео · ${m.w}×${m.h} · ${m.dur.toFixed(1)}с`;
+      }
+      document.getElementById('uq-cover-clear')?.classList.remove('hidden');
+    } catch (err) {
+      uqCover = null;
+      const bad = document.getElementById('uq-cover-prev');
+      if (bad) {
+        bad.className = 'text-[11px] font-bold text-rose-400 flex-1 min-w-0';
+        bad.textContent = 'це відео не читається браузером — спробуй mp4';
+      }
+      const i = document.getElementById('uq-cover'); if (i) i.value = '';
+    }
+    return;
+  }
+
+  let buf;
+  try {
+    buf = await uqCoverToPng(f);""",
+  'cover: гілка для відео')
+
+# Прибирання має знімати й те, що показали лише для відео.
+rest = sub(rest,
+  """  document.getElementById('uq-cover-clear')?.classList.add('hidden');
+  if (!keepInput) { const i = document.getElementById('uq-cover'); if (i) i.value = ''; }""",
+  """  document.getElementById('uq-cover-clear')?.classList.add('hidden');
+  const tl = document.getElementById('uq-cover-tail-l');
+  if (tl) { tl.classList.add('hidden'); tl.classList.remove('flex'); }
+  const hold = document.getElementById('uq-cover-dur');
+  if (hold) { hold.max = '3'; hold.step = '0.02'; }
+  if (!keepInput) { const i = document.getElementById('uq-cover'); if (i) i.value = ''; }""",
+  'cover: прибирання знімає й відео-частину')
+
+# ── HOLD: для відео межа інша ──
+rest = sub(rest,
+  """function uqCoverDur() {
+  const v = parseFloat((document.getElementById('uq-cover-dur') || {}).value);
+  return Math.min(3, Math.max(0.04, v || 0.1));
+}""",
+  """function uqCoverDur() {
+  const v = parseFloat((document.getElementById('uq-cover-dur') || {}).value);
+  // Картинка: до 3с, бо довше в кадрі вона вже не хук, а пауза.
+  // Відео: до його власної тривалості — більше взяти просто нізвідки.
+  if (uqCover && uqCover.kind === 'video')
+    return Math.min(uqCover.srcDur, Math.max(0, isNaN(v) ? 0 : v));
+  return Math.min(3, Math.max(0.04, v || 0.1));
+}
+
+/* Що саме приклеїмо: голова, хвіст, обидва — чи нічого.
+
+   Менше за 0.05с — це не сегмент, а артефакт округлення: ffmpeg на
+   такому trim дає нуль кадрів, і concat падає на порожньому вході. */
+function uqCoverPlan() {
+  if (!uqCover || uqCover.kind !== 'video') return null;
+  const head = uqCoverDur();
+  const tailOn = !!(document.getElementById('uq-cover-tail') || {}).checked;
+  const tail = tailOn ? +(uqCover.srcDur - head).toFixed(3) : 0;
+  const plan = { head: head >= 0.05 ? +head.toFixed(3) : 0,
+                 tail: tail >= 0.05 ? tail : 0 };
+  return (plan.head || plan.tail) ? plan : null;
+}"""
+  ,
+  'cover: uqCoverPlan')
+
+# ── сам граф склейки ──
+rest = sub(rest,
+  """  if (cover) {""",
+  """  /* ВІДЕО-COVER: СКЛЕЙКА, А НЕ НАКЛАДКА.
+
+     Картинка нижче малюється поверх кадру й тривалості не міняє.
+     Відео треба приставити — а для concat усі сегменти мусять мати
+     однакову роздільність, SAR і частоту кадрів, інакше фільтр просто
+     відмовиться їх зводити.
+
+     ТРИ РІШЕННЯ, ЯКІ ТУТ НЕ ОЧЕВИДНІ:
+
+     1. Звук cover не йде — на його секундах тиша з anullsrc. Так
+        просили, і так простіше: зводити два різні рівні означало б, що
+        хук перебиває звук самого креатива.
+
+     2. Cover проходить через ТІ САМІ фільтри унікалізації. Якби він
+        клеївся байт-у-байт, перші секунди ВСІХ варіантів стали б
+        ідентичними — ми власноруч робили б шматок, однаковий у всіх
+        креативів, тобто перекреслювали сенс усього вікна.
+
+     3. Інші пропорції обрізаються по центру під кадр креатива
+        (increase + crop), а не вписуються зі смугами: чорні смуги у
+        фіді читаються як зламане відео.
+
+     Обріз нашого відео (p.trim) робиться ТУТ, у графі, а не вхідними
+     -ss/-t: ті різали б уже склеєний результат, тобто й cover заодно. */
+  if (cover && cover.kind === 'video' && cover.plan) {
+    const pl = cover.plan;
+    const R = p.fps ? Math.max(15, Math.round(30 + p.fps)) : 30;
+    const W = meta.w || 1080, H = meta.h || 1920;
+    // vf уже містить і масштаб, і setsar, і fps — беремо його як є для
+    // нашого відео, а cover приводимо до того самого кадру окремо.
+    const fit = `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+              + `crop=${W}:${H},setsar=1,fps=${R}`;
+    // Фільтри унікалізації без масштабу: для cover розмір задає fit.
+    const uniq = vf.filter(x => !/^scale=|^setsar=|^fps=/.test(x));
+    const u = uniq.length ? uniq.join(',') + ',' : '';
+
+    const fc = [];
+    const two = pl.head > 0 && pl.tail > 0;
+    if (two) fc.push('[1:v]split=2[c1][c2]');
+    if (pl.head > 0)
+      fc.push(`${two ? '[c1]' : '[1:v]'}trim=0:${pl.head},setpts=PTS-STARTPTS,${u}${fit}[cv1]`);
+    if (pl.tail > 0)
+      fc.push(`${two ? '[c2]' : '[1:v]'}trim=${pl.head}:${(pl.head + pl.tail).toFixed(3)},`
+            + `setpts=PTS-STARTPTS,${u}${fit}[cv2]`);
+    fc.push(`[0:v]${vf.join(',')},fps=${R}[mv]`);
+
+    const vSeg = [];
+    if (pl.head > 0) vSeg.push('[cv1]');
+    vSeg.push('[mv]');
+    if (pl.tail > 0) vSeg.push('[cv2]');
+    fc.push(`${vSeg.join('')}concat=n=${vSeg.length}:v=1:a=0[vout]`);
+
+    /* Звук. Якщо в нашому відео дорожки немає, графа для звуку теж
+       немає — інакше ffmpeg падає на мітці [0:a], якої не існує.
+       Дізнатись це наперед із браузера надійно не виходить, тому
+       прапорець ставить сам прогін після першої відмови. */
+    if (!cover.noAudio) {
+      const af = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
+      if (two) fc.push('[2:a]asplit=2[s1][s2]');
+      if (pl.head > 0)
+        fc.push(`${two ? '[s1]' : '[2:a]'}atrim=0:${pl.head},asetpts=PTS-STARTPTS,${af}[sa1]`);
+      if (pl.tail > 0)
+        fc.push(`${two ? '[s2]' : '[2:a]'}atrim=0:${pl.tail},asetpts=PTS-STARTPTS,${af}[sa2]`);
+      fc.push(`[0:a]${p.volume ? `volume=${p.volume}dB,` : ''}${af}[ma]`);
+      const aSeg = [];
+      if (pl.head > 0) aSeg.push('[sa1]');
+      aSeg.push('[ma]');
+      if (pl.tail > 0) aSeg.push('[sa2]');
+      fc.push(`${aSeg.join('')}concat=n=${aSeg.length}:v=0:a=1[aout]`);
+      // anullsrc дописуємо ТРЕТІМ входом — порядок мусить збігатися з
+      // мітками [2:a] вище.
+      args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+    }
+    args.push('-filter_complex', fc.join(';'), '-map', '[vout]');
+    args.push('-map', cover.noAudio ? '0:a?' : '[aout]');
+  } else if (cover) {""",
+  'cover: граф склейки для відео')
+
+# -t ЯК ВИХІДНИЙ ПАРАМЕТР ОБРІЗАВ БИ ВЖЕ СКЛЕЄНЕ.
+# Він стоїть після обох -i, тобто стосується виходу: на склейці це
+# означало б 90-секундне відео, обрізане до 55, і хвіст cover просто
+# зникав би. У режимі склейки і -ss, і -t ставимо ПЕРЕД -i in.mp4 —
+# обидва мусять стосуватись лише нашого відео.
+rest = sub(rest,
+  """  if (durOK && p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
+  args.push('-i', 'in.mp4');
+  if (cover) args.push('-i', 'cover.' + cover.ext);
+  if (durOK && p.trim) {
+    const left = meta.dur - p.trim.head - p.trim.tail;
+    if (left > 1) args.push('-t', String(+left.toFixed(2)));
+  }""",
+  """  const concatMode = !!(cover && cover.kind === 'video' && cover.plan);
+  const trimLeft = (durOK && p.trim) ? meta.dur - p.trim.head - p.trim.tail : 0;
+  if (durOK && p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
+  if (concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
+  args.push('-i', 'in.mp4');
+  if (cover) args.push('-i', 'cover.' + cover.ext);
+  if (!concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));""",
+  'cover: -t обмежує вхід, а не вихід')
+
+# -af поруч із -filter_complex ffmpeg не приймає зовсім, а гучність у
+# склейці вже вписана в граф ([0:a]volume=…).
+rest = sub(rest,
+  "  if (p.volume) args.push('-af', `volume=${p.volume}dB`);",
+  "  if (p.volume && !concatMode) args.push('-af', `volume=${p.volume}dB`);",
+  'cover: без -af у склейці')
+
+# ── те, що передається в uqBuildArgs ──
+rest = sub(rest,
+  """  const coverArg = uqCover ? { ext: uqCover.ext, dur: uqCoverDur() } : null;""",
+  """  /* План склейки знімаємо ОДИН раз на весь запуск. Якби поля читались
+     на кожному варіанті, зміна HOLD посеред черги дала б половину
+     файлів з одним початком, половину з іншим — і розібрати потім, де
+     який, уже неможливо. */
+  const coverArg = uqCover
+    ? { ext: uqCover.ext, dur: uqCoverDur(), kind: uqCover.kind || 'image',
+        plan: uqCoverPlan(), noAudio: false }
+    : null;""",
+  'cover: coverArg із планом')
+
+# ── відмова через відсутній звук: один раз на прогін ──
+rest = sub(rest,
+  """            const code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));""",
+  """            let code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            /* «matches no streams» при склейці означає рівно одне: у
+               цьому відео немає звукової дорожки, а ми просили її
+               зводити. Це не причина завалити файл — перебираємо без
+               звуку й запам'ятовуємо, щоб не повторювати спробу на
+               кожному варіанті. */
+            if (code !== 0 && coverArg && coverArg.plan && !coverArg.noAudio) {
+              coverArg.noAudio = true;
+              code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            }""",
+  'cover: відкат без звуку')
+
+# ── у підписі варіанта видно, що приклеєно ──
+rest = sub(rest,
+  """function uqDescribe(p) {
+  const bits = [];""",
+  """function uqDescribe(p, plan) {
+  const bits = [];
+  if (plan) bits.push('cover ' + [plan.head ? '+' + plan.head + 'с спереду' : '',
+                                 plan.tail ? '+' + plan.tail + 'с у кінець' : '']
+                                .filter(Boolean).join(' / '));""",
+  'cover: підпис варіанта')
+
+rest = rest.replace('uqDescribe(p)}">${uqDescribe(p)}',
+                    'uqDescribe(p, coverArg && coverArg.plan)}">${uqDescribe(p, coverArg && coverArg.plan)}')
+
 # Після завантаження даних перемальовуємо парк кабінетів — там половина
 # колонок рахується з daily_stats, якого на момент першого рендера ще немає.
 # Гачків два, і форма виклику в них різна, тож і якір окремий для кожного.
