@@ -1205,6 +1205,12 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     </button>
 
     <!-- Uniqueizer — варіанти відеокреативів -->
+    <!-- Прілки: неймінги, діплінки й сабки. Іконка телефона — сюди
+         ходять за тим, що веде в саму апку. -->
+    <button onclick="openAppsModal()" class="p-2 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition admin-only" title="Прілки">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2zm3 17h4"/></svg>
+    </button>
+
     <button onclick="openUniqModal()" class="p-2 card rounded-xl shadow-md text-violet-400 hover:bg-gray-500/10 transition admin-only" title="Uniqueizer">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
     </button>
@@ -8712,6 +8718,427 @@ function gcDiff(geo, results) {
 // ===== END GEO COMPARE =====
 </script>
 
+<!--UA-->
+<!-- ═══════════ ПРІЛКИ · неймінги, діплінки, сабки ═══════════
+     Довідник того, під що ми ллємо: по гео й постачальниках.
+
+     ЧОМУ ЦЕ ОКРЕМЕ ВІКНО, А НЕ ЩЕ ОДНА ВКЛАДКА В НАЛАШТУВАННЯХ.
+     У налаштуваннях лежать маски розбору — вони відповідають на
+     питання «як прочитати те, що вже залито». Тут навпаки: що саме
+     вписати, коли створюєш кампанію. Ті самі слоти, протилежний
+     напрямок, і змішувати їх в одному екрані означало б щоразу
+     згадувати, у який бік ти зараз дивишся. -->
+<div id="apps-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
+     onclick="if(event.target===this) closeAppsModal()">
+  <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh">
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
+      <div>
+        <h2 class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
+        <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <input id="ap-search" oninput="apRender()" placeholder="Пошук: назва, KTID, діплінк…"
+          class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
+        <button onclick="apNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Прілка</button>
+        <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
+      </div>
+    </div>
+
+    <div class="flex-1 min-h-0 flex">
+      <!-- Дерево: гео → постачальник -->
+      <div class="w-56 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar p-3 space-y-1" id="ap-tree"></div>
+      <div class="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4">
+        <div id="ap-editor" class="hidden mb-4"></div>
+        <div id="ap-list" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════ ПРІЛКИ · неймінги, діплінки, сабки ═══════════
+
+   ЩО ТУТ ЗБЕРІГАЄТЬСЯ. Під кожну прілку: гео, постачальник, назва,
+   KTID, шаблон неймінгу кампанії, діплінк і набір сабок трекера.
+
+   ДВА ВИДИ САБОК, І В ЦЬОМУ ВСЯ СУТЬ ЕКРАНА:
+
+     фіксована   стала, яку просто копіюєш у трекер (8wxg7hf7)
+     макросна    підставляється з контексту заливу
+
+   Макросні не вписуються руками. Для апки вибираєш воронку зі
+   списку — у списку видно НАЗВУ («[Riddick's Partners] Pinco UZ»),
+   а в сабку лягає KTID. Так само акаунт: видно кабінет із
+   постачальником, лягає його номер. Гео й крео лишаються
+   плейсхолдерами — їх підставляє сам трекер на кліку.
+
+   Чому саме так: KTID і номер кабінета — це те, що мусить зійтися з
+   даними в базі, і вибирати їх руками означає рано чи пізно
+   вписати цифру з іншої воронки. Назву ж людина тримає в голові, а
+   не число.
+
+   ЗБЕРІГАННЯ. team_settings, ключ app_links, одним JSON. Ключ там
+   по власнику (created_by, key) — отже в кожного свій довідник, як і
+   з ставками й місячною ціллю.                                    */
+
+let apItems = [], apGeo = '', apProv = '', apEditId = null;
+let apFunnels = [], apAccounts = [];      // довідники для макросних сабок
+let apLoaded = false;
+
+const AP_SUBS = 20;                        // Sub ID 1..20, як у Keitaro
+const AP_MODES = {
+  fixed: 'Фіксована',
+  app:   'Апка (KTID)',
+  acc:   'Акаунт',
+  geo:   'Гео',
+  cid:   'Креатив'
+};
+// Що лягає в сабку для макросних режимів, які підставляє трекер.
+const AP_MACRO = { geo: '{geo}', cid: '{creative}' };
+
+const apEsc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+async function openAppsModal() {
+  document.getElementById('apps-modal').classList.remove('hidden');
+  if (!apLoaded) { apLoaded = true; await apLoad(); }
+  apRenderTree(); apRender();
+}
+function closeAppsModal() {
+  document.getElementById('apps-modal').classList.add('hidden');
+}
+
+/* Довідники тягнемо разом із записами: без них макросні сабки нічого
+   не запропонують, а показати порожній список і промовчати — найгірше,
+   що тут можна зробити. */
+async function apLoad() {
+  const sub = document.getElementById('ap-sub');
+  try {
+    const [ts, fn, ac] = await Promise.all([
+      sb.from('team_settings').select('value').eq('key', 'app_links').limit(1),
+      sb.from('funnels_mapping').select('ktid, funnel_name').eq('team_name', currentTeam),
+      sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam)
+    ]);
+    if (ts.error) throw ts.error;
+    apItems = ts.data && ts.data[0] ? (JSON.parse(ts.data[0].value) || []) : [];
+    if (fn.error) console.warn('funnels_mapping:', fn.error.message);
+    if (ac.error) console.warn('accounts_mapping:', ac.error.message);
+    apFunnels = (fn.data || []).slice().sort((a, b) =>
+      String(a.funnel_name || '').localeCompare(String(b.funnel_name || ''), 'uk'));
+    apAccounts = (ac.data || []).slice().sort((a, b) =>
+      String(a.account_id || '').localeCompare(String(b.account_id || '')));
+    if (sub) sub.textContent = `${apItems.length} прілок · ${apFunnels.length} воронок · ${apAccounts.length} кабінетів`;
+  } catch (e) {
+    apItems = [];
+    if (sub) sub.textContent = 'не завантажилось: ' + (e.message || e.code || e);
+    console.error('app_links load:', e);
+  }
+}
+
+async function apSave() {
+  const row = { team_name: currentTeam, key: 'app_links', value: JSON.stringify(apItems) };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+  if (!error) return true;
+  /* PostgREST відмову не кидає винятком — перевіряємо error. Без цього
+     прілка зникала б при наступному відкритті, а на екрані все
+     виглядало б збереженим. Той самий недогляд уже був у payouts,
+     team_settings і місячній цілі. */
+  console.error('app_links save:', error);
+  const msg = 'Не збереглось: ' + (error.message || error.code)
+            + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : '');
+  if (typeof toast === 'function') toast(msg, 'error', 12000); else alert(msg);
+  return false;
+}
+
+/* ─────────── дерево гео → постачальник ─────────── */
+function apRenderTree() {
+  const el = document.getElementById('ap-tree');
+  if (!el) return;
+  const byGeo = {};
+  apItems.forEach(it => {
+    const g = (it.geo || '—').toUpperCase();
+    (byGeo[g] = byGeo[g] || new Set()).add(it.provider || '—');
+  });
+  const geos = Object.keys(byGeo).sort();
+  const btn = (label, active, onclick, pad, count) => `
+    <div onclick="${onclick}" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
+         ${active ? 'bg-emerald-600 text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
+      <span class="text-[11px] font-black uppercase truncate">${apEsc(label)}</span>
+      ${count != null ? `<span class="text-[10px] font-bold opacity-60">${count}</span>` : ''}
+    </div>`;
+  let html = btn('Усі', !apGeo && !apProv, "apPick('','')", 8, apItems.length);
+  geos.forEach(g => {
+    const n = apItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
+    html += btn(g, apGeo === g && !apProv, `apPick('${apEsc(g)}','')`, 8, n);
+    if (apGeo === g) [...byGeo[g]].sort().forEach(p => {
+      const np = apItems.filter(i => (i.geo || '—').toUpperCase() === g && (i.provider || '—') === p).length;
+      html += btn(p, apProv === p, `apPick('${apEsc(g)}','${apEsc(p)}')`, 22, np);
+    });
+  });
+  el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
+}
+function apPick(g, p) { apGeo = g; apProv = p; apRenderTree(); apRender(); }
+
+/* ─────────── список ─────────── */
+function apRender() {
+  const el = document.getElementById('ap-list');
+  if (!el) return;
+  const q = (document.getElementById('ap-search')?.value || '').toLowerCase().trim();
+  const rows = apItems.filter(it =>
+    (!apGeo || (it.geo || '—').toUpperCase() === apGeo) &&
+    (!apProv || (it.provider || '—') === apProv) &&
+    (!q || [it.app, it.ktid, it.naming, it.deeplink, it.provider, it.note]
+            .some(v => String(v || '').toLowerCase().includes(q))));
+
+  if (!rows.length) {
+    el.innerHTML = `<p class="text-[12px] opacity-40 py-6">${apItems.length
+      ? 'За цим фільтром нічого немає.'
+      : 'Жодної прілки ще немає. «+ Прілка» — і вписуй неймінг.'}</p>`;
+    return;
+  }
+
+  const copyBtn = (v, title) => !v ? '' :
+    `<button onclick="apCopy(event, this)" data-v="${apEsc(v)}" title="${title}"
+       class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі</button>`;
+
+  el.innerHTML = rows.map(it => {
+    const subs = (it.subs || []).filter(x => x && x.mode && (x.value || AP_MACRO[x.mode]));
+    return `
+    <div class="bg-black/20 border border-white/5 rounded-2xl p-3">
+      <div class="flex items-start justify-between gap-2 flex-wrap">
+        <div class="min-w-0">
+          <p class="text-[13px] font-black text-white truncate">${apEsc(it.app || '(без назви)')}
+            <span class="text-[10px] font-bold text-emerald-300 ml-1.5">${apEsc((it.geo || '').toUpperCase())}</span>
+            ${it.provider ? `<span class="text-[10px] font-bold text-slate-500 ml-1">· ${apEsc(it.provider)}</span>` : ''}
+          </p>
+          ${it.ktid ? `<p class="text-[10px] font-mono text-slate-500 mt-0.5">KTID ${apEsc(it.ktid)}${
+            apFunnelName(it.ktid) ? ` · ${apEsc(apFunnelName(it.ktid))}` : ''}</p>` : ''}
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="apEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
+          <button onclick="apDelete('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/30 transition">×</button>
+        </div>
+      </div>
+
+      ${it.naming ? `<div class="flex items-center gap-2 mt-2">
+        <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Неймінг</span>
+        <code class="text-[11px] font-mono text-slate-200 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate">${apEsc(it.naming)}</code>
+        ${copyBtn(it.naming, 'Скопіювати неймінг')}</div>` : ''}
+
+      ${it.deeplink ? `<div class="flex items-center gap-2 mt-1.5">
+        <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Діплінк</span>
+        <code class="text-[11px] font-mono text-sky-300 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate">${apEsc(it.deeplink)}</code>
+        ${copyBtn(it.deeplink, 'Скопіювати діплінк')}</div>` : ''}
+
+      ${subs.length ? `<div class="mt-2 pt-2 border-t border-white/5">
+        <div class="grid grid-cols-[auto_auto_1fr_auto] gap-x-2 gap-y-1 items-center">
+        ${subs.map(x => {
+          const val = x.mode === 'fixed' || x.mode === 'app' || x.mode === 'acc'
+            ? x.value : AP_MACRO[x.mode];
+          const hint = x.mode === 'app' ? apFunnelName(x.value)
+                     : x.mode === 'acc' ? apAccLabel(x.value) : '';
+          return `<span class="text-[10px] font-black text-slate-500">Sub ${x.n}</span>
+            <span class="text-[9px] font-black uppercase tracking-widest ${
+              x.mode === 'fixed' ? 'text-slate-600' : 'text-emerald-400'}">${
+              x.mode === 'fixed' ? 'фікс' : 'макро'}</span>
+            <code class="text-[11px] font-mono text-slate-200 truncate" title="${apEsc(hint || val)}">${apEsc(val)}${
+              hint ? `<span class="text-slate-500 font-sans"> · ${apEsc(hint)}</span>` : ''}</code>
+            ${copyBtn(val, 'Скопіювати значення')}`;
+        }).join('')}
+        </div></div>` : ''}
+
+      ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function apFunnelName(ktid) {
+  const f = apFunnels.find(x => String(x.ktid) === String(ktid));
+  return f ? f.funnel_name : '';
+}
+function apAccLabel(id) {
+  const a = apAccounts.find(x => String(x.account_id) === String(id));
+  return a ? (a.provider_name ? a.account_id + ' · ' + a.provider_name : a.account_id) : '';
+}
+
+/* Копіювання з підтвердженням на самій кнопці: без нього незрозуміло,
+   чи клік узагалі спрацював, і люди тиснуть удруге. */
+async function apCopy(ev, btn) {
+  ev.stopPropagation();
+  const v = btn.getAttribute('data-v') || '';
+  try { await navigator.clipboard.writeText(v); } catch (e) {
+    const t = document.createElement('textarea');
+    t.value = v; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } finally { t.remove(); }
+  }
+  const was = btn.textContent;
+  btn.textContent = 'ок'; btn.classList.add('text-emerald-400');
+  setTimeout(() => { btn.textContent = was; btn.classList.remove('text-emerald-400'); }, 1200);
+}
+
+/* ─────────── редактор ─────────── */
+function apNew() {
+  apEditId = null;
+  apShowEditor({ geo: apGeo, provider: apProv === '—' ? '' : apProv,
+                 app: '', ktid: '', naming: '', deeplink: '', note: '', subs: [] });
+}
+function apEdit(id) {
+  const it = apItems.find(x => x.id === id);
+  if (it) { apEditId = id; apShowEditor(it); }
+}
+function apCancel() { apEditId = null; document.getElementById('ap-editor').classList.add('hidden'); }
+
+function apShowEditor(v) {
+  const el = document.getElementById('ap-editor');
+  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-emerald-500';
+  const dl = (id, items) => `<datalist id="${id}">${
+    [...new Set(items)].filter(Boolean).map(x => `<option value="${apEsc(x)}"></option>`).join('')}</datalist>`;
+
+  // Воронки у списку — назвою; у значення йде KTID.
+  const funOpts = sel => apFunnels.map(f =>
+    `<option value="${apEsc(f.ktid)}"${String(f.ktid) === String(sel) ? ' selected' : ''}>${
+      apEsc(f.funnel_name || f.ktid)}</option>`).join('');
+
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="bg-emerald-500/[0.06] border border-emerald-500/25 rounded-2xl p-3 space-y-2">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <input id="ap-f-geo" list="ap-dl-geo" value="${apEsc(v.geo)}" placeholder="Гео (UZ)" class="${inp} uppercase">
+        <input id="ap-f-prov" list="ap-dl-prov" value="${apEsc(v.provider)}" placeholder="Постачальник" class="${inp}">
+        <input id="ap-f-app" value="${apEsc(v.app)}" placeholder="Назва прілки" class="${inp}">
+        <select id="ap-f-ktid" class="${inp}">
+          <option value="">KTID — вибери воронку</option>
+          ${funOpts(v.ktid)}
+        </select>
+      </div>
+      ${dl('ap-dl-geo', apItems.map(i => (i.geo || '').toUpperCase()))}
+      ${dl('ap-dl-prov', apItems.map(i => i.provider).concat(
+          apFunnels.map(f => (String(f.funnel_name || '').match(/\[([^\]]+)\]/) || [])[1])))}
+
+      <input id="ap-f-naming" value="${apEsc(v.naming)}" class="${inp} w-full font-mono"
+             placeholder="Неймінг кампанії: cy638t_8wxg7hf7_{cid}_{app}_{acc}_{geo}_1">
+      <input id="ap-f-deeplink" value="${apEsc(v.deeplink)}" class="${inp} w-full font-mono"
+             placeholder="Діплінк (необовʼязково)">
+      <input id="ap-f-note" value="${apEsc(v.note)}" class="${inp} w-full" placeholder="Нотатка для себе">
+
+      <div class="pt-1">
+        <p class="text-[9px] font-black uppercase tracking-widest text-emerald-300 mb-1.5">Сабки трекера</p>
+        <p class="text-[10px] text-slate-500 font-bold mb-2">Фіксована — стала, яку копіюєш як є. Макросна — підставляється з контексту: для апки й кабінета вибираєш зі списку назву, а в сабку лягає KTID або номер кабінета.</p>
+        <div id="ap-subs" class="space-y-1"></div>
+        <button onclick="apSubAdd()" class="mt-2 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 transition">+ сабка</button>
+      </div>
+
+      <div class="flex gap-2 pt-1">
+        <button onclick="apSubmit()" class="bg-emerald-600 hover:bg-emerald-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зберегти</button>
+        <button onclick="apCancel()" class="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-3 transition">Скасувати</button>
+      </div>
+    </div>`;
+
+  apSubsDraft = (v.subs || []).map(x => ({ ...x }));
+  if (!apSubsDraft.length) apSubsDraft = [{ n: 1, mode: 'fixed', value: '' }];
+  apSubsRender();
+  document.getElementById('ap-f-app').focus();
+}
+
+let apSubsDraft = [];
+function apSubAdd() {
+  const used = new Set(apSubsDraft.map(x => x.n));
+  let n = 1; while (used.has(n) && n < AP_SUBS) n++;
+  apSubsDraft.push({ n, mode: 'fixed', value: '' });
+  apSubsRender();
+}
+function apSubDel(i) { apSubsDraft.splice(i, 1); apSubsRender(); }
+function apSubSet(i, field, val) {
+  apSubsDraft[i][field] = val;
+  // Зміна режиму міняє і те, ЧИМ заповнюється значення, тож старе
+  // прибираємо: KTID у полі «фіксована» виглядав би як свідомий вибір.
+  if (field === 'mode') apSubsDraft[i].value = '';
+  apSubsRender();
+}
+
+function apSubsRender() {
+  const el = document.getElementById('ap-subs');
+  if (!el) return;
+  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-emerald-500';
+  el.innerHTML = apSubsDraft.map((x, i) => {
+    let valField;
+    if (x.mode === 'app') {
+      valField = `<select class="${inp} w-full" onchange="apSubSetVal(${i}, this.value)">
+          <option value="">— воронка —</option>
+          ${apFunnels.map(f => `<option value="${apEsc(f.ktid)}"${
+            String(f.ktid) === String(x.value) ? ' selected' : ''}>${apEsc(f.funnel_name || f.ktid)}</option>`).join('')}
+        </select>`;
+    } else if (x.mode === 'acc') {
+      valField = `<select class="${inp} w-full" onchange="apSubSetVal(${i}, this.value)">
+          <option value="">— кабінет —</option>
+          ${apAccounts.map(a => `<option value="${apEsc(a.account_id)}"${
+            String(a.account_id) === String(x.value) ? ' selected' : ''}>${apEsc(apAccLabel(a.account_id))}</option>`).join('')}
+        </select>`;
+    } else if (AP_MACRO[x.mode]) {
+      valField = `<code class="text-[11px] font-mono text-emerald-300 px-2 py-1">${apEsc(AP_MACRO[x.mode])}</code>`;
+    } else {
+      valField = `<input class="${inp} w-full font-mono" value="${apEsc(x.value)}"
+          oninput="apSubSetVal(${i}, this.value)" placeholder="значення">`;
+    }
+    return `<div class="grid grid-cols-[72px_120px_1fr_auto] gap-1.5 items-center">
+      <select class="${inp}" onchange="apSubSet(${i}, 'n', +this.value)">
+        ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
+          `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
+      </select>
+      <select class="${inp}" onchange="apSubSet(${i}, 'mode', this.value)">
+        ${Object.entries(AP_MODES).map(([k, lbl]) =>
+          `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
+      </select>
+      ${valField}
+      <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
+    </div>`;
+  }).join('');
+}
+// Значення міняємо без перемальовування: input інакше губив би курсор.
+function apSubSetVal(i, v) { apSubsDraft[i].value = v; }
+
+async function apSubmit() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const rec = {
+    geo: val('ap-f-geo').toUpperCase(),
+    provider: val('ap-f-prov'),
+    app: val('ap-f-app'),
+    ktid: val('ap-f-ktid'),
+    naming: val('ap-f-naming'),
+    deeplink: val('ap-f-deeplink'),
+    note: val('ap-f-note'),
+    // Порожні сабки не зберігаємо: вони потім виглядають як налаштоване.
+    subs: apSubsDraft
+      .filter(x => x.mode && (x.value || AP_MACRO[x.mode]))
+      .map(x => ({ n: x.n, mode: x.mode, value: AP_MACRO[x.mode] ? '' : x.value }))
+  };
+  if (!rec.app) { alert('Без назви прілки запис знайти потім неможливо.'); return; }
+
+  if (apEditId) Object.assign(apItems.find(x => x.id === apEditId) || {}, rec);
+  else apItems.unshift({ id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec });
+
+  /* Малюємо лише коли справді збереглось. Інакше прілка стояла б у
+     списку до перезавантаження — і зникала б потім без жодного слова. */
+  if (!await apSave()) { if (!apEditId) apItems.shift(); return; }
+  apEditId = null;
+  document.getElementById('ap-editor').classList.add('hidden');
+  const sub = document.getElementById('ap-sub');
+  if (sub) sub.textContent = `${apItems.length} прілок · ${apFunnels.length} воронок · ${apAccounts.length} кабінетів`;
+  apRenderTree(); apRender();
+}
+
+async function apDelete(id) {
+  const it = apItems.find(x => x.id === id);
+  if (!confirm('Видалити «' + (it && it.app || id) + '»?')) return;
+  const keep = apItems;
+  apItems = apItems.filter(x => x.id !== id);
+  if (!await apSave()) { apItems = keep; return; }
+  apRenderTree(); apRender();
+}
+</script>
+<!--/UA-->
+
 <!-- ===== TEXTS · банк текстів по гео і слотах ===== -->
 <div id="texts-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
      onclick="if(event.target===this) closeTextsModal()">
@@ -10014,7 +10441,9 @@ function dcRenderWarn(unlinked) {
     text:'M4 6h16M4 10h16M4 14h10M4 18h7',
     settings:'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
     logout:'M17 16l4-4m0 0-4-4m4 4H7m6 4v1a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v1',
-    plus:'M12 5v14M5 12h14'
+    plus:'M12 5v14M5 12h14',
+    // Телефон: прілка — це те, що веде в апку, а не ще один звіт.
+    phone:'M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm3 17h4'
   };
   const ICON_BY_TITLE = [
     [/month|місяц/i,'calendar'], [/performance summary|screenshot/i,'camera'],

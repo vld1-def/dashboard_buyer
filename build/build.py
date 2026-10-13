@@ -1824,8 +1824,10 @@ rest = sub(rest,
 rest = sub(rest,
   """    [/^accounts$/i,'users'], [/uniqueizer/i,'film'], [/^texts$/i,'text'], [/settings/i,'settings'], [/вийти|logout/i,'logout']""",
   """    [/^accounts$/i,'users'], [/uniqueizer/i,'film'], [/^texts$/i,'text'], [/^files$/i,'folder'],
+    // Прілки — телефон: сюди ходять за тим, що веде в саму апку.
+    [/прілк|^apps$/i,'phone'],
     [/settings/i,'settings'], [/вийти|logout/i,'logout']""",
-  'файли: іконка за назвою')
+  'файли й прілки: іконка за назвою')
 
 # ── CSV на імпорт: кирилиця ──
 # readAsText без кодування читає файл як UTF-8. Keitaro так і віддає, але
