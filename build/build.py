@@ -302,7 +302,7 @@ async function uqNewFFmpeg() {
 const UQ_VAGUE = /^(conversion failed|error opening output file|at least one output file)/i;
 const UQ_REAL = /invalid|no such|not found|unknown|unsupported|decoder|matches no streams|does not contain|could not|cannot|unable|divisible|out of memory|no space/i;
 
-function uqWhy(ffw, code, data) {
+function uqWhy(ffw, code, data, fix) {
   const log = ((ffw && ffw.__log) || []).map(l => String(l).trim()).filter(Boolean);
   const real = [...log].reverse().find(l => UQ_REAL.test(l) && !UQ_VAGUE.test(l));
   const last = [...log].reverse().find(l => !UQ_VAGUE.test(l));
@@ -1360,6 +1360,12 @@ rest = sub(rest,
         await ff.writeFile('in.mp4', new Uint8Array(srcBuf.slice(0)));""",
   """        srcBuf = await file.arrayBuffer();
         await ff.writeFile('in.mp4', new Uint8Array(srcBuf.slice(0)));
+        /* Нормалізований хук — на ФАЙЛ, не на прогін: кадр у кожного
+           свій. Скидаємо ДО запису, інакше в копію поїде cover_n.mp4
+           від попереднього файлу, а сирого хука в ній не буде зовсім —
+           і нормалізувати стане нічого. Саме через це хук «не
+           приводився» на другому файлі черги й на повторному запуску. */
+        if (uqCover) uqCover.norm = null;
         await uqWriteCover(ff);""",
   'обкладинка: запис у першу копію')
 
@@ -1775,16 +1781,28 @@ rest = sub(rest,
   """      /* Хук під кадр ЦЬОГО креатива: meta в кожного файлу своя, тож
          нормалізуємо на кожен файл, а не раз на прогін. */
       if (coverArg && coverArg.plan) {
-        uqCover.norm = null;
         setStatus(`${file.name} · готую хук під кадр креатива…`);
         try { uqCover.norm = await uqNormCover(ff, meta); }
         catch (e) { console.warn('uq: хук не нормалізувався', e); }
         coverArg.file = uqCover.norm ? UQ_COVER_N : null;
         if (uqCover.norm) await uqWriteCover(ff);
         else {
+          /* ХУК НЕ ПРИВІВСЯ — РОБИМО БЕЗ ХУКА.
+
+             Доти тут було «склеюю як є», тобто ми робили рівно те, що
+             й падає: віддавали в concat файл, у якого параметри кадру
+             міняються. Наслідок — нуль байт і те саме повідомлення
+             вдруге, тільки вже без шансу зрозуміти, де поломка.
+
+             Варіанти без хука — це робочі файли плюс чесний рядок про
+             хук. Нічого — це нічого. */
+          coverArg.plan = null;
+          coverArg.kind = 'image';   // далі по коду це вже «не склейка»
           const warn = document.createElement('p');
           warn.className = 'text-[11px] font-bold text-amber-400 mt-3';
-          warn.textContent = `${file.name}: хук не вдалось привести до кадру креатива — склеюю як є`;
+          warn.textContent = `${file.name}: хук не вдалось привести до кадру креатива `
+            + `(ffmpeg не прочитав або не перекодував цей файл) — варіанти зроблено БЕЗ хука. `
+            + `Візьми інший хук або перекодуй його в постійний розмір.`;
           res.appendChild(warn);
         }
       }
@@ -1848,12 +1866,12 @@ rest = sub(rest,
 # наступного — чуже, і зайти в нього означало б видати не те відео.
 rest = sub(rest,
   """      if (coverArg && coverArg.plan) {
-        uqCover.norm = null;""",
+        setStatus(`${file.name} · готую хук під кадр креатива…`);""",
   """      uqMainName = 'in.mp4';
       const mainFix = { p: null, data: null };
       if (coverArg && coverArg.plan) {
-        uqCover.norm = null;""",
-  'хук: скидання на кожен файл')
+        setStatus(`${file.name} · готую хук під кадр креатива…`);""",
+  'хук: скидання основного входу на кожен файл')
 
 # Повтор після відмови: перекодувати відео й зайти ще раз.
 rest = sub(rest,
@@ -1875,6 +1893,7 @@ rest = sub(rest,
               mainFix.p = mainFix.p || uqNormMain(ffw, meta);
               try { mainFix.data = await mainFix.p; } catch (e) { mainFix.data = null; }
               if (mainFix.data) {
+                mainFix.tried = true;
                 uqMainName = UQ_MAIN_N;
                 if (!ffw.__normMain) {
                   await ffw.writeFile(UQ_MAIN_N, mainFix.data.slice(0));
@@ -1884,10 +1903,15 @@ rest = sub(rest,
                 code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
                 data = null;
                 try { data = await ffw.readFile('out.mp4'); } catch (e) {}
+              } else {
+                /* Перекодувати не вдалось. Доти в цьому разі лишалось
+                   «перекодуй це відео сам» — хоч ми щойно спробували
+                   це зробити й не змогли. */
+                mainFix.failed = true;
               }
             }
             if (code !== 0 || !data || data.length < 1024)
-              throw uqWhy(ffw, code, data);""",
+              throw uqWhy(ffw, code, data, mainFix);""",
   'хук: повтор на перекодованому відео')
 
 # Копія, яка підхопила варіант після того, як відео вже перекодували,
@@ -1910,9 +1934,19 @@ rest = sub(rest,
   /* Ця відмова означає рівно одне: у відео МІНЯЮТЬСЯ параметри кадру
      посеред файлу, а граф склейки перебудувати неможливо. Сирий рядок
      ffmpeg цього не каже, тож перекладаємо на дію. */
-  if (/inject frame into filter network/i.test(log.join(' ')))
-    head = 'у відео змінюються параметри кадру посеред файлу (роздільність або SAR) — '
-         + 'склейка такого не переживає. Перекодуй це відео в постійний розмір і спробуй ще раз';""",
+  if (/inject frame into filter network/i.test(log.join(' '))) {
+    const why = 'у відео змінюються параметри кадру посеред файлу (роздільність або SAR) — '
+              + 'склейка такого не переживає';
+    /* Три різні історії, які доти виглядали однаково. Без цього
+       підпису незрозуміло, чи ми взагалі пробували перекодувати. */
+    head = fix && fix.tried
+      ? why + ': перекодував відео в постійний кадр — і склейка однаково впала. '
+            + 'Схоже, річ у самому хуку: спробуй інший файл'
+      : fix && fix.failed
+        ? why + ', а перекодувати його не вдалось. Перекодуй файл сам '
+              + '(постійна роздільність, h264 + aac) і спробуй ще раз'
+        : why + '. Перекодуй це відео в постійний розмір і спробуй ще раз';
+  }""",
   'хук: людське пояснення відмови')
 
 
