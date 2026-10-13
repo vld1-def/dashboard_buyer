@@ -577,7 +577,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
             <thead class="bg-black/40 sticky top-0 backdrop-blur-md text-slate-400 uppercase font-black">
               <tr>
                 <th class="p-4">Date</th><th class="p-4">Account</th><th class="p-4">GEO</th>
-                <th class="p-4 text-emerald-400">Offer</th><th class="p-4">Funnel</th>
+                <th class="p-4 text-emerald-400">Offer</th>
+                <!-- Лендінг — повний рядок оффера з Keitaro. Він строго
+                     дрібніший за офер, тому стоїть праворуч від нього. -->
+                <th class="p-4 text-amber-400">Landing</th><th class="p-4">Funnel</th>
                 <th class="p-4 text-right">Spend</th><th class="p-4 text-center text-orange-400">Leads</th>
                 <th class="p-4 text-center text-blue-400">Regs</th><th class="p-4 text-center text-green-500">Deps</th>
               </tr>
@@ -1081,7 +1084,10 @@ const DEVICE_LABELS = {
 // --- ГЛОБАЛЬНІ ЗМІННІ ---
 let currentTeam = localStorage.getItem('selected_team') || "Makeberry";
 let mappingDB = { providers: {}, funnels: {} };
-let datasetToImport = []; 
+let datasetToImport = [];
+/* Що з ЦЬОГО прев'ю вже лягло в базу. Потрібно для повторного Save
+   після часткової відмови: без цього перша таблиця заливалась удруге. */
+let dsSavedDaily = false, dsSavedCrea = false, dsNoLanding = false; 
 let creativesToImport = [];
 let allFunnels = []; 
 let allProviders = [];
@@ -1468,7 +1474,7 @@ async function tsSave(key, value, done, quiet) {
    хто викликав, знає різницю між «немає налаштувань» і «не дали». */
 async function tsRead(keys) {
   const { data, error } = await sb.from('team_settings')
-    .select('key, value').eq('team_name', currentTeam).in('key', keys);
+    .select('key, value, created_by').eq('team_name', currentTeam).in('key', keys);
   if (error) {
     alert('Could not read the settings for team "' + currentTeam + '": '
       + (error.message || error.code)
@@ -1476,7 +1482,32 @@ async function tsRead(keys) {
       + ' saving over them would be a guess. Run TEAM_SETTINGS_OWN.sql.');
     return null;
   }
-  return data || [];
+  /* СВІЙ РЯДОК — ПЕРШИЙ.
+
+     Ключ у таблиці — (created_by, key), тобто на один key припадає по
+     рядку на людину: баєр, асистент, адмін. А select без order by
+     віддає їх у порядку, у якому вони лежать у таблиці, — і Postgres
+     кладе оновлений рядок у кінець. Тобто досить було асистенту
+     зберегти СВОЇ налаштування, і наступного дня імпорт читав чужі:
+     інший шаблон неймінгу, інші колонки Keitaro. Виглядало це як
+     «чомусь перестало розпізнавати гео й апку», причому не всюди —
+     лише там, де два набори розходяться.
+
+     Тому сортуємо: свій рядок завжди перший. Усі, хто бере rows[0] або
+     перший рядок на ключ, одразу правi. */
+  /* Чекаємо на uid, а не сподіваємось, що він уже є: порядок викликів
+     тут не контролює ніхто (дві сторінки, два життєвих цикли — див.
+     uidReady), а без uid «свій рядок» визначити нічим. Обіцянка
+     кешована, тож виток до бази все одно один. */
+  let mine = '';
+  try { mine = String((await uidReady()) || ''); } catch (e) { mine = ''; }
+  const rows = (data || []).slice()
+    .sort((a, b) => Number(String(b.created_by || '') === mine)
+                  - Number(String(a.created_by || '') === mine));
+  const alien = rows.filter(r => mine && String(r.created_by || '') !== mine).length;
+  if (alien) console.log(`team_settings: ${rows.length} rows for [${keys.join(', ')}], `
+    + `${alien} of them belong to teammates — using my own`);
+  return rows;
 }
 
 /* prov — перебивки колонок під постачальника прілок:
@@ -1761,8 +1792,9 @@ async function loadKeitaroMap() {
   try {
     // Два ключі одним запитом: колонки потрібні тим самим екраном.
     const rows = await tsRead(['keitaro_map', 'keitaro_cols']);
+    // Перший рядок на ключ — свій: tsRead ставить його попереду.
     const by = {};
-    (rows || []).forEach(r => { by[r.key] = r.value; });
+    (rows || []).forEach(r => { if (by[r.key] === undefined) by[r.key] = r.value; });
     if (by.keitaro_map) keitaroMap = { ...KM_DEFAULT, ...JSON.parse(by.keitaro_map) };
     if (by.keitaro_cols) {
       const v = JSON.parse(by.keitaro_cols);
@@ -1877,7 +1909,13 @@ let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
 async function loadAppParse() {
   try {
     const data = await tsRead(['app_parse', 'app_profiles', 'pwa_parse']);
+    /* Тільки перший рядок на ключ — свій (tsRead ставить його попереду).
+       Доти forEach ішов по всіх, і останній перезаписував: шаблон
+       неймінгу ставав чиїмось чужим, а разом з ним — гео і апка. */
+    const took = new Set();
     (data || []).forEach(r => {
+      if (took.has(r.key)) return;
+      took.add(r.key);
       if (r.key === 'app_parse')    appParse    = JSON.parse(r.value) || {};
       if (r.key === 'app_profiles') appProfiles = JSON.parse(r.value) || {};
       // Порожній рядок у базі не має стирати типовий шаблон — інакше
@@ -2946,6 +2984,21 @@ function renderFxReport(used) {
 
 // Акаунти, у яких немає агента — інакше комісія по них просто не порахується,
 // і зрозумієш це вже за підсумками місяця.
+/* ЯКИЙ ШАБЛОН НЕЙМІНГУ ЗАРАЗ У РОБОТІ.
+
+   «Шаблон зсунутий — виправ у налаштуваннях» нічим не допомагає, коли в
+   налаштуваннях шаблон правильний. А він може бути правильним і при
+   цьому не тим, що взяли: на кожну людину в team_settings свій рядок
+   (див. tsRead), плюс профілі підбираються під конкретний неймінг.
+   Тому пишемо маску, якою РОЗБИРАЛИ, і скільком профілям вона може
+   поступитись. */
+function impMaskNow() {
+  if (trafficMode !== 'app') return pwaMask || '—';
+  const base = (apCfgOf('') || {}).mask || '—';
+  const n = Object.keys(appProfiles || {}).length;
+  return base + (n ? ` (+${n} profile${n > 1 ? 's' : ''} matched per name)` : '');
+}
+
 function renderAgentReport(noAgent, hidden) {
   const el = document.getElementById('agent-report');
   if (!el) return;
@@ -2976,13 +3029,15 @@ function renderAgentReport(noAgent, hidden) {
     <span>&#9888;&#65039;</span><div>In <b>${geoMaskBad}</b> rows the <b>{geo}</b> slot of the
     ${trafficMode === 'app' ? 'APP' : 'PWA'} pattern held something that is not a country
     (a number, a tail of the name) &mdash; geo was taken from the report instead.
-    The pattern is shifted: fix it in <b>Settings &rarr; ${trafficMode === 'app' ? 'APP' : 'PWA'}</b>.
+    The pattern in use: <span class="font-mono text-rose-200">${impMaskNow()}</span>.
+    Fix it in <b>Settings &rarr; ${trafficMode === 'app' ? 'APP' : 'PWA'}</b>.
     <span class="text-slate-500">Until you do, the funnel (KTID) is read from the wrong slot too.</span></div></div>`);
 
   /* Той самий зсув, але по креативу. Раніше про це не було ні слова:
      креативом ставав шматок назви («UZ»), і всі рядки збирались в один. */
   if (cidMaskBad) parts.push(`<div class="flex gap-2 items-start text-rose-300">
     <span>&#9888;&#65039;</span><div>In <b>${cidMaskBad}</b> rows the <b>{cid}</b> slot of the APP pattern
+    <span class="font-mono text-rose-200">${impMaskNow()}</span>
     held something other than the ad &mdash; the creative was taken from the <b>Ad name</b> column instead.
     The pattern is shifted: fix it in <b>Settings &rarr; APP</b>, or drop <span class="font-mono">{cid}</span>
     from it if the creative is not in the campaign name at all.
@@ -3448,6 +3503,8 @@ async function processCampaignData(map, lines) {
 
   datasetToImport = merged.daily;
   creativesToImport = merged.creatives;
+  // Новий набір — нічого з нього ще не збережено.
+  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false;
   
   renderDualPreview();
 }
@@ -3535,6 +3592,14 @@ function renderDualPreview() {
         </td>
         <td class="p-2 w-48">
           ${offerSelectHtml}
+        </td>
+        <!-- Руками не правимо: лендінг приходить рядком із Keitaro, і
+             переписати його тут означало б розійтись із тим, що в
+             звіті. Повний текст — у підказці, бо рядки довгі. -->
+        <td class="p-4 max-w-[260px]">
+          ${r.landing
+            ? `<span class="text-[11px] font-bold text-amber-300/90 block truncate" title="${String(r.landing).replace(/"/g, '&quot;')}">${r.landing}</span>`
+            : '<span class="text-[11px] font-bold text-slate-600">—</span>'}
         </td>
         <td class="p-4 italic">
           <div class="editable-cell border-b border-white/10" contenteditable="true" 
@@ -3693,26 +3758,86 @@ async function confirmDatasetImport() {
     team_name: currentTeam
   }));
 
-  // Відправка
-  const res1 = await sb.from('daily_stats').insert(finalDaily);
-  const res2 = await sb.from('creatives_stats').insert(finalCreatives);
+  /* ВІДМОВА ЗБЕРЕЖЕННЯ МУСИТЬ БУТИ ВИДИМОЮ.
+
+     Доти помилка daily_stats ішла ТІЛЬКИ в console.error: на екрані ні
+     тосту, ні алерту, прев'ю на місці — рівно «чомусь не зберігається».
+     А падало воно передбачувано: колонка landing є в коді, але її немає
+     в базі, поки не виконаний LANDINGS.sql. PostgREST на таке не кидає
+     виняток — він віддає {error}, і його треба читати.
+
+     ПОВТОРНЕ ЗБЕРЕЖЕННЯ. Якщо одна таблиця лягла, а друга ні, прев'ю
+     лишається — і другий Save заливав першу таблицю ВДРУГЕ. Тому
+     тримаємо, що вже пішло: повторний Save добирає лише те, чого в
+     базі ще немає. */
+  let res1 = { error: null };
+  if (!dsSavedDaily) {
+    res1 = await sb.from('daily_stats').insert(finalDaily);
+    /* Немає колонки landing — але дані є, і тримати їх заручником
+       одного стовпця немає за що. Зберігаємо без лендінгів і кажемо,
+       що виконати, щоб вони з'явились. */
+    if (res1.error && dsMissingCol(res1.error, 'landing')) {
+      dsNoLanding = true;
+      res1 = await sb.from('daily_stats')
+        .insert(finalDaily.map(({ landing, ...rest }) => rest));
+    }
+    if (!res1.error) dsSavedDaily = true;
+  }
+  let res2 = { error: null };
+  if (!dsSavedCrea) {
+    res2 = await sb.from('creatives_stats').insert(finalCreatives);
+    if (!res2.error) dsSavedCrea = true;
+  }
 
   if (res1.error || res2.error) {
-    if (res1.error) console.error("Помилка Daily:", res1.error);
-    if (res2.error) {
-        console.error("Помилка Creatives:", res2.error);
-        alert("The creatives table rejected the data: " + res2.error.message);
-    }
-  } else {
-    showStatus(`Success! Saved ${finalDaily.length} rows.`);
-    
-    // Ховаємо плаваючу панель
-    const floating = document.getElementById('floating-actions');
-    if (floating) floating.classList.add('hidden');
-    
-    // Повертаємо зону завантаження
-    resetImport('dataset');
+    console.error('Import rejected:', { daily: res1.error, creatives: res2.error });
+    const bad = [], good = [];
+    if (res1.error) bad.push('daily_stats — ' + (res1.error.message || res1.error.code || 'unknown'));
+    else if (dsSavedDaily) good.push(`daily_stats: ${finalDaily.length} rows`);
+    if (res2.error) bad.push('creatives_stats — ' + (res2.error.message || res2.error.code || 'unknown'));
+    else if (dsSavedCrea) good.push(`creatives_stats: ${finalCreatives.length} rows`);
+    const hint = [res1.error, res2.error].some(e => e && (String(e.code) === '42501'
+                   || /row-level security/i.test(String(e.message || ''))))
+      ? '\n\nThis looks like RLS: the row belongs to the team but the policy will not let you write it.'
+      : [res1.error, res2.error].some(e => e && dsMissingCol(e, ''))
+        ? '\n\nA column the page writes is missing in the database — run the SQL file that adds it.'
+        : '';
+    alert('NOT saved:\n' + bad.join('\n')
+      + (good.length ? '\n\nWhat did go in:\n' + good.join('\n') : '')
+      + hint
+      + '\n\nThe preview is still here — fix it and press Save again.'
+      + ' What already went in will not be written twice.');
+    showStatus('Not saved — see the message');
+    return;
   }
+
+  showStatus(`Success! Saved ${finalDaily.length} rows.`
+    + (dsNoLanding ? ' Landings skipped.' : ''));
+  /* Збереглось, але без лендінгів — це не дрібниця: у звітах не буде
+     розбивки, і зрозуміти, чому, можна лише звідси. */
+  if (dsNoLanding)
+    alert('Saved — but WITHOUT landings: the daily_stats table has no "landing" column yet.'
+      + '\n\nRun LANDINGS.sql in Supabase \u2192 SQL Editor, then import this file again'
+      + ' to get the landing split.');
+
+  // Ховаємо плаваючу панель
+  const floating = document.getElementById('floating-actions');
+  if (floating) floating.classList.add('hidden');
+
+  // Повертаємо зону завантаження
+  resetImport('dataset');
+}
+
+/* Колонки немає в базі. PostgREST віддає 42703 і називає її в тексті,
+   але код приходить не завжди — тому дивимось і на текст. Порожнє ім'я
+   означає «будь-яка колонка», для загальної підказки. */
+function dsMissingCol(err, name) {
+  if (!err) return false;
+  const msg = String(err.message || '');
+  const missing = String(err.code || '') === '42703' || /does not exist/i.test(msg);
+  if (!missing) return false;
+  if (!name) return true;
+  return new RegExp('(^|[^a-z0-9_])' + name + '([^a-z0-9_]|$)', 'i').test(msg);
 }
 
 async function confirmCreativeImport() {
@@ -4065,6 +4190,8 @@ function switchMode(m) {
 }
 
 function resetImport(type) {
+  // Прев'ю пішло — разом із ним і пам'ять про те, що з нього збережено.
+  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false;
   // Приховуємо прев'ю
   const preview = document.getElementById('dataset-preview');
   if (preview) preview.classList.add('hidden');
