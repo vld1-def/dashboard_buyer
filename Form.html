@@ -3614,13 +3614,59 @@ function renderFunnelsTable(data) {
     <tr class="hover:bg-white/5 transition-colors border-b border-white/5">
       <td class="p-3 font-bold text-purple-300">${r.funnel_name || '—'}
         ${r.is_app ? '<span class="ml-1.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">APP</span>' : ''}</td>
-      <td class="p-3 text-center font-black text-emerald-300">${r.geo ? String(r.geo).toUpperCase() : '<span class="opacity-25">—</span>'}</td>
+      <td class="p-3 text-center">
+        <span contenteditable="true" onblur="updateFunnelGeo('${r.id}', this.innerText)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+              class="inline-block min-w-[36px] px-2 py-0.5 rounded bg-white/5 font-black text-emerald-300 outline-none focus:bg-white/10 cursor-text uppercase"
+              title="Клік — вписати або змінити гео. Воронку перезаносити не треба">${
+          r.geo ? String(r.geo).toUpperCase() : '—'}</span></td>
       <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
       <td class="p-3 text-right">
         <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
       </td>
     </tr>`).join('');
 }
+/* ГЕО ПРАВИМО ПРЯМО В ТАБЛИЦІ.
+
+   Колонка geo зʼявилась пізніше за самі воронки, і в усіх уже
+   збережених вона порожня. Єдиним способом її заповнити було
+   перезанести воронку — тобто видалити рядок і створити новий із тим
+   самим KTID. Це не «незручно», це спосіб загубити дані: KTID
+   лишається той самий, а id рядка інший.
+
+   Enter закриває редагування: інакше він вставляв би в клітинку
+   переніс рядка, і в базу поїхало б «UZ\n».
+
+   Порожнє значення (і прочерк) — це не помилка, а «гео не вказано»:
+   у Прілках такі воронки показуються завжди, тож очистити поле має
+   бути так само можливо, як і вписати. */
+async function updateFunnelGeo(id, val) {
+  const raw = String(val || '').replace(/[\s\u00a0]+/g, '').trim();
+  const geo = (raw === '' || raw === '—') ? null : raw.toUpperCase();
+  /* Дві-чотири літери. Цифри й сміття не пускаємо: порожня колонка
+     чесніша за «19» у графі гео — за таким значенням список апок
+     звузиться в нікуди, і зрозуміти це буде нізвідки. */
+  if (geo !== null && !/^[A-Z]{2,4}$/.test(geo)) {
+    alert('Гео — це 2–4 літери (UZ, KZ, UA). Порожнє поле означає «гео не вказано».');
+    await refreshFunnelsTable();
+    return;
+  }
+  const { error } = await sb.from('funnels_mapping').update({ geo }).eq('id', id);
+  if (error) {
+    const m = String(error.message || '');
+    alert('Не вдалось зберегти гео: ' + m
+      + (/geo/i.test(m) && /(does not exist|schema cache)/i.test(m)
+         ? '\n\nУ funnels_mapping ще немає колонки geo. Виконай FUNNEL_GEO.sql, тоді Ctrl+Shift+R.'
+         : ''));
+    await refreshFunnelsTable();
+    return;
+  }
+  showStatus(geo ? 'GEO: ' + geo : 'GEO cleared');
+  // Довідник тримає імпорт і список апок у Прілках — перечитуємо обидва.
+  await refreshFunnelsTable();
+  await loadMappings();
+}
+
 async function deleteFunnelMapping(id) {
   if (!confirm("Remove this funnel mapping?")) return;
   const { error } = await sb.from('funnels_mapping').delete().eq('id', id);
