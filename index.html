@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 17:16">
+  <meta name="build" content="build 13.10 18:18">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5138,7 +5138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 17:16</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 18:18</div>
     </div>
   </aside>
 
@@ -16808,6 +16808,44 @@ const UQ_MAIN_N = 'in_n.mp4';
    відмови склейки — див. uqNormMain. */
 let uqMainName = 'in.mp4';
 
+/* РОЗМІР І ТРИВАЛІСТЬ — ВІД САМОГО FFMPEG, А НЕ ВІД БРАУЗЕРА.
+
+   uqProbe читає <video>. Вона не знає HEVC з айфона, HDR і частини
+   mov/mkv — і тоді мовчки віддає нулі. А ще вона віддає розмір ПІСЛЯ
+   SAR: в анаморфному відео це 1440x1920 замість кодованих 1080x1920,
+   тоді як граф працює саме в кодованих пікселях. Для склейки обидва
+   випадки смертельні: хук приводиться до одних чисел, наше відео — до
+   інших, і concat відмовляється.
+
+   ffmpeg уже тримає цей файл у себе, і виклик без вихідного файлу просто
+   друкує заголовок у журнал. Декодування тут немає — це мілісекунди на
+   файл, і вони заразом роблять надійними -ss/-t (обріз) і підпис
+   розміру під назвою файлу. */
+async function uqProbeFF(ff, name) {
+  if (ff.__log) ff.__log.length = 0;
+  try { await ff.exec(['-hide_banner', '-i', name]); } catch (e) {}
+  const lines = ((ff.__log) || []).map(l => String(l));
+  // Роздільність у рядку Video: завжди йде після коми — так її не
+  // сплутати з «0x31637661» (це тег кодека, а не розмір).
+  const v = (lines.find(l => /: Video: /.test(l)) || '').match(/, (\d{2,5})x(\d{2,5})/);
+  const d = (lines.find(l => /Duration: /.test(l)) || '').match(/Duration: (\d+):(\d\d):(\d\d(?:\.\d+)?)/);
+  const got = { w: v ? +v[1] : 0, h: v ? +v[2] : 0,
+                dur: d ? (+d[1] * 3600 + +d[2] * 60 + parseFloat(d[3])) : 0,
+                audio: lines.some(l => /: Audio: /.test(l)) };
+  /* ПОВОРОТ ІЗ МЕТАДАНИХ — НЕ НАШ КЛОПІТ, АЛЕ НАШІ ЧИСЛА.
+
+     Вертикальне відео з телефону часто лежить у файлі ЛЕЖАЧИ
+     (1280x720) плюс матриця повороту. ffmpeg застосовує її сам, ще до
+     фільтрів (autorotate), тож у граф заходить уже 720x1280 — а в
+     заголовку стоїть 1280x720. Узяти число з заголовка означало б
+     розтягнути кадр і знову розвести наше відео з хуком. */
+  const rot = (lines.find(l => /rotation of /.test(l)) || '').match(/rotation of (-?[0-9.]+)/);
+  const turn = rot ? Math.abs(Math.round(parseFloat(rot[1])) % 180) : 0;
+  if (turn === 90) { const t = got.w; got.w = got.h; got.h = t; }
+  if (ff.__log) ff.__log.length = 0;
+  return got;
+}
+
 /* Хук → кадр креатива: той самий розмір, SAR, fps і pix_fmt, без звуку
    (на секундах хука все одно тиша з anullsrc, тож дорожку хука ми не
    декодуємо взагалі — одна поверхня відмови менше).
@@ -16820,7 +16858,8 @@ let uqMainName = 'in.mp4';
    беремо звук (він нам потрібен) і тримаємо тривалість — обрізання
    робить уже основний прохід, тут лише вирівнюємо параметри. */
 async function uqNormMain(ff, meta) {
-  const W = meta.w || 1080, H = meta.h || 1920;
+  if (!meta.w || !meta.h) return null;
+  const W = meta.w, H = meta.h;
   const code = await ff.exec(['-i', 'in.mp4',
     '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
          + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
@@ -16837,7 +16876,10 @@ async function uqNormMain(ff, meta) {
 
 async function uqNormCover(ff, meta) {
   if (!uqCover || uqCover.kind !== 'video') return null;
-  const W = meta.w || 1080, H = meta.h || 1920;
+  // Кадр невідомий — приводити нема до чого. Вгадані 1080x1920 тут
+  // колись і були причиною відмови склейки.
+  if (!meta.w || !meta.h) return null;
+  const W = meta.w, H = meta.h;
   const code = await ff.exec(['-i', 'cover.' + uqCover.ext, '-an',
     '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
          + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
@@ -16903,13 +16945,30 @@ function uqFakeMeta() {
   return tags;
 }
 
+/* Вихідний кадр варіанта. Сторони парні (yuv420p непарну не кодує) і
+   зсунуті на «Frame size», якщо він увімкнений. null — розмір
+   невідомий: ні браузер, ні ffmpeg його не назвали. */
+function uqOutFrame(p, meta) {
+  if (!meta.w || !meta.h) return null;
+  const k = 1 + (p.size || 0) / 100;
+  const even = n => Math.max(2, Math.round(n * k / 2) * 2);
+  return { w: even(meta.w), h: even(meta.h) };
+}
+
 function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   const vf = [], args = [];
   // -ss перед -i: перемотка по контейнеру замість декодування у смітник
   // Трим — лише коли тривалість справді відома. Інакше -ss б'є навмання
   // і може перемотати за кінець: файл на виході порожній, і швидко.
   const durOK = Number.isFinite(meta.dur) && meta.dur > 0;
-  const concatMode = !!(cover && cover.kind === 'video' && cover.plan);
+  /* Кадр рахуємо тут і далі користуємось тільки ним — і для нашого
+     відео, і для хука. Доти ці два числа жили окремо, і «Frame size»
+     розводив їх на різні розміри. */
+  const out = uqOutFrame(p, meta);
+  /* Склейка можлива лише коли кадр відомий. Інакше хук довелось би
+     приводити до вгаданих 1080x1920, а наше відео лишалось би своїм —
+     тобто ми б знову власноруч зробили розбіжність. */
+  const concatMode = !!(cover && cover.kind === 'video' && cover.plan && out);
   const trimLeft = (durOK && p.trim) ? meta.dur - p.trim.head - p.trim.tail : 0;
   if (durOK && p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
   if (concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
@@ -16927,14 +16986,11 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   // Роздільність на виході: за замовчуванням повертаємо вихідну, але з
   // параметром «Frame size» трохи зсуваємо її. Сторони мусять лишатись
   // парними — інакше yuv420p не кодується.
-  if (meta.w && meta.h) {
-    const k = 1 + (p.size || 0) / 100;
-    const even = n => Math.max(2, Math.round(n * k / 2) * 2);
-    const ow = even(meta.w), oh = even(meta.h);
+  if (out) {
     // Масштаб додаємо лише коли він справді щось міняє. scale=w:h у той самий
     // розмір — це повний прохід swscale по кожному кадру задарма.
     // Після кропу чи повороту кадр уже інший, там масштаб потрібен завжди.
-    if (ow !== meta.w || oh !== meta.h || p.crop || p.rotate) vf.push(`scale=${ow}:${oh}`);
+    if (out.w !== meta.w || out.h !== meta.h || p.crop || p.rotate) vf.push(`scale=${out.w}:${out.h}`);
   }
   // ОСТАННІЙ ЗАПОБІЖНИК ПРО ПАРНІСТЬ СТОРІН.
   //
@@ -16984,10 +17040,13 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
 
      Обріз нашого відео (p.trim) робиться ТУТ, у графі, а не вхідними
      -ss/-t: ті різали б уже склеєний результат, тобто й cover заодно. */
-  if (cover && cover.kind === 'video' && cover.plan) {
+  if (concatMode) {
     const pl = cover.plan;
     const R = p.fps ? Math.max(15, Math.round(30 + p.fps)) : 30;
-    const W = meta.w || 1080, H = meta.h || 1920;
+    /* ТОЙ САМИЙ КАДР, ЩО В НАШОГО ВІДЕО — не розмір із проби.
+       Саме тут жила поломка: наше відео їхало в out (із «Frame size»),
+       а хук — у meta, і concat відмовлявся їх зводити. */
+    const W = out.w, H = out.h;
     // vf уже містить і масштаб, і setsar, і fps — беремо його як є для
     // нашого відео, а cover приводимо до того самого кадру окремо.
     const fit = `scale=${W}:${H}:force_original_aspect_ratio=increase,`
@@ -17065,9 +17124,24 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   }
   args.push('-c:v', 'libx264', '-preset', preset || 'veryfast',
             '-crf', String(quality), '-pix_fmt', 'yuv420p');
-  // Volume не чіпали — доріжку можна не перекодовувати. AAC на кожному
-  // варіанті коштував часу рівно ні за що.
-  if (p.volume) args.push('-c:a', 'aac', '-b:a', '128k');
+  /* Volume не чіпали — доріжку можна не перекодовувати. AAC на кожному
+     варіанті коштував часу рівно ні за що.
+
+     АЛЕ НЕ ПРИ СКЛЕЙЦІ. Там звук іде через filter_complex (тиша хука
+     плюс дорожка креатива), а скопіювати ВІДФІЛЬТРОВАНИЙ потік ffmpeg
+     не вміє:
+
+       Streamcopy requested for output stream fed from a complex
+       filtergraph. Filtering and streamcopy cannot be used together.
+       Error opening output files: Invalid argument        (код 234)
+
+     Доти цю відмову ловив відкат «у відео немає звуку»: він перебирав
+     варіант з -map 0:a?, той проходив, і на екрані все виглядало
+     успішно. Насправді дорожка креатива лягала з НУЛЯ, тобто з першого
+     кадру хука — звук їхав попереду картинки рівно на довжину хука.
+     Прогін справжнім ffmpeg із самої сторінки показав, що так падав
+     КОЖЕН склеєний варіант, у якого вимкнена «Volume». */
+  if (p.volume || concatMode) args.push('-c:a', 'aac', '-b:a', '128k');
   else args.push('-c:a', 'copy');
   args.push('-movflags', '+faststart', 'out.mp4');
   return args;
@@ -17153,7 +17227,15 @@ function uqWhy(ffw, code, data, fix) {
   /* Ця відмова означає рівно одне: у відео МІНЯЮТЬСЯ параметри кадру
      посеред файлу, а граф склейки перебудувати неможливо. Сирий рядок
      ffmpeg цього не каже, тож перекладаємо на дію. */
-  if (/inject frame into filter network/i.test(log.join(' '))) {
+  const mism = log.join(' ').match(/parameters \(size (\d+x\d+)[^)]*\)[^(]*\((\d+x\d+)/);
+  if (mism) {
+    /* Це НЕ про файл користувача: два шматки склейки отримали різний
+       кадр, тобто розійшлись наші власні числа. Доти така відмова
+       виглядала як «у твоєму відео міняються параметри» — і людина
+       перекодовувала файл, який і так був у порядку. */
+    head = `шматки склейки мають різний кадр (${mism[1]} проти ${mism[2]}) — це наша поломка, `
+         + 'а не проблема файлу. Напиши про це: такого бути не має';
+  } else if (/inject frame into filter network/i.test(log.join(' '))) {
     const why = 'у відео змінюються параметри кадру посеред файлу (роздільність або SAR) — '
               + 'склейка такого не переживає';
     /* Три різні історії, які доти виглядали однаково. Без цього
@@ -17290,6 +17372,58 @@ async function uqRun() {
 
       /* Хук під кадр ЦЬОГО креатива: meta в кожного файлу своя, тож
          нормалізуємо на кожен файл, а не раз на прогін. */
+      /* coverArg живе на весь прогін, а правки в ньому — на один файл.
+         Доти перший файл, у якого хук не привівся, обнуляв plan
+         НАЗАВЖДИ: решта черги тихо йшла без хука, а рядок про це стояв
+         лише під першим файлом. */
+      if (coverArg && uqCover) {
+        coverArg.plan = uqCoverPlan();
+        coverArg.kind = uqCover.kind || 'image';
+        coverArg.dur = uqCoverDur();
+        coverArg.noAudio = false;
+        coverArg.file = null;
+      }
+
+      /* Числа — з ffmpeg (див. uqProbeFF). Браузерні лишаються як
+         запасні: якщо ffmpeg промовчав, краще старе значення, ніж нуль. */
+      try {
+        const ffm = await uqProbeFF(ff, 'in.mp4');
+        if (ffm.w && ffm.h) { meta.w = ffm.w; meta.h = ffm.h; }
+        if (ffm.dur > 0) meta.dur = ffm.dur;
+        // Дорожку видно одразу — не треба валити перший варіант, щоб
+        // дізнатись, що звуку немає.
+        if (coverArg && (ffm.w || ffm.dur)) coverArg.noAudio = !ffm.audio;
+      } catch (e) { console.warn('uq: проба через ffmpeg не вдалась', e); }
+
+      /* ТРИВАЛІСТЬ ХУКА — ТОЮ Ж ПРОБОЮ.
+
+         Без неї немає плану склейки (uqCoverPlan рахує голову й хвіст
+         від srcDur), і хук тихо ставав накладкою: тривалість варіанта та
+         сама, на екрані жодного слова. А <video> не читає ні HEVC, ні
+         частину mov — тобто цілком нормальний хук із телефону просто не
+         приклеювався. ffmpeg уже тримає цей файл, тож питаємо його. */
+      if (uqCover && uqCover.kind === 'video' && !(uqCover.srcDur > 0)) {
+        try {
+          const cm = await uqProbeFF(ff, 'cover.' + uqCover.ext);
+          if (cm.dur > 0) {
+            uqCover.srcDur = cm.dur;
+            const hold = document.getElementById('uq-cover-dur');
+            if (hold) {
+              hold.max = cm.dur.toFixed(2);
+              if (!(parseFloat(hold.value) > 0)) hold.value = Math.min(3, cm.dur).toFixed(1);
+            }
+            if (coverArg) { coverArg.plan = uqCoverPlan(); coverArg.dur = uqCoverDur(); }
+          } else if (coverArg && coverArg.kind === 'video') {
+            const warn = document.createElement('p');
+            warn.className = 'text-[11px] font-bold text-amber-400 mt-3';
+            warn.textContent = `${uqCover.name}: тривалість хука не прочитали ні браузер, ні ffmpeg `
+              + `— приклеїти його неможливо, він лише накладається поверх початку. `
+              + `Перекодуй хук у звичайний mp4 (h264 + aac).`;
+            res.appendChild(warn);
+          }
+        } catch (e) { console.warn('uq: тривалість хука не прочитали', e); }
+      }
+
       uqMainName = 'in.mp4';
       const mainFix = { p: null, data: null };
       if (coverArg && coverArg.plan) {
@@ -17313,8 +17447,9 @@ async function uqRun() {
           const warn = document.createElement('p');
           warn.className = 'text-[11px] font-bold text-amber-400 mt-3';
           warn.textContent = `${file.name}: хук не вдалось привести до кадру креатива `
-            + `(ffmpeg не прочитав або не перекодував цей файл) — варіанти зроблено БЕЗ хука. `
-            + `Візьми інший хук або перекодуй його в постійний розмір.`;
+            + `(ffmpeg не прочитав або не перекодував цей файл) — його НЕ приклеєно, `
+            + `він накладений поверх перших ${coverArg.dur}с, тривалість варіанта та сама. `
+            + `Хочеш саме приклеювання — перекодуй хук у постійний розмір.`;
           res.appendChild(warn);
         }
       }
@@ -17387,7 +17522,13 @@ async function uqRun() {
                зводити. Це не причина завалити файл — перебираємо без
                звуку й запам'ятовуємо, щоб не повторювати спробу на
                кожному варіанті. */
-            if (code !== 0 && coverArg && coverArg.plan && !coverArg.noAudio) {
+            /* Відкат спрацьовує лише на СВОЇЙ відмові. Доти умова була
+               «код не нуль» — і він тихо підбирав будь-яку поломку
+               склейки, віддаючи варіант зі зсунутим звуком замість
+               чесної помилки. */
+            if (code !== 0 && coverArg && coverArg.plan && !coverArg.noAudio
+                && /matches no streams|Cannot find a matching stream|does not contain any stream/i
+                     .test(((ffw.__log || []).join(' ')))) {
               coverArg.noAudio = true;
               code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
             }
