@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 15:25">
+  <meta name="build" content="build 13.10 16:08">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5138,7 +5138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 15:25</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 16:08</div>
     </div>
   </aside>
 
@@ -15180,7 +15180,7 @@ async function apLoad() {
       String(a.funnel_name || '').localeCompare(String(b.funnel_name || ''), 'uk'));
     apAccounts = (ac.data || []).slice().sort((a, b) =>
       String(a.account_id || '').localeCompare(String(b.account_id || '')));
-    if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.length} апок · ${apAccounts.length} кабінетів`;
+    if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
   } catch (e) {
     apItems = [];
     if (sub) sub.textContent = 'не завантажилось: ' + (e.message || e.code || e);
@@ -15296,6 +15296,9 @@ function apRender() {
         </select>
         ${ktid ? `<code class="text-[11px] font-mono text-emerald-300 shrink-0">${apEsc(ktid)}</code>` : ''}
       </div>
+      ${ff.noApps ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
+        У довіднику немає жодної воронки з міткою APP. Познач прілки галочкою APP
+        у Form → Settings → Funnels — сюди йдуть тільки вони.</p>` : ''}
       ${ff.empty ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
         Під «${apEsc(it.provider || '—')}» і гео ${apEsc((it.geo || '—').toUpperCase())} апок не знайшлось — показано всі.
         Впиши гео воронкам у Form → Settings → Funnels.</p>` : ''}
@@ -15363,17 +15366,31 @@ function apProvOf(f) {
   return m ? m[1].trim() : '';
 }
 function apFunnelsFor(it) {
+  /* ТІЛЬКИ ПОЗНАЧЕНЕ APP.
+
+     У довіднику воронок лежать і PWA, і прілки — розрізняє їх галочка
+     APP у Form → Settings → Funnels. Тут потрібні рівно прілки: вибір
+     апки для неймінгу PWA-воронкою не закривається, а KTID у неї інший
+     за змістом.
+
+     Якщо воронок з міткою APP немає ЗОВСІМ — список лишається
+     порожнім, і ми кажемо, чому. Падати назад на весь довідник тут
+     не можна: саме так PWA і потрапляли у вибір апок. */
+  const apps = apFunnels.filter(f => f.is_app);
+  if (!apps.length) return { list: [], narrowed: false, noApps: true };
+
   const prov = String(it.provider || '').trim().toLowerCase();
   const geo  = String(it.geo || '').trim().toUpperCase();
-  const fit = apFunnels.filter(f => {
+  const fit = apps.filter(f => {
     const fp = apProvOf(f).toLowerCase();
     const fg = String(f.geo || '').trim().toUpperCase();
     if (prov && fp && fp !== prov) return false;
     if (geo && fg && fg !== geo) return false;
     return true;
   });
-  return fit.length ? { list: fit, narrowed: fit.length < apFunnels.length }
-                    : { list: apFunnels, narrowed: false, empty: true };
+  // Звузили в нікуди — показуємо всі ПРІЛКИ (не весь довідник) і кажемо це.
+  return fit.length ? { list: fit, narrowed: fit.length < apps.length }
+                    : { list: apps, narrowed: false, empty: true };
 }
 // Підпис у списку: назва, гео й KTID — щоб число було видно відразу,
 // не відкриваючи нічого.
@@ -15566,7 +15583,7 @@ async function apSubmit() {
   apEditId = null;
   document.getElementById('ap-editor').classList.add('hidden');
   const sub = document.getElementById('ap-sub');
-  if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.length} апок · ${apAccounts.length} кабінетів`;
+  if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
   apRenderTree(); apRender();
 }
 
@@ -16711,6 +16728,10 @@ async function uqWriteCover(ffw) {
 }
 
 const UQ_COVER_N = 'cover_n.mp4';
+const UQ_MAIN_N = 'in_n.mp4';
+/* Яким файлом зайти в основний прохід. Міняється лише після
+   відмови склейки — див. uqNormMain. */
+let uqMainName = 'in.mp4';
 
 /* Хук → кадр креатива: той самий розмір, SAR, fps і pix_fmt, без звуку
    (на секундах хука все одно тиша з anullsrc, тож дорожку хука ми не
@@ -16720,6 +16741,25 @@ const UQ_COVER_N = 'cover_n.mp4';
    склейки, бо мусять бути різними в кожному варіанті. Інакше перші
    секунди всіх копій стали б байт-у-байт однакові, тобто ми власноруч
    зробили б спільний шматок у всіх креативів. */
+/* Наше відео → постійний кадр. Відрізняється від хука двома речами:
+   беремо звук (він нам потрібен) і тримаємо тривалість — обрізання
+   робить уже основний прохід, тут лише вирівнюємо параметри. */
+async function uqNormMain(ff, meta) {
+  const W = meta.w || 1080, H = meta.h || 1920;
+  const code = await ff.exec(['-i', 'in.mp4',
+    '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+         + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+    /* Звук теж вирівнюємо: якщо параметри міняються в ДОРОЖЦІ, граф
+       падає так само, і відмова виглядає однаково. */
+    '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-b:a', '192k',
+    '-movflags', '+faststart', UQ_MAIN_N]);
+  if (code !== 0) return null;
+  let data = null;
+  try { data = await ff.readFile(UQ_MAIN_N); } catch (e) { return null; }
+  return (data && data.length > 1024) ? data : null;
+}
+
 async function uqNormCover(ff, meta) {
   if (!uqCover || uqCover.kind !== 'video') return null;
   const W = meta.w || 1080, H = meta.h || 1920;
@@ -16798,7 +16838,7 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   const trimLeft = (durOK && p.trim) ? meta.dur - p.trim.head - p.trim.tail : 0;
   if (durOK && p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
   if (concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
-  args.push('-i', 'in.mp4');
+  args.push('-i', uqMainName);
   if (cover) args.push('-i', cover.file || ('cover.' + cover.ext));
   if (!concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
   if (p.rotate) vf.push(`rotate=${p.rotate}*PI/180:fillcolor=black`);
@@ -17159,6 +17199,8 @@ async function uqRun() {
 
       /* Хук під кадр ЦЬОГО креатива: meta в кожного файлу своя, тож
          нормалізуємо на кожен файл, а не раз на прогін. */
+      uqMainName = 'in.mp4';
+      const mainFix = { p: null, data: null };
       if (coverArg && coverArg.plan) {
         uqCover.norm = null;
         setStatus(`${file.name} · готую хук під кадр креатива…`);
@@ -17231,6 +17273,10 @@ async function uqRun() {
             // його виняток валив увесь прогін, а в пулі ще й обривав сусідні копії
             // посеред кодування.
             const p = uqPickParams();
+            if (mainFix.data && !ffw.__normMain) {
+              await ffw.writeFile(UQ_MAIN_N, mainFix.data.slice(0));
+              ffw.__normMain = true;
+            }
             if (ffw.__log) ffw.__log.length = 0;
             let code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
             /* «matches no streams» при склейці означає рівно одне: у
@@ -17246,6 +17292,29 @@ async function uqRun() {
             // валідний mp4 навіть на секунду важить кілограми цього.
             let data = null;
             try { data = await ffw.readFile('out.mp4'); } catch (e) {}
+            /* Кадр міняється посеред НАШОГО відео. У графі це не
+               лагодиться — відмова стається до фільтрів. Перекодовуємо
+               відео в постійний кадр (раз на файл) і заходимо ще раз.
+               Проміс спільний: друга копія чекає ту саму роботу, а не
+               починає другу. */
+            if ((code !== 0 || !data || data.length < 1024)
+                && coverArg && coverArg.plan
+                && /inject frame into filter network/i.test(((ffw.__log || []).join(' ')))) {
+              setStatus(`${file.name} · відео з непостійним кадром — перекодовую і пробую ще раз…`);
+              mainFix.p = mainFix.p || uqNormMain(ffw, meta);
+              try { mainFix.data = await mainFix.p; } catch (e) { mainFix.data = null; }
+              if (mainFix.data) {
+                uqMainName = UQ_MAIN_N;
+                if (!ffw.__normMain) {
+                  await ffw.writeFile(UQ_MAIN_N, mainFix.data.slice(0));
+                  ffw.__normMain = true;
+                }
+                if (ffw.__log) ffw.__log.length = 0;
+                code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+                data = null;
+                try { data = await ffw.readFile('out.mp4'); } catch (e) {}
+              }
+            }
             if (code !== 0 || !data || data.length < 1024)
               throw uqWhy(ffw, code, data);
             const took = performance.now() - vStart;

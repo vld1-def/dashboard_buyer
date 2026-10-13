@@ -9026,7 +9026,7 @@ async function apLoad() {
       String(a.funnel_name || '').localeCompare(String(b.funnel_name || ''), 'uk'));
     apAccounts = (ac.data || []).slice().sort((a, b) =>
       String(a.account_id || '').localeCompare(String(b.account_id || '')));
-    if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.length} апок · ${apAccounts.length} кабінетів`;
+    if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
   } catch (e) {
     apItems = [];
     if (sub) sub.textContent = 'не завантажилось: ' + (e.message || e.code || e);
@@ -9142,6 +9142,9 @@ function apRender() {
         </select>
         ${ktid ? `<code class="text-[11px] font-mono text-emerald-300 shrink-0">${apEsc(ktid)}</code>` : ''}
       </div>
+      ${ff.noApps ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
+        У довіднику немає жодної воронки з міткою APP. Познач прілки галочкою APP
+        у Form → Settings → Funnels — сюди йдуть тільки вони.</p>` : ''}
       ${ff.empty ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
         Під «${apEsc(it.provider || '—')}» і гео ${apEsc((it.geo || '—').toUpperCase())} апок не знайшлось — показано всі.
         Впиши гео воронкам у Form → Settings → Funnels.</p>` : ''}
@@ -9209,17 +9212,31 @@ function apProvOf(f) {
   return m ? m[1].trim() : '';
 }
 function apFunnelsFor(it) {
+  /* ТІЛЬКИ ПОЗНАЧЕНЕ APP.
+
+     У довіднику воронок лежать і PWA, і прілки — розрізняє їх галочка
+     APP у Form → Settings → Funnels. Тут потрібні рівно прілки: вибір
+     апки для неймінгу PWA-воронкою не закривається, а KTID у неї інший
+     за змістом.
+
+     Якщо воронок з міткою APP немає ЗОВСІМ — список лишається
+     порожнім, і ми кажемо, чому. Падати назад на весь довідник тут
+     не можна: саме так PWA і потрапляли у вибір апок. */
+  const apps = apFunnels.filter(f => f.is_app);
+  if (!apps.length) return { list: [], narrowed: false, noApps: true };
+
   const prov = String(it.provider || '').trim().toLowerCase();
   const geo  = String(it.geo || '').trim().toUpperCase();
-  const fit = apFunnels.filter(f => {
+  const fit = apps.filter(f => {
     const fp = apProvOf(f).toLowerCase();
     const fg = String(f.geo || '').trim().toUpperCase();
     if (prov && fp && fp !== prov) return false;
     if (geo && fg && fg !== geo) return false;
     return true;
   });
-  return fit.length ? { list: fit, narrowed: fit.length < apFunnels.length }
-                    : { list: apFunnels, narrowed: false, empty: true };
+  // Звузили в нікуди — показуємо всі ПРІЛКИ (не весь довідник) і кажемо це.
+  return fit.length ? { list: fit, narrowed: fit.length < apps.length }
+                    : { list: apps, narrowed: false, empty: true };
 }
 // Підпис у списку: назва, гео й KTID — щоб число було видно відразу,
 // не відкриваючи нічого.
@@ -9412,7 +9429,7 @@ async function apSubmit() {
   apEditId = null;
   document.getElementById('ap-editor').classList.add('hidden');
   const sub = document.getElementById('ap-sub');
-  if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.length} апок · ${apAccounts.length} кабінетів`;
+  if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
   apRenderTree(); apRender();
 }
 

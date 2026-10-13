@@ -1792,6 +1792,117 @@ rest = sub(rest,
       const jobs = Math.min(count, uqJobCount(file.size));""",
   'хук: нормалізація на кожен файл')
 
+# ── ТЕ САМЕ, АЛЕ З САМИМ ВІДЕО ──────────────────────────────────────
+#
+# Нормалізація хука закрила половину випадків. Друга половина — коли
+# кадр міняється посеред НАШОГО відео: буває в записів з екрана, у
+# файлів, зібраних із двох шматків, і в усього, що пережило кілька
+# перекодувань. Унікалізація без хука такий файл переживає (простий
+# -vf, граф один і його можна перебудувати на ходу), а склейка — ні.
+#
+# Перекодувати все відео заздалегідь означало б платити повним
+# кодуванням за кожен файл, щоб урятувати рідкісний. Тому робимо це
+# ЛИШЕ ПІСЛЯ ВІДМОВИ і лише раз на файл: перший варіант, що впав саме
+# на цьому, перекодовує відео в постійний кадр, решта вже беруть
+# готове. Так звичайний файл не платить нічого, а зламаний усе одно
+# доходить до кінця.
+rest = sub(rest,
+  """async function uqNormCover(ff, meta) {""",
+  """/* Наше відео → постійний кадр. Відрізняється від хука двома речами:
+   беремо звук (він нам потрібен) і тримаємо тривалість — обрізання
+   робить уже основний прохід, тут лише вирівнюємо параметри. */
+async function uqNormMain(ff, meta) {
+  const W = meta.w || 1080, H = meta.h || 1920;
+  const code = await ff.exec(['-i', 'in.mp4',
+    '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+         + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+    /* Звук теж вирівнюємо: якщо параметри міняються в ДОРОЖЦІ, граф
+       падає так само, і відмова виглядає однаково. */
+    '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-b:a', '192k',
+    '-movflags', '+faststart', UQ_MAIN_N]);
+  if (code !== 0) return null;
+  let data = null;
+  try { data = await ff.readFile(UQ_MAIN_N); } catch (e) { return null; }
+  return (data && data.length > 1024) ? data : null;
+}
+
+async function uqNormCover(ff, meta) {""",
+  'хук: нормалізація самого відео')
+
+rest = sub(rest,
+  "const UQ_COVER_N = 'cover_n.mp4';",
+  "const UQ_COVER_N = 'cover_n.mp4';\n"
+  "const UQ_MAIN_N = 'in_n.mp4';\n"
+  "/* Яким файлом зайти в основний прохід. Міняється лише після\n"
+  "   відмови склейки — див. uqNormMain. */\n"
+  "let uqMainName = 'in.mp4';",
+  'хук: назва основного входу')
+
+rest = sub(rest,
+  "  args.push('-i', 'in.mp4');",
+  "  args.push('-i', uqMainName);",
+  'хук: основний вхід через змінну')
+
+# Скидаємо на кожен файл: нормалізоване відео попереднього файлу для
+# наступного — чуже, і зайти в нього означало б видати не те відео.
+rest = sub(rest,
+  """      if (coverArg && coverArg.plan) {
+        uqCover.norm = null;""",
+  """      uqMainName = 'in.mp4';
+      const mainFix = { p: null, data: null };
+      if (coverArg && coverArg.plan) {
+        uqCover.norm = null;""",
+  'хук: скидання на кожен файл')
+
+# Повтор після відмови: перекодувати відео й зайти ще раз.
+rest = sub(rest,
+  """            let data = null;
+            try { data = await ffw.readFile('out.mp4'); } catch (e) {}
+            if (code !== 0 || !data || data.length < 1024)
+              throw uqWhy(ffw, code, data);""",
+  """            let data = null;
+            try { data = await ffw.readFile('out.mp4'); } catch (e) {}
+            /* Кадр міняється посеред НАШОГО відео. У графі це не
+               лагодиться — відмова стається до фільтрів. Перекодовуємо
+               відео в постійний кадр (раз на файл) і заходимо ще раз.
+               Проміс спільний: друга копія чекає ту саму роботу, а не
+               починає другу. */
+            if ((code !== 0 || !data || data.length < 1024)
+                && coverArg && coverArg.plan
+                && /inject frame into filter network/i.test(((ffw.__log || []).join(' ')))) {
+              setStatus(`${file.name} · відео з непостійним кадром — перекодовую і пробую ще раз…`);
+              mainFix.p = mainFix.p || uqNormMain(ffw, meta);
+              try { mainFix.data = await mainFix.p; } catch (e) { mainFix.data = null; }
+              if (mainFix.data) {
+                uqMainName = UQ_MAIN_N;
+                if (!ffw.__normMain) {
+                  await ffw.writeFile(UQ_MAIN_N, mainFix.data.slice(0));
+                  ffw.__normMain = true;
+                }
+                if (ffw.__log) ffw.__log.length = 0;
+                code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+                data = null;
+                try { data = await ffw.readFile('out.mp4'); } catch (e) {}
+              }
+            }
+            if (code !== 0 || !data || data.length < 1024)
+              throw uqWhy(ffw, code, data);""",
+  'хук: повтор на перекодованому відео')
+
+# Копія, яка підхопила варіант після того, як відео вже перекодували,
+# мусить мати цей файл у себе: файлові системи в копій різні.
+rest = sub(rest,
+  """            const p = uqPickParams();
+            if (ffw.__log) ffw.__log.length = 0;""",
+  """            const p = uqPickParams();
+            if (mainFix.data && !ffw.__normMain) {
+              await ffw.writeFile(UQ_MAIN_N, mainFix.data.slice(0));
+              ffw.__normMain = true;
+            }
+            if (ffw.__log) ffw.__log.length = 0;""",
+  'хук: перекодоване відео в кожну копію')
+
 # Сире «Failed to inject frame…» не каже, що робити. Пояснюємо.
 rest = sub(rest,
   """  const head = (real || last || 'ffmpeg завершився кодом ' + code).slice(0, 200);""",
