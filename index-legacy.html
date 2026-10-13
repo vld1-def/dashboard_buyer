@@ -9125,6 +9125,8 @@ function apRender() {
           ${it.provider ? `<span class="text-slate-400 ml-1.5">· ${apEsc(it.provider)}</span>` : ''}
         </p>
         <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="apClone('${it.id}')" title="Зробити такий самий шаблон під інше гео — неймінг, діплінк і сабки копіюються"
+            class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">під гео</button>
           <button onclick="apEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
           <button onclick="apDelete('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/30 transition">×</button>
         </div>
@@ -9431,6 +9433,79 @@ async function apSubmit() {
   const sub = document.getElementById('ap-sub');
   if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
   apRenderTree(); apRender();
+}
+
+/* ─────────── КОПІЯ ПІД ІНШЕ ГЕО ───────────
+
+   Той самий постачальник, той самий неймінг і сабки — інше гео. Доти
+   це означало заводити шаблон з нуля й переписувати неймінг руками, а
+   неймінг — головне, що в шаблоні є: переписаний, він розходиться з
+   першим, і яка з двох версій правильна, стає питанням пам'яті.
+
+   Гео питаємо СПИСКОМ: можна вписати «KZ, TJ» і отримати два шаблони
+   за раз — «під інші гео» саме в множині й просили.
+
+   Підказуємо ті гео, під які в цього постачальника АПКИ вже є, а
+   шаблону ще немає: саме вони й потрібні в 99% випадків, а вгадувати
+   з голови — зайвий крок.
+
+   Що НЕ копіюємо: вибір апки. Він персональний, лежить у браузері й
+   для іншого гео однаково інший — скопіювати його означало б тихо
+   підставити в новий шаблон KTID від чужого гео. */
+function apGeoHints(it) {
+  const prov = String(it.provider || '').trim().toLowerCase();
+  const mine = new Set(apItems
+    .filter(x => String(x.provider || '').trim().toLowerCase() === prov)
+    .map(x => String(x.geo || '').trim().toUpperCase()).filter(Boolean));
+  const apps = [...new Set(apFunnels
+    .filter(f => f.is_app && (!prov || apProvOf(f).toLowerCase() === prov))
+    .map(f => String(f.geo || '').trim().toUpperCase()).filter(Boolean))].sort();
+  return { mine, free: apps.filter(g => !mine.has(g)) };
+}
+
+async function apClone(id) {
+  const it = apItems.find(x => x.id === id);
+  if (!it) return;
+  const { mine, free } = apGeoHints(it);
+  const ask = ['Під яке гео скопіювати «' + ((it.geo || '—').toUpperCase()
+      + (it.provider ? ' · ' + it.provider : '')) + '»?',
+    'Можна кілька через кому: KZ, TJ',
+    free.length ? 'Апки вже є під: ' + free.join(', ')
+                : 'Гео апок цього постачальника не видно — впиши вручну'].join('\n');
+  const raw = prompt(ask, free.slice(0, 3).join(', '));
+  if (raw === null) return;
+
+  const want = String(raw).split(/[,\s]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
+  const bad = want.filter(g => !/^[A-Z]{2,4}$/.test(g));
+  if (bad.length) { alert('Не гео: ' + bad.join(', ') + '. Код гео — 2–4 літери (UZ, KZ).'); return; }
+  if (!want.length) return;
+
+  /* Дубль того самого гео в того самого постачальника — майже завжди
+     промах, але буває й свідомо (два неймінги під одне гео). Тому
+     питаємо, а не забороняємо. */
+  const dup = want.filter(g => mine.has(g));
+  if (dup.length && !confirm('Шаблон під ' + dup.join(', ')
+      + ' у цього постачальника вже є. Зробити ще один?')) return;
+
+  const made = [];
+  want.forEach((geo, i) => {
+    made.push({
+      ...it,
+      // Свій id, інакше збереження перетерло б оригінал.
+      id: 'a' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6),
+      geo,
+      // Сабки копіюємо поглиблено: інакше правка в копії міняла б оригінал.
+      subs: (it.subs || []).map(x => ({ ...x }))
+    });
+  });
+  apItems.unshift(...made);
+  if (!await apSave()) { apItems.splice(0, made.length); return; }
+  const sub = document.getElementById('ap-sub');
+  if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
+  apGeo = made[0].geo; apProv = '';
+  apRenderTree(); apRender();
+  if (typeof toast === 'function')
+    toast('Скопійовано під ' + want.join(', ') + ' — апку вибери в новій картці', 'ok');
 }
 
 async function apDelete(id) {
