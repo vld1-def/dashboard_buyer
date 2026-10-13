@@ -1132,11 +1132,11 @@ rest = sub(rest,
 # полотна в прихованій панелі мають нульову ширину і лишились би порожні.
 rest = sub(rest,
   """function switchGeoTab(tab) {
-  ['funnels','offers','devices','placements','creatives'].forEach(t => {""",
+  ['funnels','offers','landings','devices','placements','creatives'].forEach(t => {""",
   """function switchGeoTab(tab) {
   if (tab === 'costs' && typeof renderGeoCostTab === 'function')
     setTimeout(() => renderGeoCostTab(window.__geoModalGeo || ''), 0);
-  ['funnels','offers','devices','placements','creatives','costs'].forEach(t => {""",
+  ['funnels','offers','landings','devices','placements','creatives','costs'].forEach(t => {""",
   'модалка гео: перемикач')
 
 # Яке саме гео відкрито, доти ніде не зберігалось

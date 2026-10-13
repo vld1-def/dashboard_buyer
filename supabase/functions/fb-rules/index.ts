@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-8';
+const FN_VERSION = 'rules-9';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -168,10 +168,26 @@ type Rule = {
    MPlayC_KG_10708. Поки дивились лише на власну назву, «тільки KG» на
    рівні оголошення не спрацьовувало там, де гео стоїть у кампанії —
    тобто майже скрізь. */
+const geoRe = (code: string) =>
+  new RegExp('(?:^|[^A-Za-z0-9])' + code + '(?:[^A-Za-z0-9]|$)', 'i');
+
+/* НЕ «так/ні», а «де саме». Питання «чому правило на BR вимкнуло TJ»
+   інакше не має відповіді: у листі видно оголошення й кампанію, а код
+   міг стояти в назві АДСЕТА — його там не було. Повертаємо, у чиїй
+   назві знайшлось, і підписуємо це в листі. */
+function geoWhy(want: string[], parts: { what: string; name: string }[]):
+    { code: string; what: string; name: string } | null {
+  for (const code of want) {
+    const re = geoRe(code);
+    const hit = parts.find(p => p.name && re.test(p.name));
+    if (hit) return { code, what: hit.what, name: hit.name };
+  }
+  return null;
+}
+
 function geoHit(want: string[], names: unknown[]): boolean {
   const hay = names.map(n => String(n || '')).join(' \u00b7 ');
-  return want.some(code =>
-    new RegExp('(?:^|[^A-Za-z0-9])' + code + '(?:[^A-Za-z0-9]|$)', 'i').test(hay));
+  return want.some(code => geoRe(code).test(hay));
 }
 
 /* Метрики. Кожна — з того, що прийшло в одній відповіді зі спендом:
@@ -617,7 +633,12 @@ type Hit = { rule: string; ruleName: string; level: string; id: string; name: st
              /* Правило не діяло, бо його про це не просили (Check now),
                 а не тому, що йому заборонено. Різні речі, і підпис у
                 Telegram мусить їх розрізняти. */
-             preview: boolean };
+             preview: boolean;
+             /* Фільтр гео правила і те, ЧИЯ назва під нього підійшла.
+                Порожній список означає «будь-яке гео» — і саме це
+                найчастіше й дивує: правило з назвою «BR CLICK» без
+                фільтра торкається всього парку. */
+             geos: string[]; geoIn: string };
 
 /* Пакетом, бо вимкнень за прогін може бути багато, а окремий запит на
    кожне — це і ліміти, і дедлайн. Пакет Graph тримає до 50. */
@@ -759,6 +780,26 @@ function whereLine(h: Hit): string {
     + (camp ? '\ncamp: ' + camp : '');
 }
 
+/* ФІЛЬТР ГЕО — РЯДКОМ, А НЕ ДОГАДКОЮ.
+
+   Питання, яке коштувало цього рядка: «чому правило, налаштоване на
+   BR, вимкнуло TJ». Відповідей може бути рівно дві, і ззовні вони
+   виглядають однаково:
+
+     1. у правила НЕМА фільтра гео — тоді воно й не мусило дивитись на
+        гео, хоч і зветься «BR CLICK». Назва правила ні на що не
+        впливає, а виглядає як налаштування;
+     2. код справді знайшовся — але в назві АДСЕТА, якої в листі не
+        видно.
+
+   Тому пишемо і те, і те: або «гео: будь-яке», або «гео: BR ← адсет
+   «…»». Рядок займає один рядок і знімає ціле коло листування. */
+function geoLine(h: Hit): string {
+  if (!h.geos || !h.geos.length)
+    return 'гео:  будь-яке (у правилі фільтра немає)\n';
+  return 'гео:  ' + (h.geoIn || h.geos.join('/')) + '\n';
+}
+
 /* Розділювач адреси. Дві лінії роблять із адреси блок: усе між ними —
    «де», усе під ними — «що саме й чому». */
 const TG_RULE = '\u2500'.repeat(12);
@@ -842,7 +883,7 @@ function tgBody(hits: Hit[]): string {
     const lv = [...new Set(list.map(h => h.level))]
       .map(l => TG_LEVEL[l] || l).join(' / ');
     return 'Правило: «' + list[0].ruleName + '» \u00b7 ' + lv + '\n'
-      + TG_RULE + '\n' + whereLine(list[0]) + '\n' + TG_RULE + '\n'
+      + geoLine(list[0]) + TG_RULE + '\n' + whereLine(list[0]) + '\n' + TG_RULE + '\n'
       + list.map(tgOne).join('\n');
   }).join('\n\n');
 }
@@ -1053,11 +1094,20 @@ Deno.serve(async (req) => {
              батьків: вимкнена кампанія глушить усе під собою, тож окремо
              гасити її оголошення — марні запити й зайві рядки в журналі. */
           if (hits.some(h => h.id === e.id || h.id === e.adset || h.id === e.campaign)) return;
+          /* Де саме збіглось гео — рахуємо тут, поки під рукою всі три
+             назви. У листі їх уже немає, а питання «чому TJ під
+             правилом BR» виникає саме там. */
+          const gw = r.geo.length ? geoWhy(r.geo, [
+            { what: 'оголошення', name: String(e.name || '') },
+            { what: 'адсет',      name: String(e.adsetName || '') },
+            { what: 'кампанія',   name: String(e.campaignName || '') }]) : null;
           hits.push({ rule: r.id, ruleName: r.name, level: r.level, id: e.id,
                       name: e.name, account, campaignName: e.campaignName,
                       owner: String(t.created_by || ''), team: String(a.team_name || t.team_name || ''),
                       agg: e.agg, dry: forceDry || r.dry, ok: false, error: '', acted: false,
-                      preview: forceDry, why: whyHit(r, e.agg) });
+                      preview: forceDry, why: whyHit(r, e.agg),
+                      geos: r.geo.slice(),
+                      geoIn: gw ? gw.code + ' \u2190 ' + gw.what + ' «' + gw.name + '»' : '' });
         });
       }
     }

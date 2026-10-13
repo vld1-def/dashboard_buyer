@@ -1991,7 +1991,8 @@ function appCid(fromMask, fromReport, count) {
    У PWA це одне й те саме, тому там усе працювало. В APP — ні:
    FB давав ktid = {app} ('pfb10964') і гео з APP-маски, Keitaro —
    ktid зі слота {ktid} PWA-шаблону й гео з нього ж. Ключі не
-   збігались НІКОЛИ, тож byDailyOffer не знаходив нічого, спліт по
+   збігались НІКОЛИ, тож byDailyLand (тоді byDailyOffer) не знаходив
+   нічого, спліт по
    оферах не мав що розносити, і офер лишався порожнім. Не тому що
    звіт Keitaro інший — він точно такий самий; тому що його читали не
    тим шаблоном.
@@ -2024,7 +2025,8 @@ function campParse(campName, adName, country, count) {
    апки, ні акаунта, ні гео в ньому немає — розбирати нема чого, і
    campParse чесно віддавав заглушку geo='??', ktid='0'. Ключ
    date|acc|??|0 проти date|acc|??|pfb10964 не збігався НІКОЛИ, тому
-   byDailyOffer не знаходив нічого, і офер лишався порожнім. Сам
+   byDailyLand (тоді byDailyOffer) не знаходив нічого, і офер лишався
+   порожнім. Сам
    matchOffer тут не винен — він однаковий на оба режими і працює.
 
    Гео у FB під APP приходить зі слота {geo} маски, який на цьому
@@ -2299,7 +2301,20 @@ function parseKeitaro(content) {
   // Три рівні сплітування: акаунт → кампанія (з воронкою) → креатив
   const byAccount = {}, byCampaign = {}, byCreative = {}, byDaily = {};
   // Розбивка по офферах — потрібна, щоб рознести спенд FB між офферами у спліті
-  const byDailyOffer = {};
+  /* Лендінг — те, що Keitaro називає оффером: «[Riddick's Partners]
+     Pinco TJ | Form Girl | 50$ | Valera». Офер із нього дістає
+     matchOffer («Pinco»), а решта рядка — це і є лендінг.
+
+     Ключуємо саме повним рядком, а не розібраними частинами: порядок
+     частин після «|» не гарантований (у когось виплата друга, у когось
+     імені немає), і перший же оффер з іншим порядком тихо заллявся б
+     не в ту графу. Повний рядок — це те, що ти сам написав у Keitaro,
+     вгадувати в ньому нічого не треба.
+
+     Лендінг СТРОГО дрібніший за офер: кожен лендінг належить одному
+     оферу. Тому суми по оферах від цього не міняються — просто
+     зʼявляється рівень глибше. */
+  const byDailyLand = {};
   /* Невпізнані офери — не просто список назв, а з цифрами: скільком
      інсталам і депозитам вони належать. Без цифр «не розпізнано» легко
      прочитати як дрібницю, а насправді саме через це рядок не ділиться
@@ -2363,8 +2378,10 @@ function parseKeitaro(content) {
 
     // офер із рядка Keitaro (напр. "[Riddick's Partners] Zazino KG | Reg | Anna")
     const offer = iOff >= 0 ? matchOffer(r[iOff]) : '';
+    // Повний рядок — це лендінг. Пробіли нормалізуємо, щоб той самий
+    // лендінг із подвійним пробілом не став другим рядком у звіті.
+    const raw = iOff >= 0 ? String(r[iOff] || '').trim().replace(/\s+/g, ' ') : '';
     if (iOff >= 0) {
-      const raw = String(r[iOff] || '').trim();
       if (raw && offer) offerHits.add(offer);
       else if (raw) {
         const m = offerMisses[raw] || (offerMisses[raw] = { installs: 0, regs: 0, deps: 0 });
@@ -2373,15 +2390,17 @@ function parseKeitaro(content) {
     }
     if (offer) {
       const dk = mergeKey(localDay, acc, geo, ktid);
-      ((byDailyOffer[dk] = byDailyOffer[dk] || {})[offer] =
-        byDailyOffer[dk][offer] || { installs: 0, regs: 0, deps: 0 });
-      byDailyOffer[dk][offer].installs += ins;
-      byDailyOffer[dk][offer].regs += reg;
-      byDailyOffer[dk][offer].deps += dep;
-
+      /* Нерозпізнаний офер сюди не потрапляє — як і до лендінгів. Так
+         набір рядків лишається тим самим, лише дрібнішим. */
+      const land = raw || offer;
+      const grp = (byDailyLand[dk] = byDailyLand[dk] || {});
+      const cell = (grp[land] = grp[land] || { installs: 0, regs: 0, deps: 0, offer });
+      cell.installs += ins;
+      cell.regs += reg;
+      cell.deps += dep;
     }
   }
-  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyOffer, ktPlacements,
+  keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyLand, ktPlacements,
                  days, unlinked, offerMisses };
 
   if (iOff >= 0) {
@@ -2486,17 +2505,29 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
       }
     });
   });
-  // ── Розподіл спенду між офферами ──
-  // FB не знає оффера, Keitaro знає. У спліті один FB-рядок треба рознести
-  // на кілька рядків пропорційно інсталам (= унікальним клікам) кожного оффера.
+  /* ── Розподіл спенду між ЛЕНДІНГАМИ ──
+
+     FB не знає ні оффера, ні лендінга — знає Keitaro. Один FB-рядок
+     розносимо пропорційно інсталам (= унікальним клікам) кожного
+     лендінга, а офер кожному рядку ставимо той, якому цей лендінг
+     належить.
+
+     Чому ділимо саме по лендінгах, а не по оферах, як було: лендінг
+     дрібніший і належить одному оферу, тож суми по оферах не
+     змінюються — рядків стає більше, цифри ті самі. Якби розніс
+     лишився на рівні оффера, лендінг не можна було б показати, не
+     збрехавши: два лендінги одного оффера в одному рядку. */
   const splitByOffer = (rows, offersOf, keyOf, weightOf) => {
     const out = [];
     let splits = 0;
     rows.forEach(row => {
       const offers = offersOf(keyOf(row));
       const names = offers ? Object.keys(offers) : [];
-      if (names.length < 2) {                       // один оффер або жодного
-        if (names.length === 1) row.offer = names[0];
+      if (names.length < 2) {                       // один лендінг або жодного
+        if (names.length === 1) {
+          row.offer = offers[names[0]].offer || names[0];
+          row.landing = names[0];
+        }
         out.push(row);
         return;
       }
@@ -2514,7 +2545,7 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
         // Цифри оффера — теж на частку рядка в групі, інакше під APP
         // кожен рядок групи забрав би собі всі інсталли оффера.
         const w = weightOf ? (weightOf(row) || 1) : 1;
-        out.push({ ...row, offer: name, spend,
+        out.push({ ...row, offer: o.offer || name, landing: name, spend,
                    installs: w === 1 ? o.installs : Math.round(o.installs * w),
                    regs:     w === 1 ? o.regs     : Math.round(o.regs * w),
                    deps:     w === 1 ? o.deps     : Math.round(o.deps * w) });
@@ -2525,7 +2556,7 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
 
   // Кампанії (daily) ділимо по офферах — там спенд справді треба рознести.
   const dRes = splitByOffer(Object.values(dailyAgg),
-    k => keitaroAgg.byDailyOffer?.[k],
+    k => keitaroAgg.byDailyLand?.[k],
     r => mergeKey(r.date, r.acc, r.geo, r._ktid),
     r => dWeight.get(r));
 
@@ -2540,10 +2571,10 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     .filter(([k, v]) => !usedKt.has(k) && (v.installs || v.regs || v.deps))
     .map(([, v]) => v);
 
-  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по офферах: ${dRes.splits} daily`);
+  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах: ${dRes.splits} daily`);
   renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives: creativesOut });
   showStatus(dRes.splits
-    ? `Keitaro: refined ${hitD} rows, split across offers ${dRes.splits}`
+    ? `Keitaro: refined ${hitD} rows, split across landings ${dRes.splits}`
     : `Keitaro: refined ${hitD} stat rows`);
 
   return { daily: dRes.out, creatives: creativesOut };
@@ -3290,6 +3321,9 @@ async function confirmDatasetImport() {
     account: row.acc,
     geo: row.geo,
     offer: row.offer || "DEFAULT",
+    // Повний рядок оффера з Keitaro. Немає — null, а не порожній
+    // рядок: порожнє в звіті читається як «лендінг без назви».
+    landing: row.landing || null,
     funnel: row.funnel,
     spend: row.spend,
     installs: row.installs || 0,
@@ -3916,6 +3950,10 @@ const REC_SCHEMA = {
     { key: 'account',  label: 'Account',  type: 'text' },
     { key: 'geo',      label: 'GEO',     type: 'text', upper: true },
     { key: 'offer',    label: 'Offer',   type: 'text', list: 'offers' },
+    /* Повний рядок оффера з Keitaro — те, що ми називаємо лендінгом.
+       Правиться вручну, як решта: підказок немає навмисно, бо список
+       лендінгів — це не довідник, а те, що приїхало з імпорту. */
+    { key: 'landing',  label: 'Landing', type: 'text' },
     { key: 'funnel',   label: 'Funnel', type: 'text', list: 'funnels' },
     { key: 'agent',    label: 'Agent',   type: 'text', list: 'agents' },
     { key: 'spend',    label: 'Spend',   type: 'money' },
