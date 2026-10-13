@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 22:18">
+  <meta name="build" content="build 13.10 22:40">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5138,7 +5138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 22:18</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 22:40</div>
     </div>
   </aside>
 
@@ -15316,6 +15316,12 @@ function apRender() {
       ${ff.noApps ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
         У довіднику немає жодної воронки з міткою APP. Познач прілки галочкою APP
         у Form → Settings → Funnels — сюди йдуть тільки вони.</p>` : ''}
+      ${ff.by === 'prov' ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
+        Під гео ${apEsc((it.geo || '—').toUpperCase())} апок «${apEsc(it.provider || '—')}» немає —
+        показано всі апки цього постачальника. Впиши гео воронкам у Form → Settings → Funnels.</p>` : ''}
+      ${ff.by === 'geo' ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
+        Апок «${apEsc(it.provider || '—')}» у довіднику немає — показано всі апки під
+        ${apEsc((it.geo || '—').toUpperCase())}. Постачальник пишеться в дужках назви воронки.</p>` : ''}
       ${ff.empty ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1">
         Під «${apEsc(it.provider || '—')}» і гео ${apEsc((it.geo || '—').toUpperCase())} апок не знайшлось — показано всі.
         Впиши гео воронкам у Form → Settings → Funnels.</p>` : ''}
@@ -15398,16 +15404,38 @@ function apFunnelsFor(it) {
 
   const prov = String(it.provider || '').trim().toLowerCase();
   const geo  = String(it.geo || '').trim().toUpperCase();
-  const fit = apps.filter(f => {
+  /* Порожнє значення у воронки — це «не вказано», а не «не підходить»:
+     інакше жодна воронка без гео не потрапила б у список узагалі. */
+  const pick = (byProv, byGeo) => apps.filter(f => {
     const fp = apProvOf(f).toLowerCase();
     const fg = String(f.geo || '').trim().toUpperCase();
-    if (prov && fp && fp !== prov) return false;
-    if (geo && fg && fg !== geo) return false;
+    if (byProv && prov && fp && fp !== prov) return false;
+    if (byGeo && geo && fg && fg !== geo) return false;
     return true;
   });
-  // Звузили в нікуди — показуємо всі ПРІЛКИ (не весь довідник) і кажемо це.
-  return fit.length ? { list: fit, narrowed: fit.length < apps.length }
-                    : { list: apps, narrowed: false, empty: true };
+
+  /* ЗВУЖУЄМО СХОДИНКАМИ, А НЕ ВСЕ-АБО-НІЧОГО.
+
+     Доти було просто: не знайшлось під постачальника Й гео — показуємо
+     ВСІ прілки. На шаблоні «BR · satorapps», під який апки ще не
+     завели, це давало список із trident і SNATCH — тобто рівно те, чого
+     тут не має бути ніколи: чужа прілка в неймінгу свого постачальника
+     помітна вже аж у статистиці.
+
+     Постачальник — головніший за гео. Він визначає, ЧИЮ апку ллєш;
+     гео лише звужує. Тому коли пари немає, лишаємося на постачальнику,
+     і тільки якщо немає і його — на гео. Весь список — останній крок,
+     і про нього сказано вголос. */
+  const both = pick(true, true);
+  if (both.length) return { list: both, narrowed: both.length < apps.length, by: 'both' };
+
+  const byProv = prov ? pick(true, false) : [];
+  if (byProv.length) return { list: byProv, narrowed: true, by: 'prov' };
+
+  const byGeo = geo ? pick(false, true) : [];
+  if (byGeo.length) return { list: byGeo, narrowed: true, by: 'geo' };
+
+  return { list: apps, narrowed: false, empty: true, by: 'all' };
 }
 // Підпис у списку: назва, гео й KTID — щоб число було видно відразу,
 // не відкриваючи нічого.
