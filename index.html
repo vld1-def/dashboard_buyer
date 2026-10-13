@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 18:47">
+  <meta name="build" content="build 13.10 22:18">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5138,7 +5138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 18:47</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 22:18</div>
     </div>
   </aside>
 
@@ -11321,8 +11321,19 @@ function showGeoDetails(geo) {
           const lands = Object.entries(landMap[oName] || {}).sort((a, b) => b[1].s - a[1].s);
           const canOpen = lands.length > 1 || (lands.length === 1 && !lands[0][0].startsWith('—'));
           return `<div>
-            <div ${canOpen ? `onclick="geoLandToggle(this)" style="cursor:pointer" title="Клік — лендінги цього оффера"` : ''}
-                 class="bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-3 ${GRID}${canOpen ? ' hover:bg-white/[0.06] transition' : ''}" style="${COLS}">
+            <!-- ДВА style= В ОДНОМУ ТЕЗІ — І СІТКА ЗНИКАЄ.
+
+                 Тут стояло style="cursor:pointer" з умови ПЛЮС
+                 style="${COLS}" нижче. Браузер при повторі атрибута
+                 бере ПЕРШИЙ і другий відкидає молча — тобто
+                 grid-template-columns не застосовувався зовсім, і рядок
+                 оффера розсипався в один стовпчик. Помітно це було лише
+                 на оферах, у яких є лендінги (саме там canOpen=true), і
+                 виглядало як «щось сталось з оффером».
+
+                 Тому курсор — класом, а style лишається один. -->
+            <div ${canOpen ? `onclick="geoLandToggle(this)" title="Клік — лендінги цього оффера"` : ''}
+                 class="bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-3 ${GRID}${canOpen ? ' cursor-pointer hover:bg-white/[0.06] transition' : ''}" style="${COLS}">
             <span class="text-sm font-black text-white uppercase truncate" title="${oName}">${
               canOpen ? '<span class="land-arrow text-slate-500 mr-1">▸</span>' : ''}${oName}</span>
             <span class="${num} text-white">$${Math.round(om.s).toLocaleString()}</span>
