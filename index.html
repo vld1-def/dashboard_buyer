@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 18:18">
+  <meta name="build" content="build 13.10 18:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5138,7 +5138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 18:18</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 18:47</div>
     </div>
   </aside>
 
@@ -5275,8 +5275,12 @@ input.ui-in[type="range"] { padding: 0; }
 
     <!-- Uniqueizer — варіанти відеокреативів -->
     <!-- Прілки: неймінги, діплінки й сабки. Іконка телефона — сюди
-         ходять за тим, що веде в саму апку. -->
-    <button onclick="openAppsModal()" class="p-2 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition admin-only" title="Прілки">
+         ходять за тим, що веде в саму апку.
+         Підпис англійський, як і в решти дока: всередині вікна лишилось
+         «Прілки», а на кнопці поруч з Uniqueizer і Accounts українське
+         слово читалось як чужий рядок. Ховання меню зіставляється саме
+         за підписом — див. DOCK_RENAMED. -->
+    <button onclick="openAppsModal()" class="p-2 card rounded-xl shadow-md text-emerald-400 hover:bg-gray-500/10 transition admin-only" title="Apps">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 2h10a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2zm3 17h4"/></svg>
     </button>
 
@@ -17986,7 +17990,15 @@ function dcRenderWarn(unlinked) {
   // Вибір персональний і миттєвий, тому localStorage, а не база: це
   // налаштування конкретного екрана, а не команди.
   const DOCK_HIDDEN_KEY = 'dock_hidden_v1';
-  const dockHidden = () => { try { return new Set(JSON.parse(localStorage.getItem(DOCK_HIDDEN_KEY) || '[]')); } catch (e) { return new Set(); } };
+  /* ПЕРЕЙМЕНОВАНІ КНОПКИ.
+
+     Ховання зіставляється за підписом (id у кнопок дока немає). Коли
+     підпис міняється, старий запис лишається вказувати в нікуди: кнопка
+     тихо вилазить назад, а людина думає, що налаштування скинулось.
+     Тому читаємо старі назви через цю таблицю. */
+  const DOCK_RENAMED = { 'прілки': 'Apps' };
+  const dockRename = t => DOCK_RENAMED[String(t).trim().toLowerCase()] || String(t).trim();
+  const dockHidden = () => { try { return new Set(JSON.parse(localStorage.getItem(DOCK_HIDDEN_KEY) || '[]').map(dockRename)); } catch (e) { return new Set(); } };
   const dockSaveHidden = set => { try { localStorage.setItem(DOCK_HIDDEN_KEY, JSON.stringify([...set])); } catch (e) {} };
 
   // «Add data» — точка входу, її ховати не можна, і вона завжди остання.
@@ -18069,7 +18081,7 @@ function dcRenderWarn(unlinked) {
     } catch (e) { return; }
     if (!me) return;
 
-    const hide = new Set((me.dock_hidden || []).map(t => String(t).trim().toLowerCase()));
+    const hide = new Set((me.dock_hidden || []).map(t => dockRename(t).toLowerCase()));
     if (hide.size) {
       dockButtons()
         .filter(x => hide.has(x.title.trim().toLowerCase()))
