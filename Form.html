@@ -1512,7 +1512,7 @@ async function tsRead(keys) {
 
 /* prov — перебивки колонок під постачальника прілок:
    { trident: { cr: 'Sub ID 10' } }. Порожньо = як у загальних полях. */
-const KM_DEFAULT = { prov:{}, acc:'Sub ID 5',
+const KM_DEFAULT = { prov:{}, src:'', acc:'Sub ID 5',
                      camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
                      country:'Country', app:'Sub ID 4',
@@ -1558,7 +1558,14 @@ const KM_FIELDS = [
   { id: 'km-app',     key: 'app',     label: 'App (KTID)',    grp: 'app',  tone: 'text-amber-300',
     tip: 'Стовпець із назвою апки — pfb10964, CW10995. Спільний для всіх: саме з нього ми дізнаємось, чия це прілка' },
   { id: 'km-country', key: 'country', label: 'Country',       grp: 'app',  tone: 'text-amber-300',
-    tip: 'Гео для APP береться звідси: Uzbekistan → UZ' }
+    tip: 'Гео для APP береться звідси: Uzbekistan → UZ' },
+  /* Постачальника можна не виводити з дужок назви воронки, а взяти
+     прямо зі звіту — якщо в Keitaro доданий стовпець із ним. Тоді
+     перебивки колонок не залежать від того, чи проставлений тег у
+     Funnel Mapper. Порожньо — працюємо як раніше, з дужок. */
+  { id: 'km-src',     key: 'src',     label: 'Provider (source)', grp: 'app', tone: 'text-amber-300',
+    ph: 'Source',
+    tip: 'Необов\'язково. Стовпець зі звіту, де написано постачальника прілки (satorapps, trident). Порожньо — шукаємо стовпець «Source», а якщо його немає, беремо з дужок назви воронки' }
 ];
 
 /* Перебити можна лише те, що читається ПІСЛЯ того, як постачальник уже
@@ -1593,7 +1600,7 @@ function kmRenderFields() {
     <div>
       <label class="block text-[9px] font-black uppercase tracking-widest ${f.tone} mb-1.5"${f.tip ? ` title="${esc(f.tip)}"` : ''}>${f.label}${f.tip ? ' <span class="opacity-40">?</span>' : ''}</label>
       <input type="text" id="${f.id}" list="km-cols-list" spellcheck="false"
-             oninput="kmHint('${f.id}')" placeholder="${esc(KM_DEFAULT[f.key])}">
+             oninput="kmHint('${f.id}')" placeholder="${esc(f.ph || KM_DEFAULT[f.key])}">
       <p id="${f.id}-h" class="text-[10px] font-bold mt-1 truncate text-slate-600"></p>
     </div>`;
   ['both', 'pwa', 'app'].forEach(g => {
@@ -1619,6 +1626,19 @@ function kmHint(id) {
   const cls = c => { out.className = 'text-[10px] font-bold mt-1 truncate ' + c; };
   const val = (el.value || '').trim() || KM_DEFAULT[f.key];
   if (!kmCols.cols.length) { cls('text-slate-600'); out.textContent = ''; out.title = ''; return; }
+  /* Необов'язкове поле без значення — це «не задано», а не помилка. Але
+     якщо у вигрузці є стовпець із такою ж назвою, як підказка в полі,
+     кажемо, що візьмемо саме його: інакше «порожньо» і «працює саме»
+     виглядають однаково. */
+  if (!val) {
+    const auto = f.ph ? kmCols.cols.find(c => String(c).toLowerCase().trim() === f.ph.toLowerCase()) : '';
+    if (!auto) { cls('text-slate-600'); out.textContent = ''; out.title = ''; return; }
+    const av = kmCols.sample[auto];
+    cls('text-emerald-400/80');
+    out.textContent = auto + (av ? ' · ' + av : '') + ' — знайдено саме';
+    out.title = 'Поле порожнє, але у вигрузці є стовпець «' + auto + '» — візьмемо його';
+    return;
+  }
   const i = kmFindCol(kmCols.cols, val);
   if (i < 0) {
     cls('text-rose-400'); out.textContent = 'немає у файлі';
@@ -1807,6 +1827,7 @@ async function loadKeitaroMap() {
   set('km-cr', keitaroMap.cr); set('km-cr-app', keitaroMap.crApp);
   set('km-plc', keitaroMap.plc); set('km-offer', keitaroMap.offer);
   set('km-country', keitaroMap.country); set('km-app', keitaroMap.app);
+  set('km-src', keitaroMap.src);
   set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
   set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
   set('km-tz', keitaroMap.tz);
@@ -1823,6 +1844,9 @@ async function saveKeitaroMap() {
               plc:g('km-plc')||KM_DEFAULT.plc, offer:g('km-offer')||KM_DEFAULT.offer,
               country:g('km-country')||KM_DEFAULT.country,
               app:g('km-app')||KM_DEFAULT.app,
+              // Порожньо — значить стовпця немає; підставляти сюди
+              // типове значення означало б шукати колонку, якої нема.
+              src:g('km-src'),
               day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
               ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
               dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10),
@@ -2338,9 +2362,10 @@ function appCid(fromMask, fromReport, count) {
 
    Тепер розбір один на два боки. Розійтись знову вони не можуть:
    шаблон вибирає одна функція, і обидва виклики йдуть через неї. */
-function campParse(campName, adName, country, count) {
+function campParse(campName, adName, country, count, accHint) {
   if (trafficMode === 'app') {
-    const a = parseAppCampaign(campName, adName || '', country || '');
+    // accHint — Account ID із колонки звіту: ним перевіряється вирівнювання.
+    const a = parseAppCampaign(campName, adName || '', country || '', accHint);
     return { geo: geoPick(a.geo, country, count) || '??', ktid: a.app || '0',
              acc: a.acc || '', cid: a.cid || '' };
   }
@@ -2421,13 +2446,95 @@ function parsePwaCampaign(campName, country) {
 }
 
 // Розбір назви APP-кампанії
-function parseAppCampaign(campName, adName, country) {
+/* ══════════ ШАБЛОН, ЯКИЙ САМ СТАЄ НА МІСЦЕ ══════════
+
+   Шаблон прибитий до ПОЗИЦІЙ токенів, а в одній вигрузці неймінги
+   бувають різної довжини. Справжній приклад, на якому це видно:
+
+     cy638t_8wxg7hf7_bGcTwMmV_CS11003_1396119625835251_TJ_5   (7)
+     cy638t_8wxg7hf7_bGcTwMmV_LTR11003_2214293482764011_TJ    (6)
+     Improve_9NcRn9VV_CR11012_1396119625835251_TJ             (5)
+
+   Один шаблон їх не покриває: голова то з двох токенів, то з трьох, а
+   хвостовий номер є не завжди. Описаний у шаблоні хвіст («…{geo}_*»)
+   робить гірше — він стає ОБОВ'ЯЗКОВИМ, і рядки без номера не
+   підходять зовсім: ktid=0, гео=??. Профілі тут не допомагають, бо
+   вони підбираються за ПОСТАЧАЛЬНИКОМ прілки, а довжина неймінгу з
+   постачальником не пов'язана ніяк.
+
+   Тому: якщо розбір не склався — пробуємо той самий шаблон з іншою
+   довжиною голови й без обов'язкового хвоста. І це НЕ вгадування:
+   кожен варіант мусить пройти перевірку даними —
+
+     {acc} зі шаблону == Account ID із колонки ЦЬОГО Ж рядка звіту,
+     {geo} зі шаблону == справжній код країни.
+
+   Account ID тут головний: випадкове вирівнювання його не пройде, бо
+   це довге число з іншого стовпця того самого рядка. Коли колонки
+   немає, вимагаємо, щоб {app} був відомою воронкою команди — інакше
+   не вирівнюємо взагалі й лишаємо все як було.
+
+   Скільком рядкам це знадобилось і який саме шаблон підійшов — іде у
+   звіт після імпорту: вирівнювання мусить бути видимим, а не тихо
+   підпирати криву конфігурацію роками. */
+let apAligned = 0;
+const apAlignedBy = {};
+
+function apFits(r, mask, accHint) {
+  if (!r || !r.app) return false;
+  const m = String(mask || '');
+  if (/\{geo\}/.test(m)) {
+    const g = toGeoCode(r.geo);
+    if (!/^[A-Za-z]{2}$/.test(g)) return false;
+  }
+  const want = String(accHint || '').trim();
+  if (/\{acc\}/.test(m) && want) return String(r.acc || '').trim() === want;
+  // Підтвердити нічим, окрім довідника воронок.
+  return !!(mappingDB.funnels || {})[r.app];
+}
+
+// Серцевина шаблону: без голови із зірочок і без хвоста з них.
+function apMaskCore(mask) {
+  return String(mask || '').trim().replace(/^(?:\*_)+/, '').replace(/(?:_\*)+$/, '');
+}
+
+function apVariants(masks) {
+  const cores = [...new Set((masks || []).map(apMaskCore).filter(Boolean))];
+  const out = [];
+  cores.forEach(core => {
+    /* Шаблон на «ключ=значення» (&sub1={app}&sub2={acc}) від позиції не
+       залежить зовсім — дописувати йому голову немає сенсу. */
+    if (core.includes('&')) { out.push(core); return; }
+    for (let n = 0; n <= 5; n++) out.push('*_'.repeat(n) + core);
+  });
+  return out;
+}
+
+function parseAppCampaign(campName, adName, country, accHint) {
   const parts = String(campName || '').split('_');
   const hit = apMatchProfile(parts);
   const mask = hit ? hit.mask : apMaskFromLegacy(appParse);
-  const r = apParseMask(mask, parts, adName, country)
-         || { app: '', acc: '', cid: String(adName || '').trim(), geo: String(country || '').trim() };
+  let r = apParseMask(mask, parts, adName, country);
+  let used = mask;
+  if (!apFits(r, mask, accHint)) {
+    /* Пробуємо серцевини ВСІХ шаблонів команди, не лише вибраного:
+       рядок без хвоста до свого профілю не підійшов саме через хвіст,
+       і правильна відповідь лежить у тому ж профілі, тільки без нього. */
+    const all = [mask, apMaskFromLegacy(appParse),
+                 ...Object.values(appProfiles || {}).map(p => apMaskFromLegacy(p))];
+    for (const v of apVariants(all)) {
+      const t = apParseMask(v, parts, adName, country);
+      if (apFits(t, v, accHint)) {
+        r = t; used = v;
+        apAligned++;
+        apAlignedBy[v] = (apAlignedBy[v] || 0) + 1;
+        break;
+      }
+    }
+  }
+  r = r || { app: '', acc: '', cid: String(adName || '').trim(), geo: String(country || '').trim() };
   r.profile = hit ? hit.name : '';
+  r.mask = used;
   return r;
 }
 
@@ -2609,6 +2716,15 @@ function parseKeitaro(content) {
      відкочуємось на стовпець плейсмента — історично апка лежить саме
      там (Sub ID 4). */
   const iCountry = col(keitaroMap.country);
+  /* Постачальник прямо зі звіту, якщо в Keitaro є такий стовпець. Це
+     точніше за дужки назви воронки: не залежить ні від тегів у Funnel
+     Mapper, ні від того, чи взагалі знайшлась воронка. */
+  /* Поле порожнє — пробуємо стовпець, який так і називається. Шукаємо
+     ТОЧНИЙ збіг, а не частковий: «traffic source» чи «source id» — це
+     вже інше, і мовчки брати їх за постачальника не можна. */
+  const iSrc = trafficMode !== 'app' ? -1
+    : (keitaroMap.src ? col(keitaroMap.src)
+                      : h.findIndex(x => x === 'source'));
   const iKtApp = trafficMode === 'app'
     ? (col(keitaroMap.app) >= 0 ? col(keitaroMap.app) : col(keitaroMap.plc))
     : -1;
@@ -2729,7 +2845,9 @@ function parseKeitaro(content) {
          постачальника, а від постачальника залежить, у яких стовпцях
          лежать креатив, гео й оффер. */
       ktid = (iKtApp >= 0 ? String(r[iKtApp] || '').trim() : '') || '0';
-      pIdx = provIdx[kmProvOf(ktid, funRaw)] || null;
+      const prov = iSrc >= 0 ? String(r[iSrc] || '').trim().toLowerCase()
+                             : kmProvOf(ktid, funRaw);
+      pIdx = provIdx[prov] || null;
       const ic = (pIdx && pIdx.country >= 0) ? pIdx.country : iCountry;
       geo = toGeoCode(ic >= 0 ? String(r[ic] || '').trim() : '') || '??';
     } else {
@@ -3003,7 +3121,7 @@ function renderAgentReport(noAgent, hidden) {
   const el = document.getElementById('agent-report');
   if (!el) return;
   if (!noAgent.size && !hidden.size && !pwaMissed && !offerFromNameHits
-      && !geoMaskBad && !cidMaskBad) {
+      && !geoMaskBad && !cidMaskBad && !apAligned) {
     el.classList.add('hidden'); el.innerHTML = ''; return;
   }
   const chips = arr => [...arr].slice(0, 20).map(a =>
@@ -3032,6 +3150,25 @@ function renderAgentReport(noAgent, hidden) {
     The pattern in use: <span class="font-mono text-rose-200">${impMaskNow()}</span>.
     Fix it in <b>Settings &rarr; ${trafficMode === 'app' ? 'APP' : 'PWA'}</b>.
     <span class="text-slate-500">Until you do, the funnel (KTID) is read from the wrong slot too.</span></div></div>`);
+
+  /* ВИРІВНЮВАННЯ МУСИТЬ БУТИ ВИДИМИМ.
+
+     Інакше крива конфігурація підпиралась би роками, а людина б і не
+     знала: дані правильні, шаблон ні. Тому кажемо скільком рядкам це
+     знадобилось і який шаблон насправді підійшов — його лишається
+     тільно вписати в налаштування. */
+  if (apAligned) {
+    const top = Object.entries(apAlignedBy).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    parts.push(`<div class="flex gap-2 items-start text-amber-300">
+      <span>&#9881;&#65039;</span><div>In <b>${apAligned}</b> rows the APP pattern did not fit the name,
+      so it was re-aligned and checked against the row's own <b>Account ID</b> and country.
+      What actually fitted: ${top.map(([m, n]) =>
+        `<span class="font-mono text-amber-200">${m}</span> &times;${n}`).join(', ')}.
+      <span class="text-slate-400">Put it in <b>Settings &rarr; APP</b> (or as a profile) &mdash; the data is right,
+      the pattern is not.</span>
+      <span class="text-slate-500">A tail after <span class="font-mono">{geo}</span> is ignored by itself:
+      describing it as <span class="font-mono">_*</span> makes it required, and names without it stop matching.</span></div></div>`);
+  }
 
   /* Той самий зсув, але по креативу. Раніше про це не було ні слова:
      креативом ставав шматок назви («UZ»), і всі рядки збирались в один. */
@@ -3396,6 +3533,8 @@ async function processCampaignData(map, lines) {
   offerFromNameHits = 0;
   geoMaskBad = 0;
   cidMaskBad = 0;
+  apAligned = 0;
+  Object.keys(apAlignedBy).forEach(k => delete apAlignedBy[k]);
 
   for (let i = 1; i < lines.length; i++) {
     const row = lines[i];
@@ -3407,7 +3546,8 @@ async function processCampaignData(map, lines) {
 
     // Той самий розбір, що й на боці Keitaro — інакше ключ злиття
     // date|acc|geo|ktid розійдеться (див. campParse).
-    const p = campParse(campName, row[map.cid], country);
+    const p = campParse(campName, row[map.cid], country, undefined,
+                        map.acc !== -1 ? row[map.acc] : '');
     const geo = p.geo, ktid = p.ktid;
     /* КАБІНЕТ — ІЗ КОЛОНКИ, А НЕ З НАЗВИ КАМПАНІЇ.
 
