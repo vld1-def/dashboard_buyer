@@ -880,35 +880,48 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       </div>
 
       <div id="st-panel-keitaro" class="st-panel hidden space-y-8">
-       <!-- Keitaro Mapping (назви колонок різні в кожній команді) -->
+       <!-- Keitaro Mapping. Колонки різні не лише в кожній команді:
+            під APP вони різні ще й у кожного постачальника прілок —
+            у trident назва креатива лежить в одному сабі, у решти в
+            іншому. Тому тут три групи полів плюс перебивки знизу. -->
        <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-emerald-500 bg-slate-900/40">
-          <div class="flex justify-between items-center mb-2">
+          <div class="flex justify-between items-center mb-2 gap-3 flex-wrap">
             <h3 class="text-xl font-black uppercase italic text-emerald-400 tracking-tight">Keitaro Mapping</h3>
             <button onclick="saveKeitaroMap()" class="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
           </div>
-          <p class="text-[10px] opacity-40 font-bold mb-5">Column names in your Keitaro export. They differ from team to team — type them exactly as they appear in the CSV header.</p>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Account</label><input type="text" id="km-acc" placeholder="Sub ID 5"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Campaign</label><input type="text" id="km-camp" placeholder="Sub ID 1"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Funnel</label><input type="text" id="km-funnel" placeholder="Sub ID 2"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Creative <span class="text-slate-600">· PWA</span></label><input type="text" id="km-cr" placeholder="Sub ID 3"></div>
-            <!-- У APP креатив приходить іншим сабом, ніж у PWA. Одне
-                 поле на обидва режими означало б переписувати його
-                 щоразу при перемиканні — і колись забути. -->
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Creative <span class="text-slate-600">· APP</span></label><input type="text" id="km-cr-app" placeholder="Sub ID 20"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-indigo-400 mb-1.5">Platform (placement) <span class="text-slate-600">· PWA</span></label><input type="text" id="km-plc" placeholder="Sub ID 4"></div>
-            <!-- Гео та апка під APP приходять окремими стовпцями: у
-                 колонці кампанії Keitaro віддає лише перший токен
-                 назви (див. mergeKey), і дістати їх звідти неможливо. -->
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">App <span class="text-slate-600">· APP</span></label><input type="text" id="km-app" placeholder="Sub ID 4" title="Стовпець із назвою апки — pfb10964, CW10995"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Country <span class="text-slate-600">· APP</span></label><input type="text" id="km-country" placeholder="Country" title="Гео для APP береться з цього стовпця: Uzbekistan → UZ"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1.5">Offer</label><input type="text" id="km-offer" placeholder="Offer"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Day</label><input type="text" id="km-day" placeholder="Day"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Hour</label><input type="text" id="km-hour" placeholder="Hour"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-cyan-500 mb-1.5">Installs</label><input type="text" id="km-ins" placeholder="UC (campaign)"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-blue-400 mb-1.5">Registrations</label><input type="text" id="km-reg" placeholder="Conv."></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-green-500 mb-1.5">Deposits</label><input type="text" id="km-dep" placeholder="Sales"></div>
-            <div><label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">File timezone</label><input type="number" id="km-tz" placeholder="3" title="Which TZ Keitaro reports time in"></div>
+          <p class="text-[10px] opacity-40 font-bold mb-5">Column names in your Keitaro export. Pick them from the list, or type them by hand &mdash; each field shows which column it matched and what is inside it.</p>
+
+          <!-- ЗВІДКИ БЕРЕТЬСЯ СПИСОК КОЛОНОК.
+               Доти це були порожні інпути: назву колонки треба було
+               згадати напам'ять, а дізнатись, що вона не та, можна було
+               лише запустивши імпорт. Тепер сторінка тримає заголовок
+               останньої вигрузки — і кожне поле звіряється з ним. -->
+          <div class="bg-black/25 rounded-2xl border border-white/5 p-4 mb-6 flex flex-wrap items-center gap-3">
+            <label class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-xl font-black uppercase text-[10px] cursor-pointer transition-all shrink-0">
+              Load a Keitaro export
+              <input type="file" id="km-file" accept=".csv,.tsv,.txt" class="hidden" onchange="kmPickFile(event)">
+            </label>
+            <p id="km-cols-note" class="text-[11px] font-bold text-slate-500 flex-1 min-w-[220px] leading-relaxed"></p>
+          </div>
+          <datalist id="km-cols-list"></datalist>
+
+          <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Both modes</p>
+          <div id="km-grid-both" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-7"></div>
+
+          <p class="text-[9px] font-black uppercase tracking-widest text-sky-400 mb-2">PWA only</p>
+          <div id="km-grid-pwa" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-7"></div>
+
+          <p class="text-[9px] font-black uppercase tracking-widest text-amber-400 mb-2">APP only</p>
+          <div id="km-grid-app" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5"></div>
+
+          <div id="km-prov-wrap" class="bg-black/25 rounded-2xl border border-white/5 p-4"></div>
+
+          <!-- Друга кнопка знизу: картка стала висока, і після перебивок
+               тягтись мишкою нагору, щоб зберегти, — це та сама
+               незручність, через яку все це й переписувалось. -->
+          <div class="flex justify-between items-center gap-3 flex-wrap mt-5">
+            <p class="text-[10px] font-bold text-slate-500">Red under a field means the import will not find that column.</p>
+            <button onclick="saveKeitaroMap()" class="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl font-black uppercase text-[11px] transition-all">Save</button>
           </div>
        </div>
       </div>
@@ -1413,7 +1426,12 @@ let lastFbParse = null;  // {map, lines} — щоб перерахувати, я
    немає», хоча вони є й просто не наші. */
 // done — повний текст у рядок статусу на успіх (не «label + saved»:
 // одне зі збережень насправді є видаленням профілю).
-async function tsSave(key, value, done) {
+/* quiet — для записів, яких людина не просила: кеш колонок вигрузки
+   (keitaro_cols) пишеться сам, під час імпорту. Тост на нього був би
+   шумом, а alert — прямою брехнею: нічого не зламалось, і виправляти
+   користувачу нічого. Але шлях лишається ОДИН: усе, що торкається
+   team_settings, іде через tsSave, бо тут живуть пояснення відмов RLS. */
+async function tsSave(key, value, done, quiet) {
   /* КЛЮЧ ПО ВЛАСНИКУ — (created_by, key).
 
      Рядок app_profiles під спільною назвою команди завів асистент;
@@ -1427,7 +1445,8 @@ async function tsSave(key, value, done) {
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row,
     { onConflict: 'created_by,key' });
-  if (!error) { showStatus(done || (key + ' saved')); return true; }
+  if (!error) { if (!quiet) showStatus(done || (key + ' saved')); return true; }
+  if (quiet) { console.warn('team_settings ' + key + ':', error.message || error.code); return false; }
   const code = String(error.code || '');
   const msg = String(error.message || '');
   let hint = '';
@@ -1460,17 +1479,295 @@ async function tsRead(keys) {
   return data || [];
 }
 
-const KM_DEFAULT = { acc:'Sub ID 5',
+/* prov — перебивки колонок під постачальника прілок:
+   { trident: { cr: 'Sub ID 10' } }. Порожньо = як у загальних полях. */
+const KM_DEFAULT = { prov:{}, acc:'Sub ID 5',
                      camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
                      country:'Country', app:'Sub ID 4',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
 
+/* ══════════ KEITARO MAPPING: ЗРУЧНІСТЬ І ПОСТАЧАЛЬНИКИ ══════════
+
+   ДВІ РЕЧІ, ЯКИХ ТУТ БРАКУВАЛО.
+
+   1. Поля були порожніми рядками. Назву колонки треба було згадати
+      напам'ять, а дізнатись, що згадав не ту, можна було лише запустивши
+      імпорт — і то не завжди: креатив із чужого стовпця виглядає як
+      звичайний креатив. Тепер сторінка тримає заголовок останньої
+      вигрузки (keitaro_cols), пропонує колонки списком і під кожним
+      полем пише, що в тій колонці РЕАЛЬНО лежить.
+
+   2. Під APP колонки залежать від постачальника прілок: у trident назва
+      креатива в Sub ID 10, у решти в Sub ID 20. Одне поле на всіх
+      означало б переписувати його між імпортами — і одного разу залити
+      креативи з чужого стовпця, не помітивши. Тому поруч із загальними
+      полями є перебивки на постачальника.
+
+   Постачальника читаємо з квадратних дужок назви воронки (funProvOf) —
+   тим самим способом, що й Прілки, і теги у Funnel Mapper. */
+
+const KM_FIELDS = [
+  { id: 'km-acc',     key: 'acc',     label: 'Account',       grp: 'both', tone: 'text-slate-500',
+    tip: 'Числовий id кабінета — той самий, що в колонці account id звіту FB' },
+  { id: 'km-camp',    key: 'camp',    label: 'Campaign',      grp: 'both', tone: 'text-slate-500' },
+  { id: 'km-funnel',  key: 'funnel',  label: 'Funnel',        grp: 'both', tone: 'text-slate-500' },
+  { id: 'km-day',     key: 'day',     label: 'Day',           grp: 'both', tone: 'text-slate-500' },
+  { id: 'km-hour',    key: 'hour',    label: 'Hour',          grp: 'both', tone: 'text-slate-500' },
+  { id: 'km-ins',     key: 'ins',     label: 'Installs',      grp: 'both', tone: 'text-cyan-500' },
+  { id: 'km-reg',     key: 'reg',     label: 'Registrations', grp: 'both', tone: 'text-blue-400' },
+  { id: 'km-dep',     key: 'dep',     label: 'Deposits',      grp: 'both', tone: 'text-green-500' },
+  { id: 'km-offer',   key: 'offer',   label: 'Offer',         grp: 'both', tone: 'text-amber-400',
+    tip: 'Повний рядок оффера Keitaro — з нього беруться і офер, і лендінг' },
+  { id: 'km-cr',      key: 'cr',      label: 'Creative',      grp: 'pwa',  tone: 'text-sky-300' },
+  { id: 'km-plc',     key: 'plc',     label: 'Platform (placement)', grp: 'pwa', tone: 'text-indigo-400' },
+  { id: 'km-cr-app',  key: 'crApp',   label: 'Creative',      grp: 'app',  tone: 'text-amber-300',
+    tip: 'Те, що FB кладе в «ad name». Під окремого постачальника перебивається нижче' },
+  { id: 'km-app',     key: 'app',     label: 'App (KTID)',    grp: 'app',  tone: 'text-amber-300',
+    tip: 'Стовпець із назвою апки — pfb10964, CW10995. Спільний для всіх: саме з нього ми дізнаємось, чия це прілка' },
+  { id: 'km-country', key: 'country', label: 'Country',       grp: 'app',  tone: 'text-amber-300',
+    tip: 'Гео для APP береться звідси: Uzbekistan → UZ' }
+];
+
+/* Перебити можна лише те, що читається ПІСЛЯ того, як постачальник уже
+   відомий. Стовпця App у цьому списку немає навмисно: ним постачальника
+   й визначають, і перебивати його означало б шукати постачальника тим,
+   що від постачальника залежить. */
+const KM_PROV_FIELDS = [
+  { key: 'cr',      label: 'Creative' },
+  { key: 'country', label: 'Country' },
+  { key: 'offer',   label: 'Offer' }
+];
+
+// Заголовок останньої вигрузки: назви колонок і по одному прикладу
+// значення з кожної. Більше з файлу нічого не беремо й нікуди не везем.
+let kmCols = { cols: [], sample: {}, at: '' };
+
+// Той самий пошук, що й на імпорті: точний збіг, далі частковий.
+function kmFindCol(cols, name) {
+  const n = String(name || '').toLowerCase().trim();
+  if (!n) return -1;
+  let i = (cols || []).findIndex(x => String(x).toLowerCase().trim() === n);
+  if (i === -1) i = (cols || []).findIndex(x => String(x).toLowerCase().trim().includes(n));
+  return i;
+}
+
+const kmSlug = p => String(p).toLowerCase().replace(/[^a-z0-9]+/g, '_');
+const kmProvNames = () => (typeof funProvList === 'function') ? funProvList() : [];
+
+function kmRenderFields() {
+  const esc = t => String(t).replace(/"/g, '&quot;');
+  const html = f => `
+    <div>
+      <label class="block text-[9px] font-black uppercase tracking-widest ${f.tone} mb-1.5"${f.tip ? ` title="${esc(f.tip)}"` : ''}>${f.label}${f.tip ? ' <span class="opacity-40">?</span>' : ''}</label>
+      <input type="text" id="${f.id}" list="km-cols-list" spellcheck="false"
+             oninput="kmHint('${f.id}')" placeholder="${esc(KM_DEFAULT[f.key])}">
+      <p id="${f.id}-h" class="text-[10px] font-bold mt-1 truncate text-slate-600"></p>
+    </div>`;
+  ['both', 'pwa', 'app'].forEach(g => {
+    const el = document.getElementById('km-grid-' + g);
+    if (!el) return;
+    el.innerHTML = KM_FIELDS.filter(f => f.grp === g).map(html).join('')
+      + (g === 'both' ? `
+      <div>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5"
+               title="В якому часовому поясі Keitaro віддає час у файлі">File timezone <span class="opacity-40">?</span></label>
+        <input type="number" id="km-tz" placeholder="3">
+        <p class="text-[10px] font-bold mt-1 text-slate-600">UTC+N</p>
+      </div>` : '');
+  });
+}
+
+/* Під полем — не підказка «як має бути», а те, що Є: яку колонку файлу
+   ми знайшли і що в ній лежить. Саме цього бракувало найбільше. */
+function kmHint(id) {
+  const f = KM_FIELDS.find(x => x.id === id);
+  const el = document.getElementById(id), out = document.getElementById(id + '-h');
+  if (!f || !el || !out) return;
+  const cls = c => { out.className = 'text-[10px] font-bold mt-1 truncate ' + c; };
+  const val = (el.value || '').trim() || KM_DEFAULT[f.key];
+  if (!kmCols.cols.length) { cls('text-slate-600'); out.textContent = ''; out.title = ''; return; }
+  const i = kmFindCol(kmCols.cols, val);
+  if (i < 0) {
+    cls('text-rose-400'); out.textContent = 'немає у файлі';
+    out.title = 'У заголовку вигрузки такої колонки нема — імпорт її не знайде';
+    return;
+  }
+  const name = kmCols.cols[i], v = kmCols.sample[name];
+  cls('text-emerald-400/80');
+  out.textContent = name + (v ? ' · ' + v : '');
+  out.title = name + (v ? ' → ' + v : '');
+}
+
+function kmProvHint(slug, key) {
+  const el = document.getElementById(`km-p-${slug}-${key}`);
+  const out = document.getElementById(`km-p-${slug}-${key}-h`);
+  if (!el || !out) return;
+  const cls = c => { out.className = 'text-[10px] font-bold mt-1 truncate ' + c; };
+  const val = (el.value || '').trim();
+  if (!val || !kmCols.cols.length) { cls('text-slate-600'); out.textContent = ''; return; }
+  const i = kmFindCol(kmCols.cols, val);
+  if (i < 0) { cls('text-rose-400'); out.textContent = 'немає у файлі'; return; }
+  const name = kmCols.cols[i], v = kmCols.sample[name];
+  cls('text-emerald-400/80'); out.textContent = name + (v ? ' · ' + v : '');
+}
+
+function kmHintAll() {
+  KM_FIELDS.forEach(f => kmHint(f.id));
+  kmProvNames().forEach(p => KM_PROV_FIELDS.forEach(f => kmProvHint(kmSlug(p), f.key)));
+}
+
+function kmColsPaint() {
+  const dl = document.getElementById('km-cols-list');
+  if (dl) dl.innerHTML = kmCols.cols
+    .map(c => `<option value="${String(c).replace(/"/g, '&quot;')}"></option>`).join('');
+  const note = document.getElementById('km-cols-note');
+  if (note) note.textContent = kmCols.cols.length
+    ? `${kmCols.cols.length} columns from the last export${kmCols.at ? ' · ' + String(kmCols.at).slice(0, 10) : ''}. Every field below is checked against them.`
+    : 'No export seen yet. Load one — then each field shows which column it matched and a value from it.';
+  kmHintAll();
+}
+
+/* Читаємо тільки заголовок і перші рядки, і тільки в браузері. Сам файл
+   нікуди не їде: у базу лягає список назв колонок і по одному прикладу
+   значення — рівно те, з чого зроблена підказка. */
+function kmColsFromText(text) {
+  const lines = String(text).replace(/\ufeff/g, '').split(/\r?\n/).filter(l => l.trim() !== '');
+  if (!lines.length) return null;
+  const delim = (lines[0].split(';').length > lines[0].split(',').length) ? ';' : ',';
+  const sp = l => l.split(delim).map(c => c.replace(/^"|"$/g, '').replace(/"/g, '').trim());
+  const cols = sp(lines[0]).filter(Boolean);
+  if (!cols.length) return null;
+  return { cols, sample: kmSampleOf(cols, lines.slice(1, 300).map(sp)), at: new Date().toISOString() };
+}
+
+// Перше непорожнє значення кожної колонки. Макроси Keitaro ({sub_id_5})
+// пропускаємо — вони трапляються в рядках-заготовках і нічого не кажуть.
+function kmSampleOf(cols, rows) {
+  const sample = {};
+  (rows || []).forEach(r => cols.forEach((c, j) => {
+    if (sample[c]) return;
+    const v = String((r || [])[j] || '').trim();
+    if (v && !v.startsWith('{')) sample[c] = v.slice(0, 40);
+  }));
+  return sample;
+}
+
+async function kmPickFile(e) {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  let got = null;
+  try { got = kmColsFromText(await f.text()); }
+  catch (err) { alert('Could not read the file: ' + (err.message || err)); return; }
+  if (!got) { alert('No header row found in this file.'); return; }
+  kmCols = got;
+  kmColsPaint();
+  kmColsStore();
+}
+
+/* Тихо: це кеш для зручності. Не зберіглось — нічого не зламалось,
+   підказки просто не доїдуть до інших людей команди. Тому tsSave із
+   quiet, а не свій upsert: доступ до team_settings лишається в одному
+   місці, разом із поясненнями відмов. */
+async function kmColsStore() {
+  try { await tsSave('keitaro_cols', kmCols, '', true); }
+  catch (e) { console.warn('keitaro_cols:', e.message); }
+}
+
+/* Імпорт і так тримає заголовок у руках — беремо його звідти, щоб
+   налаштування стали зручними вже після першої вигрузки, без «підкинь
+   файл ще раз». Той самий заголовок у базу двічі не пишемо. */
+function kmColsRemember(cols, rows) {
+  const clean = (cols || []).filter(Boolean);
+  if (!clean.length) return;
+  const same = kmCols.cols.length === clean.length && kmCols.cols.every((c, i) => c === clean[i]);
+  kmCols = { cols: clean, sample: kmSampleOf(clean, rows), at: new Date().toISOString() };
+  kmColsPaint();
+  if (!same) kmColsStore();
+}
+
+function kmProvRender() {
+  const wrap = document.getElementById('km-prov-wrap');
+  if (!wrap) return;
+  const head = `<p class="text-[9px] font-black uppercase tracking-widest text-amber-400 mb-1">Per app provider &middot; APP only</p>
+    <p class="text-[10px] font-bold text-slate-500 mb-3 leading-relaxed">Empty = same column as the APP fields above.
+      The provider is read from the brackets of the funnel name &mdash; <span class="font-mono text-amber-300">Crazy Wheel [satorapps]</span> &mdash;
+      so <b>App (KTID)</b> stays shared: that column is where we learn whose app a row is.</p>`;
+  const list = kmProvNames();
+  if (!list.length) {
+    wrap.innerHTML = head + `<p class="text-[11px] font-bold text-slate-600">No provider tags yet. Put one in the funnel name &mdash;
+      <span class="font-mono">Crazy Wheel [satorapps]</span> &mdash; and it shows up here.</p>`;
+    return;
+  }
+  wrap.innerHTML = head + list.map(p => {
+    const sl = kmSlug(p);
+    return `<div class="grid grid-cols-1 md:grid-cols-[110px_repeat(3,minmax(0,1fr))] gap-3 items-start mb-3">
+      <p class="text-[12px] font-black text-amber-300 truncate md:pt-6" title="${String(p).replace(/"/g, '&quot;')}">${p}</p>
+      ${KM_PROV_FIELDS.map(f => `<div>
+        <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">${f.label}</label>
+        <input type="text" id="km-p-${sl}-${f.key}" list="km-cols-list" spellcheck="false"
+               oninput="kmProvHint('${sl}','${f.key}')" placeholder="as above">
+        <p id="km-p-${sl}-${f.key}-h" class="text-[10px] font-bold mt-1 truncate text-slate-600"></p>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+  kmProvPaint();
+}
+
+function kmProvPaint() {
+  const pv = keitaroMap.prov || {};
+  kmProvNames().forEach(p => {
+    const o = pv[String(p).toLowerCase()] || {};
+    KM_PROV_FIELDS.forEach(f => {
+      const el = document.getElementById(`km-p-${kmSlug(p)}-${f.key}`);
+      if (el) el.value = o[f.key] || '';
+    });
+  });
+  kmHintAll();
+}
+
+function kmProvCollect() {
+  /* Спершу те, що вже збережено: постачальник, чий тег зник із воронок,
+     рядка на екрані не має — і тихо втратив би налаштування. */
+  const out = {};
+  Object.keys(keitaroMap.prov || {}).forEach(k => { out[k] = { ...keitaroMap.prov[k] }; });
+  kmProvNames().forEach(p => {
+    const k = String(p).toLowerCase(), o = {};
+    KM_PROV_FIELDS.forEach(f => {
+      const el = document.getElementById(`km-p-${kmSlug(p)}-${f.key}`);
+      const v = ((el && el.value) || '').trim();
+      if (v) o[f.key] = v;
+    });
+    if (Object.keys(o).length) out[k] = o; else delete out[k];
+  });
+  return out;
+}
+
+/* Чия це прілка. Постачальник стоїть у квадратних дужках назви воронки
+   («Crazy Wheel [satorapps]»), а воронку знаходимо за KTID — або за тим,
+   що лежить у колонці воронки самого файлу. */
+function kmProvOf(ktid, funRaw) {
+  const f = mappingDB.funnels || {};
+  const n = f[ktid] || (funRaw ? f[funRaw] : '') || '';
+  return funProvOf(n).toLowerCase();
+}
+
 async function loadKeitaroMap() {
+  // Поля малюємо ДО читання: нижче значення розставляються по id, а
+  // ставити їх у ще не створені інпути означало б тихо нічого не зробити.
+  kmRenderFields();
   try {
-    const rows = await tsRead(['keitaro_map']);
-    if (rows && rows.length) keitaroMap = { ...KM_DEFAULT, ...JSON.parse(rows[0].value) };
+    // Два ключі одним запитом: колонки потрібні тим самим екраном.
+    const rows = await tsRead(['keitaro_map', 'keitaro_cols']);
+    const by = {};
+    (rows || []).forEach(r => { by[r.key] = r.value; });
+    if (by.keitaro_map) keitaroMap = { ...KM_DEFAULT, ...JSON.parse(by.keitaro_map) };
+    if (by.keitaro_cols) {
+      const v = JSON.parse(by.keitaro_cols);
+      if (v && Array.isArray(v.cols)) kmCols = { cols: v.cols, sample: v.sample || {}, at: v.at || '' };
+    }
   } catch (e) { console.warn('keitaro_map:', e.message); }
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
   set('km-acc', keitaroMap.acc);
@@ -1481,6 +1778,8 @@ async function loadKeitaroMap() {
   set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
   set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
   set('km-tz', keitaroMap.tz);
+  kmProvRender();
+  kmColsPaint();
 }
 
 async function saveKeitaroMap() {
@@ -1494,7 +1793,9 @@ async function saveKeitaroMap() {
               app:g('km-app')||KM_DEFAULT.app,
               day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
               ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
-              dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10) };
+              dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10),
+              // Перебивки під постачальників: лише непорожні поля.
+              prov: kmProvCollect() };
   if (isNaN(m.tz)) m.tz = KM_DEFAULT.tz;
   keitaroMap = m;
   if (await tsSave('keitaro_map', m, 'Keitaro mapping saved')
@@ -2230,6 +2531,10 @@ function parseKeitaro(content) {
   const delim = (lines[0].split(';').length > lines[0].split(',').length) ? ';' : ',';
   const sp = l => l.split(delim).map(c => c.replace(/^"|"$/g, '').replace(/"/g, '').trim());
   const h = sp(lines[0]).map(x => x.toLowerCase());
+  /* Заголовок цієї вигрузки лишається для екрана налаштувань: там
+     кожне поле звіряється з ним і показує приклад значення. Імпорту це
+     нічого не коштує — рядки вже розібрані. */
+  kmColsRemember(sp(lines[0]), lines.slice(1, 300).map(sp));
   // Колонки беремо з налаштувань команди (Settings → Keitaro Mapping)
   // Спершу точний збіг, потім частковий — назви колонок у експортах трохи різняться
   const col = name => {
@@ -2274,6 +2579,34 @@ function parseKeitaro(content) {
   const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
   const iIns = col(keitaroMap.ins), iReg = col(keitaroMap.reg), iDep = col(keitaroMap.dep);
   const fileTz = Number(keitaroMap.tz);
+
+  /* КОЛОНКИ ПІД ПОСТАЧАЛЬНИКА ПРІЛОК.
+
+     У trident назва креатива лежить у Sub ID 10, у решти — у Sub ID 20.
+     Один файл тримає рядки кількох постачальників, тому вибір стовпця
+     мусить бути на РЯДОК, а не на файл. Індекси готуємо тут, щоб у
+     самому циклі лишився лише пошук у мапі.
+
+     Стовпця App тут немає навмисно: саме з нього ми дізнаємось, чия це
+     прілка, — перебивати його означало б шукати постачальника тим, що
+     від постачальника й залежить. */
+  const provIdx = {};
+  if (trafficMode === 'app') {
+    const pv = keitaroMap.prov || {};
+    Object.keys(pv).forEach(k => {
+      const o = pv[k] || {}, got = {};
+      ['cr', 'country', 'offer'].forEach(f => {
+        if (!o[f]) return;
+        const i = col(o[f]);
+        if (i >= 0) got[f] = i;
+        else console.warn(`Keitaro: колонка "${o[f]}" (${k} · ${f}) у файлі не знайдена`
+          + ' — для цього постачальника беремо загальну');
+      });
+      if (Object.keys(got).length) provIdx[String(k).toLowerCase()] = got;
+    });
+    if (Object.keys(provIdx).length)
+      console.log('Keitaro: перебивки колонок під постачальників:', provIdx);
+  }
 
   const missing = [];
   if (iAcc < 0) missing.push(keitaroMap.acc); if (iDay < 0) missing.push(keitaroMap.day);
@@ -2349,16 +2682,23 @@ function parseKeitaro(content) {
        дістати нічого (див. mergeKey), тому апку беремо зі свого
        стовпця, а гео — з Country: «Uzbekistan» → «UZ». */
     const campRaw = String(r[iCamp] || '');
-    let geo, ktid;
+    const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
+    // pIdx — колонки цього постачальника прілок, якщо для нього щось
+    // перебито в налаштуваннях (див. provIdx вище).
+    let geo, ktid, pIdx = null;
     if (trafficMode === 'app') {
-      geo = toGeoCode(iCountry >= 0 ? String(r[iCountry] || '').trim() : '') || '??';
+      /* Порядок важливий: спершу апка, бо саме з неї ми дізнаємось
+         постачальника, а від постачальника залежить, у яких стовпцях
+         лежать креатив, гео й оффер. */
       ktid = (iKtApp >= 0 ? String(r[iKtApp] || '').trim() : '') || '0';
+      pIdx = provIdx[kmProvOf(ktid, funRaw)] || null;
+      const ic = (pIdx && pIdx.country >= 0) ? pIdx.country : iCountry;
+      geo = toGeoCode(ic >= 0 ? String(r[ic] || '').trim() : '') || '??';
     } else {
       const cp = campParse(campRaw, '', '', false);
       geo = cp.geo; ktid = cp.ktid;
     }
-    const cr = (r[iCr] || '').trim();
-    const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
+    const cr = (r[(pIdx && pIdx.cr >= 0) ? pIdx.cr : iCr] || '').trim();
     const funnel = apFunnelData(funRaw) || apFunnelData(ktid) || funRaw || '—';
     const ins = parseInt(r[iIns], 10) || 0, reg = parseInt(r[iReg], 10) || 0, dep = parseInt(r[iDep], 10) || 0;
 
@@ -2376,12 +2716,14 @@ function parseKeitaro(content) {
     }
     add(byDaily,    mergeKey(localDay, acc, geo, ktid), ins, reg, dep);
 
+    // Офер і лендінг — теж зі стовпця цього постачальника, якщо він інший.
+    const io = (pIdx && pIdx.offer >= 0) ? pIdx.offer : iOff;
     // офер із рядка Keitaro (напр. "[Riddick's Partners] Zazino KG | Reg | Anna")
-    const offer = iOff >= 0 ? matchOffer(r[iOff]) : '';
+    const offer = io >= 0 ? matchOffer(r[io]) : '';
     // Повний рядок — це лендінг. Пробіли нормалізуємо, щоб той самий
     // лендінг із подвійним пробілом не став другим рядком у звіті.
-    const raw = iOff >= 0 ? String(r[iOff] || '').trim().replace(/\s+/g, ' ') : '';
-    if (iOff >= 0) {
+    const raw = io >= 0 ? String(r[io] || '').trim().replace(/\s+/g, ' ') : '';
+    if (io >= 0) {
       if (raw && offer) offerHits.add(offer);
       else if (raw) {
         const m = offerMisses[raw] || (offerMisses[raw] = { installs: 0, regs: 0, deps: 0 });
@@ -3984,6 +4326,8 @@ async function refreshFunnelsTable() {
   // Фільтр міг стояти на постачальнику, який щойно зник із довідника.
   filterFunnels();
   funProvSync(); // список тегів живе з таблиці — оновлюємо разом з нею
+  // Перебивки колонок теж: постачальники там ті самі теги.
+  if (typeof kmProvRender === 'function') kmProvRender();
 }
 
 /* ============================================================
