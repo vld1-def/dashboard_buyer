@@ -182,7 +182,7 @@ function rlPaint() {
       </div>
       <div class="rl-when">${rlEsc(rlWords(r))}</div>
       <div class="rl-scope">from $${rlEsc(r.minSpend == null ? 10 : r.minSpend)} spent${
-        (r.geo || []).length ? ' · geo ' + rlEsc(r.geo.join('/')) : ''}${
+        (r.geo || []).length ? ' · geo ' + rlEsc(r.geo.join('/')) : ' · any geo'}${
         r.nameHas ? ' · FB name has “' + rlEsc(r.nameHas) + '”' : ''}${
         (r.cabs && r.cabs.length) ? ' · ' + r.cabs.length + ' cabinet(s)' : ' · all cabinets'}</div>
     </div>`).join('') + (rlEdit === -1 ? rlForm(rlBlank(), -1) : '');
@@ -225,7 +225,12 @@ function rlForm(r, i) {
       <label class="rl-f"><span class="rl-f-l">Geo (blank = any)</span>
         <input class="rl-in" id="rl-f-geo" placeholder="KG, UZ"
           title="Two-letter country codes. Taken from the name in Facebook — the ad's, its ad set's or its campaign's — because Facebook does not report a country on an ad row. The code must stand on its own: Mostbet_KG and KG_15323 match, MostbetKG does not."
-          value="${rlEsc((r.geo || []).join(', '))}"></label>
+          oninput="rlGeoNote()" value="${rlEsc((r.geo || []).join(', '))}"></label>
+      <!-- Назва правила ні на що не впливає, а виглядає як
+           налаштування: «BR CLICK» без кодів торкнеться всіх гео. Одне
+           таке правило вже вимкнуло TJ, і зрозуміти це ззовні було
+           неможливо. Тому поле каже про себе саме. -->
+      <span id="rl-geo-note" class="rl-note"></span>
       ${r.nameHas ? `<label class="rl-f"><span class="rl-f-l">Old name filter</span>
         <span class="rl-in" style="display:flex;align-items:center;gap:.5rem">
           <span class="font-mono truncate" title="This rule still only looks at names containing this text. The field was replaced by Geo; the filter is kept so the rule does not silently start covering everything.">“${rlEsc(r.nameHas)}”</span>
@@ -276,12 +281,49 @@ function rlFromForm() {
    Він обмежував правило, тож зникнути сам, разом із полем, не мав
    права: правило, яке вміє вимикати оголошення, мовчки розширювати
    не можна. */
+/* ЩО САМЕ ЗРОБИТЬ ЦЕ ПОЛЕ.
+
+   Два випадки, які ззовні виглядають однаково, а значать протилежне:
+
+     порожньо        правило торкнеться ВСІХ гео. Назва «BR CLICK» тут
+                     не рахується — вона просто підпис;
+     «BRA», «br1»    не код гео. Раніше такі токени мовчки викидались,
+                     і людина була певна, що фільтр стоїть, а фільтра
+                     не було зовсім.
+
+   Перший випадок нормальний, якщо його вибрали свідомо; другий —
+   майже завжди помилка. Тому пишемо обидва, під полем, поки друкують. */
+window.rlGeoNote = function () {
+  const el = document.getElementById('rl-geo-note');
+  const inp = document.getElementById('rl-f-geo');
+  if (!el || !inp) return;
+  const raw = String(inp.value || '').split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
+  const good = raw.filter(x => /^[A-Za-z]{2}$/.test(x));
+  const bad = raw.filter(x => !/^[A-Za-z]{2}$/.test(x));
+  if (bad.length) {
+    el.className = 'rl-note is-warn';
+    el.textContent = bad.join(', ') + (bad.length > 1 ? ' — не коди гео' : ' — не код гео')
+      + ' (треба дві літери), їх пропущено'
+      + (good.length ? '. Лишиться: ' + good.join(', ').toUpperCase()
+                     : '. Фільтра не буде — правило візьме всі гео');
+    return;
+  }
+  if (!good.length) {
+    el.className = 'rl-note is-warn';
+    el.textContent = 'Порожньо — правило торкнеться ВСІХ гео. Назва правила на це не впливає.';
+    return;
+  }
+  el.className = 'rl-note';
+  el.textContent = 'Тільки ' + good.join(', ').toUpperCase()
+    + ' — і код мусить стояти окремо в назві оголошення, адсета або кампанії.';
+};
+
 window.rlDropHas = function () {
   if (rlEdit >= 0 && rlRules[rlEdit]) { rlRules[rlEdit].nameHas = ''; rlPaint(); }
 };
 
-window.rlAdd = function () { rlEdit = -1; rlPaint(); };
-window.rlOpen = function (i) { rlEdit = i; rlPaint(); };
+window.rlAdd = function () { rlEdit = -1; rlPaint(); rlGeoNote(); };
+window.rlOpen = function (i) { rlEdit = i; rlPaint(); rlGeoNote(); };
 window.rlCancel = function () { rlEdit = null; rlPaint(); };
 
 window.rlCondAdd = function () {
