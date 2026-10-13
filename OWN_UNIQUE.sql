@@ -12,15 +12,16 @@
 --
 --  ПРИЧИНА — ДВА ПРАВИЛА, ЯКІ НЕ ЗІЙШЛИСЬ.
 --
---    1. ВИДИМІСТЬ у payouts і team_settings — по АВТОРУ. Єдині
---       політики на цих таблицях (SECURITY_BUYERS.sql крок 6) це
---       own_select / own_insert / own_update / own_delete, усі по
+--    1. ВИДИМІСТЬ у payouts, team_settings і settings — по АВТОРУ.
+--       Єдині політики на цих таблицях (SECURITY_BUYERS.sql крок 6)
+--       це own_select / own_insert / own_update / own_delete, усі по
 --       created_by = auth.uid(). Ні can_read_team, ні can_read_mine
 --       для них не давали навмисно: payouts — це гроші
 --       (TEAM_ROLES.sql, ADMIN_ROLES.sql).
 --
 --    2. УНІКАЛЬНІСТЬ — по КОМАНДІ: (team_name, geo, offer) у payouts,
---       (team_name, key) у team_settings.
+--       (team_name, key) у team_settings, (team_name, month) у
+--       settings.
 --
 --  Тобто рядок ОДИН на всю команду, а бачить його ОДНА людина. Поки
 --  в команді один автор, різниці немає. Щойно зʼявився асистент —
@@ -34,10 +35,19 @@
 --
 --      payouts        (team_name, geo, offer)  →  (created_by, geo, offer)
 --      team_settings  (team_name, key)         →  (created_by, key)
+--      settings       (team_name, month)       →  (created_by, month)
 --
---  Тепер у кожного свої ставки І свої налаштування розбору. Баєр
---  і його асистент не забирають рядки один в одного й не блокують
---  один одного.
+--  Тепер у кожного свої ставки, свої налаштування розбору І своя
+--  місячна ціль. Баєр і його асистент не забирають рядки один в
+--  одного й не блокують один одного.
+--
+--  ⚠️ settings ДОДАНА ПІЗНІШЕ, І ЦЕ БУВ ТОЙ САМИЙ НЕДОГЛЯД.
+--  Коли лагодили payouts і team_settings, settings пропустили — хоч
+--  політики на ній такі самі. Симптом вийшов тихіший: інший баєр
+--  ставив Monthly Spend Target, число лягало в localStorage, на
+--  екрані виглядало збереженим, а в базі рядка не було. Ні помилки,
+--  ні підказки — бо сторінка там мала try/catch без перевірки error,
+--  а PostgREST відмову не кидає винятком.
 --
 --  Тоді в кожного свій рядок, і ніхто нікого не блокує — рівно так,
 --  як уже зроблено для доменів у SECURITY_BUYERS.sql:
@@ -121,20 +131,53 @@ do $$
 declare
   TEAM constant text := 'IMPROVE';   -- ⬅ ⬅ ⬅ ОДНЕ, ЩО ТРЕБА ПОМІНЯТИ:
                                      --        назва команди з лівої панелі дашборда
-  tbl  text; cols text; cols2 text; nm text; r record; n bigint; dflt text;
+  tbl  text; cols text; cols2 text; nm text; valx text; r record; n bigint; dflt text;
   ord  text;   -- чим визначаємо «найновіший»: див. нижче
   idc  text;   -- чим розрізняємо рядки: id або ctid, див. нижче
   have boolean;  -- чи така унікальність уже є
   nulls bigint;  -- рядків без автора: заважають первинному ключу
 begin
-  -- Обидві таблиці: і виплати, і налаштування команди. Сторінка
-  -- зберігає їх по тих самих стовпцях (created_by, …) — ключ у коді
-  -- мусить збігатися з базою, інакше не збережеться нічого.
-  foreach tbl in array array['payouts', 'team_settings'] loop
-    cols  := case tbl when 'payouts' then 'created_by, geo, offer' else 'created_by, key' end;
-    cols2 := case tbl when 'payouts' then 'geo, offer' else 'key' end;
-    nm    := case tbl when 'payouts' then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
-                      else 'key' end;
+  /* ТРИ ТАБЛИЦІ: виплати, налаштування команди і місячна ціль.
+     Сторінка зберігає їх по тих самих стовпцях (created_by, …) — ключ
+     у коді мусить збігатися з базою, інакше не збережеться нічого.
+
+     settings додана третьою з тієї самої причини, що й попередні дві:
+     видимість у ній по АВТОРУ (own_select), а сторінка писала з
+     onConflict 'team_name,month' — по КОМАНДІ. Один рядок на місяць,
+     видимий одному баєру; другий ні побачити його не міг, ні
+     перезаписати. Ціль мовчки лишалась у localStorage. */
+  foreach tbl in array array['payouts', 'team_settings', 'settings'] loop
+    cols  := case tbl when 'payouts'       then 'created_by, geo, offer'
+                      when 'team_settings' then 'created_by, key'
+                      when 'settings'      then 'created_by, month' end;
+    cols2 := case tbl when 'payouts'       then 'geo, offer'
+                      when 'team_settings' then 'key'
+                      when 'settings'      then 'month' end;
+    nm    := case tbl when 'payouts'       then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
+                      when 'team_settings' then 'key'
+                      when 'settings'      then 'month' end;
+    valx  := case tbl when 'payouts'       then 'value::text'
+                      when 'team_settings' then 'value'
+                      when 'settings'      then 'monthly_spend_target::text' end;
+
+    /* БЕЗ else У case — НАВМИСНО.
+
+       Раніше тут стояло «else» з ключем team_settings, і нова таблиця
+       в списку тихо поїхала б із чужим ключем. Тепер невідома назва
+       дає null, і блок зупиняється з прямою вказівкою, що робити. */
+    if cols is null or cols2 is null or nm is null or valx is null then
+      raise exception
+        'OWN_UNIQUE: для таблиці «%» немає опису ключа — додайте її в усі case вище', tbl;
+    end if;
+
+    /* Таблиці може не бути зовсім (різні бази — різний набір). Це не
+       помилка: пропускаємо й кажемо про це у звіті, щоб пропуск не
+       виглядав як зроблена робота. */
+    if not exists (select 1 from information_schema.tables
+                    where table_schema = 'public' and table_name = tbl) then
+      insert into public._own_all values ('0. таблиці немає — пропущено', tbl, '—', 0);
+      continue;
+    end if;
 
     /* ⚠️ НІЧОГО НЕ ПРИПУСКАЄМО ПРО ФОРМУ ТАБЛИЦІ.
 
@@ -185,8 +228,7 @@ begin
                 order by (team_name = %5$L) desc, %6$s) rn
                 from public.%1$I where created_by is not null) q
        where rn > 1$f$,
-      tbl, nm, case tbl when 'payouts' then 'value::text' else 'value' end,
-      cols2, TEAM, ord, idc);
+      tbl, nm, valx, cols2, TEAM, ord, idc);
 
     execute format($f$
       delete from public.%1$I t
@@ -389,6 +431,30 @@ select 'team_settings', 'без автора — не заважає перех�
        '—', 'усі такі разом', count(*)
   from public.team_settings where created_by is null having count(*) > 0;
 
+/* settings — через динамічний SQL і перевірку існування: у базі, де
+   цієї таблиці немає, звичайний insert ... from public.settings
+   завалив би весь блок на розборі запиту. */
+do $$
+begin
+  if exists (select 1 from information_schema.tables
+              where table_schema = 'public' and table_name = 'settings') then
+    insert into public._own_check
+    select 'settings', 'зіткнення: два рядки на один month',
+           coalesce(m.name, left(s.created_by::text, 8), '—'),
+           s.month::text, count(*)
+      from public.settings s
+      left join public.team_members m on m.user_id = s.created_by
+     where s.created_by is not null
+     group by 1, 2, 3, 4
+    having count(*) > 1;
+
+    insert into public._own_check
+    select 'settings', 'без автора — не заважає переходу, але рядок мертвий',
+           '—', 'усі такі разом', count(*)
+      from public.settings where created_by is null having count(*) > 0;
+  end if;
+end $$;
+
 insert into public._own_check
 select '—', 'перешкод немає: можна виконувати БЛОК 2', '—', '—', 0
  where not exists (select 1 from public._own_check);
@@ -500,11 +566,18 @@ declare
   idc  text;   -- id або ctid — те саме, що в БЛОЦІ 0
   n    bigint;
 begin
-  -- Обидві таблиці: і виплати, і налаштування команди. Сторінка
-  -- зберігає їх по тих самих стовпцях (created_by, …) — ключ у коді
-  -- мусить збігатися з базою, інакше не збережеться нічого.
-  foreach tbl in array array['payouts', 'team_settings'] loop
-    cols := case tbl when 'payouts' then 'geo, offer' else 'key' end;
+  -- Ті самі три таблиці, що в БЛОЦІ 0.
+  foreach tbl in array array['payouts', 'team_settings', 'settings'] loop
+    cols := case tbl when 'payouts'       then 'geo, offer'
+                     when 'team_settings' then 'key'
+                     when 'settings'      then 'month' end;
+    if cols is null then
+      raise exception 'OWN_UNIQUE: для таблиці «%» немає опису ключа', tbl;
+    end if;
+    if not exists (select 1 from information_schema.tables
+                    where table_schema = 'public' and table_name = tbl) then
+      continue;
+    end if;
 
     -- Чим розрізняти рядки — питаємо базу, як і в БЛОЦІ 0.
     select case when exists (select 1 from information_schema.columns
@@ -529,9 +602,12 @@ begin
                 from public.%1$I where created_by is not null) q
        where rn > 1$f$,
       tbl,
-      case tbl when 'payouts' then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
-               else 'key' end,
-      case tbl when 'payouts' then 'value::text' else 'value' end,
+      case tbl when 'payouts'       then 'coalesce(geo,''—'') || '' / '' || coalesce(offer,''—'')'
+               when 'team_settings' then 'key'
+               when 'settings'      then 'month' end,
+      case tbl when 'payouts'       then 'value::text'
+               when 'team_settings' then 'value'
+               when 'settings'      then 'monthly_spend_target::text' end,
       cols, TEAM, idc);
     get diagnostics n = row_count;
     if n > 0 then
@@ -614,13 +690,22 @@ declare
   bad   bigint;
   dflt  text;
 begin
-  -- Обидві таблиці: і виплати, і налаштування команди. Сторінка
-  -- зберігає їх по тих самих стовпцях (created_by, …) — ключ у коді
-  -- мусить збігатися з базою, інакше не збережеться нічого.
-  foreach tbl in array array['payouts', 'team_settings'] loop
-    cols  := case tbl when 'payouts' then 'created_by, geo, offer'
-                      else 'created_by, key' end;
-    cols2 := case tbl when 'payouts' then 'geo, offer' else 'key' end;
+  -- Ті самі три таблиці, що в БЛОЦІ 0.
+  foreach tbl in array array['payouts', 'team_settings', 'settings'] loop
+    cols  := case tbl when 'payouts'       then 'created_by, geo, offer'
+                      when 'team_settings' then 'created_by, key'
+                      when 'settings'      then 'created_by, month' end;
+    cols2 := case tbl when 'payouts'       then 'geo, offer'
+                      when 'team_settings' then 'key'
+                      when 'settings'      then 'month' end;
+    if cols is null or cols2 is null then
+      raise exception 'OWN_UNIQUE: для таблиці «%» немає опису ключа', tbl;
+    end if;
+    if not exists (select 1 from information_schema.tables
+                    where table_schema = 'public' and table_name = tbl) then
+      insert into public._own_log values (tbl, 'таблиці немає — пропущено', '—');
+      continue;
+    end if;
 
     /* 1. перешкоди рахуємо ТУТ-ТАКИ, а не читаємо з _own_check.
 
@@ -719,7 +804,7 @@ select t.relname  as "таблиця",
   join pg_class t  on t.oid  = i.indrelid
   join pg_namespace ns on ns.oid = t.relnamespace
  where ns.nspname = 'public' and i.indisunique
-   and t.relname in ('payouts', 'team_settings')
+   and t.relname in ('payouts', 'team_settings', 'settings')
  order by 1, 2;
 
 --  Прибрати службові таблиці, коли все переглянули (у _own_dropped —

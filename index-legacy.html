@@ -5984,6 +5984,17 @@ async function loadMonthlyTarget() {
 
   console.log(`[Target] team=${currentTeam} month=${currentMonthFilter}`, { data, error });
 
+  /* Відмову читання теж не ковтаємо. Раніше будь-яка помилка просто
+     скочувалась на localStorage, і людина бачила СВОЄ старе число,
+     вважаючи його тим, що в базі. Різниця важлива: у браузері воно
+     живе до першої чистки кеша. */
+  if (error) {
+    console.error('settings read:', error);
+    if (typeof toast === 'function')
+      toast('Monthly target was read from the browser, not the database: '
+            + (error.message || error.code), 'warn', 9000);
+  }
+
   if (!error && data && data.length > 0 && data[0].monthly_spend_target != null) {
     targetInput.value = data[0].monthly_spend_target;
   } else {
@@ -5995,19 +6006,54 @@ async function loadMonthlyTarget() {
   }
 }
 
-async function updateTarget() {
+/* Ціль пишеться не на кожну натиснуту клавішу.
+
+   oninput спрацьовує на кожен символ: набрав «40000» — пʼять запитів
+   до бази, і стільки ж повідомлень, якщо щось не так. Тому в базу
+   йдемо через 600 мс після того, як перестали друкувати. У
+   localStorage кладемо відразу — він безкоштовний, і при
+   перезавантаженні значення не губиться навіть якщо до бази не
+   дійшло. */
+let targetSaveT = null;
+function updateTarget() {
   const val = Number(document.getElementById('target-input').value) || 40000;
   const lsKey = `monthly_spend_target_${currentTeam}_${currentMonthFilter}`;
   localStorage.setItem(lsKey, val);
-  try {
-    await sb.from('settings').upsert(
-      { team_name: currentTeam, month: currentMonthFilter, monthly_spend_target: val },
-      { onConflict: 'team_name,month' }
-    );
-  } catch(e) {
-    console.warn('settings table not available, using localStorage only');
-  }
   if (window.filteredDataCache) updateMilestones(window.filteredDataCache);
+  clearTimeout(targetSaveT);
+  targetSaveT = setTimeout(() => targetSave(val), 600);
+}
+
+async function targetSave(val) {
+  /* ⚠️ ТУТ МОВЧАЛИ, І ЦЕ ТА САМА ПОМИЛКА, ЩО ВЖЕ БУЛА В payouts,
+     team_settings І roleBoot.
+
+     Стояло try/catch без перевірки error. PostgREST відмову НЕ кидає
+     винятком — він повертає її в полі error, тож catch не ловив
+     НІЧОГО. Ціль мовчки лишалась тільно в localStorage: у себе все
+     виглядало збереженим, а в базі рядка не було.
+
+     ДРУГА ПОЛОВИНА — КЛЮЧ. Стояло onConflict: 'team_name,month', тобто
+     унікальність по КОМАНДІ, тоді як видимість у settings по АВТОРУ
+     (own_select: created_by = auth.uid(), SECURITY_BUYERS.sql крок 6).
+     Один рядок на команду, видимий одному баєру: другий ні побачити
+     його не може, ні перезаписати — RLS не дає ON CONFLICT DO UPDATE
+     торкнутись чужого рядка, і приходить 42501. Рівно та сама
+     поломка, що була з payouts (UZ/Pinco) і team_settings.
+
+     Тому ключ по власнику, і база мусить мати такий самий — його
+     ставить OWN_UNIQUE.sql. Поки не виконано, keyHint скаже це
+     словами, а не кодом помилки. */
+  const row = { team_name: currentTeam, month: currentMonthFilter,
+                monthly_spend_target: val };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('settings').upsert(row, { onConflict: 'created_by,month' });
+  if (!error) return;
+  console.error('settings upsert:', error);
+  const msg = 'Monthly target not saved: ' + (error.message || error.code)
+            + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : '');
+  if (typeof toast === 'function') toast(msg, 'error', 12000);
+  else alert(msg);
 }
 
 // Закриття меню при кліку в іншому місці
