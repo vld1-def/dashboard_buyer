@@ -1699,6 +1699,112 @@ rest = sub(rest,
 rest = rest.replace('uqDescribe(p)}">${uqDescribe(p)}',
                     'uqDescribe(p, coverArg && coverArg.plan)}">${uqDescribe(p, coverArg && coverArg.plan)}')
 
+# ── ХУК ПРИВОДИМО ДО КАДРУ КРЕАТИВА ОКРЕМИМ ПРОГОНОМ ───────────────────
+#
+# Симптом був такий: «Failed to inject frame into filter network: Invalid
+# argument · файл на виході порожній». Це не про аргументи — це buffersrc
+# відмовляється прийняти кадр, параметри якого не ті, з якими збирали
+# граф. Таке дає відео, де роздільність або SAR міняються ПОСЕРЕД файлу —
+# звичайна річ для хука, зібраного з двох шматків чи знятого з екрана. На
+# простому -vf ffmpeg такий файл переживає: граф один і його можна
+# перебудувати на ходу. У filter_complex із concat перебудова неможлива,
+# тому прогін падає цілком і віддає нуль байт.
+#
+# Лікується не в графі: відмова стається ДО фільтрів, на вході. Тому хук
+# спершу проганяємо окремо — один вхід, простий -vf, перебудова
+# дозволена — і в склейку віддаємо файл із незмінним кадром. Коштує це
+# одне коротке кодування на ФАЙЛ (хук короткий), а не на варіант.
+#
+# Якщо й нормалізація не вдалась — склеюємо як є: сирий шлях і далі
+# працює для нормальних файлів, і забирати його через аварійний випадок
+# немає за що. Але кажемо про це рядком, а не мовчимо.
+rest = sub(rest,
+  """async function uqWriteCover(ffw) {
+  if (!uqCover) return;
+  await ffw.writeFile('cover.' + uqCover.ext, uqCover.data.slice(0));
+}""",
+  """async function uqWriteCover(ffw) {
+  if (!uqCover) return;
+  // Нормалізований хук заміщає сирий: саме його чекає граф склейки.
+  if (uqCover.norm) { await ffw.writeFile(UQ_COVER_N, uqCover.norm.slice(0)); return; }
+  await ffw.writeFile('cover.' + uqCover.ext, uqCover.data.slice(0));
+}
+
+const UQ_COVER_N = 'cover_n.mp4';
+
+/* Хук → кадр креатива: той самий розмір, SAR, fps і pix_fmt, без звуку
+   (на секундах хука все одно тиша з anullsrc, тож дорожку хука ми не
+   декодуємо взагалі — одна поверхня відмови менше).
+
+   Фільтрів унікалізації тут НЕМА навмисно: вони лишаються в графі
+   склейки, бо мусять бути різними в кожному варіанті. Інакше перші
+   секунди всіх копій стали б байт-у-байт однакові, тобто ми власноруч
+   зробили б спільний шматок у всіх креативів. */
+async function uqNormCover(ff, meta) {
+  if (!uqCover || uqCover.kind !== 'video') return null;
+  const W = meta.w || 1080, H = meta.h || 1920;
+  const code = await ff.exec(['-i', 'cover.' + uqCover.ext, '-an',
+    '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+         + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+    '-movflags', '+faststart', UQ_COVER_N]);
+  if (code !== 0) return null;
+  let data = null;
+  try { data = await ff.readFile(UQ_COVER_N); } catch (e) { return null; }
+  return (data && data.length > 1024) ? data : null;
+}""",
+  'хук: нормалізація окремим прогоном')
+
+# Вхід склейки — нормалізований файл, якщо він є.
+rest = sub(rest,
+  "  if (cover) args.push('-i', 'cover.' + cover.ext);",
+  "  if (cover) args.push('-i', cover.file || ('cover.' + cover.ext));",
+  'хук: вхід склейки')
+
+rest = sub(rest,
+  """    ? { ext: uqCover.ext, dur: uqCoverDur(), kind: uqCover.kind || 'image',
+        plan: uqCoverPlan(), noAudio: false }""",
+  """    ? { ext: uqCover.ext, dur: uqCoverDur(), kind: uqCover.kind || 'image',
+        plan: uqCoverPlan(), noAudio: false, file: null }""",
+  'хук: coverArg.file')
+
+# Нормалізація — на файл, бо кадр креатива в кожного свій. Ставимо ПІСЛЯ
+# читання байтів: раніше meta ще немає, а без неї нема під що приводити.
+rest = sub(rest,
+  """      const jobs = Math.min(count, uqJobCount(file.size));""",
+  """      /* Хук під кадр ЦЬОГО креатива: meta в кожного файлу своя, тож
+         нормалізуємо на кожен файл, а не раз на прогін. */
+      if (coverArg && coverArg.plan) {
+        uqCover.norm = null;
+        setStatus(`${file.name} · готую хук під кадр креатива…`);
+        try { uqCover.norm = await uqNormCover(ff, meta); }
+        catch (e) { console.warn('uq: хук не нормалізувався', e); }
+        coverArg.file = uqCover.norm ? UQ_COVER_N : null;
+        if (uqCover.norm) await uqWriteCover(ff);
+        else {
+          const warn = document.createElement('p');
+          warn.className = 'text-[11px] font-bold text-amber-400 mt-3';
+          warn.textContent = `${file.name}: хук не вдалось привести до кадру креатива — склеюю як є`;
+          res.appendChild(warn);
+        }
+      }
+
+      const jobs = Math.min(count, uqJobCount(file.size));""",
+  'хук: нормалізація на кожен файл')
+
+# Сире «Failed to inject frame…» не каже, що робити. Пояснюємо.
+rest = sub(rest,
+  """  const head = (real || last || 'ffmpeg завершився кодом ' + code).slice(0, 200);""",
+  """  let head = (real || last || 'ffmpeg завершився кодом ' + code).slice(0, 200);
+  /* Ця відмова означає рівно одне: у відео МІНЯЮТЬСЯ параметри кадру
+     посеред файлу, а граф склейки перебудувати неможливо. Сирий рядок
+     ffmpeg цього не каже, тож перекладаємо на дію. */
+  if (/inject frame into filter network/i.test(log.join(' ')))
+    head = 'у відео змінюються параметри кадру посеред файлу (роздільність або SAR) — '
+         + 'склейка такого не переживає. Перекодуй це відео в постійний розмір і спробуй ще раз';""",
+  'хук: людське пояснення відмови')
+
+
 # Після завантаження даних перемальовуємо парк кабінетів — там половина
 # колонок рахується з daily_stats, якого на момент першого рендера ще немає.
 # Гачків два, і форма виклику в них різна, тож і якір окремий для кожного.

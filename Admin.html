@@ -138,7 +138,7 @@
       <div class="overflow-x-auto">
         <table class="w-full" id="am-tbl">
           <thead><tr>
-            <th>Хто</th><th>Роль</th><th>Команда</th><th>Начальник</th>
+            <th>Хто</th><th>Роль</th><th>Команда</th><th>Начальник</th><th>Нижнє меню</th>
             <th class="text-right">·</th>
           </tr></thead>
           <tbody id="am-body"></tbody>
@@ -261,13 +261,22 @@ async function setTeamSetting(key, value) {
 
 window.amLoad = async function () {
   const body = document.getElementById('am-body');
-  body.innerHTML = '<tr><td colspan="5" class="hint">Loading…</td></tr>';
-  const { data, error } = await sb.from('team_members')
-    .select('user_id, name, role, team_name, parent_id');
+  body.innerHTML = '<tr><td colspan="6" class="hint">Loading…</td></tr>';
+  /* dock_hidden може ще не існувати (DOCK_MENU.sql не виконаний) —
+     тоді питаємо без неї, а в колонці меню кажемо, що робити. Інакше
+     одна невиконана міграція ховала б усю таблицю людей. */
+  let { data, error } = await sb.from('team_members')
+    .select('user_id, name, role, team_name, parent_id, dock_hidden');
+  amDockCol = !error;
+  if (error && /dock_hidden/i.test(error.message || '')) {
+    ({ data, error } = await sb.from('team_members')
+      .select('user_id, name, role, team_name, parent_id'));
+  }
   if (error) {
-    body.innerHTML = `<tr><td colspan="5" class="hint warn">${esc(error.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="hint warn">${esc(error.message)}</td></tr>`;
     return;
   }
+  await amDockLoadItems();
   const rank = { admin: 1, lead: 2, buyer: 3, assistant: 4 };
   amRows = (data || []).slice().sort((a, b) =>
     (rank[a.role] || 9) - (rank[b.role] || 9) ||
@@ -278,7 +287,7 @@ window.amLoad = async function () {
 function amRender() {
   const body = document.getElementById('am-body');
   if (!amRows.length) {
-    body.innerHTML = '<tr><td colspan="5" class="hint">Нікого ще немає. Люди з\'являються тут після першого входу в дашборд.</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="hint">Нікого ще немає. Люди з\'являються тут після першого входу в дашборд.</td></tr>';
     return;
   }
   // Начальником може бути тільно баєр — те саме правило, що в тригері.
@@ -308,12 +317,88 @@ function amRender() {
           </select>`
           : '<span class="hint">—</span>'}
       </td>
+      <td>${amDockCell(r, i)}</td>
       <td class="text-right">
         <button class="btn go" onclick="amSave(${i})">Save</button>
       </td>
     </tr>`;
   }).join('');
 }
+
+/* ─────────── НИЖНЄ МЕНЮ ПО ЛЮДИНІ ───────────
+
+   Пункти дока впізнаються за підписом (title) — у кнопок немає id, а
+   підпис уже є ключем і для іконок, і для персональної схованки.
+
+   Перелік пунктів НЕ зашитий: дашборд адміна зберігає свій фактичний
+   список у team_settings.dock_items, і беремо ми його. Причина проста:
+   зашитий список застаріває молча — хтось додає вікно, а прибрати його
+   тут неможливо, і ніхто не розуміє чому. Запасний перелік лишається
+   на перший раз, поки адмін ще не відкривав дашборд.
+
+   Прибрати пункт — це про порядок на екрані, не про доступ до даних:
+   дані тримає RLS. Але повернути його собі людина не може — тригер із
+   DOCK_MENU.sql дозволяє писати dock_hidden лише адміну. */
+let amDockCol = true;        // чи є колонка в базі
+let amDockItems = [];        // перелік пунктів дока
+
+const AM_DOCK_FALLBACK = [
+  'Select Month', 'Team', 'Performance Summary', 'Фототека', 'Daily Reports',
+  'Mission Center', 'Change Log', 'Quick Links', 'Bonus Calculator', 'DB Logs',
+  'Geo Compare', 'Data Check (Keitaro)', 'Accounts', 'Uniqueizer', 'Прілки',
+  'Texts', 'Files', 'Settings'
+];
+
+async function amDockLoadItems() {
+  try {
+    const { data } = await sb.from('team_settings')
+      .select('value').eq('key', 'dock_items');
+    /* Рядків може бути кілька (вони унікальні по власнику) — беремо
+       найдовший список: у когось дашборд міг бути відкритий давно, до
+       появи нових вікон. */
+    const lists = (data || []).map(r => { try { return JSON.parse(r.value); } catch (e) { return null; } })
+      .filter(x => Array.isArray(x) && x.length);
+    lists.sort((a, b) => b.length - a.length);
+    amDockItems = lists[0] || AM_DOCK_FALLBACK;
+  } catch (e) { amDockItems = AM_DOCK_FALLBACK; }
+}
+
+function amDockCell(r, i) {
+  if (!amDockCol) return '<span class="hint">виконайте DOCK_MENU.sql</span>';
+  const hidden = Array.isArray(r.dock_hidden) ? r.dock_hidden : [];
+  const off = new Set(hidden.map(t => String(t).toLowerCase()));
+  const n = hidden.length;
+  const rows = amDockItems.map(t => {
+    const on = !off.has(String(t).toLowerCase());
+    return `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;white-space:nowrap">
+      <input type="checkbox" ${on ? 'checked' : ''}
+        onchange="amDockSet(${i}, ${JSON.stringify(t).replace(/"/g, '&quot;')}, this.checked)">
+      <span${on ? '' : ' class="hint"'}>${esc(t)}</span></label>`;
+  }).join('');
+  /* Галочка = пункт ВИДНО. Так читається природніше за «сховати»: у
+     списку видно те, що людина має, а не те, чого в неї немає. */
+  return `<details${n ? ' open' : ''}>
+    <summary style="cursor:pointer" class="${n ? 'warn' : 'hint'}">${
+      n ? 'прибрано ' + n : 'усі пункти'}</summary>
+    <div style="max-height:220px;overflow:auto;padding:4px 0 2px">${rows}</div>
+  </details>`;
+}
+
+window.amDockSet = function (i, title, visible) {
+  const r = amRows[i];
+  if (!r) return;
+  const list = (Array.isArray(r.dock_hidden) ? r.dock_hidden : [])
+    .filter(t => String(t).toLowerCase() !== String(title).toLowerCase());
+  if (!visible) list.push(title);
+  r.dock_hidden = list;
+  // Не перемальовуємо весь рядок: інакше <details> згортався б на
+  // кожній галочці, а ставлять їх по кілька за раз.
+  const sum = document.querySelector(`#am-body tr[data-i="${i}"] summary`);
+  if (sum) {
+    sum.textContent = list.length ? 'прибрано ' + list.length : 'усі пункти';
+    sum.className = list.length ? 'warn' : 'hint';
+  }
+};
 
 /* UUID перевіряємо ДО запиту: інакше Postgres віддасть
    «invalid input syntax for type uuid», і людина гадатиме, що зламалась
@@ -372,6 +457,9 @@ window.amSave = async function (i) {
     team_name: (r.team_name || '').trim() || null,
     parent_id: r.role === 'assistant' ? r.parent_id : null
   };
+  // Колонки може не бути — тоді не надсилаємо поле зовсім, інакше
+  // відмовить увесь патч, разом з іменем і роллю.
+  if (amDockCol) patch.dock_hidden = Array.isArray(r.dock_hidden) ? r.dock_hidden : [];
   const { data, error } = await sb.from('team_members')
     .update(patch).eq('user_id', r.user_id).select('user_id');
   msg.className = 'hint mt-3';
@@ -382,6 +470,15 @@ window.amSave = async function (i) {
        буде саме так, якщо виконано TEAM_ROLES, а ADMIN_ROLES ще ні.
        Повідомлення Postgres тут правдиве, але людині з нього не
        зрозуміти, що саме робити. */
+    /* 42703 — немає колонки. Практично завжди це невиконаний
+       DOCK_MENU.sql, і «column dock_hidden does not exist» людині не
+       каже, який файл запустити. */
+    if (error.code === '42703' && /dock_hidden/i.test(error.message || '')) {
+      msg.innerHTML = 'Не збереглось: у базі ще немає колонки <b>dock_hidden</b>. '
+        + 'Виконайте <b>DOCK_MENU.sql</b> — він додає її й тригер, що дозволяє '
+        + 'міняти меню лише адміну.';
+      return;
+    }
     msg.innerHTML = error.code === '23514'
       ? 'Не збереглось: у базі обмеження ще не знає ролі <b>assistant</b>. '
         + 'Виконайте <b>БЛОК 1</b> з ADMIN_ROLES.sql — він розширює '

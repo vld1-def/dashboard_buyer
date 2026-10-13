@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 12:02">
+  <meta name="build" content="build 13.10 12:59">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5135,7 +5135,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 12:02</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 12:59</div>
     </div>
   </aside>
 
@@ -6087,6 +6087,16 @@ input.ui-in[type="range"] { padding: 0; }
         title="Sends one Telegram message to you only, in the exact shape a real alert takes: the domain, what happened to it, and which cabinets and campaigns are live on it right now. Nothing is checked and nothing is paused."
         class="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition text-muted-dynamic hover:text-white"
         style="border:1px solid var(--border)">Test alert</button>
+      <!-- АВТОЗУПИНКА. Вимикач стоїть тут, а не в налаштуваннях:
+           рішення «гасити чи тільки доповідати» приймають, дивлячись
+           саме на цей список, а не на екран з перемикачами. -->
+      <label id="dm-ap-l" class="flex items-center gap-1.5 px-3 py-2 rounded-xl cursor-pointer text-[10px] font-black uppercase tracking-widest transition text-muted-dynamic hover:text-white"
+        style="border:1px solid var(--border)"
+        title="On: the nightly run pauses what burns money on a dead domain. A blacklist flag — right away. A 404 or no answer — only after two hours, so one Cloudflare 403 cannot switch off live campaigns. A campaign is paused whole only when all of its active ads sit on dead domains; otherwise just those ads are paused. At most 30 per run, highest spend first. Off: you only get the Telegram message, as before.">
+        <input type="checkbox" id="dm-autopause" onchange="dmAutoPauseSet(this.checked)"
+          class="w-3.5 h-3.5 accent-rose-500">
+        <span>Auto-pause</span>
+      </label>
       <button onclick="dmCheckHelp()"
         title="What the check needs, and what to do when the server does not answer"
         class="px-2 py-2 rounded-xl text-[10px] font-black transition text-muted-dynamic hover:text-white"
@@ -13038,8 +13048,28 @@ function rbPopulateOpts(){
   RB_FILTERS.forEach(f=>{
     const rows = rbRows(f.k, RB_CR_ONLY.has(f.k));
     const vals = uniq(rows.map(RB_VAL[f.k]).concat([...rbSel[f.k]]));
-    rbOpts[f.k] = vals.map(v=>({ v, label: f.k==='dev' ? (DEVICE_LABELS[v]||v) : v }));
+    /* ПІДПИС ВАРІАНТА. Значення фільтра лишається тим, що лежить у
+       даних (по ньому й відбираємо), а показуємо людське: пристрій —
+       назвою, автора — імʼям із whoName. Голий uuid у списку «All
+       buyers» не відповідає на питання «хто це»: щоб вибрати Олега,
+       доводилось спершу десь дізнатись його uuid. */
+    rbOpts[f.k] = vals.map(v=>({ v, label: rbOptLabel(f.k, v) }));
   });
+}
+
+/* Імена заповнює roleBoot у whoName (себе плюс своїх асистентів —
+   рівно те, що віддає політика team_members_read_mine). Немає імені —
+   показуємо початок uuid: рядок усе одно чийсь, і порожній підпис у
+   списку гірший за вісім символів. Та сама логіка, що у вимірі Buyer,
+   щоб фільтр і розріз називали людину однаково. */
+function rbOptLabel(k, v){
+  if(k==='dev') return DEVICE_LABELS[v] || v;
+  if(k==='buyer'){
+    const u=String(v||'');
+    if(!u) return '—';
+    return (window.whoName && window.whoName[u]) || u.slice(0,8);
+  }
+  return v;
 }
 
 function rbPopulateFilters(){
@@ -15379,22 +15409,21 @@ function apSubsRender() {
       valField = `<input class="${inp} w-full font-mono" value="${apEsc(x.value)}"
           oninput="apSubSetVal(${i}, this.value)" placeholder="значення">`;
     }
-    /* Значення — окремим рядком на всю ширину. В один рядок із двома
-       випадайками воно лишалось вузьким, і довга сабка ховалась у полі:
-       видно хвіст, а не те, що вписано. */
-    return `<div class="rounded-xl bg-black/15 border border-white/5 p-1.5 space-y-1">
-      <div class="grid grid-cols-[72px_minmax(0,1fr)_auto] gap-1.5 items-center">
-        <select class="${inp}" onchange="apSubSet(${i}, 'n', +this.value)">
-          ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
-            `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
-        </select>
-        <select class="${inp} w-full" onchange="apSubSet(${i}, 'mode', this.value)">
-          ${Object.entries(AP_MODES).map(([k, lbl]) =>
-            `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
-        </select>
-        <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
-      </div>
-      <div class="min-w-0">${valField}</div>
+    /* Усе в один рядок. Ширший тут саме ПЕРШИЙ стовпчик — випадайка
+       сабки: у 72px «Sub 20» разом зі стрілкою вже не влізало, і номер
+       читався напівобрізаним. Значення лишається 1fr, тобто забирає
+       всю решту рядка. */
+    return `<div class="grid grid-cols-[110px_136px_minmax(0,1fr)_auto] gap-1.5 items-center">
+      <select class="${inp} w-full" onchange="apSubSet(${i}, 'n', +this.value)">
+        ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
+          `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
+      </select>
+      <select class="${inp} w-full" onchange="apSubSet(${i}, 'mode', this.value)">
+        ${Object.entries(AP_MODES).map(([k, lbl]) =>
+          `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
+      </select>
+      ${valField}
+      <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
     </div>`;
   }).join('');
 }
@@ -16564,7 +16593,33 @@ function uqCoverPlan() {
 // переданий буфер — тому щоразу віддаємо свіжий зріз, а не той самий масив.
 async function uqWriteCover(ffw) {
   if (!uqCover) return;
+  // Нормалізований хук заміщає сирий: саме його чекає граф склейки.
+  if (uqCover.norm) { await ffw.writeFile(UQ_COVER_N, uqCover.norm.slice(0)); return; }
   await ffw.writeFile('cover.' + uqCover.ext, uqCover.data.slice(0));
+}
+
+const UQ_COVER_N = 'cover_n.mp4';
+
+/* Хук → кадр креатива: той самий розмір, SAR, fps і pix_fmt, без звуку
+   (на секундах хука все одно тиша з anullsrc, тож дорожку хука ми не
+   декодуємо взагалі — одна поверхня відмови менше).
+
+   Фільтрів унікалізації тут НЕМА навмисно: вони лишаються в графі
+   склейки, бо мусять бути різними в кожному варіанті. Інакше перші
+   секунди всіх копій стали б байт-у-байт однакові, тобто ми власноруч
+   зробили б спільний шматок у всіх креативів. */
+async function uqNormCover(ff, meta) {
+  if (!uqCover || uqCover.kind !== 'video') return null;
+  const W = meta.w || 1080, H = meta.h || 1920;
+  const code = await ff.exec(['-i', 'cover.' + uqCover.ext, '-an',
+    '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+         + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+    '-movflags', '+faststart', UQ_COVER_N]);
+  if (code !== 0) return null;
+  let data = null;
+  try { data = await ff.readFile(UQ_COVER_N); } catch (e) { return null; }
+  return (data && data.length > 1024) ? data : null;
 }
 
 const uqRand = (a, b) => a + Math.random() * (b - a);
@@ -16632,7 +16687,7 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   if (durOK && p.trim && p.trim.head > 0) args.push('-ss', String(p.trim.head));
   if (concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
   args.push('-i', 'in.mp4');
-  if (cover) args.push('-i', 'cover.' + cover.ext);
+  if (cover) args.push('-i', cover.file || ('cover.' + cover.ext));
   if (!concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
   if (p.rotate) vf.push(`rotate=${p.rotate}*PI/180:fillcolor=black`);
   const cropF = 1 - ((p.crop || 0) + (p.rotate ? Math.min(4, Math.abs(p.rotate) * 2) : 0)) / 100;
@@ -16867,7 +16922,13 @@ function uqWhy(ffw, code, data) {
   const real = [...log].reverse().find(l => UQ_REAL.test(l) && !UQ_VAGUE.test(l));
   const last = [...log].reverse().find(l => !UQ_VAGUE.test(l));
   const size = data ? data.length : 0;
-  const head = (real || last || 'ffmpeg завершився кодом ' + code).slice(0, 200);
+  let head = (real || last || 'ffmpeg завершився кодом ' + code).slice(0, 200);
+  /* Ця відмова означає рівно одне: у відео МІНЯЮТЬСЯ параметри кадру
+     посеред файлу, а граф склейки перебудувати неможливо. Сирий рядок
+     ffmpeg цього не каже, тож перекладаємо на дію. */
+  if (/inject frame into filter network/i.test(log.join(' ')))
+    head = 'у відео змінюються параметри кадру посеред файлу (роздільність або SAR) — '
+         + 'склейка такого не переживає. Перекодуй це відео в постійний розмір і спробуй ще раз';
   const err = new Error(head + (size ? '' : ' · файл на виході порожній'));
   err.tail = log.slice(-8).join('\n');
   return err;
@@ -16920,7 +16981,7 @@ async function uqRun() {
      який, уже неможливо. */
   const coverArg = uqCover
     ? { ext: uqCover.ext, dur: uqCoverDur(), kind: uqCover.kind || 'image',
-        plan: uqCoverPlan(), noAudio: false }
+        plan: uqCoverPlan(), noAudio: false, file: null }
     : null;
   const statusEl = document.getElementById('uq-status');
   const barWrap = document.getElementById('uq-bar'), bar = document.getElementById('uq-bar-fill');
@@ -16982,6 +17043,23 @@ async function uqRun() {
         res.appendChild(bad);
         uqDone.add(fkey); uqRenderFileList();
         continue;
+      }
+
+      /* Хук під кадр ЦЬОГО креатива: meta в кожного файлу своя, тож
+         нормалізуємо на кожен файл, а не раз на прогін. */
+      if (coverArg && coverArg.plan) {
+        uqCover.norm = null;
+        setStatus(`${file.name} · готую хук під кадр креатива…`);
+        try { uqCover.norm = await uqNormCover(ff, meta); }
+        catch (e) { console.warn('uq: хук не нормалізувався', e); }
+        coverArg.file = uqCover.norm ? UQ_COVER_N : null;
+        if (uqCover.norm) await uqWriteCover(ff);
+        else {
+          const warn = document.createElement('p');
+          warn.className = 'text-[11px] font-bold text-amber-400 mt-3';
+          warn.textContent = `${file.name}: хук не вдалось привести до кадру креатива — склеюю як є`;
+          res.appendChild(warn);
+        }
       }
 
       const jobs = Math.min(count, uqJobCount(file.size));
@@ -17469,6 +17547,7 @@ function dcRenderWarn(unlinked) {
       m.style.cssText += ';top:auto;bottom:calc(100% + 12px);margin-top:0;';
     });
     buildDockMore();
+    dockRoleApply();
   }
   // ── Схованка в доці ──────────────────────────────────────────────
   // Кнопок у меню назбиралось багато, а щодня потрібні три-чотири. Ті, що
@@ -17521,6 +17600,69 @@ function dcRenderWarn(unlinked) {
       <div class="dk-more-pop"></div>`;
     dock.appendChild(wrap);
     applyDockHidden();
+  }
+
+  /* ── ПУНКТИ, ЯКИХ ЦІЙ ЛЮДИНІ НЕ ВИДНО ЗОВСІМ ──
+
+     Схованка вище — це «не заважай зараз»: кнопка лишається робочою,
+     просто під стрілкою, і вибір персональний. Тут інше: пункти, яких
+     людині бачити не треба, і вибирає їх адмін у Admin.html.
+
+     Лежать вони в team_members.dock_hidden — там, де вже лежить роль.
+     Писати туди дозволено лише адміну, і не на чесному слові, а
+     тригером (DOCK_MENU.sql): інакше кожен повернув би собі все одним
+     запитом з консолі.
+
+     Прибираємо з DOM ЦІЛКОМ, а не ховаємо класом: кнопку, яка лишилась
+     у розмітці, однаково видно пошуком по сторінці, а персональна
+     схованка ще й пропонувала б її «показати».
+
+     Це про порядок у меню, а не про захист даних: що кому віддавати,
+     вирішує RLS, і док на це не впливає ніяк. */
+  async function dockRoleApply() {
+    const dock = document.getElementById('app-dock');
+    if (!dock || typeof sb === 'undefined') return;
+    let me = null;
+    try {
+      const { data: u } = await sb.auth.getUser();
+      const uid = (u && u.user && u.user.id) || window.myUid || '';
+      if (!uid) return;
+      /* Одним запитом і роль, і список: двома вони могли б розійтись у
+         часі, а каталог нижче пише саме адмін. */
+      const { data, error } = await sb.from('team_members')
+        .select('role,dock_hidden').eq('user_id', uid).limit(1);
+      // Колонки ще немає (DOCK_MENU.sql не виконаний) — меню лишається
+      // таким, яким було. Падати через ненастроєне не варто.
+      if (error) return;
+      me = (data || [])[0] || null;
+    } catch (e) { return; }
+    if (!me) return;
+
+    const hide = new Set((me.dock_hidden || []).map(t => String(t).trim().toLowerCase()));
+    if (hide.size) {
+      dockButtons()
+        .filter(x => hide.has(x.title.trim().toLowerCase()))
+        .map(x => dockUnit(x.el, dock))
+        .filter(Boolean)
+        .forEach(u => u.remove());
+      // Роздільники й підпис «More N» перерахувати після прибирання.
+      applyDockHidden();
+    }
+    if (me.role === 'admin') dockPublishItems();
+  }
+
+  /* Каталог пунктів для Admin.html. Пише ЛИШЕ адмін: у баєра частини
+     кнопок немає зовсім (admin-only), і його список обрізав би вибір
+     адміну до того, що видно баєру. Каталог — зручність: якщо його
+     немає, Admin.html бере свій запасний перелік. */
+  async function dockPublishItems() {
+    try {
+      const titles = [...new Set(dockButtons().map(x => x.title.trim()).filter(Boolean))];
+      if (!titles.length) return;
+      const row = { team_name: currentTeam, key: 'dock_items', value: JSON.stringify(titles) };
+      if (window.myUid) row.created_by = window.myUid;
+      await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+    } catch (e) { /* каталог не є умовою роботи меню */ }
   }
 
   // Приховані кнопки фізично переносяться у спливайку — так вони лишаються
@@ -22302,6 +22444,7 @@ async function dmInit() {
   // До перевірки на dmLoaded: інакше лічильник зʼявлявся б тільки при
   // першому заході на сторінку, а далі мовчав.
   dmWrLoad().then(dmWrPaint);
+  dmAutoPauseLoad();
   if (dmLoaded) { dmRender(); return; }
   host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
   try {
@@ -23132,6 +23275,67 @@ function dmLiveBlock(domain) {
    Побачити, як виглядає тривога, треба ДО того, як домен справді
    помре — інакше перший раз, коли її читають, збігається з першим
    разом, коли вона потрібна. Лист іде лише тому, хто натиснув. */
+/* ── АВТОЗУПИНКА: ВИМИКАЧ ──
+
+   Саму зупинку робить нічний прогін check-domains — у нього є ключ
+   сервісної ролі й токени кабінетів. Тут лише перемикач, бо рішення
+   «гасити чи тільки доповідати» мусить бути видно поряд зі списком
+   доменів.
+
+   Правило читання те саме, що й у функції: вимкнено, якщо ХОЧ ОДИН
+   рядок команди каже «ні». Через те, що рядки в team_settings
+   унікальні по власнику, своїм перемикачем ти чужий не перепишеш — і
+   показувати «увімкнено», поки розклад бачить чуже «ні», було б
+   брехнею. Тому в такому разі кажемо це вголос. */
+const DM_AP_KEY = 'domains_autopause';
+const dmApOff = v => /^(0|off|false|no)$/i.test(String(v == null ? '' : v));
+let dmApRows = [];
+
+async function dmAutoPauseLoad() {
+  const box = document.getElementById('dm-autopause');
+  if (!box) return;
+  const { data, error } = await sb.from('team_settings')
+    .select('value,created_by').eq('team_name', currentTeam).eq('key', DM_AP_KEY);
+  if (error) { console.warn('autopause read:', error.message); return; }
+  dmApRows = data || [];
+  box.checked = !dmApRows.some(r => dmApOff(r.value));
+  dmApPaint();
+}
+
+function dmApPaint() {
+  const box = document.getElementById('dm-autopause');
+  const lab = document.getElementById('dm-ap-l');
+  if (!box || !lab) return;
+  lab.style.borderColor = box.checked ? 'rgba(244,63,94,.45)' : 'var(--border)';
+  lab.classList.toggle('text-rose-300', box.checked);
+}
+
+async function dmAutoPauseSet(on) {
+  const box = document.getElementById('dm-autopause');
+  const row = { team_name: currentTeam, key: DM_AP_KEY, value: on ? '1' : '0' };
+  if (window.myUid) row.created_by = window.myUid;
+  // PostgREST відмову не кидає винятком. Без перевірки error перемикач
+  // виглядав би збереженим, а розклад працював би по-старому.
+  const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+  if (error) {
+    if (box) box.checked = !on;
+    const hint = (typeof keyHint === 'function') ? keyHint(error, 'OWN_UNIQUE.sql') : '';
+    toast('Auto-pause not saved: ' + (error.message || error.code) + hint, 'error', 12000);
+    return;
+  }
+  dmApPaint();
+  const alien = dmApRows.some(r => dmApOff(r.value) && r.created_by !== window.myUid);
+  if (on && alien) {
+    toast('Saved, but someone else on the team has auto-pause off — the nightly run '
+        + 'keeps it off until they switch it back on', 'warn', 12000);
+    return;
+  }
+  toast(on
+    ? 'Auto-pause on: the nightly run will pause what burns on a dead domain'
+    : 'Auto-pause off: you will only get the message', 'ok');
+  await dmAutoPauseLoad();
+}
+
 async function dmTestAlert() {
   const btn = document.getElementById('dm-test-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
@@ -23161,6 +23365,7 @@ window.dmInit = dmInit;
 window.dmCheck = dmCheck;
 window.dmCheckHelp = dmCheckHelp;
 window.dmTestAlert = dmTestAlert;
+window.dmAutoPauseSet = dmAutoPauseSet;
 </script>
 
 <script>
