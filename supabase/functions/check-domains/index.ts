@@ -27,6 +27,10 @@
    Ключ сервісної ролі тут свідомо НЕ використовується: інакше будь-хто,
    хто докличеться до функції, отримав би доступ до чужих рядків. */
 
+// Та сама версія Graph API, що й у решти функцій: різні версії в одному
+// проєкті означають, що колись одна з них відпаде тихо.
+const GRAPH = 'https://graph.facebook.com/v21.0';
+
 const TIMEOUT = 10_000;
 const POOL = 8;
 // Скільки доменів за один виклик. Edge Function має ліміт часу, і
@@ -400,13 +404,15 @@ function days(since: string | null): string {
    шкодить, а в списку воно б тільки заважало побачити те, що справді
    витрачає.
 
-   Нічого НЕ вимикаємо. Перевірка домену помиляється — не часто, але
-   помиляється: 403 від Cloudflare нашому User-Agent виглядає так само,
-   як зламаний домен, а клоакінг-домени навмисно віддають чужим 4xx.
-   Вимкнути живі кампанії вночі через таку помилку дорожче, ніж
-   недоотримати з мертвого домену до ранку. Тому тут — тільки звіт. */
+   Що з цим робимо — нижче, у блоці АВТОЗУПИНКИ. Коротко: мітку
+   глушимо одразу, 404 і «не відповідає» — лише коли лежать довше за
+   дві години, і кампанію цілком лише тоді, коли в ній не лишилось
+   живих оголошень на робочих доменах. Причина обережності та сама, що
+   колись робила цей блок суто звітним: 403 від Cloudflare нашому
+   User-Agent виглядає як зламаний домен. */
 
-type Live = { ad: string; campaign: string; account: string; spend: number };
+type Live = { ad: string; campaign: string; campaignId: string;
+              account: string; spend: number };
 
 const LIVE_MAX = 4;     // скільки кампаній перелічуємо під доменом
 
@@ -420,7 +426,7 @@ async function liveOn(base: string, hdr: Record<string, string>,
   const list = want.map(d => '"' + d.replace(/"/g, '') + '"').join(',');
   try {
     const res = await fetch(base + '/rest/v1/fb_ad_today'
-      + '?select=ad_id,name,campaign_name,account_id,spend,link_domain'
+      + '?select=ad_id,name,campaign_id,campaign_name,account_id,spend,link_domain'
       + '&effective_status=eq.ACTIVE'
       + '&link_domain=in.(' + encodeURIComponent(list) + ')', { headers: hdr });
     /* Колонки ще немає — DOMAIN_GUARD.sql не виконаний. Це не привід
@@ -435,6 +441,9 @@ async function liveOn(base: string, hdr: Record<string, string>,
       list_.push({
         ad: String(r?.ad_id || ''),
         campaign: String(r?.campaign_name || ''),
+        // Зупиняти можна лише за id: назва кампанії не унікальна навіть
+        // у межах кабінета, і глушити за нею означало б вгадувати.
+        campaignId: String(r?.campaign_id || ''),
         account: String(r?.account_id || ''),
         spend: Number(r?.spend) || 0
       });
@@ -479,9 +488,255 @@ function liveLines(list: Live[] | undefined): string {
   return head + rows.join('') + (rest > 0 ? `\n       …і ще ${rest}` : '');
 }
 
+
+/* ═══════════ АВТОЗУПИНКА НА МЕРТВОМУ ДОМЕНІ ═══════════
+
+   Довго тут було «тільки звіт», і причина була вагома: перевірка
+   домену помиляється. 403 від Cloudflare нашому User-Agent виглядає як
+   зламаний сайт, а клоакінг-домени навмисно віддають чужим 4xx.
+   Вимкнути живу кампанію через таку помилку дорожче, ніж доїхати на
+   мертвому домені до ранку.
+
+   Тепер зупиняємо — але за трьома правилами, кожне з яких закриває
+   один клас саме тієї помилки:
+
+     1. МІТКА (danger) — одразу. Її ставить не наш запит, а Google Web
+        Risk і фільтруючі DNS. З міткою домен однаково не відкривається
+        в людей, тож простій уже заплачений — лишається тільки не
+        платити за трафік у нікуди.
+
+     2. 404 і «не відповідає» — тільки коли лежить ДОВШЕ ЗА ДВІ
+        ГОДИНИ. Один прогін може впертись у чужий 403 чи хвилинну
+        аварію хостингу; те саме через дві години — вже ні.
+
+     3. Кампанію глушимо ЦІЛКОМ лише коли всі її активні оголошення
+        стоять на мертвих доменах. Є в ній живі — зупиняємо рівно ті
+        оголошення, що ведуть у нікуди. Вимкнути разом із мертвим і
+        робоче — та сама помилка, тільки дорожча.
+
+   Стеля на прогін. Якщо DNS віддав збій на пів списку, 30 зупинених
+   кампаній — неприємність, а 300 — катастрофа, яку збирати назад
+   руками півдня. Упершись у стелю, глушимо найдорожче і кажемо це в
+   листі.
+
+   Вимикач — team_settings.domains_autopause = '0' (перемикач у вікні
+   Domains). За замовчуванням увімкнено: нічний прогін існує саме для
+   того, щоб гроші не горіли до ранку.
+
+   Працює ЛИШЕ з розкладу (cron), де є ключ сервісної ролі. Виклик зі
+   сторінки нічого не зупиняє: ручна перевірка — це «подивитись», і
+   перетворювати її на «вимкнути» означало б, що кнопка Check робить
+   щось, чого від неї не просили. */
+
+const PAUSE_CAP = 30;                      // кампаній/оголошень за прогін
+const PAUSE_WAIT_MS = 2 * 3_600_000;       // 404 і down: скільки терпимо
+
+type PauseOut = { campaigns: string[]; ads: string[];
+                  bad: { id: string; why: string }[];
+                  capped: number; note: string };
+
+/* Команди, які вимкнули автозупинку самі. Рядка немає — увімкнено. */
+async function pauseOffTeams(base: string, hdr: Record<string, string>): Promise<Set<string>> {
+  const off = new Set<string>();
+  try {
+    const res = await fetch(base + '/rest/v1/team_settings'
+      + '?select=team_name,value&key=eq.domains_autopause', { headers: hdr });
+    if (!res.ok) return off;
+    const rows: Record<string, unknown>[] = await res.json();
+    rows.forEach(r => {
+      if (/^(0|off|false|no)$/i.test(String(r?.value ?? '')))
+        off.add(String(r?.team_name || ''));
+    });
+  } catch (_e) { /* немає таблиці — вважаємо, що вимикача не ставили */ }
+  return off;
+}
+
+/* Кампанії, у яких лишились активні оголошення НЕ на мертвих доменах.
+   Такі не глушимо цілком. Оголошення з невідомим доменом теж робить
+   кампанію змішаною: невідомо — це не те саме, що мертво. */
+async function mixedCampaigns(base: string, hdr: Record<string, string>,
+                              ids: string[], dead: Set<string>): Promise<Set<string>> {
+  const mixed = new Set<string>();
+  if (!ids.length) return mixed;
+  try {
+    const res = await fetch(base + '/rest/v1/fb_ad_today'
+      + '?select=campaign_id,link_domain&effective_status=eq.ACTIVE'
+      + '&campaign_id=in.(' + encodeURIComponent(ids.join(',')) + ')', { headers: hdr });
+    if (!res.ok) { ids.forEach(i => mixed.add(i)); return mixed; }
+    const rows: Record<string, unknown>[] = await res.json();
+    rows.forEach(r => {
+      const d = String(r?.link_domain || '');
+      if (!dead.has(d)) mixed.add(String(r?.campaign_id || ''));
+    });
+  } catch (_e) {
+    /* Не змогли перевірити — вважаємо змішаними всі. Помилитись у бік
+       «зупинили лише оголошення» дешевше, ніж у бік «вимкнули живу
+       кампанію». */
+    ids.forEach(i => mixed.add(i));
+  }
+  return mixed;
+}
+
+/* Токен на кабінет: fb_accounts.token_id → fb_tokens.token. Потрібен
+   ads_management — читальний токен зупинити нічого не може, і дізнатись
+   це краще до першого запиту, а не з half-зупиненого кабінета. */
+async function pauseTokens(base: string, hdr: Record<string, string>, accounts: string[]):
+    Promise<{ tok: Map<string, string>; bad: Map<string, string> }> {
+  const tok = new Map<string, string>(), bad = new Map<string, string>();
+  if (!accounts.length) return { tok, bad };
+  try {
+    const aRes = await fetch(base + '/rest/v1/fb_accounts?select=account_id,token_id'
+      + '&account_id=in.(' + encodeURIComponent(accounts.join(',')) + ')', { headers: hdr });
+    if (!aRes.ok) { accounts.forEach(a => bad.set(a, 'cabinet list unreadable')); return { tok, bad }; }
+    const accs: Record<string, unknown>[] = await aRes.json();
+    const ids = [...new Set(accs.map(a => Number(a?.token_id)).filter(n => n > 0))];
+    if (!ids.length) { accounts.forEach(a => bad.set(a, 'no token linked')); return { tok, bad }; }
+    const tRes = await fetch(base + '/rest/v1/fb_tokens?select=id,label,token,scopes'
+      + '&id=in.(' + ids.join(',') + ')', { headers: hdr });
+    if (!tRes.ok) { accounts.forEach(a => bad.set(a, 'token unreadable')); return { tok, bad }; }
+    const rows: Record<string, unknown>[] = await tRes.json();
+    const byId = new Map(rows.map(r => [Number(r?.id), r]));
+    accs.forEach(a => {
+      const acc = String(a?.account_id || '');
+      const t = byId.get(Number(a?.token_id));
+      if (!t) { bad.set(acc, 'the token this cabinet came from is gone'); return; }
+      const scopes: string[] = Array.isArray(t.scopes) ? t.scopes as string[] : [];
+      if (!scopes.includes('ads_management')) {
+        bad.set(acc, 'token "' + String(t.label || '') + '" is read-only (no ads_management)');
+        return;
+      }
+      tok.set(acc, String(t.token || ''));
+    });
+    accounts.forEach(a => { if (!tok.has(a) && !bad.has(a)) bad.set(a, 'cabinet not found'); });
+  } catch (e) {
+    accounts.forEach(a => bad.set(a, (e as Error).message));
+  }
+  return { tok, bad };
+}
+
+/* Пакетна зупинка. Facebook бере до 50 операцій за запит; помилка на
+   рівні всього пакета (протух токен, ліміт) приходить не масивом, а
+   звичайним {error}, і тоді не зупинилось НІЧОГО — цей випадок мусить
+   бути видно окремо від «ось це одне не вдалось». */
+async function graphPause(token: string, ids: string[]):
+    Promise<{ ok: string[]; bad: { id: string; why: string }[] }> {
+  const ok: string[] = [], bad: { id: string; why: string }[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const part = ids.slice(i, i + 50);
+    const batch = part.map(id => ({ method: 'POST', relative_url: id, body: 'status=PAUSED' }));
+    try {
+      const res = await fetch(GRAPH + '/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ access_token: token, include_headers: 'false',
+                                    batch: JSON.stringify(batch) }).toString()
+      });
+      const j = await res.json().catch(() => null);
+      if (j && !Array.isArray(j) && j.error) {
+        part.forEach(id => bad.push({ id, why: String(j.error.message || 'Graph API error') }));
+        continue;
+      }
+      if (!Array.isArray(j)) { part.forEach(id => bad.push({ id, why: 'unexpected answer' })); continue; }
+      j.forEach((r: Record<string, unknown> | null, k: number) => {
+        const id = part[k];
+        if (!id) return;
+        if (!r) { bad.push({ id, why: 'Facebook did not answer in time' }); return; }
+        let body: Record<string, unknown> = {};
+        try { body = JSON.parse(String(r.body || '{}')); } catch (_e) { /* байдуже */ }
+        const err = body?.error as Record<string, unknown> | undefined;
+        if (Number(r.code) === 200 && body?.success !== false) ok.push(id);
+        else bad.push({ id, why: String(err?.message || 'HTTP ' + r.code) });
+      });
+      /* Відповідей менше, ніж операцій, бути не повинно — але якщо так,
+         про ці id не можна сказати ні «зупинено», ні «не зупинено».
+         Мовчки загубити їх означало б доповісти меншу цифру, ніж ми
+         насправді намагались зробити. */
+      if (j.length < part.length) part.slice(j.length)
+        .forEach(id => bad.push({ id, why: 'Facebook answered about fewer items than asked' }));
+    } catch (e) {
+      part.forEach(id => bad.push({ id, why: (e as Error).message }));
+    }
+  }
+  return { ok, bad };
+}
+
+async function autoPause(base: string, hdr: Record<string, string>,
+                         worse: Change[], still: Still[],
+                         live: Map<string, Live[]>): Promise<PauseOut> {
+  const out: PauseOut = { campaigns: [], ads: [], bad: [], capped: 0, note: '' };
+  const off = await pauseOffTeams(base, hdr);
+  const now = Date.now();
+
+  // 1. Які домени мертві достатньо твердо, щоб глушити.
+  const dead = new Set<string>();
+  worse.forEach(w => { if (w.to === 'danger' && !off.has(w.team)) dead.add(w.domain); });
+  still.forEach(x => {
+    if (off.has(x.team)) return;
+    if (x.status === 'danger') { dead.add(x.domain); return; }
+    const since = x.since ? Date.parse(x.since) : NaN;
+    if (Number.isFinite(since) && now - since > PAUSE_WAIT_MS) dead.add(x.domain);
+  });
+  if (!dead.size) { out.note = off.size ? 'off or nothing hard enough' : 'nothing hard enough'; return out; }
+
+  // 2. Що на них зараз крутиться. Найдорожче — першим: у стелю
+  //    впираємось тим, що менше витрачає, а не випадковим.
+  const items: Live[] = [];
+  dead.forEach(d => (live.get(d) || []).forEach(l => items.push(l)));
+  if (!items.length) { out.note = 'nothing live on dead domains'; return out; }
+  items.sort((a, b) => b.spend - a.spend);
+
+  // 3. Кампанія цілком — лише якщо в ній не лишилось живого.
+  const mixed = await mixedCampaigns(base, hdr,
+    [...new Set(items.map(i => i.campaignId).filter(Boolean))], dead);
+
+  const byAcc = new Map<string, string[]>();
+  const camps = new Set<string>(), ads_ = new Set<string>();
+  for (const i of items) {
+    const whole = i.campaignId && !mixed.has(i.campaignId);
+    const id = whole ? i.campaignId : i.ad;
+    if (!id || !i.account) continue;
+    if ((whole ? camps : ads_).has(id)) continue;
+    if (camps.size + ads_.size >= PAUSE_CAP) { out.capped++; continue; }
+    (whole ? camps : ads_).add(id);
+    const list = byAcc.get(i.account) || [];
+    list.push(id);
+    byAcc.set(i.account, list);
+  }
+  if (!byAcc.size) { out.note = 'nothing to pause'; return out; }
+
+  // 4. Токени й самі запити.
+  const { tok, bad } = await pauseTokens(base, hdr, [...byAcc.keys()]);
+  bad.forEach((why, acc) => out.bad.push({ id: acc, why }));
+  for (const [acc, ids] of byAcc) {
+    const t = tok.get(acc);
+    if (!t) continue;
+    const r = await graphPause(t, ids);
+    r.ok.forEach(id => (camps.has(id) ? out.campaigns : out.ads).push(id));
+    out.bad.push(...r.bad);
+  }
+  out.note = out.campaigns.length || out.ads.length ? 'paused' : 'nothing paused';
+  return out;
+}
+
+function pauseLines(pz?: PauseOut): string {
+  if (!pz) return '';
+  const n = pz.campaigns.length + pz.ads.length;
+  if (!n && !pz.bad.length) return '';
+  /* Головне в цьому рядку — не цифра, а те, що це зробили МИ. Людина,
+     яка зранку бачить зупинену кампанію, мусить дізнатись чому тут, а
+     не шукати винного в історії змін Facebook. */
+  const parts: string[] = [];
+  if (pz.campaigns.length) parts.push(pz.campaigns.length + ' кампаній');
+  if (pz.ads.length) parts.push(pz.ads.length + ' оголошень (решта кампанії жива)');
+  let out = n ? `\n\n\u{1F6D1} Зупинено: ${parts.join(' + ')}` : '';
+  if (pz.capped) out += `\n     стеля прогону — ${PAUSE_CAP}; ще ${pz.capped} лишились крутитись`;
+  if (pz.bad.length) out += `\n     не вдалось зупинити: ${pz.bad.length} (${pz.bad[0].why})`;
+  return out;
+}
+
 function tgText(worse: Change[], checked: number,
                 live?: Map<string, Live[]>, head_?: string,
-                still?: Still[]): string {
+                still?: Still[], pz?: PauseOut): string {
   const teams = new Set(worse.map(w => w.team).concat((still || []).map(x => x.team)));
   const all = worse.slice(0, TG_MAX).map(w => {
     const what = TG_WHAT[w.to] || w.to;
@@ -535,7 +790,8 @@ function tgText(worse: Change[], checked: number,
          ще один — і лист починається з порожнечі. Дрібниця, але саме з
          таких дрібниць складається «його явно робив робот». */
       .replace(/\n+$/, '');
-    return top + (shown_.length ? oldHead + shown_.join('\n') + oldTail() : '');
+    return top + (shown_.length ? oldHead + shown_.join('\n') + oldTail() : '')
+         + pauseLines(pz);
   };
   /* Ріжемо СПЕРШУ старе: у листі, який не влазить, новина про свіжу
      поломку цінніша за нагадування про вчорашню. */
@@ -575,7 +831,8 @@ async function tgPost(token: string, chat: string, text: string): Promise<string
    немає в розсилці: це не помилка, а вибір людини. */
 async function tgSend(base: string, hdr: Record<string, string>,
                       worse: Change[], checked: number,
-                      broken: Still[] = []): Promise<string> {
+                      broken: Still[] = [], live_?: Map<string, Live[]>,
+                      pz?: PauseOut): Promise<string> {
   const token = Deno.env.get('TG_BOT_TOKEN') || '';
   if (!token) return 'not configured';
 
@@ -584,7 +841,9 @@ async function tgSend(base: string, hdr: Record<string, string>,
 
   /* Питаємо ОДИН раз на всі зламані домени, а не в кожному листі:
      рядки однакові, а запитів було б стільки, скільки людей. */
-  const live = await liveOn(base, hdr,
+  /* Нічний прогін уже питав це для автозупинки — другий запит дав би
+     ті самі рядки й шанс розійтись із тим, що ми справді зупинили. */
+  const live = live_ || await liveOn(base, hdr,
     worse.map(w => w.domain).concat(broken.map(b => b.domain)));
 
   /* ОСЬ ДЕ нагадування перестає бути щоденним шумом: у лист іде не
@@ -598,7 +857,7 @@ async function tgSend(base: string, hdr: Record<string, string>,
 
   // Спільний чат бачить усе — на те він і спільний.
   if (shared) out.push('shared:'
-    + await tgPost(token, shared, tgText(worse, checked, live, undefined, still)));
+    + await tgPost(token, shared, tgText(worse, checked, live, undefined, still, pz)));
 
   const byOwner = new Map<string, Change[]>();
   worse.forEach(w => {
@@ -635,7 +894,7 @@ async function tgSend(base: string, hdr: Record<string, string>,
       // одразу. Тому кажемо, скільки саме в нього, а не частку від
       // чужого числа.
       const r = await tgPost(token, chat,
-        tgText(list, list.length, live, undefined, stillBy.get(owner) || []));
+        tgText(list, list.length, live, undefined, stillBy.get(owner) || [], pz));
       if (r === 'sent') sent++; else fails.push(r);
     }
     out.push(`buyers: ${sent} sent`
@@ -946,10 +1205,20 @@ async function handle(req: Request): Promise<Response> {
        доповідати. Було саме так, і коштувало це двох доменів. */
     const still = await stillBroken(base, hdr, team,
       new Set(worse.map(w => w.domain)));
-    const telegram = await tgSend(base, hdr, worse, checked, still);
+    /* Спершу гасимо, потім доповідаємо: лист, у якому написано «ось що
+       горить», а гроші при цьому горять далі, — половина роботи. А
+       список живого питаємо один раз на обидві потреби. */
+    const live = await liveOn(base, hdr,
+      worse.map(w => w.domain).concat(still.map(b => b.domain)));
+    const paused = await autoPause(base, hdr, worse, still, live);
+    const telegram = await tgSend(base, hdr, worse, checked, still, live, paused);
     return new Response(JSON.stringify({
       cron: true, checked, more, next: after, flags, spent,
       changed: changed.length, telegram, worse,
+      // Що саме зупинено — у відповіді теж: журнал функції лишається
+      // єдиним місцем, де це видно, якщо Telegram не налаштований.
+      paused: { campaigns: paused.campaigns, ads: paused.ads,
+                failed: paused.bad.length, capped: paused.capped, note: paused.note },
       // Скільки всього лежить — окремо від того, скільки пішло в лист
       // (у лист ідуть лише ті, на яких щось крутиться).
       broken: still.length

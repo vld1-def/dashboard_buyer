@@ -144,6 +144,7 @@ async function dmInit() {
   // До перевірки на dmLoaded: інакше лічильник зʼявлявся б тільки при
   // першому заході на сторінку, а далі мовчав.
   dmWrLoad().then(dmWrPaint);
+  dmAutoPauseLoad();
   if (dmLoaded) { dmRender(); return; }
   host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
   try {
@@ -974,6 +975,67 @@ function dmLiveBlock(domain) {
    Побачити, як виглядає тривога, треба ДО того, як домен справді
    помре — інакше перший раз, коли її читають, збігається з першим
    разом, коли вона потрібна. Лист іде лише тому, хто натиснув. */
+/* ── АВТОЗУПИНКА: ВИМИКАЧ ──
+
+   Саму зупинку робить нічний прогін check-domains — у нього є ключ
+   сервісної ролі й токени кабінетів. Тут лише перемикач, бо рішення
+   «гасити чи тільки доповідати» мусить бути видно поряд зі списком
+   доменів.
+
+   Правило читання те саме, що й у функції: вимкнено, якщо ХОЧ ОДИН
+   рядок команди каже «ні». Через те, що рядки в team_settings
+   унікальні по власнику, своїм перемикачем ти чужий не перепишеш — і
+   показувати «увімкнено», поки розклад бачить чуже «ні», було б
+   брехнею. Тому в такому разі кажемо це вголос. */
+const DM_AP_KEY = 'domains_autopause';
+const dmApOff = v => /^(0|off|false|no)$/i.test(String(v == null ? '' : v));
+let dmApRows = [];
+
+async function dmAutoPauseLoad() {
+  const box = document.getElementById('dm-autopause');
+  if (!box) return;
+  const { data, error } = await sb.from('team_settings')
+    .select('value,created_by').eq('team_name', currentTeam).eq('key', DM_AP_KEY);
+  if (error) { console.warn('autopause read:', error.message); return; }
+  dmApRows = data || [];
+  box.checked = !dmApRows.some(r => dmApOff(r.value));
+  dmApPaint();
+}
+
+function dmApPaint() {
+  const box = document.getElementById('dm-autopause');
+  const lab = document.getElementById('dm-ap-l');
+  if (!box || !lab) return;
+  lab.style.borderColor = box.checked ? 'rgba(244,63,94,.45)' : 'var(--border)';
+  lab.classList.toggle('text-rose-300', box.checked);
+}
+
+async function dmAutoPauseSet(on) {
+  const box = document.getElementById('dm-autopause');
+  const row = { team_name: currentTeam, key: DM_AP_KEY, value: on ? '1' : '0' };
+  if (window.myUid) row.created_by = window.myUid;
+  // PostgREST відмову не кидає винятком. Без перевірки error перемикач
+  // виглядав би збереженим, а розклад працював би по-старому.
+  const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+  if (error) {
+    if (box) box.checked = !on;
+    const hint = (typeof keyHint === 'function') ? keyHint(error, 'OWN_UNIQUE.sql') : '';
+    toast('Auto-pause not saved: ' + (error.message || error.code) + hint, 'error', 12000);
+    return;
+  }
+  dmApPaint();
+  const alien = dmApRows.some(r => dmApOff(r.value) && r.created_by !== window.myUid);
+  if (on && alien) {
+    toast('Saved, but someone else on the team has auto-pause off — the nightly run '
+        + 'keeps it off until they switch it back on', 'warn', 12000);
+    return;
+  }
+  toast(on
+    ? 'Auto-pause on: the nightly run will pause what burns on a dead domain'
+    : 'Auto-pause off: you will only get the message', 'ok');
+  await dmAutoPauseLoad();
+}
+
 async function dmTestAlert() {
   const btn = document.getElementById('dm-test-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
@@ -1003,3 +1065,4 @@ window.dmInit = dmInit;
 window.dmCheck = dmCheck;
 window.dmCheckHelp = dmCheckHelp;
 window.dmTestAlert = dmTestAlert;
+window.dmAutoPauseSet = dmAutoPauseSet;

@@ -7752,8 +7752,28 @@ function rbPopulateOpts(){
   RB_FILTERS.forEach(f=>{
     const rows = rbRows(f.k, RB_CR_ONLY.has(f.k));
     const vals = uniq(rows.map(RB_VAL[f.k]).concat([...rbSel[f.k]]));
-    rbOpts[f.k] = vals.map(v=>({ v, label: f.k==='dev' ? (DEVICE_LABELS[v]||v) : v }));
+    /* ПІДПИС ВАРІАНТА. Значення фільтра лишається тим, що лежить у
+       даних (по ньому й відбираємо), а показуємо людське: пристрій —
+       назвою, автора — імʼям із whoName. Голий uuid у списку «All
+       buyers» не відповідає на питання «хто це»: щоб вибрати Олега,
+       доводилось спершу десь дізнатись його uuid. */
+    rbOpts[f.k] = vals.map(v=>({ v, label: rbOptLabel(f.k, v) }));
   });
+}
+
+/* Імена заповнює roleBoot у whoName (себе плюс своїх асистентів —
+   рівно те, що віддає політика team_members_read_mine). Немає імені —
+   показуємо початок uuid: рядок усе одно чийсь, і порожній підпис у
+   списку гірший за вісім символів. Та сама логіка, що у вимірі Buyer,
+   щоб фільтр і розріз називали людину однаково. */
+function rbOptLabel(k, v){
+  if(k==='dev') return DEVICE_LABELS[v] || v;
+  if(k==='buyer'){
+    const u=String(v||'');
+    if(!u) return '—';
+    return (window.whoName && window.whoName[u]) || u.slice(0,8);
+  }
+  return v;
 }
 
 function rbPopulateFilters(){
@@ -9238,22 +9258,21 @@ function apSubsRender() {
       valField = `<input class="${inp} w-full font-mono" value="${apEsc(x.value)}"
           oninput="apSubSetVal(${i}, this.value)" placeholder="значення">`;
     }
-    /* Значення — окремим рядком на всю ширину. В один рядок із двома
-       випадайками воно лишалось вузьким, і довга сабка ховалась у полі:
-       видно хвіст, а не те, що вписано. */
-    return `<div class="rounded-xl bg-black/15 border border-white/5 p-1.5 space-y-1">
-      <div class="grid grid-cols-[72px_minmax(0,1fr)_auto] gap-1.5 items-center">
-        <select class="${inp}" onchange="apSubSet(${i}, 'n', +this.value)">
-          ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
-            `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
-        </select>
-        <select class="${inp} w-full" onchange="apSubSet(${i}, 'mode', this.value)">
-          ${Object.entries(AP_MODES).map(([k, lbl]) =>
-            `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
-        </select>
-        <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
-      </div>
-      <div class="min-w-0">${valField}</div>
+    /* Усе в один рядок. Ширший тут саме ПЕРШИЙ стовпчик — випадайка
+       сабки: у 72px «Sub 20» разом зі стрілкою вже не влізало, і номер
+       читався напівобрізаним. Значення лишається 1fr, тобто забирає
+       всю решту рядка. */
+    return `<div class="grid grid-cols-[110px_136px_minmax(0,1fr)_auto] gap-1.5 items-center">
+      <select class="${inp} w-full" onchange="apSubSet(${i}, 'n', +this.value)">
+        ${Array.from({ length: AP_SUBS }, (_, k) => k + 1).map(n =>
+          `<option value="${n}"${n === x.n ? ' selected' : ''}>Sub ${n}</option>`).join('')}
+      </select>
+      <select class="${inp} w-full" onchange="apSubSet(${i}, 'mode', this.value)">
+        ${Object.entries(AP_MODES).map(([k, lbl]) =>
+          `<option value="${k}"${k === x.mode ? ' selected' : ''}>${lbl}</option>`).join('')}
+      </select>
+      ${valField}
+      <button onclick="apSubDel(${i})" class="text-[11px] font-black text-slate-600 hover:text-rose-400 px-2 transition">×</button>
     </div>`;
   }).join('');
 }
@@ -10689,6 +10708,7 @@ function dcRenderWarn(unlinked) {
       m.style.cssText += ';top:auto;bottom:calc(100% + 12px);margin-top:0;';
     });
     buildDockMore();
+    dockRoleApply();
   }
   // ── Схованка в доці ──────────────────────────────────────────────
   // Кнопок у меню назбиралось багато, а щодня потрібні три-чотири. Ті, що
@@ -10741,6 +10761,69 @@ function dcRenderWarn(unlinked) {
       <div class="dk-more-pop"></div>`;
     dock.appendChild(wrap);
     applyDockHidden();
+  }
+
+  /* ── ПУНКТИ, ЯКИХ ЦІЙ ЛЮДИНІ НЕ ВИДНО ЗОВСІМ ──
+
+     Схованка вище — це «не заважай зараз»: кнопка лишається робочою,
+     просто під стрілкою, і вибір персональний. Тут інше: пункти, яких
+     людині бачити не треба, і вибирає їх адмін у Admin.html.
+
+     Лежать вони в team_members.dock_hidden — там, де вже лежить роль.
+     Писати туди дозволено лише адміну, і не на чесному слові, а
+     тригером (DOCK_MENU.sql): інакше кожен повернув би собі все одним
+     запитом з консолі.
+
+     Прибираємо з DOM ЦІЛКОМ, а не ховаємо класом: кнопку, яка лишилась
+     у розмітці, однаково видно пошуком по сторінці, а персональна
+     схованка ще й пропонувала б її «показати».
+
+     Це про порядок у меню, а не про захист даних: що кому віддавати,
+     вирішує RLS, і док на це не впливає ніяк. */
+  async function dockRoleApply() {
+    const dock = document.getElementById('app-dock');
+    if (!dock || typeof sb === 'undefined') return;
+    let me = null;
+    try {
+      const { data: u } = await sb.auth.getUser();
+      const uid = (u && u.user && u.user.id) || window.myUid || '';
+      if (!uid) return;
+      /* Одним запитом і роль, і список: двома вони могли б розійтись у
+         часі, а каталог нижче пише саме адмін. */
+      const { data, error } = await sb.from('team_members')
+        .select('role,dock_hidden').eq('user_id', uid).limit(1);
+      // Колонки ще немає (DOCK_MENU.sql не виконаний) — меню лишається
+      // таким, яким було. Падати через ненастроєне не варто.
+      if (error) return;
+      me = (data || [])[0] || null;
+    } catch (e) { return; }
+    if (!me) return;
+
+    const hide = new Set((me.dock_hidden || []).map(t => String(t).trim().toLowerCase()));
+    if (hide.size) {
+      dockButtons()
+        .filter(x => hide.has(x.title.trim().toLowerCase()))
+        .map(x => dockUnit(x.el, dock))
+        .filter(Boolean)
+        .forEach(u => u.remove());
+      // Роздільники й підпис «Ще N» перерахувати після прибирання.
+      applyDockHidden();
+    }
+    if (me.role === 'admin') dockPublishItems();
+  }
+
+  /* Каталог пунктів для Admin.html. Пише ЛИШЕ адмін: у баєра частини
+     кнопок немає зовсім (admin-only), і його список обрізав би вибір
+     адміну до того, що видно баєру. Каталог — зручність: якщо його
+     немає, Admin.html бере свій запасний перелік. */
+  async function dockPublishItems() {
+    try {
+      const titles = [...new Set(dockButtons().map(x => x.title.trim()).filter(Boolean))];
+      if (!titles.length) return;
+      const row = { team_name: currentTeam, key: 'dock_items', value: JSON.stringify(titles) };
+      if (window.myUid) row.created_by = window.myUid;
+      await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+    } catch (e) { /* каталог не є умовою роботи меню */ }
   }
 
   // Приховані кнопки фізично переносяться у спливайку — так вони лишаються
