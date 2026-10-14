@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 14.10 14:04">
+  <meta name="build" content="build 14.10 18:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5138,7 +5138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 14.10 14:04</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 14.10 18:46</div>
     </div>
   </aside>
 
@@ -15035,13 +15035,26 @@ function gcDiff(geo, results) {
   <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
       <div>
-        <h2 class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
+        <h2 id="ap-title" class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
         <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
       </div>
       <div class="flex items-center gap-2 flex-wrap">
-        <input id="ap-search" oninput="apRender()" placeholder="Пошук: гео, постачальник, неймінг…"
+        <!-- ОДНЕ ВІКНО, ДВА ДОВІДНИКИ.
+             Прілки кажуть, що вписати В кампанію; PWA — яка силка стоїть
+             ЗА кампанією. Питання різні, але шукають і те, і те по гео,
+             тому екран, дерево й пошук ті самі. Третя іконка в доку під
+             те саме гео означала б ще одне місце, яке треба згадати. -->
+        <div class="flex items-center gap-0.5 bg-black/30 border border-white/10 rounded-xl p-0.5 shrink-0">
+          <button id="ap-tab-app" onclick="apSetMode('app')"
+            class="h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition">Прілки</button>
+          <button id="ap-tab-pwa" onclick="apSetMode('pwa')"
+            class="h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition">PWA APP</button>
+        </div>
+        <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
           class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
-        <button onclick="apNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
+        <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
+          class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">Списком</button>
+        <button id="ap-add" onclick="apAddNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
         <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
       </div>
     </div>
@@ -15084,6 +15097,7 @@ function gcDiff(geo, results) {
    з ставками й місячною ціллю.                                    */
 
 let apItems = [], apGeo = '', apProv = '', apEditId = null;
+let apMode = 'app';                       // 'app' — прілки, 'pwa' — кампанії й силки
 let apFunnels = [], apAccounts = [];      // довідники для макросних сабок
 let apLoaded = false;
 
@@ -15170,7 +15184,12 @@ const apEsc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
 async function openAppsModal() {
   document.getElementById('apps-modal').classList.remove('hidden');
   if (!apLoaded) { apLoaded = true; await apLoad(); }
-  apRenderTree(); apRender();
+  /* Режим пам'ятаємо в браузері: хто живе в PWA, щоразу перемикав би
+     вкладку руками. Це налаштування робочого місця, а не дані команди,
+     тому localStorage, а не team_settings. */
+  try { apMode = localStorage.getItem(AP_MODE_KEY) === 'pwa' ? 'pwa' : 'app'; } catch (e) {}
+  apModePaint();
+  apRenderMode();
 }
 function closeAppsModal() {
   document.getElementById('apps-modal').classList.add('hidden');
@@ -15182,20 +15201,34 @@ function closeAppsModal() {
 async function apLoad() {
   const sub = document.getElementById('ap-sub');
   try {
+    /* Обидва довідники одним запитом: і шаблони прілок, і PWA-кампанії.
+       Окремий select на другий ключ коштував би ще один круг до бази
+       рівно за те саме. Рядки приходять лише свої — політика own_select
+       (SECURITY_BUYERS.sql) віддає те, де created_by = auth.uid(). */
     const [ts, fn, ac] = await Promise.all([
-      sb.from('team_settings').select('value').eq('key', 'app_links').limit(1),
+      sb.from('team_settings').select('key, value').in('key', ['app_links', 'pwa_links']),
       sb.from('funnels_mapping').select('ktid, funnel_name, geo, is_app').eq('team_name', currentTeam),
       sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam)
     ]);
     if (ts.error) throw ts.error;
-    apItems = ts.data && ts.data[0] ? (JSON.parse(ts.data[0].value) || []) : [];
+    /* Кожен ключ розбираємо окремо: зламаний JSON в одному не має
+       спустошувати другий. Доти parse стояв на спільному шляху — і
+       одна крива правка прілок забрала б із собою й силки. */
+    const pickKey = k => {
+      const r = (ts.data || []).find(x => x.key === k);
+      if (!r) return [];
+      try { return JSON.parse(r.value) || []; }
+      catch (e) { console.error(k + ' JSON:', e); return []; }
+    };
+    apItems = pickKey('app_links');
+    pwItems = pickKey('pwa_links');
     if (fn.error) console.warn('funnels_mapping:', fn.error.message);
     if (ac.error) console.warn('accounts_mapping:', ac.error.message);
     apFunnels = (fn.data || []).slice().sort((a, b) =>
       String(a.funnel_name || '').localeCompare(String(b.funnel_name || ''), 'uk'));
     apAccounts = (ac.data || []).slice().sort((a, b) =>
       String(a.account_id || '').localeCompare(String(b.account_id || '')));
-    if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
+    apSubPaint();
   } catch (e) {
     apItems = [];
     if (sub) sub.textContent = 'не завантажилось: ' + (e.message || e.code || e);
@@ -15203,8 +15236,14 @@ async function apLoad() {
   }
 }
 
-async function apSave() {
-  const row = { team_name: currentTeam, key: 'app_links', value: JSON.stringify(apItems) };
+/* ОДИН ШЛЯХ ЗБЕРЕЖЕННЯ НА ОБА ДОВІДНИКИ.
+
+   Різниця між ними — лише ключ. Копіювати сюди ж другий upsert із
+   власною обробкою error означало б, що одного дня один із них
+   перестане дивитись на відповідь бази — а саме це вже й ламалось у
+   payouts, team_settings і місячній цілі. */
+async function apSaveKey(key, items) {
+  const row = { team_name: currentTeam, key, value: JSON.stringify(items) };
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
   if (!error) return true;
@@ -15212,12 +15251,89 @@ async function apSave() {
      прілка зникала б при наступному відкритті, а на екрані все
      виглядало б збереженим. Той самий недогляд уже був у payouts,
      team_settings і місячній цілі. */
-  console.error('app_links save:', error);
+  console.error(key + ' save:', error);
   const msg = 'Не збереглось: ' + (error.message || error.code)
             + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : '');
   if (typeof toast === 'function') toast(msg, 'error', 12000); else alert(msg);
   return false;
 }
+const apSave = () => apSaveKey('app_links', apItems);
+const pwSave = () => apSaveKey('pwa_links', pwItems);
+
+/* ─────────── режим вікна ─────────── */
+const AP_MODE_KEY = 'ap_mode';
+
+// Підпис під заголовком. Різні довідники — різні числа, тому один
+// текст на два режими тут не підходить.
+function apSubText() {
+  if (apMode === 'pwa') {
+    const links = pwItems.reduce((s, x) => s + ((x.links || []).length), 0);
+    return `${pwItems.length} кампаній · ${links} силок`;
+  }
+  return `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
+}
+function apSubPaint() {
+  const el = document.getElementById('ap-sub');
+  if (el) el.textContent = apSubText();
+}
+
+/* Перемикання режиму. Що тут важливо, окрім самого перемальовування:
+
+     редактор   закривається — його поля належать іншому довіднику, і
+                «Зберегти» в ньому зберіг би не те, що на екрані;
+     пошук      чиститься — запит «satorapps» у PWA дасть порожній
+                список, і це виглядало б як «силок немає», а не як
+                «фільтр не з цього екрана»;
+     фільтри    у кожного режиму свої (apGeo/apProv і pwGeo/pwOffer),
+                тож дерево не переносить чуже гео на інший довідник. */
+function apSetMode(m) {
+  apMode = (m === 'pwa') ? 'pwa' : 'app';
+  try { localStorage.setItem(AP_MODE_KEY, apMode); } catch (e) {}
+  apCancel(); pwCancel();
+  const s = document.getElementById('ap-search');
+  if (s) s.value = '';
+  apModePaint();
+  apRenderMode();
+}
+
+function apModePaint() {
+  const pwa = apMode === 'pwa';
+  const on  = 'bg-emerald-600 text-white', onP = 'bg-sky-600 text-white';
+  const off = 'text-slate-400 hover:text-white';
+  const tab = (id, active, cls) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition '
+                 + (active ? cls : off);
+  };
+  tab('ap-tab-app', !pwa, on);
+  tab('ap-tab-pwa', pwa, onP);
+
+  const t = document.getElementById('ap-title');
+  if (t) {
+    t.textContent = pwa ? 'PWA' : 'Прілки';
+    t.className = 'text-xl font-black italic tracking-tighter '
+                + (pwa ? 'text-sky-300' : 'text-emerald-300');
+  }
+  const add = document.getElementById('ap-add');
+  if (add) {
+    add.textContent = pwa ? '+ Кампанія' : '+ Шаблон';
+    add.className = 'h-[34px] px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition '
+                  + (pwa ? 'bg-sky-600 hover:bg-sky-500' : 'bg-emerald-600 hover:bg-emerald-500');
+  }
+  const paste = document.getElementById('ap-paste');
+  if (paste) paste.classList.toggle('hidden', !pwa);
+  const s = document.getElementById('ap-search');
+  if (s) s.placeholder = pwa ? 'Пошук: гео, оффер, назва, силка…'
+                             : 'Пошук: гео, постачальник, неймінг…';
+  apSubPaint();
+}
+
+function apRenderMode() {
+  if (apMode === 'pwa') { pwRenderTree(); pwRender(); }
+  else { apRenderTree(); apRender(); }
+}
+function apAddNew() { if (apMode === 'pwa') pwNew(); else apNew(); }
 
 /* ─────────── дерево гео → постачальник ─────────── */
 function apRenderTree() {
@@ -15229,12 +15345,8 @@ function apRenderTree() {
     (byGeo[g] = byGeo[g] || new Set()).add(it.provider || '—');
   });
   const geos = Object.keys(byGeo).sort();
-  const btn = (label, active, onclick, pad, count) => `
-    <div onclick="${onclick}" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
-         ${active ? 'bg-emerald-600 text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
-      <span class="text-[11px] font-black uppercase truncate">${apEsc(label)}</span>
-      ${count != null ? `<span class="text-[10px] font-bold opacity-60">${count}</span>` : ''}
-    </div>`;
+  const btn = (label, active, onclick, pad, count) =>
+    apTreeBtn(label, active, onclick, pad, count, 'bg-emerald-600');
   let html = btn('Усі', !apGeo && !apProv, "apPick('','')", 8, apItems.length);
   geos.forEach(g => {
     const n = apItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
@@ -15247,6 +15359,18 @@ function apRenderTree() {
   el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
 }
 function apPick(g, p) { apGeo = g; apProv = p; apRenderTree(); apRender(); }
+
+/* Рядок дерева. Один на оба режими: відрізняється лише колір
+   виділеного, і заводити під це другу копію розмітки означало б, що
+   правка відступів одного дня доїде тільки до половини екрана. */
+function apTreeBtn(label, active, onclick, pad, count, accent) {
+  return `
+    <div onclick="${onclick}" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
+         ${active ? (accent || 'bg-emerald-600') + ' text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
+      <span class="text-[11px] font-black uppercase truncate">${apEsc(label)}</span>
+      ${count != null ? `<span class="text-[10px] font-bold opacity-60">${count}</span>` : ''}
+    </div>`;
+}
 
 /* ─────────── список ─────────── */
 function apRender() {
@@ -15627,8 +15751,7 @@ async function apSubmit() {
   if (!await apSave()) { if (!apEditId) apItems.shift(); return; }
   apEditId = null;
   document.getElementById('ap-editor').classList.add('hidden');
-  const sub = document.getElementById('ap-sub');
-  if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
+  apSubPaint();
   apRenderTree(); apRender();
 }
 
@@ -15697,8 +15820,7 @@ async function apClone(id) {
   });
   apItems.unshift(...made);
   if (!await apSave()) { apItems.splice(0, made.length); return; }
-  const sub = document.getElementById('ap-sub');
-  if (sub) sub.textContent = `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
+  apSubPaint();
   apGeo = made[0].geo; apProv = '';
   apRenderTree(); apRender();
   if (typeof toast === 'function')
@@ -15711,7 +15833,444 @@ async function apDelete(id) {
   const keep = apItems;
   apItems = apItems.filter(x => x.id !== id);
   if (!await apSave()) { apItems = keep; return; }
+  apSubPaint();
   apRenderTree(); apRender();
+}
+
+/* ═══════════ PWA · КАМПАНІЇ Й СИЛКИ ═══════════
+
+   ЩО ТУТ ЗБЕРІГАЄТЬСЯ. Під кожну PWA-кампанію — її назва рівно така, як
+   стоїть у кабінеті, і силки, які за нею закріплені:
+
+     Mbank_KG_10708-ex8g_09/10
+     https://mplay-kg-games.website
+
+   ЧОМУ ЦЕ НЕ ШАБЛОН, ЯК У ПРІЛКАХ. Прілка відповідає на питання «що
+   вписати, КОЛИ створюєш кампанію» — тому там шаблон із {app} і {geo}.
+   Тут питання протилежне й уже після заливу: «яка силка стоїть ЗА оцією
+   кампанією». Підставляти в таку назву нічого не можна — її шукають
+   збігом рядка в статистиці, і будь-яка підстановка робить її іншою
+   кампанією. Тому назва зберігається байт-у-байт.
+
+   ГЕО Й ОФФЕР НЕ ВИРІЗАЮТЬСЯ З НАЗВИ, А ВГАДУЮТЬСЯ КОПІЄЮ. Дерево злiва
+   й пошук мусять на щось опиратись, тому оффер (перший кусок назви) і
+   гео (перший двобуквений) витягуються автоматично — але лягають в
+   ОКРЕМІ поля, які можна переписати руками. Вгадування має підставляти
+   значення, а не диктувати його: назва придумана людиною, і рано чи
+   пізно трапиться та, де «ex8g» стоїть там, де ми чекали гео.
+
+   ЗБЕРІГАННЯ. team_settings, ключ pwa_links, тим самим JSON і тією ж
+   парою (created_by, key), що й app_links. Окремий ключ навмисно: щоб
+   правка прілок не могла зачепити силки, і навпаки.                 */
+let pwItems = [], pwGeo = '', pwOffer = '', pwEditId = null;
+
+/* ПИТАННЯ Й ДОВГІ ПОВІДОМЛЕННЯ. ask() і tell() малюють своє вікно
+   замість системного «dashboard.github.io каже:», яке поруч зі
+   сторінкою виглядає так, ніби щось зламалось. Але приходять вони з
+   шару дизайну (build/toast.js), і в самому index-legacy.html їх
+   немає — тому із запасним шляхом: без них екран мусить працювати, а
+   не падати на першому ж питанні. */
+const pwAsk = o => (typeof ask === 'function')
+  ? ask(o)
+  : Promise.resolve(confirm([o.title, o.body].filter(Boolean).join('\n\n')));
+const pwTell = (t, b) => (typeof tell === 'function')
+  ? tell(t, b)
+  : Promise.resolve(alert([t, b].filter(Boolean).join('\n\n')));
+
+/* СИЛКА ЦЕ ЧИ НІ.
+
+   Люди вставляють і «https://x.site», і «www.x.site», і просто
+   «x.site» — це все силка. А «Mbank_KG_10708-ex8g_09/10» — ні, хоч і
+   має слеш: у ньому немає домену з точкою. Саме на цій різниці тримається
+   розбір вставленого списку, тому вона тут одна на весь екран, а не
+   переписана по місцях. */
+function pwIsUrl(s) {
+  const v = String(s || '').trim();
+  if (!v || /\s/.test(v)) return false;
+  if (/^https?:\/\//i.test(v)) return true;
+  return /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:[:\/?#].*)?$/i.test(v);
+}
+// Без схеми браузер відкрив би силку як відносний шлях дашборда.
+function pwHref(u) {
+  const v = String(u || '').trim();
+  return /^https?:\/\//i.test(v) ? v : 'https://' + v;
+}
+
+/* ОФФЕР І ГЕО З НАЗВИ. Mbank_KG_10708-ex8g_09/10 → Mbank · KG.
+   Гео — перший кусок рівно з двох літер, оффер — перший інший кусок із
+   літерами. Порядок у назві не фіксуємо: буває й KG_Mbank_…, і тоді
+   оффером мусить стати Mbank, а не гео. */
+function pwGuess(name) {
+  const parts = String(name || '').trim().split(/[_\s]+/).filter(Boolean);
+  const gi = parts.findIndex(x => /^[A-Za-z]{2}$/.test(x));
+  const geo = gi >= 0 ? parts[gi].toUpperCase() : '';
+  const offer = parts.find((x, i) => i !== gi && /[A-Za-z]/.test(x)) || '';
+  return { geo, offer };
+}
+
+/* ─────────── дерево гео → оффер ─────────── */
+function pwRenderTree() {
+  const el = document.getElementById('ap-tree');
+  if (!el) return;
+  const byGeo = {};
+  pwItems.forEach(it => {
+    const g = (it.geo || '—').toUpperCase();
+    (byGeo[g] = byGeo[g] || new Set()).add(it.offer || '—');
+  });
+  const btn = (label, active, onclick, pad, count) =>
+    apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600');
+  let html = btn('Усі', !pwGeo && !pwOffer, "pwPick('','')", 8, pwItems.length);
+  Object.keys(byGeo).sort().forEach(g => {
+    const n = pwItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
+    html += btn(g, pwGeo === g && !pwOffer, `pwPick('${apEsc(g)}','')`, 8, n);
+    if (pwGeo === g) [...byGeo[g]].sort().forEach(o => {
+      const no = pwItems.filter(i => (i.geo || '—').toUpperCase() === g && (i.offer || '—') === o).length;
+      html += btn(o, pwOffer === o, `pwPick('${apEsc(g)}','${apEsc(o)}')`, 22, no);
+    });
+  });
+  el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
+}
+function pwPick(g, o) { pwGeo = g; pwOffer = o; pwRenderTree(); pwRender(); }
+
+/* ─────────── список кампаній ─────────── */
+function pwRender() {
+  const el = document.getElementById('ap-list');
+  if (!el) return;
+  const q = (document.getElementById('ap-search')?.value || '').toLowerCase().trim();
+  const rows = pwItems.filter(it =>
+    (!pwGeo || (it.geo || '—').toUpperCase() === pwGeo) &&
+    (!pwOffer || (it.offer || '—') === pwOffer) &&
+    (!q || [it.geo, it.offer, it.name, it.note].concat(it.links || [])
+            .some(v => String(v || '').toLowerCase().includes(q))));
+
+  if (!rows.length) {
+    el.innerHTML = `<p class="text-[12px] opacity-40 py-6">${pwItems.length
+      ? 'За цим фільтром нічого немає.'
+      : 'Жодної кампанії ще немає. «+ Кампанія» — назва й силки. Якщо вони вже є списком у нотатках, тисни «Списком».'}</p>`;
+    return;
+  }
+
+  const copyBtn = (v, title) => !v ? '' :
+    `<button onclick="apCopy(event, this)" data-v="${apEsc(v)}" title="${title}"
+       class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі</button>`;
+
+  el.innerHTML = rows.map(it => {
+    const links = (it.links || []).filter(Boolean);
+    return `
+    <div class="bg-black/20 border border-white/5 rounded-2xl p-3">
+      <div class="flex items-start justify-between gap-2 flex-wrap">
+        <p class="text-[12px] font-black text-white truncate min-w-0">
+          <span class="text-sky-300">${apEsc((it.geo || '—').toUpperCase())}</span>
+          ${it.offer ? `<span class="text-slate-400 ml-1.5">· ${apEsc(it.offer)}</span>` : ''}
+          <span class="text-slate-600 ml-1.5">· ${links.length} ${links.length === 1 ? 'силка' : 'силок'}</span>
+        </p>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="pwEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
+          <button onclick="pwDelete('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/30 transition">×</button>
+        </div>
+      </div>
+
+      <!-- Назва — головне на картці: саме її копіюють у кабінет і нею ж
+           шукають кампанію в статистиці. -->
+      <div class="flex items-center gap-2 mt-2">
+        <span class="text-[9px] font-black uppercase tracking-widest text-sky-300 shrink-0 w-16">Кампанія</span>
+        <code class="text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate" title="${apEsc(it.name)}">${apEsc(it.name)}</code>
+        ${copyBtn(it.name, 'Скопіювати назву кампанії')}
+      </div>
+
+      ${links.length ? links.map((u, i) => `
+        <div class="flex items-center gap-2 mt-1.5">
+          <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">${i ? '' : 'Силка'}</span>
+          <a href="${apEsc(pwHref(u))}" target="_blank" rel="noopener noreferrer"
+             class="text-[11px] font-mono text-sky-300 hover:text-sky-200 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate transition"
+             title="${apEsc(u)} — відкрити в новій вкладці">${apEsc(u)}</a>
+          ${copyBtn(u, 'Скопіювати силку')}
+        </div>`).join('') : `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
+        Силок ще немає — «змінити» і впиши їх, по одній на рядок.</p>`}
+
+      ${links.length > 1 ? `<div class="flex justify-end mt-1.5">
+        <button onclick="apCopy(event, this)" data-v="${apEsc(links.join('\n'))}"
+          class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі всі силки</button>
+      </div>` : ''}
+
+      ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
+    </div>`;
+  }).join('');
+}
+
+/* ─────────── редактор кампанії ─────────── */
+function pwNew() {
+  pwEditId = null;
+  pwShowEditor({ name: '', geo: pwGeo === '—' ? '' : pwGeo,
+                 offer: pwOffer === '—' ? '' : pwOffer, links: [], note: '' });
+}
+function pwEdit(id) {
+  const it = pwItems.find(x => x.id === id);
+  if (it) { pwEditId = id; pwShowEditor(it); }
+}
+function pwCancel() {
+  pwEditId = null;
+  const el = document.getElementById('ap-editor');
+  if (el) el.classList.add('hidden');
+}
+
+function pwShowEditor(v) {
+  const el = document.getElementById('ap-editor');
+  if (!el) return;
+  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500';
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="bg-sky-500/[0.06] border border-sky-500/25 rounded-2xl p-3 space-y-2">
+      <input id="pw-f-name" value="${apEsc(v.name || '')}" oninput="pwNameHint()"
+             class="${inp} w-full font-mono" placeholder="Назва кампанії — як у кабінеті: Mbank_KG_10708-ex8g_09/10">
+      <p id="pw-guess" class="text-[10px] text-slate-500 font-bold"></p>
+      <div class="grid grid-cols-2 gap-2">
+        <input id="pw-f-geo" value="${apEsc(v.geo || '')}" class="${inp} uppercase" placeholder="Гео">
+        <input id="pw-f-offer" value="${apEsc(v.offer || '')}" class="${inp}" placeholder="Оффер">
+      </div>
+      <textarea id="pw-f-links" rows="4" class="${inp} w-full font-mono leading-relaxed"
+        placeholder="Силки — по одній на рядок:&#10;https://mplay-kg-games.website">${apEsc((v.links || []).join('\n'))}</textarea>
+      <input id="pw-f-note" value="${apEsc(v.note || '')}" class="${inp} w-full" placeholder="Нотатка для себе">
+      <div class="flex gap-2 pt-1">
+        <button onclick="pwSubmit()" class="bg-sky-600 hover:bg-sky-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зберегти</button>
+        <button onclick="pwCancel()" class="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-3 transition">Скасувати</button>
+      </div>
+    </div>`;
+  pwNameHint();
+  document.getElementById('pw-f-name').focus();
+}
+
+/* Що ми прочитали з назви — показуємо ВІДРАЗУ, у плейсхолдерах і рядком
+   під полем. Інакше автопідстановка гео й оффера відбувалась би аж на
+   «Зберегти», і помилку вгадування було б видно вже в дереві. */
+function pwNameHint() {
+  const name = (document.getElementById('pw-f-name') || {}).value || '';
+  const g = pwGuess(name);
+  const geo = document.getElementById('pw-f-geo');
+  const off = document.getElementById('pw-f-offer');
+  if (geo) geo.placeholder = g.geo ? 'Гео — з назви: ' + g.geo : 'Гео';
+  if (off) off.placeholder = g.offer ? 'Оффер — з назви: ' + g.offer : 'Оффер';
+  const h = document.getElementById('pw-guess');
+  if (!h) return;
+  h.textContent = !String(name).trim()
+    ? 'Назву бери з кабінета як є — підставляти в неї нічого не треба.'
+    : (g.geo || g.offer)
+      ? `З назви читається: оффер ${g.offer || '—'}, гео ${g.geo || '—'} — порожні поля заповняться самі.`
+      : 'З назви ні гео, ні оффер не вгадуються — впиши їх руками, інакше кампанія ляже в «—».';
+}
+
+async function pwSubmit() {
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const name = val('pw-f-name');
+  if (!name) { alert('Кампанія без назви нічого не дасть — саме її ти потім і шукаєш.'); return; }
+
+  const raw = (document.getElementById('pw-f-links')?.value || '')
+    .split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  /* Не силку не приймаємо МОВЧКИ й не зберігаємо «як є»: рядок, що
+     виглядає як силка, але нею не є, помічається аж тоді, коли по ньому
+     клікнули. Тому кажемо, який саме рядок не підійшов. */
+  const bad = raw.filter(x => !pwIsUrl(x));
+  if (bad.length) {
+    await pwTell('Це не схоже на силки', bad.join('\n')
+      + '\n\nОдна силка на рядок. Схему (https://) можна не писати.');
+    return;
+  }
+  const g = pwGuess(name);
+  const rec = {
+    name,
+    geo: (val('pw-f-geo') || g.geo).toUpperCase(),
+    offer: val('pw-f-offer') || g.offer,
+    // Дубль силки в одній кампанії — завжди недогляд копіпасти.
+    links: [...new Set(raw)],
+    note: val('pw-f-note')
+  };
+
+  /* Та сама назва вдруге — майже завжди промах: силку хотіли додати до
+     наявної кампанії. Але буває й свідомо, тому питаємо, а не забороняємо. */
+  const dup = pwItems.find(x => x.id !== pwEditId
+    && String(x.name || '').trim().toLowerCase() === name.toLowerCase());
+  if (dup && !await pwAsk({
+        title: 'Кампанія «' + name + '» уже є',
+        body: 'Зробити ще одну з такою ж назвою? Щоб просто додати силку до наявної — '
+            + 'скасуй і натисни «змінити» на ній.',
+        ok: 'Зробити ще одну', cancel: 'Скасувати' })) return;
+
+  if (pwEditId) Object.assign(pwItems.find(x => x.id === pwEditId) || {}, rec);
+  else pwItems.unshift({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec });
+
+  /* Малюємо лише коли справді збереглось — інакше кампанія стояла б у
+     списку до перезавантаження й зникала потім без жодного слова. */
+  if (!await pwSave()) { if (!pwEditId) pwItems.shift(); return; }
+  pwEditId = null;
+  document.getElementById('ap-editor').classList.add('hidden');
+  apSubPaint();
+  pwRenderTree(); pwRender();
+}
+
+async function pwDelete(id) {
+  const it = pwItems.find(x => x.id === id);
+  if (!it) return;
+  if (!await pwAsk({
+        title: 'Видалити «' + (it.name || id) + '»?',
+        body: (it.links || []).length
+          ? 'Разом із нею зникнуть силки: ' + it.links.length + '. Повернути їх буде нізвідки.'
+          : 'Силок у ній немає.',
+        ok: 'Видалити', cancel: 'Скасувати', danger: true })) return;
+  const keep = pwItems;
+  pwItems = pwItems.filter(x => x.id !== id);
+  if (!await pwSave()) { pwItems = keep; return; }
+  apSubPaint();
+  pwRenderTree(); pwRender();
+}
+
+/* ═══════════ ВСТАВКА СПИСКОМ ═══════════
+
+   Силки й назви вже лежать у людини в нотатках рівно в тому вигляді, у
+   якому їх дали:
+
+     Mbank_KG_10708-ex8g_09/10
+     https://mplay-kg-games.website
+
+   Заводити це по одній картці — єдина причина не користуватись екраном
+   узагалі. Тому розбираємо вставлений текст: рядок-НЕ-силка відкриває
+   нову кампанію, кожна силка під ним — її.
+
+   РОЗБІР ПОКАЗУЄМО ПЕРЕД ЗБЕРЕЖЕННЯМ. Тихий імпорт, який прочитав
+   формат не так, помічається вже тоді, коли в довіднику сто кривих
+   кампаній, — а звідти вже нема чого відкочувати. */
+let pwBulkDraft = null;
+
+function pwPaste() {
+  pwEditId = null; pwBulkDraft = null;
+  const el = document.getElementById('ap-editor');
+  if (!el) return;
+  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500';
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="bg-sky-500/[0.06] border border-sky-500/25 rounded-2xl p-3 space-y-2">
+      <p class="text-[9px] font-black uppercase tracking-widest text-sky-300">Вставити списком</p>
+      <p class="text-[10px] text-slate-500 font-bold leading-relaxed">
+        Назва — окремим рядком, силки під нею. Силок може бути кілька, порожні рядки не важливі.
+        Якщо кампанія з такою назвою вже є — силки доклáдуться до неї, а не створять дубль.</p>
+      <textarea id="pw-bulk" rows="8" class="${inp} w-full font-mono leading-relaxed"
+        placeholder="Mbank_KG_10708-ex8g_09/10&#10;https://mplay-kg-games.website&#10;&#10;Mbank_KG_10709-ab2c_09/10&#10;https://mplay-kg-fun.website"></textarea>
+      <div class="flex gap-2">
+        <button onclick="pwBulkParse()" class="bg-white/10 hover:bg-white/20 px-4 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Розібрати</button>
+        <button onclick="pwCancel()" class="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-3 transition">Скасувати</button>
+      </div>
+      <div id="pw-bulk-out"></div>
+    </div>`;
+  document.getElementById('pw-bulk').focus();
+}
+
+/* Сам розбір — окремо від малювання, щоб його можна було перевірити
+   без браузера. */
+function pwParseBulk(text) {
+  const recs = [], bad = [];
+  String(text || '').split(/\r?\n/).forEach(raw => {
+    const line = raw.trim();
+    if (!line) return;
+    /* «назва https://…» в одному рядку теж трапляється. Беремо тільки
+       явну силку зі схемою або www: інакше «Mbank_KG 10708» розійшлось
+       би на назву й «силку» 10708. */
+    const one = line.match(/^(.*?)[\s|,;:–—-]*((?:https?:\/\/|www\.)\S+)$/i);
+    if (one && one[1].trim() && !pwIsUrl(one[1].trim())) {
+      recs.push({ name: one[1].trim(), links: [one[2]] });
+      return;
+    }
+    if (pwIsUrl(line)) {
+      // Силка, над якою ще не було назви — приписати її нема до чого.
+      if (!recs.length) { bad.push(line); return; }
+      recs[recs.length - 1].links.push(line);
+      return;
+    }
+    recs.push({ name: line, links: [] });
+  });
+  recs.forEach(r => { r.links = [...new Set(r.links)]; });
+  return { recs, bad };
+}
+
+function pwBulkPlan(text) {
+  const { recs, bad } = pwParseBulk(text);
+  const seen = new Map();            // назва → id наявної кампанії
+  pwItems.forEach(x => seen.set(String(x.name || '').trim().toLowerCase(), x));
+  let dupLinks = 0;
+  const plan = recs.map(r => {
+    const old = seen.get(r.name.toLowerCase()) || null;
+    const have = old ? (old.links || []).map(u => u.toLowerCase()) : [];
+    const fresh = r.links.filter(u => !have.includes(u.toLowerCase()));
+    dupLinks += r.links.length - fresh.length;
+    return { name: r.name, links: r.links, fresh, to: old ? old.id : null };
+  });
+  return {
+    plan, bad, dupLinks,
+    fresh: plan.filter(x => !x.to).length,
+    merged: plan.filter(x => x.to && x.fresh.length).length,
+    links: plan.reduce((s, x) => s + x.fresh.length, 0),
+    noLinks: plan.filter(x => !x.to && !x.links.length).length
+  };
+}
+
+function pwBulkParse() {
+  const out = document.getElementById('pw-bulk-out');
+  if (!out) return;
+  const r = pwBulkPlan((document.getElementById('pw-bulk') || {}).value || '');
+  pwBulkDraft = r;
+  if (!r.plan.length) {
+    out.innerHTML = `<p class="text-[11px] font-bold text-amber-400">Нічого не розібралось. Назва — окремим рядком, силки під нею.</p>`;
+    return;
+  }
+  const line = (t, cls) => `<p class="text-[11px] font-bold ${cls}">${t}</p>`;
+  out.innerHTML = [
+    line(`Нових кампаній: <b>${r.fresh}</b> · силок до них і до наявних: <b>${r.links}</b>`, 'text-sky-300'),
+    r.merged ? line(`Докладеться до наявних кампаній: ${r.merged}`, 'text-slate-400') : '',
+    r.dupLinks ? line(`Силок уже було — пропущу: ${r.dupLinks}`, 'text-slate-500') : '',
+    r.noLinks ? line(`Кампаній без жодної силки: ${r.noLinks} — збережу з назвою, силки долучиш потім`, 'text-amber-400/90') : '',
+    r.bad.length ? line(`Не розібрав ${r.bad.length} рядк. — силка без назви над нею:<br><code class="font-mono text-[10px]">${r.bad.map(apEsc).join('<br>')}</code>`, 'text-amber-400') : '',
+    `<div class="mt-2 max-h-48 overflow-y-auto custom-scrollbar space-y-1">${r.plan.map(x => {
+      const g = pwGuess(x.name);
+      return `<div class="text-[11px] font-mono text-slate-300 truncate">
+        <span class="${x.to ? 'text-slate-500' : 'text-sky-400'}">${x.to ? '+силки' : 'нова'}</span>
+        ${apEsc(x.name)}
+        <span class="text-slate-600">· ${apEsc(g.offer || '—')} · ${apEsc(g.geo || '—')} · ${x.fresh.length} силк.</span>
+      </div>`;
+    }).join('')}</div>`,
+    `<div class="flex gap-2 mt-2">
+      <button onclick="pwBulkApply()" class="bg-sky-600 hover:bg-sky-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Додати ${r.fresh + r.merged}</button>
+      <button onclick="pwCancel()" class="text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-white px-3 transition">Скасувати</button>
+    </div>`
+  ].join('');
+}
+
+async function pwBulkApply() {
+  if (!pwBulkDraft || !pwBulkDraft.plan.length) return;
+  // Відкат — глибока копія: інакше push у links наявної кампанії лишився
+  // б у пам'яті навіть після відмови бази.
+  const keep = JSON.parse(JSON.stringify(pwItems));
+  let added = 0, merged = 0;
+  pwBulkDraft.plan.forEach((x, i) => {
+    if (x.to) {
+      if (!x.fresh.length) return;
+      const old = pwItems.find(y => y.id === x.to);
+      if (!old) return;
+      old.links = [...(old.links || []), ...x.fresh];
+      merged++;
+      return;
+    }
+    const g = pwGuess(x.name);
+    pwItems.unshift({
+      id: 'p' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6),
+      name: x.name, geo: g.geo, offer: g.offer, links: x.fresh, note: ''
+    });
+    added++;
+  });
+  if (!await pwSave()) { pwItems = keep; return; }
+  pwBulkDraft = null;
+  pwCancel();
+  apSubPaint();
+  pwRenderTree(); pwRender();
+  if (typeof toast === 'function')
+    toast(`Додано: ${added} кампан. · силок до наявних: ${merged}`, 'ok');
 }
 </script>
 
