@@ -8898,6 +8898,8 @@ function gcDiff(geo, results) {
         </div>
         <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
           class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
+        <button id="ap-dom" onclick="pwDomRefresh(this)" title="Перечитати стан доменів зі списку доменів — його міняє перевірка, а не ми"
+          class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
           class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">Списком</button>
         <button id="ap-add" onclick="apAddNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
@@ -9051,10 +9053,15 @@ async function apLoad() {
        Окремий select на другий ключ коштував би ще один круг до бази
        рівно за те саме. Рядки приходять лише свої — політика own_select
        (SECURITY_BUYERS.sql) віддає те, де created_by = auth.uid(). */
+    /* Стан доменів їде разом з усім іншим, а не окремим кроком після:
+       інакше іконки під силками з'являлися б із запізненням, уже
+       після того, як людина подивилась на список. pwDomLoad свою
+       помилку ловить сам, тому Promise.all на ньому не падає. */
     const [ts, fn, ac] = await Promise.all([
       sb.from('team_settings').select('key, value').in('key', ['app_links', 'pwa_links']),
       sb.from('funnels_mapping').select('ktid, funnel_name, geo, is_app').eq('team_name', currentTeam),
-      sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam)
+      sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam),
+      pwDomLoad(true)
     ]);
     if (ts.error) throw ts.error;
     /* Кожен ключ розбираємо окремо: зламаний JSON в одному не має
@@ -9114,7 +9121,9 @@ const AP_MODE_KEY = 'ap_mode';
 function apSubText() {
   if (apMode === 'pwa') {
     const links = pwItems.reduce((s, x) => s + ((x.links || []).length), 0);
-    return `${pwItems.length} кампаній · ${links} силок`;
+    const bad = pwBadCount();
+    return `${pwItems.length} кампаній · ${links} силок`
+         + (bad ? ` · ${bad} під увагою` : '');
   }
   return `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
 }
@@ -9169,6 +9178,8 @@ function apModePaint() {
   }
   const paste = document.getElementById('ap-paste');
   if (paste) paste.classList.toggle('hidden', !pwa);
+  const dom = document.getElementById('ap-dom');
+  if (dom) dom.classList.toggle('hidden', !pwa);
   const s = document.getElementById('ap-search');
   if (s) s.placeholder = pwa ? 'Пошук: гео, оффер, назва, силка…'
                              : 'Пошук: гео, постачальник, неймінг…';
@@ -9708,7 +9719,7 @@ async function apDelete(id) {
    ЗБЕРІГАННЯ. team_settings, ключ pwa_links, тим самим JSON і тією ж
    парою (created_by, key), що й app_links. Окремий ключ навмисно: щоб
    правка прілок не могла зачепити силки, і навпаки.                 */
-let pwItems = [], pwGeo = '', pwOffer = '', pwEditId = null;
+let pwItems = [], pwGeo = '', pwOffer = '', pwEditId = null, pwOnlyBad = false;
 
 /* ПИТАННЯ Й ДОВГІ ПОВІДОМЛЕННЯ. ask() і tell() малюють своє вікно
    замість системного «dashboard.github.io каже:», яке поруч зі
@@ -9747,11 +9758,253 @@ function pwHref(u) {
    літерами. Порядок у назві не фіксуємо: буває й KG_Mbank_…, і тоді
    оффером мусить стати Mbank, а не гео. */
 function pwGuess(name) {
-  const parts = String(name || '').trim().split(/[_\s]+/).filter(Boolean);
+  /* Макрос {date:DD/MM} — це підстановка, а не кусок назви: ні гео, ні
+     оффером він бути не може, і в дерево з нього нічого не йде. */
+  const parts = String(name || '').trim().split(/[_\s]+/)
+    .filter(x => x && !/[{}]/.test(x));
   const gi = parts.findIndex(x => /^[A-Za-z]{2}$/.test(x));
   const geo = gi >= 0 ? parts[gi].toUpperCase() : '';
   const offer = parts.find((x, i) => i !== gi && /[A-Za-z]/.test(x)) || '';
   return { geo, offer };
+}
+
+
+/* ═══════════ ДАТА В НАЗВІ ═══════════
+
+   Назва кампанії несе дату заливу: Mbank_KG_10708-ex8g_09/10. Щодня
+   вона інша, і переписувати її руками в кожному записі означає, що
+   рано чи пізно скопіюєш у кабінет вчорашню — а помітиш це вже в
+   статистиці, де кампанія не зійдеться ні з чим.
+
+   Тому в назві може стояти МАКРОС {date}. Підставляється він у момент
+   ПОКАЗУ, а не збереження: інакше «сьогоднішня» дата застигла б тією,
+   якою була в день правки, і весь сенс зник би.
+
+   ФОРМАТ БЕРЕМО З ТОГО, ЩО ВЖЕ СТОЇТЬ У НАЗВІ: 09/10 → DD/MM,
+   09.10 → DD.MM, 2026-10-09 → YYYY-MM-DD. Свого формату не
+   нав'язуємо: цю назву читає не лише дашборд.
+
+   Порядок день/місяць однозначний тільки коли одне з чисел більше 12.
+   Інакше беремо DD/MM — так пишуть тут — і ПОКАЗУЄМО в редакторі, що
+   саме вийде сьогодні. Вгадування, яке не показує результату, і є той
+   випадок, коли місяць із днем міняються місцями на півроку. */
+const PW_DATE_PART = /^(\d{1,2})([/.\-])(\d{1,2})(?:\2(\d{2,4}))?$|^(\d{4})-(\d{2})-(\d{2})$/;
+const PW_DATE_MACRO = /\{date(?::([^}]*))?\}/gi;
+
+function pwDateFmt(tok) {
+  const m = PW_DATE_PART.exec(String(tok || '').trim());
+  if (!m) return '';
+  if (m[5]) return 'YYYY-MM-DD';
+  const a = +m[1], b = +m[3], sep = m[2], yr = m[4];
+  const order = a > 12 ? 'DD' + sep + 'MM'
+              : b > 12 ? 'MM' + sep + 'DD'
+              : 'DD' + sep + 'MM';
+  return yr ? order + sep + (yr.length === 4 ? 'YYYY' : 'YY') : order;
+}
+
+/* Дата місцевим часом, а не UTC: о першій ночі в Києві toISOString дав
+   би ще вчорашнє число — рівно та помилка, від якої ми й ішли. */
+function pwDateRender(fmt, now) {
+  const d = now || new Date();
+  const p2 = n => String(n).padStart(2, '0');
+  return String(fmt || 'DD/MM')
+    .replace(/YYYY/g, String(d.getFullYear()))
+    .replace(/YY/g, p2(d.getFullYear() % 100))
+    .replace(/DD/g, p2(d.getDate()))
+    .replace(/MM/g, p2(d.getMonth() + 1));
+}
+
+// Назва, як її копіюють САМЕ ЗАРАЗ.
+function pwName(it, now) {
+  return String((it && it.name) || '')
+    .replace(PW_DATE_MACRO, (m, f) => pwDateRender(f || 'DD/MM', now));
+}
+const pwHasDate = it => /\{date(?::[^}]*)?\}/i.test(String((it && it.name) || ''));
+
+/* Знайти дату в назві й зробити її автоматичною. Повертає нову назву —
+   або порожньо, якщо дати в назві немає й підставляти нічого. */
+function pwMacroize(name) {
+  const parts = String(name || '').split('_');
+  const i = parts.findIndex(x => PW_DATE_PART.test(x.trim()));
+  if (i < 0) return '';
+  const fmt = pwDateFmt(parts[i].trim());
+  if (!fmt) return '';
+  parts[i] = '{date:' + fmt + '}';
+  return parts.join('_');
+}
+
+/* ═══════════ СТАН ДОМЕНА ПІД СИЛКОЮ ═══════════
+
+   Домени ми вже перевіряємо окремим вікном (DOMAINS.sql плюс крон):
+   воно знає, чи домен відповідає і чи його позначили небезпечним. Тут
+   це знання лише ПОКАЗУЄМО — зліва від силки.
+
+   ЗАПИСУВАТИ НІЧОГО НЕ ЗАПИСУЄМО. Силка в цьому довіднику й рядок у
+   списку доменів — дві різні речі, і плодити рядки в чужій таблиці з
+   кожного збереження означало б, що список доменів заповнюється сам
+   собою й невідомо ким. Додати домен можна — кнопкою, по одному.
+
+   ЧОГО ДОМЕНА В СПИСКУ НЕМАЄ — КАЖЕМО ПРЯМО. Порожнє коло, а не зелена
+   точка: саме «не перевірявся», видане за «все добре», і є той
+   випадок, коли на мертвий домен ллють ще півдня. */
+let pwDom = {}, pwDomErr = '';
+const PW_BAD = { danger: 1, down: 1, notfound: 1 };
+
+/* Хост силки. Нормалізація мусить збігатися зі списком доменів —
+   інакше та сама силка була б там одним рядком, а тут іншим. Тому там,
+   де функція вікна доменів є, беремо саму її, а не другу копію правил;
+   запасна копія потрібна лише для index-legacy.html, куди шар дизайну
+   не їде. */
+function pwHost(u) {
+  if (typeof dmNormDomain === 'function') return dmNormDomain(u);
+  let s = String(u || '').trim().toLowerCase();
+  s = s.replace(/^[a-z][a-z0-9+.\-]*:\/\//, '').split('/')[0].split('?')[0].split('#')[0];
+  s = s.replace(/^www\./, '').replace(/\.$/, '').split(':')[0];
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s) ? s : '';
+}
+
+function pwDomInfo(u) {
+  const h = pwHost(u);
+  if (!h) return { host: '', state: 'none' };
+  const r = pwDom[h];
+  if (!r) return { host: h, state: 'none' };
+  const st = String(r.status || 'unknown');
+  /* Статус, якого ми не знаємо, — це «не перевіряли», а не падіння:
+     пише їх Edge Function, тобто новий статус може з'явитись без нас. */
+  return { host: h, state: PW_BAD[st] ? st : (st === 'ok' ? 'ok' : 'unknown'),
+           by: r.flagged_by || '', at: r.checked_at || '' };
+}
+
+const PW_DOT = {
+  danger:   { c: '#EF4444', t: 'Домен позначений як небезпечний' },
+  down:     { c: '#EF4444', t: 'Не відповідає: DNS, сертифікат або відкинуте з\'єднання' },
+  notfound: { c: '#F59E0B', t: 'Відповідає, але сторінки немає (4xx)' },
+  ok:       { c: '#22C55E', t: 'Відповідає' },
+  unknown:  { c: '#6C6C76', t: 'У списку доменів є, але ще не перевірявся' },
+  none:     { c: '#6C6C76', t: 'Цієї силки немає в списку доменів — перевірка її не бачить' }
+};
+
+/* Іконка, а не емодзі: емодзі малює система, і розмір, колір та
+   вертикаль у кожній свої. SVG успадковує currentColor. */
+const PW_WARN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"'
+  + ' stroke-linecap="round" stroke-linejoin="round" class="inline-block w-4 h-4 align-[-3px]"'
+  + ' aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2'
+  + ' 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
+
+function pwDomMark(u) {
+  const i = pwDomInfo(u);
+  const d = PW_DOT[i.state] || PW_DOT.none;
+  const ago = (i.at && typeof dmAgo === 'function') ? ' · перевірено ' + dmAgo(i.at) + ' тому' : '';
+  const title = d.t + (i.by ? ' · ' + i.by : '') + ago;
+  if (PW_BAD[i.state]) {
+    return `<span class="shrink-0 w-4 text-center leading-none" style="color:${d.c}"
+      title="${apEsc(title)}">${PW_WARN_SVG}</span>`;
+  }
+  // Порожнє коло — «не перевірявся», залите — перевірений.
+  const style = i.state === 'none'
+    ? 'box-shadow:inset 0 0 0 1.5px ' + d.c + ';background:transparent'
+    : 'background:' + d.c;
+  return `<span class="shrink-0 w-4 text-center leading-none" title="${apEsc(title)}">
+    <span class="inline-block w-2 h-2 rounded-full align-middle" style="${style}"></span></span>`;
+}
+
+/* ═══════════ КЛІК = КОПІЯ ═══════════
+
+   І силку, і назву кампанії вставляють у кабінет десятки разів на
+   день, а відкривають раз — тому клік копіює, а відкриває окрема
+   стрілка поряд. Інакше найчастіша дія вимагає прицілитись у маленьку
+   кнопку, а найрідша робиться випадково.
+
+   Підтвердження — спалах рамки, а не підміна тексту на «ок»: тиснуть
+   тут по самій силці, і лишитись без неї на секунду означає не
+   зрозуміти, що саме скопіювалось. Рамку малюємо інлайновим стилем:
+   вона мусить працювати й там, куди шар дизайну не доїжджає. */
+async function pwCopy(ev, el) {
+  ev.preventDefault(); ev.stopPropagation();
+  const v = el.getAttribute('data-v') || el.textContent || '';
+  if (!v) return;
+  try { await navigator.clipboard.writeText(v); } catch (e) {
+    const t = document.createElement('textarea');
+    t.value = v; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } finally { t.remove(); }
+  }
+  el.style.boxShadow = 'inset 0 0 0 1.5px #22C55E';
+  setTimeout(() => { el.style.boxShadow = ''; }, 900);
+  if (typeof toast === 'function') toast('Скопійовано: ' + v, 'ok', 1600);
+}
+
+// Силки, які вимагають уваги — по них і фільтр, і число в підписі.
+const pwBadLinks = it => (it.links || []).filter(u => PW_BAD[pwDomInfo(u).state]);
+const pwBadCount = () => pwItems.reduce((s, it) => s + pwBadLinks(it).length, 0);
+
+/* Стан доменів читаємо окремо від самого довідника: він живе в чужій
+   таблиці, яку міняє крон, тому його можна й треба перечитувати без
+   перезавантаження сторінки. Помилку не глушимо: якщо DOMAINS.sql ще
+   не виконаний, екран мусить сказати це, а не малювати сірі точки. */
+async function pwDomLoad(quiet) {
+  try {
+    const { data, error } = await sb.from('domains')
+      .select('domain, status, flagged_by, checked_at, source')
+      .eq('team_name', currentTeam);
+    if (error) throw error;
+    pwDom = {}; pwDomErr = '';
+    (data || []).forEach(r => { pwDom[String(r.domain || '').toLowerCase()] = r; });
+  } catch (e) {
+    pwDomErr = e.message || e.code || String(e);
+    console.warn('домени для PWA:', pwDomErr);
+  }
+  if (!quiet && apMode === 'pwa') { apSubPaint(); pwRenderTree(); pwRender(); }
+}
+
+/* Перечитати стан доменів руками. Потрібне рівно тоді, коли перевірка
+   щойно відпрацювала в іншому вікні: статуси пише вона, і без цього їх
+   було б видно тільки після перезавантаження сторінки. */
+async function pwDomRefresh(btn) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  await pwDomLoad();
+  if (btn) { btn.disabled = false; btn.textContent = was; }
+  if (typeof toast === 'function' && !pwDomErr) {
+    const n = Object.keys(pwDom).length;
+    toast(`Стан доменів оновлено · у списку ${n}`, 'ok', 2500);
+  }
+}
+
+/* Додати домен силки в список доменів — по кліку, по одному. PWA, гео
+   й KTID вичитуємо з назви кампанії тими самими позиціями, що й вікно
+   доменів, щоб рядок став у те саме дерево, а не окремим сиротою. */
+async function pwDomAdd(ev, btn) {
+  ev.stopPropagation();
+  const u = btn.getAttribute('data-u') || '';
+  const camp = btn.getAttribute('data-c') || '';
+  const host = pwHost(u);
+  if (!host) return;
+  const head = (typeof dmHeadInfo === 'function') ? dmHeadInfo(camp) : {};
+  const row = { team_name: currentTeam, domain: host, status: 'unknown',
+                pwa: head.pwa || null, geo: head.geo || null,
+                ktid: head.ktid || null, campaign: camp || null };
+  const was = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  const { data, error } = await sb.from('domains').insert([row]).select();
+  btn.disabled = false; btn.textContent = was;
+  if (error) {
+    /* Унікальний індекс по (team_name, lower(domain)) — тобто рядок
+       уже є, просто його не віддає RLS: він чужий. Сказати це прямо
+       важливіше, ніж показати код помилки. */
+    const msg = error.code === '23505'
+      ? host + ' у списку доменів уже є — схоже, його додав хтось інший, і твій дашборд його не бачить.'
+      : 'Не додалось у домени: ' + (error.message || error.code);
+    if (typeof toast === 'function') toast(msg, 'error', 12000); else alert(msg);
+    return;
+  }
+  (data || []).forEach(r => { pwDom[String(r.domain || '').toLowerCase()] = r; });
+  /* Вікно доменів тримає свій список у пам'яті. Якщо воно вже
+     відкривалось, доданий рядок треба покласти й туди — інакше він
+     з'явиться там лише після перезавантаження сторінки. */
+  if (typeof dmRows !== 'undefined' && Array.isArray(dmRows)) dmRows.push(...(data || []));
+  apSubPaint(); pwRenderTree(); pwRender();
+  if (typeof toast === 'function')
+    toast(host + ' → у списку доменів. Перевірка його побачить із наступним прогоном.', 'ok');
 }
 
 /* ─────────── дерево гео → оффер ─────────── */
@@ -9765,7 +10018,11 @@ function pwRenderTree() {
   });
   const btn = (label, active, onclick, pad, count) =>
     apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600');
-  let html = btn('Усі', !pwGeo && !pwOffer, "pwPick('','')", 8, pwItems.length);
+  let html = btn('Усі', !pwGeo && !pwOffer && !pwOnlyBad, "pwPick('','')", 8, pwItems.length);
+  /* Рядок під увагу — тільки коли є на що дивитись. Порожній фільтр
+     «проблемні 0» щодня питав би, чи не зламалась перевірка. */
+  const bad = pwBadCount();
+  if (bad) html += apTreeBtn('⚠ Під увагою', pwOnlyBad, 'pwPickBad()', 8, bad, 'bg-rose-600');
   Object.keys(byGeo).sort().forEach(g => {
     const n = pwItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
     html += btn(g, pwGeo === g && !pwOffer, `pwPick('${apEsc(g)}','')`, 8, n);
@@ -9776,7 +10033,16 @@ function pwRenderTree() {
   });
   el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
 }
-function pwPick(g, o) { pwGeo = g; pwOffer = o; pwRenderTree(); pwRender(); }
+function pwPick(g, o) {
+  pwGeo = g; pwOffer = o; pwOnlyBad = false;
+  pwRenderTree(); pwRender();
+}
+/* Під увагою — це не гео й не оффер, тому інші фільтри знімаються:
+   «⚠ у KG» лишало б питання, чи решта чиста, чи просто відфільтрована. */
+function pwPickBad() {
+  pwOnlyBad = !pwOnlyBad; pwGeo = ''; pwOffer = '';
+  pwRenderTree(); pwRender();
+}
 
 /* ─────────── список кампаній ─────────── */
 function pwRender() {
@@ -9784,24 +10050,31 @@ function pwRender() {
   if (!el) return;
   const q = (document.getElementById('ap-search')?.value || '').toLowerCase().trim();
   const rows = pwItems.filter(it =>
+    (!pwOnlyBad || pwBadLinks(it).length) &&
     (!pwGeo || (it.geo || '—').toUpperCase() === pwGeo) &&
     (!pwOffer || (it.offer || '—') === pwOffer) &&
-    (!q || [it.geo, it.offer, it.name, it.note].concat(it.links || [])
+    /* Шукаємо і по тому, що ЗБЕРЕЖЕНО, і по тому, що ВИДНО: назву з
+       {date} шукають за сьогоднішньою датою, а не за макросом. */
+    (!q || [it.geo, it.offer, it.name, pwName(it), it.note].concat(it.links || [])
             .some(v => String(v || '').toLowerCase().includes(q))));
 
   if (!rows.length) {
     el.innerHTML = `<p class="text-[12px] opacity-40 py-6">${pwItems.length
-      ? 'За цим фільтром нічого немає.'
+      ? (pwOnlyBad ? 'Силок під увагою немає.' : 'За цим фільтром нічого немає.')
       : 'Жодної кампанії ще немає. «+ Кампанія» — назва й силки. Якщо вони вже є списком у нотатках, тисни «Списком».'}</p>`;
     return;
   }
 
-  const copyBtn = (v, title) => !v ? '' :
-    `<button onclick="apCopy(event, this)" data-v="${apEsc(v)}" title="${title}"
-       class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі</button>`;
+  // Стрілка «відкрити»: клік по самій силці копіює, тому відкриття
+  // мусить мати власне, видиме місце.
+  const OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"'
+    + ' stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5" aria-hidden="true">'
+    + '<path d="M7 17 17 7M9 7h8v8"/></svg>';
 
   el.innerHTML = rows.map(it => {
     const links = (it.links || []).filter(Boolean);
+    const shown = pwName(it);              // назва з уже підставленою датою
+    const nBad = pwBadLinks(it).length;
     return `
     <div class="bg-black/20 border border-white/5 rounded-2xl p-3">
       <div class="flex items-start justify-between gap-2 flex-wrap">
@@ -9809,6 +10082,7 @@ function pwRender() {
           <span class="text-sky-300">${apEsc((it.geo || '—').toUpperCase())}</span>
           ${it.offer ? `<span class="text-slate-400 ml-1.5">· ${apEsc(it.offer)}</span>` : ''}
           <span class="text-slate-600 ml-1.5">· ${links.length} ${links.length === 1 ? 'силка' : 'силок'}</span>
+          ${nBad ? `<span class="text-rose-400 ml-1.5">· ${nBad} під увагою</span>` : ''}
         </p>
         <div class="flex items-center gap-1.5 shrink-0">
           <button onclick="pwEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
@@ -9816,28 +10090,44 @@ function pwRender() {
         </div>
       </div>
 
-      <!-- Назва — головне на картці: саме її копіюють у кабінет і нею ж
-           шукають кампанію в статистиці. -->
+      <!-- Назва — головне на картці: саме її вставляють у кабінет.
+           Клік по ній копіює РІВНО те, що видно: якщо в назві стоїть
+           {date}, копіюється вже з сьогоднішньою датою. -->
       <div class="flex items-center gap-2 mt-2">
         <span class="text-[9px] font-black uppercase tracking-widest text-sky-300 shrink-0 w-16">Кампанія</span>
-        <code class="text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate" title="${apEsc(it.name)}">${apEsc(it.name)}</code>
-        ${copyBtn(it.name, 'Скопіювати назву кампанії')}
+        <code onclick="pwCopy(event, this)" data-v="${apEsc(shown)}"
+          title="${apEsc(shown)}&#10;Клік — скопіювати назву"
+          class="text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate cursor-pointer hover:bg-black/60 transition">${apEsc(shown)}</code>
+        ${pwHasDate(it) ? `<span class="shrink-0 text-[9px] font-black uppercase tracking-widest text-sky-400/80"
+          title="У назві стоїть {date} — дата підставляється щодня сама">дата авто</span>` : ''}
       </div>
 
-      ${links.length ? links.map((u, i) => `
+      ${links.length ? links.map((u, i) => {
+        const di = pwDomInfo(u);
+        return `
         <div class="flex items-center gap-2 mt-1.5">
           <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">${i ? '' : 'Силка'}</span>
+          ${pwDomMark(u)}
+          <span onclick="pwCopy(event, this)" data-v="${apEsc(u)}"
+             title="${apEsc(u)}&#10;Клік — скопіювати силку"
+             class="text-[11px] font-mono text-sky-300 hover:text-sky-200 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate cursor-pointer transition">${apEsc(u)}</span>
+          ${di.state === 'none' && di.host ? `<button onclick="pwDomAdd(event, this)"
+             data-u="${apEsc(u)}" data-c="${apEsc(shown)}"
+             title="Додати ${apEsc(di.host)} у список доменів, щоб перевірка його бачила"
+             class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">+ домени</button>` : ''}
           <a href="${apEsc(pwHref(u))}" target="_blank" rel="noopener noreferrer"
-             class="text-[11px] font-mono text-sky-300 hover:text-sky-200 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate transition"
-             title="${apEsc(u)} — відкрити в новій вкладці">${apEsc(u)}</a>
-          ${copyBtn(u, 'Скопіювати силку')}
-        </div>`).join('') : `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
+             onclick="event.stopPropagation()" title="Відкрити в новій вкладці"
+             class="shrink-0 px-1.5 py-1 rounded-lg text-slate-500 hover:text-sky-300 hover:bg-white/10 transition">${OPEN}</a>
+        </div>`; }).join('') : `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
         Силок ще немає — «змінити» і впиши їх, по одній на рядок.</p>`}
 
       ${links.length > 1 ? `<div class="flex justify-end mt-1.5">
-        <button onclick="apCopy(event, this)" data-v="${apEsc(links.join('\n'))}"
+        <button onclick="pwCopy(event, this)" data-v="${apEsc(links.join('\n'))}"
           class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі всі силки</button>
       </div>` : ''}
+
+      ${pwDomErr ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
+        Стан доменів не прочитався (${apEsc(pwDomErr)}) — якщо списку доменів ще немає, виконай DOMAINS.sql.</p>` : ''}
 
       ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
     </div>`;
@@ -9847,12 +10137,19 @@ function pwRender() {
 /* ─────────── редактор кампанії ─────────── */
 function pwNew() {
   pwEditId = null;
+  // Нова кампанія: назву щойно взяли з кабінета, дата в ній — дата заливу.
+  pwDateAuto = true;
   pwShowEditor({ name: '', geo: pwGeo === '—' ? '' : pwGeo,
                  offer: pwOffer === '—' ? '' : pwOffer, links: [], note: '' });
 }
 function pwEdit(id) {
   const it = pwItems.find(x => x.id === id);
-  if (it) { pwEditId = id; pwShowEditor(it); }
+  if (!it) return;
+  pwEditId = id;
+  /* Збережено з живою датою — значить так і хотіли: дрібна правка
+     нотатки не має перетворювати її на макрос. */
+  pwDateAuto = pwHasDate(it);
+  pwShowEditor(it);
 }
 function pwCancel() {
   pwEditId = null;
@@ -9867,9 +10164,16 @@ function pwShowEditor(v) {
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-sky-500/[0.06] border border-sky-500/25 rounded-2xl p-3 space-y-2">
-      <input id="pw-f-name" value="${apEsc(v.name || '')}" oninput="pwNameHint()"
+      <!-- Дату підставляємо на ВИХОДІ з поля, а не на кожному натисканні:
+           посеред набору «09/1» уже схоже на дату, і заміна з'їдала б
+           наступну цифру прямо під пальцями. -->
+      <input id="pw-f-name" value="${apEsc(v.name || '')}" oninput="pwNameHint()" onblur="pwNameBlur()"
              class="${inp} w-full font-mono" placeholder="Назва кампанії — як у кабінеті: Mbank_KG_10708-ex8g_09/10">
-      <p id="pw-guess" class="text-[10px] text-slate-500 font-bold"></p>
+      <div class="flex items-start gap-2">
+        <p id="pw-guess" class="text-[10px] text-slate-500 font-bold flex-1 min-w-0 leading-relaxed"></p>
+        <button id="pw-datebtn" onclick="pwDateBtn()" type="button"
+          class="hidden shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition"></button>
+      </div>
       <div class="grid grid-cols-2 gap-2">
         <input id="pw-f-geo" value="${apEsc(v.geo || '')}" class="${inp} uppercase" placeholder="Гео">
         <input id="pw-f-offer" value="${apEsc(v.offer || '')}" class="${inp}" placeholder="Оффер">
@@ -9889,6 +10193,40 @@ function pwShowEditor(v) {
 /* Що ми прочитали з назви — показуємо ВІДРАЗУ, у плейсхолдерах і рядком
    під полем. Інакше автопідстановка гео й оффера відбувалась би аж на
    «Зберегти», і помилку вгадування було б видно вже в дереві. */
+/* ЧИ ПІДСТАВЛЯТИ ДАТУ САМИМ.
+
+   Для НОВОЇ кампанії — так: назву щойно взяли з кабінета, і дата в ній
+   завжди дата заливу. Для вже збереженої дивимось, як вона збережена:
+   якщо там стоїть жива дата, значить так і хотіли, і перероблювати її
+   на макрос під час будь-якої дрібної правки не можна — у назві буває
+   й число, яке датою тільки виглядає. */
+let pwDateAuto = true;
+
+/* Вихід із поля назви — момент, коли назва вже дописана. Саме тут
+   дата й міняється на макрос, якщо так вибрано. */
+function pwNameBlur() {
+  const el = document.getElementById('pw-f-name');
+  if (!el || !pwDateAuto) return pwNameHint();
+  if (pwHasDate({ name: el.value || '' })) return pwNameHint();
+  const auto = pwMacroize(el.value || '');
+  if (auto) el.value = auto;
+  pwNameHint();
+}
+
+/* Перемикач, а не однобічна кнопка: «зробити авто» без зворотного
+   шляху означає, що випадкову заміну нічим не скасувати. */
+function pwDateBtn() {
+  pwDateAuto = !pwDateAuto;
+  const el = document.getElementById('pw-f-name');
+  if (el) {
+    if (pwDateAuto) { const a = pwMacroize(el.value || ''); if (a) el.value = a; }
+    // Назад — сьогоднішньою датою в тому ж форматі, що стояв у макросі.
+    else el.value = pwName({ name: el.value || '' });
+  }
+  pwNameHint();
+  if (el) el.focus();
+}
+
 function pwNameHint() {
   const name = (document.getElementById('pw-f-name') || {}).value || '';
   const g = pwGuess(name);
@@ -9896,14 +10234,43 @@ function pwNameHint() {
   const off = document.getElementById('pw-f-offer');
   if (geo) geo.placeholder = g.geo ? 'Гео — з назви: ' + g.geo : 'Гео';
   if (off) off.placeholder = g.offer ? 'Оффер — з назви: ' + g.offer : 'Оффер';
+
+  /* Перемикач показуємо лише коли в назві є дата — у вигляді макроса
+     або живого числа. Кнопка, яка половину часу нічого не змінює,
+     швидко перестає щось означати. */
+  const macro = pwHasDate({ name });
+  const canMacro = !macro && !!pwMacroize(name);
+  const btn = document.getElementById('pw-datebtn');
+  if (btn) {
+    btn.classList.toggle('hidden', !(macro || canMacro));
+    btn.textContent = macro ? 'дата: авто' : 'дата: як є';
+    btn.title = macro
+      ? 'Дата підставляється щодня. Клік — лишити в назві сьогоднішнє число як є.'
+      : 'Дата в назві лишається як є. Клік — зробити її автоматичною.';
+    btn.className = 'shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition '
+      + (macro ? 'bg-sky-500/20 text-sky-200 hover:bg-sky-500/30'
+               : 'bg-white/5 text-slate-400 hover:bg-white/15 hover:text-white')
+      + (!(macro || canMacro) ? ' hidden' : '');
+  }
+
   const h = document.getElementById('pw-guess');
   if (!h) return;
-  h.textContent = !String(name).trim()
-    ? 'Назву бери з кабінета як є — підставляти в неї нічого не треба.'
+  const base = !String(name).trim()
+    ? 'Назву бери з кабінета як є.'
     : (g.geo || g.offer)
       ? `З назви читається: оффер ${g.offer || '—'}, гео ${g.geo || '—'} — порожні поля заповняться самі.`
       : 'З назви ні гео, ні оффер не вгадуються — впиши їх руками, інакше кампанія ляже в «—».';
+  /* Показуємо не сам макрос, а те, ЩО З НЬОГО ВИЙДЕ СЬОГОДНІ: день із
+     місяцем місцями — єдина помилка, яку тут можна зробити, і видно її
+     тільки на готовому рядку. */
+  const date = macro
+    ? ` Дата автоматична — сьогодні назва буде «${pwName({ name })}».`
+    : canMacro
+      ? ' У назві є дата. Кнопка праворуч зробить її автоматичною — тоді вона завжди буде сьогоднішньою.'
+      : '';
+  h.textContent = base + date;
 }
+
 
 async function pwSubmit() {
   const val = id => (document.getElementById(id)?.value || '').trim();
@@ -9998,6 +10365,11 @@ function pwPaste() {
       <p class="text-[10px] text-slate-500 font-bold leading-relaxed">
         Назва — окремим рядком, силки під нею. Силок може бути кілька, порожні рядки не важливі.
         Якщо кампанія з такою назвою вже є — силки доклáдуться до неї, а не створять дубль.</p>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="pw-bulk-date" checked onchange="pwBulkParse()" class="uq-chk">
+        <span class="text-[10px] font-bold text-slate-400">Дату в назвах зробити автоматичною
+          (<code class="font-mono text-sky-300">{date}</code>) — щоб вона завжди була сьогоднішньою</span>
+      </label>
       <textarea id="pw-bulk" rows="8" class="${inp} w-full font-mono leading-relaxed"
         placeholder="Mbank_KG_10708-ex8g_09/10&#10;https://mplay-kg-games.website&#10;&#10;Mbank_KG_10709-ab2c_09/10&#10;https://mplay-kg-fun.website"></textarea>
       <div class="flex gap-2">
@@ -10036,12 +10408,18 @@ function pwParseBulk(text) {
   return { recs, bad };
 }
 
-function pwBulkPlan(text) {
+function pwBulkPlan(text, macro) {
   const { recs, bad } = pwParseBulk(text);
-  const seen = new Map();            // назва → id наявної кампанії
+  const seen = new Map();            // назва → наявна кампанія
   pwItems.forEach(x => seen.set(String(x.name || '').trim().toLowerCase(), x));
-  let dupLinks = 0;
-  const plan = recs.map(r => {
+  let dupLinks = 0, dated = 0;
+  const plan = recs.map(r0 => {
+    /* Дату в назві міняємо на макрос ДО звірки з наявними: інакше
+       вчорашній список і сьогоднішній виглядали б як різні кампанії, і
+       силки множились би копіями замість того, щоб долучитись. */
+    const auto = macro ? pwMacroize(r0.name) : '';
+    if (auto) dated++;
+    const r = auto ? { ...r0, name: auto } : r0;
     const old = seen.get(r.name.toLowerCase()) || null;
     const have = old ? (old.links || []).map(u => u.toLowerCase()) : [];
     const fresh = r.links.filter(u => !have.includes(u.toLowerCase()));
@@ -10049,7 +10427,7 @@ function pwBulkPlan(text) {
     return { name: r.name, links: r.links, fresh, to: old ? old.id : null };
   });
   return {
-    plan, bad, dupLinks,
+    plan, bad, dupLinks, dated,
     fresh: plan.filter(x => !x.to).length,
     merged: plan.filter(x => x.to && x.fresh.length).length,
     links: plan.reduce((s, x) => s + x.fresh.length, 0),
@@ -10060,7 +10438,8 @@ function pwBulkPlan(text) {
 function pwBulkParse() {
   const out = document.getElementById('pw-bulk-out');
   if (!out) return;
-  const r = pwBulkPlan((document.getElementById('pw-bulk') || {}).value || '');
+  const macro = !!(document.getElementById('pw-bulk-date') || {}).checked;
+  const r = pwBulkPlan((document.getElementById('pw-bulk') || {}).value || '', macro);
   pwBulkDraft = r;
   if (!r.plan.length) {
     out.innerHTML = `<p class="text-[11px] font-bold text-amber-400">Нічого не розібралось. Назва — окремим рядком, силки під нею.</p>`;
@@ -10072,12 +10451,15 @@ function pwBulkParse() {
     r.merged ? line(`Докладеться до наявних кампаній: ${r.merged}`, 'text-slate-400') : '',
     r.dupLinks ? line(`Силок уже було — пропущу: ${r.dupLinks}`, 'text-slate-500') : '',
     r.noLinks ? line(`Кампаній без жодної силки: ${r.noLinks} — збережу з назвою, силки долучиш потім`, 'text-amber-400/90') : '',
+    r.dated ? line(`Дату зробимо автоматичною в назвах: ${r.dated} — сьогодні вони будуть із ${apEsc(pwDateRender('DD/MM'))}`, 'text-slate-400') : '',
     r.bad.length ? line(`Не розібрав ${r.bad.length} рядк. — силка без назви над нею:<br><code class="font-mono text-[10px]">${r.bad.map(apEsc).join('<br>')}</code>`, 'text-amber-400') : '',
     `<div class="mt-2 max-h-48 overflow-y-auto custom-scrollbar space-y-1">${r.plan.map(x => {
       const g = pwGuess(x.name);
+      /* Показуємо назву ВЖЕ з підставленою датою: макрос у цьому
+         списку нічого не каже про те, що насправді поїде в кабінет. */
       return `<div class="text-[11px] font-mono text-slate-300 truncate">
         <span class="${x.to ? 'text-slate-500' : 'text-sky-400'}">${x.to ? '+силки' : 'нова'}</span>
-        ${apEsc(x.name)}
+        ${apEsc(pwName({ name: x.name }))}
         <span class="text-slate-600">· ${apEsc(g.offer || '—')} · ${apEsc(g.geo || '—')} · ${x.fresh.length} силк.</span>
       </div>`;
     }).join('')}</div>`,
