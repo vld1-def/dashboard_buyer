@@ -1724,11 +1724,17 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    команді з короткими номерами лишала б півтори сотні пікселів
    порожнечі в кожному рядку. 17ch — запасне значення, якщо змінної
    раптом немає: під шістнадцятизначний номер Facebook плюс запас. */
+/* Номер стоїть другим рядком клітинки, і праворуч від нього більше
+   нічого немає — тож слот сталої ширини, який колись тримав чіпи на
+   одній вертикалі, тут уже нічого не вирівнює. Лишилась табличність
+   цифр, щоб колонка не стрибала, і вигляд натискного: клік копіює. */
 .cab-id {
-  display: inline-block; min-width: var(--cab-id-w, 17ch);
-  font-size: 13.5px; font-weight: 900;
-  font-variant-numeric: tabular-nums;
+  display: inline-block; cursor: pointer;
+  font-size: 12.5px; font-weight: 800; color: var(--text-muted);
+  font-variant-numeric: tabular-nums; border-radius: 6px; padding: 0 2px;
+  transition: color .12s, background .12s;
 }
+.cab-id:hover { color: var(--text-main); background: var(--surface-3); }
 .cab-dim { color: var(--text-muted); font-weight: 600; }
 .cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cab-na { color: var(--text-muted); opacity: .35; }
@@ -1736,12 +1742,74 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    це підказка, про яку ніхто ніколи не дізнається. */
 .cab-num.has-tip { cursor: help; border-bottom: 1px dotted var(--border); }
 
-/* Колонки State й Account стискаються по вмісту, щоб ✎ і ↗ трималися
-   чіпа профілю, а не висіли посеред порожнечі. Запас забирає Agent —
-   там він читається як звичайне поле, а не як діра в рядку. */
-.cab-tbl th:nth-child(1), .cab-tbl td:nth-child(1),
-.cab-tbl th:nth-child(2), .cab-tbl td:nth-child(2) { width: 1%; }
-.cab-tbl th:nth-child(3), .cab-tbl td:nth-child(3) { width: auto; }
+/* Перші три клітинки — стрілка, шпилька й кружок статуса: вузькі
+   рівно під свій значок. Четверта, сам кабінет, забирає весь запас —
+   у ній два рядки тексту, і саме їй є куди рости. */
+.cab-tbl .cab-x { width: 1%; padding-left: 4px; padding-right: 4px; }
+.cab-tbl th:nth-child(4), .cab-tbl td:nth-child(4) { width: auto; }
+
+/* ── кабінет у два рядки ── */
+.cab-who {
+  font-size: 12px; font-weight: 800; color: var(--text-main);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cab-st { font-size: 11.5px; font-weight: 800; }
+.cab-st.has-tip { cursor: help; border-bottom: 1px dotted var(--border); }
+
+/* ── стрілка й шпилька ── */
+.cab-exp, .cab-pin, .cab-mini {
+  background: none; border: 0; cursor: pointer; line-height: 1;
+  color: var(--text-muted); opacity: .5; padding: 2px 3px; border-radius: 6px;
+  transition: opacity .12s, color .12s, background .12s, transform .12s;
+}
+.cab-exp:hover, .cab-pin:hover, .cab-mini:hover { opacity: 1; color: var(--text-main); background: var(--surface-3); }
+.cab-exp { font-size: 15px; font-weight: 900; display: inline-block; }
+/* Повертаємо стрілку, а не міняємо символ: inline-ний поворот читається
+   як «воно розкрилось», а підміна знака — як інша кнопка. */
+.cab-exp.is-on { transform: rotate(90deg); opacity: 1; color: var(--accent, #8b5cf6); }
+.cab-pin { font-size: 13px; }
+.cab-pin.is-on { opacity: 1; color: var(--accent, #8b5cf6); }
+.cab-mini { font-size: 13px; }
+.cab-act { white-space: nowrap; }
+
+/* Ліміт, якого лишилось менше десятої: саме тут кабінет спиняється
+   посеред дня. */
+.cab-lim-tight { color: #F59E0B; }
+
+/* Дерево під рядком. Власної рамки не малюємо — його малює сам
+   cabdrill; тут лише відступ, щоб воно не злипалось із рядком.
+
+   max-width: 0 — не описка. Клітинка з colspan на всю ширину інакше
+   РОЗСУВАЄ таблицю під ширину дерева, і на телефоні з'являється одна
+   довжелезна прокрутка замість двох коротких: щоб дістатись до
+   сусіднього кабінета, довелось би гортати повз усі стовпчики
+   оголошень. З нулем клітинка бере ширину від таблиці, а не навпаки,
+   і дерево гортається своїм власним скролером (.cd-wrap). */
+.cab-treerow > td { padding: 0 0 10px; background: var(--surface-2); max-width: 0; }
+
+/* ── плаваючий список: колонки й дії ── */
+.cab-pop {
+  position: absolute; z-index: 90; min-width: 190px; max-height: 60vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.35); padding: 6px;
+}
+.cab-pop-h {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--text-muted); padding: 4px 8px 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cab-pop-i {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  padding: 6px 8px; border-radius: 9px; cursor: pointer;
+  font-size: 11.5px; font-weight: 700; color: var(--text-main);
+}
+.cab-pop-i:hover { background: var(--surface-3); }
+.cab-pop-i.is-on { color: var(--accent, #8b5cf6); }
+.cab-pop-i.is-bad { color: #f87171; }
+/* Вимкнений пункт лишається видимим: зникла кнопка щоразу питає, чи
+   вона колись була. */
+.cab-pop-i.is-off { opacity: .4; }
+.cab-pop-tick { display: inline-block; width: 14px; font-weight: 900; }
 
 /* Заголовок групи — окремий рядок на всю ширину таблиці */
 .cab-grp > td {
