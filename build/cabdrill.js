@@ -388,18 +388,24 @@ let cdFor = '';
    те саме, що й кнопка: що саме показано. Кнопка відкриває список,
    вкладки перемикають його вигляд, галочка ховає рядки — одна думка,
    один рядок. */
+/* СМУГА НАД ДЕРЕВОМ СХУДЛА ДО ВКЛАДОК.
+
+   У ній стояли: кнопка «Hide campaigns & ads», номер кабінета й рядок
+   стану — «46 min ago · Only live hides 208: 179 rejected… · no
+   domains: sync once». Кнопки більше не треба: дерево відкриває й
+   закриває сам рядок у таблиці. Номер повторював той, що стоїть у
+   рядку над деревом. А рядок стану встиг розростись до трьох речень і
+   забирав висоту, якої бракує кампаніям.
+
+   Свіжість знімка не викидаємо — вона вирішує, чи вірити нулям, — але
+   переносимо в підказку вкладок: хто питає, той наведе. */
 window.cdBar = function (account) {
   const bar = document.getElementById('cab-inside-bar');
   if (!bar) return;
   cdFor = String(account || '').trim();
-  if (!cdFor) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
+  if (!cdFor || !cdIsOpen(cdFor)) { bar.classList.add('hidden'); bar.innerHTML = ''; return; }
   bar.classList.remove('hidden');
-  bar.innerHTML = `<button type="button" class="cab-inside-btn"
-      id="cab-inside-btn" onclick="cdToggleOpen('${encodeURIComponent(cdFor)}')"
-      title="Campaigns, ad sets and ads of this cabinet with today’s numbers">${
-        cdBtnLabel(cdFor)}</button>
-    <span class="cab-inside-who">${cdEsc(cdFor)}</span>`
-    + (cdIsOpen(cdFor) ? cdHeadBits() : '');
+  bar.innerHTML = cdHeadBits();
 };
 
 /* Стрічка стану й вкладки. Окремо від cdBar, бо перемальовуються вони
@@ -409,18 +415,29 @@ function cdHeadBits() {
   const age = cdSeen ? Math.round((Date.now() - cdSeen) / 60000) : null;
   const when = age == null ? ''
     : age < 2 ? 'just synced' : age + ' min ago';
-  return `<p class="cd-s">${when}${cdBad()}${cdHidden()}${cdDomNote()}</p>
-    <div class="cd-tabs">
+  /* Те, що раніше стояло окремим рядком, тепер пояснює самі вкладки:
+     коли знято знімок, скільки рядків ховає «Only live» і чи приїхали
+     домени. Текст той самий, місця не займає. */
+  const tip = [when ? 'Snapshot: ' + when : '', cdPlain(cdBad()),
+               cdPlain(cdHidden()), cdPlain(cdDomNote())]
+    .filter(Boolean).join(' \u00b7 ');
+  /* «Expand all» і «Collapse» прибрані: розкриття живе в самих
+     трикутниках рядків, а дві кнопки на цю ж дію щоразу питали, чим
+     вони відрізняються від кліку по рядку. */
+  return `<div class="cd-tabs"${tip ? ` title="${cdEsc(tip)}"` : ''}>
       <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
         onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Tree</button>
       <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
         onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
-      ${cdFlat ? '' : `<button type="button" class="cd-tab" onclick="cdAll(true)">Expand all</button>
-      <button type="button" class="cd-tab" onclick="cdAll(false)">Collapse</button>`}
-      <label class="cd-only" title="Show only what Facebook is actually showing. Rejected, blocked, in-review and switched-off rows are hidden — the line above says how many and how much they spent.">
+      <label class="cd-only" title="Show only what Facebook is actually showing. Rejected, blocked, in-review and switched-off rows are hidden.">
         <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
           onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
     </div>`;
+}
+
+// Рядок стану збирався з розмітки — у підказку йде сам текст.
+function cdPlain(html) {
+  return String(html || '').replace(/<[^>]*>/g, '').replace(/^\s*·\s*/, '').trim();
 }
 
 /* Одним рядком, поруч із «3 not running»: це та сама категорія —
@@ -455,10 +472,11 @@ function cdDomNote() {
   return sep + '<span class="cd-nodom" title="' + cdEsc(tip) + '">' + text + '</span>';
 }
 
-function cdBtnSync() {
-  const b = document.getElementById('cab-inside-btn');
-  if (b) b.textContent = cdBtnLabel(cdFor);
-}
+/* Кнопки «Campaigns & ads» більше немає — дерево перемикає рядок
+   таблиці. Функція лишається порожньою обгорткою: її кличуть із трьох
+   місць, і прибирати їх усі заради одного рядка — більше ризику, ніж
+   користі. */
+function cdBtnSync() {}
 
 window.cdToggleOpen = function (accEnc) {
   const acc = decodeURIComponent(accEnc || '').trim();
