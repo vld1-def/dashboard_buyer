@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 13.10 22:40">
+  <meta name="build" content="build 14.10 08:06">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5138,7 +5138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 13.10 22:40</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 14.10 08:06</div>
     </div>
   </aside>
 
@@ -26650,21 +26650,53 @@ function flTagChips(r) {
    Бакет приватний, тож прямого посилання на файл не існує. Просимо
    коротку підписану адресу рівно тоді, коли файл треба показати чи
    віддати, і не зберігаємо її: за десять хвилин вона мертва, і це
-   саме те, чого ми й хочемо. */
-async function flSigned(row) {
+   саме те, чого ми й хочемо.
+
+   ЧОМУ ТУТ ДРУГИЙ АРГУМЕНТ.
+
+   Атрибут download у <a> діє ЛИШЕ для свого походження. Підписана
+   адреса веде на домен Supabase Storage, а сторінка живе на GitHub
+   Pages — для браузера це чужий сайт, і атрибут він просто відкидає.
+   Тому «Скачати» відкривало файл у вкладці: картинку й PDF браузер
+   малює сам, текст показує як сторінку.
+
+   Полагодити це з боку сторінки не можна в принципі — вирішує
+   заголовок відповіді. Storage уміє його виставити: параметр download
+   у самій адресі дає Content-Disposition: attachment, і тоді файл
+   зберігається, звідки б він не прийшов. Перегляд цей параметр не
+   отримує — інакше вікно перегляду почало б скачувати замість
+   показувати. */
+async function flSigned(row, asDownload) {
   const { data, error } = await sb.storage.from(FL_BUCKET)
     .createSignedUrl(row.path, 600);
   if (error) throw new Error(error.message);
-  return data?.signedUrl || '';
+  const url = data?.signedUrl || '';
+  if (!url || !asDownload) return url;
+  // Дописуємо руками, а не опцією клієнта: так воно не залежить від
+  // версії supabase-js, яка в сторінку приїжджає з CDN.
+  return url + (url.includes('?') ? '&' : '?')
+       + 'download=' + encodeURIComponent(flDownName(row));
+}
+
+/* Ім'я, під яким файл ляже на диск. Назва в довіднику може бути без
+   розширення («Звіт за жовтень») — тоді беремо його зі шляху, інакше
+   система не знає, чим відкривати. Лапки й слеші прибираємо: вони
+   ламають заголовок Content-Disposition. */
+function flDownName(row) {
+  const ext = (String(row.path || '').match(/\.[a-z0-9]{1,8}$/i) || [''])[0];
+  const raw = String(row.title || '').trim().replace(/[\\/"\r\n]+/g, ' ').trim();
+  if (!raw) return 'file' + ext;
+  return /\.[a-z0-9]{1,8}$/i.test(raw) ? raw : raw + ext;
 }
 
 window.flGet = async function (i) {
   const r = flRows[i];
   if (!r) return;
   try {
-    const url = await flSigned(r);
+    const url = await flSigned(r, true);
     const a = document.createElement('a');
-    a.href = url; a.download = r.title; a.rel = 'noopener';
+    // download лишаємо: на своєму походженні він працює, і це не шкодить.
+    a.href = url; a.download = flDownName(r); a.rel = 'noopener';
     document.body.appendChild(a); a.click(); a.remove();
   } catch (e) {
     if (typeof toast === 'function') toast('Could not download: ' + e.message, 'error');
