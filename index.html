@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 14.10 19:29">
+  <meta name="build" content="build 14.10 22:02">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2833,11 +2833,17 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    команді з короткими номерами лишала б півтори сотні пікселів
    порожнечі в кожному рядку. 17ch — запасне значення, якщо змінної
    раптом немає: під шістнадцятизначний номер Facebook плюс запас. */
+/* Номер стоїть другим рядком клітинки, і праворуч від нього більше
+   нічого немає — тож слот сталої ширини, який колись тримав чіпи на
+   одній вертикалі, тут уже нічого не вирівнює. Лишилась табличність
+   цифр, щоб колонка не стрибала, і вигляд натискного: клік копіює. */
 .cab-id {
-  display: inline-block; min-width: var(--cab-id-w, 17ch);
-  font-size: 13.5px; font-weight: 900;
-  font-variant-numeric: tabular-nums;
+  display: inline-block; cursor: pointer;
+  font-size: 12.5px; font-weight: 800; color: var(--text-muted);
+  font-variant-numeric: tabular-nums; border-radius: 6px; padding: 0 2px;
+  transition: color .12s, background .12s;
 }
+.cab-id:hover { color: var(--text-main); background: var(--surface-3); }
 .cab-dim { color: var(--text-muted); font-weight: 600; }
 .cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cab-na { color: var(--text-muted); opacity: .35; }
@@ -2845,12 +2851,74 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    це підказка, про яку ніхто ніколи не дізнається. */
 .cab-num.has-tip { cursor: help; border-bottom: 1px dotted var(--border); }
 
-/* Колонки State й Account стискаються по вмісту, щоб ✎ і ↗ трималися
-   чіпа профілю, а не висіли посеред порожнечі. Запас забирає Agent —
-   там він читається як звичайне поле, а не як діра в рядку. */
-.cab-tbl th:nth-child(1), .cab-tbl td:nth-child(1),
-.cab-tbl th:nth-child(2), .cab-tbl td:nth-child(2) { width: 1%; }
-.cab-tbl th:nth-child(3), .cab-tbl td:nth-child(3) { width: auto; }
+/* Перші три клітинки — стрілка, шпилька й кружок статуса: вузькі
+   рівно під свій значок. Четверта, сам кабінет, забирає весь запас —
+   у ній два рядки тексту, і саме їй є куди рости. */
+.cab-tbl .cab-x { width: 1%; padding-left: 4px; padding-right: 4px; }
+.cab-tbl th:nth-child(4), .cab-tbl td:nth-child(4) { width: auto; }
+
+/* ── кабінет у два рядки ── */
+.cab-who {
+  font-size: 12px; font-weight: 800; color: var(--text-main);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cab-st { font-size: 11.5px; font-weight: 800; }
+.cab-st.has-tip { cursor: help; border-bottom: 1px dotted var(--border); }
+
+/* ── стрілка й шпилька ── */
+.cab-exp, .cab-pin, .cab-mini {
+  background: none; border: 0; cursor: pointer; line-height: 1;
+  color: var(--text-muted); opacity: .5; padding: 2px 3px; border-radius: 6px;
+  transition: opacity .12s, color .12s, background .12s, transform .12s;
+}
+.cab-exp:hover, .cab-pin:hover, .cab-mini:hover { opacity: 1; color: var(--text-main); background: var(--surface-3); }
+.cab-exp { font-size: 15px; font-weight: 900; display: inline-block; }
+/* Повертаємо стрілку, а не міняємо символ: inline-ний поворот читається
+   як «воно розкрилось», а підміна знака — як інша кнопка. */
+.cab-exp.is-on { transform: rotate(90deg); opacity: 1; color: var(--accent, #8b5cf6); }
+.cab-pin { font-size: 13px; }
+.cab-pin.is-on { opacity: 1; color: var(--accent, #8b5cf6); }
+.cab-mini { font-size: 13px; }
+.cab-act { white-space: nowrap; }
+
+/* Ліміт, якого лишилось менше десятої: саме тут кабінет спиняється
+   посеред дня. */
+.cab-lim-tight { color: #F59E0B; }
+
+/* Дерево під рядком. Власної рамки не малюємо — його малює сам
+   cabdrill; тут лише відступ, щоб воно не злипалось із рядком.
+
+   max-width: 0 — не описка. Клітинка з colspan на всю ширину інакше
+   РОЗСУВАЄ таблицю під ширину дерева, і на телефоні з'являється одна
+   довжелезна прокрутка замість двох коротких: щоб дістатись до
+   сусіднього кабінета, довелось би гортати повз усі стовпчики
+   оголошень. З нулем клітинка бере ширину від таблиці, а не навпаки,
+   і дерево гортається своїм власним скролером (.cd-wrap). */
+.cab-treerow > td { padding: 0 0 10px; background: var(--surface-2); max-width: 0; }
+
+/* ── плаваючий список: колонки й дії ── */
+.cab-pop {
+  position: absolute; z-index: 90; min-width: 190px; max-height: 60vh; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.35); padding: 6px;
+}
+.cab-pop-h {
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--text-muted); padding: 4px 8px 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cab-pop-i {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  padding: 6px 8px; border-radius: 9px; cursor: pointer;
+  font-size: 11.5px; font-weight: 700; color: var(--text-main);
+}
+.cab-pop-i:hover { background: var(--surface-3); }
+.cab-pop-i.is-on { color: var(--accent, #8b5cf6); }
+.cab-pop-i.is-bad { color: #f87171; }
+/* Вимкнений пункт лишається видимим: зникла кнопка щоразу питає, чи
+   вона колись була. */
+.cab-pop-i.is-off { opacity: .4; }
+.cab-pop-tick { display: inline-block; width: 14px; font-weight: 900; }
 
 /* Заголовок групи — окремий рядок на всю ширину таблиці */
 .cab-grp > td {
@@ -5138,7 +5206,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 14.10 19:29</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 14.10 22:02</div>
     </div>
   </aside>
 
@@ -5995,6 +6063,10 @@ input.ui-in[type="range"] { padding: 0; }
       <!-- Правила автопаузи — сюди, а не окремим пунктом меню: вони
            про цей самий парк, і відкривати їх ходять звідси. Панеллю
            праворуч, як і картка кабінета. -->
+      <!-- Які колонки показувати. Кнопка поруч із пошуком, а не в
+           налаштуваннях: вмикають їх тоді, коли дивляться в таблицю. -->
+      <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules"
+        title="Which columns to show">Columns</button>
       <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
         title="Rules that switch off ads on their own">Rules</button>
       <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
@@ -6063,15 +6135,16 @@ input.ui-in[type="range"] { padding: 0; }
     </div>
   </div>
 
-  <!-- Що всередині вибраного кабінета: кампанії, адсети, оголошення з
-       їхніми сьогоднішніми числами. Під таблицею, а не в панелі
-       праворуч, бо тут потрібні стовпчики, а не вузька смуга.
+  <!-- Що всередині кабінета — кампанії, адсети, оголошення — більше не
+       живе під таблицею. Воно відкривається стрілкою в самому рядку, і
+       вузли #cab-inside-bar та #cab-inside малюються там (див.
+       cabRowHtml). Тут їх немає навмисно: два вузли з одним id — це
+       те, після чого cabdrill пише в перший-ліпший. -->
 
-       Кнопка стоїть тут, у самому низу блока, а не в картці кабінета:
-       відкриває вона те, що зʼявиться просто під нею, і лінія, яка й
-       так відділяла цей шматок, тепер відділяє її разом із ним. -->
-  <div id="cab-inside-bar" class="hidden"></div>
-  <div id="cab-inside" class="hidden"></div>
+  <!-- Плаваючий список: колонки або дії над кабінетом. Один на обидва,
+       і поза таблицею — всередині неї довгий список обрізається краєм
+       прокрутки рівно тоді, коли він довгий. -->
+  <div id="cab-pop" class="cab-pop hidden"></div>
 
   <!-- Сторінки, з яких крутять ці кабінети. Під таблицею, а не над:
        спершу те, за чим приходять щодня, потім те, на що дивляться,
@@ -21456,31 +21529,36 @@ function fcmBlock(c) {
    більше не заважає в робочому списку. Автоматика його не ставить і не
    знімає — висновок «цим ми більше не користуємось» вона зробити не
    вміє. */
+/* МЕНШЕ СТАНІВ: ПІШЛИ «WORKING» І «ISSUE».
+
+   «Working» був не станом, а зведеною плиткою над трьома іншими — і
+   щоразу питав, чим він відрізняється від Running, що стоїть поруч.
+
+   «Issue» був станом, якого насправді не існує. Його ставила мітка
+   Facebook на кабінеті (проблема з оплатою, відхилення) — і вона
+   перебивала все: кабінет із такою міткою, у якому оголошення
+   крутяться й гроші списуються, підписувався як Issue, тобто як
+   непрацюючий. Питання «крутить чи ні» має одну відповідь, і дають її
+   гроші та живі оголошення, а не мітка.
+
+   Сама мітка нікуди не поділась — вона в підказці статусу
+   (cabReason). Решта станів лишається як була. */
 const CAB_STATE = {
   running: { label: 'Running',   dot: '#22C55E', tone: 'text-emerald-400', soft: 'rgba(34,197,94,.14)',  bd: 'rgba(34,197,94,.30)' },
-  issue:   { label: 'Issue',     dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.10)', bd: 'rgba(245,158,11,.25)' },
   banned:  { label: 'Banned',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.14)',  bd: 'rgba(239,68,68,.32)' },
   review:  { label: 'In review', dot: '#38BDF8', tone: 'text-sky-400',     soft: 'rgba(56,189,248,.12)', bd: 'rgba(56,189,248,.30)' },
-  /* Idle, а не «Never ran»: сюди потрапляє і кабінет, який ще не
-     починали, і той, що відпрацював і стоїть. Спільне в них одне —
-     зараз нічого не крутиться, і саме це підпис і має казати. У
-     рядку, де ми справді знаємо, що кабінет не крутив жодного разу,
-     так і написано (див. cabEverRan). */
-  idle:    { label: 'Idle',      dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' },
   /* Токен більше не бачить цей кабінет. Це не «нема кабінета» — це
      «нема очей»: числа лишились останніми відомими, і саме заради них
      рядок і потрібен. */
   notoken: { label: 'No token',   dot: '#A855F7', tone: 'text-fuchsia-400', soft: 'rgba(168,85,247,.12)', bd: 'rgba(168,85,247,.30)' },
+  /* Idle, а не «Never ran»: сюди потрапляє і кабінет, який ще не
+     починали, і той, що відпрацював і стоїть. */
+  idle:    { label: 'Idle',      dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' },
   archived: { label: 'Archived',  dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' }
 };
 // Порядок = що першим потрапляє на очі. Зверху те, що вимагає дії,
 // внизу — те, що прибрали руками.
-const CAB_ORDER = ['banned', 'notoken', 'issue', 'review', 'running', 'idle', 'archived'];
-/* «Working» — те, з чим справді працюєш. Навмисне НЕ тільки running:
-   issue якраз і є ті, що вимагають уваги, ховати їх за замовчуванням
-   було б рівно навпаки до сенсу сторінки. Ховаємо лише мертвий вантаж
-   — бани, архів і ті, що не крутили жодного разу. */
-const CAB_WORKING = ['running', 'issue', 'review'];
+const CAB_ORDER = ['banned', 'notoken', 'review', 'running', 'idle', 'archived'];
 // Колонки «де це було» можуть ще не існувати в базі — сторінка працює й без них.
 const CAB_EXTRA = [
   { key: 'bm',      label: 'Business Manager' },
@@ -21489,7 +21567,7 @@ const CAB_EXTRA = [
   { key: 'card',    label: 'Card' }
 ];
 
-let cabRows = [], cabFilter = 'working', cabGroup = 'agent', cabSel = null;
+let cabRows = [], cabFilter = 'all', cabGroup = 'agent', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
@@ -21519,6 +21597,178 @@ let cabTokens = {};
 
 const cabEsc = v => String(v == null ? '' : v)
   .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+
+/* ═══════════ ВИД ТАБЛИЦІ: ЗАКРІПЛЕННЯ Й КОЛОНКИ ═══════════
+
+   Обидва — налаштування робочого місця, і обидва живуть у
+   team_settings під одним ключем cab_view. Ключ там по парі
+   (created_by, key), тобто в кожного свій — як зі ставками й місячною
+   ціллю.
+
+   Чому не localStorage: закріпив кабінет на роботі — маєш бачити його
+   закріпленим і вдома. Period (cab_range) лишається в браузері
+   навмисно: це вибір на один погляд, а не на постійно.
+
+   ОДИН КЛЮЧ НА ДВОЄ. Закріплення й колонки міняються з різних кнопок,
+   але зберігаються разом: два ключі означали б два запити й два місця,
+   де збереження може мовчки не доїхати. */
+const CAB_VIEW_KEY = 'cab_view';
+let cabView = { pins: [], cols: null };
+
+async function cabViewLoad() {
+  try {
+    const { data, error } = await sb.from('team_settings')
+      .select('value').eq('key', CAB_VIEW_KEY).limit(1);
+    if (error) throw error;
+    const raw = data && data[0] ? JSON.parse(data[0].value || '{}') : {};
+    cabView = { pins: Array.isArray(raw.pins) ? raw.pins.map(String) : [],
+                cols: (raw.cols && typeof raw.cols === 'object') ? raw.cols : null };
+  } catch (e) {
+    // Налаштування виду — не те, заради чого варто ламати сторінку.
+    console.warn('cab_view:', e.message || e);
+    cabView = { pins: [], cols: null };
+  }
+}
+
+async function cabViewSave() {
+  const row = { team_name: currentTeam, key: CAB_VIEW_KEY, value: JSON.stringify(cabView) };
+  if (window.myUid) row.created_by = window.myUid;
+  const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+  if (!error) return true;
+  /* PostgREST відмову не кидає винятком. Без цієї перевірки закріплення
+     жило б до перезавантаження й зникало без жодного слова — рівно та
+     сама тиша, що вже ловилась у payouts і в прілках. */
+  console.error('cab_view save:', error);
+  const msg = 'View not saved: ' + (error.message || error.code)
+            + (typeof keyHint === 'function' ? keyHint(error, 'OWN_UNIQUE.sql') : '');
+  if (typeof toast === 'function') toast(msg, 'error', 12000); else alert(msg);
+  return false;
+}
+
+const cabPinned = id => cabView.pins.includes(String(id));
+
+async function cabPinToggle(ev, idEnc) {
+  ev.stopPropagation();
+  const id = decodeURIComponent(idEnc || '');
+  const was = cabView.pins.slice();
+  cabView.pins = cabPinned(id) ? cabView.pins.filter(x => x !== id) : [...cabView.pins, id];
+  cabRender();
+  if (!await cabViewSave()) { cabView.pins = was; cabRender(); }
+}
+
+/* ── НАЛАШТОВУВАНІ КОЛОНКИ ──
+
+   Чотири колонки стоять завжди: кабінет, статус, ліміт і витрати за
+   період, плюс графік. Решта — вибір, і вибір цей у кожного свій:
+   одному треба CTR і CPC, іншому картка й BM.
+
+   get() дає число для сортування, cell() — те, що видно. Два окремі
+   поля навмисно: «$1 234.56» сортується як текст і ставить $90 вище
+   за $1 000. */
+const CAB_COLS = [
+  { key: 'camp', label: 'Camp', ta: 'c', tip: 'Campaigns that actually deliver: switched on AND with a live ad inside',
+    get: c => (cabCounts(c.fb) || {}).campaigns,
+    tipOf: c => [cabOnTip(c.fb, 'campaigns'), cabByStatus(c.fb && c.fb.campaigns_by_status)].filter(Boolean).join(' — ') },
+  { key: 'sets', label: 'Sets', ta: 'c', tip: 'Ad sets that actually deliver',
+    get: c => (cabCounts(c.fb) || {}).adsets,
+    tipOf: c => [cabOnTip(c.fb, 'adsets'), cabByStatus(c.fb && c.fb.adsets_by_status)].filter(Boolean).join(' — ') },
+  { key: 'ads', label: 'Ads', ta: 'c', tip: 'Ads running right now',
+    get: c => (cabCounts(c.fb) || {}).ads,
+    tipOf: c => cabByStatus(c.fb && c.fb.ads_by_status) },
+  { key: 'clicks', label: 'Clicks', ta: 'r', tip: 'Clicks today, as Facebook counts them',
+    get: c => c.fb && Number(c.fb.clicks_today) },
+  { key: 'impr', label: 'Impr', ta: 'r', tip: 'Impressions today, as Facebook counts them',
+    get: c => c.fb && Number(c.fb.impressions_today) },
+  /* CTR і CPC рахуються СЬОГОДНІШНІМИ числами, навіть коли вгорі
+     вибрано інший період: показів і кліків по днях у базі немає, є
+     лише сьогоднішні. Ділити спенд за тиждень на кліки за сьогодні —
+     це число, якому не можна вірити, тому й не рахуємо. */
+  { key: 'ctr', label: 'CTR', ta: 'r', tip: 'Clicks ÷ impressions, today only',
+    get: c => { const i = c.fb && Number(c.fb.impressions_today), k = c.fb && Number(c.fb.clicks_today);
+      return i > 0 ? (k / i) * 100 : null; },
+    cell: v => v == null ? null : v.toFixed(2) + '%' },
+  { key: 'cpc', label: 'CPC', ta: 'r', tip: 'Today’s spend ÷ today’s clicks',
+    get: c => { const k = c.fb && Number(c.fb.clicks_today), s = c.fb && Number(c.fb.spend_today);
+      return k > 0 ? s / k : null; },
+    cell: (v, c) => v == null ? null : cabMoneyCur(v, c.fb && c.fb.currency) },
+  { key: 'budget', label: 'Daily budget', ta: 'r', tip: 'Sum of the daily budgets of what is running now',
+    get: c => c.fb && Number(c.fb.daily_budget),
+    cell: (v, c) => v > 0 ? cabMoneyCur(v, c.fb && c.fb.currency) : null },
+  { key: 'balance', label: 'Balance', ta: 'r', tip: 'Charged to the account but not billed yet',
+    get: c => c.fb && c.fb.balance != null ? Number(c.fb.balance) : null,
+    cell: (v, c) => v == null ? null : cabMoneyCents(v, c.fb && c.fb.currency) },
+  { key: 'spend', label: 'Spend', ta: 'r', tip: 'Everything this cabinet spent, by our own imports',
+    get: c => c.x.spend, cell: v => v > 0 ? cabMoney(v) : null },
+  { key: 'deps', label: 'Deps', ta: 'r', tip: 'Deposits from our own imports, not from Facebook',
+    get: c => c.x.deps, cell: v => v > 0 ? String(v) : null },
+  { key: 'cpa', label: 'CPA', ta: 'r', tip: 'Our spend ÷ our deposits, from the imports',
+    get: c => (c.x.deps > 0 ? c.x.spend / c.x.deps : null),
+    cell: v => v == null ? null : cabMoney(v) },
+  { key: 'age', label: 'Days', ta: 'r', tip: 'Days since the first spend we know of',
+    get: c => c.age },
+  { key: 'last', label: 'Last spend', ta: 'r', tip: 'The last day this cabinet spent anything',
+    get: c => c.x.last || '', cell: v => v || null },
+  { key: 'card', label: 'Card', ta: 'l', tip: 'The card Facebook last showed for this cabinet',
+    get: c => (c.fb && c.fb.card) || '', cell: v => v || null },
+  { key: 'bm', label: 'BM', ta: 'l', tip: 'Business Manager',
+    get: c => c.row.bm || c.tok.bm || (c.fb && c.fb.business_name) || '', cell: v => v || null },
+  { key: 'tz', label: 'Timezone', ta: 'l', tip: 'The clock this cabinet counts its day by',
+    get: c => (c.fb && c.fb.timezone_name) || '',
+    cell: (v) => v ? cabTzLabel(v) : null }
+];
+
+/* За замовчуванням увімкнено те, на що дивляться щодня. Решта —
+   кнопкою Columns. Порожня таблиця на першому заході виглядала б як
+   поломка, тому «нічого не ввімкнено» тут не варіант. */
+const CAB_COLS_DEF = { camp: 1, sets: 1, ads: 1, ctr: 1, cpc: 1 };
+const cabColsOn = () => cabView.cols || CAB_COLS_DEF;
+const cabColOn = k => !!cabColsOn()[k];
+const cabColsShown = () => CAB_COLS.filter(col => cabColOn(col.key));
+
+async function cabColToggle(k) {
+  const now = { ...cabColsOn() };
+  now[k] = now[k] ? 0 : 1;
+  const was = cabView.cols;
+  cabView.cols = now;
+  cabRender();
+  cabColsMenu(true);          // лишаємо список відкритим: вмикають по кілька
+  if (!await cabViewSave()) { cabView.cols = was; cabRender(); }
+}
+
+/* Список колонок. Малюємо в той самий вузол, що й меню дій: два
+   плаваючі списки на екрані одночасно — це вже не вибір, а плутанина. */
+function cabColsMenu(keep) {
+  const box = document.getElementById('cab-pop');
+  if (!box) return;
+  if (!keep && box.dataset.kind === 'cols' && !box.classList.contains('hidden')) return cabPopHide();
+  box.dataset.kind = 'cols';
+  box.innerHTML = `<p class="cab-pop-h">Columns</p>`
+    + CAB_COLS.map(col => `<button type="button" class="cab-pop-i ${cabColOn(col.key) ? 'is-on' : ''}"
+         onclick="cabColToggle('${col.key}')" title="${cabEsc(col.tip || '')}">
+         <span class="cab-pop-tick">${cabColOn(col.key) ? '✓' : ''}</span>${cabEsc(col.label)}</button>`).join('');
+  const btn = document.getElementById('cab-cols-btn');
+  cabPopAt(btn, box);
+}
+
+/* ── плаваючі списки ──
+   Один вузол на всі: і колонки, і дії. Ставимо його по кнопці, а не
+   всередині рядка таблиці, — у таблиці з прокруткою вкладений список
+   обрізається краєм таблиці рівно тоді, коли він довгий. */
+function cabPopAt(btn, box) {
+  box.classList.remove('hidden');
+  if (!btn) return;
+  const r = btn.getBoundingClientRect();
+  const w = box.offsetWidth || 190;
+  // Праворуч від кнопки, але не за край екрана.
+  const left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w));
+  box.style.left = left + 'px';
+  box.style.top = (r.bottom + window.scrollY + 6) + 'px';
+}
+function cabPopHide() {
+  const box = document.getElementById('cab-pop');
+  if (box) { box.classList.add('hidden'); box.innerHTML = ''; box.dataset.kind = ''; }
+}
 
 /* ── за який період дивимось витрати ──
 
@@ -21776,24 +22026,6 @@ const cabStWord = k => CAB_ST_WORD[k] || String(k).toLowerCase().replace(/_/g, '
 /* Через ЩО кабінет жовтий. Без цього «Issue» відповідає на питання
    «що?» і мовчить про «чому?»: ручна позначка, поставлена колись і
    забута, виглядає рівно як свіжий недоплачений рахунок. */
-function cabIssueWhy(c) {
-  if (c.state !== 'issue') return null;
-  const st = c.fb ? String(c.fb.status || '') : '';
-  const byFb = st ? CAB_FB_STATE[st] : '';
-  // review має власний чип, докладніший за це слово — двічі не кажемо.
-  if (byFb === 'issue' && st !== 'review') return {
-    text: st,
-    tip: 'Facebook itself says the cabinet is ' + st
-       + '. It will go green here the moment Facebook says so \u2014 the next sync after that.'
-  };
-  if (String(c.row.status || '').toLowerCase() === 'problem') return {
-    text: 'marked by hand',
-    tip: 'Somebody pressed Issue on this cabinet by hand'
-       + (c.fb ? ', while Facebook says ' + String(c.fb.status || '') : '')
-       + '. Facebook cannot undo a human mark \u2014 open the cabinet and press OK to clear it.'
-  };
-  return null;
-}
 
 const cabPending = fb => Number(fb && fb.ads_by_status && fb.ads_by_status.PENDING_REVIEW) || 0;
 
@@ -21841,6 +22073,10 @@ function cabMoneyCents(n, cur) {
 }
 
 async function cabInit() {
+  /* Закріплення й набір колонок — перше, що має бути відоме: інакше
+     перший малюнок таблиці показав би типовий вигляд, а за мить
+     перестрибнув на твій. */
+  await cabViewLoad();
   const host = document.getElementById('cab-list');
   if (!host) return;
   // Зайшов сюди — значить побачив: банер і лічильник гасимо на КОЖНОМУ
@@ -21966,8 +22202,13 @@ const CAB_FB_CORE = 'account_id,name,status,disable_reason,currency,card,spend_t
   + 'timezone_name,'
   + 'team_name,campaigns,campaigns_active,adsets,adsets_active,ads,ads_active,'
   + 'amount_spent,sync_error,synced_at,business_name,token_id';
+/* spend_cap, impressions_today і clicks_today лежать у базі з самого
+   початку (FB_SYNC.sql) — їх просто ніхто не питав. Тому вони тут, у
+   «нових»: якщо чиясь база ще без них, сторінка впаде на запасний
+   набір і працюватиме, як працювала. */
 const CAB_FB_NEW = 'business_id,campaigns_by_status,adsets_by_status,ads_by_status,'
-  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since,balance,card_last_seen';
+  + 'campaigns_on,adsets_on,ads_on,daily_budget,missing_since,balance,card_last_seen,'
+  + 'spend_cap,impressions_today,clicks_today';
 
 // Немає таблиці зовсім — не те саме, що немає кількох колонок.
 const CAB_NO_TABLE = /relation .* does not exist|42P01/i;
@@ -22242,9 +22483,14 @@ function cabFacts() {
     const d = String(r.date || '');
     if (!acc || !d) return;
     if (d > lastDay) lastDay = d;
-    const o = map[acc] || (map[acc] = { spend: 0, first: d, last: d, byDay: {} });
+    /* Депозити й реги рахуємо тут же: вони з того самого рядка
+       імпорту, і другий прохід по тих самих даних коштував би рівно
+       стільки ж, скільки перший. */
+    const o = map[acc] || (map[acc] = { spend: 0, deps: 0, regs: 0, first: d, last: d, byDay: {} });
     const s = Number(r.spend) || 0;
     o.spend += s;
+    o.deps += Number(r.deposits) || 0;
+    o.regs += Number(r.regs) || 0;
     if (d < o.first) o.first = d;
     if (d > o.last) o.last = d;
     o.byDay[d] = (o.byDay[d] || 0) + s;
@@ -22384,10 +22630,9 @@ function cabStateOf(row, f, fb) {
      перебивало «No token» чи «Banned», архівувати старий забанений
      кабінет — найчастіший випадок — було б неможливо взагалі. */
   if (cabIsArch(row, fb)) return 'archived';
-  /* Далі: чи ми взагалі ще бачимо цей кабінет. Поки
-     токен його не бачить, усе інше в рядку — вчорашня газета, і стан
-     мусить казати саме це, а не показувати «Running» за замороженим
-     спендом. */
+  /* Далі: чи ми взагалі ще бачимо цей кабінет. Поки токен його не
+     бачить, усе інше в рядку — вчорашня газета, і стан мусить казати
+     саме це, а не показувати «Running» за замороженим спендом. */
   if (fb && fb.missing_since) return 'notoken';
   const byFb = fb ? CAB_FB_STATE[String(fb.status || 'unknown')] : '';
   /* Закритий кабінет — це архів, а НЕ бан. Різниця одна й перевірна:
@@ -22402,15 +22647,20 @@ function cabStateOf(row, f, fb) {
   if (byFb === 'banned') return 'banned';
   const st = String(row.status || 'active').toLowerCase();
   if (st === 'ban') return 'banned';
-  if (byFb === 'issue') return 'issue';
-  if (st === 'problem') return 'issue';
+  /* ПРОБЛЕМА З ОПЛАТОЮ БІЛЬШЕ НЕ РОБИТЬ СТАНУ.
+     Доти byFb === 'issue' перебивав усе нижче — і кабінет, у якого
+     Facebook позначив оплату, але оголошення крутяться й гроші
+     списуються, підписувався як Issue, тобто як непрацюючий. Мітка
+     лишається, але в підказці статусу (cabReason), а стан беруть
+     гроші й живі оголошення. */
+  /* Account САМ на перевірці — це інше: поки вона триває, Facebook
+     може спинити і доставку, і платежі, тож це стан, а не примітка. */
+  if (String(fb && fb.status) === 'review') return 'review';
   /* Щойно запущений кабінет: усередині вже щось є, але Facebook не
-     пропустив ще жодного оголошення. Досі це виглядало як «Never ran»
-     — тобто як мертвий, хоча чекати тут саме й правильно, і єдина
-     дія — не робити нічого. Вимагаємо нуль доставлених: кілька
-     оголошень на перевірці є майже в кожного, хто щось міняв сьогодні,
-     і перефарбовувати через них робочий кабінет означало б зробити
-     цей стан шумом. */
+     пропустив ще жодного оголошення. Вимагаємо нуль доставлених:
+     кілька оголошень на перевірці є майже в кожного, хто щось міняв
+     сьогодні, і перефарбовувати через них робочий кабінет означало б
+     зробити цей стан шумом. */
   if (fb && cabPending(fb) > 0 && Number(fb.ads_active) === 0) return 'review';
   /* Facebook каже, що сьогодні вже відкручено — значить крутить, і не
      важливо, що вечірній імпорт ще не приїхав. Саме через це до токена
@@ -22432,6 +22682,46 @@ function cabStateOf(row, f, fb) {
   if (x && x.spend > 0) return 'running';
   return 'idle';
 }
+
+/* ЧОМУ КАБІНЕТ НЕ КРУТИТЬ (або крутить, але з міткою).
+
+   Станів три, і це навмисно: у таблиці потрібен один погляд, а не сім
+   підписів. Але різниця між «просто стоїть» і «не приймає оплату»
+   коштує грошей, тому вона не викинута — вона тут, і її показує
+   підказка статусу.
+
+   Порядок важливий: першим іде те, через що решта рядка — вчорашня
+   газета (немає токена), далі те, що зупиняє доставку (оплата, бан
+   кабінета на перевірці), і лише потім те, що просто чекає. */
+function cabReason(c) {
+  const fb = c.fb;
+  const st = String((c.row && c.row.status) || '').toLowerCase();
+  const fbSt = fb ? String(fb.status || '') : '';
+  /* Те, що вже є станом (No token, In review), тут не повторюємо:
+     підказка має додавати, а не переписувати підпис поруч. */
+  if (CAB_FB_STATE[fbSt] === 'issue' && fbSt !== 'review') return { key: 'billing', word: fbSt,
+    tip: 'Facebook says the cabinet is ' + fbSt
+       + '. It clears here the moment Facebook says so — the next sync after that.' };
+  if (st === 'problem') return { key: 'problem', word: 'marked by hand',
+    tip: 'Somebody pressed Issue on this cabinet by hand'
+       + (fb ? ', while Facebook says ' + fbSt : '')
+       + '. Facebook cannot undo a human mark — clear it in Edit.' };
+  if (fb && cabPending(fb) > 0) return { key: 'review',
+    word: cabPending(fb) + ' in review',
+    tip: 'Facebook has not finished checking ' + cabPending(fb) + ' ad(s) yet. '
+       + 'Nothing to do but wait — usually minutes, sometimes hours.' };
+  if (fb && fbSt === 'unknown') return { key: 'unknown', word: 'status unknown',
+    tip: 'Facebook returned a status code this dashboard does not know yet. It is not '
+       + 'treated as a problem — the state comes from the money and the live ads.' };
+  if (fb && !fb.missing_since && !fb.token_id) return { key: 'notoken', word: 'token deleted',
+    tip: 'The token this cabinet came from was deleted, so nothing can go to Facebook for it '
+       + '— no export, no comments, no stopping campaigns. Add the token again in Settings.' };
+  return null;
+}
+
+/* Числа цього рядка заморожені? Тоді вони малюються приглушено: $0.00,
+   який насправді означає «ми не бачимо», — найдорожча тиша на екрані. */
+const cabFrozen = c => !!(c.fb && c.fb.missing_since);
 
 /* Чи крутив цей кабінет хоч колись. Потрібно рівно для підпису: стан
    idle означає «зараз нічого», а от «Never ran» — сильніше твердження,
@@ -22459,7 +22749,7 @@ function cabWhy(c) {
           + 'any more. Its spend history and your own notes stay as they are.' };
   }
   const byFb = c.fb ? CAB_FB_STATE[String(c.fb.status || 'unknown')] : '';
-  if (byFb && (c.state === 'banned' || c.state === 'issue')) {
+  if (byFb && (c.state === 'banned' || (cabReason(c) || {}).key === 'billing')) {
     const why = c.fb.disable_reason ? ' · ' + c.fb.disable_reason : '';
     return { mark: '\u27F3', text: 'Facebook: ' + (c.fb.status || '') + why };
   }
@@ -22718,10 +23008,12 @@ function cabRender() {
       <span class="flt-dot"></span>
       <span class="flt-name">${label}</span>
       <span class="flt-n">${n}</span></button>`;
-  const working = CAB_WORKING.reduce((a2, k) => a2 + counts[k], 0);
   if (tiles) {
+    /* Плитки «Working» більше немає: вона зводила running + issue +
+       review в одне число, а станів тепер три, і «робочий» з них рівно
+       один. Зведення, яке повторює сусідню плитку, лише питає щоразу,
+       чим вони відрізняються. */
     tiles.innerHTML = `<div class="flt-row">
-      ${tile('working', 'Working', working, '#8B5CF6', 'rgba(139,92,246,.14)', 'rgba(139,92,246,.32)')}
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
@@ -22760,7 +23052,10 @@ function cabRender() {
      його показує, робить архівування безглуздим. Побачити архів можна
      там, де його й просять: на власній плитці Archived. */
   const inFilter = c => (!cabFilter || cabFilter === 'all') ? c.state !== 'archived'
-    : cabFilter === 'working' ? CAB_WORKING.includes(c.state)
+    /* 'working' міг зберегтись у чиємусь браузері з часів, коли така
+       плитка була. Пускаємо його на 'running', а не ламаємо екран
+       порожнім списком. */
+    : cabFilter === 'working' ? c.state === 'running'
     : c.state === cabFilter;
   const inText = c => !q || [c.id, c.row.provider_name, c.row.status_note,
             c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,
@@ -22822,6 +23117,10 @@ function cabRender() {
   list.innerHTML = cabSection(shown);
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
+  /* Вузол дерева щойно створено заново — порожнім. Якщо рядок лишався
+     розгорнутим, малюємо його ще раз; дані вже в пам'яті, по базу
+     ніхто не йде. */
+  cabTreeRepaint();
 }
 
 /* Таблиця. Набір колонок один — секцій більше немає, бо ділити стало
@@ -22830,14 +23129,23 @@ function cabSection(items) {
   if (!items.length) return '';
 
   const arrow = k => cabSort.key === k ? (cabSort.dir < 0 ? ' ↓' : ' ↑') : '';
-  const th = (k, label, cls) => `<th class="${cls || ''}" onclick="cabSortBy('${k}')">${label}${arrow(k)}</th>`;
+  const th = (k, label, cls, tip) => `<th class="${cls || ''}"${tip ? ` title="${cabEsc(tip)}"` : ''
+    } onclick="cabSortBy('${k}')">${label}${arrow(k)}</th>`;
 
   // Типове сортування — за станом: зверху те, що вимагає дії.
   const rank = s2 => CAB_ORDER.indexOf(s2);
   const val = { state: c => rank(c.state), id: c => c.id,
                 agent: c => String(c.row.provider_name || c.tok.agent || ''),
                 today: c => (c.fb ? Number(cabSpendIn(c.fb)) || 0 : 0),
+                /* Ліміт сортуємо ЗАЛИШКОМ, а не стелею: питання тут
+                   «кому скоро впертись», а не «кому дозволили більше».
+                   Без ліміту — вниз: їм упиратись нема у що. */
+                limit: c => { const l = cabLimit(c); return l.left == null ? -1 : l.left; },
                 spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '' };
+  CAB_COLS.forEach(col => { if (!val[col.key]) val[col.key] = c => {
+    const v = col.get(c);
+    return (v == null || v === false || Number.isNaN(v)) ? (typeof v === 'string' ? '' : -1) : v;
+  }; });
   const get = val[cabSort.key] || val.state;
   const sorted = items.slice().sort((a, b) => {
     const A = get(a), B = get(b);
@@ -22847,50 +23155,54 @@ function cabSection(items) {
     return (cabSort.key === 'state' ? d : d * cabSort.dir) || b.x.spend - a.x.spend;
   });
 
+  /* ── ЗАКРІПЛЕНІ — ОКРЕМОЮ ГРУПОЮ ЗВЕРХУ ──
+     Якби вони просто сортувались першими всередині своєї групи, то в
+     розрізі по агенту закріплений кабінет лишався б похованим серед
+     двадцяти чужих — тобто закріплення не робило б рівно того, заради
+     чого його тиснуть. */
+  const pins = sorted.filter(c => cabPinned(c.id));
+  const rest = sorted.filter(c => !cabPinned(c.id));
+
   // ── групування ──
   const keyOf = cabGroupKey;
   const groups = {};
-  sorted.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
+  rest.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
 
-  const COLS = 11;
+  const cols = cabColsShown();
+  // Скільки клітинок у рядку: стрілка, шпилька, крапка, кабінет,
+  // статус, ліміт, період, графік, дії — і стільки ж, скільки
+  // увімкнено колонок.
+  const COLS = 9 + cols.length;
 
-  /* Ширину колонки номера рахуємо з того, що в ній справді лежить.
-     Стала ширина вирівнює, але в команді з короткими номерами лишала б
-     півтори сотні пікселів порожнечі в кожному рядку. Мінімум у 6 —
-     щоб зовсім короткі номери не злипались із мітками; стеля у 22 —
-     щоб один довгий підпис новоствореного кабінета не розсунув
-     стовпчик на пів таблиці. */
-  const idW = Math.min(22, Math.max(6, ...sorted.map(c => String(c.id).length)));
-
-  /* Обгортка заради телефона: таблиця там ширша за екран, і без
-     власного скролера її просто обрізало б. Обрізане читається як
-     «даних немає», прокрутка — як «дані далі». Обгортаємо саме
-     таблицю, а не весь список: у списку живе ще й розбір кабінета зі
-     своєю прокруткою, і другий скролер навколо нього лише заважав би. */
-  return `<div class="cab-scroll"><table class="cab-tbl" style="--cab-id-w:${idW}ch">
-    <thead><tr>
-      ${th('state', 'State')}
-      ${th('id', 'Account')}
-      ${th('agent', 'Agent')}
-      <th class="ta-c" title="Campaigns that actually deliver: switched on AND with a live ad inside">Camp</th>
-      <th class="ta-c" title="Ad sets that actually deliver: switched on AND with a live ad inside">Sets</th>
-      <th class="ta-c" title="Ads running right now">Ads</th>
+  const head = `<thead><tr>
+      <th class="cab-x"></th>
+      <th class="cab-x" title="Pinned cabinets stay on top of the list"></th>
+      <th class="cab-x"></th>
+      ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
+      ${th('state', 'Status')}
+      ${th('limit', 'Limit', 'ta-r', 'Facebook spending limit for the account, and how much of it is left')}
       ${th('today', cabEsc(cabRangeLabel()), 'ta-r')}
-      ${th('spend', 'Spend', 'ta-r')}
-      ${th('age', 'Days', 'ta-r')}
-      ${th('last', 'Last spend', 'ta-r')}
-      <th class="ta-c">14d</th>
-    </tr></thead><tbody>
-    ${Object.entries(groups).map(([g, list2]) => {
-      const gh = g ? `<tr class="cab-grp"><td colspan="${COLS}">
-          <span class="cab-grp-name">${g}</span>
+      <th class="ta-c" title="Spend over the last 14 days">14d</th>
+      ${cols.map(col => th(col.key, cabEsc(col.label), 'ta-' + col.ta, col.tip)).join('')}
+      <th class="ta-r"></th>
+    </tr></thead>`;
+
+  const block = (name, list2, sync) => {
+    const gh = !name ? '' : `<tr class="cab-grp"><td colspan="${COLS}">
+          <span class="cab-grp-name">${name}</span>
           <span class="cab-grp-sub">${list2.length} · ${list2.filter(i => i.state === 'running').length} running ·
             ${cabMoney(list2.reduce((a2, i) => a2 + i.x.spend, 0))}</span>
-          ${list2.some(i => i.fb) ? `<button class="cab-grp-sync" onclick="cabSyncGroup('${cabEsc(g).replace(/'/g, "\\'")}')"
-            title="Ask Facebook about this group only. Faster than the whole park \u2014 and the cabinets you did not ask about are left alone, not marked as lost.">\u21bb sync</button>` : ''}
-          </td></tr>` : '';
-      return gh + list2.map(cabRowHtml).join('');
-    }).join('')}
+          ${sync && list2.some(i => i.fb) ? `<button class="cab-grp-sync" onclick="cabSyncGroup('${cabEsc(name).replace(/'/g, "\\'")}')"
+            title="Ask Facebook about this group only. Faster than the whole park — and the cabinets you did not ask about are left alone, not marked as lost.">↻ sync</button>` : ''}
+          </td></tr>`;
+    return gh + list2.map(c => cabRowHtml(c, COLS)).join('');
+  };
+
+  /* Обгортка заради телефона: таблиця там ширша за екран. */
+  return `<div class="cab-scroll"><table class="cab-tbl">
+    ${head}<tbody>
+    ${pins.length ? block('📌 Pinned', pins, false) : ''}
+    ${Object.entries(groups).map(([g, list2]) => block(g, list2, true)).join('')}
     </tbody></table></div>`;
 }
 
@@ -22905,72 +23217,195 @@ function cabGroupKey(c) {
        : '';
 }
 
-function cabRowHtml(c) {
+function cabRowHtml(c, COLS) {
   const S = CAB_STATE[c.state];
-  const n = cabCounts(c.fb);
-  const why = cabWhy(c);
-  const num = v => `<td class="ta-c cab-num">${v == null ? '<span class="cab-na">—</span>' : v}</td>`;
-  // Те саме, але з розбивкою в підказці: щоб не відкривати панель
-  // заради питання «а чому так мало».
-  const numTip = (v, tip) => !tip ? num(v)
-    : `<td class="ta-c cab-num has-tip" title="${cabEsc(tip)}">${
-        v == null ? '<span class="cab-na">—</span>' : v}</td>`;
-  const label = (c.state === 'notoken' && c.lost > 0) ? `${S.label} · ${c.lost}d`
-    /* «Never ran» — сильне твердження, і казати його кабінету з
-       історією витрат не можна. Idle означає «зараз нічого не
-       крутиться», і це правда в обох випадках; різницю дописуємо лише
-       там, де вона є. */
+  const why = cabReason(c);
+  const idEnc = encodeURIComponent(c.id).replace(/'/g, '%27');
+  const open = cabTreeId === c.id;
+  const frozen = cabFrozen(c);
+
+  /* «Never ran» — сильніше твердження, ніж Idle, і казати його
+     кабінету з історією витрат не можна. */
+  /* «Never ran» — сильніше твердження, ніж Idle, і казати його
+     кабінету з історією витрат не можна. А кабінету без токена кажемо,
+     скільки днів ми його вже не бачимо: саме це число й вирішує, чи
+     йти по нього. */
+  const label = (c.state === 'notoken' && c.lost > 0) ? `${S.label} \u00b7 ${c.lost}d`
     : (c.state === 'idle' && !cabEverRan(c.x, c.fb)) ? 'Never ran'
     : S.label;
-  /* НАЗВУ З FACEBOOK НЕ ПОКАЗУЄМО. Її вигадує той, хто заводив кабінет,
-     вона нічого не каже про те, звідки цей кабінет запускають, і в
-     рядку просто відсувала браузер — єдиний підпис, який тут справді
-     потрібен. Account упізнають за номером і браузером; за назвою —
-     ніхто. Для пошуку й зчеплення з токеном назва лишається, вона
-     просто не малюється. */
-  const primary = c.id;
-  /* Прочерк тут означає рівно «нуль за цей період», і нічого більше.
-     Коли ми взагалі не знаємо — історії ще немає — показуємо знак
-     питання: це різні відповіді, і плутати їх не можна. */
+  /* Причина, якщо вона не стала станом: проблема з оплатою, ручна
+     мітка, невідомий код. У підказці, а не окремим стовпчиком — у
+     рядку має бути один погляд. */
+  const stTip = [why ? why.word.toUpperCase() + ' — ' + why.tip : '',
+                 (c.state === 'idle' && !cabEverRan(c.x, c.fb))
+                   ? 'Nothing has ever been spent from this cabinet, as far as we know.' : '',
+                 String(why && why.text || '')].filter(Boolean).join('\n\n')
+                 || String(cabWhy(c).text || '');
+
+  /* ПЕРШИЙ РЯДОК — НАШ ПІДПИС, А НЕ НАЗВА З FACEBOOK.
+     Назву вигадує той, хто заводив кабінет; вона нічого не каже про те,
+     звідки цей кабінет запускають. Упізнають його за браузером і
+     номером. Назва лишається в пошуку й у підказці — просто не
+     займає рядок. */
+  const browser = c.row.profile || c.tok.browser || '';
+  const agent = c.row.provider_name || c.tok.agent || '';
+  const who = [browser, agent].filter(Boolean).join(' · ') || '—';
+  const whoTip = [browser ? '' : 'Browser profile is not filled in for this cabinet.',
+                  agent ? '' : 'Agent is not filled in.',
+                  c.fb && c.fb.name ? 'Facebook calls it: ' + c.fb.name : '']
+                 .filter(Boolean).join('\n');
+
+  const lim = cabLimit(c);
+  /* Прочерк тут означає рівно «нуль за цей період». Коли ми взагалі не
+     знаємо — історії ще немає — показуємо знак питання. */
   const inRange = cabSpendIn(c.fb);
-  const today = inRange == null ? '<span class="cab-na" title="No spend history yet — see the note above the tiles">?</span>'
+  const today = inRange == null ? '<span class="cab-na" title="No spend history yet">?</span>'
     : inRange > 0 ? cabMoneyCur(inRange, c.fb.currency)
     : '<span class="cab-na">—</span>';
-  return `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''} ${c.state === 'notoken' ? 'is-frozen' : ''}"
-      onclick="cabPick('${encodeURIComponent(c.id).replace(/'/g, '%27')}')">
-    <td><span class="cab-dot" style="background:${S.dot}"></span><span class="${S.tone} cab-state">${label}</span></td>
+
+  const cell = col => {
+    const v = col.get(c);
+    const out = col.cell ? col.cell(v, c)
+      : (v == null || v === '' || Number.isNaN(v)) ? null : String(v);
+    const tip = col.tipOf ? col.tipOf(c) : '';
+    return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${tip ? ' has-tip' : ''}"${
+      tip ? ` title="${cabEsc(tip)}"` : ''}>${out == null ? '<span class="cab-na">—</span>' : out}</td>`;
+  };
+
+  const row = `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''} ${frozen ? 'is-frozen' : ''}"
+      onclick="cabPick('${idEnc}')">
+    <td class="cab-x"><button type="button" class="cab-exp ${open ? 'is-on' : ''}"
+      onclick="cabToggleTree(event, '${idEnc}')"
+      title="Campaigns, ad sets and ads of this cabinet with today’s numbers">›</button></td>
+    <td class="cab-x"><button type="button" class="cab-pin ${cabPinned(c.id) ? 'is-on' : ''}"
+      onclick="cabPinToggle(event, '${idEnc}')"
+      title="${cabPinned(c.id) ? 'Pinned to the top. Click to unpin.' : 'Pin to the top of the list'}">⚑</button></td>
+    <td class="cab-x"><span class="cab-dot" style="background:${S.dot}"
+      title="${cabEsc(label)}"></span></td>
     <td>
-      <span class="cab-src is-live" title="${String(why.text).replace(/"/g, '&quot;')}">${why.mark}</span>
-      <span class="cab-id">${primary}</span>
-      ${c.row.profile
-        ? `<span class="cab-chip">${cabEsc(c.row.profile)}</span>`
-        : c.tok.browser
-          ? `<span class="cab-chip is-auto" title="Browser from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.browser)}</span>`
-          : ''}
-      ${(() => { const w = cabIssueWhy(c); return w
-        ? `<span class="cab-chip is-gone" title="${cabEsc(w.tip)}">${cabEsc(w.text)}</span>` : ''; })()}
-      ${c.fb && String(c.fb.status) === 'unknown' ? `<span class="cab-chip is-auto" title="Facebook returned a status code this dashboard does not know yet. It is not treated as a problem \u2014 the state below comes from the money.">status unknown</span>` : ''}
-      ${cabPending(c.fb) ? `<span class="cab-chip is-review" title="Facebook has not finished checking ${
-        cabPending(c.fb)} ad(s) yet. Nothing to do but wait — it usually takes minutes, sometimes hours.">${
-        cabPending(c.fb)} in review</span>` : ''}
-      ${c.fb && String(c.fb.status) === 'review' ? `<span class="cab-chip is-gone" title="Facebook put the ad account ITSELF under review, not just its ads. Payments and delivery can stop while it lasts.">account in review</span>` : ''}
-      ${c.fb && c.fb.missing_since ? `<span class="cab-chip is-gone" title="${cabEsc(why.text)}">frozen</span>` : ''}
-      ${c.fb && !c.fb.missing_since && !c.fb.token_id ? `<span class="cab-chip is-gone" title="The token this cabinet came from was deleted, so nothing can go to Facebook for it — no export, no comments, no stopping campaigns. Press Sync now; if the token is gone from Settings, add it again first.">no token</span>` : ''}
+      <div class="cab-who"${whoTip ? ` title="${cabEsc(whoTip)}"` : ''}>${cabEsc(who)}</div>
+      <div><span class="cab-id" onclick="cabCopyId(event, this)" data-v="${cabEsc(c.id)}"
+        title="Click to copy">${cabEsc(c.id)}</span></div>
     </td>
-    <td class="cab-dim">${c.row.provider_name
-      ? cabEsc(c.row.provider_name)
-      : c.tok.agent
-        ? `<span class="cab-auto" title="Agent from the token name: ${cabEsc(c.tok.label)}">${cabEsc(c.tok.agent)}</span>`
-        : '—'}</td>
-    ${numTip(n && n.campaigns, [cabOnTip(c.fb, 'campaigns'), cabByStatus(c.fb.campaigns_by_status)].filter(Boolean).join(' \u2014 '))}
-    ${numTip(n && n.adsets, [cabOnTip(c.fb, 'adsets'), cabByStatus(c.fb.adsets_by_status)].filter(Boolean).join(' \u2014 '))}
-    ${numTip(n && n.ads, cabByStatus(c.fb.ads_by_status))}
+    <td><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
+    <td class="ta-r cab-num ${lim.tight ? 'cab-lim-tight' : ''}" title="${cabEsc(lim.tip)}">${lim.text}</td>
     <td class="ta-r cab-num cab-today">${today}</td>
-    <td class="ta-r cab-num">${c.x.spend > 0 ? cabMoney(c.x.spend) : '<span class="cab-na">—</span>'}</td>
-    <td class="ta-r cab-num">${c.age || '<span class="cab-na">—</span>'}</td>
-    <td class="ta-r cab-dim">${c.x.last || '—'}</td>
     <td class="ta-c ${S.tone}" style="height:1px">${cabSpark(c.x.byDay, c.x.last, 58, 16)}</td>
+    ${cabColsShown().map(cell).join('')}
+    <td class="ta-r cab-act">
+      ${c.fb ? `<button type="button" class="cab-mini" onclick="cabSyncRow(event, '${idEnc}')"
+        title="Ask Facebook about this one cabinet">↻</button>` : ''}
+      <button type="button" class="cab-mini" onclick="cabActions(event, '${idEnc}')"
+        title="What can be done with this cabinet">⋯</button>
+    </td>
   </tr>`;
+
+  /* Дерево живе ПІД рядком, у тому самому <tbody>. Вузол #cab-inside
+     один на всю сторінку — саме його шукає cabdrill.js, тому
+     переносимо сюди і його, і смугу над ним, а не копіюємо. */
+  return row + (open ? `<tr class="cab-treerow"><td colspan="${COLS}">
+      <div id="cab-inside-bar" class="hidden"></div>
+      <div id="cab-inside" class="hidden"></div>
+    </td></tr>` : '');
+}
+
+/* ЛІМІТ КАБІНЕТА.
+
+   Facebook зве це spend_cap: стеля витрат на кабінет за весь time, у
+   центах, і 0 означає «ліміту немає». Залишок = стеля мінус те, що вже
+   списано (amount_spent). Обидва числа вже приїжджають синхронізацією,
+   просто досі їх ніхто не питав.
+
+   Нуль і «немає поля» тут різні відповіді: перше — «ліміту немає»,
+   друге — «ми не знаємо». Друге трапляється на базах, де колонки ще
+   немає, і малювати там «No limit» означало б збрехати. */
+function cabLimit(c) {
+  const fb = c.fb;
+  if (!fb || fb.spend_cap === undefined || fb.spend_cap === null)
+    return { text: '<span class="cab-na">—</span>', left: null,
+             tip: 'Facebook has not sent a spending limit for this cabinet yet.' };
+  const cap = Number(fb.spend_cap) || 0;
+  if (!cap) return { text: '<span class="cab-dim">No limit</span>', left: null,
+                     tip: 'No spending limit is set on this cabinet.' };
+  const spent = Number(fb.amount_spent) || 0;
+  const left = Math.max(0, cap - spent);
+  const cur = fb.currency;
+  /* Менше десятої частини стелі — підсвічуємо: саме тут кабінет
+     зупиняється посеред дня, і дізнаватись про це постфактум дорого. */
+  const tight = cap > 0 && left / cap < 0.1;
+  return {
+    left, tight,
+    text: `${cabMoneyCur(cap, cur)} <span class="cab-dim">· ${cabMoneyCur(left, cur)} left</span>`,
+    tip: 'Spending limit ' + cabMoneyCur(cap, cur) + ', already spent against it '
+       + cabMoneyCur(spent, cur) + ', left ' + cabMoneyCur(left, cur)
+       + (tight ? '. Less than a tenth of the limit is left — it will stop when it runs out.' : '')
+  };
+}
+
+async function cabCopyId(ev, el) {
+  ev.stopPropagation();
+  const v = el.getAttribute('data-v') || '';
+  try { await navigator.clipboard.writeText(v); } catch (e) {
+    const t = document.createElement('textarea');
+    t.value = v; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } finally { t.remove(); }
+  }
+  el.style.boxShadow = 'inset 0 0 0 1.5px #22C55E';
+  setTimeout(() => { el.style.boxShadow = ''; }, 900);
+  if (typeof toast === 'function') toast('Copied: ' + v, 'ok', 1500);
+}
+
+/* ── ДЕРЕВО ПІД РЯДКОМ ──
+
+   Воно те саме, що було під таблицею (cabdrill.js): ми лише переносимо
+   його вузол у розгорнутий рядок. Відкритий рядок один — пам'ять
+   дерева (що розгорнуто, що вибрано) теж одна на сторінку, і два
+   дерева одночасно означали б, що галочки з одного кабінета
+   показуються в іншому. */
+let cabTreeId = '';
+
+async function cabToggleTree(ev, idEnc) {
+  ev.stopPropagation();
+  const id = decodeURIComponent(idEnc || '');
+  if (cabTreeId === id) {
+    cabTreeId = '';
+    if (typeof cdHide === 'function') cdHide();
+    cabRender();
+    return;
+  }
+  cabTreeId = id;
+  /* Спершу малюємо рядок — інакше cabdrill не знайде, куди писати, і
+     мовчки нічого не зробить. */
+  cabRender();
+  /* Було відкрито інший кабінет — закриваємо, щоб дерево не малювало
+     його числа під чужим номером. */
+  if (typeof cdIsOpen === 'function' && !cdIsOpen(id) && typeof cdHide === 'function') cdHide();
+  if (typeof cdToggleOpen === 'function' && (typeof cdIsOpen !== 'function' || !cdIsOpen(id)))
+    await cdToggleOpen(encodeURIComponent(id));
+  else if (typeof cdRepaint === 'function') { cdBar(id); cdRepaint(); }
+}
+
+/* Перемальовка таблиці створює вузол дерева заново — порожнім. Якщо
+   рядок лишався розгорнутим, дерево треба намалювати ще раз; дані для
+   цього вже в пам'яті, по базу ніхто не йде. */
+function cabTreeRepaint() {
+  if (!cabTreeId) return;
+  /* Рядка з цим кабінетом на екрані немає — отже й вузла дерева немає.
+     Знімаємо позначку, інакше наступна перемальовка знову шукала б
+     місце, якого не існує. */
+  if (!document.getElementById('cab-inside')) {
+    cabTreeId = '';
+    if (typeof cdHide === 'function') cdHide();
+    return;
+  }
+  if (typeof cdBar === 'function') cdBar(cabTreeId);
+  if (typeof cdRepaint === 'function') cdRepaint();
+  /* Вузол народжується схованим: доки дерево не завантажилось, порожня
+     рамка на пів екрана виглядала б як поломка. Показуємо його рівно
+     тоді, коли всередині справді є що показати. */
+  const box = document.getElementById('cab-inside');
+  if (box && typeof cdIsOpen === 'function' && cdIsOpen(cabTreeId))
+    box.classList.remove('hidden');
 }
 
 /* «3 зі 180» — чесне число, яке нічого не пояснює. Цей рядок і є
@@ -23006,13 +23441,13 @@ function cabWhyNot(fb) {
 function cabDetail(c) {
   const box = document.getElementById('cab-detail');
   if (!box) return;
-  /* Разом із карткою кабінета показуємо і його нутро — кампанії з
-     числами. Окремого кліку для цього немає навмисно: питання «що
-     всередині» виникає рівно тоді, коли кабінет вибрали. */
-  if (typeof cdOpen === 'function') { if (c) cdOpen(c.id); else { cdHide(); cdBar(''); } }
-  /* Саме нутро не відкривається від вибору кабінета — див. cabdrill.js.
-     Сюди заходять і просто по експорт, а таблиця на пів екрана в такі
-     хвилини тільки заважає. */
+  /* ДЕРЕВО БІЛЬШЕ НЕ ЙДЕ ЗА ВИБОРОМ КАБІНЕТА.
+
+     Доти воно жило під таблицею й показувало те, що вибрано: вибрав
+     інший кабінет — нутро закрилось саме. Тепер воно живе в
+     розгорнутому рядку, і належить саме рядку, а не виділенню. Якби
+     cdOpen лишився тут, вибір сусіднього кабінета стирав би вміст
+     відкритого дерева, лишаючи рядок розгорнутим і порожнім. */
   if (!c) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   box.classList.remove('hidden');
   const S = CAB_STATE[c.state];
@@ -23481,11 +23916,158 @@ async function cabSetStatus(id, status) {
 // зайшов одразу на #/cabinets — і весь парк показало б як «ніколи не
 // крутив», бо rawData на той момент ще порожній. Тому loadData у кінці
 // смикає перемальовку. Саме перемальовку, не перезавантаження списку.
+/* Перемальовка таблиці створює вузол дерева заново — порожнім. Тому
+   кожна з них закінчується тим, що дерево малюється ще раз. */
 function cabRefresh() {
   if (!cabLoaded) return;
   if (!document.getElementById('cab-list')) return;
   cabRender();
 }
+
+
+/* ═══════════ ДІЇ НАД КАБІНЕТОМ ═══════════
+
+   Список короткий навмисно. Усе, що тут є, або веде до екрана, де це
+   роблять (Rules), або міняє рівно одну річ (Edit), або спиняє гроші
+   (Pause) — і тоді питає.
+
+   «Open in Ads Manager» тут немає на прохання, «Copy ID» — теж: номер
+   копіюється кліком по ньому в самому рядку, і друга кнопка на ту саму
+   дію лише забирає місце в тих трьох, що справді щось роблять. */
+window.cabSyncRow = async function (ev, idEnc) {
+  ev.stopPropagation();
+  cabPopHide();
+  await cabSyncOne(decodeURIComponent(idEnc || ''));
+};
+
+window.cabActions = function (ev, idEnc) {
+  ev.stopPropagation();
+  const box = document.getElementById('cab-pop');
+  if (!box) return;
+  const id = decodeURIComponent(idEnc || '');
+  // Повторний клік по тій самій кнопці закриває список.
+  if (box.dataset.kind === 'act' && box.dataset.id === id && !box.classList.contains('hidden'))
+    return cabPopHide();
+  const c = cabAll.find(x => String(x.id) === String(id));
+  if (!c) return;
+  const e = encodeURIComponent(id).replace(/'/g, '%27');
+  const arch = cabIsArch(c.row, c.fb);
+  const live = Number(c.fb && c.fb.campaigns_active) || 0;
+  box.dataset.kind = 'act'; box.dataset.id = id;
+  box.innerHTML = `<p class="cab-pop-h">${cabEsc(id)}</p>`
+    + `<button type="button" class="cab-pop-i" onclick="cabActRules('${e}')"
+         title="Rules that switch ads off on their own">Rules</button>`
+    + `<button type="button" class="cab-pop-i" onclick="cabEditOpen('${e}')"
+         title="Browser profile and the status you set by hand">Edit</button>`
+    + `<button type="button" class="cab-pop-i ${live ? '' : 'is-off'}" onclick="cabActPause('${e}')"
+         title="${live ? 'Switch off every campaign that is delivering right now'
+                       : 'Nothing is delivering in this cabinet right now'}">Pause all active${
+           live ? ' · ' + live : ''}</button>`
+    + `<button type="button" class="cab-pop-i" onclick="cabActArchive('${e}')"
+         title="${arch ? 'Bring it back into the working list'
+                       : 'Hide it from the working list. Spend history stays.'}">${
+           arch ? 'Unarchive' : 'Archive'}</button>`
+    + (c.fb && c.fb.missing_since ? `<button type="button" class="cab-pop-i is-bad" onclick="cabActDrop('${e}')"
+         title="No token sees this cabinet any more, so nothing will bring the row back.">Remove row</button>` : '');
+  cabPopAt(ev.currentTarget, box);
+};
+
+window.cabActRules = function () {
+  cabPopHide();
+  /* rlPanel приймає «відкрити/закрити», а не номер кабінета: фільтра по
+     кабінету в правилах немає, вони задаються на весь парк. Відкриваємо
+     панель, решта — там. */
+  if (typeof rlPanel === 'function') rlPanel(true);
+};
+
+/* ДВА НОМЕРИ, ЯКІ ЛЕГКО СПЛУТАТИ.
+
+   cabSetStatus і cabSaveField приймають id ТВОГО рядка в
+   accounts_mapping, а не номер кабінета Facebook. Переплутати їх —
+   значить тихо нічого не зберегти: рядок із таким id просто не
+   знайдеться. Тому номер рядка беремо явно, а якщо рядка ще немає,
+   спершу заводимо його (cabAdopt) — так само, як це робить кнопка
+   «Archive» на новому кабінеті. */
+async function cabRowId(c, idEnc) {
+  if (c.row && c.row.id) return c.row.id;
+  if (typeof cabAdopt !== 'function') return null;
+  await cabAdopt(idEnc);
+  const again = cabAll.find(x => String(x.id) === String(c.id));
+  return (again && again.row && again.row.id) || null;
+}
+
+window.cabActArchive = async function (idEnc) {
+  cabPopHide();
+  const id = decodeURIComponent(idEnc || '');
+  const c = cabAll.find(x => String(x.id) === String(id));
+  if (!c) return;
+  const was = cabIsArch(c.row, c.fb);
+  const rid = await cabRowId(c, idEnc);
+  if (!rid) return;
+  /* Значення саме 'archive' — так його читає cabIsArch. 'archived'
+     виглядало б збереженим і не робило б нічого. */
+  await cabSetStatus(rid, was ? 'active' : 'archive');
+};
+
+window.cabActDrop = async function (idEnc) {
+  cabPopHide();
+  await cabDrop(decodeURIComponent(idEnc || ''));
+};
+
+/* ЗУПИНКА — ЄДИНА ДІЯ ЗВІДСИ, ЩО МІНЯЄ ЩОСЬ У FACEBOOK, і вона вже
+   написана: cabStopAll питає числом, ходить у fb-pause, чесно каже про
+   часткову невдачу й пересинхронізовує кабінет. Друга копія цього
+   розійшлася б із першою рівно тоді, коли одну з них виправлять. */
+window.cabActPause = function (idEnc) {
+  cabPopHide();
+  return cabStopAll(idEnc);
+};
+
+/* ── РЕДАГУВАННЯ: БРАУЗЕР І СТАТУС РУКАМИ ──
+   Решта підписів (агент, BM, логін, картка) лишається в картці
+   кабінета: два редактори на ті самі поля розходяться рівно тоді, коли
+   один із них забудуть оновити. */
+window.cabEditOpen = async function (idEnc) {
+  cabPopHide();
+  const id = decodeURIComponent(idEnc || '');
+  const c = cabAll.find(x => String(x.id) === String(id));
+  if (!c) return;
+  const cur = c.row.profile || '';
+  const rid = await cabRowId(c, idEnc);
+  if (!rid) return;
+  if (typeof window.ask !== 'function') {
+    const v = prompt('Browser profile for ' + id, cur);
+    if (v !== null) await cabSaveField(rid, 'profile', v.trim());
+    return;
+  }
+  const v = await window.ask({
+    title: 'Browser profile',
+    body: 'Cabinet ' + id + (c.tok.browser && !cur
+      ? '\n\nThe token name says "' + c.tok.browser + '". Typing it here makes it yours, '
+        + 'so a renamed token cannot take it away.' : ''),
+    input: { value: cur, placeholder: 'e.g. 0000' },
+    ok: 'Save', cancel: 'Cancel' });
+  if (v === false) return;
+  await cabSaveField(rid, 'profile', String(v).trim());
+  /* Status — другим питанням, а не третім полем у тому самому вікні:
+     це різні речі, і спільна кнопка «Save» на них означала б, що
+     одну з них міняють, не помітивши. */
+  const st = await window.ask({
+    title: 'Status by hand',
+    body: 'Facebook says: ' + (c.fb ? String(c.fb.status || '—') : 'nothing, no token sees it')
+        + '.\n\nA hand-set status is never undone by Facebook — you clear it here.',
+    ok: 'Mark as problem', cancel: 'Leave as is' });
+  if (st === true) await cabSetStatus(rid, 'problem');
+};
+
+/* Клік повз список — закрити. Інакше він живе на екрані доти, доки не
+   натиснеш ту саму кнопку, і перекриває рядки під собою. */
+document.addEventListener('click', e => {
+  const box = document.getElementById('cab-pop');
+  if (!box || box.classList.contains('hidden')) return;
+  if (box.contains(e.target)) return;
+  cabPopHide();
+}, true);
 
 window.cabInit = cabInit;
 window.cabRefresh = cabRefresh;
@@ -26360,6 +26942,12 @@ async function cdLoad(account) {
 }
 
 window.cdSetFlat = function (v) { cdFlat = !!v; cdPaint(); };
+
+/* Перемалювати дерево там, де воно зараз живе. Потрібне кабінетам:
+   таблиця перемальовується цілком, разом із вузлом дерева, і без
+   цього виклику розгорнутий рядок після будь-якої перемальовки
+   лишався б порожнім. Даних не питає — малює те, що вже в пам'яті. */
+window.cdRepaint = cdPaint;
 
 /* УВАГА: це розгортання дерева, а не вимикач. Ім'я коротке й
    спокусливе — перемикач стану вже одного разу назвали так само й
