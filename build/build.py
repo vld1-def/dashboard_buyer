@@ -1455,7 +1455,27 @@ rest = sub(rest,
 rest = sub(rest,
   """          <button onclick="uqCoverClear()" id="uq-cover-clear"
             class="hidden text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-400 transition">Remove</button>""",
-  """          <label id="uq-cover-tail-l" class="hidden items-center gap-1.5 cursor-pointer"
+  """          <!-- ШМАТОК ХУКА. Цікаве в хуку рідко з першої секунди: буває,
+               що воно з 10-ї по 12-ту. Два поля задають, ЩО саме взяти з
+               файлу, а HOLD уже ділить цей шматок на голову й хвіст.
+               Порожньо — весь файл, як і було. -->
+          <label id="uq-cover-cut-l" class="hidden items-center gap-1.5"
+                 title="Який шматок хука взяти: від і до, у секундах від початку файлу. Порожньо — весь файл.">
+            <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">шматок</span>
+            <input type="number" id="uq-cover-from" min="0" step="0.1" placeholder="від"
+              class="w-14 bg-black/30 border border-white/10 rounded-lg px-1.5 py-1 text-xs font-bold text-white outline-none focus:border-violet-500">
+            <span class="text-[10px] font-bold text-slate-500">–</span>
+            <input type="number" id="uq-cover-to" min="0" step="0.1" placeholder="до"
+              class="w-14 bg-black/30 border border-white/10 rounded-lg px-1.5 py-1 text-xs font-bold text-white outline-none focus:border-violet-500">
+          </label>
+          <!-- ЗВУК ХУКА. Знято — на його секундах тиша (так було завжди).
+               Поставлено — лишається його власна доріжка. -->
+          <label id="uq-cover-snd-l" class="hidden items-center gap-1.5 cursor-pointer"
+                 title="Залишити звук самого хука. Знято — на його секундах тиша.">
+            <input type="checkbox" id="uq-cover-snd" class="uq-chk">
+            <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">звук хука</span>
+          </label>
+          <label id="uq-cover-tail-l" class="hidden items-center gap-1.5 cursor-pointer"
                  title="Cover довший за HOLD — решту приклеїти в кінець нашого відео">
             <input type="checkbox" id="uq-cover-tail" class="uq-chk">
             <span class="text-[9px] font-black uppercase tracking-widest text-slate-400">+ хвіст у кінець</span>
@@ -1500,8 +1520,16 @@ rest = sub(rest,
       }
       document.getElementById('uq-cover-hold-l')?.setAttribute('title',
         'Скільки взяти з ПОЧАТКУ цього відео наперед. Решта піде в кінець, якщо поставити галочку.');
-      const tl = document.getElementById('uq-cover-tail-l');
-      if (tl) { tl.classList.remove('hidden'); tl.classList.add('flex'); }
+      /* Межі шматка — рівно тривалість файлу: більше взяти нізвідки.
+         Самі поля лишаємо порожніми: порожньо означає «весь файл». */
+      ['uq-cover-from', 'uq-cover-to'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.max = m.dur.toFixed(2); el.value = ''; }
+      });
+      ['uq-cover-tail-l', 'uq-cover-cut-l', 'uq-cover-snd-l'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.classList.remove('hidden'); el.classList.add('flex'); }
+      });
       const prevV = document.getElementById('uq-cover-prev');
       if (prevV) {
         prevV.className = 'text-[11px] font-bold text-violet-300 flex-1 min-w-0 truncate';
@@ -1530,6 +1558,14 @@ rest = sub(rest,
   """  document.getElementById('uq-cover-clear')?.classList.add('hidden');
   if (!keepInput) { const i = document.getElementById('uq-cover'); if (i) i.value = ''; }""",
   """  document.getElementById('uq-cover-clear')?.classList.add('hidden');
+  ['uq-cover-cut-l', 'uq-cover-snd-l'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.add('hidden'); el.classList.remove('flex'); }
+  });
+  ['uq-cover-from', 'uq-cover-to'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const sn = document.getElementById('uq-cover-snd'); if (sn) sn.checked = false;
   const tl = document.getElementById('uq-cover-tail-l');
   if (tl) { tl.classList.add('hidden'); tl.classList.remove('flex'); }
   const hold = document.getElementById('uq-cover-dur');
@@ -1547,9 +1583,32 @@ rest = sub(rest,
   const v = parseFloat((document.getElementById('uq-cover-dur') || {}).value);
   // Картинка: до 3с, бо довше в кадрі вона вже не хук, а пауза.
   // Відео: до його власної тривалості — більше взяти просто нізвідки.
-  if (uqCover && uqCover.kind === 'video')
-    return Math.min(uqCover.srcDur, Math.max(0, isNaN(v) ? 0 : v));
+  if (uqCover && uqCover.kind === 'video') {
+    // Межа — довжина вибраного шматка: з нього й ріжемо голову.
+    const span = uqCoverCut().span || uqCover.srcDur;
+    return Math.min(span, Math.max(0, isNaN(v) ? 0 : v));
+  }
   return Math.min(3, Math.max(0.04, v || 0.1));
+}
+
+/* ЯКИЙ ШМАТОК ХУКА БЕРЕМО.
+
+   Цікаве в хуку рідко лежить із першої секунди: буває, що воно з 10-ї
+   по 12-ту. Два поля задають саме це — а HOLD далі ділить уже цей
+   шматок на голову й хвіст, бо ділити весь файл, з якого потрібні дві
+   секунди, немає сенсу.
+
+   Порожньо, перевернуто (до <= від) або за межами файлу — беремо все:
+   мовчки нічого не ріжемо, бо «нуль секунд хука» виглядало б як
+   поломка, а не як вибір. */
+function uqCoverCut() {
+  const dur = (uqCover && uqCover.srcDur) || 0;
+  const g = id => parseFloat((document.getElementById(id) || {}).value);
+  let from = g('uq-cover-from'), to = g('uq-cover-to');
+  from = isNaN(from) ? 0 : Math.max(0, Math.min(from, dur));
+  to = isNaN(to) ? dur : Math.max(0, Math.min(to, dur));
+  if (!(to - from >= 0.05)) { from = 0; to = dur; }
+  return { from: +from.toFixed(3), to: +to.toFixed(3), span: +(to - from).toFixed(3) };
 }
 
 /* Що саме приклеїмо: голова, хвіст, обидва — чи нічого.
@@ -1558,10 +1617,14 @@ rest = sub(rest,
    такому trim дає нуль кадрів, і concat падає на порожньому вході. */
 function uqCoverPlan() {
   if (!uqCover || uqCover.kind !== 'video') return null;
+  const cut = uqCoverCut();
   const head = uqCoverDur();
   const tailOn = !!(document.getElementById('uq-cover-tail') || {}).checked;
-  const tail = tailOn ? +(uqCover.srcDur - head).toFixed(3) : 0;
-  const plan = { head: head >= 0.05 ? +head.toFixed(3) : 0,
+  const tail = tailOn ? +(cut.span - head).toFixed(3) : 0;
+  /* from — звідки в ФАЙЛІ починається голова. Без нього граф різав би
+     завжди з нуля, і вибір шматка нічого б не означав. */
+  const plan = { from: cut.from,
+                 head: head >= 0.05 ? +head.toFixed(3) : 0,
                  tail: tail >= 0.05 ? tail : 0 };
   return (plan.head || plan.tail) ? plan : null;
 }"""
@@ -1607,13 +1670,19 @@ rest = sub(rest,
     const uniq = vf.filter(x => !/^scale=|^setsar=|^fps=/.test(x));
     const u = uniq.length ? uniq.join(',') + ',' : '';
 
+    /* Межі в ФАЙЛІ хука: голова [h0,h1], хвіст [h1,t1]. Коли шматок не
+       вибраний, from = 0 — і це рівно ті числа, що були тут раніше. */
+    const h0 = pl.from || 0;
+    const h1 = +(h0 + pl.head).toFixed(3);
+    const t1 = +(h1 + pl.tail).toFixed(3);
+
     const fc = [];
     const two = pl.head > 0 && pl.tail > 0;
     if (two) fc.push('[1:v]split=2[c1][c2]');
     if (pl.head > 0)
-      fc.push(`${two ? '[c1]' : '[1:v]'}trim=0:${pl.head},setpts=PTS-STARTPTS,${u}${fit}[cv1]`);
+      fc.push(`${two ? '[c1]' : '[1:v]'}trim=${h0}:${h1},setpts=PTS-STARTPTS,${u}${fit}[cv1]`);
     if (pl.tail > 0)
-      fc.push(`${two ? '[c2]' : '[1:v]'}trim=${pl.head}:${(pl.head + pl.tail).toFixed(3)},`
+      fc.push(`${two ? '[c2]' : '[1:v]'}trim=${h1}:${t1},`
             + `setpts=PTS-STARTPTS,${u}${fit}[cv2]`);
     fc.push(`[0:v]${vf.join(',')},fps=${R}[mv]`);
 
@@ -1629,11 +1698,24 @@ rest = sub(rest,
        прапорець ставить сам прогін після першої відмови. */
     if (!cover.noAudio) {
       const af = 'aformat=sample_fmts=fltp:sample_rates=44100:channel_layouts=stereo';
-      if (two) fc.push('[2:a]asplit=2[s1][s2]');
+      /* ЗВУК ХУКА.
+
+         Знято — на його секундах тиша з anullsrc, як було завжди.
+         Поставлено — беремо доріжку самого хука, тобто [1:a], і ріжемо
+         її ТИМИ Ж межами, що й картинку: це один файл, і звук мусить
+         збігатися з тим, що видно.
+
+         Коли звук хука беремо, третій вхід не потрібен зовсім — і його
+         НЕМАЄ: зайвий вхід зсунув би номери, а [2:a] у графі вже
+         означало б не те. */
+      const aSrc = cover.snd ? '[1:a]' : '[2:a]';
+      const aCut = (a, b) => cover.snd
+        ? `atrim=${a}:${b}` : `atrim=0:${+(b - a).toFixed(3)}`;
+      if (two) fc.push(`${aSrc}asplit=2[s1][s2]`);
       if (pl.head > 0)
-        fc.push(`${two ? '[s1]' : '[2:a]'}atrim=0:${pl.head},asetpts=PTS-STARTPTS,${af}[sa1]`);
+        fc.push(`${two ? '[s1]' : aSrc}${aCut(h0, h1)},asetpts=PTS-STARTPTS,${af}[sa1]`);
       if (pl.tail > 0)
-        fc.push(`${two ? '[s2]' : '[2:a]'}atrim=0:${pl.tail},asetpts=PTS-STARTPTS,${af}[sa2]`);
+        fc.push(`${two ? '[s2]' : aSrc}${aCut(h1, t1)},asetpts=PTS-STARTPTS,${af}[sa2]`);
       fc.push(`[0:a]${p.volume ? `volume=${p.volume}dB,` : ''}${af}[ma]`);
       const aSeg = [];
       if (pl.head > 0) aSeg.push('[sa1]');
@@ -1642,7 +1724,8 @@ rest = sub(rest,
       fc.push(`${aSeg.join('')}concat=n=${aSeg.length}:v=0:a=1[aout]`);
       // anullsrc дописуємо ТРЕТІМ входом — порядок мусить збігатися з
       // мітками [2:a] вище.
-      args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
+      if (!cover.snd)
+        args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
     }
     args.push('-filter_complex', fc.join(';'), '-map', '[vout]');
     args.push('-map', cover.noAudio ? '0:a?' : '[aout]');
@@ -1792,7 +1875,8 @@ rest = sub(rest,
   """    ? { ext: uqCover.ext, dur: uqCoverDur(), kind: uqCover.kind || 'image',
         plan: uqCoverPlan(), noAudio: false }""",
   """    ? { ext: uqCover.ext, dur: uqCoverDur(), kind: uqCover.kind || 'image',
-        plan: uqCoverPlan(), noAudio: false, file: null }""",
+        plan: uqCoverPlan(), noAudio: false, file: null,
+        snd: !!(document.getElementById('uq-cover-snd') || {}).checked }""",
   'хук: coverArg.file')
 
 # Нормалізація — на файл, бо кадр креатива в кожного свій. Ставимо ПІСЛЯ
@@ -2206,6 +2290,86 @@ rest = sub(rest,
   } else if (/inject frame into filter network/i.test(log.join(' '))) {
     const why = 'у відео змінюються параметри кадру посеред файлу (роздільність або SAR) — '""",
   'кадр: відмова називає розбіжність')
+
+
+# ── ЗВУК ХУКА ─────────────────────────────────────────────────────────
+#
+# Доріжку хука викидали завжди: на його секундах лягала тиша з anullsrc.
+# Здебільшого так і треба — хук перебивав би звук самого креатива. Але
+# буває навпаки: саме в хуку й лежить те, заради чого його ставлять.
+#
+# Тому галочка. А разом з нею — дві речі, без яких вона була б брехнею:
+# нормалізований хук мусить НЕСТИ звук (граф бере [1:a] саме з нього), і
+# доріжки в хуку може не бути зовсім — тоді мітки [1:a] не існує, і
+# падає кожен варіант. Питаємо ffmpeg один раз на прогін.
+
+rest = sub(rest,
+  """async function uqNormCover(ff, meta) {""",
+  """async function uqNormCover(ff, meta, keepSnd) {""",
+  'хук: звук — підпис uqNormCover')
+
+rest = sub(rest,
+  """  const code = await ff.exec(['-i', 'cover.' + uqCover.ext, '-an',
+    '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+         + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+    '-movflags', '+faststart', UQ_COVER_N]);""",
+  """  /* Доріжку викидали завжди — на секундах хука й так була тиша. Тепер
+     її можна лишити, і тоді нормалізований файл мусить її нести: саме
+     з нього граф бере [1:a]. */
+  const code = await ff.exec(['-i', 'cover.' + uqCover.ext,
+    ...(keepSnd ? [] : ['-an']),
+    '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,`
+         + `crop=${W}:${H},setsar=1,fps=30,format=yuv420p`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18',
+    ...(keepSnd ? ['-c:a', 'aac', '-ar', '44100', '-ac', '2', '-b:a', '192k'] : []),
+    '-movflags', '+faststart', UQ_COVER_N]);""",
+  'хук: звук — аргументи нормалізації')
+
+rest = sub(rest,
+  """const uqRand = (a, b) => a + Math.random() * (b - a);""",
+  """/* ЧИ Є В ХУКА ЗВУК.
+
+   Прохання «лишити звук хука» нічого не варте, якщо доріжки в ньому
+   немає: мітки [1:a] у графі тоді не існує, і прогін падає на КОЖНОМУ
+   варіанті — повідомленням про потік, якого людина не писала.
+
+   Питаємо ffmpeg прямо: виклик без вихідного файлу просто друкує
+   заголовок у журнал, декодування немає. Один раз на прогін. */
+async function uqHasAudio(ff, name) {
+  if (ff.__log) ff.__log.length = 0;
+  try { await ff.exec(['-hide_banner', '-i', name]); } catch (e) {}
+  const has = ((ff.__log) || []).some(l => /: Audio: /.test(String(l)));
+  if (ff.__log) ff.__log.length = 0;
+  return has;
+}
+
+const uqRand = (a, b) => a + Math.random() * (b - a);""",
+  'хук: чи є звук')
+
+rest = sub(rest,
+  """      if (coverArg && coverArg.plan) {
+        setStatus(`${file.name} · готую хук під кадр креатива…`);
+        try { uqCover.norm = await uqNormCover(ff, meta); }""",
+  """      /* Звук хука просять, а доріжки може не бути зовсім. Дізнаємось
+         один раз на прогін — і кажемо вголос, бо тиха підміна виглядає
+         як «галочка не працює». */
+      if (coverArg && coverArg.snd && uqCover && uqCover.hasSnd === undefined) {
+        uqCover.hasSnd = await uqHasAudio(ff, 'cover.' + uqCover.ext);
+        if (!uqCover.hasSnd) {
+          const warn = document.createElement('p');
+          warn.className = 'text-[11px] font-bold text-amber-400 mt-3';
+          warn.textContent = `${uqCover.name}: у хука немає звукової доріжки — `
+            + `його секунди лишились тихими. Решта працює як завжди.`;
+          res.appendChild(warn);
+        }
+      }
+      if (coverArg) coverArg.snd = !!(coverArg.snd && uqCover && uqCover.hasSnd);
+
+      if (coverArg && coverArg.plan) {
+        setStatus(`${file.name} · готую хук під кадр креатива…`);
+        try { uqCover.norm = await uqNormCover(ff, meta, coverArg.snd); }""",
+  'хук: звук — перевірка на прогін')
 
 
 # Після завантаження даних перемальовуємо парк кабінетів — там половина
