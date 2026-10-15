@@ -15,8 +15,16 @@
      колір носять смуга прокрутки й наведення в доці, і посунувши його
      заради таблиці, ми посунули б і їх. Тут потрібна різниця, якої
      вистачає оку на сусідніх рядках і не більше: надто світла смуга
-     читається як виділення, тобто як «цей рядок чимось особливий». */
-  --cd-band:     #191920;
+     читається як виділення, тобто як «цей рядок чимось особливий».
+
+     Відлік тепер від --surface-2, а не від --surface: рядки дерева
+     стоять у таблиці кабінетів і мають власне, трохи світліше тло —
+     отже й смуга мусила посвітліти рівно на стільки ж, інакше вона
+     зникла б. */
+  --cd-band:     #1D1D24;
+  /* Наведення — світліше за обидві смуги: курсор має бути видно і на
+     звичайному рядку, і на смузі. */
+  --cd-hov:      #26262E;
   --border:      rgba(255,255,255,.07);
   --border-2:    rgba(255,255,255,.13);
   --text-main:   #E9E9EC;
@@ -1174,6 +1182,10 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
 .cd-unit { display: block; font-size: 9px; font-weight: 700;
            color: var(--text-muted); letter-spacing: .02em;
            line-height: 1.1; margin-top: 1px; }
+/* У таблиці кабінетів — у той самий рядок: окремим рядком підпис
+   робив вузол дерева вдвічі вищим за рядок кабінета, і щільність, по
+   яку сюди й заходять, зникала рівно там, де є результати. */
+.cab-node .cd-unit { display: inline; margin: 0 0 0 3px; }
 
 /* Архів, що загубився дорогою. Помітно, але не криком: це не
    катастрофа, це підказка, куди дивитись. */
@@ -1679,6 +1691,12 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    Щільна таблиця, а не список: кабінетів десятки, і задача — побачити
    весь парк одним екраном. Кольором світиться тільки крапка стану;
    на сорока рядках кричати мають одиниці, інакше не кричить жоден. */
+/* Своя смуга прокрутки, а не розсунута сторінка. Стовпчиків у
+   таблиці тепер стільки, скільки ввімкнув буєр, та ще й дерево
+   кампаній лягає в ті самі стовпці — ширина перестала бути відомою
+   заздалегідь. Коли вона не влазить, гортаємо саму таблицю: скрол
+   сторінки вбік заборонений скрізь. */
+.cab-scroll { overflow-x: auto; }
 .cab-tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .cab-tbl thead th {
   position: sticky; top: 0; z-index: 5;
@@ -1788,15 +1806,60 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    посеред дня. */
 .cab-lim-tight { color: #F59E0B; }
 
-/* Дерево під рядком. Власної рамки не малюємо — його малює сам
-   cabdrill; тут лише відступ, щоб воно не злипалось із рядком.
+/* ── ДЕРЕВО РЯДКАМИ ТІЄЇ Ж ТАБЛИЦІ ──
+   Власних стовпців у нього більше немає: кампанія, група й оголошення
+   стоять у тих самих колонках, що й кабінети. Лишається відступ за
+   рівнем і легка підкладка, щоб було видно, що це нутро рядка вище. */
+.cab-node > td {
+  padding: 5px 10px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); font-size: 12px;
+}
+/* СМУГА ПО КАМПАНІЯХ. Кампанія разом зі своїми адсетами й оголошеннями
+   отримує світліше тло — виходить блок, який видно одним поглядом, не
+   читаючи назв. Різниця навмисно мала: це межа між групами, а не
+   оцінка. Тло, яке впадає в око, читалось би як «тут щось не так», хоч
+   означає лише «це вже інша кампанія». */
+.cab-node.is-band > td { background: var(--cd-band); }
+/* Наведення світліше за обидві смуги — отже курсор видно в кожній. */
+.cab-node:hover > td { background: var(--cd-hov); }
+/* Вибраний рядок: смуга акценту ліворуч сильніша за різницю тла, тож
+   його видно в будь-якій смузі. */
+.cab-node.is-mk > td { background: var(--surface-3); }
+.cab-node.is-mk > td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* ПІДСУМКОВОГО РЯДКА НЕМАЄ: разом по кабінету стоїть у рядку самого
+   кабінета, прямо над деревом. */
+/* Назва кампанії буває довшою за екран телефона. Стеля у vw — щоб
+   вона не з'їдала рядок цілком: решта стовпців важить не менше, а
+   прочитати назву до кінця можна наведенням. */
+/* 42vw на телефоні — щоб назва лишалась помітно вужчою за половину
+   екрана: половина це вже «з'їла рядок». На моніторі стеля стала, 340px:
+   прив'язка до vw там дала б півтори тисячі пікселів під один підпис. */
+.cab-nd { white-space: nowrap; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 900px) { .cab-nd { max-width: 340px; } }
+.cab-nd.cd-can { cursor: pointer; }
+.cab-nd-in { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+/* Світчер — власний вузький стовпчик перед статусом. Коли він стояв
+   у кінці назви, перемикачі ставали на різній відстані від краю: назви
+   різної довжини. У стовпчику вони стоять один під одним. */
+.cab-nd-sw { width: 1%; padding-left: 4px; padding-right: 4px; text-align: center; }
+.cab-node.cd-d1 .cab-nd-in { padding-left: 18px; }
+.cab-node.cd-d2 .cab-nd-in { padding-left: 36px; }
+/* Глибина читається ще й тоном: кампанія важить більше за оголошення,
+   і однаковий підпис на всіх трьох рівнях робив би дерево пласким. */
+.cab-node.cd-d1 .cd-lbl { font-weight: 600; }
+.cab-node.cd-d2 .cd-lbl { font-weight: 600; color: var(--text-muted); }
+.cab-nd-st { white-space: nowrap; }
+/* Смуга з вкладками дерева — над його рядками, на всю ширину. */
+.cab-treebar > td { padding: 6px 10px; background: var(--surface-2); }
+
+/* Рядок із повідомленням дерева (порожньо, помилка, вантажиться).
 
    max-width: 0 — не описка. Клітинка з colspan на всю ширину інакше
    РОЗСУВАЄ таблицю під ширину дерева, і на телефоні з'являється одна
    довжелезна прокрутка замість двох коротких: щоб дістатись до
    сусіднього кабінета, довелось би гортати повз усі стовпчики
    оголошень. З нулем клітинка бере ширину від таблиці, а не навпаки,
-   і дерево гортається своїм власним скролером (.cd-wrap). */
+   і гортається сама таблиця кабінетів (.cab-scroll). */
 .cab-treerow > td { padding: 0 0 10px; background: var(--surface-2); max-width: 0; }
 
 /* ── плаваючий список: колонки й дії ── */
@@ -1816,16 +1879,17 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   font-size: 11.5px; font-weight: 700; color: var(--text-main);
 }
 .cab-pop-i:hover { background: var(--surface-3); }
-/* Рядок списку колонок: сама назва плюс стрілки порядку праворуч. */
-.cab-pop-row { display: flex; align-items: center; gap: 2px; }
+/* Рядок списку колонок: ручка для перетягування плюс сама назва. */
+.cab-pop-row { display: flex; align-items: center; gap: 2px; border-radius: 9px; }
 .cab-pop-row .cab-pop-i { flex: 1; min-width: 0; }
-.cab-pop-mv { display: flex; gap: 1px; padding-right: 2px; }
-.cab-pop-mv button {
-  background: none; border: 0; cursor: pointer; padding: 3px 5px; border-radius: 7px;
-  font-size: 12px; font-weight: 900; color: var(--text-muted); line-height: 1;
+.cab-pop-grip {
+  cursor: grab; padding: 0 4px; font-size: 13px; line-height: 1;
+  color: var(--text-muted); opacity: .45; user-select: none;
 }
-.cab-pop-mv button:hover:not(:disabled) { color: var(--text-main); background: var(--surface-3); }
-.cab-pop-mv button:disabled { opacity: .25; cursor: default; }
+.cab-pop-row:hover .cab-pop-grip { opacity: .9; }
+/* Куди ляже: лінія згори, а не підсвічений рядок — підсвічений
+   читається як «оцей вибраний», а треба «стане сюди». */
+.cab-pop-row.is-drop { box-shadow: inset 0 2px 0 var(--accent, #8b5cf6); }
 .cab-pop-i.is-on { color: var(--accent, #8b5cf6); }
 .cab-pop-i.is-bad { color: #f87171; }
 /* Вимкнений пункт лишається видимим: зникла кнопка щоразу питає, чи
@@ -2539,44 +2603,10 @@ body[data-route="domains"] #dm-detail {
    Ціна відома: у кабінеті на три рядки під ними лишиться порожньо.
    Це свідомий обмін — стала сторінка варта дорожче за щільність у
    найменшому з кабінетів. */
-.cd-wrap {
-  flex: 0 0 auto; min-height: 0; overflow: auto;
-  height: min(calc(58vh - 20px), 540px);
-}
-/* height: 100% — щоб рядок-заповнювач мав від чого відштовхуватись.
-   Для таблиці це не стеля, а підлога: вміст вищий за неї розтягує її
-   далі, тож довгий список від цього не стискається. */
-.cd-tbl { width: 100%; border-collapse: collapse; min-width: 1180px; height: 100%; }
-/* Забирає весь залишок висоти й тим штовхає підсумок до низу. Коли
-   залишку немає — стискається в нуль і зникає з очей. */
-.cd-fill { height: 100%; }
-.cd-fill td { padding: 0; border: 0; }
-.cd-tbl tr.cd-fill:hover td { background: transparent; }
-.cd-tbl th {
-  position: sticky; top: 0; z-index: 2; background: var(--surface-2);
-  padding: 6px 8px; text-align: left;
-  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--text-muted); border-bottom: 1px solid var(--border);
-}
-.cd-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
-.cd-tbl tr:hover td { background: var(--surface-2); }
-/* Назва прилипає до лівого краю: стовпчиків тепер тринадцять, і без
-   цього, догортавши до «Cost per reg», не видно, чий це рядок. */
-.cd-tbl th:first-child, .cd-tbl td:first-child {
-  position: sticky; left: 0; z-index: 1; background: var(--surface);
-}
-.cd-tbl th:first-child { z-index: 3; background: var(--surface-2); }
-.cd-tbl tr:hover td:first-child { background: var(--surface-2); }
-.cd-name {
-  font-weight: 700; color: var(--text-main);
-  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* Глибина в дереві — відступом, а не рамками: рядків багато, і кожна
-   зайва лінія робить таблицю схожою на сітку, а не на список. */
-.cd-d1 .cd-name { padding-left: 24px; }
-.cd-d2 .cd-name { padding-left: 46px; }
-.cd-d1 .cd-name, .cd-d2 .cd-name { font-weight: 600; }
-.cd-d2 .cd-name { color: var(--text-muted); }
+/* ВЛАСНОЇ ТАБЛИЦІ В ДЕРЕВА БІЛЬШЕ НЕМА — отже нема ні її скролера, ні
+   липкої шапки, ні липкої першої комірки, ні рядка-заповнювача під
+   підсумок. Усе це тепер робить таблиця кабінетів (.cab-scroll,
+   .cab-tbl, .cab-node) одним набором правил на обидва рівні. */
 /* Трикутник малюємо рамкою, а не символом: «▸» є не в кожному шрифті, і
    там, де його немає, у назві зʼявляється порожній прямокутник. */
 .cd-twist {
@@ -2655,18 +2685,9 @@ body[data-route="domains"] #dm-detail {
 
    Перша комірка липка й має власне тло — без окремого правила смуга
    обривалась би на ній, і саме там, де читають назви. */
-/* Обидві смуги задані ЯВНО й непрозоро. Прозорий відтінок тут не
-   годиться: перша комірка липка, і крізь неї було б видно, як під нею
-   їде вміст, коли таблицю гортають убік. */
-.cd-r td, .cd-r td:first-child { background: var(--surface); }
-.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--cd-band); }
-/* Наведення бере середній відтінок: він світліший за звичайний рядок і
-   темніший за смугу, тож курсор видно в обох — а не лише в одній. */
-.cd-tbl tr.cd-r:hover td,
-.cd-tbl tr.cd-r:hover td:first-child { background: var(--surface-2); }
-/* Вибраний рядок лишається впізнаваним у будь-якій смузі: смуга
-   акценту ліворуч сильніша за різницю тла. */
-.cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* Самі смуги задані там, де тепер живуть рядки дерева — на .cab-node
+   поруч із рештою правил таблиці кабінетів. Двох місць на один тон
+   бути не має: вони розійдуться рівно тоді, коли його зміниш. */
 /* Чому немає ока. Тоном як «not running» — це те саме: те, що варто
    знати, не шукаючи, але не тривога. */
 .cd-nodom { color: var(--text-muted); cursor: help; border-bottom: 1px dotted var(--border-2); }
@@ -2700,44 +2721,16 @@ body[data-route="domains"] #dm-detail {
 .cd-bud:hover { border-bottom-color: var(--text-muted); }
 .cd-bud:focus-visible { outline: 2px solid var(--text-muted); outline-offset: 2px; }
 
-/* ПІДСУМОК — липкий до низу таблиці, як шапка до верху. Таблиця
-   скролиться всередині себе, і рядок, який поїхав угору разом із
-   вмістом, не відповідає на питання «а скільки всього» саме тоді, коли
-   його й ставлять — гортаючи довгий список.
-
-   z-index на 1 менший за шапку: на стику виграє шапка, бо назви
-   стовпчиків потрібні, щоб прочитати сам підсумок. */
-.cd-tot td {
-  position: sticky; bottom: 0; z-index: 1;
-  background: var(--surface-2);
-  border-top: 1px solid var(--border-2);
-  font-weight: 900; color: var(--text-main);
-  padding: 7px 8px;
-}
-.cd-tot td:first-child {
-  font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--text-muted);
-}
-/* Прочерки в підсумку тлумлені так само, як у рядках: «немає» не має
-   важити більше за число поруч. */
-.cd-tot .cd-na { font-weight: 700; }
 
 /* МУЛЬТИВИБІР. Галочка живе в комірці назви разом із трикутником, тому
    тримаємо її вузькою і притискаємо до тексту: власного стовпчика на
    неї немає, а зайві пікселі тут з'їдають ширину назви.
 
-   Відступ у дереві (.cd-d1/.cd-d2) зсуває галочку разом із назвою — це
-   навмисно: так видно, до якого рівня належить вибраний рядок. */
+   Відступ за рівнем зсуває галочку разом із назвою — це навмисно: так
+   видно, до якого рівня належить вибраний рядок. */
 .cd-mk {
   width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
   accent-color: var(--accent); cursor: pointer; flex: 0 0 auto;
-}
-/* Вибраний рядок підсвічуємо смугою зліва, а не фоном: фон уже зайнятий
-   під :hover, і два фони поспіль читаються як один. */
-.cd-r.is-mk td { background: var(--surface-2); }
-.cd-r.is-mk td:first-child {
-  background: var(--surface-2);
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* Смуга дії. Стоїть між шапкою й таблицею, а не над карткою: дія
@@ -3888,20 +3881,10 @@ input.ui-in[type="range"] { padding: 0; }
      зі своєю прокруткою, і другий скролер навколо нього заважав би. */
   .cab-scroll { overflow-x: auto; }
 
-  /* Назва кампанії. Головна вада на телефоні: 340px стелі з'їдали
-     майже весь екран, і поруч із нею не лишалось місця під жодну
-     цифру. 44vw лишає більшу половину ширини числам. */
-  .cd-name { max-width: 44vw; }
   /* Відступи дерева вдвічі менші: на телефоні кожні десять пікселів
      ліворуч — це десять пікселів, яких бракує назві. */
-  .cd-d1 .cd-name { padding-left: 12px; }
-  .cd-d2 .cd-name { padding-left: 24px; }
-  .cd-tbl td, .cd-tbl th { padding: 6px 6px; }
-  /* Стовпчиків п'ятнадцять, і на вузькому екрані вони й так тісні:
-     менша стеля робить прокрутку коротшою, не з'їдаючи читабельність. */
-  .cd-tbl { min-width: 1000px; }
-  /* Висоти даємо більше: горизонталі на телефоні бракує, вертикалі — ні. */
-  .cd-wrap { height: min(calc(72vh - 20px), 620px); }
+  .cab-node.cd-d1 .cab-nd-in { padding-left: 12px; }
+  .cab-node.cd-d2 .cab-nd-in { padding-left: 24px; }
 
   /* Док не влазить у ряд — гортаємо його, а не обрізаємо кнопки.
      Обрізана кнопка виглядає як кнопка, якої немає. */

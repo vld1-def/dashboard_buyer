@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 14.10 22:48">
+  <meta name="build" content="build 15.10 07:35">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1124,8 +1124,16 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
      колір носять смуга прокрутки й наведення в доці, і посунувши його
      заради таблиці, ми посунули б і їх. Тут потрібна різниця, якої
      вистачає оку на сусідніх рядках і не більше: надто світла смуга
-     читається як виділення, тобто як «цей рядок чимось особливий». */
-  --cd-band:     #191920;
+     читається як виділення, тобто як «цей рядок чимось особливий».
+
+     Відлік тепер від --surface-2, а не від --surface: рядки дерева
+     стоять у таблиці кабінетів і мають власне, трохи світліше тло —
+     отже й смуга мусила посвітліти рівно на стільки ж, інакше вона
+     зникла б. */
+  --cd-band:     #1D1D24;
+  /* Наведення — світліше за обидві смуги: курсор має бути видно і на
+     звичайному рядку, і на смузі. */
+  --cd-hov:      #26262E;
   --border:      rgba(255,255,255,.07);
   --border-2:    rgba(255,255,255,.13);
   --text-main:   #E9E9EC;
@@ -2283,6 +2291,10 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
 .cd-unit { display: block; font-size: 9px; font-weight: 700;
            color: var(--text-muted); letter-spacing: .02em;
            line-height: 1.1; margin-top: 1px; }
+/* The table кабінетів — у той самий рядок: окремим рядком підпис
+   робив вузол дерева вдвічі вищим за рядок кабінета, і щільність, по
+   яку сюди й заходять, зникала рівно там, де є результати. */
+.cab-node .cd-unit { display: inline; margin: 0 0 0 3px; }
 
 /* Архів, що загубився дорогою. Помітно, але не криком: це не
    катастрофа, це підказка, куди дивитись. */
@@ -2788,6 +2800,12 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    Щільна таблиця, а не список: кабінетів десятки, і задача — побачити
    весь парк одним екраном. Кольором світиться тільки крапка стану;
    на сорока рядках кричати мають одиниці, інакше не кричить жоден. */
+/* Своя смуга прокрутки, а не розсунута сторінка. Стовпчиків у
+   таблиці тепер стільки, скільки ввімкнув буєр, та ще й дерево
+   кампаній лягає в ті самі стовпці — ширина перестала бути відомою
+   заздалегідь. Коли вона не влазить, гортаємо саму таблицю: скрол
+   сторінки вбік заборонений скрізь. */
+.cab-scroll { overflow-x: auto; }
 .cab-tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .cab-tbl thead th {
   position: sticky; top: 0; z-index: 5;
@@ -2897,15 +2915,60 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    посеред дня. */
 .cab-lim-tight { color: #F59E0B; }
 
-/* Дерево під рядком. Власної рамки не малюємо — його малює сам
-   cabdrill; тут лише відступ, щоб воно не злипалось із рядком.
+/* ── ДЕРЕВО РЯДКАМИ ТІЄЇ Ж ТАБЛИЦІ ──
+   Власних стовпців у нього більше немає: кампанія, група й оголошення
+   стоять у тих самих колонках, що й кабінети. Лишається відступ за
+   рівнем і легка підкладка, щоб було видно, що це нутро рядка вище. */
+.cab-node > td {
+  padding: 5px 10px; border-bottom: 1px solid var(--border);
+  background: var(--surface-2); font-size: 12px;
+}
+/* СМУГА ПО КАМПАНІЯХ. Кампанія разом зі своїми адсетами й оголошеннями
+   отримує світліше тло — виходить блок, який видно одним поглядом, не
+   читаючи назв. Різниця навмисно мала: це межа між групами, а не
+   оцінка. Тло, яке впадає в око, читалось би як «тут щось не так», хоч
+   означає лише «це вже інша кампанія». */
+.cab-node.is-band > td { background: var(--cd-band); }
+/* Наведення світліше за обидві смуги — отже курсор видно в кожній. */
+.cab-node:hover > td { background: var(--cd-hov); }
+/* Вибраний рядок: смуга акценту ліворуч сильніша за різницю тла, тож
+   його видно в будь-якій смузі. */
+.cab-node.is-mk > td { background: var(--surface-3); }
+.cab-node.is-mk > td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* ПІДСУМКОВОГО РЯДКА НЕМАЄ: разом по кабінету стоїть у рядку самого
+   кабінета, прямо над деревом. */
+/* Назва кампанії буває довшою за екран телефона. Стеля у vw — щоб
+   вона не з'їдала рядок цілком: решта стовпців важить не менше, а
+   прочитати назву до кінця можна наведенням. */
+/* 42vw на телефоні — щоб назва лишалась помітно вужчою за половину
+   екрана: половина це вже «з'їла рядок». На моніторі стеля стала, 340px:
+   прив'язка до vw там дала б півтори тисячі пікселів під один підпис. */
+.cab-nd { white-space: nowrap; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 900px) { .cab-nd { max-width: 340px; } }
+.cab-nd.cd-can { cursor: pointer; }
+.cab-nd-in { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+/* Світчер — власний вузький стовпчик перед статусом. Коли він стояв
+   у кінці назви, перемикачі ставали на різній відстані від краю: назви
+   різної довжини. У стовпчику вони стоять один під одним. */
+.cab-nd-sw { width: 1%; padding-left: 4px; padding-right: 4px; text-align: center; }
+.cab-node.cd-d1 .cab-nd-in { padding-left: 18px; }
+.cab-node.cd-d2 .cab-nd-in { padding-left: 36px; }
+/* Глибина читається ще й тоном: кампанія важить більше за оголошення,
+   і однаковий підпис на всіх трьох рівнях робив би дерево пласким. */
+.cab-node.cd-d1 .cd-lbl { font-weight: 600; }
+.cab-node.cd-d2 .cd-lbl { font-weight: 600; color: var(--text-muted); }
+.cab-nd-st { white-space: nowrap; }
+/* Смуга з вкладками дерева — над його рядками, на всю ширину. */
+.cab-treebar > td { padding: 6px 10px; background: var(--surface-2); }
+
+/* Рядок із повідомленням дерева (порожньо, помилка, вантажиться).
 
    max-width: 0 — не описка. Клітинка з colspan на всю ширину інакше
    РОЗСУВАЄ таблицю під ширину дерева, і на телефоні з'являється одна
    довжелезна прокрутка замість двох коротких: щоб дістатись до
    сусіднього кабінета, довелось би гортати повз усі стовпчики
    оголошень. З нулем клітинка бере ширину від таблиці, а не навпаки,
-   і дерево гортається своїм власним скролером (.cd-wrap). */
+   і гортається сама таблиця кабінетів (.cab-scroll). */
 .cab-treerow > td { padding: 0 0 10px; background: var(--surface-2); max-width: 0; }
 
 /* ── плаваючий список: колонки й дії ── */
@@ -2925,16 +2988,17 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   font-size: 11.5px; font-weight: 700; color: var(--text-main);
 }
 .cab-pop-i:hover { background: var(--surface-3); }
-/* Рядок списку колонок: сама назва плюс стрілки порядку праворуч. */
-.cab-pop-row { display: flex; align-items: center; gap: 2px; }
+/* Рядок списку колонок: ручка для перетягування плюс сама назва. */
+.cab-pop-row { display: flex; align-items: center; gap: 2px; border-radius: 9px; }
 .cab-pop-row .cab-pop-i { flex: 1; min-width: 0; }
-.cab-pop-mv { display: flex; gap: 1px; padding-right: 2px; }
-.cab-pop-mv button {
-  background: none; border: 0; cursor: pointer; padding: 3px 5px; border-radius: 7px;
-  font-size: 12px; font-weight: 900; color: var(--text-muted); line-height: 1;
+.cab-pop-grip {
+  cursor: grab; padding: 0 4px; font-size: 13px; line-height: 1;
+  color: var(--text-muted); opacity: .45; user-select: none;
 }
-.cab-pop-mv button:hover:not(:disabled) { color: var(--text-main); background: var(--surface-3); }
-.cab-pop-mv button:disabled { opacity: .25; cursor: default; }
+.cab-pop-row:hover .cab-pop-grip { opacity: .9; }
+/* Куди ляже: лінія згори, а не підсвічений рядок — підсвічений
+   читається як «оцей вибраний», а треба «стане сюди». */
+.cab-pop-row.is-drop { box-shadow: inset 0 2px 0 var(--accent, #8b5cf6); }
 .cab-pop-i.is-on { color: var(--accent, #8b5cf6); }
 .cab-pop-i.is-bad { color: #f87171; }
 /* Вимкнений пункт лишається видимим: зникла кнопка щоразу питає, чи
@@ -3648,44 +3712,10 @@ body[data-route="domains"] #dm-detail {
    Ціна відома: у кабінеті на три рядки під ними лишиться порожньо.
    Це свідомий обмін — стала сторінка варта дорожче за щільність у
    найменшому з кабінетів. */
-.cd-wrap {
-  flex: 0 0 auto; min-height: 0; overflow: auto;
-  height: min(calc(58vh - 20px), 540px);
-}
-/* height: 100% — щоб рядок-заповнювач мав від чого відштовхуватись.
-   Для таблиці це не стеля, а підлога: вміст вищий за неї розтягує її
-   далі, тож довгий список від цього не стискається. */
-.cd-tbl { width: 100%; border-collapse: collapse; min-width: 1180px; height: 100%; }
-/* Забирає весь залишок висоти й тим штовхає підсумок до низу. Коли
-   залишку немає — стискається в нуль і зникає з очей. */
-.cd-fill { height: 100%; }
-.cd-fill td { padding: 0; border: 0; }
-.cd-tbl tr.cd-fill:hover td { background: transparent; }
-.cd-tbl th {
-  position: sticky; top: 0; z-index: 2; background: var(--surface-2);
-  padding: 6px 8px; text-align: left;
-  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--text-muted); border-bottom: 1px solid var(--border);
-}
-.cd-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 11.5px; }
-.cd-tbl tr:hover td { background: var(--surface-2); }
-/* Назва прилипає до лівого краю: стовпчиків тепер тринадцять, і без
-   цього, догортавши до «Cost per reg», не видно, чий це рядок. */
-.cd-tbl th:first-child, .cd-tbl td:first-child {
-  position: sticky; left: 0; z-index: 1; background: var(--surface);
-}
-.cd-tbl th:first-child { z-index: 3; background: var(--surface-2); }
-.cd-tbl tr:hover td:first-child { background: var(--surface-2); }
-.cd-name {
-  font-weight: 700; color: var(--text-main);
-  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* Глибина в дереві — відступом, а не рамками: рядків багато, і кожна
-   зайва лінія робить таблицю схожою на сітку, а не на список. */
-.cd-d1 .cd-name { padding-left: 24px; }
-.cd-d2 .cd-name { padding-left: 46px; }
-.cd-d1 .cd-name, .cd-d2 .cd-name { font-weight: 600; }
-.cd-d2 .cd-name { color: var(--text-muted); }
+/* ВЛАСНОЇ ТАБЛИЦІ В ДЕРЕВА БІЛЬШЕ НЕМА — отже нема ні її скролера, ні
+   липкої шапки, ні липкої першої комірки, ні рядка-заповнювача під
+   підсумок. Усе це тепер робить таблиця кабінетів (.cab-scroll,
+   .cab-tbl, .cab-node) одним набором правил на обидва рівні. */
 /* Трикутник малюємо рамкою, а не символом: «▸» є не в кожному шрифті, і
    там, де його немає, у назві зʼявляється порожній прямокутник. */
 .cd-twist {
@@ -3764,18 +3794,9 @@ body[data-route="domains"] #dm-detail {
 
    Перша комірка липка й має власне тло — без окремого правила смуга
    обривалась би на ній, і саме там, де читають назви. */
-/* Обидві смуги задані ЯВНО й непрозоро. Прозорий відтінок тут не
-   годиться: перша комірка липка, і крізь неї було б видно, як під нею
-   їде вміст, коли таблицю гортають убік. */
-.cd-r td, .cd-r td:first-child { background: var(--surface); }
-.cd-r.is-band td, .cd-r.is-band td:first-child { background: var(--cd-band); }
-/* Наведення бере середній відтінок: він світліший за звичайний рядок і
-   темніший за смугу, тож курсор видно в обох — а не лише в одній. */
-.cd-tbl tr.cd-r:hover td,
-.cd-tbl tr.cd-r:hover td:first-child { background: var(--surface-2); }
-/* Вибраний рядок лишається впізнаваним у будь-якій смузі: смуга
-   акценту ліворуч сильніша за різницю тла. */
-.cd-r.is-mk td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+/* Самі смуги задані там, де тепер живуть рядки дерева — на .cab-node
+   поруч із рештою правил таблиці кабінетів. Двох місць на один тон
+   бути не має: вони розійдуться рівно тоді, коли його зміниш. */
 /* Чому немає ока. Тоном як «not running» — це те саме: те, що варто
    знати, не шукаючи, але не тривога. */
 .cd-nodom { color: var(--text-muted); cursor: help; border-bottom: 1px dotted var(--border-2); }
@@ -3809,44 +3830,16 @@ body[data-route="domains"] #dm-detail {
 .cd-bud:hover { border-bottom-color: var(--text-muted); }
 .cd-bud:focus-visible { outline: 2px solid var(--text-muted); outline-offset: 2px; }
 
-/* ПІДСУМОК — липкий до низу таблиці, як шапка до верху. Таблиця
-   скролиться всередині себе, і рядок, який поїхав угору разом із
-   вмістом, не відповідає на питання «а скільки всього» саме тоді, коли
-   його й ставлять — гортаючи довгий список.
-
-   z-index на 1 менший за шапку: на стику виграє шапка, бо назви
-   стовпчиків потрібні, щоб прочитати сам підсумок. */
-.cd-tot td {
-  position: sticky; bottom: 0; z-index: 1;
-  background: var(--surface-2);
-  border-top: 1px solid var(--border-2);
-  font-weight: 900; color: var(--text-main);
-  padding: 7px 8px;
-}
-.cd-tot td:first-child {
-  font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--text-muted);
-}
-/* Прочерки в підсумку тлумлені так само, як у рядках: «немає» не має
-   важити більше за число поруч. */
-.cd-tot .cd-na { font-weight: 700; }
 
 /* МУЛЬТИВИБІР. Галочка живе в комірці назви разом із трикутником, тому
    тримаємо її вузькою і притискаємо до тексту: власного стовпчика на
    неї немає, а зайві пікселі тут з'їдають ширину назви.
 
-   Відступ у дереві (.cd-d1/.cd-d2) зсуває галочку разом із назвою — це
-   навмисно: так видно, до якого рівня належить вибраний рядок. */
+   Відступ за рівнем зсуває галочку разом із назвою — це навмисно: так
+   видно, до якого рівня належить вибраний рядок. */
 .cd-mk {
   width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
   accent-color: var(--accent); cursor: pointer; flex: 0 0 auto;
-}
-/* Вибраний рядок підсвічуємо смугою зліва, а не фоном: фон уже зайнятий
-   під :hover, і два фони поспіль читаються як один. */
-.cd-r.is-mk td { background: var(--surface-2); }
-.cd-r.is-mk td:first-child {
-  background: var(--surface-2);
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 /* Смуга дії. Стоїть між шапкою й таблицею, а не над карткою: дія
@@ -4997,20 +4990,10 @@ input.ui-in[type="range"] { padding: 0; }
      зі своєю прокруткою, і другий скролер навколо нього заважав би. */
   .cab-scroll { overflow-x: auto; }
 
-  /* Назва кампанії. Головна вада на телефоні: 340px стелі з'їдали
-     майже весь екран, і поруч із нею не лишалось місця під жодну
-     цифру. 44vw лишає більшу половину ширини числам. */
-  .cd-name { max-width: 44vw; }
   /* Відступи дерева вдвічі менші: на телефоні кожні десять пікселів
      ліворуч — це десять пікселів, яких бракує назві. */
-  .cd-d1 .cd-name { padding-left: 12px; }
-  .cd-d2 .cd-name { padding-left: 24px; }
-  .cd-tbl td, .cd-tbl th { padding: 6px 6px; }
-  /* Стовпчиків п'ятнадцять, і на вузькому екрані вони й так тісні:
-     менша стеля робить прокрутку коротшою, не з'їдаючи читабельність. */
-  .cd-tbl { min-width: 1000px; }
-  /* Висоти даємо більше: горизонталі на телефоні бракує, вертикалі — ні. */
-  .cd-wrap { height: min(calc(72vh - 20px), 620px); }
+  .cab-node.cd-d1 .cab-nd-in { padding-left: 12px; }
+  .cab-node.cd-d2 .cab-nd-in { padding-left: 24px; }
 
   /* Док не влазить у ряд — гортаємо його, а не обрізаємо кнопки.
      Обрізана кнопка виглядає як кнопка, якої немає. */
@@ -5228,7 +5211,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 14.10 22:48</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 07:35</div>
     </div>
   </aside>
 
@@ -21740,7 +21723,29 @@ const CAB_COLS = [
     get: c => (c.x.deps > 0 ? c.x.spend / c.x.deps : null),
     cell: v => v == null ? null : cabMoney(v) },
   { key: 'age', label: 'Days', ta: 'r', tip: 'Days since the first spend we know of',
-    get: c => c.age }
+    get: c => c.age },
+  /* ── КОЛОНКИ РІВНЯ КАМПАНІЇ ──
+     Цих чисел у кабінета немає: Facebook рахує їх на оголошеннях, і
+     зводити їх до кабінета означало б скласти різні цілі в одне число.
+     Тому в рядку кабінета вони порожні, а заповнюються у вузлах
+     дерева. Разом із деревом вони й переїхали сюди з його власної
+     таблиці — інакше результати, ліди й реєстрації просто зникли б з
+     екрана. Вимкнені за замовчуванням. */
+  { key: 'result', label: 'Result', ta: 'r', node: 1,
+    tip: 'What the ad set optimizes for \u2014 campaign level', get: () => null },
+  { key: 'cpr', label: 'Cost / result', ta: 'r', node: 1,
+    tip: 'Spend \u00f7 results \u2014 campaign level', get: () => null },
+  { key: 'cpm', label: 'CPM', ta: 'r', node: 1,
+    tip: 'Cost per 1000 impressions \u2014 campaign level', get: () => null },
+  { key: 'leads', label: 'Lead', ta: 'r', node: 1,
+    tip: 'Leads \u2014 campaign level', get: () => null },
+  { key: 'cpl', label: 'Cost / lead', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+  { key: 'regs', label: 'Reg', ta: 'r', node: 1,
+    tip: 'Completed registrations \u2014 campaign level', get: () => null },
+  { key: 'cpreg', label: 'Cost / reg', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+  { key: 'inst', label: 'Install', ta: 'r', node: 1,
+    tip: 'Mobile app installs \u2014 campaign level', get: () => null },
+  { key: 'cpi', label: 'Cost / install', ta: 'r', node: 1, tip: 'Campaign level', get: () => null }
   /* КАРТКА, BM, ТАЙМЗОНА Й ОСТАННІЙ СПЕНД ТУТ НЕ ЖИВУТЬ.
      Усе це вже є в панелі кабінета, яку відкриває кнопка дій, і там
      воно стоїть поруч із тим, що пояснює: валютою, станом Facebook,
@@ -21761,40 +21766,101 @@ const cabColOn = k => !!cabColsOn()[k];
    бачити. Чого в ньому немає, те йде слідом у своєму природному
    порядку: нова колонка, додана в код, з'являється в кінці, а не
    зникає тому, що її не було в збереженому списку. */
+/* ІНСТАЛИ ЗʼЯВЛЯЮТЬСЯ САМІ. Постійна колонка на PWA-кабінеті була б
+   порожньою в кожному рядку, а вмикати її руками щоразу, відкриваючи
+   APP-кабінет, означає побачити інстали тільки тоді, коли вже знаєш,
+   що вони там є. Тому: відкрите дерево, у знімку є хоч один інстал —
+   колонка й ціна інсталу стоять. Явне «вимкнути» сильніше за це
+   правило: вимкнув — отже не хоче бачити.
+
+   Питаємо СИРІ рядки знімка, а не складене дерево: шапку малюють
+   раніше за рядки, і прапорець, виставлений під time малювання дерева,
+   спізнився б рівно на одну перемальовку — на ту, в якій колонка й
+   мала зʼявитись. */
+function cabColAuto(k) {
+  if (!cabTreeId || (k !== 'inst' && k !== 'cpi')) return false;
+  if (cabView.cols && cabView.cols[k] === 0) return false;
+  return typeof cdHasInstalls === 'function' && cdHasInstalls();
+}
+
 function cabColsShown() {
   const order = Array.isArray(cabView.order) ? cabView.order : [];
-  const on = CAB_COLS.filter(col => cabColOn(col.key));
+  const on = CAB_COLS.filter(col => cabColOn(col.key) || cabColAuto(col.key));
   const rank = k => { const i = order.indexOf(k); return i < 0 ? 1e6 + CAB_COLS.findIndex(c => c.key === k) : i; };
   return on.sort((a, b) => rank(a.key) - rank(b.key));
 }
 
-/* Пересунути колонку на крок. Стрілками, а не перетягуванням: список
-   живе в плаваючому вікні, і тягнути в ньому мишею по кілька пікселів
-   — найшвидший спосіб кинути колонку не туди. */
-async function cabColMove(k, dir) {
-  const shown = cabColsShown().map(c => c.key);
-  const i = shown.indexOf(k);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= shown.length) return;
-  shown.splice(j, 0, ...shown.splice(i, 1));
-  const was = cabView.order;
-  /* Зберігаємо ВСІ ключі, не лише ввімкнені: інакше вимкнена колонка,
-     яку колись посунули, поверталася б у кінець списку. */
-  const rest = CAB_COLS.map(c => c.key).filter(x => !shown.includes(x));
-  cabView.order = [...shown, ...rest];
-  cabRender();
-  cabColsMenu(true);
-  if (!await cabViewSave()) { cabView.order = was; cabRender(); cabColsMenu(true); }
-}
-
+/* Увімкнути чи вимкнути колонку. Список лишається відкритим: вмикають
+   їх зазвичай по кілька, і закриватись після кожної галочки означало б
+   відкривати його знову й знову. */
 async function cabColToggle(k) {
   const now = { ...cabColsOn() };
   now[k] = now[k] ? 0 : 1;
   const was = cabView.cols;
   cabView.cols = now;
   cabRender();
-  cabColsMenu(true);          // лишаємо список відкритим: вмикають по кілька
-  if (!await cabViewSave()) { cabView.cols = was; cabRender(); }
+  cabColsMenu(true);
+  if (!await cabViewSave()) { cabView.cols = was; cabRender(); cabColsMenu(true); }
+}
+
+/* ПЕРЕТЯГУВАННЯ КОЛОНОК.
+
+   Стрілки «на крок» тут уже були, і вони чесно працювали — але щоб
+   пересунути колонку з кінця на початок, доводилось тицяти вісім разів
+   і щоразу перевіряти, куди вона доїхала. Беремо й кладемо: один рух,
+   і видно, куди кладеш.
+
+   Порядок зберігаємо ПОВНИМ списком ключів, не лише ввімкненими:
+   інакше вимкнена колонка, яку колись посунули, поверталась би в
+   кінець, щойно її ввімкнуть. */
+let cabDragCol = '';
+
+function cabColDragStart(ev, k) {
+  cabDragCol = k;
+  try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', k); } catch (e) {}
+}
+function cabColDragOver(ev, k) {
+  /* preventDefault — єдиний спосіб сказати браузеру, що сюди можна
+     покласти; без нього drop не станеться взагалі. */
+  ev.preventDefault();
+  try { ev.dataTransfer.dropEffect = 'move'; } catch (e) {}
+  const el = ev.currentTarget;
+  if (el && !el.classList.contains('is-drop')) {
+    const box = document.getElementById('cab-pop');
+    if (box) [...box.querySelectorAll('.is-drop')].forEach(x => x.classList.remove('is-drop'));
+    el.classList.add('is-drop');
+  }
+}
+function cabColDragEnd() {
+  cabDragCol = '';
+  const box = document.getElementById('cab-pop');
+  if (box) [...box.querySelectorAll('.is-drop')].forEach(x => x.classList.remove('is-drop'));
+}
+
+async function cabColDrop(ev, to) {
+  ev.preventDefault();
+  let from = cabDragCol;
+  try { from = from || ev.dataTransfer.getData('text/plain'); } catch (e) {}
+  cabColDragEnd();
+  if (!from || from === to) return;
+  await cabColPlace(from, to);
+}
+
+/* Покласти колонку from НА МІСЦЕ to. Порядок рахуємо від повного
+   списку — спершу ввімкнені в їхньому порядку, далі решта, — щоб
+   результат не залежав від того, що саме зараз показано. */
+async function cabColPlace(from, to) {
+  const keys = cabColsShown().map(c => c.key);
+  CAB_COLS.forEach(c => { if (!keys.includes(c.key)) keys.push(c.key); });
+  const i = keys.indexOf(from), j = keys.indexOf(to);
+  if (i < 0 || j < 0 || i === j) return;
+  keys.splice(i, 1);
+  keys.splice(keys.indexOf(to) + (j > i ? 1 : 0), 0, from);
+  const was = cabView.order;
+  cabView.order = keys;
+  cabRender();
+  cabColsMenu(true);
+  if (!await cabViewSave()) { cabView.order = was; cabRender(); cabColsMenu(true); }
 }
 
 /* Список колонок. Малюємо в той самий вузол, що й меню дій: два
@@ -21808,18 +21874,20 @@ function cabColsMenu(keep) {
      таблиці, і саме його переставляють. Вимкнені нижче, окремо. */
   const on = cabColsShown();
   const off = CAB_COLS.filter(col => !cabColOn(col.key));
-  const tick = col => `<button type="button" class="cab-pop-i ${cabColOn(col.key) ? 'is-on' : ''}"
+  const row = col => `<div class="cab-pop-row" draggable="true"
+      ondragstart="cabColDragStart(event, '${col.key}')"
+      ondragover="cabColDragOver(event, '${col.key}')"
+      ondrop="cabColDrop(event, '${col.key}')"
+      ondragend="cabColDragEnd()"
+      title="Drag to move it left or right in the table">
+      <span class="cab-pop-grip" aria-hidden="true">≡</span>
+      <button type="button" class="cab-pop-i ${cabColOn(col.key) ? 'is-on' : ''}"
         onclick="cabColToggle('${col.key}')" title="${cabEsc(col.tip || '')}">
-        <span class="cab-pop-tick">${cabColOn(col.key) ? '✓' : ''}</span>${cabEsc(col.label)}</button>`;
-  const row = (col, i, n) => `<div class="cab-pop-row">${tick(col)}${
-      cabColOn(col.key) ? `<span class="cab-pop-mv">
-        <button type="button" onclick="cabColMove('${col.key}', -1)" ${i === 0 ? 'disabled' : ''}
-          title="Move left">↑</button>
-        <button type="button" onclick="cabColMove('${col.key}', 1)" ${i === n - 1 ? 'disabled' : ''}
-          title="Move right">↓</button></span>` : ''}</div>`;
-  box.innerHTML = `<p class="cab-pop-h">Columns · order</p>`
-    + on.map((col, i) => row(col, i, on.length)).join('')
-    + (off.length ? `<p class="cab-pop-h">Off</p>` + off.map(col => row(col, -1, 0)).join('') : '');
+        <span class="cab-pop-tick">${cabColOn(col.key) ? '✓' : ''}</span>${cabEsc(col.label)}</button>
+    </div>`;
+  box.innerHTML = `<p class="cab-pop-h">Columns · drag to reorder</p>`
+    + on.map(row).join('')
+    + (off.length ? `<p class="cab-pop-h">Off</p>` + off.map(row).join('') : '');
   const btn = document.getElementById('cab-cols-btn');
   cabPopAt(btn, box);
 }
@@ -23190,10 +23258,7 @@ function cabRender() {
   list.innerHTML = cabSection(shown);
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
-  /* Вузол дерева щойно створено заново — порожнім. Якщо рядок лишався
-     розгорнутим, малюємо його ще раз; дані вже в пам'яті, по базу
-     ніхто не йде. */
-  cabTreeRepaint();
+  cabTreeRepaint(shown);
 }
 
 /* Таблиця. Набір колонок один — секцій більше немає, бо ділити стало
@@ -23243,15 +23308,16 @@ function cabSection(items) {
 
   const cols = cabColsShown();
   // Скільки клітинок у рядку: стрілка, шпилька, крапка, кабінет,
-  // статус, ліміт, період, графік, дії — і стільки ж, скільки
-  // увімкнено колонок.
-  const COLS = 9 + cols.length;
+  // світчер, статус, ліміт, період, графік, дії — і стільки ж,
+  // скільки увімкнено колонок.
+  const COLS = 10 + cols.length;
 
   const head = `<thead><tr>
       <th class="cab-x"></th>
       <th class="cab-x" title="Pinned cabinets stay on top of the list"></th>
       <th class="cab-x"></th>
       ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
+      <th class="cab-x" title="Switch campaigns, ad sets and ads on and off"></th>
       ${th('state', 'Status')}
       ${th('limit', 'Limit', 'ta-r', 'Facebook spending limit for the account, and how much of it is left')}
       ${th('today', cabEsc(cabRangeLabel()), 'ta-r')}
@@ -23365,6 +23431,7 @@ function cabRowHtml(c, COLS) {
       <div><span class="cab-id" onclick="cabCopyId(event, this)" data-v="${cabEsc(c.id)}"
         title="Click to copy">${cabEsc(c.id)}</span></div>
     </td>
+    <td class="cab-x"></td>
     <td><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
     <td class="ta-r cab-num ${lim.tight ? 'cab-lim-tight' : ''}" title="${cabEsc(lim.tip)}">${lim.text}</td>
     <td class="ta-r cab-num cab-today">${today}</td>
@@ -23378,13 +23445,109 @@ function cabRowHtml(c, COLS) {
     </td>
   </tr>`;
 
-  /* Дерево живе ПІД рядком, у тому самому <tbody>. Вузол #cab-inside
-     один на всю сторінку — саме його шукає cabdrill.js, тому
-     переносимо сюди і його, і смугу над ним, а не копіюємо. */
-  return row + (open ? `<tr class="cab-treerow"><td colspan="${COLS}">
-      <div id="cab-inside-bar" class="hidden"></div>
-      <div id="cab-inside" class="hidden"></div>
-    </td></tr>` : '');
+  return row + (open ? cabTreeRows(COLS) : '');
+}
+
+
+/* ═══════════ ДЕРЕВО РЯДКАМИ САМОЇ ТАБЛИЦІ ═══════════
+
+   Доти воно було вкладеною таблицею з власною шапкою — і шапок ставало
+   дві, одна під одною, причому жодна колонка не збігалася з тією, що
+   над нею. Тепер кампанії, групи й оголошення — це звичайні рядки
+   таблиці кабінетів, у тих самих стовпцях.
+
+   ЩО В ЯКИЙ СТОВПЕЦЬ ЛЯГАЄ. Назва кампанії йде в стовпець кабінета,
+   статус — у Status, бюджет — у Limit (це і є ліміт на рівні
+   кампанії), спенд — у стовпець періоду. Решта стовпців кабінета
+   беруть те, що в кампанії справді є: кліки, покази, CTR, CPC, кількість
+   оголошень. Чого в кампанії немає — лишається порожнім, а не
+   вигадується: прочерк чесніший за нуль.
+
+   СВІТЧЕР — ВЛАСНИЙ СТОВПЧИК, одразу перед статусом. Спершу він стояв
+   у кінці клітинки назви, і виходило криво: назви різної довжини, тож
+   і перемикачі стояли на різній відстані від краю — тягнутись до них
+   доводилось щоразу в інше місце. У стовпчику вони стоять один під
+   одним, а поруч читається стан, який вони й міняють. */
+function cabTreeRows(COLS) {
+  const v = (typeof cdView === 'function') ? cdView() : null;
+  if (!v) return `<tr class="cab-treerow"><td colspan="${COLS}">
+    <p class="cd-empty">Loading…</p></td></tr>`;
+  if (v.msg) return `<tr class="cab-treerow"><td colspan="${COLS}">
+    <p class="cd-empty">${cabEsc(v.msg)}</p></td></tr>`;
+
+  const cols = cabColsShown();
+  const bar = (typeof cdHeadBits === 'function' ? cdHeadBits() : '') + (v.bar || '');
+  const head = bar ? `<tr class="cab-treebar"><td colspan="${COLS}">${bar}</td></tr>` : '';
+  /* ПІДСУМКУ ТУТ НЕМАЄ. «Разом по кабінету» стоїть у самому рядку
+     кабінета, прямо над деревом, — і повторювати його ще раз унизу
+     означало б показати те саме число двічі, та ще й іншими словами. */
+  return head + v.list.map(x => cabNodeRow(x.n, x.depth, x.band, cols)).join('');
+}
+
+/* Що з вузла йде в який стовпець кабінета. Ключ той самий, що й у
+   CAB_COLS, — отже вмикання колонки в кабінетах одразу вмикає її і в
+   дереві, і підписи ніколи не розійдуться зі вмістом. */
+function cabNodeCell(f, key) {
+  switch (key) {
+    /* Лічильник у вузла один — скільки в ньому оголошень, — і він
+       належить стовпцю Ads. Поставити те саме число ще й у Camp та
+       Sets означало б сказати, що в кампанії три кампанії. */
+    case 'ads': return f.ads;
+    case 'clicks': return f.clicks;
+    case 'impr':   return f.imps;
+    case 'ctr':    return f.ctr;
+    case 'cpc':    return f.cpc;
+    case 'budget': return f.budget;
+    case 'spend':  return f.spend;
+    case 'result': return f.result;
+    case 'cpr':    return f.per;
+    case 'cpm':    return f.cpm;
+    case 'leads':  return f.leads;
+    case 'cpl':    return f.perLead;
+    case 'regs':   return f.regs;
+    case 'cpreg':  return f.perReg;
+    case 'inst':   return f.installs;
+    case 'cpi':    return f.perInstall;
+    /* Балансу, депозитів, CPA, віку й 14-денного графіка в кампанії
+       немає — і вигадувати їх з кабінета не можна: це числа різних
+       рівнів. */
+    default: return '';
+  }
+}
+
+/* Підказки, які пояснюють число. Без них «3 ліди» не каже, що саме
+   порахували, — а рахувати ліди можна трьома різними способами, і
+   різниця між ними це різниця в рішенні. */
+function cabNodeTip(f, key) {
+  if (key === 'result' || key === 'cpr') return f.goalTip || '';
+  if (key === 'leads') return f.leadTip || '';
+  return '';
+}
+
+function cabNodeRow(n, depth, band, cols) {
+  const f = cdFields(n, depth);
+  const key = String(f.key || '').replace(/'/g, '&#39;');
+  /* Розкриває вся клітинка назви, а не сам трикутник: цілитись у
+     чотирнадцять пікселів на тісному рядку — заняття, а не клік. */
+  const hit = f.kids ? ` onclick="cdToggle('${cabEsc(key)}')"` : '';
+  return `<tr class="cab-node cd-r cd-d${depth}${band ? ' is-band' : ''}${
+      f.marked ? ' is-mk' : ''}">
+    <td class="cab-x"></td>
+    <td class="cab-x"></td>
+    <td class="cab-x"></td>
+    <td class="cab-nd${f.kids ? ' cd-can' : ''}"${hit}>
+      <span class="cab-nd-in">${f.name}</span></td>
+    <td class="cab-nd-sw">${f.sw || ''}</td>
+    <td class="cab-nd-st">${f.status}</td>
+    <td class="ta-r cab-num">${f.budget}</td>
+    <td class="ta-r cab-num cab-today">${f.spend}</td>
+    <td class="ta-c"></td>
+    ${cols.map(col => { const tip = cabNodeTip(f, col.key);
+      return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${
+        tip ? ' has-tip' : ''}"${tip ? ` title="${cabEsc(tip)}"` : ''}>${
+        cabNodeCell(f, col.key) || '<span class="cab-na">—</span>'}</td>`; }).join('')}
+    <td class="ta-r"></td>
+  </tr>`;
 }
 
 /* ЛІМІТ КАБІНЕТА.
@@ -23460,30 +23623,18 @@ async function cabToggleTree(ev, idEnc) {
   if (typeof cdIsOpen === 'function' && !cdIsOpen(id) && typeof cdHide === 'function') cdHide();
   if (typeof cdToggleOpen === 'function' && (typeof cdIsOpen !== 'function' || !cdIsOpen(id)))
     await cdToggleOpen(encodeURIComponent(id));
-  else if (typeof cdRepaint === 'function') { cdBar(id); cdRepaint(); }
+  else cabRender();
 }
 
-/* Перемальовка таблиці створює вузол дерева заново — порожнім. Якщо
-   рядок лишався розгорнутим, дерево треба намалювати ще раз; дані для
-   цього вже в пам'яті, по базу ніхто не йде. */
-function cabTreeRepaint() {
+/* Рядки дерева малюються разом із таблицею, тож окремої перемальовки
+   більше не треба. Лишилось одне: якщо розгорнутого кабінета на екрані
+   вже немає — фільтр, пошук, інша сторінка — зняти позначку, інакше
+   дерево лишилось би відкритим для рядка, якого не видно. */
+function cabTreeRepaint(shown) {
   if (!cabTreeId) return;
-  /* Рядка з цим кабінетом на екрані немає — отже й вузла дерева немає.
-     Знімаємо позначку, інакше наступна перемальовка знову шукала б
-     місце, якого не існує. */
-  if (!document.getElementById('cab-inside')) {
-    cabTreeId = '';
-    if (typeof cdHide === 'function') cdHide();
-    return;
-  }
-  if (typeof cdBar === 'function') cdBar(cabTreeId);
-  if (typeof cdRepaint === 'function') cdRepaint();
-  /* Вузол народжується схованим: доки дерево не завантажилось, порожня
-     рамка на пів екрана виглядала б як поломка. Показуємо його рівно
-     тоді, коли всередині справді є що показати. */
-  const box = document.getElementById('cab-inside');
-  if (box && typeof cdIsOpen === 'function' && cdIsOpen(cabTreeId))
-    box.classList.remove('hidden');
+  if (shown && shown.some(c => String(c.id) === String(cabTreeId))) return;
+  cabTreeId = '';
+  if (typeof cdHide === 'function') cdHide();
 }
 
 /* «3 зі 180» — чесне число, яке нічого не пояснює. Цей рядок і є
@@ -26532,10 +26683,8 @@ const CD_REG = 'complete_registration';
    — та сама вада, що й була. */
 const CD_INST = 'mobile_app_install';
 
-/* Чи є в цьому дереві взагалі інстали. Вирішується РАЗ на перемальовку
-   і з ВЕРХНЬОГО рівня: він уже містить суму всіх дітей, тож обходити
-   дерево вдруге не треба. */
-let cdHasInst = false;
+/* Чи є в знімку інстали — питають уже в cdHasInstalls, і прямо в
+   сирих рядків: відповідь потрібна ДО того, як складено дерево. */
 
 /* Як називати одиницю результату в комірці. Коротко: місця там на
    одне слово, а довге зіпхне число за край. */
@@ -26591,12 +26740,12 @@ const CD_STATE = [
     why: 'Its ad set is switched off — the switch is one level up' },
   { k: 'ARCHIVED',             s: 'off',  t: 'Archived',
     why: 'Archived in Facebook' },
-  /* «On», а не «Active». Active читалось як назва стану у Facebook —
-     тобто як щось поруч із «Rejected» і «In review», — і людина не
-     могла зрозуміти, чи це стан, чи просто «ввімкнено». А це саме
-     «ввімкнено»: те саме, що показує перемикач у кінці рядка, тільки
-     словом. Решта підписів лишається станами, бо станами й є. */
-  { k: 'ACTIVE',               s: 'ok',   t: 'On',
+  /* «Active» — як у Facebook. Доти тут стояло «On», щоб не плутати
+     стан із перемикачем; плутати більше нема з чим: перемикач виїхав
+     у власний стовпчик і стоїть окремо від слова. А в Ads Manager цей
+     стан називається Active, і два різні слова на один стан — зайвий
+     переклад у голові. */
+  { k: 'ACTIVE',               s: 'ok',   t: 'Active',
     why: 'Switched on and running' }
 ];
 const cdState = (k) => CD_STATE.find(x => x.k === String(k || '').toUpperCase());
@@ -26868,10 +27017,8 @@ window.cdHide = function () {
   cdEyed = new Set();
   /* Смугу з кнопкою не чіпаємо: кабінет вибраний, просто нутро
      закрите. Прибирає її той, хто зняв вибір, — cdBar(''). */
-  const box = document.getElementById('cab-inside');
-  /* Вміст прибираємо, а не лише ховаємо: лишений у розмітці, він
-     наступного разу встигає блимнути числами минулого кабінета. */
-  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+  /* Прибирати вміст більше нема де: рядки дерева зникають разом із
+     перемальовкою таблиці, щойно cabTreeId спорожнів. */
   cdBtnSync();
 };
 
@@ -26886,11 +27033,12 @@ window.cdOpen = function (account) {
 };
 
 async function cdLoad(account) {
-  const box = document.getElementById('cab-inside');
-  if (!box) return;
+  /* Власного вузла в дерева більше немає — воно малюється рядками
+     таблиці кабінетів. Доти тут стояла перевірка «є куди малювати?», і
+     після переїзду вона означала рівно одне: нічого не вантажити
+     взагалі. */
   const id = String(account || '').trim();
   if (!id) return cdHide();
-  box.classList.remove('hidden');
   if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set(); }
   cdAcc = id;
   cdBtnSync();
@@ -27194,122 +27342,130 @@ function cdAds() {
   }).sort((a, b) => b.spend - a.spend);
 }
 
-function cdPaint() {
-  const box = document.getElementById('cab-inside');
-  if (!box) return;
 
-  /* Заголовка тут немає навмисно. «Inside <номер>» повторював номер,
-     який стоїть рядком вище, а «Today's numbers from the last sync»
-     пояснював те, що видно з самої таблиці.
+/* ═══════════ ДЕРЕВО ВІДДАЄ ДАНІ, А МАЛЮЄ ЇХ ТАБЛИЦЯ КАБІНЕТІВ ═══════════
 
-     Стрічка стану й вкладки теж переїхали — у смугу з кнопкою (cdBar).
-     Вони про те саме, що й кнопка: що саме показано. Тримати їх
-     окремим рядком означало б платити висотою двічі за одну думку. */
-  const head = '';
-  cdBar(cdFor);
+   Доти воно малювало власну таблицю з власною шапкою: «Campaign / ad
+   set / ad · Status · Budget · Spend · …». Шапок ставало дві, одна під
+   одною, і жодна колонка не збігалася з тією, що над нею, — числа
+   кампанії стояли не під тими підписами, під якими стоять числа
+   кабінета.
 
-  if (cdErr === 'no-table') {
-    box.innerHTML = head + '<p class="cd-empty">The snapshot table does not exist yet — run '
-      + 'block 1 of FB_RULES.sql, then press Sync now.</p>';
-    return;
-  }
-  if (cdErr) { box.innerHTML = head + '<p class="cd-empty">Could not read: ' + cdEsc(cdErr) + '</p>'; return; }
-  if (!cdRows.length) {
-    box.innerHTML = head + '<p class="cd-empty">Nothing active in the snapshot. '
-      + 'Either this cabinet is not running anything, or the sync has not filled it yet — press Sync now.</p>';
-    return;
-  }
-
-  /* Фільтр сховав усе. Порожня таблиця без пояснення читається як
-     «нічого не крутиться» або як поломка — а насправді це ми самі
-     щойно попросили сховати. */
+   Тепер дерево віддає СПИСОК ВУЗЛІВ і готові клітинки до них, а рядки
+   складає cabinets.js — тими самими стовпцями, що й кабінети. Логіка
+   (що показати, що сховати, що порахувати) лишається тут: вона
+   нетривіальна, і другої її копії бути не має. */
+window.cdView = function () {
+  if (cdErr === 'no-table') return { msg: 'The snapshot table does not exist yet — run '
+    + 'block 1 of FB_RULES.sql, then press Sync now.' };
+  if (cdErr) return { msg: 'Could not read: ' + cdEsc(cdErr) };
+  if (!cdRows.length) return { msg: 'Nothing active in the snapshot. '
+    + 'Either this cabinet is not running anything, or the sync has not filled it yet '
+    + '— press Sync now.' };
   if (cdOnly && !cdShown().length) {
-    /* Причину називаємо словами: «нічого не крутиться» і «все
-       відхилено» — це дві різні новини, і друга означає, що треба йти
-       щось робити. Поки тут стояло одне «switched off», друга читалась
-       як перша. */
     const h = cdHidBits();
     const words = h ? cdHidWords(h) : '';
-    box.innerHTML = head + '<p class="cd-empty">Nothing is live here right now'
-      + (words ? ' \u2014 ' + words : '') + '. '
-      + 'Untick “Only live” to see it all.</p>';
-    return;
+    return { msg: 'Nothing is live here right now' + (words ? ' — ' + words : '')
+      + '. Untick “Only live” to see it all.' };
   }
 
-  const body = [];
-  /* Верхній рівень тримаємо окремо: з нього ж рахується підсумок. У
-     дереві це кампанії, у списку — оголошення; нижні рівні вже складені
-     в кампанії, і брати обидва означало б порахувати все двічі. */
   const top = cdFlat ? cdAds() : cdTree();
-  /* Стовпчик інсталів ставимо САМ — і тільки коли вони є. Порожня
-     колонка на кожному PWA-кабінеті це шум, а відсутня на APP-кабінеті
-     — та сама вада, через яку інсталів не було видно ніде. */
-  cdHasInst = top.some(n => (n.installs || 0) > 0);
+  const list = [];
   /* Смуга чергується по КАМПАНІЯХ, а не по рядках: рядків у кампанії
      скільки завгодно, і чергування по них розрізало б саме ту групу,
-     яку ми й намагаємось показати цілою.
-
-     У списку оголошень кампаній немає, тож там чергуємо по рядках —
-     це звичайна зебра, і вона теж допомагає не з'їхати очима. */
+     яку ми й намагаємось показати цілою. */
   let band = 0;
-  if (cdFlat) top.forEach((a, k) => body.push(cdRow(a, 0, k % 2)));
+  if (cdFlat) top.forEach((a, k) => list.push({ n: a, depth: 0, band: k % 2 }));
   else top.forEach(c => {
     const b = band++ % 2;
-    body.push(cdRow(c, 0, b));
+    list.push({ n: c, depth: 0, band: b });
     if (!cdOpenIds.has('campaign:' + c.id)) return;
     c.kids.forEach(s => {
-      body.push(cdRow(s, 1, b));
+      list.push({ n: s, depth: 1, band: b });
       if (!cdOpenIds.has('ad set:' + s.id)) return;
-      s.kids.forEach(a => body.push(cdRow(a, 2, b)));
+      s.kids.forEach(a => list.push({ n: a, depth: 2, band: b }));
     });
   });
+  return { list, bar: cdMarkBar() };
+};
 
-  box.innerHTML = head + cdMarkBar() + `<div class="cd-wrap custom-scrollbar">
-    <table class="cd-tbl">
-      <thead><tr>
-        <th>${cdFlat ? 'Ad' : 'Campaign / ad set / ad'}</th>
-        <th title="Switched on is not the same as running">Status</th>
-        <th class="ta-r" title="Campaign budget (CBO) or ad set budget (ABO) — Facebook keeps it on one level, not both">Budget</th>
-        <th class="ta-r">Spend</th>
-        <th class="ta-r" title="What the ad set optimizes for">Result</th>
-        <th class="ta-r">Cost per result</th>
-        <th class="ta-r" title="Cost per 1000 impressions">CPM</th>
-        <th class="ta-r" title="Link clicks ÷ impressions, in percent — not Facebook’s “CTR (all)”, which also counts likes and clicks on the page. This is the number the rules measure.">Link CTR</th>
-        <th class="ta-r">Link clicks</th>
-        <th class="ta-r" title="Cost per link click">CPC</th>
-        <th class="ta-r">Lead</th>
-        <th class="ta-r">Cost per lead</th>
-        <th class="ta-r" title="Completed registrations">Reg</th>
-        <th class="ta-r">Cost per reg</th>
-        ${cdHasInst ? `<th class="ta-r" title="Mobile app installs. This column appears on its own when there are any \u2014 on a cabinet without an app it would be an empty column on every row.">Install</th>
-        <th class="ta-r">Cost per install</th>` : ''}
-        <th></th>
-      </tr></thead>
-      <tbody>${body.join('')}${cdFill()}</tbody>
-      ${cdTotalRow(top)}
-    </table></div>`;
+/* ПІДСУМКОВОГО РЯДКА НЕМАЄ. Разом по кабінету стоїть у самому рядку
+   кабінета — над деревом, у тих самих стовпцях. Другий підсумок унизу
+   показував би те саме число вдруге. */
+
+/* Готові клітинки одного вузла. Віддаємо саме HTML, а не числа: усе,
+   що тут рахується — підказки, пунктир «не знаємо», валюта, — уже
+   написане, і переписувати його в кабінетах означало б завести другу
+   версію тих самих правил. */
+window.cdFields = function (n, depth) {
+  const res = cdResultCell(n);
+  const cpm = n.imps > 0 ? cdMoney(n.spend / n.imps * 1000) : cdNone;
+  const ctr = n.imps > 0
+    ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
+  return {
+    name: cdNameCell(n, depth),
+    status: cdChips(n),
+    sw: cdSwitch(n, String(n.name || '').trim()),
+    budget: cdBudgetCell(n),
+    spend: cdMoney(n.spend),
+    result: res.text, per: res.per, goalTip: res.tip,
+    cpm, ctr,
+    clicks: String(n.clicks), cpc: cdPer(n.spend, n.clicks),
+    imps: String(n.imps),
+    leads: String(n.leads), perLead: cdPer(n.spend, n.leads), leadTip: cdLeadTip(n),
+    regs: String(n.regs), perReg: cdPer(n.spend, n.regs),
+    installs: String(n.installs || 0), perInstall: cdPer(n.spend, n.installs),
+    ads: n.kind === 'ad' ? '' : String(n.ads),
+    marked: cdMarked.has(String(n.id)),
+    kids: n.kids && n.kids.length > 0,
+    open: cdOpenIds.has(n.kind + ':' + n.id),
+    key: n.kind + ':' + n.id
+  };
+};
+
+/* Чи є в знімку хоч один інстал. Питаємо СИРІ рядки, а не складене
+   дерево: колонку в шапці треба вирішити раніше, ніж намальовані
+   рядки, — отже прапорець, виставлений під time їх малювання,
+   спізнився б рівно на одну перемальовку. */
+window.cdHasInstalls = function () {
+  return cdRows.some(r =>
+    (cdPick(Array.isArray(r.actions) ? r.actions : [], CD_INST) || 0) > 0);
+};
+
+/* Назва вузла: галочка вибору, трикутник, сам підпис, домен і
+   лічильник оголошень. Те саме, що стояло в першій клітинці власної
+   таблиці дерева. */
+function cdNameCell(n, depth) {
+  const key = n.kind + ':' + n.id;
+  const kids = n.kids.length > 0;
+  const open = cdOpenIds.has(key);
+  const twist = `<span class="cd-twist${kids ? (open ? ' is-on' : '') : ' cd-leaf'}"></span>`;
+  const named = String(n.name || '').trim();
+  const label = named
+    ? `<span class="cd-lbl">${cdEsc(named)}</span>`
+    : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
+  const count = n.kind === 'ad'
+    ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
+    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
+  const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
+      onclick="event.stopPropagation()"
+      onchange="cdMark('${cdEsc(n.id)}', this.checked)"
+      title="Pick this ${n.kind} to switch together with others">`;
+  return mark + twist + label + cdDom(n, key) + count;
+};
+window.cdMarkedCount = () => cdMarked.size;
+
+/* Дерево більше не має власного місця на сторінці: його рядки стоять
+   у таблиці кабінетів. Тож «перемалюй» означає рівно одне — хай
+   перемалюється таблиця. */
+function cdPaint() {
+  if (typeof cabRender === 'function') cabRender();
 }
 
-/* РЯДОК-ЗАПОВНЮВАЧ. Без нього підсумок притиснути до низу не вийде,
-   і це не примха верстки, а те, як працює position: sticky: він зсуває
-   елемент лише в межах прокрутки. Коли рядків мало й гортати нема чого,
-   зсувати теж нема чого — підсумок лишається одразу під останнім
-   рядком, а під ним зяє порожнеча до краю блока.
-
-   Тож віддаємо ту порожнечу рядку, який нічого не показує: він
-   розтягується на весь залишок висоти й штовхає підсумок униз. Коли
-   рядків багато, залишку немає, рядок стискається в нуль, і далі
-   працює вже липкість.
-
-   Тестам він не заважає: у ньому немає .cd-lbl, за яким вони й
-   впізнають рядки таблиці. */
-function cdFill() {
-  /* Ширина — за фактом, а не числом у коді: коли зʼявляється пара
-     стовпчиків інсталів, прибитий «15» лишив би останні колонки без
-     заповнювача, і підсумок поїхав би вгору саме на APP-кабінетах. */
-  return '<tr class="cd-fill" aria-hidden="true"><td colspan="'
-    + (cdHasInst ? 17 : 15) + '"></td></tr>';
-}
+/* РЯДКА-ЗАПОВНЮВАЧА ТУТ БІЛЬШЕ НЕМА. Він тримав підсумок притиснутим
+   до низу власного блока дерева — а блока більше немає: рядки стоять
+   у таблиці кабінетів, і підсумок стоїть останнім рядком серед них, бо
+   йому там і місце. Липкість із підпіркою разом і пішли. */
 
 /* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
    нулем вибраних забирає висоту й нічого не каже. */
@@ -27451,67 +27607,6 @@ function cdResultCell(n) {
   };
 }
 
-function cdTotalRow(list) {
-  if (!list || !list.length) return '';
-  const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0, result: 0,
-              hasResult: false, ads: 0, units: new Set() };
-  list.forEach(n => {
-    t.spend += n.spend; t.imps += n.imps; t.clicks += n.clicks;
-    t.leads += n.leads; t.regs += n.regs; t.installs += n.installs || 0;
-    t.ads += n.ads || 1;
-    // Підсумок складає ті самі одиниці, що й рядки, — і спотикається
-    // об ту саму кашу, якщо їх кілька. Тож і поводиться так само.
-    if (n.hasResult) { t.result += n.result; t.hasResult = true;
-                       (n.units || []).forEach(u => t.units.add(u)); }
-  });
-  const tRes = cdResultCell(t);
-
-  const cpm = t.imps > 0 ? cdMoney(t.spend / t.imps * 1000) : cdNone;
-  const ctr = t.imps > 0
-    ? (Math.round(t.clicks / t.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
-
-  return `<tfoot><tr class="cd-tot">
-    <td>Total</td>
-    <td></td>
-    <td class="ta-r cd-num">${cdBudgetText(cdTotalBudget(list))}</td>
-    <td class="ta-r cd-num cd-spend">${cdMoney(t.spend)}</td>
-    <td class="ta-r cd-num" title="${cdEsc(tRes.tip)}">${tRes.text}</td>
-    <td class="ta-r cd-num">${tRes.per}</td>
-    <td class="ta-r cd-num">${cpm}</td>
-    <td class="ta-r cd-num">${ctr}</td>
-    <td class="ta-r cd-num">${t.clicks}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.clicks)}</td>
-    <td class="ta-r cd-num">${t.leads}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.leads)}</td>
-    <td class="ta-r cd-num">${t.regs}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.regs)}</td>
-    ${cdHasInst ? `<td class="ta-r cd-num">${t.installs}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.installs)}</td>` : ''}
-    <td></td>
-  </tr></tfoot>`;
-}
-
-/* Загальний бюджет. У Facebook він стоїть або на кампанії, або на її
-   адсетах — ніколи на обох, тож беремо з кампанії, а як там порожньо,
-   складаємо її адсети. Подвійного рахунку тут бути не може.
-
-   Денний і довічний не складаємо разом: це різні величини, і сума
-   «50 на добу плюс 1200 за весь time» не означає нічого. Коли трапилось
-   і те, і те, показуємо денний — його й дивляться щодня. */
-function cdTotalBudget(list) {
-  let daily = 0, life = 0;
-  list.forEach(n => {
-    const own = n.budget;
-    if (own) { if (own.kind === 'daily') daily += own.v; else life += own.v; return; }
-    (n.kids || []).forEach(k => {
-      if (!k.budget) return;
-      if (k.budget.kind === 'daily') daily += k.budget.v; else life += k.budget.v;
-    });
-  });
-  if (daily > 0) return { v: daily, kind: 'daily' };
-  if (life > 0) return { v: life, kind: 'lifetime' };
-  return null;
-}
 
 /* Ціна — нескінченність, коли витрати є, а результату немає. Прочерк
    тут означав би «нуль», а це різні речі: саме ці рядки й вимикають
@@ -27585,8 +27680,7 @@ function cdChips(n) {
   CD_STATE.forEach(st => {
     const cnt = n.state.get(st.k) || 0;
     if (!cnt) return;
-    // Один підпис на всі стани: «2 on», «1 rejected», «3 off». Окремий
-    // випадок для ACTIVE тут колись був лише заради слова «active».
+    // Один підпис на всі стани: «2 active», «1 rejected», «3 off».
     parts.push({ s: st.s, why: st.why,
       text: ad ? st.t : cnt + ' ' + st.t.toLowerCase() });
   });
@@ -27661,7 +27755,10 @@ window.cdEye = function (key, el) {
   const on = cdEyed.has(key);
   /* Перемальовуємо ОДИН рядок, а не все дерево: cdPaint згорнув би
      прокрутку й зняв фокус, а змінився рівно один напис. */
-  const cell = el.closest('.cd-name');
+  /* Клітинка назви тепер належить таблиці кабінетів (.cab-nd) —
+     стару .cd-name лишаємо в пошуку, щоб не зламати нічого, що її ще
+     тримає. Без цього око перемикалось, а домен лишався крапками. */
+  const cell = el.closest('.cab-nd, .cd-name');
   const box = cell && cell.querySelector('.cd-dom');
   if (box) {
     const hosts = cdHostsFor(key);
@@ -27692,69 +27789,6 @@ function cdDom(n, key) {
       onclick="event.stopPropagation();cdEye('${k}', this)"
       title="${tip}" aria-label="Show the domain">${on ? CD_EYE_OFF : CD_EYE}</button>`
     + `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`;
-}
-
-function cdRow(n, depth, band) {
-  const key = n.kind + ':' + n.id;
-  const kids = n.kids.length > 0;
-  const open = cdOpenIds.has(key);
-  /* Розкриває вся назва, а не сам трикутник: цілитись у чотирнадцять
-     пікселів на рядку, де й так тісно, — заняття, а не клік. */
-  const twist = `<span class="cd-twist${kids ? (open ? ' is-on' : '') : ' cd-leaf'}"></span>`;
-  const hit = kids
-    ? ` onclick="cdToggle('${cdEsc(key).replace(/'/g, '&#39;')}')"` : '';
-
-  /* Назви немає — значить знімок старий: fb-sync привозить її разом із
-     числами. Показуємо id, але видно, що це id, а не назва: мовчки
-     підсунути номер замість назви — те саме, що показати нуль замість
-     «не знаю». */
-  const named = String(n.name || '').trim();
-  const label = named
-    ? `<span class="cd-lbl">${cdEsc(named)}</span>`
-    : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
-  const count = n.kind === 'ad'
-    ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
-    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
-
-  const res = cdResultCell(n);
-  const goalTip = res.tip;
-  const result = res.text;
-  const perResult = res.per;
-
-  const cpm = n.imps > 0 ? cdMoney(n.spend / n.imps * 1000) : cdNone;
-  const ctr = n.imps > 0
-    ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
-
-
-  /* Галочка стоїть у комірці назви, а не окремим стовпчиком: власного
-     стовпчика на неї немає де взяти, а клік по ній не повинен
-     розкривати дерево — звідси stopPropagation. */
-  const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
-      onclick="event.stopPropagation()"
-      onchange="cdMark('${cdEsc(n.id)}', this.checked)"
-      title="Pick this ${n.kind} to switch together with others">`;
-
-  return `<tr class="cd-r cd-d${depth}${band ? ' is-band' : ''}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
-    <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
-        title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
-        >${mark}${twist}${label}${cdDom(n, key)}${count}</td>
-    <td>${cdChips(n)}</td>
-    <td class="ta-r cd-num">${cdBudgetCell(n)}</td>
-    <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
-    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${result}</td>
-    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${perResult}</td>
-    <td class="ta-r cd-num">${cpm}</td>
-    <td class="ta-r cd-num">${ctr}</td>
-    <td class="ta-r cd-num">${n.clicks}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.clicks)}</td>
-    <td class="ta-r cd-num has-tip" title="${cdEsc(cdLeadTip(n))}">${n.leads}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
-    <td class="ta-r cd-num">${n.regs}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
-    ${cdHasInst ? `<td class="ta-r cd-num">${n.installs}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.installs)}</td>` : ''}
-    <td class="ta-r">${cdSwitch(n, named)}</td>
-  </tr>`;
 }
 
 /* ПЕРЕМИКАЧ, а не кнопка «Stop». Кнопка вміла одне — вимкнути, — і
