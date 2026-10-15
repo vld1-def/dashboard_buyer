@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 15.10 13:31">
+  <meta name="build" content="build 15.10 14:09">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2946,7 +2946,25 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 .cab-nd { white-space: nowrap; max-width: 42vw; overflow: hidden; text-overflow: ellipsis; }
 @media (min-width: 900px) { .cab-nd { max-width: 340px; } }
 .cab-nd.cd-can { cursor: pointer; }
-.cab-nd-in { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.cab-nd-in { display: flex; align-items: center; gap: 4px; min-width: 0; width: 100%; }
+/* Назва стискається, адреса праворуч — ні: інакше довге ім'я виштовхує
+   око за край клітинки, і тиснути стає нікуди. */
+.cab-node .cd-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ПРАВИЙ БІК КЛІТИНКИ НАЗВИ: де саме крутиться рядок.
+   Притиснутий до краю — отже око стоїть на сталому місці в КОЖНОМУ
+   рядку, хоч би якої довжини були назви. Доти воно йшло одразу за
+   назвою й щоразу опинялось в іншому місці. */
+.cd-side {
+  margin-left: auto; flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+}
+/* Під оком ховається вся адреса разом: і домен, і кампанія з адсетом.
+   Це одне питання — «де це крутиться», — і одна відповідь на нього.
+   Поки питання не поставили, рядок віддає місце назві. */
+.cd-side.has-eye .cd-where { display: none; }
+.cd-side.has-eye.is-on .cd-where { display: inline; }
+.cd-side .cd-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Світчер — власний вузький стовпчик перед статусом. Коли він стояв
    у кінці назви, перемикачі ставали на різній відстані від краю: назви
    різної довжини. У стовпчику вони стоять один під одним. */
@@ -5023,6 +5041,26 @@ input.ui-in[type="range"] { padding: 0; }
   line-height: 1.5;
   opacity: .85;
 }
+
+
+/* ─── Пара дат у графіку й у Geo Performance ───
+   Текст по центру, а не притиснутий ліворуч: у поля дати в Chrome
+   ширина стала (її задає формат), тож зліва лишався помітний порожній
+   шматок, і два поля поруч виглядали зсунутими одне відносно одного.
+
+   Рамки в самої коробки немає: поруч стоїть перемикач Daily/Geo у
+   своїй рамці, і дві однакові коробки поспіль читаються як одна
+   кнопка з чотирьох частин. Дати — це поле, а не дія. */
+.cab-dates input[type="date"] {
+  text-align: center;
+  border: 0 !important;
+  background: transparent !important;
+  padding-left: 2px; padding-right: 2px;
+}
+.cab-dates input[type="date"]::-webkit-datetime-edit { text-align: center; }
+/* Значок календаря більше не відтісняє текст від центру: він сидить
+   на своєму краю й місця під себе не вимагає. */
+.cab-dates input[type="date"]::-webkit-calendar-picker-indicator { margin-right: 0; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -5220,7 +5258,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 13:31</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 14:09</div>
     </div>
   </aside>
 
@@ -5585,7 +5623,10 @@ input.ui-in[type="range"] { padding: 0; }
                 <p class="panel-sub">Spend and net profit by day</p>
               </div>
               <div class="flex flex-wrap items-center gap-2">
-                <div class="flex items-center gap-2 p-1 rounded-xl text-[10px] font-bold" style="background:var(--surface-2);border:1px solid var(--border)">
+                <!-- Без рамки навмисно: поруч стоїть перемикач Daily/Geo у
+                     своїй рамці, і дві однакові коробки поспіль читаються як
+                     одна кнопка з чотирьох частин. Дати — це поле, а не дія. -->
+                <div class="cab-dates flex items-center gap-2 p-1 rounded-xl text-[10px] font-bold" style="background:var(--surface-2)">
                   <input type="date" id="chart-from" onchange="applyChartFilter()" class="!bg-transparent !border-0 outline-none">
                   <span class="opacity-25">/</span>
                   <input type="date" id="chart-to" onchange="applyChartFilter()" class="!bg-transparent !border-0 outline-none">
@@ -5604,7 +5645,7 @@ input.ui-in[type="range"] { padding: 0; }
             <div class="mb-3 pb-3" style="border-bottom:1px solid var(--border)">
               <h2 class="mb-2">Geo Performance</h2>
               <div class="flex items-center gap-1.5 text-[10px] font-bold">
-                <div class="flex items-center gap-1 px-2 py-1.5 rounded-lg flex-1 min-w-0" style="background:var(--surface-2);border:1px solid var(--border)">
+                <div class="cab-dates flex items-center gap-1 px-2 py-1.5 rounded-lg flex-1 min-w-0" style="background:var(--surface-2)">
                   <input type="date" id="geo-filter-from" onchange="applyGeoFilter()" class="!bg-transparent !border-0 outline-none w-full min-w-0">
                   <span class="opacity-25">/</span>
                   <input type="date" id="geo-filter-to" onchange="applyGeoFilter()" class="!bg-transparent !border-0 outline-none w-full min-w-0">
@@ -15129,12 +15170,17 @@ function gcDiff(geo, results) {
 <div id="apps-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
      onclick="if(event.target===this) closeAppsModal()">
   <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh">
-    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
-      <div>
+    <!-- ТРИ ЧАСТИНИ, А НЕ ДВІ. Доти все, крім заголовка, стояло одним
+         хвостом праворуч: перемикач, пошук і три кнопки дій впритул.
+         Тепер посередині те, чим КЕРУЮТЬ показом (перемикач і пошук), а
+         праворуч те, що ЩОСЬ РОБИТЬ (домени, списком, шаблон, закрити).
+         Різні речі — різні місця. -->
+    <div class="p-5 border-b border-white/5 flex items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
+      <div class="shrink-0">
         <h2 id="ap-title" class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
         <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
       </div>
-      <div class="flex items-center gap-2 flex-wrap">
+      <div class="flex items-center gap-2 flex-wrap flex-1 justify-center min-w-0">
         <!-- ОДНЕ ВІКНО, ДВА ДОВІДНИКИ.
              Прілки кажуть, що вписати В кампанію; PWA — яка силка стоїть
              ЗА кампанією. Питання різні, але шукають і те, і те по гео,
@@ -15148,6 +15194,8 @@ function gcDiff(geo, results) {
         </div>
         <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
           class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
+      </div>
+      <div class="flex items-center gap-2 flex-wrap shrink-0">
         <button id="ap-dom" onclick="pwDomRefresh(this)" title="Перечитати стан доменів зі списку доменів — його міняє перевірка, а не ми"
           class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
@@ -27580,14 +27628,32 @@ function cdNameCell(n, depth) {
   const label = named
     ? `<span class="cd-lbl">${cdEsc(named)}</span>`
     : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
-  const count = n.kind === 'ad'
-    ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
-    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
   const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
       onclick="event.stopPropagation()"
       onchange="cdMark('${cdEsc(n.id)}', this.checked)"
       title="Pick this ${n.kind} to switch together with others">`;
-  return mark + twist + label + cdDom(n, key) + count;
+
+  /* ОКО ХОВАЄ АДРЕСУ ЦІЛКОМ — і домен, і кампанію з адсетом.
+
+     У списку оголошень під назвою стояв підпис «кампанія · адсет», і
+     він займав рівно те місце, якого бракувало самій назві. При цьому
+     питають його рідко: дивляться на числа, а куди саме веде рядок —
+     лише коли вже вибрали рядок. Тепер це одне питання «де це
+     крутиться» й одна відповідь на нього.
+
+     Око стоїть ПРАВОРУЧ у клітинці, а не одразу за назвою. Назви різної
+     довжини, тож за назвою воно щоразу опинялось на іншій відстані від
+     краю, і влучати в нього доводилось щоразу в іншому місці. */
+  const where = (n.kind === 'ad' && n.where)
+    ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '';
+  const dom = cdDom(n, key);
+  const side = (where || dom)
+    ? `<span class="cd-side${dom ? ' has-eye' : ''}${cdEyed.has(key) ? ' is-on' : ''}">${
+        where}${dom}</span>`
+    : '';
+  const count = n.kind === 'ad' ? ''
+    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
+  return mark + twist + label + count + side;
 };
 window.cdMarkedCount = () => cdMarked.size;
 
@@ -27895,6 +27961,10 @@ window.cdEye = function (key, el) {
      стару .cd-name лишаємо в пошуку, щоб не зламати нічого, що її ще
      тримає. Без цього око перемикалось, а домен лишався крапками. */
   const cell = el.closest('.cab-nd, .cd-name');
+  /* Разом із доменом показуємо й «кампанія · адсет»: це одна відповідь
+     на одне питання — де саме крутиться цей рядок. */
+  const side = cell && cell.querySelector('.cd-side');
+  if (side) side.classList.toggle('is-on', on);
   const box = cell && cell.querySelector('.cd-dom');
   if (box) {
     const hosts = cdHostsFor(key);
@@ -27904,7 +27974,7 @@ window.cdEye = function (key, el) {
   }
   el.innerHTML = on ? CD_EYE_OFF : CD_EYE;
   el.classList.toggle('is-on', on);
-  el.title = on ? 'Hide the domain' : 'Show the domain this runs on';
+  el.title = on ? 'Hide where it runs' : 'Show where this runs: campaign, ad set and domain';
 };
 
 function cdDom(n, key) {
@@ -27919,12 +27989,14 @@ function cdDom(n, key) {
   const k = cdEsc(key).replace(/'/g, '&#39;');
   /* Підказка НЕ називає домени, поки око закрите: інакше досить
      навести мишу — і ховати не було чого. */
-  const tip = on ? 'Hide the domain' : 'Show the domain this runs on';
+  const tip = on ? 'Hide where it runs' : 'Show where this runs: campaign, ad set and domain';
   const body = on ? cdEsc(cdDomText([...n.hosts])) : CD_DOTS;
-  return `<button type="button" class="cd-eye${on ? ' is-on' : ''}"
+  /* Спершу відповідь, потім око. Око стоїть останнім у клітинці, тобто
+     на сталому місці в кожному рядку, а домен росте ліворуч від нього. */
+  return `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`
+    + `<button type="button" class="cd-eye${on ? ' is-on' : ''}"
       onclick="event.stopPropagation();cdEye('${k}', this)"
-      title="${tip}" aria-label="Show the domain">${on ? CD_EYE_OFF : CD_EYE}</button>`
-    + `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`;
+      title="${tip}" aria-label="Show where this runs">${on ? CD_EYE_OFF : CD_EYE}</button>`;
 }
 
 /* ПЕРЕМИКАЧ, а не кнопка «Stop». Кнопка вміла одне — вимкнути, — і

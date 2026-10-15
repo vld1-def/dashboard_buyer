@@ -927,14 +927,32 @@ function cdNameCell(n, depth) {
   const label = named
     ? `<span class="cd-lbl">${cdEsc(named)}</span>`
     : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
-  const count = n.kind === 'ad'
-    ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
-    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
   const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
       onclick="event.stopPropagation()"
       onchange="cdMark('${cdEsc(n.id)}', this.checked)"
       title="Pick this ${n.kind} to switch together with others">`;
-  return mark + twist + label + cdDom(n, key) + count;
+
+  /* ОКО ХОВАЄ АДРЕСУ ЦІЛКОМ — і домен, і кампанію з адсетом.
+
+     У списку оголошень під назвою стояв підпис «кампанія · адсет», і
+     він займав рівно те місце, якого бракувало самій назві. При цьому
+     питають його рідко: дивляться на числа, а куди саме веде рядок —
+     лише коли вже вибрали рядок. Тепер це одне питання «де це
+     крутиться» й одна відповідь на нього.
+
+     Око стоїть ПРАВОРУЧ у клітинці, а не одразу за назвою. Назви різної
+     довжини, тож за назвою воно щоразу опинялось на іншій відстані від
+     краю, і влучати в нього доводилось щоразу в іншому місці. */
+  const where = (n.kind === 'ad' && n.where)
+    ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '';
+  const dom = cdDom(n, key);
+  const side = (where || dom)
+    ? `<span class="cd-side${dom ? ' has-eye' : ''}${cdEyed.has(key) ? ' is-on' : ''}">${
+        where}${dom}</span>`
+    : '';
+  const count = n.kind === 'ad' ? ''
+    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
+  return mark + twist + label + count + side;
 };
 window.cdMarkedCount = () => cdMarked.size;
 
@@ -1242,6 +1260,10 @@ window.cdEye = function (key, el) {
      стару .cd-name лишаємо в пошуку, щоб не зламати нічого, що її ще
      тримає. Без цього око перемикалось, а домен лишався крапками. */
   const cell = el.closest('.cab-nd, .cd-name');
+  /* Разом із доменом показуємо й «кампанія · адсет»: це одна відповідь
+     на одне питання — де саме крутиться цей рядок. */
+  const side = cell && cell.querySelector('.cd-side');
+  if (side) side.classList.toggle('is-on', on);
   const box = cell && cell.querySelector('.cd-dom');
   if (box) {
     const hosts = cdHostsFor(key);
@@ -1251,7 +1273,7 @@ window.cdEye = function (key, el) {
   }
   el.innerHTML = on ? CD_EYE_OFF : CD_EYE;
   el.classList.toggle('is-on', on);
-  el.title = on ? 'Hide the domain' : 'Show the domain this runs on';
+  el.title = on ? 'Hide where it runs' : 'Show where this runs: campaign, ad set and domain';
 };
 
 function cdDom(n, key) {
@@ -1266,12 +1288,14 @@ function cdDom(n, key) {
   const k = cdEsc(key).replace(/'/g, '&#39;');
   /* Підказка НЕ називає домени, поки око закрите: інакше досить
      навести мишу — і ховати не було чого. */
-  const tip = on ? 'Hide the domain' : 'Show the domain this runs on';
+  const tip = on ? 'Hide where it runs' : 'Show where this runs: campaign, ad set and domain';
   const body = on ? cdEsc(cdDomText([...n.hosts])) : CD_DOTS;
-  return `<button type="button" class="cd-eye${on ? ' is-on' : ''}"
+  /* Спершу відповідь, потім око. Око стоїть останнім у клітинці, тобто
+     на сталому місці в кожному рядку, а домен росте ліворуч від нього. */
+  return `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`
+    + `<button type="button" class="cd-eye${on ? ' is-on' : ''}"
       onclick="event.stopPropagation();cdEye('${k}', this)"
-      title="${tip}" aria-label="Show the domain">${on ? CD_EYE_OFF : CD_EYE}</button>`
-    + `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`;
+      title="${tip}" aria-label="Show where this runs">${on ? CD_EYE_OFF : CD_EYE}</button>`;
 }
 
 /* ПЕРЕМИКАЧ, а не кнопка «Stop». Кнопка вміла одне — вимкнути, — і
