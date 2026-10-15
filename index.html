@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 15.10 07:35">
+  <meta name="build" content="build 15.10 09:10">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3082,8 +3082,15 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 }
 .cab-sync:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
 .cab-sync:disabled { opacity: .45; cursor: default; }
-.cab-sync-lbl {
-  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+/* Значок замість слова. Розмір крупніший за підпис, яким він був:
+   стрілка в десять пікселів читається як крапка. */
+.cab-sync-lbl { font-size: 15px; line-height: 1; display: block; }
+/* Іде прогін — стрілка крутиться. Підпис «Syncing…» на її місці
+   розсував би весь ряд кнопок на кожен прогін. */
+.cab-sync.is-busy .cab-sync-lbl { animation: cab-spin 1s linear infinite; }
+@keyframes cab-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .cab-sync.is-busy .cab-sync-lbl { animation: none; opacity: .5; }
 }
 .cab-syncago {
   padding-left: 8px; border-left: 1px solid var(--border);
@@ -4003,6 +4010,13 @@ body.is-lead-only .admin-only { display: none; }
 }
 .cab-rules:hover { color: var(--text-main); border-color: var(--border-2); }
 .cab-rules.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+/* Кнопка-значок: та сама рамка, тільки квадратна й без підпису. Розмір
+   беремо від висоти сусідніх кнопок зі словами, щоб ряд не стрибав. */
+.cab-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+}
+.cab-ico svg { width: 15px; height: 15px; display: block; }
 
 /* ═══════════ ПРАВИЛА АВТОМАТИЧНОГО ВИМИКАННЯ ═══════════
    Той самий каркас, що в унікалізатора: шапка стоїть, гортається вміст. */
@@ -4394,14 +4408,20 @@ input.ui-in[type="range"] { padding: 0; }
     }
   }
 
-  /* Панель кабінета чи домена під'їжджає збоку */
+  /* Панель кабінета чи домена під'їжджає збоку.
+
+     Шість пікселів за 0.14с ока не ловило: блок просто зʼявлявся, і
+     незрозуміло було, звідки він узявся й що саме змінилось на екрані.
+     Тепер він виразно виїжджає з правого краю — тобто звідти, де його
+     й відкрили кнопкою дій. */
   #cab-detail, #dm-detail {
-    transition: opacity .14s ease, transform .14s ease, display .14s allow-discrete;
+    transition: opacity .2s ease, transform .2s cubic-bezier(.2, .8, .3, 1),
+                display .2s allow-discrete;
     transform: translateX(0);
   }
-  #cab-detail.hidden, #dm-detail.hidden { opacity: 0; transform: translateX(6px); }
+  #cab-detail.hidden, #dm-detail.hidden { opacity: 0; transform: translateX(26px); }
   @starting-style {
-    #cab-detail:not(.hidden), #dm-detail:not(.hidden) { opacity: 0; transform: translateX(6px); }
+    #cab-detail:not(.hidden), #dm-detail:not(.hidden) { opacity: 0; transform: translateX(26px); }
   }
 
   /* Палітра ⌘K показується класом .open, а не .hidden */
@@ -5211,7 +5231,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 07:35</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 09:10</div>
     </div>
   </aside>
 
@@ -6070,13 +6090,19 @@ input.ui-in[type="range"] { padding: 0; }
            праворуч, як і картка кабінета. -->
       <!-- Які колонки показувати. Кнопка поруч із пошуком, а не в
            налаштуваннях: вмикають їх тоді, коли дивляться в таблицю. -->
-      <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules"
-        title="Which columns to show">Columns</button>
+      <!-- Іконкою, а не словом: у ряду вже три кнопки й два фільтри,
+           і три підписи поспіль читаються довше, ніж три значки. Що
+           саме робить кожна — у підказці під курсором. -->
+      <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules cab-ico"
+        title="Which columns to show" aria-label="Columns"><svg viewBox="0 0 16 16" aria-hidden="true"
+          fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.8" y="2.4" width="12.4"
+          height="11.2" rx="1.6"/><path d="M6.4 2.4v11.2M9.6 2.4v11.2"/></svg></button>
       <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
         title="Rules that switch off ads on their own">Rules</button>
       <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
-        title="Ask Facebook right now instead of waiting for the hourly run"><span
-          class="cab-sync-lbl">Sync now</span><span id="cab-sync-ago" class="cab-syncago"></span></button>
+        title="Sync now — ask Facebook right now instead of waiting for the hourly run"
+        aria-label="Sync now"><span class="cab-sync-lbl" aria-hidden="true">↻</span><span
+          id="cab-sync-ago" class="cab-syncago"></span></button>
     </div>
   </div>
 
@@ -21693,29 +21719,42 @@ const CAB_COLS = [
   { key: 'ads', label: 'Ads', ta: 'c', tip: 'Ads running right now',
     get: c => (cabCounts(c.fb) || {}).ads,
     tipOf: c => cabByStatus(c.fb && c.fb.ads_by_status) },
-  { key: 'clicks', label: 'Clicks', ta: 'r', tip: 'Clicks today, as Facebook counts them',
-    get: c => c.fb && Number(c.fb.clicks_today) },
-  { key: 'impr', label: 'Impr', ta: 'r', tip: 'Impressions today, as Facebook counts them',
-    get: c => c.fb && Number(c.fb.impressions_today) },
-  /* CTR і CPC рахуються СЬОГОДНІШНІМИ числами, навіть коли вгорі
-     вибрано інший період: показів і кліків по днях у базі немає, є
-     лише сьогоднішні. Ділити спенд за тиждень на кліки за сьогодні —
-     це число, якому не можна вірити, тому й не рахуємо. */
-  { key: 'ctr', label: 'CTR', ta: 'r', tip: 'Clicks ÷ impressions, today only',
-    get: c => { const i = c.fb && Number(c.fb.impressions_today), k = c.fb && Number(c.fb.clicks_today);
+  /* КЛІКИ, ПОКАЗИ, CTR І CPC ЙДУТЬ ЗА ПЕРІОДОМ, як і гроші.
+     Покази й кліки по днях лежать у fb_spend_daily — fb-sync кладе їх
+     тим самим запитом, що й витрати. Доти вони бралися з
+     сьогоднішнього поля в fb_accounts, і на тижневому фільтрі CTR
+     рахувався з тижневих грошей та сьогоднішніх кліків: число, під
+     яким написано не те, що порахували. */
+  { key: 'clicks', label: 'Clicks', ta: 'r', tip: 'Clicks over the selected period, as Facebook counts them',
+    get: c => cabStatIn(c.fb, 'clicks') },
+  { key: 'impr', label: 'Impr', ta: 'r', tip: 'Impressions over the selected period, as Facebook counts them',
+    get: c => cabStatIn(c.fb, 'imps') },
+  { key: 'ctr', label: 'CTR', ta: 'r', tip: 'Clicks ÷ impressions over the selected period',
+    get: c => { const i = cabStatIn(c.fb, 'imps'), k = cabStatIn(c.fb, 'clicks');
       return i > 0 ? (k / i) * 100 : null; },
     cell: v => v == null ? null : v.toFixed(2) + '%' },
-  { key: 'cpc', label: 'CPC', ta: 'r', tip: 'Today’s spend ÷ today’s clicks',
-    get: c => { const k = c.fb && Number(c.fb.clicks_today), s = c.fb && Number(c.fb.spend_today);
-      return k > 0 ? s / k : null; },
+  { key: 'cpc', label: 'CPC', ta: 'r', tip: 'Spend ÷ clicks over the selected period',
+    get: c => { const k = cabStatIn(c.fb, 'clicks'), s = cabSpendIn(c.fb);
+      return k > 0 && s != null ? s / k : null; },
     cell: (v, c) => v == null ? null : cabMoneyCur(v, c.fb && c.fb.currency) },
-  { key: 'budget', label: 'Daily budget', ta: 'r', tip: 'Sum of the daily budgets of what is running now',
+  /* ЦЕ — ПРО «ЗАРАЗ», А НЕ ПРО ПЕРІОД. Бюджет, баланс і скільки чого
+     крутиться Facebook віддає станом на цю хвилину, історії по них у
+     базі немає. Підписи кажуть це прямо, щоб їх не читали як числа
+     за вибрані дати. */
+  { key: 'budget', label: 'Daily budget', ta: 'r', node: 1,
+    tip: 'Sum of the daily budgets of what is running right now \u2014 not a number for the period. In the tree: the budget of the campaign or ad set itself.',
     get: c => c.fb && Number(c.fb.daily_budget),
     cell: (v, c) => v > 0 ? cabMoneyCur(v, c.fb && c.fb.currency) : null },
-  { key: 'balance', label: 'Balance', ta: 'r', tip: 'Charged to the account but not billed yet',
+  { key: 'balance', label: 'Balance', ta: 'r', tip: 'Charged to the account but not billed yet \u2014 as of now, not for the period',
     get: c => c.fb && c.fb.balance != null ? Number(c.fb.balance) : null,
     cell: (v, c) => v == null ? null : cabMoneyCents(v, c.fb && c.fb.currency) },
-  { key: 'spend', label: 'Spend', ta: 'r', tip: 'Everything this cabinet spent, by our own imports',
+  /* Графік за два тижні. Він НЕ йде за фільтром, і це навмисно: «14d»
+     і означає чотирнадцять днів. Period міняє числа поруч, а графік
+     відповідає на інше питання — рівно чи рвано вони йшли. */
+  { key: 'spark', label: '14d', ta: 'c', tip: 'Spend over the last 14 days, from our own imports. Always 14 days \u2014 the period above does not change it.',
+    get: c => c.x.spend, tdCls: c => CAB_STATE[c.state].tone, tdStyle: 'height:1px',
+    cell: (v, c) => cabSpark(c.x.byDay, c.x.last, 58, 16) },
+  { key: 'spend', label: 'Total spend', ta: 'r', tip: 'Everything this cabinet ever spent, by our own imports \u2014 the whole history, not the period',
     get: c => c.x.spend, cell: v => v > 0 ? cabMoney(v) : null },
   { key: 'deps', label: 'Deps', ta: 'r', tip: 'Deposits from our own imports, not from Facebook',
     get: c => c.x.deps, cell: v => v > 0 ? String(v) : null },
@@ -21756,7 +21795,7 @@ const CAB_COLS = [
 /* За замовчуванням увімкнено те, на що дивляться щодня. Решта —
    кнопкою Columns. Порожня таблиця на першому заході виглядала б як
    поломка, тому «нічого не ввімкнено» тут не варіант. */
-const CAB_COLS_DEF = { camp: 1, sets: 1, ads: 1, ctr: 1, cpc: 1 };
+const CAB_COLS_DEF = { camp: 1, sets: 1, ads: 1, ctr: 1, cpc: 1, spark: 1 };
 const cabColsOn = () => cabView.cols || CAB_COLS_DEF;
 const cabColOn = k => !!cabColsOn()[k];
 
@@ -21777,9 +21816,14 @@ const cabColOn = k => !!cabColsOn()[k];
    раніше за рядки, і прапорець, виставлений під time малювання дерева,
    спізнився б рівно на одну перемальовку — на ту, в якій колонка й
    мала зʼявитись. */
+const CAB_COLS_TREE = ['budget', 'inst', 'cpi'];
 function cabColAuto(k) {
-  if (!cabTreeId || (k !== 'inst' && k !== 'cpi')) return false;
+  if (!cabTreeId || !CAB_COLS_TREE.includes(k)) return false;
   if (cabView.cols && cabView.cols[k] === 0) return false;
+  /* Бюджет — головне, на що дивляться в дереві: він стоїть сам, щойно
+     дерево відкрите. Installs ще й питають знімок: на PWA-кабінеті дві
+     порожні колонки в кожному рядку — це шум. */
+  if (k === 'budget') return true;
   return typeof cdHasInstalls === 'function' && cdHasInstalls();
 }
 
@@ -21795,7 +21839,12 @@ function cabColsShown() {
    відкривати його знову й знову. */
 async function cabColToggle(k) {
   const now = { ...cabColsOn() };
-  now[k] = now[k] ? 0 : 1;
+  /* Знімаємо те, що ВИДНО, а не те, що записано. Колонка, яка стала
+     сама (бюджет, інстали), у налаштуваннях не записана зовсім — і
+     перший клік по ній ставив би одиницю, тобто не змінював на екрані
+     нічого. Тепер він її вимикає, як і очікується від галочки, яка
+     щойно стояла. */
+  now[k] = (cabColOn(k) || cabColAuto(k)) ? 0 : 1;
   const was = cabView.cols;
   cabView.cols = now;
   cabRender();
@@ -21873,7 +21922,7 @@ function cabColsMenu(keep) {
   /* Спершу ввімкнені, у своєму порядку — саме той список, який видно в
      таблиці, і саме його переставляють. Вимкнені нижче, окремо. */
   const on = cabColsShown();
-  const off = CAB_COLS.filter(col => !cabColOn(col.key));
+  const off = CAB_COLS.filter(col => !cabColOn(col.key) && !cabColAuto(col.key));
   const row = col => `<div class="cab-pop-row" draggable="true"
       ondragstart="cabColDragStart(event, '${col.key}')"
       ondragover="cabColDragOver(event, '${col.key}')"
@@ -21881,9 +21930,12 @@ function cabColsMenu(keep) {
       ondragend="cabColDragEnd()"
       title="Drag to move it left or right in the table">
       <span class="cab-pop-grip" aria-hidden="true">≡</span>
-      <button type="button" class="cab-pop-i ${cabColOn(col.key) ? 'is-on' : ''}"
-        onclick="cabColToggle('${col.key}')" title="${cabEsc(col.tip || '')}">
-        <span class="cab-pop-tick">${cabColOn(col.key) ? '✓' : ''}</span>${cabEsc(col.label)}</button>
+      <button type="button" class="cab-pop-i ${cabColOn(col.key) || cabColAuto(col.key) ? 'is-on' : ''}"
+        onclick="cabColToggle('${col.key}')" title="${cabEsc(
+          (col.tip || '') + (!cabColOn(col.key) && cabColAuto(col.key)
+            ? '\n\nOn by itself while the tree is open. Click to switch it off for good.' : ''))}">
+        <span class="cab-pop-tick">${cabColOn(col.key) || cabColAuto(col.key) ? '✓' : ''}</span>${
+        cabEsc(col.label)}</button>
     </div>`;
   box.innerHTML = `<p class="cab-pop-h">Columns · drag to reorder</p>`
     + on.map(row).join('')
@@ -22424,11 +22476,33 @@ async function cabDaysLoad() {
       if (r.team_name && r.team_name !== currentTeam) return;
       const id = String(r.account_id || '');
       if (!id) return;
-      cabDays[id] = (cabDays[id] || 0) + (Number(r.spend) || 0);
+      /* Беремо не лише гроші. Покази й кліки по днях лежать у тій
+         самій таблиці — fb-sync кладе їх одним запитом, — і без них
+         CTR із CPC лишались би «сьогоднішніми» на будь-якому періоді,
+         тобто числом, під яким написано не те, що порахували. */
+      const o = cabDays[id] || (cabDays[id] = { spend: 0, imps: 0, clicks: 0 });
+      o.spend += Number(r.spend) || 0;
+      o.imps += Number(r.impressions) || 0;
+      o.clicks += Number(r.clicks) || 0;
     });
   } catch (e) {
     cabDaysErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
+}
+
+/* Покази й кліки за той самий період, що й гроші.
+
+   Запасний шлях той самий, що й у грошей: поки історії немає, у нас є
+   лише сьогоднішні числа з fb_accounts — і віддаємо ми їх РІВНО тоді,
+   коли вгорі вибрано «сьогодні». За тиждень вони означали б не те, що
+   написано над стовпчиком. */
+function cabStatIn(fb, key) {
+  if (!fb) return null;
+  const id = String(fb.account_id || '');
+  if (!cabDaysErr) { const o = cabDays[id]; return o ? o[key] : 0; }
+  if (fb.missing_since) return null;
+  if (cabRange.key !== 'today') return null;
+  return Number(key === 'imps' ? fb.impressions_today : fb.clicks_today) || 0;
 }
 
 /* Скільки цей кабінет відкрутив за вибраний період.
@@ -22440,7 +22514,7 @@ async function cabDaysLoad() {
 function cabSpendIn(fb) {
   if (!fb) return null;
   const id = String(fb.account_id || '');
-  if (!cabDaysErr) return cabDays[id] || 0;
+  if (!cabDaysErr) return (cabDays[id] || {}).spend || 0;
   /* Запасний шлях, коли історії ще немає: сьогоднішнє число беремо з
      самого fb_accounts. Але в кабінета, якого токен уже не бачить, воно
      заморожене — і видати його за «сьогодні» означало б додати вчорашні
@@ -22592,10 +22666,11 @@ window.cabSync = async function () {
   let last = { html: '', kind: '' };
   const say = (html, tone) => { last = { html, kind: cabKind(tone) }; step.say(html, last.kind, true); };
   btn.disabled = true;
-  // Кнопка тепер має два вузли: підпис і time. Міняємо лише підпис.
-  const lbl = btn.querySelector('span') || btn;
-  const was = lbl.textContent;
-  lbl.textContent = 'Syncing…';
+  /* Кнопка тепер значок, а не слово, — отже й «іде синхронізація»
+     показуємо обертанням, а не підписом «Syncing…». Текст, яким
+     замінили б стрілку, розсував би ряд кнопок на кожен прогін.
+     Що саме відбувається, і так пише живий тост. */
+  btn.classList.add('is-busy');
   try {
     await fbSync(say);
     await cabFbLoad();
@@ -22608,7 +22683,7 @@ window.cabSync = async function () {
     cabRender();
   } finally {
     btn.disabled = false;
-    lbl.textContent = was;
+    btn.classList.remove('is-busy');
   }
 };
 
@@ -23275,10 +23350,6 @@ function cabSection(items) {
   const val = { state: c => rank(c.state), id: c => c.id,
                 agent: c => String(c.row.provider_name || c.tok.agent || ''),
                 today: c => (c.fb ? Number(cabSpendIn(c.fb)) || 0 : 0),
-                /* Ліміт сортуємо ЗАЛИШКОМ, а не стелею: питання тут
-                   «кому скоро впертись», а не «кому дозволили більше».
-                   Без ліміту — вниз: їм упиратись нема у що. */
-                limit: c => { const l = cabLimit(c); return l.left == null ? -1 : l.left; },
                 spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '' };
   CAB_COLS.forEach(col => { if (!val[col.key]) val[col.key] = c => {
     const v = col.get(c);
@@ -23308,9 +23379,9 @@ function cabSection(items) {
 
   const cols = cabColsShown();
   // Скільки клітинок у рядку: стрілка, шпилька, крапка, кабінет,
-  // світчер, статус, ліміт, період, графік, дії — і стільки ж,
-  // скільки увімкнено колонок.
-  const COLS = 10 + cols.length;
+  // світчер, статус, витрати за період, дії — і стільки ж, скільки
+  // увімкнено колонок.
+  const COLS = 8 + cols.length;
 
   const head = `<thead><tr>
       <th class="cab-x"></th>
@@ -23319,9 +23390,13 @@ function cabSection(items) {
       ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
       <th class="cab-x" title="Switch campaigns, ad sets and ads on and off"></th>
       ${th('state', 'Status')}
-      ${th('limit', 'Limit', 'ta-r', 'Facebook spending limit for the account, and how much of it is left')}
-      ${th('today', cabEsc(cabRangeLabel()), 'ta-r')}
-      <th class="ta-c" title="Spend over the last 14 days">14d</th>
+      ${/* Підпис сталий — «Spend», — а період написаний у підказці.
+           Date в самій шапці міняла ширину стовпця на кожен фільтр, і
+           «Oct 1 – Oct 7» розсувало таблицю заради того, що й так
+           вибрано вгорі на кнопці періоду. */
+        th('today', 'Spend', 'ta-r',
+           'Spend over the selected period \u2014 ' + cabRangeLabel()
+           + ', as Facebook counts the day for each cabinet')}
       ${cols.map(col => th(col.key, cabEsc(col.label), 'ta-' + col.ta, col.tip)).join('')}
       <th class="ta-r"></th>
     </tr></thead>`;
@@ -23394,7 +23469,6 @@ function cabRowHtml(c, COLS) {
                   c.fb && c.fb.name ? 'Facebook calls it: ' + c.fb.name : '']
                  .filter(Boolean).join('\n');
 
-  const lim = cabLimit(c);
   /* Прочерк тут означає рівно «нуль за цей період». Коли ми взагалі не
      знаємо — історії ще немає — показуємо знак питання. */
   const inRange = cabSpendIn(c.fb);
@@ -23407,8 +23481,14 @@ function cabRowHtml(c, COLS) {
     const out = col.cell ? col.cell(v, c)
       : (v == null || v === '' || Number.isNaN(v)) ? null : String(v);
     const tip = col.tipOf ? col.tipOf(c) : '';
-    return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${tip ? ' has-tip' : ''}"${
-      tip ? ` title="${cabEsc(tip)}"` : ''}>${out == null ? '<span class="cab-na">—</span>' : out}</td>`;
+    /* Графіку потрібні свій тон і висота в піксель — інакше svg тягне
+       рядок на всю свою висоту. Решті колонок це не заважає: обидва
+       поля необов'язкові. */
+    const extra = col.tdCls ? ' ' + col.tdCls(c) : '';
+    const style = col.tdStyle ? ` style="${col.tdStyle}"` : '';
+    return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${extra}${
+      tip ? ' has-tip' : ''}"${tip ? ` title="${cabEsc(tip)}"` : ''}${style}>${
+      out == null ? '<span class="cab-na">—</span>' : out}</td>`;
   };
 
   /* КЛІК ПО РЯДКУ = ДЕРЕВО.
@@ -23433,9 +23513,7 @@ function cabRowHtml(c, COLS) {
     </td>
     <td class="cab-x"></td>
     <td><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
-    <td class="ta-r cab-num ${lim.tight ? 'cab-lim-tight' : ''}" title="${cabEsc(lim.tip)}">${lim.text}</td>
     <td class="ta-r cab-num cab-today">${today}</td>
-    <td class="ta-c ${S.tone}" style="height:1px">${cabSpark(c.x.byDay, c.x.last, 58, 16)}</td>
     ${cabColsShown().map(cell).join('')}
     <td class="ta-r cab-act">
       ${c.fb ? `<button type="button" class="cab-mini" onclick="cabSyncRow(event, '${idEnc}')"
@@ -23539,9 +23617,7 @@ function cabNodeRow(n, depth, band, cols) {
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
     <td class="cab-nd-st">${f.status}</td>
-    <td class="ta-r cab-num">${f.budget}</td>
     <td class="ta-r cab-num cab-today">${f.spend}</td>
-    <td class="ta-c"></td>
     ${cols.map(col => { const tip = cabNodeTip(f, col.key);
       return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${
         tip ? ' has-tip' : ''}"${tip ? ` title="${cabEsc(tip)}"` : ''}>${
@@ -23550,12 +23626,16 @@ function cabNodeRow(n, depth, band, cols) {
   </tr>`;
 }
 
-/* ЛІМІТ КАБІНЕТА.
+/* ЛІМІТ КАБІНЕТА — У ПАНЕЛІ, А НЕ В ТАБЛИЦІ.
+
+   Стовпчиком він стояв і був прибраний на прохання: у таблиці на нього
+   дивляться рідко, а ширину він їв у кожного рядка. Саме число нікуди
+   не ділось — воно в панелі кабінета, поруч із карткою, валютою й
+   балансом, тобто поруч із тим, що його й пояснює.
 
    Facebook зве це spend_cap: стеля витрат на кабінет за весь time, у
    центах, і 0 означає «ліміту немає». Залишок = стеля мінус те, що вже
-   списано (amount_spent). Обидва числа вже приїжджають синхронізацією,
-   просто досі їх ніхто не питав.
+   списано (amount_spent).
 
    Нуль і «немає поля» тут різні відповіді: перше — «ліміту немає»,
    друге — «ми не знаємо». Друге трапляється на базах, де колонки ще
@@ -23738,6 +23818,14 @@ function cabCardOld(fb) {
                       : (a === b ? a : a + ' — ' + b) + ', as Facebook counts the day for this cabinet');
         })()}
         ${cell('State', esc(c.fb.status || '—'))}
+        ${/* Ліміт. Переїхав сюди зі стовпчика таблиці: у рядку на нього
+              дивляться рідко, а ширину він їв у кожного. Тут він стоїть
+              поруч із балансом і карткою — тобто поруч із тим, що його
+              пояснює. Залишок менший за десяту частину стелі
+              підсвічуємо: саме тут кабінет спиняється посеред дня. */
+          (() => { const l = cabLimit(c);
+            return cell('Limit', `<span class="${l.tight ? 'cab-lim-tight' : ''}">${l.text}</span>`, l.tip);
+          })()}
         ${/* За чиїм годинником цей кабінет вважає «сьогодні». Без цього
               рядка розбіжність зі спендом в Ads Manager виглядає як
               поламаний підрахунок, а це просто інша доба. */

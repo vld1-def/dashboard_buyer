@@ -1973,8 +1973,15 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
 }
 .cab-sync:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
 .cab-sync:disabled { opacity: .45; cursor: default; }
-.cab-sync-lbl {
-  font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase;
+/* Значок замість слова. Розмір крупніший за підпис, яким він був:
+   стрілка в десять пікселів читається як крапка. */
+.cab-sync-lbl { font-size: 15px; line-height: 1; display: block; }
+/* Іде прогін — стрілка крутиться. Підпис «Syncing…» на її місці
+   розсував би весь ряд кнопок на кожен прогін. */
+.cab-sync.is-busy .cab-sync-lbl { animation: cab-spin 1s linear infinite; }
+@keyframes cab-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .cab-sync.is-busy .cab-sync-lbl { animation: none; opacity: .5; }
 }
 .cab-syncago {
   padding-left: 8px; border-left: 1px solid var(--border);
@@ -2894,6 +2901,13 @@ body.is-lead-only .admin-only { display: none; }
 }
 .cab-rules:hover { color: var(--text-main); border-color: var(--border-2); }
 .cab-rules.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+/* Кнопка-значок: та сама рамка, тільки квадратна й без підпису. Розмір
+   беремо від висоти сусідніх кнопок зі словами, щоб ряд не стрибав. */
+.cab-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+}
+.cab-ico svg { width: 15px; height: 15px; display: block; }
 
 /* ═══════════ ПРАВИЛА АВТОМАТИЧНОГО ВИМИКАННЯ ═══════════
    Той самий каркас, що в унікалізатора: шапка стоїть, гортається вміст. */
@@ -3285,14 +3299,20 @@ input.ui-in[type="range"] { padding: 0; }
     }
   }
 
-  /* Панель кабінета чи домена під'їжджає збоку */
+  /* Панель кабінета чи домена під'їжджає збоку.
+
+     Шість пікселів за 0.14с ока не ловило: блок просто зʼявлявся, і
+     незрозуміло було, звідки він узявся й що саме змінилось на екрані.
+     Тепер він виразно виїжджає з правого краю — тобто звідти, де його
+     й відкрили кнопкою дій. */
   #cab-detail, #dm-detail {
-    transition: opacity .14s ease, transform .14s ease, display .14s allow-discrete;
+    transition: opacity .2s ease, transform .2s cubic-bezier(.2, .8, .3, 1),
+                display .2s allow-discrete;
     transform: translateX(0);
   }
-  #cab-detail.hidden, #dm-detail.hidden { opacity: 0; transform: translateX(6px); }
+  #cab-detail.hidden, #dm-detail.hidden { opacity: 0; transform: translateX(26px); }
   @starting-style {
-    #cab-detail:not(.hidden), #dm-detail:not(.hidden) { opacity: 0; transform: translateX(6px); }
+    #cab-detail:not(.hidden), #dm-detail:not(.hidden) { opacity: 0; transform: translateX(26px); }
   }
 
   /* Палітра ⌘K показується класом .open, а не .hidden */
