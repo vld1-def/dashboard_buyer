@@ -424,7 +424,7 @@ function cdHeadBits() {
      вони відрізняються від кліку по рядку. */
   return `<div class="cd-tabs"${tip ? ` title="${cdEsc(tip)}"` : ''}>
       <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
-        onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Tree</button>
+        onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Camp</button>
       <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
         onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
       <label class="cd-only" title="Show only what Facebook is actually showing. Rejected, blocked, in-review and switched-off rows are hidden.">
