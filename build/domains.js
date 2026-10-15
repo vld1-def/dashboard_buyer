@@ -213,23 +213,33 @@ async function dmWrAdd(n) {
   try { await setTeamSetting(DM_WR_KEY, JSON.stringify(dmWr)); } catch (e) {}
 }
 
+/* ЗАЛИШОК КВОТИ ЖИВЕ В ПІДКАЗЦІ КНОПКИ CHECK.
+
+   Окремим написом у ряду він стояв поруч із кнопками, але кнопкою не
+   був: ні дії, ні стану списку — просто число, яке щодня там висить.
+   А питають його рівно в одну мить: коли наводять на Check і думають,
+   чи запускати прогін. Ціна прогону — це властивість кнопки, тож там
+   вона тепер і написана.
+
+   Власний текст кнопки чіпати не можна, тому він запамʼятовується
+   один раз у data-base: інакше кожне дописування квоти нарощувало б
+   підказку ще однією копією самої себе. */
 function dmWrPaint() {
-  const el = document.getElementById('dm-quota');
-  if (!el) return;
+  const btn = document.getElementById('dm-check-btn');
+  if (!btn) return;
+  if (!btn.dataset.base) btn.dataset.base = btn.getAttribute('title') || '';
   const used = (dmWr || {})[dmMonth()] || 0;
-  if (!used) { el.classList.add('hidden'); return; }
+  if (!used) { btn.setAttribute('title', btn.dataset.base); return; }
   const left = Math.max(0, DM_WR_FREE - used);
-  const part = used / DM_WR_FREE;
   const n = x => x.toLocaleString('en-US').replace(/,/g, ' ');
-  el.classList.remove('hidden');
-  el.style.color = part > .95 ? 'var(--bad)' : part > .8 ? 'var(--warn)' : 'var(--text-muted)';
-  el.textContent = `Web Risk: ${n(left)} left of ${n(DM_WR_FREE)}`;
-  el.title = `Spent ${n(used)} lookup(s) in ${dmMonth()}.\n\n`
+  btn.setAttribute('title', btn.dataset.base + '\n\n'
+    + `Web Risk: ${n(left)} left of ${n(DM_WR_FREE)} this month, `
+    + `${n(used)} spent in ${dmMonth()}.\n`
     + 'Counted here, not asked from Google: Web Risk has no "requests left" API. '
     + 'One domain = one lookup, and the check reports how many domains it went through, '
-    + 'so the figure is exact for what this dashboard spends.\n\n'
-    + 'Filtering DNS is free and unlimited — it is not counted.\n\n'
-    + 'The authoritative number: Google Cloud Console → Billing → Reports, filtered to Web Risk API.';
+    + 'so the figure is exact for what this dashboard spends. '
+    + 'Filtering DNS is free and unlimited — it is not counted.\n'
+    + 'The authoritative number: Google Cloud Console → Billing → Reports, filtered to Web Risk API.');
 }
 
 /* ── перевірка ──
@@ -1036,33 +1046,8 @@ async function dmAutoPauseSet(on) {
   await dmAutoPauseLoad();
 }
 
-async function dmTestAlert() {
-  const btn = document.getElementById('dm-test-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-  try {
-    const { data: sess } = await sb.auth.getSession();
-    const token = sess?.session?.access_token;
-    if (!token) throw new Error('no session');
-    const res = await fetch(SUPABASE_URL + '/functions/v1/check-domains', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
-                 'content-type': 'application/json' },
-      body: JSON.stringify({ team: currentTeam, test: true })
-    });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok || j.error) throw new Error(j.error || 'HTTP ' + res.status);
-    toast(j.live
-      ? 'Sent to your Telegram — ' + j.live + ' live ad(s) on ' + j.domain
-      : 'Sent to your Telegram — nothing active on ' + j.domain + ' right now', 'ok');
-  } catch (e) {
-    toast('Test failed: ' + e.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Test alert'; }
-  }
-}
 
 window.dmInit = dmInit;
 window.dmCheck = dmCheck;
 window.dmCheckHelp = dmCheckHelp;
-window.dmTestAlert = dmTestAlert;
 window.dmAutoPauseSet = dmAutoPauseSet;

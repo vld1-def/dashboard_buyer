@@ -127,24 +127,80 @@ const cabEsc = v => String(v == null ? '' : v)
    але зберігаються разом: два ключі означали б два запити й два місця,
    де збереження може мовчки не доїхати. */
 const CAB_VIEW_KEY = 'cab_view';
-let cabView = { pins: [], cols: null };
+let cabView = { pins: [], cols: null, order: [] };
+
+/* ВИГЛЯД ЧИТАЄТЬСЯ З ТРЬОХ МІСЦЬ, І ЖОДНЕ З НИХ НЕ ЗАЙВЕ.
+
+   Було так: єдиним джерелом була база, і після перезавантаження
+   налаштування стовпців поверталось до типового. Причин виявилось дві,
+   і кожної самої по собі вистачало.
+
+   ПЕРША. cabViewLoad складав назад тільки pins і cols. Поле order —
+   порядок стовпців, той самий, який щойно перетягнули мишею, — просто
+   не читалось. Зберігалось, лежало в базі й губилось на першому ж
+   читанні.
+
+   ДРУГА. Будь-яка невдача читання (ще не доїхала авторизація, відмова
+   політики, порожня відповідь) ПЕРЕЗАПИСУВАЛА те, що вже є в пам'яті,
+   типовим виглядом. Тобто помилка читання мовчки стирала налаштування
+   замість того, щоб лишити їх як були.
+
+   Тому тепер: пишемо спершу в localStorage, потім у базу. Читаємо з
+   localStorage одразу, а відповідь бази накладаємо зверху — і лише
+   коли вона СПРАВДІ щось принесла. База лишається головною (вона одна
+   на всі пристрої), а локальна копія робить так, що на цьому ж
+   браузері вигляд не зникає ніколи, хоч би що сталося з читанням. */
+const CAB_VIEW_LS = 'cab_view';
+
+function cabViewShape(raw) {
+  const o = raw && typeof raw === 'object' ? raw : {};
+  return { pins: Array.isArray(o.pins) ? o.pins.map(String) : [],
+           cols: (o.cols && typeof o.cols === 'object') ? o.cols : null,
+           order: Array.isArray(o.order) ? o.order.map(String) : [] };
+}
+
+/* Порожній вигляд і збережений «усе типове» — різні речі, і друге
+   треба вміти відрізнити, інакше локальна копія «нічого не вибрано»
+   виглядала б як відсутня. */
+function cabViewEmpty(v) {
+  return !v || (!v.cols && !(v.pins || []).length && !(v.order || []).length);
+}
+
+function cabViewLocal(v) {
+  try {
+    if (v === undefined) {
+      const raw = localStorage.getItem(CAB_VIEW_LS);
+      return raw ? cabViewShape(JSON.parse(raw)) : null;
+    }
+    localStorage.setItem(CAB_VIEW_LS, JSON.stringify(v));
+  } catch (e) { /* приватне вікно чи заборонене сховище — не привід падати */ }
+  return null;
+}
 
 async function cabViewLoad() {
+  const local = cabViewLocal();
+  if (local) cabView = local;
   try {
     const { data, error } = await sb.from('team_settings')
       .select('value').eq('key', CAB_VIEW_KEY).limit(1);
     if (error) throw error;
-    const raw = data && data[0] ? JSON.parse(data[0].value || '{}') : {};
-    cabView = { pins: Array.isArray(raw.pins) ? raw.pins.map(String) : [],
-                cols: (raw.cols && typeof raw.cols === 'object') ? raw.cols : null };
+    const cell = data && data[0] ? data[0].value : null;
+    /* value приїжджає то рядком, то вже розібраним об'єктом — залежно
+       від типу колонки в базі. JSON.parse на об'єкті кидає виняток, і
+       раніше саме він і зносив увесь вигляд у типовий. */
+    const raw = typeof cell === 'string' ? JSON.parse(cell || '{}') : (cell || {});
+    const got = cabViewShape(raw);
+    // Порожня відповідь нічого не стирає: немає рядка — лишається локальне.
+    if (!cabViewEmpty(got)) { cabView = got; cabViewLocal(cabView); }
   } catch (e) {
     // Налаштування виду — не те, заради чого варто ламати сторінку.
     console.warn('cab_view:', e.message || e);
-    cabView = { pins: [], cols: null };
   }
 }
 
 async function cabViewSave() {
+  // Спершу локально: цей запис не вміє не доїхати.
+  cabViewLocal(cabView);
   const row = { team_name: currentTeam, key: CAB_VIEW_KEY, value: JSON.stringify(cabView) };
   if (window.myUid) row.created_by = window.myUid;
   const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
@@ -236,11 +292,14 @@ const CAB_COLS = [
   { key: 'spark', label: '14d', ta: 'c', tip: 'Spend over the last 14 days, from our own imports. Always 14 days \u2014 the period above does not change it.',
     get: c => c.x.spend, tdCls: c => CAB_STATE[c.state].tone, tdStyle: 'height:1px',
     cell: (v, c) => cabSpark(c.x.byDay, c.x.last, 58, 16) },
-  { key: 'spend', label: 'Total spend', ta: 'r', tip: 'Everything this cabinet ever spent, by our own imports \u2014 the whole history, not the period',
+  { key: 'spend', label: 'Our spend', ta: 'r',
+    tip: 'Spend over the selected period, by our own imports \u2014 not what Facebook says',
     get: c => c.x.spend, cell: v => v > 0 ? cabMoney(v) : null },
-  { key: 'deps', label: 'Deps', ta: 'r', tip: 'Deposits from our own imports, not from Facebook',
+  { key: 'deps', label: 'Deps', ta: 'r',
+    tip: 'Deposits over the selected period, from our own imports, not from Facebook',
     get: c => c.x.deps, cell: v => v > 0 ? String(v) : null },
-  { key: 'cpa', label: 'CPA', ta: 'r', tip: 'Our spend ÷ our deposits, from the imports',
+  { key: 'cpa', label: 'CPA', ta: 'r',
+    tip: 'Our spend ÷ our deposits over the selected period, from the imports',
     get: c => (c.x.deps > 0 ? c.x.spend / c.x.deps : null),
     cell: v => v == null ? null : cabMoney(v) },
   { key: 'age', label: 'Days', ta: 'r', tip: 'Days since the first spend we know of',
@@ -1171,9 +1230,23 @@ window.cabSync = async function () {
 
 /* Факти з грошей. «Крутить» звіряємо з останнім днем, який ВЗАГАЛІ є в
    даних, а не з сьогоднішньою датою: звіт за сьогодні ще не залитий, і
-   інакше весь парк щоранку виглядав би мертвим. */
+   інакше весь парк щоранку виглядав би мертвим.
+
+   ДВА НАБОРИ ЧИСЕЛ, І ПЛУТАТИ ЇХ НЕ МОЖНА.
+
+   spend/deps/regs — ЗА ВИБРАНИЙ ПЕРІОД. Доти вони складались за весь
+   час, і виходило найгірше: вгорі стоїть «сьогодні», депозитів сьогодні
+   не було, а в стовпчику Deps — число. Воно не було помилкою
+   підрахунку, воно відповідало на інше питання, ніж те, що написано
+   над таблицею. Разом із ними за період пішла й CPA: ділити річні
+   гроші на вчорашні депозити не можна.
+
+   all/first/last/byDay — ЗА ВЕСЬ ЧАС, і саме тому лишаються. На них
+   тримається «чи крутив цей кабінет хоч колись», вік і графік за
+   14 днів: ці три питання про історію, а не про вибрані дати. */
 function cabFacts() {
   const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : [];
+  const [since, until] = cabRangeDates();
   const map = {};
   let lastDay = '';
   daily.forEach(r => {
@@ -1181,14 +1254,18 @@ function cabFacts() {
     const d = String(r.date || '');
     if (!acc || !d) return;
     if (d > lastDay) lastDay = d;
+    const o = map[acc] || (map[acc] = { spend: 0, deps: 0, regs: 0, all: 0,
+                                        first: d, last: d, byDay: {} });
+    const s = Number(r.spend) || 0;
+    o.all += s;
     /* Депозити й реги рахуємо тут же: вони з того самого рядка
        імпорту, і другий прохід по тих самих даних коштував би рівно
        стільки ж, скільки перший. */
-    const o = map[acc] || (map[acc] = { spend: 0, deps: 0, regs: 0, first: d, last: d, byDay: {} });
-    const s = Number(r.spend) || 0;
-    o.spend += s;
-    o.deps += Number(r.deposits) || 0;
-    o.regs += Number(r.regs) || 0;
+    if (d >= since && d <= until) {
+      o.spend += s;
+      o.deps += Number(r.deposits) || 0;
+      o.regs += Number(r.regs) || 0;
+    }
     if (d < o.first) o.first = d;
     if (d > o.last) o.last = d;
     o.byDay[d] = (o.byDay[d] || 0) + s;
@@ -1429,7 +1506,10 @@ const cabFrozen = c => !!(c.fb && c.fb.missing_since);
    й тоді, коли в наших daily_stats по цьому кабінету нічого немає
    (підпис у витратах не збігається з номером — звичайна річ). */
 function cabEverRan(x, fb) {
-  if (x && x.spend > 0) return true;
+  /* САМЕ all, А НЕ spend. spend — за вибраний період, і кабінет, який
+     крутив торік, а сьогодні мовчить, на фільтрі «сьогодні» отримав би
+     підпис «Never ran» — твердження куди сильніше за Idle, і неправдиве. */
+  if (x && x.all > 0) return true;
   return !!(fb && Number(fb.amount_spent) > 0);
 }
 
@@ -1711,10 +1791,21 @@ function cabRender() {
        review в одне число, а станів тепер три, і «робочий» з них рівно
        один. Зведення, яке повторює сусідню плитку, лише питає щоразу,
        чим вони відрізняються. */
-    tiles.innerHTML = `<div class="flt-row">
+    /* ВКЛАДКИ ДЕРЕВА СТОЯТЬ ТУТ, а не над самим деревом.
+       Над деревом вони забирали цілий рядок усередині таблиці й
+       розривали її рівно там, де читають числа. Тут це ще один блок у
+       ряду статусів — тобто серед того, що й так керує тим, ЩО
+       показано. Плитки заради цього трохи вужчі.
+
+       Показуємо лише коли дерево відкрите: три кнопки, які нічим не
+       керують, гірші за три кнопки, яких немає. */
+    const tools = cabTreeId && typeof cdHeadBits === 'function'
+      ? `<div class="flt-tools">${cdHeadBits()}</div>` : '';
+    tiles.innerHTML = `<div class="flt-row flt-row-cab">
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
+      ${tools}
     </div>`
     /* Попередження стоїть ПІД плитками, тобто рівно там, куди людина
        дивиться, коли шукає свій кабінет. Ховати його в підказку чи в
@@ -2036,7 +2127,10 @@ function cabTreeRows(COLS) {
     <p class="cd-empty">${cabEsc(v.msg)}</p></td></tr>`;
 
   const cols = cabColsShown();
-  const bar = (typeof cdHeadBits === 'function' ? cdHeadBits() : '') + (v.bar || '');
+  /* Вкладки звідси пішли в ряд статусів угорі. Лишається смуга
+     мультивибору — вона зʼявляється, лише коли щось вибрано, і тоді
+     рядок у таблиці справді потрібен. */
+  const bar = v.bar || '';
   const head = bar ? `<tr class="cab-treebar"><td colspan="${COLS}">${bar}</td></tr>` : '';
   /* ПІДСУМКУ ТУТ НЕМАЄ. «Разом по кабінету» стоїть у самому рядку
      кабінета, прямо над деревом, — і повторювати його ще раз унизу
@@ -2439,7 +2533,7 @@ function cabCardOld(fb) {
     ${head}
 
     <div class="grid grid-cols-2 gap-2 mb-3">
-      ${[['Spend', c.x.spend > 0 ? cabMoney(c.x.spend) : '—'],
+      ${[['Spend, all time', c.x.all > 0 ? cabMoney(c.x.all) : '—'],
          ['Days live', c.age || '—'],
          ['First spend', c.x.first || '—'],
          ['Last spend', c.x.last || '—']].map(([k, v]) => cell(k, v)).join('')}
