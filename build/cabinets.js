@@ -1441,18 +1441,26 @@ function cabStateOf(row, f, fb) {
      сьогодні, і перефарбовувати через них робочий кабінет означало б
      зробити цей стан шумом. */
   if (fb && cabPending(fb) > 0 && Number(fb.ads_active) === 0) return 'review';
-  /* Facebook каже, що сьогодні вже відкручено — значить крутить, і не
-     важливо, що вечірній імпорт ще не приїхав. Саме через це до токена
-     робочий кабінет цілий день виглядав тихим. */
+  /* ВІДПОВІДЬ FACEBOOK СИЛЬНІША ЗА ВЧОРАШНІ ГРОШІ.
+
+     Доти першим питанням було «чи відкручено сьогодні», і кабінет, у
+     якого зранку списалось трохи, а потім усе пішло в реджект, цілий
+     день стояв як Running. Гроші кажуть, що він крутив; питання ж на
+     екрані інше — чи крутить ЗАРАЗ. І на нього є пряма відповідь:
+     скільки оголошень Facebook доставляє цієї хвилини.
+
+     Тому: коли розбивка по оголошеннях у нас є, вирішує саме вона.
+     Нуль доставлених — це Idle, хоч би скільки грошей було списано
+     раніше; чому саме нуль (реджект, ліміт, пауза), пише підказка
+     статусу й блок у панелі.
+
+     Гроші лишаються запасним шляхом — рівно для випадку, коли Facebook
+     про оголошення нічого не сказав (запит не дійшов, стара база). Без
+     цього робочий кабінет до першої вдалої синхронізації виглядав би
+     тихим. */
+  const told = fb && fb.ads != null;
+  if (told) return Number(fb.ads_active) > 0 ? 'running' : 'idle';
   if (fb && Number(fb.spend_today) > 0) return 'running';
-  /* ЖИВІ ОГОЛОШЕННЯ — ЦЕ ВЖЕ ВІДПОВІДЬ. Досі стан питали тільки в
-     грошей, і кабінет із увімкненими оголошеннями падав у «Never ran»
-     щоразу, коли Facebook ще не порахував сьогоднішній спенд, а
-     вечірній імпорт не приїхав. Тобто робочий кабінет підписувався як
-     такий, що не крутив ЖОДНОГО разу, — і зранку це було нормою, а не
-     винятком. Питаємо Facebook: він каже, скільки оголошень
-     доставляється просто зараз. */
-  if (fb && Number(fb.ads_active) > 0) return 'running';
   const x = f.map[String(row.account_id || '').trim()];
   /* Гроші були — значить кабінет робочий. Раніше тут розрізнялось, чи
      вони були саме в останній імпортований день, і якщо ні — кабінет
@@ -1489,6 +1497,14 @@ function cabReason(c) {
     word: cabPending(fb) + ' in review',
     tip: 'Facebook has not finished checking ' + cabPending(fb) + ' ad(s) yet. '
        + 'Nothing to do but wait — usually minutes, sometimes hours.' };
+  /* Гроші сьогодні були, а доставляється нуль. Стан каже Idle — і це
+     правда про «зараз», але без причини він читається як «кабінет
+     нічого не робив», хоч насправді його щойно зупинило. */
+  if (fb && fb.ads != null && !Number(fb.ads_active) && Number(fb.spend_today) > 0)
+    return { key: 'stopped', word: 'stopped today',
+      tip: 'Money was spent today, but right now Facebook is delivering none of this '
+         + 'cabinet\u2019s ads. Open the cabinet to see what happened to them — '
+         + 'usually rejected, out of limit, or switched off.' };
   if (fb && fbSt === 'unknown') return { key: 'unknown', word: 'status unknown',
     tip: 'Facebook returned a status code this dashboard does not know yet. It is not '
        + 'treated as a problem — the state comes from the money and the live ads.' };

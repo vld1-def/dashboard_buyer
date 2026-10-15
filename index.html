@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 15.10 14:09">
+  <meta name="build" content="build 15.10 14:40">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2956,9 +2956,17 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    рядку, хоч би якої довжини були назви. Доти воно йшло одразу за
    назвою й щоразу опинялось в іншому місці. */
 .cd-side {
-  margin-left: auto; flex: 0 0 auto;
+  /* Стискається САМ, а не виштовхує око за край. Доти стояло
+     flex: 0 0 auto — і щойно око відкривали, домен із кампанією
+     розсували клітинку, а око, яке стоїть останнім, ховалось під
+     стовпчиком світчера. Тепер першим поступається текст: він
+     обрізається трьома крапками, а кнопка лишається на місці. */
+  margin-left: auto; flex: 0 1 auto;
   display: inline-flex; align-items: center; gap: 5px; min-width: 0;
 }
+/* Око не стискається ніколи: воно й є те, у що ціляться. */
+.cd-side .cd-eye { flex: 0 0 auto; }
+.cd-side .cd-dom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Під оком ховається вся адреса разом: і домен, і кампанія з адсетом.
    Це одне питання — «де це крутиться», — і одна відповідь на нього.
    Поки питання не поставили, рядок віддає місце назві. */
@@ -5258,7 +5266,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 14:09</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 14:40</div>
     </div>
   </aside>
 
@@ -15176,11 +15184,16 @@ function gcDiff(geo, results) {
          праворуч те, що ЩОСЬ РОБИТЬ (домени, списком, шаблон, закрити).
          Різні речі — різні місця. -->
     <div class="p-5 border-b border-white/5 flex items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
-      <div class="shrink-0">
+      <!-- Обидва краї тягнуться ОДНАКОВО (flex-1 basis-0), тож середина
+           стоїть рівно посередині шапки й не їздить, коли праворуч
+           зʼявляються чи зникають кнопки «домени» й «списком». Доти
+           середину центрувало те, що лишилось від країв, — і перемикач
+           совався щоразу, коли його ж і натискали. -->
+      <div class="flex-1 basis-0 min-w-0">
         <h2 id="ap-title" class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
         <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
       </div>
-      <div class="flex items-center gap-2 flex-wrap flex-1 justify-center min-w-0">
+      <div class="flex items-center gap-2 flex-wrap justify-center shrink-0">
         <!-- ОДНЕ ВІКНО, ДВА ДОВІДНИКИ.
              Прілки кажуть, що вписати В кампанію; PWA — яка силка стоїть
              ЗА кампанією. Питання різні, але шукають і те, і те по гео,
@@ -15195,7 +15208,7 @@ function gcDiff(geo, results) {
         <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
           class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
       </div>
-      <div class="flex items-center gap-2 flex-wrap shrink-0">
+      <div class="flex items-center gap-2 flex-wrap flex-1 basis-0 min-w-0 justify-end">
         <button id="ap-dom" onclick="pwDomRefresh(this)" title="Перечитати стан доменів зі списку доменів — його міняє перевірка, а не ми"
           class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
@@ -22999,18 +23012,26 @@ function cabStateOf(row, f, fb) {
      сьогодні, і перефарбовувати через них робочий кабінет означало б
      зробити цей стан шумом. */
   if (fb && cabPending(fb) > 0 && Number(fb.ads_active) === 0) return 'review';
-  /* Facebook каже, що сьогодні вже відкручено — значить крутить, і не
-     важливо, що вечірній імпорт ще не приїхав. Саме через це до токена
-     робочий кабінет цілий day виглядав тихим. */
+  /* ВІДПОВІДЬ FACEBOOK СИЛЬНІША ЗА ВЧОРАШНІ ГРОШІ.
+
+     Доти першим питанням було «чи відкручено сьогодні», і кабінет, у
+     якого зранку списалось трохи, а потім усе пішло в реджект, цілий
+     day стояв як Running. Гроші кажуть, що він крутив; питання ж на
+     екрані інше — чи крутить ЗАРАЗ. І на нього є пряма відповідь:
+     скільки оголошень Facebook доставляє цієї хвилини.
+
+     Тому: коли розбивка по оголошеннях у нас є, вирішує саме вона.
+     Нуль доставлених — це Idle, хоч би скільки грошей було списано
+     раніше; чому саме нуль (реджект, ліміт, пауза), пише підказка
+     статусу й блок у панелі.
+
+     Гроші лишаються запасним шляхом — рівно для випадку, коли Facebook
+     про оголошення нічого не сказав (запит не дійшов, стара база). Без
+     цього робочий кабінет до першої вдалої синхронізації виглядав би
+     тихим. */
+  const told = fb && fb.ads != null;
+  if (told) return Number(fb.ads_active) > 0 ? 'running' : 'idle';
   if (fb && Number(fb.spend_today) > 0) return 'running';
-  /* ЖИВІ ОГОЛОШЕННЯ — ЦЕ ВЖЕ ВІДПОВІДЬ. Досі стан питали тільки в
-     грошей, і кабінет із увімкненими оголошеннями падав у «Never ran»
-     щоразу, коли Facebook ще не порахував сьогоднішній спенд, а
-     вечірній імпорт не приїхав. Тобто робочий кабінет підписувався як
-     такий, що не крутив ЖОДНОГО разу, — і зранку це було нормою, а не
-     винятком. Питаємо Facebook: він каже, скільки оголошень
-     доставляється просто зараз. */
-  if (fb && Number(fb.ads_active) > 0) return 'running';
   const x = f.map[String(row.account_id || '').trim()];
   /* Гроші були — значить кабінет робочий. Раніше тут розрізнялось, чи
      вони були саме в останній імпортований day, і якщо ні — кабінет
@@ -23047,6 +23068,14 @@ function cabReason(c) {
     word: cabPending(fb) + ' in review',
     tip: 'Facebook has not finished checking ' + cabPending(fb) + ' ad(s) yet. '
        + 'Nothing to do but wait — usually minutes, sometimes hours.' };
+  /* Гроші сьогодні були, а доставляється нуль. Стан каже Idle — і це
+     правда про «зараз», але без причини він читається як «кабінет
+     нічого не робив», хоч насправді його щойно зупинило. */
+  if (fb && fb.ads != null && !Number(fb.ads_active) && Number(fb.spend_today) > 0)
+    return { key: 'stopped', word: 'stopped today',
+      tip: 'Money was spent today, but right now Facebook is delivering none of this '
+         + 'cabinet\u2019s ads. Open the cabinet to see what happened to them — '
+         + 'usually rejected, out of limit, or switched off.' };
   if (fb && fbSt === 'unknown') return { key: 'unknown', word: 'status unknown',
     tip: 'Facebook returned a status code this dashboard does not know yet. It is not '
        + 'treated as a problem — the state comes from the money and the live ads.' };
