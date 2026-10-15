@@ -80,7 +80,11 @@ const CAB_EXTRA = [
   { key: 'card',    label: 'Card' }
 ];
 
-let cabRows = [], cabFilter = 'all', cabGroup = 'agent', cabSel = null;
+/* ВІДКРИВАЄМОСЬ НА RUNNING, а не на «всі». Заходять сюди майже завжди
+   з одним питанням — що зараз крутиться; а «всі» означає ще й десятки
+   порожніх та без токена, крізь які це питання доводиться шукати.
+   Решта станів — на відстані одного кліку по плитці. */
+let cabRows = [], cabFilter = 'running', cabGroup = 'agent', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
