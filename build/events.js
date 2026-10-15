@@ -224,8 +224,6 @@ function evDismiss() {
   evPaint();
 }
 
-function evGoCabinets() { evDismiss(); navGo('cabinets'); }
-
 function evPaint() {
   const news = evNew().slice().sort((a, b) =>
     evRank(b.to_state) - evRank(a.to_state) || String(b.at).localeCompare(String(a.at)));
@@ -237,33 +235,9 @@ function evPaint() {
     badge.style.display = news.length ? '' : 'none';
   }
 
-  const box = document.getElementById('ev-banner');
-  if (!box) return;
-  if (!news.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-
-  const bad = news.filter(e => evRank(e.to_state) >= 2).length;
-  const SHOW = 5;
-  const head = bad
-    ? `${bad} cabinet${bad > 1 ? 's' : ''} need${bad > 1 ? '' : 's'} attention`
-    : `${news.length} change${news.length > 1 ? 's' : ''} since your last visit`;
-
-  box.innerHTML = `<div class="ev-bar ${bad ? 'is-bad' : ''}">
-    <div class="ev-bar-main">
-      <p class="ev-bar-head">${head}</p>
-      <div class="ev-bar-list">
-        ${news.slice(0, SHOW).map(e => `<span class="ev-chip">
-            <b>${evEsc(e.account_id)}</b>
-            <span class="${(EV_TONE[e.to_state] || EV_TONE.idle).tone}">${(EV_TONE[e.to_state] || EV_TONE.idle).word}</span>
-            <i>${evAgo(e.at)}</i></span>`).join('')}
-        ${news.length > SHOW ? `<span class="ev-chip ev-more">+${news.length - SHOW} more</span>` : ''}
-      </div>
-    </div>
-    <div class="ev-bar-act">
-      <button onclick="evGoCabinets()" class="ev-btn">Open Cabinets</button>
-      <button onclick="evDismiss()" class="ev-x" title="Mark as seen">&times;</button>
-    </div>
-  </div>`;
-  box.classList.remove('hidden');
+  /* Смуга над вмістом прибрана. Лишився лічильник біля пункту меню:
+     він не кричить і не займає екран, а відкрити кабінети й подивитись
+     самому — один клік. */
 }
 
 const evEsc = s => String(s == null ? '' : s)
@@ -362,4 +336,3 @@ function evFeedPaint() {
 window.evBoot = evBoot;
 window.evPaint = evPaint;
 window.evDismiss = evDismiss;
-window.evGoCabinets = evGoCabinets;

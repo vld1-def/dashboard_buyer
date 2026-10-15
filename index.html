@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 15.10 12:00">
+  <meta name="build" content="build 15.10 12:43">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4640,44 +4640,10 @@ input.ui-in[type="range"] { padding: 0; }
   border: 1px solid rgba(239,68,68,.35);
 }
 
-/* Смуга «що змінилось, поки тебе не було» — над вмістом, на всіх сторінках. */
-#ev-banner { margin-bottom: 12px; }
-.ev-bar {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 10px 12px; border-radius: 14px;
-  background: var(--surface-2); border: 1px solid var(--border);
-}
-.ev-bar.is-bad {
-  background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.30);
-}
-.ev-bar-main { flex: 1 1 320px; min-width: 0; }
-.ev-bar-head {
-  font-size: 11px; font-weight: 900; text-transform: uppercase;
-  letter-spacing: .08em; color: var(--text-main); margin-bottom: 6px;
-}
-.ev-bar-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.ev-chip {
-  display: inline-flex; align-items: baseline; gap: 6px;
-  padding: 3px 8px; border-radius: 8px;
-  background: var(--surface-3); border: 1px solid var(--border);
-  font-size: 11px; font-weight: 700;
-}
-.ev-chip b { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-main); }
-.ev-chip i { font-style: normal; font-size: 10px; color: var(--text-muted); }
-.ev-more { color: var(--text-muted); }
-.ev-bar-act { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.ev-btn {
-  padding: 6px 12px; border-radius: 10px; cursor: pointer;
-  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
-  background: var(--accent); color: #fff; border: none; transition: filter .15s;
-}
-.ev-btn:hover { filter: brightness(1.12); }
-.ev-x {
-  width: 26px; height: 26px; border-radius: 8px; cursor: pointer;
-  color: var(--text-muted); font-size: 18px; line-height: 1;
-  background: transparent; border: 1px solid var(--border); transition: color .15s, border-color .15s;
-}
-.ev-x:hover { color: #F87171; border-color: rgba(239,68,68,.4); }
+/* ВЕРСТКИ СМУГИ «ЩО ЗМІНИЛОСЬ» ТУТ БІЛЬШЕ НЕМА: сама смуга прибрана.
+   Вона писала про бани на весь екран кожному, зокрема тим, у кого в
+   тому кабінеті немає жодного акаунта. Лічильник біля пункту меню
+   (.sb-badge) лишився — він про те саме, але пошепки. */
 
 /* Рядок історії — і в бічній панелі, і в спільній стрічці. */
 .ev-row {
@@ -5254,7 +5220,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 12:00</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 12:43</div>
     </div>
   </aside>
 
@@ -5452,10 +5418,12 @@ input.ui-in[type="range"] { padding: 0; }
         <span id="mob-team-name">Dashboard</span>
       </button>
 
-      <!-- «Що змінилось, поки тебе не було». Живе над вмістом, а не на
-           сторінці кабінетів: про бан треба знати навіть тому, хто туди
-           не заходить. Порожній — не займає місця. -->
-      <div id="ev-banner" class="hidden"></div>
+      <!-- СМУГИ «ЩО ЗМІНИЛОСЬ, ПОКИ ТЕБЕ НЕ БУЛО» ТУТ БІЛЬШЕ НЕМА.
+           Вона писала про бани на весь екран кожному — зокрема тим, у
+           кого в тому кабінеті немає жодного акаунта: журнал подій
+           ведеться по КОМАНДІ, а не по власнику. Тобто смуга
+           відповідала на питання, якого ця людина не ставила, і робила
+           це найгучнішим способом із можливих. -->
 
       <!-- Data Hub: Form.html у тій самій сторінці. Той самий Supabase і той самий
            selected_team у localStorage, тож команда й дані спільні. -->
@@ -21622,7 +21590,11 @@ const CAB_EXTRA = [
   { key: 'card',    label: 'Card' }
 ];
 
-let cabRows = [], cabFilter = 'all', cabGroup = 'agent', cabSel = null;
+/* ВІДКРИВАЄМОСЬ НА RUNNING, а не на «всі». Заходять сюди майже завжди
+   з одним питанням — що зараз крутиться; а «всі» означає ще й десятки
+   порожніх та без токена, крізь які це питання доводиться шукати.
+   Решта станів — на відстані одного кліку по плитці. */
+let cabRows = [], cabFilter = 'running', cabGroup = 'agent', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
@@ -24653,8 +24625,6 @@ function evDismiss() {
   evPaint();
 }
 
-function evGoCabinets() { evDismiss(); navGo('cabinets'); }
-
 function evPaint() {
   const news = evNew().slice().sort((a, b) =>
     evRank(b.to_state) - evRank(a.to_state) || String(b.at).localeCompare(String(a.at)));
@@ -24666,33 +24636,9 @@ function evPaint() {
     badge.style.display = news.length ? '' : 'none';
   }
 
-  const box = document.getElementById('ev-banner');
-  if (!box) return;
-  if (!news.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-
-  const bad = news.filter(e => evRank(e.to_state) >= 2).length;
-  const SHOW = 5;
-  const head = bad
-    ? `${bad} cabinet${bad > 1 ? 's' : ''} need${bad > 1 ? '' : 's'} attention`
-    : `${news.length} change${news.length > 1 ? 's' : ''} since your last visit`;
-
-  box.innerHTML = `<div class="ev-bar ${bad ? 'is-bad' : ''}">
-    <div class="ev-bar-main">
-      <p class="ev-bar-head">${head}</p>
-      <div class="ev-bar-list">
-        ${news.slice(0, SHOW).map(e => `<span class="ev-chip">
-            <b>${evEsc(e.account_id)}</b>
-            <span class="${(EV_TONE[e.to_state] || EV_TONE.idle).tone}">${(EV_TONE[e.to_state] || EV_TONE.idle).word}</span>
-            <i>${evAgo(e.at)}</i></span>`).join('')}
-        ${news.length > SHOW ? `<span class="ev-chip ev-more">+${news.length - SHOW} more</span>` : ''}
-      </div>
-    </div>
-    <div class="ev-bar-act">
-      <button onclick="evGoCabinets()" class="ev-btn">Open Cabinets</button>
-      <button onclick="evDismiss()" class="ev-x" title="Mark as seen">&times;</button>
-    </div>
-  </div>`;
-  box.classList.remove('hidden');
+  /* Смуга над вмістом прибрана. Лишився лічильник біля пункту меню:
+     він не кричить і не займає екран, а відкрити кабінети й подивитись
+     самому — один клік. */
 }
 
 const evEsc = s => String(s == null ? '' : s)
@@ -24791,7 +24737,6 @@ function evFeedPaint() {
 window.evBoot = evBoot;
 window.evPaint = evPaint;
 window.evDismiss = evDismiss;
-window.evGoCabinets = evGoCabinets;
 </script>
 
 <script>
