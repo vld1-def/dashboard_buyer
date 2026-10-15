@@ -166,10 +166,8 @@ const CD_REG = 'complete_registration';
    — та сама вада, що й була. */
 const CD_INST = 'mobile_app_install';
 
-/* Чи є в цьому дереві взагалі інстали. Вирішується РАЗ на перемальовку
-   і з ВЕРХНЬОГО рівня: він уже містить суму всіх дітей, тож обходити
-   дерево вдруге не треба. */
-let cdHasInst = false;
+/* Чи є в знімку інстали — питають уже в cdHasInstalls, і прямо в
+   сирих рядків: відповідь потрібна ДО того, як складено дерево. */
 
 /* Як називати одиницю результату в комірці. Коротко: місця там на
    одне слово, а довге зіпхне число за край. */
@@ -225,12 +223,12 @@ const CD_STATE = [
     why: 'Its ad set is switched off — the switch is one level up' },
   { k: 'ARCHIVED',             s: 'off',  t: 'Archived',
     why: 'Archived in Facebook' },
-  /* «On», а не «Active». Active читалось як назва стану у Facebook —
-     тобто як щось поруч із «Rejected» і «In review», — і людина не
-     могла зрозуміти, чи це стан, чи просто «ввімкнено». А це саме
-     «ввімкнено»: те саме, що показує перемикач у кінці рядка, тільки
-     словом. Решта підписів лишається станами, бо станами й є. */
-  { k: 'ACTIVE',               s: 'ok',   t: 'On',
+  /* «Active» — як у Facebook. Доти тут стояло «On», щоб не плутати
+     стан із перемикачем; плутати більше нема з чим: перемикач виїхав
+     у власний стовпчик і стоїть окремо від слова. А в Ads Manager цей
+     стан називається Active, і два різні слова на один стан — зайвий
+     переклад у голові. */
+  { k: 'ACTIVE',               s: 'ok',   t: 'Active',
     why: 'Switched on and running' }
 ];
 const cdState = (k) => CD_STATE.find(x => x.k === String(k || '').toUpperCase());
@@ -502,10 +500,8 @@ window.cdHide = function () {
   cdEyed = new Set();
   /* Смугу з кнопкою не чіпаємо: кабінет вибраний, просто нутро
      закрите. Прибирає її той, хто зняв вибір, — cdBar(''). */
-  const box = document.getElementById('cab-inside');
-  /* Вміст прибираємо, а не лише ховаємо: лишений у розмітці, він
-     наступного разу встигає блимнути числами минулого кабінета. */
-  if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+  /* Прибирати вміст більше нема де: рядки дерева зникають разом із
+     перемальовкою таблиці, щойно cabTreeId спорожнів. */
   cdBtnSync();
 };
 
@@ -520,11 +516,12 @@ window.cdOpen = function (account) {
 };
 
 async function cdLoad(account) {
-  const box = document.getElementById('cab-inside');
-  if (!box) return;
+  /* Власного вузла в дерева більше немає — воно малюється рядками
+     таблиці кабінетів. Доти тут стояла перевірка «є куди малювати?», і
+     після переїзду вона означала рівно одне: нічого не вантажити
+     взагалі. */
   const id = String(account || '').trim();
   if (!id) return cdHide();
-  box.classList.remove('hidden');
   if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set(); }
   cdAcc = id;
   cdBtnSync();
@@ -828,122 +825,130 @@ function cdAds() {
   }).sort((a, b) => b.spend - a.spend);
 }
 
-function cdPaint() {
-  const box = document.getElementById('cab-inside');
-  if (!box) return;
 
-  /* Заголовка тут немає навмисно. «Inside <номер>» повторював номер,
-     який стоїть рядком вище, а «Today's numbers from the last sync»
-     пояснював те, що видно з самої таблиці.
+/* ═══════════ ДЕРЕВО ВІДДАЄ ДАНІ, А МАЛЮЄ ЇХ ТАБЛИЦЯ КАБІНЕТІВ ═══════════
 
-     Стрічка стану й вкладки теж переїхали — у смугу з кнопкою (cdBar).
-     Вони про те саме, що й кнопка: що саме показано. Тримати їх
-     окремим рядком означало б платити висотою двічі за одну думку. */
-  const head = '';
-  cdBar(cdFor);
+   Доти воно малювало власну таблицю з власною шапкою: «Campaign / ad
+   set / ad · Status · Budget · Spend · …». Шапок ставало дві, одна під
+   одною, і жодна колонка не збігалася з тією, що над нею, — числа
+   кампанії стояли не під тими підписами, під якими стоять числа
+   кабінета.
 
-  if (cdErr === 'no-table') {
-    box.innerHTML = head + '<p class="cd-empty">The snapshot table does not exist yet — run '
-      + 'block 1 of FB_RULES.sql, then press Sync now.</p>';
-    return;
-  }
-  if (cdErr) { box.innerHTML = head + '<p class="cd-empty">Could not read: ' + cdEsc(cdErr) + '</p>'; return; }
-  if (!cdRows.length) {
-    box.innerHTML = head + '<p class="cd-empty">Nothing active in the snapshot. '
-      + 'Either this cabinet is not running anything, or the sync has not filled it yet — press Sync now.</p>';
-    return;
-  }
-
-  /* Фільтр сховав усе. Порожня таблиця без пояснення читається як
-     «нічого не крутиться» або як поломка — а насправді це ми самі
-     щойно попросили сховати. */
+   Тепер дерево віддає СПИСОК ВУЗЛІВ і готові клітинки до них, а рядки
+   складає cabinets.js — тими самими стовпцями, що й кабінети. Логіка
+   (що показати, що сховати, що порахувати) лишається тут: вона
+   нетривіальна, і другої її копії бути не має. */
+window.cdView = function () {
+  if (cdErr === 'no-table') return { msg: 'The snapshot table does not exist yet — run '
+    + 'block 1 of FB_RULES.sql, then press Sync now.' };
+  if (cdErr) return { msg: 'Could not read: ' + cdEsc(cdErr) };
+  if (!cdRows.length) return { msg: 'Nothing active in the snapshot. '
+    + 'Either this cabinet is not running anything, or the sync has not filled it yet '
+    + '— press Sync now.' };
   if (cdOnly && !cdShown().length) {
-    /* Причину називаємо словами: «нічого не крутиться» і «все
-       відхилено» — це дві різні новини, і друга означає, що треба йти
-       щось робити. Поки тут стояло одне «switched off», друга читалась
-       як перша. */
     const h = cdHidBits();
     const words = h ? cdHidWords(h) : '';
-    box.innerHTML = head + '<p class="cd-empty">Nothing is live here right now'
-      + (words ? ' \u2014 ' + words : '') + '. '
-      + 'Untick “Only live” to see it all.</p>';
-    return;
+    return { msg: 'Nothing is live here right now' + (words ? ' — ' + words : '')
+      + '. Untick “Only live” to see it all.' };
   }
 
-  const body = [];
-  /* Верхній рівень тримаємо окремо: з нього ж рахується підсумок. У
-     дереві це кампанії, у списку — оголошення; нижні рівні вже складені
-     в кампанії, і брати обидва означало б порахувати все двічі. */
   const top = cdFlat ? cdAds() : cdTree();
-  /* Стовпчик інсталів ставимо САМ — і тільки коли вони є. Порожня
-     колонка на кожному PWA-кабінеті це шум, а відсутня на APP-кабінеті
-     — та сама вада, через яку інсталів не було видно ніде. */
-  cdHasInst = top.some(n => (n.installs || 0) > 0);
+  const list = [];
   /* Смуга чергується по КАМПАНІЯХ, а не по рядках: рядків у кампанії
      скільки завгодно, і чергування по них розрізало б саме ту групу,
-     яку ми й намагаємось показати цілою.
-
-     У списку оголошень кампаній немає, тож там чергуємо по рядках —
-     це звичайна зебра, і вона теж допомагає не з'їхати очима. */
+     яку ми й намагаємось показати цілою. */
   let band = 0;
-  if (cdFlat) top.forEach((a, k) => body.push(cdRow(a, 0, k % 2)));
+  if (cdFlat) top.forEach((a, k) => list.push({ n: a, depth: 0, band: k % 2 }));
   else top.forEach(c => {
     const b = band++ % 2;
-    body.push(cdRow(c, 0, b));
+    list.push({ n: c, depth: 0, band: b });
     if (!cdOpenIds.has('campaign:' + c.id)) return;
     c.kids.forEach(s => {
-      body.push(cdRow(s, 1, b));
+      list.push({ n: s, depth: 1, band: b });
       if (!cdOpenIds.has('ad set:' + s.id)) return;
-      s.kids.forEach(a => body.push(cdRow(a, 2, b)));
+      s.kids.forEach(a => list.push({ n: a, depth: 2, band: b }));
     });
   });
+  return { list, bar: cdMarkBar() };
+};
 
-  box.innerHTML = head + cdMarkBar() + `<div class="cd-wrap custom-scrollbar">
-    <table class="cd-tbl">
-      <thead><tr>
-        <th>${cdFlat ? 'Ad' : 'Campaign / ad set / ad'}</th>
-        <th title="Switched on is not the same as running">Status</th>
-        <th class="ta-r" title="Campaign budget (CBO) or ad set budget (ABO) — Facebook keeps it on one level, not both">Budget</th>
-        <th class="ta-r">Spend</th>
-        <th class="ta-r" title="What the ad set optimizes for">Result</th>
-        <th class="ta-r">Cost per result</th>
-        <th class="ta-r" title="Cost per 1000 impressions">CPM</th>
-        <th class="ta-r" title="Link clicks ÷ impressions, in percent — not Facebook’s “CTR (all)”, which also counts likes and clicks on the page. This is the number the rules measure.">Link CTR</th>
-        <th class="ta-r">Link clicks</th>
-        <th class="ta-r" title="Cost per link click">CPC</th>
-        <th class="ta-r">Lead</th>
-        <th class="ta-r">Cost per lead</th>
-        <th class="ta-r" title="Completed registrations">Reg</th>
-        <th class="ta-r">Cost per reg</th>
-        ${cdHasInst ? `<th class="ta-r" title="Mobile app installs. This column appears on its own when there are any \u2014 on a cabinet without an app it would be an empty column on every row.">Install</th>
-        <th class="ta-r">Cost per install</th>` : ''}
-        <th></th>
-      </tr></thead>
-      <tbody>${body.join('')}${cdFill()}</tbody>
-      ${cdTotalRow(top)}
-    </table></div>`;
+/* ПІДСУМКОВОГО РЯДКА НЕМАЄ. Разом по кабінету стоїть у самому рядку
+   кабінета — над деревом, у тих самих стовпцях. Другий підсумок унизу
+   показував би те саме число вдруге. */
+
+/* Готові клітинки одного вузла. Віддаємо саме HTML, а не числа: усе,
+   що тут рахується — підказки, пунктир «не знаємо», валюта, — уже
+   написане, і переписувати його в кабінетах означало б завести другу
+   версію тих самих правил. */
+window.cdFields = function (n, depth) {
+  const res = cdResultCell(n);
+  const cpm = n.imps > 0 ? cdMoney(n.spend / n.imps * 1000) : cdNone;
+  const ctr = n.imps > 0
+    ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
+  return {
+    name: cdNameCell(n, depth),
+    status: cdChips(n),
+    sw: cdSwitch(n, String(n.name || '').trim()),
+    budget: cdBudgetCell(n),
+    spend: cdMoney(n.spend),
+    result: res.text, per: res.per, goalTip: res.tip,
+    cpm, ctr,
+    clicks: String(n.clicks), cpc: cdPer(n.spend, n.clicks),
+    imps: String(n.imps),
+    leads: String(n.leads), perLead: cdPer(n.spend, n.leads), leadTip: cdLeadTip(n),
+    regs: String(n.regs), perReg: cdPer(n.spend, n.regs),
+    installs: String(n.installs || 0), perInstall: cdPer(n.spend, n.installs),
+    ads: n.kind === 'ad' ? '' : String(n.ads),
+    marked: cdMarked.has(String(n.id)),
+    kids: n.kids && n.kids.length > 0,
+    open: cdOpenIds.has(n.kind + ':' + n.id),
+    key: n.kind + ':' + n.id
+  };
+};
+
+/* Чи є в знімку хоч один інстал. Питаємо СИРІ рядки, а не складене
+   дерево: колонку в шапці треба вирішити раніше, ніж намальовані
+   рядки, — отже прапорець, виставлений під час їх малювання,
+   спізнився б рівно на одну перемальовку. */
+window.cdHasInstalls = function () {
+  return cdRows.some(r =>
+    (cdPick(Array.isArray(r.actions) ? r.actions : [], CD_INST) || 0) > 0);
+};
+
+/* Назва вузла: галочка вибору, трикутник, сам підпис, домен і
+   лічильник оголошень. Те саме, що стояло в першій клітинці власної
+   таблиці дерева. */
+function cdNameCell(n, depth) {
+  const key = n.kind + ':' + n.id;
+  const kids = n.kids.length > 0;
+  const open = cdOpenIds.has(key);
+  const twist = `<span class="cd-twist${kids ? (open ? ' is-on' : '') : ' cd-leaf'}"></span>`;
+  const named = String(n.name || '').trim();
+  const label = named
+    ? `<span class="cd-lbl">${cdEsc(named)}</span>`
+    : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
+  const count = n.kind === 'ad'
+    ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
+    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
+  const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
+      onclick="event.stopPropagation()"
+      onchange="cdMark('${cdEsc(n.id)}', this.checked)"
+      title="Pick this ${n.kind} to switch together with others">`;
+  return mark + twist + label + cdDom(n, key) + count;
+};
+window.cdMarkedCount = () => cdMarked.size;
+
+/* Дерево більше не має власного місця на сторінці: його рядки стоять
+   у таблиці кабінетів. Тож «перемалюй» означає рівно одне — хай
+   перемалюється таблиця. */
+function cdPaint() {
+  if (typeof cabRender === 'function') cabRender();
 }
 
-/* РЯДОК-ЗАПОВНЮВАЧ. Без нього підсумок притиснути до низу не вийде,
-   і це не примха верстки, а те, як працює position: sticky: він зсуває
-   елемент лише в межах прокрутки. Коли рядків мало й гортати нема чого,
-   зсувати теж нема чого — підсумок лишається одразу під останнім
-   рядком, а під ним зяє порожнеча до краю блока.
-
-   Тож віддаємо ту порожнечу рядку, який нічого не показує: він
-   розтягується на весь залишок висоти й штовхає підсумок униз. Коли
-   рядків багато, залишку немає, рядок стискається в нуль, і далі
-   працює вже липкість.
-
-   Тестам він не заважає: у ньому немає .cd-lbl, за яким вони й
-   впізнають рядки таблиці. */
-function cdFill() {
-  /* Ширина — за фактом, а не числом у коді: коли зʼявляється пара
-     стовпчиків інсталів, прибитий «15» лишив би останні колонки без
-     заповнювача, і підсумок поїхав би вгору саме на APP-кабінетах. */
-  return '<tr class="cd-fill" aria-hidden="true"><td colspan="'
-    + (cdHasInst ? 17 : 15) + '"></td></tr>';
-}
+/* РЯДКА-ЗАПОВНЮВАЧА ТУТ БІЛЬШЕ НЕМА. Він тримав підсумок притиснутим
+   до низу власного блока дерева — а блока більше немає: рядки стоять
+   у таблиці кабінетів, і підсумок стоїть останнім рядком серед них, бо
+   йому там і місце. Липкість із підпіркою разом і пішли. */
 
 /* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
    нулем вибраних забирає висоту й нічого не каже. */
@@ -1085,67 +1090,6 @@ function cdResultCell(n) {
   };
 }
 
-function cdTotalRow(list) {
-  if (!list || !list.length) return '';
-  const t = { spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0, result: 0,
-              hasResult: false, ads: 0, units: new Set() };
-  list.forEach(n => {
-    t.spend += n.spend; t.imps += n.imps; t.clicks += n.clicks;
-    t.leads += n.leads; t.regs += n.regs; t.installs += n.installs || 0;
-    t.ads += n.ads || 1;
-    // Підсумок складає ті самі одиниці, що й рядки, — і спотикається
-    // об ту саму кашу, якщо їх кілька. Тож і поводиться так само.
-    if (n.hasResult) { t.result += n.result; t.hasResult = true;
-                       (n.units || []).forEach(u => t.units.add(u)); }
-  });
-  const tRes = cdResultCell(t);
-
-  const cpm = t.imps > 0 ? cdMoney(t.spend / t.imps * 1000) : cdNone;
-  const ctr = t.imps > 0
-    ? (Math.round(t.clicks / t.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
-
-  return `<tfoot><tr class="cd-tot">
-    <td>Total</td>
-    <td></td>
-    <td class="ta-r cd-num">${cdBudgetText(cdTotalBudget(list))}</td>
-    <td class="ta-r cd-num cd-spend">${cdMoney(t.spend)}</td>
-    <td class="ta-r cd-num" title="${cdEsc(tRes.tip)}">${tRes.text}</td>
-    <td class="ta-r cd-num">${tRes.per}</td>
-    <td class="ta-r cd-num">${cpm}</td>
-    <td class="ta-r cd-num">${ctr}</td>
-    <td class="ta-r cd-num">${t.clicks}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.clicks)}</td>
-    <td class="ta-r cd-num">${t.leads}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.leads)}</td>
-    <td class="ta-r cd-num">${t.regs}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.regs)}</td>
-    ${cdHasInst ? `<td class="ta-r cd-num">${t.installs}</td>
-    <td class="ta-r cd-num">${cdPer(t.spend, t.installs)}</td>` : ''}
-    <td></td>
-  </tr></tfoot>`;
-}
-
-/* Загальний бюджет. У Facebook він стоїть або на кампанії, або на її
-   адсетах — ніколи на обох, тож беремо з кампанії, а як там порожньо,
-   складаємо її адсети. Подвійного рахунку тут бути не може.
-
-   Денний і довічний не складаємо разом: це різні величини, і сума
-   «50 на добу плюс 1200 за весь час» не означає нічого. Коли трапилось
-   і те, і те, показуємо денний — його й дивляться щодня. */
-function cdTotalBudget(list) {
-  let daily = 0, life = 0;
-  list.forEach(n => {
-    const own = n.budget;
-    if (own) { if (own.kind === 'daily') daily += own.v; else life += own.v; return; }
-    (n.kids || []).forEach(k => {
-      if (!k.budget) return;
-      if (k.budget.kind === 'daily') daily += k.budget.v; else life += k.budget.v;
-    });
-  });
-  if (daily > 0) return { v: daily, kind: 'daily' };
-  if (life > 0) return { v: life, kind: 'lifetime' };
-  return null;
-}
 
 /* Ціна — нескінченність, коли витрати є, а результату немає. Прочерк
    тут означав би «нуль», а це різні речі: саме ці рядки й вимикають
@@ -1219,8 +1163,7 @@ function cdChips(n) {
   CD_STATE.forEach(st => {
     const cnt = n.state.get(st.k) || 0;
     if (!cnt) return;
-    // Один підпис на всі стани: «2 on», «1 rejected», «3 off». Окремий
-    // випадок для ACTIVE тут колись був лише заради слова «active».
+    // Один підпис на всі стани: «2 active», «1 rejected», «3 off».
     parts.push({ s: st.s, why: st.why,
       text: ad ? st.t : cnt + ' ' + st.t.toLowerCase() });
   });
@@ -1295,7 +1238,10 @@ window.cdEye = function (key, el) {
   const on = cdEyed.has(key);
   /* Перемальовуємо ОДИН рядок, а не все дерево: cdPaint згорнув би
      прокрутку й зняв фокус, а змінився рівно один напис. */
-  const cell = el.closest('.cd-name');
+  /* Клітинка назви тепер належить таблиці кабінетів (.cab-nd) —
+     стару .cd-name лишаємо в пошуку, щоб не зламати нічого, що її ще
+     тримає. Без цього око перемикалось, а домен лишався крапками. */
+  const cell = el.closest('.cab-nd, .cd-name');
   const box = cell && cell.querySelector('.cd-dom');
   if (box) {
     const hosts = cdHostsFor(key);
@@ -1326,69 +1272,6 @@ function cdDom(n, key) {
       onclick="event.stopPropagation();cdEye('${k}', this)"
       title="${tip}" aria-label="Show the domain">${on ? CD_EYE_OFF : CD_EYE}</button>`
     + `<span class="cd-dom${on ? ' is-on' : ''}">${body}</span>`;
-}
-
-function cdRow(n, depth, band) {
-  const key = n.kind + ':' + n.id;
-  const kids = n.kids.length > 0;
-  const open = cdOpenIds.has(key);
-  /* Розкриває вся назва, а не сам трикутник: цілитись у чотирнадцять
-     пікселів на рядку, де й так тісно, — заняття, а не клік. */
-  const twist = `<span class="cd-twist${kids ? (open ? ' is-on' : '') : ' cd-leaf'}"></span>`;
-  const hit = kids
-    ? ` onclick="cdToggle('${cdEsc(key).replace(/'/g, '&#39;')}')"` : '';
-
-  /* Назви немає — значить знімок старий: fb-sync привозить її разом із
-     числами. Показуємо id, але видно, що це id, а не назва: мовчки
-     підсунути номер замість назви — те саме, що показати нуль замість
-     «не знаю». */
-  const named = String(n.name || '').trim();
-  const label = named
-    ? `<span class="cd-lbl">${cdEsc(named)}</span>`
-    : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
-  const count = n.kind === 'ad'
-    ? (n.where ? `<span class="cd-where">${cdEsc(n.where)}</span>` : '')
-    : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
-
-  const res = cdResultCell(n);
-  const goalTip = res.tip;
-  const result = res.text;
-  const perResult = res.per;
-
-  const cpm = n.imps > 0 ? cdMoney(n.spend / n.imps * 1000) : cdNone;
-  const ctr = n.imps > 0
-    ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
-
-
-  /* Галочка стоїть у комірці назви, а не окремим стовпчиком: власного
-     стовпчика на неї немає де взяти, а клік по ній не повинен
-     розкривати дерево — звідси stopPropagation. */
-  const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
-      onclick="event.stopPropagation()"
-      onchange="cdMark('${cdEsc(n.id)}', this.checked)"
-      title="Pick this ${n.kind} to switch together with others">`;
-
-  return `<tr class="cd-r cd-d${depth}${band ? ' is-band' : ''}${cdMarked.has(String(n.id)) ? ' is-mk' : ''}">
-    <td class="cd-name${kids ? ' cd-can' : ''}"${hit}
-        title="${cdEsc(n.id)}${kids ? ' · click to ' + (open ? 'collapse' : 'expand') : ''}"
-        >${mark}${twist}${label}${cdDom(n, key)}${count}</td>
-    <td>${cdChips(n)}</td>
-    <td class="ta-r cd-num">${cdBudgetCell(n)}</td>
-    <td class="ta-r cd-num cd-spend">${cdMoney(n.spend)}</td>
-    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${result}</td>
-    <td class="ta-r cd-num" title="${cdEsc(goalTip)}">${perResult}</td>
-    <td class="ta-r cd-num">${cpm}</td>
-    <td class="ta-r cd-num">${ctr}</td>
-    <td class="ta-r cd-num">${n.clicks}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.clicks)}</td>
-    <td class="ta-r cd-num has-tip" title="${cdEsc(cdLeadTip(n))}">${n.leads}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.leads)}</td>
-    <td class="ta-r cd-num">${n.regs}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.regs)}</td>
-    ${cdHasInst ? `<td class="ta-r cd-num">${n.installs}</td>
-    <td class="ta-r cd-num">${cdPer(n.spend, n.installs)}</td>` : ''}
-    <td class="ta-r">${cdSwitch(n, named)}</td>
-  </tr>`;
 }
 
 /* ПЕРЕМИКАЧ, а не кнопка «Stop». Кнопка вміла одне — вимкнути, — і

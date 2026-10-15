@@ -231,7 +231,29 @@ const CAB_COLS = [
     get: c => (c.x.deps > 0 ? c.x.spend / c.x.deps : null),
     cell: v => v == null ? null : cabMoney(v) },
   { key: 'age', label: 'Days', ta: 'r', tip: 'Days since the first spend we know of',
-    get: c => c.age }
+    get: c => c.age },
+  /* ── КОЛОНКИ РІВНЯ КАМПАНІЇ ──
+     Цих чисел у кабінета немає: Facebook рахує їх на оголошеннях, і
+     зводити їх до кабінета означало б скласти різні цілі в одне число.
+     Тому в рядку кабінета вони порожні, а заповнюються у вузлах
+     дерева. Разом із деревом вони й переїхали сюди з його власної
+     таблиці — інакше результати, ліди й реєстрації просто зникли б з
+     екрана. Вимкнені за замовчуванням. */
+  { key: 'result', label: 'Result', ta: 'r', node: 1,
+    tip: 'What the ad set optimizes for \u2014 campaign level', get: () => null },
+  { key: 'cpr', label: 'Cost / result', ta: 'r', node: 1,
+    tip: 'Spend \u00f7 results \u2014 campaign level', get: () => null },
+  { key: 'cpm', label: 'CPM', ta: 'r', node: 1,
+    tip: 'Cost per 1000 impressions \u2014 campaign level', get: () => null },
+  { key: 'leads', label: 'Lead', ta: 'r', node: 1,
+    tip: 'Leads \u2014 campaign level', get: () => null },
+  { key: 'cpl', label: 'Cost / lead', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+  { key: 'regs', label: 'Reg', ta: 'r', node: 1,
+    tip: 'Completed registrations \u2014 campaign level', get: () => null },
+  { key: 'cpreg', label: 'Cost / reg', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+  { key: 'inst', label: 'Install', ta: 'r', node: 1,
+    tip: 'Mobile app installs \u2014 campaign level', get: () => null },
+  { key: 'cpi', label: 'Cost / install', ta: 'r', node: 1, tip: 'Campaign level', get: () => null }
   /* КАРТКА, BM, ТАЙМЗОНА Й ОСТАННІЙ СПЕНД ТУТ НЕ ЖИВУТЬ.
      Усе це вже є в панелі кабінета, яку відкриває кнопка дій, і там
      воно стоїть поруч із тим, що пояснює: валютою, станом Facebook,
@@ -252,40 +274,101 @@ const cabColOn = k => !!cabColsOn()[k];
    бачити. Чого в ньому немає, те йде слідом у своєму природному
    порядку: нова колонка, додана в код, з'являється в кінці, а не
    зникає тому, що її не було в збереженому списку. */
+/* ІНСТАЛИ ЗʼЯВЛЯЮТЬСЯ САМІ. Постійна колонка на PWA-кабінеті була б
+   порожньою в кожному рядку, а вмикати її руками щоразу, відкриваючи
+   APP-кабінет, означає побачити інстали тільки тоді, коли вже знаєш,
+   що вони там є. Тому: відкрите дерево, у знімку є хоч один інстал —
+   колонка й ціна інсталу стоять. Явне «вимкнути» сильніше за це
+   правило: вимкнув — отже не хоче бачити.
+
+   Питаємо СИРІ рядки знімка, а не складене дерево: шапку малюють
+   раніше за рядки, і прапорець, виставлений під час малювання дерева,
+   спізнився б рівно на одну перемальовку — на ту, в якій колонка й
+   мала зʼявитись. */
+function cabColAuto(k) {
+  if (!cabTreeId || (k !== 'inst' && k !== 'cpi')) return false;
+  if (cabView.cols && cabView.cols[k] === 0) return false;
+  return typeof cdHasInstalls === 'function' && cdHasInstalls();
+}
+
 function cabColsShown() {
   const order = Array.isArray(cabView.order) ? cabView.order : [];
-  const on = CAB_COLS.filter(col => cabColOn(col.key));
+  const on = CAB_COLS.filter(col => cabColOn(col.key) || cabColAuto(col.key));
   const rank = k => { const i = order.indexOf(k); return i < 0 ? 1e6 + CAB_COLS.findIndex(c => c.key === k) : i; };
   return on.sort((a, b) => rank(a.key) - rank(b.key));
 }
 
-/* Пересунути колонку на крок. Стрілками, а не перетягуванням: список
-   живе в плаваючому вікні, і тягнути в ньому мишею по кілька пікселів
-   — найшвидший спосіб кинути колонку не туди. */
-async function cabColMove(k, dir) {
-  const shown = cabColsShown().map(c => c.key);
-  const i = shown.indexOf(k);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= shown.length) return;
-  shown.splice(j, 0, ...shown.splice(i, 1));
-  const was = cabView.order;
-  /* Зберігаємо ВСІ ключі, не лише ввімкнені: інакше вимкнена колонка,
-     яку колись посунули, поверталася б у кінець списку. */
-  const rest = CAB_COLS.map(c => c.key).filter(x => !shown.includes(x));
-  cabView.order = [...shown, ...rest];
-  cabRender();
-  cabColsMenu(true);
-  if (!await cabViewSave()) { cabView.order = was; cabRender(); cabColsMenu(true); }
-}
-
+/* Увімкнути чи вимкнути колонку. Список лишається відкритим: вмикають
+   їх зазвичай по кілька, і закриватись після кожної галочки означало б
+   відкривати його знову й знову. */
 async function cabColToggle(k) {
   const now = { ...cabColsOn() };
   now[k] = now[k] ? 0 : 1;
   const was = cabView.cols;
   cabView.cols = now;
   cabRender();
-  cabColsMenu(true);          // лишаємо список відкритим: вмикають по кілька
-  if (!await cabViewSave()) { cabView.cols = was; cabRender(); }
+  cabColsMenu(true);
+  if (!await cabViewSave()) { cabView.cols = was; cabRender(); cabColsMenu(true); }
+}
+
+/* ПЕРЕТЯГУВАННЯ КОЛОНОК.
+
+   Стрілки «на крок» тут уже були, і вони чесно працювали — але щоб
+   пересунути колонку з кінця на початок, доводилось тицяти вісім разів
+   і щоразу перевіряти, куди вона доїхала. Беремо й кладемо: один рух,
+   і видно, куди кладеш.
+
+   Порядок зберігаємо ПОВНИМ списком ключів, не лише ввімкненими:
+   інакше вимкнена колонка, яку колись посунули, поверталась би в
+   кінець, щойно її ввімкнуть. */
+let cabDragCol = '';
+
+function cabColDragStart(ev, k) {
+  cabDragCol = k;
+  try { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', k); } catch (e) {}
+}
+function cabColDragOver(ev, k) {
+  /* preventDefault — єдиний спосіб сказати браузеру, що сюди можна
+     покласти; без нього drop не станеться взагалі. */
+  ev.preventDefault();
+  try { ev.dataTransfer.dropEffect = 'move'; } catch (e) {}
+  const el = ev.currentTarget;
+  if (el && !el.classList.contains('is-drop')) {
+    const box = document.getElementById('cab-pop');
+    if (box) [...box.querySelectorAll('.is-drop')].forEach(x => x.classList.remove('is-drop'));
+    el.classList.add('is-drop');
+  }
+}
+function cabColDragEnd() {
+  cabDragCol = '';
+  const box = document.getElementById('cab-pop');
+  if (box) [...box.querySelectorAll('.is-drop')].forEach(x => x.classList.remove('is-drop'));
+}
+
+async function cabColDrop(ev, to) {
+  ev.preventDefault();
+  let from = cabDragCol;
+  try { from = from || ev.dataTransfer.getData('text/plain'); } catch (e) {}
+  cabColDragEnd();
+  if (!from || from === to) return;
+  await cabColPlace(from, to);
+}
+
+/* Покласти колонку from НА МІСЦЕ to. Порядок рахуємо від повного
+   списку — спершу ввімкнені в їхньому порядку, далі решта, — щоб
+   результат не залежав від того, що саме зараз показано. */
+async function cabColPlace(from, to) {
+  const keys = cabColsShown().map(c => c.key);
+  CAB_COLS.forEach(c => { if (!keys.includes(c.key)) keys.push(c.key); });
+  const i = keys.indexOf(from), j = keys.indexOf(to);
+  if (i < 0 || j < 0 || i === j) return;
+  keys.splice(i, 1);
+  keys.splice(keys.indexOf(to) + (j > i ? 1 : 0), 0, from);
+  const was = cabView.order;
+  cabView.order = keys;
+  cabRender();
+  cabColsMenu(true);
+  if (!await cabViewSave()) { cabView.order = was; cabRender(); cabColsMenu(true); }
 }
 
 /* Список колонок. Малюємо в той самий вузол, що й меню дій: два
@@ -299,18 +382,20 @@ function cabColsMenu(keep) {
      таблиці, і саме його переставляють. Вимкнені нижче, окремо. */
   const on = cabColsShown();
   const off = CAB_COLS.filter(col => !cabColOn(col.key));
-  const tick = col => `<button type="button" class="cab-pop-i ${cabColOn(col.key) ? 'is-on' : ''}"
+  const row = col => `<div class="cab-pop-row" draggable="true"
+      ondragstart="cabColDragStart(event, '${col.key}')"
+      ondragover="cabColDragOver(event, '${col.key}')"
+      ondrop="cabColDrop(event, '${col.key}')"
+      ondragend="cabColDragEnd()"
+      title="Drag to move it left or right in the table">
+      <span class="cab-pop-grip" aria-hidden="true">≡</span>
+      <button type="button" class="cab-pop-i ${cabColOn(col.key) ? 'is-on' : ''}"
         onclick="cabColToggle('${col.key}')" title="${cabEsc(col.tip || '')}">
-        <span class="cab-pop-tick">${cabColOn(col.key) ? '✓' : ''}</span>${cabEsc(col.label)}</button>`;
-  const row = (col, i, n) => `<div class="cab-pop-row">${tick(col)}${
-      cabColOn(col.key) ? `<span class="cab-pop-mv">
-        <button type="button" onclick="cabColMove('${col.key}', -1)" ${i === 0 ? 'disabled' : ''}
-          title="Move left">↑</button>
-        <button type="button" onclick="cabColMove('${col.key}', 1)" ${i === n - 1 ? 'disabled' : ''}
-          title="Move right">↓</button></span>` : ''}</div>`;
-  box.innerHTML = `<p class="cab-pop-h">Columns · order</p>`
-    + on.map((col, i) => row(col, i, on.length)).join('')
-    + (off.length ? `<p class="cab-pop-h">Off</p>` + off.map(col => row(col, -1, 0)).join('') : '');
+        <span class="cab-pop-tick">${cabColOn(col.key) ? '✓' : ''}</span>${cabEsc(col.label)}</button>
+    </div>`;
+  box.innerHTML = `<p class="cab-pop-h">Columns · drag to reorder</p>`
+    + on.map(row).join('')
+    + (off.length ? `<p class="cab-pop-h">Off</p>` + off.map(row).join('') : '');
   const btn = document.getElementById('cab-cols-btn');
   cabPopAt(btn, box);
 }
@@ -1681,10 +1766,7 @@ function cabRender() {
   list.innerHTML = cabSection(shown);
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
-  /* Вузол дерева щойно створено заново — порожнім. Якщо рядок лишався
-     розгорнутим, малюємо його ще раз; дані вже в пам'яті, по базу
-     ніхто не йде. */
-  cabTreeRepaint();
+  cabTreeRepaint(shown);
 }
 
 /* Таблиця. Набір колонок один — секцій більше немає, бо ділити стало
@@ -1734,15 +1816,16 @@ function cabSection(items) {
 
   const cols = cabColsShown();
   // Скільки клітинок у рядку: стрілка, шпилька, крапка, кабінет,
-  // статус, ліміт, період, графік, дії — і стільки ж, скільки
-  // увімкнено колонок.
-  const COLS = 9 + cols.length;
+  // світчер, статус, ліміт, період, графік, дії — і стільки ж,
+  // скільки увімкнено колонок.
+  const COLS = 10 + cols.length;
 
   const head = `<thead><tr>
       <th class="cab-x"></th>
       <th class="cab-x" title="Pinned cabinets stay on top of the list"></th>
       <th class="cab-x"></th>
       ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
+      <th class="cab-x" title="Switch campaigns, ad sets and ads on and off"></th>
       ${th('state', 'Status')}
       ${th('limit', 'Limit', 'ta-r', 'Facebook spending limit for the account, and how much of it is left')}
       ${th('today', cabEsc(cabRangeLabel()), 'ta-r')}
@@ -1856,6 +1939,7 @@ function cabRowHtml(c, COLS) {
       <div><span class="cab-id" onclick="cabCopyId(event, this)" data-v="${cabEsc(c.id)}"
         title="Click to copy">${cabEsc(c.id)}</span></div>
     </td>
+    <td class="cab-x"></td>
     <td><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
     <td class="ta-r cab-num ${lim.tight ? 'cab-lim-tight' : ''}" title="${cabEsc(lim.tip)}">${lim.text}</td>
     <td class="ta-r cab-num cab-today">${today}</td>
@@ -1869,13 +1953,109 @@ function cabRowHtml(c, COLS) {
     </td>
   </tr>`;
 
-  /* Дерево живе ПІД рядком, у тому самому <tbody>. Вузол #cab-inside
-     один на всю сторінку — саме його шукає cabdrill.js, тому
-     переносимо сюди і його, і смугу над ним, а не копіюємо. */
-  return row + (open ? `<tr class="cab-treerow"><td colspan="${COLS}">
-      <div id="cab-inside-bar" class="hidden"></div>
-      <div id="cab-inside" class="hidden"></div>
-    </td></tr>` : '');
+  return row + (open ? cabTreeRows(COLS) : '');
+}
+
+
+/* ═══════════ ДЕРЕВО РЯДКАМИ САМОЇ ТАБЛИЦІ ═══════════
+
+   Доти воно було вкладеною таблицею з власною шапкою — і шапок ставало
+   дві, одна під одною, причому жодна колонка не збігалася з тією, що
+   над нею. Тепер кампанії, групи й оголошення — це звичайні рядки
+   таблиці кабінетів, у тих самих стовпцях.
+
+   ЩО В ЯКИЙ СТОВПЕЦЬ ЛЯГАЄ. Назва кампанії йде в стовпець кабінета,
+   статус — у Status, бюджет — у Limit (це і є ліміт на рівні
+   кампанії), спенд — у стовпець періоду. Решта стовпців кабінета
+   беруть те, що в кампанії справді є: кліки, покази, CTR, CPC, кількість
+   оголошень. Чого в кампанії немає — лишається порожнім, а не
+   вигадується: прочерк чесніший за нуль.
+
+   СВІТЧЕР — ВЛАСНИЙ СТОВПЧИК, одразу перед статусом. Спершу він стояв
+   у кінці клітинки назви, і виходило криво: назви різної довжини, тож
+   і перемикачі стояли на різній відстані від краю — тягнутись до них
+   доводилось щоразу в інше місце. У стовпчику вони стоять один під
+   одним, а поруч читається стан, який вони й міняють. */
+function cabTreeRows(COLS) {
+  const v = (typeof cdView === 'function') ? cdView() : null;
+  if (!v) return `<tr class="cab-treerow"><td colspan="${COLS}">
+    <p class="cd-empty">Loading…</p></td></tr>`;
+  if (v.msg) return `<tr class="cab-treerow"><td colspan="${COLS}">
+    <p class="cd-empty">${cabEsc(v.msg)}</p></td></tr>`;
+
+  const cols = cabColsShown();
+  const bar = (typeof cdHeadBits === 'function' ? cdHeadBits() : '') + (v.bar || '');
+  const head = bar ? `<tr class="cab-treebar"><td colspan="${COLS}">${bar}</td></tr>` : '';
+  /* ПІДСУМКУ ТУТ НЕМАЄ. «Разом по кабінету» стоїть у самому рядку
+     кабінета, прямо над деревом, — і повторювати його ще раз унизу
+     означало б показати те саме число двічі, та ще й іншими словами. */
+  return head + v.list.map(x => cabNodeRow(x.n, x.depth, x.band, cols)).join('');
+}
+
+/* Що з вузла йде в який стовпець кабінета. Ключ той самий, що й у
+   CAB_COLS, — отже вмикання колонки в кабінетах одразу вмикає її і в
+   дереві, і підписи ніколи не розійдуться зі вмістом. */
+function cabNodeCell(f, key) {
+  switch (key) {
+    /* Лічильник у вузла один — скільки в ньому оголошень, — і він
+       належить стовпцю Ads. Поставити те саме число ще й у Camp та
+       Sets означало б сказати, що в кампанії три кампанії. */
+    case 'ads': return f.ads;
+    case 'clicks': return f.clicks;
+    case 'impr':   return f.imps;
+    case 'ctr':    return f.ctr;
+    case 'cpc':    return f.cpc;
+    case 'budget': return f.budget;
+    case 'spend':  return f.spend;
+    case 'result': return f.result;
+    case 'cpr':    return f.per;
+    case 'cpm':    return f.cpm;
+    case 'leads':  return f.leads;
+    case 'cpl':    return f.perLead;
+    case 'regs':   return f.regs;
+    case 'cpreg':  return f.perReg;
+    case 'inst':   return f.installs;
+    case 'cpi':    return f.perInstall;
+    /* Балансу, депозитів, CPA, віку й 14-денного графіка в кампанії
+       немає — і вигадувати їх з кабінета не можна: це числа різних
+       рівнів. */
+    default: return '';
+  }
+}
+
+/* Підказки, які пояснюють число. Без них «3 ліди» не каже, що саме
+   порахували, — а рахувати ліди можна трьома різними способами, і
+   різниця між ними це різниця в рішенні. */
+function cabNodeTip(f, key) {
+  if (key === 'result' || key === 'cpr') return f.goalTip || '';
+  if (key === 'leads') return f.leadTip || '';
+  return '';
+}
+
+function cabNodeRow(n, depth, band, cols) {
+  const f = cdFields(n, depth);
+  const key = String(f.key || '').replace(/'/g, '&#39;');
+  /* Розкриває вся клітинка назви, а не сам трикутник: цілитись у
+     чотирнадцять пікселів на тісному рядку — заняття, а не клік. */
+  const hit = f.kids ? ` onclick="cdToggle('${cabEsc(key)}')"` : '';
+  return `<tr class="cab-node cd-r cd-d${depth}${band ? ' is-band' : ''}${
+      f.marked ? ' is-mk' : ''}">
+    <td class="cab-x"></td>
+    <td class="cab-x"></td>
+    <td class="cab-x"></td>
+    <td class="cab-nd${f.kids ? ' cd-can' : ''}"${hit}>
+      <span class="cab-nd-in">${f.name}</span></td>
+    <td class="cab-nd-sw">${f.sw || ''}</td>
+    <td class="cab-nd-st">${f.status}</td>
+    <td class="ta-r cab-num">${f.budget}</td>
+    <td class="ta-r cab-num cab-today">${f.spend}</td>
+    <td class="ta-c"></td>
+    ${cols.map(col => { const tip = cabNodeTip(f, col.key);
+      return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${
+        tip ? ' has-tip' : ''}"${tip ? ` title="${cabEsc(tip)}"` : ''}>${
+        cabNodeCell(f, col.key) || '<span class="cab-na">—</span>'}</td>`; }).join('')}
+    <td class="ta-r"></td>
+  </tr>`;
 }
 
 /* ЛІМІТ КАБІНЕТА.
@@ -1951,30 +2131,18 @@ async function cabToggleTree(ev, idEnc) {
   if (typeof cdIsOpen === 'function' && !cdIsOpen(id) && typeof cdHide === 'function') cdHide();
   if (typeof cdToggleOpen === 'function' && (typeof cdIsOpen !== 'function' || !cdIsOpen(id)))
     await cdToggleOpen(encodeURIComponent(id));
-  else if (typeof cdRepaint === 'function') { cdBar(id); cdRepaint(); }
+  else cabRender();
 }
 
-/* Перемальовка таблиці створює вузол дерева заново — порожнім. Якщо
-   рядок лишався розгорнутим, дерево треба намалювати ще раз; дані для
-   цього вже в пам'яті, по базу ніхто не йде. */
-function cabTreeRepaint() {
+/* Рядки дерева малюються разом із таблицею, тож окремої перемальовки
+   більше не треба. Лишилось одне: якщо розгорнутого кабінета на екрані
+   вже немає — фільтр, пошук, інша сторінка — зняти позначку, інакше
+   дерево лишилось би відкритим для рядка, якого не видно. */
+function cabTreeRepaint(shown) {
   if (!cabTreeId) return;
-  /* Рядка з цим кабінетом на екрані немає — отже й вузла дерева немає.
-     Знімаємо позначку, інакше наступна перемальовка знову шукала б
-     місце, якого не існує. */
-  if (!document.getElementById('cab-inside')) {
-    cabTreeId = '';
-    if (typeof cdHide === 'function') cdHide();
-    return;
-  }
-  if (typeof cdBar === 'function') cdBar(cabTreeId);
-  if (typeof cdRepaint === 'function') cdRepaint();
-  /* Вузол народжується схованим: доки дерево не завантажилось, порожня
-     рамка на пів екрана виглядала б як поломка. Показуємо його рівно
-     тоді, коли всередині справді є що показати. */
-  const box = document.getElementById('cab-inside');
-  if (box && typeof cdIsOpen === 'function' && cdIsOpen(cabTreeId))
-    box.classList.remove('hidden');
+  if (shown && shown.some(c => String(c.id) === String(cabTreeId))) return;
+  cabTreeId = '';
+  if (typeof cdHide === 'function') cdHide();
 }
 
 /* «3 зі 180» — чесне число, яке нічого не пояснює. Цей рядок і є
