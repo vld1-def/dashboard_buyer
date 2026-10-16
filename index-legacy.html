@@ -1490,24 +1490,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
               <button id="cr-star-only" onclick="crToggleStarOnly()" title="Тільки з мітками"
                 class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">★</button>
 
-              <!-- Числовий фільтр: метрика / умова / значення -->
-              <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2">
-                <select id="cr-f-metric" onchange="searchCreative()" class="bg-transparent text-[11px] font-bold uppercase outline-none cursor-pointer text-dynamic">
-                  <option value="">Metric</option>
-                  <option value="spend">Spend</option><option value="clicks">Clicks</option>
-                  <option value="installs">Installs</option><option value="regs">Regs</option>
-                  <option value="deps">Deposits</option><option value="cpi">CPI</option>
-                  <option value="cpl">CPL</option><option value="cpa">CPA</option>
-                  <option value="cpc">CPC</option><option value="r2d">R2D %</option>
-                </select>
-                <select id="cr-f-op" onchange="searchCreative()" class="bg-transparent text-[11px] font-bold outline-none cursor-pointer text-dynamic">
-                  <option value="lt">&lt;</option><option value="lte">≤</option>
-                  <option value="gt">&gt;</option><option value="gte">≥</option><option value="eq">=</option>
-                </select>
-                <input type="number" step="any" id="cr-f-val" oninput="searchCreative()" placeholder="20"
-                  class="w-14 h-[24px] bg-white/5 border border-white/10 rounded-lg px-1.5 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
-                <button onclick="crClearFilter()" title="Скинути" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
-              </div>
+              <!-- ЧИСЛОВОГО ФІЛЬТРА «метрика / умова / значення» ТУТ БІЛЬШЕ
+                   НЕМА. Три контролі в ряду заради питання, яке ставили
+                   рідко: сортування колонок і «холодні креативи» поруч
+                   відповідають на те саме швидше й без налаштовування. -->
 
               <!-- ХОЛОДНІ КРЕАТИВИ: ті, що майже не лились, і ті, що не лились
                    ЖОДНОГО разу. Друге важливіше й водночас недосяжне зі
@@ -3070,34 +3056,7 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
   let list = Object.values(grouped).sort((a, b) => b.s - a.s);
   const totalBefore = list.length;
 
-  // Числовий фільтр (метрика / умова / значення)
-  const fm = document.getElementById('cr-f-metric')?.value || '';
-  const fop = document.getElementById('cr-f-op')?.value || 'lt';
-  const fvRaw = document.getElementById('cr-f-val')?.value;
-  const fv = fvRaw === '' || fvRaw == null ? null : Number(fvRaw);
-  if (fm && fv !== null && !isNaN(fv)) {
-    const metricOf = c => {
-      switch (fm) {
-        case 'spend': return c.s;
-        case 'clicks': return c.cl;
-        case 'installs': return c.ins;
-        case 'regs': return c.r;
-        case 'deps': return c.dp;
-        case 'cpi': return c.ins ? c.s / c.ins : 0;
-        case 'cpl': return c.r ? c.s / c.r : 0;
-        case 'cpa': return c.dp ? c.s / c.dp : 0;
-        case 'cpc': return c.cl ? c.s / c.cl : 0;
-        case 'r2d': return c.r ? c.dp / c.r * 100 : 0;
-        default: return 0;
-      }
-    };
-    list = list.filter(c => {
-      const v = metricOf(c);
-      return fop === 'lt' ? v < fv : fop === 'lte' ? v <= fv
-           : fop === 'gt' ? v > fv : fop === 'gte' ? v >= fv
-           : Math.abs(v - fv) < 1e-9;
-    });
-  }
+  // Числовий фільтр прибрано разом із його трьома контролями в шапці.
 
   /* ХОЛОДНІ. Спершу ріжемо тих, що лились мало, потім дописуємо тих,
      що не лились узагалі, — їх у list просто немає звідки взяти. */
@@ -3596,11 +3555,6 @@ function crToggleStarOnly() {
   b.className = crStarOnly
     ? 'h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-amber-500/20 text-amber-300 border-amber-500/40'
     : 'h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white';
-  searchCreative();
-}
-function crClearFilter() {
-  const m = document.getElementById('cr-f-metric'), v = document.getElementById('cr-f-val');
-  if (m) m.value = ''; if (v) v.value = '';
   searchCreative();
 }
 // ===== Розгортайки в Creative Analyzer (за замовчуванням згорнуті) =====

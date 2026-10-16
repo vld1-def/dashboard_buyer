@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 15.10 14:40">
+  <meta name="build" content="build 16.10 10:59">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3718,19 +3718,20 @@ body[data-route="domains"] #dm-detail {
 .cd-s { font-size: 10px; color: var(--text-muted); margin: 0; min-width: 0; }
 .cd-tabs { display: flex; gap: 5px; flex: 0 0 auto; align-items: center; }
 
-/* «Тільки активні». Поруч із вкладками, бо це теж про те, що саме
-   показано. Вигляд не як у кнопок навмисно: вкладки перемикають
-   ВИГЛЯД, а це ховає РЯДКИ — різні речі, і плутати їх не варто. */
-.cd-only {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 8px 3px 6px; border-radius: 8px; cursor: pointer;
+/* ЩО ПОКАЗУВАТИ: All / Live / Spend. Поруч із вкладками, бо це теж
+   про те, що саме показано. Вигляд не як у кнопок навмисно: вкладки
+   перемикають ВИГЛЯД, а цей список ховає РЯДКИ — різні речі, і плутати
+   їх не варто. Коли вибрано не «All», список підсвічений: інакше
+   півсписку, якого не видно, виглядає як порожній кабінет. */
+.cd-pick {
+  padding: 4px 8px; border-radius: 8px; cursor: pointer;
   font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--text-muted); border: 1px solid transparent;
+  color: var(--text-muted); background: var(--surface-2);
+  border: 1px solid var(--border); outline: none;
 }
-.cd-only:hover { color: var(--text-main); border-color: var(--border); }
-.cd-only input { width: 12px; height: 12px; accent-color: var(--accent); cursor: pointer; }
-.cd-only:has(input:checked) {
-  color: var(--text-main); border-color: var(--border-2); background: var(--surface-2);
+.cd-pick:hover { color: var(--text-main); border-color: var(--border-2); }
+.cd-pick:not(:has(option[value=""]:checked)) {
+  color: var(--text-main); border-color: var(--accent);
 }
 .cd-tab {
   padding: 5px 11px; border-radius: 9px;
@@ -5266,7 +5267,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.10 14:40</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 16.10 10:59</div>
     </div>
   </aside>
 
@@ -5833,24 +5834,10 @@ input.ui-in[type="range"] { padding: 0; }
               <button id="cr-star-only" onclick="crToggleStarOnly()" title="Starred only"
                 class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">★</button>
 
-              <!-- Числовий фільтр: метрика / умова / значення -->
-              <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2">
-                <select id="cr-f-metric" onchange="searchCreative()" class="bg-transparent text-[11px] font-bold uppercase outline-none cursor-pointer text-dynamic">
-                  <option value="">Metric</option>
-                  <option value="spend">Spend</option><option value="clicks">Clicks</option>
-                  <option value="installs">Installs</option><option value="regs">Regs</option>
-                  <option value="deps">Deposits</option><option value="cpi">CPI</option>
-                  <option value="cpl">CPL</option><option value="cpa">CPA</option>
-                  <option value="cpc">CPC</option><option value="r2d">R2D %</option>
-                </select>
-                <select id="cr-f-op" onchange="searchCreative()" class="bg-transparent text-[11px] font-bold outline-none cursor-pointer text-dynamic">
-                  <option value="lt">&lt;</option><option value="lte">≤</option>
-                  <option value="gt">&gt;</option><option value="gte">≥</option><option value="eq">=</option>
-                </select>
-                <input type="number" step="any" id="cr-f-val" oninput="searchCreative()" placeholder="20"
-                  class="w-14 h-[24px] bg-white/5 border border-white/10 rounded-lg px-1.5 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
-                <button onclick="crClearFilter()" title="Reset" class="text-slate-500 hover:text-white leading-none px-0.5">✕</button>
-              </div>
+              <!-- ЧИСЛОВОГО ФІЛЬТРА «метрика / умова / значення» ТУТ БІЛЬШЕ
+                   НЕМА. Три контролі в ряду заради питання, яке ставили
+                   рідко: сортування колонок і «холодні креативи» поруч
+                   відповідають на те саме швидше й без налаштовування. -->
 
               <!-- ХОЛОДНІ КРЕАТИВИ: ті, що майже не лились, і ті, що не лились
                    ЖОДНОГО разу. Друге важливіше й водночас недосяжне зі
@@ -7899,34 +7886,7 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
   let list = Object.values(grouped).sort((a, b) => b.s - a.s);
   const totalBefore = list.length;
 
-  // Числовий фільтр (метрика / умова / значення)
-  const fm = document.getElementById('cr-f-metric')?.value || '';
-  const fop = document.getElementById('cr-f-op')?.value || 'lt';
-  const fvRaw = document.getElementById('cr-f-val')?.value;
-  const fv = fvRaw === '' || fvRaw == null ? null : Number(fvRaw);
-  if (fm && fv !== null && !isNaN(fv)) {
-    const metricOf = c => {
-      switch (fm) {
-        case 'spend': return c.s;
-        case 'clicks': return c.cl;
-        case 'installs': return c.ins;
-        case 'regs': return c.r;
-        case 'deps': return c.dp;
-        case 'cpi': return c.ins ? c.s / c.ins : 0;
-        case 'cpl': return c.r ? c.s / c.r : 0;
-        case 'cpa': return c.dp ? c.s / c.dp : 0;
-        case 'cpc': return c.cl ? c.s / c.cl : 0;
-        case 'r2d': return c.r ? c.dp / c.r * 100 : 0;
-        default: return 0;
-      }
-    };
-    list = list.filter(c => {
-      const v = metricOf(c);
-      return fop === 'lt' ? v < fv : fop === 'lte' ? v <= fv
-           : fop === 'gt' ? v > fv : fop === 'gte' ? v >= fv
-           : Math.abs(v - fv) < 1e-9;
-    });
-  }
+  // Числовий фільтр прибрано разом із його трьома контролями в шапці.
 
   /* ХОЛОДНІ. Спершу ріжемо тих, що лились мало, потім дописуємо тих,
      що не лились узагалі, — їх у list просто немає звідки взяти. */
@@ -8425,11 +8385,6 @@ function crToggleStarOnly() {
   b.className = crStarOnly
     ? 'h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-amber-500/20 text-amber-300 border-amber-500/40'
     : 'h-[40px] px-3.5 rounded-2xl text-xs font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white';
-  searchCreative();
-}
-function crClearFilter() {
-  const m = document.getElementById('cr-f-metric'), v = document.getElementById('cr-f-val');
-  if (m) m.value = ''; if (v) v.value = '';
   searchCreative();
 }
 // ===== Розгортайки в Creative Analyzer (за замовчуванням згорнуті) =====
@@ -21644,11 +21599,17 @@ const CAB_STATE = {
 // внизу — те, що прибрали руками.
 const CAB_ORDER = ['banned', 'notoken', 'review', 'running', 'idle', 'archived'];
 // Колонки «де це було» можуть ще не існувати в базі — сторінка працює й без них.
+/* ПОЛЯ, ЯКІ ЗАПОВНЮЮТЬ РУКАМИ. Їх рівно два, і обидва Facebook про
+   себе не каже: під яким БМ і в якому профілі браузера цей кабінет.
+
+   «Login» і «Card» звідси прибрані. Картку Facebook віддає сам — вона
+   стоїть у блоці Facebook тією, яку він бачить зараз, і друга, вписана
+   колись руками, означала тільки одне: рано чи пізно вони розійдуться,
+   і доведеться гадати, котра правдива. Логін же не питав ніхто й
+   жодного разу. */
 const CAB_EXTRA = [
   { key: 'bm',      label: 'Business Manager' },
-  { key: 'profile', label: 'Browser profile' },
-  { key: 'login',   label: 'Login' },
-  { key: 'card',    label: 'Card' }
+  { key: 'profile', label: 'Browser profile' }
 ];
 
 /* ВІДКРИВАЄМОСЬ НА RUNNING, а не на «всі». Заходять сюди майже завжди
@@ -27017,12 +26978,32 @@ let cdNoDom = '';
 const cdLeads = CD_LEAD_DEFAULT;
 let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
 
-/* «Тільки активні». Памʼятаємо між заходами: це не режим перегляду, а
-   налаштування робочого місця — хто його вмикає, той майже завжди
-   хоче його й завтра. Памʼять браузера може бути недоступна (режим
-   інкогніто, заборонені дані сайту), тож читання й запис у try. */
-let cdOnly = (() => { try { return localStorage.getItem('cd_only_live') === '1'; }
-                      catch (e) { return false; } })();
+/* ЩО ПОКАЗУВАТИ — ОДИН СПИСОК, А НЕ НАБІР ГАЛОЧОК.
+
+   Була одна галочка «Only live». Тепер питань два — «що зараз
+   крутиться» і «що взагалі коштувало грошей», — і вони різні:
+   реджект, який устиг відкрутити зранку, живим не є, але саме він і
+   цікавить, коли рахують, куди пішли гроші. Дві галочки поруч
+   питали б, чи можна їх поєднати; список каже прямо, що вибір один.
+
+     ''      усе
+     live    тільки те, що Facebook доставляє зараз
+     spend   тільки те, на чому є витрати
+
+   Памʼятаємо між заходами: це не режим перегляду, а налаштування
+   робочого місця — хто його вмикає, той майже завжди хоче його й
+   завтра. Памʼять браузера може бути недоступна (інкогніто,
+   заборонені дані сайту), тож читання й запис у try.
+
+   Стару галочку читаємо теж: у кого вона стояла, той лишається на
+   Live, а не отримує мовчки повний список. */
+let cdFilt = (() => {
+  try {
+    const v = localStorage.getItem('cd_filter');
+    if (v === 'live' || v === 'spend' || v === '') return v;
+    return localStorage.getItem('cd_only_live') === '1' ? 'live' : '';
+  } catch (e) { return ''; }
+})();
 
 /* МУЛЬТИВИБІР. Вимкнути пʼять оголошень п'ятьма кліками з п'ятьма
    підтвердженнями — це не робота, а покарання. Тому галочки на рядках
@@ -27039,15 +27020,15 @@ window.cdMark = function (id, on) {
 };
 window.cdMarkClear = function () { cdMarked = new Set(); cdPaint(); };
 
-window.cdSetOnly = function (v) {
-  cdOnly = !!v;
-  try { localStorage.setItem('cd_only_live', cdOnly ? '1' : '0'); } catch (e) {}
+window.cdSetFilt = function (key) {
+  cdFilt = (key === 'live' || key === 'spend') ? key : '';
+  try { localStorage.setItem('cd_filter', cdFilt); } catch (e) {}
   /* Галочки з рядків, яких більше не видно, знімаємо. Інакше смуга
      каже «5 picked», на екрані їх два, а «Switch off» перемкне всі
      пʼять — дія над тим, чого людина зараз не бачить. Відколи фільтр
      ховає й реджекти, це перестало бути теорією: саме реджекти й
      відмічають, щоб вимкнути пачкою. */
-  if (cdOnly && cdMarked.size) {
+  if (cdFilt && cdMarked.size) {
     const live = new Set(cdShown().map(r => String(r.ad_id)));
     /* Знімаємо лише з ОГОЛОШЕНЬ: вибраною буває й кампанія, а її id
        серед ad_id немає — вона нікуди не зникла. */
@@ -27058,12 +27039,18 @@ window.cdSetOnly = function (v) {
   }
   cdPaint();
 };
+/* Стара назва лишається: нею користуються стенди й стара розмітка,
+   а робить вона те саме — вмикає й вимикає Live. */
+window.cdSetOnly = function (v) { cdSetFilt(v ? 'live' : ''); };
 
 /* Фільтруємо ВХІДНІ рядки, а не готові. Інакше кампанія показувала б
    суму, в якій половина рядків прихована, — тобто число, що не
    сходиться з тим, що під ним видно. */
 function cdShown() {
-  if (!cdOnly) return cdRows;
+  if (!cdFilt) return cdRows;
+  /* Витрати питаємо в самого рядка: «коштувало грошей» — це факт
+     знімка, і стан оголошення тут ні до чого. */
+  if (cdFilt === 'spend') return cdRows.filter(r => (Number(r.spend) || 0) > 0);
   /* Рядок без стану лишаємо: ми не знаємо, що з ним, а мовчки ховати
      те, чого не знаєш, — найгірший з варіантів. */
   return cdRows.filter(r => {
@@ -27157,9 +27144,14 @@ function cdHeadBits() {
         onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Camp</button>
       <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
         onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
-      <label class="cd-only" title="Show only what Facebook is actually showing. Rejected, blocked, in-review and switched-off rows are hidden.">
-        <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
-          onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
+      <select class="cd-pick" id="cd-filt" onchange="cdSetFilt(this.value)"
+        title="All \u2014 everything in the snapshot.
+Live \u2014 only what Facebook is actually showing: rejected, blocked, in-review and switched-off rows are hidden.
+Spend \u2014 only rows that have cost something, whatever state they are in now.">
+        <option value=""${cdFilt ? '' : ' selected'}>All</option>
+        <option value="live"${cdFilt === 'live' ? ' selected' : ''}>Live</option>
+        <option value="spend"${cdFilt === 'spend' ? ' selected' : ''}>Spend</option>
+      </select>
     </div>`;
 }
 
@@ -27508,7 +27500,7 @@ const CD_HID_WORD = {
 };
 
 function cdHidBits() {
-  if (!cdOnly) return null;
+  if (!cdFilt) return null;
   const live = new Set(cdShown().map(r => String(r.ad_id)));
   const hid = cdRows.filter(r => !live.has(String(r.ad_id)));
   if (!hid.length) return null;
@@ -27550,7 +27542,11 @@ function cdAds() {
     n.sw = String(r.own_status || '').toUpperCase();
     cdAdd(n, m);
     n.ads = 0;
-    n.where = [r.campaign_name, r.adset_name].filter(Boolean).join(' · ');
+    /* НАЗВИ КАМПАНІЇ ТУТ НЕМА. Імʼя оголошення майже завжди
+       починається з неї ж, і в підписі вона повторювала сама себе,
+       займаючи місце. Лишається адсет — єдине, чого з назви рядка не
+       видно. */
+    n.where = String(r.adset_name || '').trim();
     return n;
   }).sort((a, b) => b.spend - a.spend);
 }
@@ -27575,11 +27571,13 @@ window.cdView = function () {
   if (!cdRows.length) return { msg: 'Nothing active in the snapshot. '
     + 'Either this cabinet is not running anything, or the sync has not filled it yet '
     + '— press Sync now.' };
-  if (cdOnly && !cdShown().length) {
+  if (cdFilt && !cdShown().length) {
+    if (cdFilt === 'spend') return { msg: 'Nothing here has spent anything yet. '
+      + 'Switch the list above back to “All” to see it all.' };
     const h = cdHidBits();
     const words = h ? cdHidWords(h) : '';
     return { msg: 'Nothing is live here right now' + (words ? ' — ' + words : '')
-      + '. Untick “Only live” to see it all.' };
+      + '. Switch the list above back to “All” to see it all.' };
   }
 
   const top = cdFlat ? cdAds() : cdTree();
