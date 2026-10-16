@@ -287,12 +287,32 @@ let cdNoDom = '';
 const cdLeads = CD_LEAD_DEFAULT;
 let cdErr = '', cdBusy = false, cdSeen = 0, cdOpenIds = new Set();
 
-/* «Тільки активні». Памʼятаємо між заходами: це не режим перегляду, а
-   налаштування робочого місця — хто його вмикає, той майже завжди
-   хоче його й завтра. Памʼять браузера може бути недоступна (режим
-   інкогніто, заборонені дані сайту), тож читання й запис у try. */
-let cdOnly = (() => { try { return localStorage.getItem('cd_only_live') === '1'; }
-                      catch (e) { return false; } })();
+/* ЩО ПОКАЗУВАТИ — ОДИН СПИСОК, А НЕ НАБІР ГАЛОЧОК.
+
+   Була одна галочка «Only live». Тепер питань два — «що зараз
+   крутиться» і «що взагалі коштувало грошей», — і вони різні:
+   реджект, який устиг відкрутити зранку, живим не є, але саме він і
+   цікавить, коли рахують, куди пішли гроші. Дві галочки поруч
+   питали б, чи можна їх поєднати; список каже прямо, що вибір один.
+
+     ''      усе
+     live    тільки те, що Facebook доставляє зараз
+     spend   тільки те, на чому є витрати
+
+   Памʼятаємо між заходами: це не режим перегляду, а налаштування
+   робочого місця — хто його вмикає, той майже завжди хоче його й
+   завтра. Памʼять браузера може бути недоступна (інкогніто,
+   заборонені дані сайту), тож читання й запис у try.
+
+   Стару галочку читаємо теж: у кого вона стояла, той лишається на
+   Live, а не отримує мовчки повний список. */
+let cdFilt = (() => {
+  try {
+    const v = localStorage.getItem('cd_filter');
+    if (v === 'live' || v === 'spend' || v === '') return v;
+    return localStorage.getItem('cd_only_live') === '1' ? 'live' : '';
+  } catch (e) { return ''; }
+})();
 
 /* МУЛЬТИВИБІР. Вимкнути пʼять оголошень п'ятьма кліками з п'ятьма
    підтвердженнями — це не робота, а покарання. Тому галочки на рядках
@@ -309,15 +329,15 @@ window.cdMark = function (id, on) {
 };
 window.cdMarkClear = function () { cdMarked = new Set(); cdPaint(); };
 
-window.cdSetOnly = function (v) {
-  cdOnly = !!v;
-  try { localStorage.setItem('cd_only_live', cdOnly ? '1' : '0'); } catch (e) {}
+window.cdSetFilt = function (key) {
+  cdFilt = (key === 'live' || key === 'spend') ? key : '';
+  try { localStorage.setItem('cd_filter', cdFilt); } catch (e) {}
   /* Галочки з рядків, яких більше не видно, знімаємо. Інакше смуга
      каже «5 picked», на екрані їх два, а «Switch off» перемкне всі
      пʼять — дія над тим, чого людина зараз не бачить. Відколи фільтр
      ховає й реджекти, це перестало бути теорією: саме реджекти й
      відмічають, щоб вимкнути пачкою. */
-  if (cdOnly && cdMarked.size) {
+  if (cdFilt && cdMarked.size) {
     const live = new Set(cdShown().map(r => String(r.ad_id)));
     /* Знімаємо лише з ОГОЛОШЕНЬ: вибраною буває й кампанія, а її id
        серед ad_id немає — вона нікуди не зникла. */
@@ -328,12 +348,18 @@ window.cdSetOnly = function (v) {
   }
   cdPaint();
 };
+/* Стара назва лишається: нею користуються стенди й стара розмітка,
+   а робить вона те саме — вмикає й вимикає Live. */
+window.cdSetOnly = function (v) { cdSetFilt(v ? 'live' : ''); };
 
 /* Фільтруємо ВХІДНІ рядки, а не готові. Інакше кампанія показувала б
    суму, в якій половина рядків прихована, — тобто число, що не
    сходиться з тим, що під ним видно. */
 function cdShown() {
-  if (!cdOnly) return cdRows;
+  if (!cdFilt) return cdRows;
+  /* Витрати питаємо в самого рядка: «коштувало грошей» — це факт
+     знімка, і стан оголошення тут ні до чого. */
+  if (cdFilt === 'spend') return cdRows.filter(r => (Number(r.spend) || 0) > 0);
   /* Рядок без стану лишаємо: ми не знаємо, що з ним, а мовчки ховати
      те, чого не знаєш, — найгірший з варіантів. */
   return cdRows.filter(r => {
@@ -427,9 +453,14 @@ function cdHeadBits() {
         onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Camp</button>
       <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
         onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
-      <label class="cd-only" title="Show only what Facebook is actually showing. Rejected, blocked, in-review and switched-off rows are hidden.">
-        <input type="checkbox" id="cd-only" ${cdOnly ? 'checked' : ''}
-          onchange="cdSetOnly(this.checked)"><span>Only live</span></label>
+      <select class="cd-pick" id="cd-filt" onchange="cdSetFilt(this.value)"
+        title="All \u2014 everything in the snapshot.
+Live \u2014 only what Facebook is actually showing: rejected, blocked, in-review and switched-off rows are hidden.
+Spend \u2014 only rows that have cost something, whatever state they are in now.">
+        <option value=""${cdFilt ? '' : ' selected'}>All</option>
+        <option value="live"${cdFilt === 'live' ? ' selected' : ''}>Live</option>
+        <option value="spend"${cdFilt === 'spend' ? ' selected' : ''}>Spend</option>
+      </select>
     </div>`;
 }
 
@@ -778,7 +809,7 @@ const CD_HID_WORD = {
 };
 
 function cdHidBits() {
-  if (!cdOnly) return null;
+  if (!cdFilt) return null;
   const live = new Set(cdShown().map(r => String(r.ad_id)));
   const hid = cdRows.filter(r => !live.has(String(r.ad_id)));
   if (!hid.length) return null;
@@ -820,7 +851,11 @@ function cdAds() {
     n.sw = String(r.own_status || '').toUpperCase();
     cdAdd(n, m);
     n.ads = 0;
-    n.where = [r.campaign_name, r.adset_name].filter(Boolean).join(' · ');
+    /* НАЗВИ КАМПАНІЇ ТУТ НЕМА. Імʼя оголошення майже завжди
+       починається з неї ж, і в підписі вона повторювала сама себе,
+       займаючи місце. Лишається адсет — єдине, чого з назви рядка не
+       видно. */
+    n.where = String(r.adset_name || '').trim();
     return n;
   }).sort((a, b) => b.spend - a.spend);
 }
@@ -845,11 +880,13 @@ window.cdView = function () {
   if (!cdRows.length) return { msg: 'Nothing active in the snapshot. '
     + 'Either this cabinet is not running anything, or the sync has not filled it yet '
     + '— press Sync now.' };
-  if (cdOnly && !cdShown().length) {
+  if (cdFilt && !cdShown().length) {
+    if (cdFilt === 'spend') return { msg: 'Nothing here has spent anything yet. '
+      + 'Switch the list above back to “All” to see it all.' };
     const h = cdHidBits();
     const words = h ? cdHidWords(h) : '';
     return { msg: 'Nothing is live here right now' + (words ? ' — ' + words : '')
-      + '. Untick “Only live” to see it all.' };
+      + '. Switch the list above back to “All” to see it all.' };
   }
 
   const top = cdFlat ? cdAds() : cdTree();
