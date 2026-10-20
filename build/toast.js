@@ -80,7 +80,12 @@ window.toast = function (msg, kind, ms, raw) {
    і всі вже стояли в async-функціях.
 
    ask() лишається блокуючим у тому сенсі, що має значення: доки не
-   відповіси, код далі не піде. Esc — те саме, що «ні». */
+   відповіси, код далі не піде. Esc — те саме, що «ні».
+
+   ВІДПОВІДЬ БУВАЄ ТРЬОХ ВИДІВ: true/false на питання, рядок — коли є
+   input, і об'єкт — коли є fields. Третій з'явився, бо «додати
+   кабінет» це чотири значення разом, і просити їх по одному вікну на
+   поле означало б чотири вікна на одну дію. */
 
 window.ask = function (opts) {
   const o = typeof opts === 'string' ? { body: opts } : (opts || {});
@@ -91,16 +96,46 @@ window.ask = function (opts) {
   const para = t => String(t || '').split(/\n{2,}/)
     .map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
 
+  /* КІЛЬКА ПОЛІВ. Те саме вікно, тільки відповідь — об'єкт {key: value}.
+     Обов'язкове поле (need) не дає закрити вікно: кабінет без
+     account_id зберігся б, і знайти його потім не було б чим. */
+  const F = Array.isArray(o.fields) ? o.fields.filter(Boolean) : [];
+  const field = f => {
+    const k = esc(f.key);
+    if (f.type === 'checkbox') return `<label class="ask-f is-chk${f.full ? ' is-full' : ''}">
+        <input type="checkbox" data-k="${k}"${f.value ? ' checked' : ''}>
+        <span>${esc(f.label || f.key)}</span></label>`;
+    const lab = `<span class="ask-f-lab">${esc(f.label || f.key)}${f.need ? ' <b>*</b>' : ''}</span>`;
+    const hint = f.hint ? `<span class="ask-f-hint">${esc(f.hint)}</span>` : '';
+    if (f.type === 'select') return `<label class="ask-f${f.full ? ' is-full' : ''}">${lab}
+        <select class="ask-in" data-k="${k}">${(f.opts || []).map(v => {
+          const [val, txt] = Array.isArray(v) ? v : [v, v];
+          return `<option value="${esc(val)}"${
+            String(f.value == null ? '' : f.value) === String(val) ? ' selected' : ''}>${esc(txt)}</option>`;
+        }).join('')}</select>${hint}</label>`;
+    // Підказки з уже відомих значень: агента вписують той самий, що й
+    // у решти кабінетів, і друкувати його щоразу наново — зайве.
+    const dl = (f.list || []).length ? 'ask-dl-' + k : '';
+    return `<label class="ask-f${f.full ? ' is-full' : ''}">${lab}
+      <input class="ask-in${f.upper ? ' is-up' : ''}" data-k="${k}"
+        type="${f.type === 'number' ? 'number' : 'text'}" spellcheck="false" autocomplete="off"
+        ${dl ? `list="${dl}"` : ''} placeholder="${esc(f.placeholder || '')}"
+        value="${esc(f.value == null ? '' : f.value)}">
+      ${dl ? `<datalist id="${dl}">${f.list.map(v => `<option value="${esc(v)}">`).join('')}</datalist>` : ''}
+      ${hint}</label>`;
+  };
+
   return new Promise(resolve => {
     const wrap = document.createElement('div');
     wrap.className = 'askwrap';
-    wrap.innerHTML = `<div class="askbox" role="dialog" aria-modal="true">
+    wrap.innerHTML = `<div class="askbox${F.length > 2 ? ' is-wide' : ''}" role="dialog" aria-modal="true">
         ${o.title ? `<p class="ask-title">${esc(o.title)}</p>` : ''}
         <div class="ask-body">${para(o.body)}</div>
         ${o.input ? `<input type="${o.input.secret ? 'password' : 'text'}"
             class="ask-in" spellcheck="false" autocomplete="off"
             placeholder="${esc(o.input.placeholder || '')}"
             value="${esc(o.input.value || '')}">` : ''}
+        ${F.length ? `<div class="ask-fields">${F.map(field).join('')}</div>` : ''}
         <div class="ask-row">
           ${o.only ? '' : `<button type="button" class="ask-no">${esc(o.cancel || 'Cancel')}</button>`}
           <button type="button" class="ask-yes ${o.danger ? 'is-bad' : ''}">${
@@ -115,15 +150,27 @@ window.ask = function (opts) {
       wrap.remove();
       resolve(v);
     };
-    const key = e => {
-      if (e.key === 'Escape') { e.preventDefault(); close(false); }
-      else if (e.key === 'Enter') {
-        e.preventDefault();
-        const f = wrap.querySelector('.ask-in');
-        close(f ? f.value : true);
-      }
+    /* Збір відповіді з полів. Повертає null, коли обов'язкове поле
+       порожнє: тоді вікно лишається відкритим і підсвічує саме те
+       поле — закрити його з порожнім id означало б зберегти запис,
+       який ні до чого не прив'яжеться. */
+    const collect = () => {
+      const out = {};
+      let bad = null;
+      F.forEach(f => {
+        const el = wrap.querySelector(`[data-k="${f.key}"]`);
+        if (!el) return;
+        let v = f.type === 'checkbox' ? el.checked : String(el.value || '').trim();
+        if (f.upper && typeof v === 'string') v = v.toUpperCase();
+        out[f.key] = v;
+        if (f.need && !(f.type === 'checkbox' ? v : String(v).length) && !bad) bad = el;
+      });
+      if (!bad) return out;
+      bad.classList.add('is-bad');
+      bad.focus();
+      setTimeout(() => bad.classList.remove('is-bad'), 1400);
+      return null;
     };
-
     /* ПИТАННЯ З ПОЛЕМ. Перейменувати токен і вписати проксі — це те
        саме питання, тільки відповідь не «так», а рядок. Окреме вікно
        заради цього було б третім різновидом того самого, тож поле
@@ -131,8 +178,21 @@ window.ask = function (opts) {
 
        Порожній рядок — це НЕ відмова: ним стирають проксі. Тому
        скасування й далі повертає false, і два випадки не зливаються. */
-    const inp = wrap.querySelector('.ask-in');
-    wrap.querySelector('.ask-yes').onclick = () => close(inp ? inp.value : true);
+    const take = () => {
+      if (!F.length) {
+        const f = wrap.querySelector('.ask-in');
+        return close(f ? f.value : true);
+      }
+      const v = collect();
+      if (v) close(v);
+    };
+
+    const key = e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); take(); }
+    };
+
+    wrap.querySelector('.ask-yes').onclick = take;
     const no = wrap.querySelector('.ask-no');
     if (no) no.onclick = () => close(false);
     // Клік повз вікно = відмова. Для питання це безпечний бік.

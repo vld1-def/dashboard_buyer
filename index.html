@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.10 08:28">
+  <meta name="build" content="build 20.10 10:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4176,7 +4176,52 @@ body.is-lead-only .admin-only { display: none; }
   body[data-route="cabinets"] #rules-panel > .rl-wrap {
     flex: 1 1 auto; min-height: 0;
   }
+  /* Сторінки — та сама панель у тому самому правому місці, тож і
+     стеля висоти та сама. Окремий селектор, а не спільний список:
+     id-селектор мусить лишитись сильнішим за Tailwind-івський
+     .hidden, інакше панель було б видно завжди. */
+  body[data-route="cabinets"] #pages-panel:not(.hidden) {
+    display: flex; min-height: 0; max-height: 100%;
+  }
+  body[data-route="cabinets"] #pages-panel > .rl-wrap {
+    flex: 1 1 auto; min-height: 0;
+  }
 }
+
+/* ── СПИСОК СТОРІНОК ──
+   Рядок-кнопка, під нею розкриваються коментарі. Той самий вигляд, що
+   й у правил: інший вид у тому самому місці читався б як інша
+   сторінка. */
+.pg-q {
+  flex: 1 1 auto; min-width: 0; padding: 5px 8px;
+  border-radius: 9px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-main);
+  font-size: 10px; font-weight: 700;
+}
+.pg-q:focus { outline: none; border-color: var(--accent); }
+.pg-item { border-bottom: 1px solid var(--border); }
+.pg-item:last-child { border-bottom: 0; }
+.pg-item.is-open { background: rgba(255, 255, 255, .02); }
+.pg-pick {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 8px 4px; background: none; border: 0; cursor: pointer; text-align: left;
+}
+.pg-pick:hover { background: rgba(255, 255, 255, .03); }
+.pg-name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 800; color: var(--text-main);
+}
+.pg-tags { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.pg-tok {
+  font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); max-width: 90px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.pg-arrow { flex: 0 0 auto; font-size: 13px; font-weight: 900; color: var(--text-muted); }
+.pg-cm { padding: 0 4px 10px; }
+/* Стан коментаря кольором, бо саме його й читають першим. */
+.fcm-tag.is-ok { color: var(--ok); }
+.fcm-tag.is-bad { color: var(--bad); }
 .rl-note { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; min-height: 14px; }
 /* Примітка, яка попереджає, а не описує: порожнє поле гео означає «усі
    гео», і це рівно той випадок, коли сірий текст не читають. */
@@ -4760,6 +4805,36 @@ input.ui-in[type="range"] { padding: 0; }
   font-size: 12px; font-family: inherit;
 }
 .ask-in:focus { outline: none; border-color: var(--accent, #8B5CF6); }
+/* КІЛЬКА ПОЛІВ В ОДНОМУ ПИТАННІ. Два стовпці, бо пари значень тут
+   природні: id і пояс, браузер і агент. Довге поле бере рядок цілком
+   (is-full), інакше назва воронки не влазить і її читають по буквах. */
+.ask-fields {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px 10px; margin: 12px 0 2px;
+}
+.ask-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ask-f.is-full { grid-column: 1 / -1; }
+.ask-f-lab {
+  font-size: 9px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--text-muted);
+}
+.ask-f-lab b { color: #F472B6; }   /* обов'язкове */
+.ask-f .ask-in { margin: 0; }
+.ask-f-hint {
+  font-size: 10px; font-weight: 700; line-height: 1.4;
+  color: var(--text-muted); opacity: .65;
+}
+.ask-f.is-chk { flex-direction: row; align-items: center; gap: 7px; cursor: pointer; }
+.ask-f.is-chk input { width: 15px; height: 15px; accent-color: #F97316; }
+.ask-f.is-chk span {
+  font-size: 10px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-main);
+}
+.ask-in.is-up { text-transform: uppercase; }
+/* Порожнє обов'язкове поле: вікно не закрилось, і видно, через що саме. */
+.ask-in.is-bad { border-color: #DC2626; }
+.askbox.is-wide { max-width: 460px; }
+
 .ask-row { display: flex; gap: 8px; margin-top: 16px; }
 .ask-row button {
   flex: 1; padding: 9px 12px; border-radius: 12px; cursor: pointer;
@@ -5274,7 +5349,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 08:28</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 10:22</div>
     </div>
   </aside>
 
@@ -6133,6 +6208,11 @@ input.ui-in[type="range"] { padding: 0; }
           height="11.2" rx="1.6"/><path d="M6.4 2.4v11.2M9.6 2.4v11.2"/></svg></button>
       <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
         title="Rules that switch off ads on their own">Rules</button>
+      <!-- Сторінки — поруч із правилами, бо це така сама панель про той
+           самий парк. Accountний шлях до коментарів лишається в картці
+           кабінета: він відповідає на інше питання. -->
+      <button type="button" id="cab-pages-btn" onclick="pgPanel()" class="cab-rules"
+        title="Pages your tokens reach, and the comments under them">Pages</button>
       <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
         title="Sync now — ask Facebook right now instead of waiting for the hourly run"
         aria-label="Sync now"><span class="cab-sync-lbl" aria-hidden="true">↻</span><span
@@ -6195,6 +6275,35 @@ input.ui-in[type="range"] { padding: 0; }
         <div id="rl-log" class="rl-log"></div>
       </div>
 
+    </div>
+</div>
+    </div>
+    <!-- Те саме праве місце, що й у правил: панелі взаємно
+         виключаються (див. pgPanel), бо дві поруч розчавили б таблицю. -->
+    <div id="pages-panel" class="hidden shrink-0" style="width:452px">
+<!-- ═══════════ СТОРІНКИ Й КОМЕНТАРІ ПІД НИМИ ═══════════
+     Панель праворуч на сторінці кабінетів — у тому самому місці й тим
+     самим рухом, що правила. Accountний шлях до коментарів лишається в
+     картці кабінета: він відповідає на інше питання («що пишуть під
+     оголошеннями ЦЬОГО кабінета»), і одне не замінює друге. -->
+<div class="card p-4 rounded-3xl shadow-xl rl-wrap">
+
+    <div class="pg-head rl-head">
+      <div>
+        <h2>Pages</h2>
+        <p class="panel-sub">Every Page your tokens reach — and what people write under it</p>
+      </div>
+      <button type="button" class="rl-x" onclick="pgPanel(false)" title="Close">&times;</button>
+    </div>
+
+    <div class="rl-acts">
+      <button type="button" class="rl-btn" onclick="pgLoad(true)" id="pg-refresh">Refresh</button>
+      <input id="pg-q" oninput="pgPaint()" placeholder="Page…" class="pg-q">
+    </div>
+
+    <div class="rl-body custom-scrollbar">
+      <p class="rl-note" id="pg-note"></p>
+      <div id="pg-list"></div>
     </div>
 </div>
     </div>
@@ -12978,6 +13087,10 @@ const RB_DIMS = [
      поруч з офером, тому ні окремої таблиці, ні окремої логіки не
      треба: rbDimVal бере r[dim] як є. */
   { key:'landing', label:'Landing' },
+  /* Домен приїжджає зі стовпця Site вигрузки Keitaro і лежить у
+     daily_stats поруч із лендінгом, тож розріз по ньому — така сама
+     група, як решта: rbDimVal бере r[dim] як є. */
+  { key:'site',    label:'Domain' },
   { key:'agent',   label:'Agent' },
   { key:'device',    label:'Device' },
   { key:'platform',  label:'Platform' },
@@ -13822,7 +13935,12 @@ window.toast = function (msg, kind, ms, raw) {
    і всі вже стояли в async-функціях.
 
    ask() лишається блокуючим у тому сенсі, що має значення: доки не
-   відповіси, код далі не піде. Esc — те саме, що «ні». */
+   відповіси, код далі не піде. Esc — те саме, що «ні».
+
+   ВІДПОВІДЬ БУВАЄ ТРЬОХ ВИДІВ: true/false на питання, рядок — коли є
+   input, і об'єкт — коли є fields. Третій з'явився, бо «додати
+   кабінет» це чотири значення разом, і просити їх по одному вікну на
+   поле означало б чотири вікна на одну дію. */
 
 window.ask = function (opts) {
   const o = typeof opts === 'string' ? { body: opts } : (opts || {});
@@ -13833,16 +13951,46 @@ window.ask = function (opts) {
   const para = t => String(t || '').split(/\n{2,}/)
     .map(p => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
 
+  /* КІЛЬКА ПОЛІВ. Те саме вікно, тільки відповідь — об'єкт {key: value}.
+     Обов'язкове поле (need) не дає закрити вікно: кабінет без
+     account_id зберігся б, і знайти його потім не було б чим. */
+  const F = Array.isArray(o.fields) ? o.fields.filter(Boolean) : [];
+  const field = f => {
+    const k = esc(f.key);
+    if (f.type === 'checkbox') return `<label class="ask-f is-chk${f.full ? ' is-full' : ''}">
+        <input type="checkbox" data-k="${k}"${f.value ? ' checked' : ''}>
+        <span>${esc(f.label || f.key)}</span></label>`;
+    const lab = `<span class="ask-f-lab">${esc(f.label || f.key)}${f.need ? ' <b>*</b>' : ''}</span>`;
+    const hint = f.hint ? `<span class="ask-f-hint">${esc(f.hint)}</span>` : '';
+    if (f.type === 'select') return `<label class="ask-f${f.full ? ' is-full' : ''}">${lab}
+        <select class="ask-in" data-k="${k}">${(f.opts || []).map(v => {
+          const [val, txt] = Array.isArray(v) ? v : [v, v];
+          return `<option value="${esc(val)}"${
+            String(f.value == null ? '' : f.value) === String(val) ? ' selected' : ''}>${esc(txt)}</option>`;
+        }).join('')}</select>${hint}</label>`;
+    // Підказки з уже відомих значень: агента вписують той самий, що й
+    // у решти кабінетів, і друкувати його щоразу наново — зайве.
+    const dl = (f.list || []).length ? 'ask-dl-' + k : '';
+    return `<label class="ask-f${f.full ? ' is-full' : ''}">${lab}
+      <input class="ask-in${f.upper ? ' is-up' : ''}" data-k="${k}"
+        type="${f.type === 'number' ? 'number' : 'text'}" spellcheck="false" autocomplete="off"
+        ${dl ? `list="${dl}"` : ''} placeholder="${esc(f.placeholder || '')}"
+        value="${esc(f.value == null ? '' : f.value)}">
+      ${dl ? `<datalist id="${dl}">${f.list.map(v => `<option value="${esc(v)}">`).join('')}</datalist>` : ''}
+      ${hint}</label>`;
+  };
+
   return new Promise(resolve => {
     const wrap = document.createElement('div');
     wrap.className = 'askwrap';
-    wrap.innerHTML = `<div class="askbox" role="dialog" aria-modal="true">
+    wrap.innerHTML = `<div class="askbox${F.length > 2 ? ' is-wide' : ''}" role="dialog" aria-modal="true">
         ${o.title ? `<p class="ask-title">${esc(o.title)}</p>` : ''}
         <div class="ask-body">${para(o.body)}</div>
         ${o.input ? `<input type="${o.input.secret ? 'password' : 'text'}"
             class="ask-in" spellcheck="false" autocomplete="off"
             placeholder="${esc(o.input.placeholder || '')}"
             value="${esc(o.input.value || '')}">` : ''}
+        ${F.length ? `<div class="ask-fields">${F.map(field).join('')}</div>` : ''}
         <div class="ask-row">
           ${o.only ? '' : `<button type="button" class="ask-no">${esc(o.cancel || 'Cancel')}</button>`}
           <button type="button" class="ask-yes ${o.danger ? 'is-bad' : ''}">${
@@ -13857,15 +14005,27 @@ window.ask = function (opts) {
       wrap.remove();
       resolve(v);
     };
-    const key = e => {
-      if (e.key === 'Escape') { e.preventDefault(); close(false); }
-      else if (e.key === 'Enter') {
-        e.preventDefault();
-        const f = wrap.querySelector('.ask-in');
-        close(f ? f.value : true);
-      }
+    /* Збір відповіді з полів. Повертає null, коли обов'язкове поле
+       порожнє: тоді вікно лишається відкритим і підсвічує саме те
+       поле — закрити його з порожнім id означало б зберегти запис,
+       який ні до чого не прив'яжеться. */
+    const collect = () => {
+      const out = {};
+      let bad = null;
+      F.forEach(f => {
+        const el = wrap.querySelector(`[data-k="${f.key}"]`);
+        if (!el) return;
+        let v = f.type === 'checkbox' ? el.checked : String(el.value || '').trim();
+        if (f.upper && typeof v === 'string') v = v.toUpperCase();
+        out[f.key] = v;
+        if (f.need && !(f.type === 'checkbox' ? v : String(v).length) && !bad) bad = el;
+      });
+      if (!bad) return out;
+      bad.classList.add('is-bad');
+      bad.focus();
+      setTimeout(() => bad.classList.remove('is-bad'), 1400);
+      return null;
     };
-
     /* ПИТАННЯ З ПОЛЕМ. Перейменувати токен і вписати проксі — це те
        саме питання, тільки відповідь не «так», а рядок. Окреме вікно
        заради цього було б третім різновидом того самого, тож поле
@@ -13873,8 +14033,21 @@ window.ask = function (opts) {
 
        Порожній рядок — це НЕ відмова: ним стирають проксі. Тому
        скасування й далі повертає false, і два випадки не зливаються. */
-    const inp = wrap.querySelector('.ask-in');
-    wrap.querySelector('.ask-yes').onclick = () => close(inp ? inp.value : true);
+    const take = () => {
+      if (!F.length) {
+        const f = wrap.querySelector('.ask-in');
+        return close(f ? f.value : true);
+      }
+      const v = collect();
+      if (v) close(v);
+    };
+
+    const key = e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      else if (e.key === 'Enter') { e.preventDefault(); take(); }
+    };
+
+    wrap.querySelector('.ask-yes').onclick = take;
     const no = wrap.querySelector('.ask-no');
     if (no) no.onclick = () => close(false);
     // Клік повз вікно = відмова. Для питання це безпечний бік.
@@ -15175,6 +15348,11 @@ function gcDiff(geo, results) {
           class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
           class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">Списком</button>
+        <!-- Апка — це воронка з позначкою APP. Шаблон прілки без неї
+             нічого не покаже: список апок у редакторі читається саме з
+             воронок, і доти по нову апку треба було йти в Settings. -->
+        <button id="ap-addfun" onclick="apAddFunnel(true)" title="Завести апку (воронку з позначкою APP)"
+          class="h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-orange-300 transition">+ Апка</button>
         <button id="ap-add" onclick="apAddNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
         <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
       </div>
@@ -15451,6 +15629,11 @@ function apModePaint() {
   }
   const paste = document.getElementById('ap-paste');
   if (paste) paste.classList.toggle('hidden', !pwa);
+  /* У PWA кнопка воронки стоїть у рядку з назвою кампанії — там, де
+     про воронку й згадують. Тримати її ще й у шапці означало б дві
+     кнопки на одну дію в одному вікні. */
+  const af = document.getElementById('ap-addfun');
+  if (af) af.classList.toggle('hidden', pwa);
   const dom = document.getElementById('ap-dom');
   if (dom) dom.classList.toggle('hidden', !pwa);
   const s = document.getElementById('ap-search');
@@ -15464,6 +15647,84 @@ function apRenderMode() {
   else { apRenderTree(); apRender(); }
 }
 function apAddNew() { if (apMode === 'pwa') pwNew(); else apNew(); }
+
+/* ═══════════ ЗАВЕСТИ ВОРОНКУ, НЕ ВИХОДЯЧИ З ВІКНА ═══════════
+
+   Воронка (funnels_mapping) потрібна обом половинам цього вікна: у
+   прілках із неї беруться апки, у PWA — ktid, до якого прив'яжеться
+   статистика. А заводилась вона тільки в Settings → Funnels, тобто на
+   іншій сторінці, через перезавантаження дашборда. Тому те саме
+   збереження живе тут: поля ті самі, таблиця та сама.
+
+   isApp лише ВИСТАВЛЯЄ позначку, а не вирішує за людину: з PWA теж
+   буває потрібна апка, і галочка лишається видимою. */
+async function apAddFunnel(isApp) {
+  if (typeof ask !== 'function') {
+    alert('Воронку можна завести в Settings → Funnels.');
+    return;
+  }
+  // Постачальники — з квадратних дужок уже збережених назв: окремого
+  // списку, який колись розійдеться з назвами, не тримаємо.
+  const provs = [...new Set(apFunnels.map(f => {
+    const m = String(f.funnel_name || '').match(/\[([^\]]+)\]/);
+    return m ? m[1].trim() : '';
+  }).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
+
+  const v = await ask({
+    title: isApp ? 'Додати апку' : 'Додати воронку',
+    body: isApp
+      ? 'Постачальник — у квадратних дужках назви: «Mostbet [satorapps]». Саме за ним '
+        + 'підбирається профіль розбору сабок.'
+      : 'KTID — те, чим воронка названа в Keitaro: за ним статистика й зійдеться з кампанією.',
+    ok: 'Додати', cancel: 'Скасувати',
+    fields: [
+      { key: 'name', label: 'Назва воронки', need: true, full: true,
+        placeholder: isApp ? 'Mostbet [satorapps]' : 'Mostbet',
+        hint: provs.length ? 'Відомі постачальники: ' + provs.join(', ') : '' },
+      { key: 'ktid', label: isApp ? 'Назва апки / KTID' : 'KTID', need: true,
+        placeholder: 'як у Keitaro' },
+      { key: 'geo', label: 'Гео', upper: true, placeholder: 'KG',
+        hint: 'Без гео список апок у прілках не звузиться.' },
+      { key: 'is_app', label: 'Це APP (апка)', type: 'checkbox', value: !!isApp, full: true }
+    ]
+  });
+  if (!v) return;
+
+  const name = String(v.name || '').trim();
+  const ktid = String(v.ktid || '').trim();
+  /* KTID у funnels_mapping один на воронку, і upsert по ньому МОВЧКИ
+     перепише чужу назву. Питаємо, бо перезапис непомітний: у списку
+     просто колись виявиться інша воронка під знайомим ktid. */
+  const was = apFunnels.find(f => String(f.ktid) === ktid);
+  if (was && !await ask({
+        title: 'KTID уже зайнятий', danger: true, ok: 'Перезаписати',
+        body: 'Під «' + ktid + '» уже стоїть воронка «' + (was.funnel_name || '—')
+            + '». Зберегти — значить замінити її на «' + name + '».' })) return;
+
+  const row = { ktid, funnel_name: name, team_name: currentTeam,
+                is_app: !!v.is_app, geo: String(v.geo || '').trim().toUpperCase() };
+  const { error } = await sb.from('funnels_mapping').upsert(row);
+  if (error) {
+    const m = String(error.message || error.code || '');
+    toast('Не вдалось зберегти воронку: ' + m
+      + (/geo/i.test(m) && /(does not exist|schema cache)/i.test(m)
+         ? ' · У funnels_mapping ще немає колонки geo — виконай FUNNEL_GEO.sql' : ''),
+      'error', 12000);
+    return;
+  }
+  /* Довідник у пам'яті тримаємо в тому ж вигляді, що й apLoad: лише ті
+     чотири поля, і відсортований за назвою — інакше нова воронка
+     стрибнула б у кінець списку, а після перезавантаження вікна
+     опинилась на своєму місці. */
+  const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app };
+  if (was) Object.assign(was, kept); else apFunnels.push(kept);
+  apFunnels.sort((a, b) => String(a.funnel_name || '')
+    .localeCompare(String(b.funnel_name || ''), 'uk'));
+  apSubPaint();
+  apRenderMode();
+  toast((row.is_app ? 'Апку «' : 'Воронку «') + name + '» '
+      + (was ? 'перезаписано' : 'додано'), 'ok');
+}
 
 /* ─────────── дерево гео → постачальник ─────────── */
 function apRenderTree() {
@@ -16455,8 +16716,14 @@ function pwShowEditor(v) {
       <!-- Дату підставляємо на ВИХОДІ з поля, а не на кожному натисканні:
            посеред набору «09/1» уже схоже на дату, і заміна з'їдала б
            наступну цифру прямо під пальцями. -->
-      <input id="pw-f-name" value="${apEsc(v.name || '')}" oninput="pwNameHint()" onblur="pwNameBlur()"
-             class="${inp} w-full font-mono" placeholder="Назва кампанії — як у кабінеті: Mbank_KG_10708-ex8g_09/10">
+      <!-- Воронка заводиться тут же, в рядку з назвою: саме тут
+           виявляється, що кампанія є, а воронки під неї ще немає. -->
+      <div class="flex items-center gap-2">
+        <input id="pw-f-name" value="${apEsc(v.name || '')}" oninput="pwNameHint()" onblur="pwNameBlur()"
+               class="${inp} flex-1 min-w-0 font-mono" placeholder="Назва кампанії — як у кабінеті: Mbank_KG_10708-ex8g_09/10">
+        <button type="button" onclick="apAddFunnel(false)" title="Завести воронку (KTID), не виходячи з кампанії"
+          class="shrink-0 h-[31px] bg-white/5 hover:bg-white/15 px-3 rounded-lg font-black uppercase text-[10px] tracking-widest text-purple-300 transition">+ Воронка</button>
+      </div>
       <div class="flex items-start gap-2">
         <p id="pw-guess" class="text-[10px] text-slate-500 font-bold flex-1 min-w-0 leading-relaxed"></p>
         <button id="pw-datebtn" onclick="pwDateBtn()" type="button"
@@ -17116,9 +17383,19 @@ async function pwBulkApply() {
         <h2 class="text-xl font-black italic tracking-tighter text-sky-400">Accounts</h2>
         <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Account status · saved instantly · click a tile to filter</p>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <!-- «Скільки цього місяця завели» — питання, на яке досі
+             відповідали очима. Date додавання в рядку вже є, тож
+             фільтр нічого не коштує. -->
+        <select id="acc-month" onchange="renderAccountsModal()"
+          class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-white outline-none focus:border-sky-500"></select>
         <input id="acc-search" oninput="renderAccountsModal()" placeholder="Search…"
           class="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none focus:border-sky-500 w-40">
+        <!-- Account завели — і його відразу видно тут же. Доти по нього
+             треба було йти в Settings → Cabinets, у вікно, яке про
+             статуси нічого не знає. -->
+        <button onclick="accAdd()" title="Додати кабінет"
+          class="bg-sky-600 hover:bg-sky-500 w-8 h-8 rounded-lg font-black text-white text-lg leading-none transition">+</button>
         <button onclick="closeAccountsModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
       </div>
     </div>
@@ -18911,6 +19188,28 @@ function accSetFilter(k) {
   renderAccountsModal();
 }
 
+/* МІСЯЦЬ, КОЛИ КАБІНЕТ ЗАВЕЛИ. Беремо created_at, а як його немає —
+   added_at: та сама дата, що й у колонці Added у Settings. Рядок без
+   дати не ховаємо ні в якому місяці, крім «усі»: він нічого не
+   стверджує про time, і приписати його до місяця було б вигадкою. */
+const accMonthOf = r => String(r.created_at || r.added_at || '').slice(0, 7);
+const ACC_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function accFillMonths() {
+  const sel = document.getElementById('acc-month');
+  if (!sel) return;
+  const was = sel.value;
+  const months = [...new Set(accRows.map(accMonthOf).filter(Boolean))].sort().reverse();
+  const n = m => accRows.filter(r => accMonthOf(r) === m).length;
+  sel.innerHTML = '<option value="">All місяці</option>'
+    + months.map(m => `<option value="${m}">${
+        ACC_MON[Number(m.slice(5)) - 1]} ${m.slice(0, 4)} · ${n(m)}</option>`).join('');
+  // Місяця більше немає серед дат — фільтр по ньому показував би вічну
+  // пустку, тож вибір падає на «усі».
+  sel.value = months.includes(was) ? was : '';
+}
+
 async function openAccountsModal() {
   document.getElementById('accounts-modal').classList.remove('hidden');
   accFilter = ACC_FILTER_DEFAULT;
@@ -18962,10 +19261,92 @@ async function accSetNote(id, note) {
   if (error) { row.status_note = prev; renderAccountsModal(); alert('Could not save the note: ' + error.message); }
 }
 
+/* ДОДАТИ КАБІНЕТ ПРЯМО ТУТ.
+
+   Досі кабінет заводили в Settings → Cabinets, а статус йому ставили
+   тут — два вікна на одну дію, і між ними перезавантаження сторінки.
+   Поля ті самі, що й у формі Link Cabinet, і пишемо ми в ту саму
+   accounts_mapping: це той самий запис, а не другий його різновид.
+
+   Агент підказується з уже заведених кабінетів: його вписують той
+   самий, що й у решти, і друкувати назву агенції наново щоразу —
+   зайве. Але це підказка, а не список: новий агент вписується руками,
+   інакше першого кабінета нового агента не завести. */
+async function accAdd() {
+  if (typeof ask !== 'function') {
+    alert('Додати кабінет можна в Settings → Cabinets.');
+    return;
+  }
+  const agents = [...new Set(accRows.map(r => String(r.provider_name || '').trim())
+    .filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
+  const v = await ask({
+    title: 'Додати кабінет',
+    body: 'Ляже в команду ' + (currentTeam || '—').toUpperCase()
+        + '. Status — активний, змінити можна тут же в рядку.',
+    ok: 'Додати', cancel: 'Cancel',
+    fields: [
+      { key: 'acc', label: 'Account ID', need: true, full: true,
+        placeholder: 'напр. 1234567890123456' },
+      { key: 'tz', label: 'TZ', type: 'number', placeholder: '-8, 0, 3' },
+      { key: 'agent', label: 'Agent', list: agents, placeholder: 'агенція або порожньо' },
+      { key: 'browser', label: 'Browser', full: true, list: [...new Set(accRows
+          .map(r => String(r.profile || '').trim()).filter(Boolean))].sort(),
+        placeholder: 'де цей кабінет лежить, напр. AdsPower 12',
+        hint: 'Facebook про це не знає нічого, а без цього кабінет шукають, відкриваючи профілі по черзі.' }
+    ]
+  });
+  if (!v) return;
+
+  const acc = String(v.acc || '').trim();
+  /* Той самий id уже в списку — це не новий кабінет, а друга його
+     копія: статуси й нотатки розійдуться по двох рядках, і який із
+     них правда, не скаже ніхто. */
+  if (accRows.some(r => String(r.account_id) === acc)) {
+    toast('Account ' + acc + ' уже в списку', 'warn');
+    return;
+  }
+
+  const tz = String(v.tz || '').trim();
+  const row = {
+    account_id: acc,
+    provider_name: String(v.agent || '').trim() || null,
+    timezone: tz === '' ? null : parseInt(tz, 10),
+    team_name: currentTeam
+  };
+  const browser = String(v.browser || '').trim();
+  // Колонки profile може ще не бути — тоді браузер не пишемо, але й не
+  // вдаємо, що записали: про це скаже тост після збереження.
+  const hasProfile = !accRows.length || 'profile' in accRows[0];
+  if (browser && hasProfile) row.profile = browser;
+
+  const { data, error } = await sb.from('accounts_mapping').insert([row]).select();
+  if (error) {
+    toast('Не вдалось додати: ' + (error.message || error.code), 'error', 10000);
+    return;
+  }
+  /* Беремо рядок, яким його віддала база: у ньому вже є id і
+     created_at, тобто те, за що чіпляються статус і фільтр по
+     місяцях. Склеїти його з того, що ми відправили, означало б
+     кабінет без місяця до наступного відкриття вікна. */
+  accRows.push((data && data[0]) || row);
+  renderAccountsModal();
+  if (browser && !hasProfile) {
+    tell('Account додано, браузер — ні',
+         'У цій базі ще немає колонки profile. Виконай у Supabase:\n\n'
+       + 'alter table accounts_mapping add column if not exists profile text;');
+  } else {
+    toast('Account ' + acc + ' додано', 'ok');
+  }
+}
+
 function renderAccountsModal() {
   const body = document.getElementById('accounts-modal-body');
   const sumEl = document.getElementById('acc-summary');
   if (!body) return;
+  /* Список місяців перебудовуємо тут, а не при завантаженні: рядки
+     міняються і без нового запиту (додали кабінет), а вибір
+     accFillMonths зберігає сам. */
+  accFillMonths();
 
   if (!accHasStatusCol) {
     sumEl.innerHTML = '';
@@ -18999,8 +19380,10 @@ function renderAccountsModal() {
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
+  const month = document.getElementById('acc-month')?.value || '';
   const rows = accRows.filter(r =>
     (!accFilter || accStatusOf(r) === accFilter) &&
+    (!month || accMonthOf(r) === month) &&
     (!q ||
       String(r.account_id || '').toLowerCase().includes(q) ||
       String(r.provider_name || '').toLowerCase().includes(q) ||
@@ -19008,7 +19391,8 @@ function renderAccountsModal() {
       String(r.status_note || '').toLowerCase().includes(q)));
 
   if (!rows.length) {
-    const why = accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Nothing found';
+    const why = month && !q && !accFilter ? 'У цьому місяці кабінетів не завели'
+             : accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Nothing found';
     body.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     return;
   }
@@ -19026,7 +19410,9 @@ function renderAccountsModal() {
 
   body.innerHTML = `
     <div class="${GRID} px-4 pb-2" style="${COLS}">
-      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','Browser','TZ','Added','Status','Note'].map(h =>
+      ${[`Account <span class="opacity-50">(${
+          rows.length < accRows.length ? rows.length + ' / ' + accRows.length : rows.length
+        })</span>`,'Agent','Browser','TZ','Added','Status','Note'].map(h =>
         `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' || h === 'Added' ? 'text-center' : ''}">${h}</span>`).join('')}
     </div>
     <div class="space-y-1.5">
@@ -23198,6 +23584,10 @@ function cabPick(id) {
     const rl = document.getElementById('rules-panel');
     if (rl && !rl.classList.contains('hidden')) rlPanel(false);
   }
+  if (cabSel && typeof pgPanel === 'function') {
+    const pg = document.getElementById('pages-panel');
+    if (pg && !pg.classList.contains('hidden')) pgPanel(false);
+  }
   cabRender();
 }
 
@@ -25705,6 +26095,8 @@ function dmDetail(r) {
 
     ${dmLiveBlock(r.domain)}
 
+    ${dmTotalBlock(r.domain)}
+
     ${r.campaign ? `<p class="text-[10px] font-mono mb-3 break-all" style="color:var(--text-muted)"
       title="The line this domain was pasted under">${dmEsc(r.campaign)}</p>` : ''}
 
@@ -25732,6 +26124,54 @@ function dmDetail(r) {
         style="border:1px solid rgba(239,68,68,.35)">Delete</button>
     </div>
   </div>`;
+}
+
+/* ═══════════ ТОТАЛ ПО ДОМЕНУ ═══════════
+
+   «Live on this domain» вище відповідає на питання «що тут крутиться
+   ЗАРАЗ» — зі знімка оголошень за сьогодні. А питання «скільки ми на
+   цей домен залили за весь time» не мало де взятись: у статистиці
+   домену не було зовсім.
+
+   Тепер у вигрузці Keitaro є стовпець Site, і домен лежить у
+   daily_stats тим самим рядком, що й спенд. Беремо його з rawData —
+   того самого масиву, на якому стоять KPI, графік і Report Builder.
+   Жодного запиту: відповідь уже в пам'яті сторінки.
+
+   Нормалізація зійтись мусить з обох боків: ktSite() на імпорті і
+   dmNormDomain() тут роблять одне й те саме — чистий хост у нижньому
+   регістрі. */
+function dmTotalBlock(domain) {
+  const wrap = inner => `<div class="dm-live rounded-lg px-2 py-2 mb-3" style="background:var(--surface-2)">
+      <p class="text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Total on this domain</p>
+      ${inner}</div>`;
+  const note = t => wrap(`<p class="text-[10px] font-bold" style="color:var(--text-muted)">${t}</p>`);
+
+  if (typeof rawData === 'undefined' || !Array.isArray(rawData) || !rawData.length)
+    return note('Statistics are not loaded on this page yet.');
+  /* Колонки ще немає — SITES.sql не виконаний. Це найчастіша причина, і
+     в неї є рецепт; ховати її за «нічого немає» означало б відправити
+     людину шукати ваду там, де її немає. */
+  if (!('site' in rawData[0]))
+    return note('Run SITES.sql, then import a Keitaro file with the Site column — after that the total shows up here.');
+
+  const rows = rawData.filter(r => String(r.site || '') === domain);
+  if (!rows.length) return note('No imported statistics mention this domain.');
+
+  const sum = k => rows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
+  const spend = sum('spend'), ins = sum('installs'), reg = sum('regs'), dep = sum('deposits');
+  const days = [...new Set(rows.map(r => String(r.date || '').slice(0, 10)).filter(Boolean))].sort();
+  const per = (a, b) => b ? '$' + (a / b).toFixed(2) : '—';
+
+  return wrap(`<p class="text-[12px] font-black text-dynamic mb-1">$${
+      spend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    } <span class="text-[10px] font-bold" style="color:var(--text-muted)">spend · ${
+      days.length} day(s)${days.length ? ' · ' + days[0] + ' → ' + days[days.length - 1] : ''}</span></p>
+    ${[['Leads', ins, per(spend, ins)], ['Regs', reg, per(spend, reg)], ['Deps', dep, per(spend, dep)]]
+      .map(([k, v, cp]) => `<div class="flex items-center justify-between gap-2 text-[10px] font-bold py-0.5">
+          <span style="color:var(--text-muted)">${k}</span>
+          <span class="font-mono text-dynamic">${v.toLocaleString()} <span style="color:var(--text-muted)">· ${cp}</span></span>
+        </div>`).join('')}`);
 }
 
 /* Копіюємо саме з https://, бо домен майже завжди потрібен як посилання:
@@ -26451,6 +26891,8 @@ window.rlPanel = function (want) {
   box.classList.toggle('hidden', !open);
   document.getElementById('cab-rules-btn')?.classList.toggle('is-on', open);
   if (open) {
+    // Праве місце одне: Сторінки й правила взаємно виключаються.
+    if (typeof pgPanel === 'function') pgPanel(false);
     if (typeof cabSel !== 'undefined' && cabSel) { cabSel = null; cabRender(); }
     rlInit();
   }
@@ -26779,6 +27221,327 @@ window.rlCheck = async function () {
     if (typeof toast === 'function') toast('Could not check: ' + e.message, 'error');
   }
 };
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   СТОРІНКИ — ІНШИЙ ВХІД У ТІ САМІ КОМЕНТАРІ
+
+   У картці кабінета давно є «Comments…»: що пишуть під оголошеннями
+   ЦЬОГО кабінета. Питання робоче, але не єдине. Пост Сторінки живе
+   довше за оголошення, а коментар під ним лишається й після того, як
+   оголошення зупинили — і тоді кабінетний шлях до нього не веде
+   ніяк: у списку оголошень того посту вже немає.
+
+   Тому тут список САМИХ СТОРІНОК: усіх, які бачать твої токени. Видно
+   відразу те, через що найчастіше й спотикаються, — де прибирати
+   коментарі МОЖНА, а де Сторінку лише видали покрутити.
+
+   ПОЗНАЧКИ. Коментар буває у трьох станах, і їх не варто плутати:
+     visible — на людях;
+     hidden  — бачить лише автор. Оборотно, і автор не знає, що його
+               сховали, тож писати зі злості вдруге не йде;
+     deleted — назавжди.
+   Delete питає підтвердження, і видалене лишається в списку з
+   позначкою до наступного перечитування: Facebook про видалене не
+   пам'ятає нічого, тож якщо не показати це тут, не лишиться жодного
+   слiду, що саме прибрали.
+
+   МЕЖУ СТАВИТЬ НЕ ЦЕЙ ЕКРАН. page_id, який піде у функцію, нічого не
+   доводить сам по собі: це рядок у тілі запиту. Функція звіряє його з
+   тими Сторінками, які мають ТОКЕНИ ТОГО, ХТО ПРИЙШОВ, і токен
+   Сторінки виводить із цієї ж перевіреної Сторінки. Тут — лише екран.
+
+   Текст коментарів чужий і сирий, тож у розмітку він іде тільки через
+   pgEsc. ══════════════════════════════════════════════════════════ */
+
+let pgRows = null;       // null — ще не питали
+let pgErr = '', pgProb = [];
+let pgSel = '';          // яка Сторінка розкрита
+let pgList = null;       // коментарі розкритої, null — їдуть
+let pgListErr = '', pgNote = '', pgMore = false, pgCan = true;
+let pgPicked = [];       // вибрані коментарі
+let pgGone = [];         // що видалили цього разу — щоб лишився слід
+let pgBusy = '';
+let pgMsg = { html: '', tone: '' };
+
+const pgEsc = v => String(v == null ? '' : v)
+  .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+/* ── ПАНЕЛЬ ПРАВОРУЧ ──
+   Місце праве одне, тож картка кабінета й правила при цьому
+   закриваються: дві панелі поруч розчавили б таблицю, заради якої
+   сторінку й відкривали. */
+window.pgPanel = function (want) {
+  const box = document.getElementById('pages-panel');
+  if (!box) return;
+  const open = want === undefined ? box.classList.contains('hidden') : !!want;
+  box.classList.toggle('hidden', !open);
+  document.getElementById('cab-pages-btn')?.classList.toggle('is-on', open);
+  if (!open) return;
+  if (typeof rlPanel === 'function') rlPanel(false);
+  if (typeof cabSel !== 'undefined' && cabSel) { cabSel = null; cabRender(); }
+  pgLoad();
+};
+
+async function pgCall(body) {
+  const { data: sess } = await sb.auth.getSession();
+  const token = sess && sess.session && sess.session.access_token;
+  if (!token) throw new Error('not signed in');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/fb-comments', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+               'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+  return j;
+}
+
+/* Та сама порада, що й у кабінетному шляху: «не відповіла» майже
+   завжди означає «ще не розгорнута», і казати це прямо коштує
+   дешевше, ніж шукати. */
+function pgWhy(e) {
+  const msg = String(e.message || '');
+  const net = /failed to fetch|networkerror|load failed/i.test(msg);
+  if (e.code === 'missing' || net)
+    return 'The fb-comments function did not answer — deploy it first: '
+         + '<span class="font-mono">supabase functions deploy fb-comments</span>';
+  /* Стара версія функції про Сторінки не знає й падає на тому, що в
+     неї немає account_id. Сире «account_id is required» відправило б
+     шукати ваду в цьому екрані, тоді як лікується воно одним
+     розгортанням. */
+  if (/account_id is required|unknown action/i.test(msg))
+    return 'The deployed fb-comments is older than this page: it does not know about Pages yet. '
+         + 'Redeploy it — <span class="font-mono">supabase functions deploy fb-comments</span>';
+  return pgEsc(msg);
+}
+
+window.pgLoad = async function (force) {
+  if (pgRows && !force) { pgPaint(); return; }
+  pgErr = ''; pgProb = [];
+  if (force) { pgSel = ''; pgList = null; pgGone = []; }
+  pgRows = null;
+  pgPaint();
+  try {
+    const j = await pgCall({ action: 'pages' });
+    pgRows = Array.isArray(j.pages) ? j.pages : [];
+    pgProb = Array.isArray(j.problems) ? j.problems : [];
+  } catch (e) {
+    pgRows = [];
+    pgErr = pgWhy(e);
+  }
+  pgPaint();
+};
+
+window.pgPick = async function (idEnc) {
+  const id = decodeURIComponent(idEnc);
+  if (pgSel === id) { pgSel = ''; pgPaint(); return; }
+  pgSel = id;
+  pgList = null; pgListErr = ''; pgNote = ''; pgMore = false;
+  pgPicked = []; pgGone = []; pgMsg = { html: '', tone: '' };
+  pgPaint();
+  try {
+    const j = await pgCall({ action: 'page_list', page_id: id });
+    pgList = Array.isArray(j.comments) ? j.comments : [];
+    pgNote = j.note || '';
+    pgMore = !!j.more;
+    pgCan = j.can_moderate !== false;
+    pgProb = Array.isArray(j.problems) ? j.problems : [];
+  } catch (e) {
+    pgList = [];
+    pgListErr = pgWhy(e);
+  }
+  if (pgSel === id) pgPaint();
+};
+
+window.pgToggle = function (idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const i = pgPicked.indexOf(id);
+  if (i < 0) pgPicked.push(id); else pgPicked.splice(i, 1);
+  pgPaint();
+};
+
+window.pgPickAll = function (on) {
+  pgPicked = on ? (pgList || []).filter(c => !pgGone.includes(c.id)).map(c => c.id) : [];
+  pgPaint();
+};
+
+window.pgAct = async function (what) {
+  if (pgBusy || !pgSel) return;
+  const ids = (pgList || []).filter(c => pgPicked.includes(c.id)).map(c => c.id);
+  if (!ids.length) return;
+
+  if (what === 'delete' && !await ask({ title: 'Delete for good?', danger: true, ok: 'Delete',
+      body: 'Delete ' + ids.length + ' comment(s)?\n\n'
+        + 'There is no way back. If you only want them out of sight, use Hide — the author '
+        + 'still sees their own comment and does not come back to repost it.' })) return;
+
+  pgBusy = 'Working…';
+  pgPaint();
+  let done = 0; const bad = [];
+  try {
+    const j = await pgCall({ action: 'page_act', page_id: pgSel, what, comment_ids: ids });
+    done = Number(j.done) || 0;
+    (j.problems || []).forEach(p => bad.push(p));
+  } catch (e) {
+    bad.push(e.message);
+  }
+  pgBusy = '';
+
+  /* Видалене тримаємо на екрані з позначкою: Facebook про нього не
+     пам'ятає нічого, і якби ми просто перечитали список, не лишилось
+     би жодного слiду, що саме прибрали. Приховане ж перечитується
+     чесно — там стан бере сам Facebook. */
+  if (what === 'delete' && done) {
+    ids.forEach(id => { if (!pgGone.includes(id)) pgGone.push(id); });
+    pgPicked = [];
+    pgMsg = { html: done + ' comment(s) deleted'
+      + (bad.length ? '<br>' + bad.slice(0, 3).map(pgEsc).join('<br>') : ''),
+      tone: bad.length ? 'var(--warn)' : 'var(--ok)' };
+    pgPaint();
+    return;
+  }
+
+  const word = what === 'hide' ? 'hidden' : 'shown again';
+  pgMsg = { html: done + ' comment(s) ' + word
+    + (bad.length ? '<br>' + bad.slice(0, 3).map(pgEsc).join('<br>') : ''),
+    tone: bad.length ? 'var(--warn)' : 'var(--ok)' };
+  // Перечитуємо: стан «сховано» знає Facebook, а не ми.
+  const keep = pgSel;
+  pgSel = '';
+  await pgPick(encodeURIComponent(keep));
+};
+
+/* Короткий підпис часу: у стрічці важливо «давно чи щойно», а не
+   число. Повна дата — у title. */
+function pgAgo(iso) {
+  const t = Date.parse(iso || '');
+  if (!t) return '';
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 60) return m + 'm';
+  if (m < 1440) return Math.round(m / 60) + 'h';
+  return Math.round(m / 1440) + 'd';
+}
+
+function pgRowHtml(r) {
+  const enc = encodeURIComponent(String(r.page_id)).replace(/'/g, '%27');
+  const open = pgSel === String(r.page_id);
+  return `<div class="pg-item ${open ? 'is-open' : ''}">
+    <button type="button" class="pg-pick" onclick="pgPick('${enc}')"
+      title="${r.can_moderate
+        ? 'Read and moderate what people write under this Page'
+        : 'Read only: this token was not given the Moderate content task on this Page'}">
+      <span class="pg-name">${pgEsc(r.name || '#' + r.page_id)}</span>
+      <span class="pg-tags">
+        ${r.can_moderate ? '' : '<span class="fcm-tag">read only</span>'}
+        ${r.token ? `<span class="pg-tok" title="Seen through the token ${pgEsc(r.token)}">${pgEsc(r.token)}</span>` : ''}
+      </span>
+      <span class="pg-arrow">${open ? '&minus;' : '+'}</span></button>
+    ${open ? pgComments() : ''}</div>`;
+}
+
+function pgComments() {
+  if (pgList === null) return `<p class="fbr-hint">Asking Facebook… this walks the latest posts
+    of the Page, so it takes a moment.</p>`;
+
+  const rows = pgList.map(c => {
+    const gone = pgGone.includes(c.id);
+    const on = pgPicked.includes(c.id);
+    const enc = encodeURIComponent(c.id).replace(/'/g, '%27');
+    return `<label class="fcm-row ${on ? 'is-on' : ''} ${gone || c.is_hidden ? 'is-hidden' : ''}">
+      <input type="checkbox" ${on ? 'checked' : ''} ${gone ? 'disabled' : ''}
+        onchange="pgToggle('${enc}')">
+      <span class="fcm-body">
+        <span class="fcm-top">
+          <b>${pgEsc(c.from || 'someone')}</b>
+          <span title="${pgEsc(c.created_time || '')}">${pgAgo(c.created_time)}</span>
+          ${gone ? '<span class="fcm-tag is-bad">deleted</span>'
+                 : c.is_hidden ? '<span class="fcm-tag">hidden</span>'
+                               : '<span class="fcm-tag is-ok">visible</span>'}
+          ${c.likes ? '<span class="fcm-tag">&#9829; ' + c.likes + '</span>' : ''}
+        </span>
+        <span class="fcm-text">${pgEsc(c.message) || '<i>no text — a photo or a sticker</i>'}</span>
+        <span class="fcm-ad" title="The post this comment sits under">${pgEsc(c.ad)}${
+          c.live ? '' : ' · not published'}</span>
+      </span></label>`;
+  }).join('');
+
+  const n = pgPicked.length;
+  /* Про «лише читати» кажемо НЕЗАЛЕЖНО від того, чи є коментарі:
+     якщо сказати це тільки разом зі списком, то на тихій Сторінці
+     брак прав виявився б аж у мить, коли під нею вперше щось
+     написали й натиснули Hide. */
+  const ro = pgCan ? '' : `<p class="fbr-hint">Read only: to hide or delete here, give this Page
+       the Moderate content task in Business Manager and add
+       <span class="font-mono">pages_manage_engagement</span> to the token.</p>`;
+  const acts = !pgCan
+    ? ''
+    : `<div class="fcm-acts">
+      <button type="button" onclick="pgAct('hide')" ${n && !pgBusy ? '' : 'disabled'}
+        title="Only the author keeps seeing it. Reversible.">Hide${n ? ' ' + n : ''}</button>
+      <button type="button" onclick="pgAct('unhide')" ${n && !pgBusy ? '' : 'disabled'}
+        title="Put them back in public view">Show</button>
+      <button type="button" onclick="pgAct('delete')" class="is-bad"
+        ${n && !pgBusy ? '' : 'disabled'} title="Gone for good">Delete</button>
+    </div>`;
+
+  return `<div class="pg-cm">
+    ${pgListErr ? `<p class="fbr-hint is-bad">${pgListErr}</p>` : ''}
+    ${ro}
+    ${!pgList.length
+      ? `<p class="fbr-hint">${pgEsc(pgNote) || 'Nothing has been written under the latest posts of this Page.'}</p>`
+      : `<label class="fcm-all"><input type="checkbox" ${
+            n && n === pgList.filter(c => !pgGone.includes(c.id)).length ? 'checked' : ''}
+            onchange="pgPickAll(this.checked)"> ${pgList.length} comment(s)</label>
+         <div class="fcm-list">${rows}</div>
+         ${acts}`}
+    ${pgMore ? '<p class="fbr-hint">Only the latest posts were walked — older ones are not checked yet.</p>' : ''}
+    ${pgBusy ? `<p class="fbr-hint">${pgBusy}</p>` : ''}
+    <p class="fbr-hint"${pgMsg.tone ? ` style="color:${pgMsg.tone}"` : ''}>${pgMsg.html}</p>
+  </div>`;
+}
+
+function pgPaint() {
+  const list = document.getElementById('pg-list');
+  const note = document.getElementById('pg-note');
+  if (!list) return;
+
+  if (pgRows === null) {
+    if (note) { note.textContent = 'Asking Facebook which Pages your tokens have…'; note.className = 'rl-note'; }
+    list.innerHTML = '';
+    return;
+  }
+  if (pgErr) {
+    if (note) { note.innerHTML = pgErr; note.className = 'rl-note is-warn'; }
+    list.innerHTML = '';
+    return;
+  }
+
+  const q = (document.getElementById('pg-q')?.value || '').toLowerCase().trim();
+  const rows = pgRows.filter(r => !q || String(r.name || '').toLowerCase().includes(q)
+                                      || String(r.page_id).includes(q));
+  const can = pgRows.filter(r => r.can_moderate).length;
+
+  if (note) {
+    /* Числа, а не слова: «скільки всього» і «на скількох можна
+       прибирати» — це перше, про що питають, і саме через різницю між
+       ними найчастіше й буває непорозуміння. */
+    note.className = 'rl-note' + (pgRows.length && !can ? ' is-warn' : '');
+    note.innerHTML = !pgRows.length
+      ? 'No Pages: the tokens in Settings do not have any Page assigned to their system user.'
+        + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '')
+      : `${pgRows.length} Page(s) · ${can} where comments can be moderated`
+        + (q && rows.length !== pgRows.length ? ` · ${rows.length} shown` : '')
+        + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '');
+  }
+
+  list.innerHTML = !rows.length
+    ? '<p class="fbr-hint">Nothing matches the filter.</p>'
+    : rows.map(pgRowHtml).join('');
+}
 </script>
 
 <script>

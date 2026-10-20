@@ -833,6 +833,8 @@ function dmDetail(r) {
 
     ${dmLiveBlock(r.domain)}
 
+    ${dmTotalBlock(r.domain)}
+
     ${r.campaign ? `<p class="text-[10px] font-mono mb-3 break-all" style="color:var(--text-muted)"
       title="The line this domain was pasted under">${dmEsc(r.campaign)}</p>` : ''}
 
@@ -860,6 +862,54 @@ function dmDetail(r) {
         style="border:1px solid rgba(239,68,68,.35)">Delete</button>
     </div>
   </div>`;
+}
+
+/* ═══════════ ТОТАЛ ПО ДОМЕНУ ═══════════
+
+   «Live on this domain» вище відповідає на питання «що тут крутиться
+   ЗАРАЗ» — зі знімка оголошень за сьогодні. А питання «скільки ми на
+   цей домен залили за весь час» не мало де взятись: у статистиці
+   домену не було зовсім.
+
+   Тепер у вигрузці Keitaro є стовпець Site, і домен лежить у
+   daily_stats тим самим рядком, що й спенд. Беремо його з rawData —
+   того самого масиву, на якому стоять KPI, графік і Report Builder.
+   Жодного запиту: відповідь уже в пам'яті сторінки.
+
+   Нормалізація зійтись мусить з обох боків: ktSite() на імпорті і
+   dmNormDomain() тут роблять одне й те саме — чистий хост у нижньому
+   регістрі. */
+function dmTotalBlock(domain) {
+  const wrap = inner => `<div class="dm-live rounded-lg px-2 py-2 mb-3" style="background:var(--surface-2)">
+      <p class="text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Total on this domain</p>
+      ${inner}</div>`;
+  const note = t => wrap(`<p class="text-[10px] font-bold" style="color:var(--text-muted)">${t}</p>`);
+
+  if (typeof rawData === 'undefined' || !Array.isArray(rawData) || !rawData.length)
+    return note('Statistics are not loaded on this page yet.');
+  /* Колонки ще немає — SITES.sql не виконаний. Це найчастіша причина, і
+     в неї є рецепт; ховати її за «нічого немає» означало б відправити
+     людину шукати ваду там, де її немає. */
+  if (!('site' in rawData[0]))
+    return note('Run SITES.sql, then import a Keitaro file with the Site column — after that the total shows up here.');
+
+  const rows = rawData.filter(r => String(r.site || '') === domain);
+  if (!rows.length) return note('No imported statistics mention this domain.');
+
+  const sum = k => rows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
+  const spend = sum('spend'), ins = sum('installs'), reg = sum('regs'), dep = sum('deposits');
+  const days = [...new Set(rows.map(r => String(r.date || '').slice(0, 10)).filter(Boolean))].sort();
+  const per = (a, b) => b ? '$' + (a / b).toFixed(2) : '—';
+
+  return wrap(`<p class="text-[12px] font-black text-dynamic mb-1">$${
+      spend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    } <span class="text-[10px] font-bold" style="color:var(--text-muted)">spend · ${
+      days.length} day(s)${days.length ? ' · ' + days[0] + ' → ' + days[days.length - 1] : ''}</span></p>
+    ${[['Leads', ins, per(spend, ins)], ['Regs', reg, per(spend, reg)], ['Deps', dep, per(spend, dep)]]
+      .map(([k, v, cp]) => `<div class="flex items-center justify-between gap-2 text-[10px] font-bold py-0.5">
+          <span style="color:var(--text-muted)">${k}</span>
+          <span class="font-mono text-dynamic">${v.toLocaleString()} <span style="color:var(--text-muted)">· ${cp}</span></span>
+        </div>`).join('')}`);
 }
 
 /* Копіюємо саме з https://, бо домен майже завжди потрібен як посилання:

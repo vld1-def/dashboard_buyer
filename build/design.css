@@ -3067,7 +3067,52 @@ body.is-lead-only .admin-only { display: none; }
   body[data-route="cabinets"] #rules-panel > .rl-wrap {
     flex: 1 1 auto; min-height: 0;
   }
+  /* Сторінки — та сама панель у тому самому правому місці, тож і
+     стеля висоти та сама. Окремий селектор, а не спільний список:
+     id-селектор мусить лишитись сильнішим за Tailwind-івський
+     .hidden, інакше панель було б видно завжди. */
+  body[data-route="cabinets"] #pages-panel:not(.hidden) {
+    display: flex; min-height: 0; max-height: 100%;
+  }
+  body[data-route="cabinets"] #pages-panel > .rl-wrap {
+    flex: 1 1 auto; min-height: 0;
+  }
 }
+
+/* ── СПИСОК СТОРІНОК ──
+   Рядок-кнопка, під нею розкриваються коментарі. Той самий вигляд, що
+   й у правил: інший вид у тому самому місці читався б як інша
+   сторінка. */
+.pg-q {
+  flex: 1 1 auto; min-width: 0; padding: 5px 8px;
+  border-radius: 9px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-main);
+  font-size: 10px; font-weight: 700;
+}
+.pg-q:focus { outline: none; border-color: var(--accent); }
+.pg-item { border-bottom: 1px solid var(--border); }
+.pg-item:last-child { border-bottom: 0; }
+.pg-item.is-open { background: rgba(255, 255, 255, .02); }
+.pg-pick {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 8px 4px; background: none; border: 0; cursor: pointer; text-align: left;
+}
+.pg-pick:hover { background: rgba(255, 255, 255, .03); }
+.pg-name {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 800; color: var(--text-main);
+}
+.pg-tags { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.pg-tok {
+  font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-muted); max-width: 90px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.pg-arrow { flex: 0 0 auto; font-size: 13px; font-weight: 900; color: var(--text-muted); }
+.pg-cm { padding: 0 4px 10px; }
+/* Стан коментаря кольором, бо саме його й читають першим. */
+.fcm-tag.is-ok { color: var(--ok); }
+.fcm-tag.is-bad { color: var(--bad); }
 .rl-note { font-size: 11px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; min-height: 14px; }
 /* Примітка, яка попереджає, а не описує: порожнє поле гео означає «усі
    гео», і це рівно той випадок, коли сірий текст не читають. */
@@ -3651,6 +3696,36 @@ input.ui-in[type="range"] { padding: 0; }
   font-size: 12px; font-family: inherit;
 }
 .ask-in:focus { outline: none; border-color: var(--accent, #8B5CF6); }
+/* КІЛЬКА ПОЛІВ В ОДНОМУ ПИТАННІ. Два стовпці, бо пари значень тут
+   природні: id і пояс, браузер і агент. Довге поле бере рядок цілком
+   (is-full), інакше назва воронки не влазить і її читають по буквах. */
+.ask-fields {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px 10px; margin: 12px 0 2px;
+}
+.ask-f { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ask-f.is-full { grid-column: 1 / -1; }
+.ask-f-lab {
+  font-size: 9px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--text-muted);
+}
+.ask-f-lab b { color: #F472B6; }   /* обов'язкове */
+.ask-f .ask-in { margin: 0; }
+.ask-f-hint {
+  font-size: 10px; font-weight: 700; line-height: 1.4;
+  color: var(--text-muted); opacity: .65;
+}
+.ask-f.is-chk { flex-direction: row; align-items: center; gap: 7px; cursor: pointer; }
+.ask-f.is-chk input { width: 15px; height: 15px; accent-color: #F97316; }
+.ask-f.is-chk span {
+  font-size: 10px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-main);
+}
+.ask-in.is-up { text-transform: uppercase; }
+/* Порожнє обов'язкове поле: вікно не закрилось, і видно, через що саме. */
+.ask-in.is-bad { border-color: #DC2626; }
+.askbox.is-wide { max-width: 460px; }
+
 .ask-row { display: flex; gap: 8px; margin-top: 16px; }
 .ask-row button {
   flex: 1; padding: 9px 12px; border-radius: 12px; cursor: pointer;

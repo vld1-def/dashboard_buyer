@@ -1650,6 +1650,10 @@ function cabPick(id) {
     const rl = document.getElementById('rules-panel');
     if (rl && !rl.classList.contains('hidden')) rlPanel(false);
   }
+  if (cabSel && typeof pgPanel === 'function') {
+    const pg = document.getElementById('pages-panel');
+    if (pg && !pg.classList.contains('hidden')) pgPanel(false);
+  }
   cabRender();
 }
 

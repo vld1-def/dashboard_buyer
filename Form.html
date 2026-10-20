@@ -507,7 +507,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <p class="text-xs font-black uppercase tracking-widest text-orange-400">Traffic type</p>
           <p id="traffic-mode-hint" class="text-[10px] opacity-40 font-bold mt-0.5"></p>
         </div>
+        <!-- AUTO читає кожен рядок окремо, тож один файл може тримати і
+             PWA, і APP. PWA і APP лишаються перебивкою: прибрати їх
+             означало б не мати чим виправити хибне розпізнавання. -->
         <div class="flex bg-black/20 p-1 rounded-xl border border-white/5">
+          <button id="tm-auto" onclick="setTrafficMode('auto')" class="px-5 py-2 rounded-lg text-[11px] font-black uppercase transition">Auto</button>
           <button id="tm-pwa" onclick="setTrafficMode('pwa')" class="px-5 py-2 rounded-lg text-[11px] font-black uppercase transition">PWA</button>
           <button id="tm-app" onclick="setTrafficMode('app')" class="px-5 py-2 rounded-lg text-[11px] font-black uppercase transition">APP</button>
         </div>
@@ -1095,7 +1099,8 @@ let mappingDB = { providers: {}, funnels: {} };
 let datasetToImport = [];
 /* Що з ЦЬОГО прев'ю вже лягло в базу. Потрібно для повторного Save
    після часткової відмови: без цього перша таблиця заливалась удруге. */
-let dsSavedDaily = false, dsSavedCrea = false, dsNoLanding = false; 
+let dsSavedDaily = false, dsSavedCrea = false, dsNoLanding = false, dsNoSite = false;
+
 let creativesToImport = [];
 let allFunnels = []; 
 let allProviders = [];
@@ -1349,7 +1354,10 @@ const INSTALLS_APP_FIRST = [
 
 // Список ключових слів для колонки з урахуванням режиму трафіку.
 function kwFor(key) {
-  if (key === 'installs' && trafficMode === 'app') return INSTALLS_APP_FIRST;
+  /* В auto теж APP-перший: список навмисно тримає «leads» у хвості, щоб
+     звіт БЕЗ колонки «App installs» усе одно розібрався. Тобто цей
+     порядок безпечний для обох видів, а зворотний — ні. */
+  if (key === 'installs' && trafficMode !== 'pwa') return INSTALLS_APP_FIRST;
   return keywords[key];
 }
 
@@ -1526,7 +1534,7 @@ async function tsRead(keys) {
 const KM_DEFAULT = { prov:{}, src:'', acc:'Sub ID 5',
                      camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
-                     country:'Country', app:'Sub ID 4',
+                     country:'Country', app:'Sub ID 4', site:'Site',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
 
@@ -1576,7 +1584,13 @@ const KM_FIELDS = [
      Funnel Mapper. Порожньо — працюємо як раніше, з дужок. */
   { id: 'km-src',     key: 'src',     label: 'Provider (source)', grp: 'app', tone: 'text-amber-300',
     ph: 'Source',
-    tip: 'Необов\'язково. Стовпець зі звіту, де написано постачальника прілки (satorapps, trident). Порожньо — шукаємо стовпець «Source», а якщо його немає, беремо з дужок назви воронки' }
+    tip: 'Необов\'язково. Стовпець зі звіту, де написано постачальника прілки (satorapps, trident). Порожньо — шукаємо стовпець «Source», а якщо його немає, беремо з дужок назви воронки' },
+  /* Домен приїжджає разом зі статистикою — тим самим рядком, що й
+     спенд. Доти він жив окремо: у списку доменів (хто живий) і в
+     оголошеннях на сьогодні. «Скільки ми на цей домен залили за весь
+     час» не мало де взятись. */
+  { id: 'km-site',    key: 'site',    label: 'Site (domain)', grp: 'both', tone: 'text-violet-300',
+    tip: 'Стовпець з доменом — mplay-kg.website. З нього беруться розріз по доменах у Report Builder і тотал у списку доменів' }
 ];
 
 /* Перебити можна лише те, що читається ПІСЛЯ того, як постачальник уже
@@ -1839,6 +1853,7 @@ async function loadKeitaroMap() {
   set('km-plc', keitaroMap.plc); set('km-offer', keitaroMap.offer);
   set('km-country', keitaroMap.country); set('km-app', keitaroMap.app);
   set('km-src', keitaroMap.src);
+  set('km-site', keitaroMap.site);
   set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
   set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
   set('km-tz', keitaroMap.tz);
@@ -1858,6 +1873,10 @@ async function saveKeitaroMap() {
               // Порожньо — значить стовпця немає; підставляти сюди
               // типове значення означало б шукати колонку, якої нема.
               src:g('km-src'),
+              // Стовпця може не бути у файлі — тоді він просто не
+              // знайдеться. Тож тут типове значення підставляємо, а не
+              // стираємо домен назавжди через порожнє поле.
+              site:g('km-site')||KM_DEFAULT.site,
               day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
               ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
               dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10),
@@ -1939,7 +1958,10 @@ let appParse = { ...AP_DEFAULT };
 // Профілі постачальників апок: у кожного свій шаблон назви кампанії.
 let appProfiles = {};
 let apCurrent = '';            // '' = профіль за замовчуванням (appParse)
-let trafficMode = localStorage.getItem('traffic_mode') || 'pwa';
+/* Типово auto: файл приходить один, і розділяти його руками — та сама
+   робота, якої ми тут і позбуваємось. Хто вже вибрав режим, лишається
+   зі своїм: чужий вибір перебивати нема за що. */
+let trafficMode = localStorage.getItem('traffic_mode') || 'auto';
 
 async function loadAppParse() {
   try {
@@ -2373,15 +2395,93 @@ function appCid(fromMask, fromReport, count) {
 
    Тепер розбір один на два боки. Розійтись знову вони не можуть:
    шаблон вибирає одна функція, і обидва виклики йдуть через неї. */
+/* ═══════════ ОДИН ФАЙЛ, ДВА ВИДИ ТРАФІКУ ═══════════
+
+   Доти режим був перемикачем на всю сторінку: або PWA, або APP. А
+   вигрузка приходить ОДНА, і в ній лежить і те, і те — про це вже
+   написано нижче, у коментарі до ключа злиття: «у Sub ID 4 лежить то
+   апка (CW10995), то плейсмент (Instagram_Reels), бо PWA і APP
+   приходять одним файлом». Перемикач просив розділити файл руками, а
+   поки він стоїть не на тому, половина рядків читається не тим
+   способом — і виглядає при цьому як звичайні дані.
+
+   Тому режим тепер може бути 'auto', і тоді його вирішує РЯДОК.
+   'pwa' і 'app' лишаються перебивкою на той випадок, коли
+   розпізнавання помиляється: прибрати перемикач означало б не мати
+   чим це виправити.
+
+   ЩО ВИРІШУЄ РЯДОК — НАЗВА КАМПАНІЇ:
+     • лягла під PWA-шаблон і дала ktid → PWA, далі все як у PWA;
+     • не лягла, але в назві стоїть апка, яку ми знаємо (воронка з
+       позначкою APP) → APP;
+     • ні те, ні те → читаємо як APP (так було й доти), але рахуємо
+       й кажемо вголос. Мовчазний невпізнаний рядок — це і є той
+       випадок, коли дані виглядають справжніми, а гео в них
+       обрізаний номер.
+
+   ЧОМУ НАЗВА, А НЕ СТОВПЕЦЬ source. Назва є в обох файлах, і обидві
+   половини ключа злиття мусять класифікуватись однаково. У Keitaro в
+   колонці кампанії для APP лежить лише перший токен — під шаблон він
+   не лягає, тож обидва боки незалежно приходять до 'app'. А source
+   відповідає на інше питання — ЧИЙ це рядок: з нього беруться
+   перебивки стовпців під постачальника прілки. */
+const TM_AUTO = 'auto';
+const tmIsAuto = () => trafficMode === TM_AUTO;
+const tmLabel = () => tmIsAuto() ? 'PWA/APP' : (trafficMode === 'app' ? 'APP' : 'PWA');
+// Скільком рядкам не підійшло ні те, ні те, і скільких кожного виду.
+let tmUnknown = 0, tmSeen = { pwa: 0, app: 0 };
+
+function tmKnownApp(app) {
+  const k = String(app || '').trim();
+  return !!(k && k !== '0' && mappingDB.funnelApp && mappingDB.funnelApp[k]);
+}
+
+/* Режим одного рядка. Одна функція на обидва боки злиття — так само,
+   як і сам розбір назви (див. campParse нижче): якби вони вирішували
+   це окремо, ключ date|acc|geo|ktid розійшовся б рівно так, як уже
+   розходився між FB і Keitaro. */
+function tmRowMode(campName) {          // 'pwa' | 'app' | 'unknown'
+  if (!tmIsAuto()) return trafficMode;
+  const toks = String(campName || '').trim().split('_');
+  /* САМ ЗБІГ ІЗ ШАБЛОНОМ НІЧОГО НЕ ДОВОДИТЬ. PWA-шаблон
+     «*_{geo}_{ktid}» після компіляції — це «.*?_(…)_(…)» з
+     необов'язковим хвостом, і під нього лягає майже будь-яка назва:
+     APP-ний «cy638t_8wxg7hf7_bGcTwMmV_CS11003_…» теж, тільки гео в
+     ньому виходить «8wxg7hf7». Тому перевіряємо ДАНИМИ, тим самим
+     правилом, що й geoPick: на місці {geo} мусить стояти справжній код
+     країни. Інакше це не PWA-назва, хоч шаблон і «збігся». */
+  const r = apParseMask(pwaMask, toks, '', '');
+  /* Перевіряємо САМЕ значення, а не те, що з нього вийде після
+     toGeoCode: той у безвиході віддає перші дві літери («xx1» → «XX»),
+     і на класифікації така догадка означала б, що будь-яка назва з
+     трьох токенів стає PWA. Код країни або назва, яку ми знаємо, —
+     більше нічого. */
+  const gRaw = r ? String(r.geo || '').trim() : '';
+  const gOk = /^[A-Za-z]{2}$/.test(gRaw) || !!COUNTRY_TO_ISO[gRaw.toLowerCase()];
+  if (r && String(r.ktid || '').trim() && gOk) return 'pwa';
+  // Не PWA — тоді APP лише якщо в назві стоїть апка, яку ми знаємо.
+  const a = parseAppCampaign(String(campName || ''), '', '');
+  return tmKnownApp(a && a.app) ? 'app' : 'unknown';
+}
+// Невпізнаний читаємо як APP — так було до цієї зміни.
+const tmUse = m => (m === 'unknown' ? 'app' : m);
+
 function campParse(campName, adName, country, count, accHint) {
-  if (trafficMode === 'app') {
+  /* Рахуємо тут, бо саме через campParse проходить кожен рядок ЗВІТУ
+     FB — тобто ті рядки, які й поїдуть у базу. Бік Keitaro рахує своє
+     окремо: це інша множина рядків, і зливати їх в одне число
+     означало б показати в звіті подвоєні кількості. */
+  const m = tmRowMode(campName);
+  if (m === 'unknown') tmUnknown++;
+  const mode = tmUse(m);
+  if (mode === 'app') {
     // accHint — Account ID із колонки звіту: ним перевіряється вирівнювання.
     const a = parseAppCampaign(campName, adName || '', country || '', accHint);
     return { geo: geoPick(a.geo, country, count) || '??', ktid: a.app || '0',
-             acc: a.acc || '', cid: a.cid || '' };
+             acc: a.acc || '', cid: a.cid || '', mode };
   }
   const w = parsePwaCampaign(campName, country);
-  return { geo: w.geo, ktid: w.ktid, acc: '', cid: '' };
+  return { geo: w.geo, ktid: w.ktid, acc: '', cid: '', mode };
 }
 
 /* КЛЮЧ ЗЛИТТЯ FB ↔ KEITARO — ОДИН НА ЧОТИРИ МІСЦЯ.
@@ -2426,8 +2526,11 @@ function campParse(campName, adName, country, count, accHint) {
    зливаються в одну групу й розходяться по рядках FB пропорційно
    спенду (див. злиття). Це приблизніше, ніж по апках, — але по апках
    вони не сходились ніяк, а порожній офер гірший за розподілений. */
-function mergeKey(date, acc, geo, ktid) {
-  return trafficMode === 'app'
+/* Режим приходить РЯДКОМ, бо в auto він у кожного свій. Не передали —
+   беремо режим сторінки, як було. Ключі двох видів не можуть
+   збігтись: в одного дві частини, в другого чотири. */
+function mergeKey(date, acc, geo, ktid, mode) {
+  return (mode || trafficMode) === 'app'
     ? `${date}|${acc}`
     : `${date}|${acc}|${geo}|${ktid}`;
 }
@@ -2552,16 +2655,18 @@ function parseAppCampaign(campName, adName, country, accHint) {
 function setTrafficMode(m) {
   trafficMode = m;
   localStorage.setItem('traffic_mode', m);
-  ['pwa', 'app'].forEach(x => {
+  ['auto', 'pwa', 'app'].forEach(x => {
     const b = document.getElementById('tm-' + x);
     if (b) b.className = x === m
       ? 'px-5 py-2 rounded-lg text-[11px] font-black uppercase transition bg-orange-600 text-white'
       : 'px-5 py-2 rounded-lg text-[11px] font-black uppercase transition text-slate-400 hover:text-white';
   });
   const hint = document.getElementById('traffic-mode-hint');
-  if (hint) hint.textContent = m === 'pwa'
-    ? 'PWA: geo and funnel come from the campaign name (Mbank_KG_10708…)'
-    : 'APP: the campaign name is parsed by position — configured in the Settings tab';
+  if (hint) hint.textContent =
+    m === 'pwa' ? 'PWA: geo and funnel come from the campaign name (Mbank_KG_10708…)'
+  : m === 'app' ? 'APP: the campaign name is parsed by position — configured in the Settings tab'
+  : 'Auto: every row is read on its own — one file can hold both PWA and APP. '
+    + 'Rows that fit neither are counted in the report under the preview.';
   if (lastFbParse) processCampaignData(lastFbParse.map, lastFbParse.lines);
 }
 
@@ -2680,6 +2785,23 @@ function handleKeitaroFile(e) {
   reader.readAsText(file);
 }
 
+/* ДОМЕН З ВИГРУЗКИ → ЧИСТИЙ ХОСТ.
+
+   У стовпці Site трапляється і «https://mplay-kg.website/», і
+   «www.mplay-kg.website», і макрос «{site}», який Keitaro не підставив.
+   У базі мусить лежати одне: той самий хост, за яким рядок статистики
+   зійдеться з рядком у списку доменів (там нормалізація та сама —
+   dmNormDomain). Не схоже на домен — краще порожньо, ніж сміття,
+   яке потім не зійдеться ні з чим. */
+function ktSite(raw) {
+  let v = String(raw == null ? '' : raw).trim().toLowerCase();
+  if (!v || v.startsWith('{')) return '';
+  v = v.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
+  v = v.split('/')[0].split('?')[0].split('#')[0];
+  v = v.replace(/^www\./, '').replace(/\.$/, '').split(':')[0];
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v) ? v : '';
+}
+
 function parseKeitaro(content) {
   content = content.replace(/﻿/g, '');
   const lines = content.split(/\r?\n/).filter(l => l.trim() !== '');
@@ -2720,6 +2842,9 @@ function parseKeitaro(content) {
      її як плейсмент означало б підставити назву апки в поле розміщення
      рядків FB, де вже стоїть справжній «Instagram Reels» із самого
      звіту. Тому в APP беремо плейсмент лише з FB і не чіпаємо його. */
+  /* В auto стовпець Sub ID 4 читають ОБА види по-різному: у PWA там
+     плейсмент, у APP — апка. Тому індекс беремо завжди, а чим він є,
+     вирішує режим рядка. */
   const iPlc = trafficMode === 'app' ? -1 : col(keitaroMap.plc);
   /* Гео та апка під APP — окремими стовпцями, а не з назви кампанії:
      у колонці кампанії лежить один токен (див. mergeKey). Якщо поле
@@ -2733,14 +2858,21 @@ function parseKeitaro(content) {
   /* Поле порожнє — пробуємо стовпець, який так і називається. Шукаємо
      ТОЧНИЙ збіг, а не частковий: «traffic source» чи «source id» — це
      вже інше, і мовчки брати їх за постачальника не можна. */
-  const iSrc = trafficMode !== 'app' ? -1
+  const iSrc = trafficMode === 'pwa' ? -1
     : (keitaroMap.src ? col(keitaroMap.src)
                       : h.findIndex(x => x === 'source'));
-  const iKtApp = trafficMode === 'app'
-    ? (col(keitaroMap.app) >= 0 ? col(keitaroMap.app) : col(keitaroMap.plc))
-    : -1;
+  const iKtApp = trafficMode === 'pwa' ? -1
+    : (col(keitaroMap.app) >= 0 ? col(keitaroMap.app) : col(keitaroMap.plc));
   console.log('Keitaro offer column:', iOff >= 0 ? `"${sp(lines[0])[iOff]}"` : `НЕ ЗНАЙДЕНО (шукали "${keitaroMap.offer}")`,
               '| відомі оффери команди:', knownOffers);
+  /* ДОМЕН — ТІЛЬКИ ТОЧНИЙ ЗБІГ. col() після точного пробує частковий,
+     а «site» — короткий токен: у шапці трапляються і «Website», і
+     «Site ID», і брати їх за домен не можна. Стовпця немає — домену
+     просто не буде, і це краще, ніж домен не з того стовпця. */
+  const iSite = (() => {
+    const n = String(keitaroMap.site || '').toLowerCase().trim();
+    return n ? h.findIndex(x => x === n) : -1;
+  })();
   const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
   const iIns = col(keitaroMap.ins), iReg = col(keitaroMap.reg), iDep = col(keitaroMap.dep);
   const fileTz = Number(keitaroMap.tz);
@@ -2756,7 +2888,7 @@ function parseKeitaro(content) {
      прілка, — перебивати його означало б шукати постачальника тим, що
      від постачальника й залежить. */
   const provIdx = {};
-  if (trafficMode === 'app') {
+  if (trafficMode !== 'pwa') {
     const pv = keitaroMap.prov || {};
     Object.keys(pv).forEach(k => {
       const o = pv[k] || {}, got = {};
@@ -2786,17 +2918,17 @@ function parseKeitaro(content) {
   /* Назва апки в ключ злиття не входить (див. mergeKey) — вона йде
      тільки у воронку й у підпис рядка кампанії. Тому її відсутність
      злиття не ламає, і зупиняти через неї імпорт нема за що. */
-  if (trafficMode === 'app' && iKtApp < 0)
-    console.warn('Keitaro: app column "' + keitaroMap.app
-      + '" not found — the funnel of APP rows will stay unknown');
-  if (trafficMode === 'app' && iCountry < 0)
-    console.warn('Keitaro: country column "' + keitaroMap.country
-      + '" not found — geo of APP rows stays "??"');
+  /* Скаржитись на APP-стовпці маємо лише тоді, коли APP-рядки в файлі
+     справді є. В auto це видно аж після проходу по рядках, тому самі
+     попередження стоять нижче, за циклом. */
 
   // Ключі мають збігатися з тим, як FB реально агрегує:
   //   daily     -> date|acc|geo|ktid   (кампанії L1..L10 зливаються в одну групу)
   //   creatives -> date|acc|cid        (один креатив крутиться в кількох кампаніях)
   // Три рівні сплітування: акаунт → кампанія (з воронкою) → креатив
+  // Скільки рядків ЦЬОГО файлу якого виду. Окремо від tmSeen: там
+  // рядки звіту FB, тут вигрузки Keitaro, і це різні множини.
+  const ktSeen = { pwa: 0, app: 0 };
   const byAccount = {}, byCampaign = {}, byCreative = {}, byDaily = {};
   // Розбивка по офферах — потрібна, щоб рознести спенд FB між офферами у спліті
   /* Лендінг — те, що Keitaro називає оффером: «[Riddick's Partners]
@@ -2850,8 +2982,14 @@ function parseKeitaro(content) {
     const funRaw = iFun >= 0 ? (r[iFun] || '').trim() : '';
     // pIdx — колонки цього постачальника прілок, якщо для нього щось
     // перебито в налаштуваннях (див. provIdx вище).
+    /* Режим рядка — за тією самою назвою кампанії, що й на боці FB
+       (див. tmRowMode). У Keitaro для APP у цій колонці лежить лише
+       перший токен, під шаблон він не лягає — тож обидва боки
+       незалежно приходять до одного висновку. */
+    const rowMode = tmUse(tmRowMode(campRaw));
+    ktSeen[rowMode]++;
     let geo, ktid, pIdx = null;
-    if (trafficMode === 'app') {
+    if (rowMode === 'app') {
       /* Порядок важливий: спершу апка, бо саме з неї ми дізнаємось
          постачальника, а від постачальника залежить, у яких стовпцях
          лежать креатив, гео й оффер. */
@@ -2876,12 +3014,15 @@ function parseKeitaro(content) {
     // назву по-різному (KG_cr1 / kg_cr1), і через це крео просто не зіставлялись.
     const crKey = `${localDay}|${acc}|${cr.toLowerCase()}`;
     add(byCreative, crKey, ins, reg, dep, { account: acc, date: localDay, cid: cr });
-    // Плейсмент з Keitaro (Sub ID 4) — за ключем креатива, щоб підставити у FB-рядки
-    if (iPlc >= 0) {
+    /* Плейсмент з Keitaro (Sub ID 4) — за ключем креатива, щоб
+       підставити у FB-рядки. Тільно для PWA-рядка: в APP у тому самому
+       стовпці лежить апка, і покласти «CW10995» у поле розміщення
+       означало б зіпсувати справжній «Instagram Reels» зі звіту FB. */
+    if (iPlc >= 0 && rowMode !== 'app') {
       const pv = String(r[iPlc] || '').trim();
       if (pv && !pv.startsWith('{')) ktPlacements[crKey] = pv;
     }
-    add(byDaily,    mergeKey(localDay, acc, geo, ktid), ins, reg, dep);
+    add(byDaily,    mergeKey(localDay, acc, geo, ktid, rowMode), ins, reg, dep);
 
     // Офер і лендінг — теж зі стовпця цього постачальника, якщо він інший.
     const io = (pIdx && pIdx.offer >= 0) ? pIdx.offer : iOff;
@@ -2898,16 +3039,31 @@ function parseKeitaro(content) {
       }
     }
     if (offer) {
-      const dk = mergeKey(localDay, acc, geo, ktid);
+      const dk = mergeKey(localDay, acc, geo, ktid, rowMode);
       /* Нерозпізнаний офер сюди не потрапляє — як і до лендінгів. Так
          набір рядків лишається тим самим, лише дрібнішим. */
       const land = raw || offer;
+      /* КЛЮЧ — ПАРА (лендінг, домен), а не лендінг. Один лендінг
+         крутиться на кількох доменах, і щоб показати спенд по домену,
+         не збрехавши, ділити треба по парах. Суми по оферах і по
+         лендінгах від цього не міняються: ділиться те, що й так
+         належало цій групі. Домену немає — ключ той самий, що був. */
+      const site = iSite >= 0 ? ktSite(r[iSite]) : '';
       const grp = (byDailyLand[dk] = byDailyLand[dk] || {});
-      const cell = (grp[land] = grp[land] || { installs: 0, regs: 0, deps: 0, offer });
+      const gk = site ? land + '\u0001' + site : land;
+      const cell = (grp[gk] = grp[gk] || { installs: 0, regs: 0, deps: 0,
+                                           offer, landing: land, site });
       cell.installs += ins;
       cell.regs += reg;
       cell.deps += dep;
     }
+  }
+  if (tmIsAuto()) console.log(`Keitaro: PWA-рядків ${ktSeen.pwa}, APP-рядків ${ktSeen.app}`);
+  if ((!tmIsAuto() || ktSeen.app) && trafficMode !== 'pwa') {
+    if (iKtApp < 0) console.warn('Keitaro: app column "' + keitaroMap.app
+      + '" not found — the funnel of APP rows will stay unknown');
+    if (iCountry < 0) console.warn('Keitaro: country column "' + keitaroMap.country
+      + '" not found — geo of APP rows stays "??"');
   }
   keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyLand, ktPlacements,
                  days, unlinked, offerMisses };
@@ -2947,7 +3103,7 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
      PWA це завжди так — цифри лишаються точними, без округлень. */
   const dGroups = {};
   Object.values(dailyAgg).forEach(row => {
-    const k = mergeKey(row.date, row.acc, row.geo, row._ktid);
+    const k = mergeKey(row.date, row.acc, row.geo, row._ktid, row._mode);
     (dGroups[k] = dGroups[k] || []).push(row);
   });
   const dWeight = new Map();   // рядок → його частка в групі
@@ -3032,10 +3188,12 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     rows.forEach(row => {
       const offers = offersOf(keyOf(row));
       const names = offers ? Object.keys(offers) : [];
-      if (names.length < 2) {                       // один лендінг або жодного
+      if (names.length < 2) {                       // одна пара або жодної
         if (names.length === 1) {
-          row.offer = offers[names[0]].offer || names[0];
-          row.landing = names[0];
+          const o = offers[names[0]];
+          row.offer = o.offer || o.landing || names[0];
+          row.landing = o.landing || names[0];
+          row.site = o.site || null;
         }
         out.push(row);
         return;
@@ -3054,7 +3212,8 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
         // Цифри оффера — теж на частку рядка в групі, інакше під APP
         // кожен рядок групи забрав би собі всі інсталли оффера.
         const w = weightOf ? (weightOf(row) || 1) : 1;
-        out.push({ ...row, offer: o.offer || name, landing: name, spend,
+        out.push({ ...row, offer: o.offer || o.landing || name,
+                   landing: o.landing || name, site: o.site || null, spend,
                    installs: w === 1 ? o.installs : Math.round(o.installs * w),
                    regs:     w === 1 ? o.regs     : Math.round(o.regs * w),
                    deps:     w === 1 ? o.deps     : Math.round(o.deps * w) });
@@ -3066,7 +3225,7 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   // Кампанії (daily) ділимо по офферах — там спенд справді треба рознести.
   const dRes = splitByOffer(Object.values(dailyAgg),
     k => keitaroAgg.byDailyLand?.[k],
-    r => mergeKey(r.date, r.acc, r.geo, r._ktid),
+    r => mergeKey(r.date, r.acc, r.geo, r._ktid, r._mode),
     r => dWeight.get(r));
 
   // Креативи по офферах НЕ розбиваємо і оффер їм не проставляємо:
@@ -3080,10 +3239,10 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     .filter(([k, v]) => !usedKt.has(k) && (v.installs || v.regs || v.deps))
     .map(([, v]) => v);
 
-  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах: ${dRes.splits} daily`);
+  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах і доменах: ${dRes.splits} daily`);
   renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives: creativesOut });
   showStatus(dRes.splits
-    ? `Keitaro: refined ${hitD} rows, split across landings ${dRes.splits}`
+    ? `Keitaro: refined ${hitD} rows, split across landings/domains ${dRes.splits}`
     : `Keitaro: refined ${hitD} stat rows`);
 
   return { daily: dRes.out, creatives: creativesOut };
@@ -3122,17 +3281,21 @@ function renderFxReport(used) {
    Тому пишемо маску, якою РОЗБИРАЛИ, і скільком профілям вона може
    поступитись. */
 function impMaskNow() {
-  if (trafficMode !== 'app') return pwaMask || '—';
+  if (trafficMode === 'pwa') return pwaMask || '—';
   const base = (apCfgOf('') || {}).mask || '—';
   const n = Object.keys(appProfiles || {}).length;
-  return base + (n ? ` (+${n} profile${n > 1 ? 's' : ''} matched per name)` : '');
+  const app = base + (n ? ` (+${n} profile${n > 1 ? 's' : ''} matched per name)` : '');
+  // В auto працюють обидва шаблони, і сказати лише про один означало б
+  // відправити шукати ваду не в тому місці.
+  return tmIsAuto() ? `PWA ${pwaMask || '—'} · APP ${app}` : app;
 }
 
 function renderAgentReport(noAgent, hidden) {
   const el = document.getElementById('agent-report');
   if (!el) return;
   if (!noAgent.size && !hidden.size && !pwaMissed && !offerFromNameHits
-      && !geoMaskBad && !cidMaskBad && !apAligned) {
+      && !geoMaskBad && !cidMaskBad && !apAligned
+      && !(tmIsAuto() && (tmSeen.pwa || tmSeen.app))) {
     el.classList.add('hidden'); el.innerHTML = ''; return;
   }
   const chips = arr => [...arr].slice(0, 20).map(a =>
@@ -3156,10 +3319,10 @@ function renderAgentReport(noAgent, hidden) {
      виглядають справжніми, і тільки гео в них — обрізаний номер. */
   if (geoMaskBad) parts.push(`<div class="flex gap-2 items-start text-rose-300">
     <span>&#9888;&#65039;</span><div>In <b>${geoMaskBad}</b> rows the <b>{geo}</b> slot of the
-    ${trafficMode === 'app' ? 'APP' : 'PWA'} pattern held something that is not a country
+    ${tmLabel()} pattern held something that is not a country
     (a number, a tail of the name) &mdash; geo was taken from the report instead.
     The pattern in use: <span class="font-mono text-rose-200">${impMaskNow()}</span>.
-    Fix it in <b>Settings &rarr; ${trafficMode === 'app' ? 'APP' : 'PWA'}</b>.
+    Fix it in <b>Settings &rarr; ${tmLabel()}</b>.
     <span class="text-slate-500">Until you do, the funnel (KTID) is read from the wrong slot too.</span></div></div>`);
 
   /* ВИРІВНЮВАННЯ МУСИТЬ БУТИ ВИДИМИМ.
@@ -3191,12 +3354,27 @@ function renderAgentReport(noAgent, hidden) {
     from it if the creative is not in the campaign name at all.
     <span class="text-slate-500">The data is correct either way &mdash; the Ad name column wins.</span></div></div>`);
 
+  /* ЯК РОЗІЙШОВСЯ ФАЙЛ. В auto це перше, що треба бачити: якщо режим
+     розпізнався не так, усе інше в звіті пояснюється саме цим. Рядки,
+     які не підійшли ні під PWA-шаблон, ні під відому апку, читаються
+     як APP — і саме про них мовчати не можна. */
+  if (tmIsAuto() && (tmSeen.pwa || tmSeen.app || tmUnknown)) {
+    parts.push(`<div class="flex gap-2 items-start text-slate-300">
+      <span>&#128208;</span><div>Auto: <b>${tmSeen.pwa}</b> row(s) read as <b>PWA</b>,
+      <b>${tmSeen.app}</b> as <b>APP</b> &mdash; each by its own campaign name.
+      ${tmUnknown ? `<span class="text-amber-300">Of those, <b>${tmUnknown}</b> matched neither the PWA
+        pattern <span class="font-mono">${pwaMask}</span> nor a known app, so they were read as APP.</span>
+        <span class="text-slate-500">If they are PWA, fix the pattern in <b>Settings &rarr; PWA</b>;
+        if they are apps, add the funnel with the <b>APP</b> mark &mdash; then the geo and the funnel
+        stop being guesses.</span>` : ''}</div></div>`);
+  }
+
   /* Офер, підставлений сам, виглядає в прев'ю точно так само, як
      вибраний руками. Тож кажемо, скільки рядків його дістали й звідки —
      інакше залишається тільки вірити на слово. */
   if (offerFromNameHits) parts.push(`<div class="flex gap-2 items-start text-slate-300">
     <span>&#127991;</span><div>Offer filled in from the campaign name for <b>${offerFromNameHits}</b> rows
-    (${trafficMode === 'app' ? 'the <b>{app}</b> token, then the funnel name' : 'the funnel name'}) &mdash;
+    (${trafficMode === 'pwa' ? 'the funnel name' : 'the <b>{app}</b> token, then the funnel name'}) &mdash;
     only where exactly one of your offers matched.
     <span class="text-slate-500">Check the <b>Offer</b> column before importing; you can change any row.</span></div></div>`);
   el.innerHTML = parts.join('');
@@ -3321,17 +3499,18 @@ function geoFromNames(lines, map) {
     const camp = String(lines[i][map.name] || '').trim();
     if (!camp) continue;
     tried++;
-    let geo = '';
-    if (trafficMode === 'app') {
-      // Той самий виклик, що в імпорті: профілі, legacy-позиції, все.
-      geo = String(parseAppCampaign(camp, '', '').geo || '');
-    } else {
-      // Колонки Country тут немає — інакше гео не бракувало б, —
-      // тому дивимось тільки на те, що дає шаблон.
+    /* Колонки Country тут немає — інакше гео не бракувало б, — тому
+       дивимось тільки на те, що дають шаблони. В auto назва може бути
+       і тією, і тією, тож рядок зараховуємо, якщо гео дістав ХОЧ ОДИН
+       розбір: інакше файл із двох видів завжди виглядав би як файл із
+       поламаним шаблоном. */
+    const two = [];
+    if (trafficMode !== 'pwa') two.push(String(parseAppCampaign(camp, '', '').geo || ''));
+    if (trafficMode !== 'app') {
       const r = apParseMask(pwaMask, camp.split('_'), '', '');
-      geo = String((r && r.geo) || '');
+      two.push(String((r && r.geo) || ''));
     }
-    if (/^[A-Za-z]{2}$/.test(geo.trim())) ok++;
+    if (two.some(g => /^[A-Za-z]{2}$/.test(g.trim()))) ok++;
   }
   if (tried && ok * 2 < tried) {
     console.warn('Campaign-name mask gave a usable geo for only ' + ok +
@@ -3543,6 +3722,7 @@ async function processCampaignData(map, lines) {
   pwaMissed = 0;
   offerFromNameHits = 0;
   geoMaskBad = 0;
+  tmUnknown = 0; tmSeen = { pwa: 0, app: 0 };
   cidMaskBad = 0;
   apAligned = 0;
   Object.keys(apAlignedBy).forEach(k => delete apAlignedBy[k]);
@@ -3559,6 +3739,7 @@ async function processCampaignData(map, lines) {
     // date|acc|geo|ktid розійдеться (див. campParse).
     const p = campParse(campName, row[map.cid], country, undefined,
                         map.acc !== -1 ? row[map.acc] : '');
+    if (tmIsAuto()) tmSeen[p.mode]++;
     const geo = p.geo, ktid = p.ktid;
     /* КАБІНЕТ — ІЗ КОЛОНКИ, А НЕ З НАЗВИ КАМПАНІЇ.
 
@@ -3580,10 +3761,10 @@ async function processCampaignData(map, lines) {
        самим числом, що в Keitaro у Sub ID 5. Її й беремо першою.
        Маска лишається запасним варіантом: якщо колонки у вигрузці
        немає, поведінка та, що була. */
-    const accName = trafficMode === 'app'
+    const accName = p.mode === 'app'
       ? (row[map.acc] || p.acc || 'Unknown')
       : row[map.acc];
-    const cid = (trafficMode === 'app'
+    const cid = (p.mode === 'app'
       ? appCid(p.cid, row[map.cid]) : row[map.cid]) || 'No CID';
 
     // Апці постачальника лишаємо, PWA — знімаємо (apFunnelData).
@@ -3594,7 +3775,7 @@ async function processCampaignData(map, lines) {
        переб'є це значення при злитті — там дані точніші. */
     /* Офер шукаємо в назві БЕЗ дужок: [satorapps] — це постачальник, і
        збіг офера з його назвою був би випадковим. */
-    const offer = (trafficMode === 'app' ? offerFromName(ktid) : '')
+    const offer = (p.mode === 'app' ? offerFromName(ktid) : '')
       || offerFromName(apFunnelClean(mappingDB.funnels[ktid]) || funnelName);
     if (offer) offerFromNameHits++;
 
@@ -3618,10 +3799,10 @@ async function processCampaignData(map, lines) {
     const installs = map.installs !== -1 ? (parseInt(row[map.installs]) || 0) : 0;
 
     // Daily Aggregation
-    const dKey = `${date}_${accName}_${geo}_${ktid}`;
+    const dKey = `${date}_${accName}_${geo}_${ktid}_${p.mode}`;
     
     if (!dailyAggregated[dKey]) {
-      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency, _ktid: ktid };
+      dailyAggregated[dKey] = { date, acc: accName, geo, offer, funnel: funnelName, spend: 0, regs: 0, deps: 0, installs: 0, agent: agency, _ktid: ktid, _mode: p.mode };
     }
     dailyAggregated[dKey].spend += spend;
     dailyAggregated[dKey].regs += regs;
@@ -3637,7 +3818,7 @@ async function processCampaignData(map, lines) {
     const cKey = `${date}_${accName}_${cid}_${device}_${platform}_${placement}`;
 
     if (!creativeAggregated[cKey]) {
-      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, platform, placement, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid };
+      creativeAggregated[cKey] = { date, acc: accName, cid, geo, funnel: funnelName, device, platform, placement, spend: 0, regs: 0, clicks: 0, deps: 0, installs: 0, _ktid: ktid, _mode: p.mode };
     }
     creativeAggregated[cKey].spend += spend;
     creativeAggregated[cKey].regs += regs;
@@ -3655,7 +3836,7 @@ async function processCampaignData(map, lines) {
   datasetToImport = merged.daily;
   creativesToImport = merged.creatives;
   // Новий набір — нічого з нього ще не збережено.
-  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false;
+  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false; dsNoSite = false;
   
   renderDualPreview();
 }
@@ -3751,6 +3932,11 @@ function renderDualPreview() {
           ${r.landing
             ? `<span class="text-[11px] font-bold text-amber-300/90 block truncate" title="${String(r.landing).replace(/"/g, '&quot;')}">${r.landing}</span>`
             : '<span class="text-[11px] font-bold text-slate-600">—</span>'}
+          <!-- Домен видно тут же: він з того самого рядка Keitaro, і
+               якщо стовпець Site узято не той, це помітно ДО збереження. -->
+          ${r.site
+            ? `<span class="text-[10px] font-bold text-violet-300/90 block truncate font-mono" title="Домен із вигрузки">${r.site}</span>`
+            : ''}
         </td>
         <td class="p-4 italic">
           <div class="editable-cell border-b border-white/10" contenteditable="true" 
@@ -3882,6 +4068,9 @@ async function confirmDatasetImport() {
     // Повний рядок оффера з Keitaro. Немає — null, а не порожній
     // рядок: порожнє в звіті читається як «лендінг без назви».
     landing: row.landing || null,
+    // Домен із вигрузки Keitaro. Немає — null: порожній рядок у звіті
+    // читався б як «домен без назви».
+    site: row.site || null,
     funnel: row.funnel,
     spend: row.spend,
     installs: row.installs || 0,
@@ -3927,11 +4116,24 @@ async function confirmDatasetImport() {
     /* Немає колонки landing — але дані є, і тримати їх заручником
        одного стовпця немає за що. Зберігаємо без лендінгів і кажемо,
        що виконати, щоб вони з'явились. */
-    if (res1.error && dsMissingCol(res1.error, 'landing')) {
-      dsNoLanding = true;
-      res1 = await sb.from('daily_stats')
-        .insert(finalDaily.map(({ landing, ...rest }) => rest));
+    /* Колонок може не бути двох: landing (LANDINGS.sql) і site
+       (SITES.sql). Знімаємо рівно ту, яку назвала база, і пробуємо
+       ще — доки є що знімати. Одна спроба на всі випадки означала б,
+       що без SITES.sql імпорт ляже цілком, хоч дані в ньому є. */
+    const strip = [];
+    for (let i = 0; i < 2 && res1.error; i++) {
+      const miss = ['landing', 'site']
+        .find(c => !strip.includes(c) && dsMissingCol(res1.error, c));
+      if (!miss) break;
+      strip.push(miss);
+      res1 = await sb.from('daily_stats').insert(finalDaily.map(r => {
+        const x = { ...r };
+        strip.forEach(c => delete x[c]);
+        return x;
+      }));
     }
+    if (strip.includes('landing')) dsNoLanding = true;
+    if (strip.includes('site')) dsNoSite = true;
     if (!res1.error) dsSavedDaily = true;
   }
   let res2 = { error: null };
@@ -3963,13 +4165,19 @@ async function confirmDatasetImport() {
   }
 
   showStatus(`Success! Saved ${finalDaily.length} rows.`
-    + (dsNoLanding ? ' Landings skipped.' : ''));
-  /* Збереглось, але без лендінгів — це не дрібниця: у звітах не буде
-     розбивки, і зрозуміти, чому, можна лише звідси. */
-  if (dsNoLanding)
-    alert('Saved — but WITHOUT landings: the daily_stats table has no "landing" column yet.'
-      + '\n\nRun LANDINGS.sql in Supabase \u2192 SQL Editor, then import this file again'
-      + ' to get the landing split.');
+    + (dsNoLanding ? ' Landings skipped.' : '')
+    + (dsNoSite ? ' Domains skipped.' : ''));
+  /* Збереглось, але без лендінгів чи доменів — це не дрібниця: у
+     звітах не буде розбивки, і зрозуміти, чому, можна лише звідси. */
+  if (dsNoLanding || dsNoSite)
+    alert('Saved — but WITHOUT '
+      + [dsNoLanding && 'landings', dsNoSite && 'domains'].filter(Boolean).join(' and ')
+      + ': the daily_stats table has no '
+      + [dsNoLanding && '"landing"', dsNoSite && '"site"'].filter(Boolean).join(' / ')
+      + ' column yet.'
+      + '\n\nRun '
+      + [dsNoLanding && 'LANDINGS.sql', dsNoSite && 'SITES.sql'].filter(Boolean).join(' and ')
+      + ' in Supabase \u2192 SQL Editor, then import this file again to get the split.');
 
   // Ховаємо плаваючу панель
   const floating = document.getElementById('floating-actions');
@@ -4342,7 +4550,7 @@ function switchMode(m) {
 
 function resetImport(type) {
   // Прев'ю пішло — разом із ним і пам'ять про те, що з нього збережено.
-  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false;
+  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false; dsNoSite = false;
   // Приховуємо прев'ю
   const preview = document.getElementById('dataset-preview');
   if (preview) preview.classList.add('hidden');
@@ -4655,6 +4863,8 @@ const REC_SCHEMA = {
        Правиться вручну, як решта: підказок немає навмисно, бо список
        лендінгів — це не довідник, а те, що приїхало з імпорту. */
     { key: 'landing',  label: 'Landing', type: 'text' },
+    // Домен із вигрузки Keitaro — чистий хост, mplay-kg.website.
+    { key: 'site',     label: 'Domain',  type: 'text' },
     { key: 'funnel',   label: 'Funnel', type: 'text', list: 'funnels' },
     { key: 'agent',    label: 'Agent',   type: 'text', list: 'agents' },
     { key: 'spend',    label: 'Spend',   type: 'money' },
