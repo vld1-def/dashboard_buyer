@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.10 13:07">
+  <meta name="build" content="build 20.10 14:26">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5498,7 +5498,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 13:07</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 14:26</div>
     </div>
   </aside>
 
@@ -9490,7 +9490,6 @@ function openSettingsModal() {
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
   if (typeof setSubTabInit === 'function') setSubTabInit();
   if (typeof fbLoad === 'function') fbLoad();
-  if (typeof fbPaceLoad === 'function') fbPaceLoad();
   if (typeof fcLoadAutoHide === 'function') fcLoadAutoHide();
 }
 
@@ -15073,56 +15072,28 @@ document.addEventListener('keydown', e => {
             </p>
           </div>
 
-<div class="set-group">
-            <h3 class="set-gtitle">Sync schedule</h3>
-            <p class="set-gsub">How often the dashboard walks the cabinets — and, with it, how often rules get a chance to act: they run right after each sync, on a snapshot that is seconds old. The schedule itself ticks every 15 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
-            <!-- Перше питання тут не «як часто», а «чи взагалі саме».
-                 Ручний режим стосується ЛИШЕ розкладу: кнопка Sync now
-                 працює завжди — вона і є той ручний режим. -->
-            <div class="set-row" data-setting="auto sync manual only ручний режим оновлення кабінетів">
-              <label class="set-label" for="fb-pace-auto">Cabinets refresh</label>
-              <select id="fb-pace-auto" onchange="fbPaceSave()" class="set-input w-44">
-                <option value="1">On the schedule</option>
-                <option value="0">Manual only</option>
-              </select>
-            </div>
-            <div class="set-row" data-setting="sync pace interval синхронізація темп інтервал">
-              <label class="set-label" for="fb-pace-day">Daytime, every</label>
-              <select id="fb-pace-day" onchange="fbPaceSave()" class="set-input w-44">
-                <option value="15">15 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="60">1 hour</option>
-                <option value="120">2 hours</option>
-                <option value="240">4 hours</option>
-              </select>
-            </div>
-            <div class="set-row" data-setting="sync pace night ніч синхронізація">
-              <label class="set-label" for="fb-pace-night">At night, every</label>
-              <select id="fb-pace-night" onchange="fbPaceSave()" class="set-input w-44">
-                <option value="15">15 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="60">1 hour</option>
-                <option value="120">2 hours</option>
-                <option value="240">4 hours</option>
-              </select>
-            </div>
-            <div class="set-row" data-setting="night window вікно ночі години">
-              <span class="set-label">Night lasts from / to</span>
-              <span class="flex items-center gap-2">
-                <input type="number" id="fb-pace-from" min="0" max="23" onchange="fbPaceSave()" class="set-input" style="width:64px">
-                <span class="set-hint" style="margin:0">—</span>
-                <input type="number" id="fb-pace-to" min="0" max="23" onchange="fbPaceSave()" class="set-input" style="width:64px">
-                <span class="set-hint" style="margin:0" id="fb-pace-tz"></span>
-              </span>
-            </div>
-            <p class="set-hint opacity-60" id="fb-pace-manual-note" style="display:none">
-              <b>Manual only:</b> the schedule will not touch your cabinets — the numbers change when you press
-              <b>Sync now</b>, and not before. Two things keep running on their own, as asked: the comment scan and
-              the rules. But rules judge by the <b>last sync</b> — they read the snapshot that sync writes, so with
-              manual refresh they act on numbers as old as your last press. Comments do not depend on sync at all.
-            </p>
-            <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. 15 minutes is as fast as the schedule ticks, so a smaller number changes nothing until you change the schedule too (the alter_job note at the bottom of FB_SYNC_CRON.sql). Facebook counts even refused requests against the limit, so faster is not always more data: 15 minutes costs twice what 30 does.</p>
-          </div>
+<!-- РОЗДІЛУ «SYNC SCHEDULE» ТУТ БІЛЬШЕ НЕМА.
+
+     Accountи оновлюються ТІЛЬКИ руками — кнопкою Sync now на сторінці
+     кабінетів (і ↻ в рядку окремого кабінета). Темп, нічне вікно й
+     перемикач «саме чи руками» описували розклад, якого вже немає, і
+     лишати їх означало б тримати на екрані чотири поля, які ні на що
+     не впливають.
+
+     ЩО ЦЕ ЗМІНЮЄ ПОЗА ЦИМ ЕКРАНОМ, і про це варто знати:
+       • правила автопаузи судять по знімку fb_ad_today, а пише його
+         саме синк — отже вони дивляться на цифри від останнього
+         натискання Sync now;
+       • сповіщення про бани й зміни стану кабінетів теж народжуються
+         в синку, тож приходять тоді, коли ти його запустив;
+       • обхід коментарів від синку не залежить зовсім і працює за
+         своїм розкладом, як і доти.
+
+     Саму задачу в базі можна (і варто) зняти:
+       select cron.unschedule('fb-sync-hourly');
+     Поки її не зняли, функція однаково нічого не робить на вхід за
+     розкладом — вона відповідає «manual only» і не ходить у Facebook.
+-->
 
 <div class="set-group">
             <h3 class="set-gtitle">Comments under ads</h3>
@@ -20560,78 +20531,16 @@ async function fbInspect(token) {
   return { scopes, expires_at: expires, accounts, bm, app_id: d.app_id || null, status, note };
 }
 
-/* ── ТЕМП СИНХРОНІЗАЦІЇ ──
-   Розклад у базі стукає щопівгодини й нічого не знає про наші
-   побажання; вирішує сама функція fb-sync, зчитуючи оце налаштування.
-   Через це темп міняється тут, а не в SQL — і людині не потрібен
-   доступ до бази, щоб уночі ходити рідше.
+/* ТЕМПУ СИНХРОНІЗАЦІЇ ТУТ БІЛЬШЕ НЕМА.
 
-   Зсув часу пишемо разом із вікном: «ніч з 0 до 8» без нього
-   означало б ніч по Гринвічу, тобто не ту, про яку думали. */
-/* 15 хвилин удень — стільки ж, скільки стукає розклад. Темп задає не
-   лише свіжість чисел: правила йдуть слідом за синхронізацією, тож це
-   водночас і те, як швидко правило встигне зупинити оголошення. */
-const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8, auto: true };
+   Accountи оновлюються лише руками, тож «як часто ходити саме» —
+   питання без адресата. Разом із налаштуванням пішли fbPaceLoad,
+   fbPaceSave і fbPacePaint: поля, які ні на що не впливають, гірші за
+   відсутні — їх крутять і чекають наслідків.
 
-window.fbPaceLoad = async function () {
-  const dEl = document.getElementById('fb-pace-day');
-  if (!dEl) return;
-  let v = {};
-  try {
-    const raw = await getTeamSetting('fb_sync_pace');
-    v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
-  } catch (e) { v = {}; }
-  const pick = (id, val) => { const el = document.getElementById(id); if (el) el.value = String(val); };
-  /* auto === false — це ручний режим. Саме === false, а не !v.auto:
-     у старих записах поля немає зовсім, і читати його відсутність як
-     «вимкнено» означало б мовчки заморозити всім синхронізацію. */
-  pick('fb-pace-auto', v.auto === false ? '0' : '1');
-  fbPacePaint(v.auto === false);
-  pick('fb-pace-day', v.day || FB_PACE_DEF.day);
-  pick('fb-pace-night', v.night || FB_PACE_DEF.night);
-  pick('fb-pace-from', v.from == null ? FB_PACE_DEF.from : v.from);
-  pick('fb-pace-to', v.to == null ? FB_PACE_DEF.to : v.to);
-  const tz = document.getElementById('fb-pace-tz');
-  // Показуємо, за чиїм годинником міряється ніч: інакше «з 0 до 8»
-  // читається як «десь із нуля до восьми», і виглядає, ніби воно бреше.
-  if (tz) tz.textContent = 'your clock, UTC'
-    + (-new Date().getTimezoneOffset() >= 0 ? '+' : '\u2212')
-    + Math.abs(-new Date().getTimezoneOffset() / 60);
-};
-
-/* У ручному режимі темп нічого не означає — гасимо рядки, щоб не
-   виглядало, ніби вони на щось впливають, і показуємо, що саме
-   лишається працювати саме. */
-function fbPacePaint(manual) {
-  ['fb-pace-day', 'fb-pace-night', 'fb-pace-from', 'fb-pace-to'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.disabled = !!manual;
-    const row = el.closest('.set-row');
-    if (row) row.style.opacity = manual ? '.4' : '';
-  });
-  const note = document.getElementById('fb-pace-manual-note');
-  if (note) note.style.display = manual ? '' : 'none';
-}
-
-window.fbPaceSave = async function () {
-  const num = (id, lo, hi, fb) => {
-    const n = Number(document.getElementById(id)?.value);
-    return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n) : fb;
-  };
-  const manual = (document.getElementById('fb-pace-auto')?.value || '1') === '0';
-  const pace = {
-    auto:  !manual,
-    day:   num('fb-pace-day', 5, 1440, FB_PACE_DEF.day),
-    night: num('fb-pace-night', 5, 1440, FB_PACE_DEF.night),
-    from:  num('fb-pace-from', 0, 23, FB_PACE_DEF.from),
-    to:    num('fb-pace-to', 0, 23, FB_PACE_DEF.to),
-    tz:    -new Date().getTimezoneOffset()
-  };
-  fbPacePaint(manual);
-  await setTeamSetting('fb_sync_pace', JSON.stringify(pace));
-  if (typeof setSaved === 'function') setSaved();
-};
+   Що лишилось замість них: Sync now на сторінці кабінетів і ↻ в рядку
+   окремого кабінета. Межу тримає сама функція fb-sync: вхід за
+   розкладом вона відхиляє. */
 
 /* ── список ── */
 
@@ -23065,7 +22974,6 @@ async function cabInit() {
   await cabFbLoad();
   await cabDaysLoad();
   await cabSnapLoad();
-  await cabAutoLoad();
   if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
@@ -23250,20 +23158,6 @@ async function cabFbLoad() {
    тут нічого не ламає: лишаємось без цих стовпчиків, решта таблиці на
    місці. */
 let cabSnap = {}, cabSnapErr = '';
-
-/* ЧИ ОНОВЛЮЄ СЕБЕ РОЗКЛАД. Те саме налаштування, що в Settings →
-   Sync schedule (fb_sync_pace.auto). Тут воно потрібне рівно для
-   одного: щоб «5 годин тому» на кнопці не читалось як поломка, коли
-   так і просили. Немає запису — розклад працює, як і доти. */
-let cabAutoOff = false;
-
-async function cabAutoLoad() {
-  try {
-    const raw = await getTeamSetting('fb_sync_pace');
-    const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
-    cabAutoOff = v && v.auto === false;
-  } catch (e) { cabAutoOff = false; }
-}
 
 async function cabSnapLoad() {
   cabSnap = {};
@@ -24176,13 +24070,13 @@ function cabRender() {
   if (ago) {
     const at = cabFbAt();
     ago.textContent = at ? cabAgo(at) : (cabFb.length ? '' : 'never');
-    /* У ручному режимі «5 годин тому» — не застаріле, а рівно те, що
-       просили. Без цієї обмовки те саме число читається як збій
-       синхронізації, і людина йде шукати ваду. */
+    /* «5 годин тому» — не застаріле, а рівно те, що просили: кабінети
+       оновлюються ЛИШЕ руками. Без цієї обмовки те саме число читається
+       як збій синхронізації, і людина йде шукати ваду, якої немає. */
     ago.title = (at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet')
-      + (cabAutoOff ? '\n\nManual only: the schedule does not touch these cabinets. '
-                    + 'Press ↻ to refresh. (Settings \u2192 Sync schedule)' : '');
-    ago.classList.toggle('is-manual', !!cabAutoOff);
+      + '\n\nCabinets refresh only when you ask: press this button for all of them, '
+      + 'or \u21bb in a row for one. Nothing walks them on a schedule.';
+    ago.classList.add('is-manual');
   }
 
   /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:

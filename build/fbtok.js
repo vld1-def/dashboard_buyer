@@ -161,78 +161,16 @@ async function fbInspect(token) {
   return { scopes, expires_at: expires, accounts, bm, app_id: d.app_id || null, status, note };
 }
 
-/* ── ТЕМП СИНХРОНІЗАЦІЇ ──
-   Розклад у базі стукає щопівгодини й нічого не знає про наші
-   побажання; вирішує сама функція fb-sync, зчитуючи оце налаштування.
-   Через це темп міняється тут, а не в SQL — і людині не потрібен
-   доступ до бази, щоб уночі ходити рідше.
+/* ТЕМПУ СИНХРОНІЗАЦІЇ ТУТ БІЛЬШЕ НЕМА.
 
-   Зсув часу пишемо разом із вікном: «ніч з 0 до 8» без нього
-   означало б ніч по Гринвічу, тобто не ту, про яку думали. */
-/* 15 хвилин удень — стільки ж, скільки стукає розклад. Темп задає не
-   лише свіжість чисел: правила йдуть слідом за синхронізацією, тож це
-   водночас і те, як швидко правило встигне зупинити оголошення. */
-const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8, auto: true };
+   Кабінети оновлюються лише руками, тож «як часто ходити саме» —
+   питання без адресата. Разом із налаштуванням пішли fbPaceLoad,
+   fbPaceSave і fbPacePaint: поля, які ні на що не впливають, гірші за
+   відсутні — їх крутять і чекають наслідків.
 
-window.fbPaceLoad = async function () {
-  const dEl = document.getElementById('fb-pace-day');
-  if (!dEl) return;
-  let v = {};
-  try {
-    const raw = await getTeamSetting('fb_sync_pace');
-    v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
-  } catch (e) { v = {}; }
-  const pick = (id, val) => { const el = document.getElementById(id); if (el) el.value = String(val); };
-  /* auto === false — це ручний режим. Саме === false, а не !v.auto:
-     у старих записах поля немає зовсім, і читати його відсутність як
-     «вимкнено» означало б мовчки заморозити всім синхронізацію. */
-  pick('fb-pace-auto', v.auto === false ? '0' : '1');
-  fbPacePaint(v.auto === false);
-  pick('fb-pace-day', v.day || FB_PACE_DEF.day);
-  pick('fb-pace-night', v.night || FB_PACE_DEF.night);
-  pick('fb-pace-from', v.from == null ? FB_PACE_DEF.from : v.from);
-  pick('fb-pace-to', v.to == null ? FB_PACE_DEF.to : v.to);
-  const tz = document.getElementById('fb-pace-tz');
-  // Показуємо, за чиїм годинником міряється ніч: інакше «з 0 до 8»
-  // читається як «десь із нуля до восьми», і виглядає, ніби воно бреше.
-  if (tz) tz.textContent = 'your clock, UTC'
-    + (-new Date().getTimezoneOffset() >= 0 ? '+' : '\u2212')
-    + Math.abs(-new Date().getTimezoneOffset() / 60);
-};
-
-/* У ручному режимі темп нічого не означає — гасимо рядки, щоб не
-   виглядало, ніби вони на щось впливають, і показуємо, що саме
-   лишається працювати саме. */
-function fbPacePaint(manual) {
-  ['fb-pace-day', 'fb-pace-night', 'fb-pace-from', 'fb-pace-to'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.disabled = !!manual;
-    const row = el.closest('.set-row');
-    if (row) row.style.opacity = manual ? '.4' : '';
-  });
-  const note = document.getElementById('fb-pace-manual-note');
-  if (note) note.style.display = manual ? '' : 'none';
-}
-
-window.fbPaceSave = async function () {
-  const num = (id, lo, hi, fb) => {
-    const n = Number(document.getElementById(id)?.value);
-    return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n) : fb;
-  };
-  const manual = (document.getElementById('fb-pace-auto')?.value || '1') === '0';
-  const pace = {
-    auto:  !manual,
-    day:   num('fb-pace-day', 5, 1440, FB_PACE_DEF.day),
-    night: num('fb-pace-night', 5, 1440, FB_PACE_DEF.night),
-    from:  num('fb-pace-from', 0, 23, FB_PACE_DEF.from),
-    to:    num('fb-pace-to', 0, 23, FB_PACE_DEF.to),
-    tz:    -new Date().getTimezoneOffset()
-  };
-  fbPacePaint(manual);
-  await setTeamSetting('fb_sync_pace', JSON.stringify(pace));
-  if (typeof setSaved === 'function') setSaved();
-};
+   Що лишилось замість них: Sync now на сторінці кабінетів і ↻ в рядку
+   окремого кабінета. Межу тримає сама функція fb-sync: вхід за
+   розкладом вона відхиляє. */
 
 /* ── список ── */
 

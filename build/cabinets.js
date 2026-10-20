@@ -866,7 +866,6 @@ async function cabInit() {
   await cabFbLoad();
   await cabDaysLoad();
   await cabSnapLoad();
-  await cabAutoLoad();
   if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
@@ -1051,20 +1050,6 @@ async function cabFbLoad() {
    тут нічого не ламає: лишаємось без цих стовпчиків, решта таблиці на
    місці. */
 let cabSnap = {}, cabSnapErr = '';
-
-/* ЧИ ОНОВЛЮЄ СЕБЕ РОЗКЛАД. Те саме налаштування, що в Settings →
-   Sync schedule (fb_sync_pace.auto). Тут воно потрібне рівно для
-   одного: щоб «5 годин тому» на кнопці не читалось як поломка, коли
-   так і просили. Немає запису — розклад працює, як і доти. */
-let cabAutoOff = false;
-
-async function cabAutoLoad() {
-  try {
-    const raw = await getTeamSetting('fb_sync_pace');
-    const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
-    cabAutoOff = v && v.auto === false;
-  } catch (e) { cabAutoOff = false; }
-}
 
 async function cabSnapLoad() {
   cabSnap = {};
@@ -1977,13 +1962,13 @@ function cabRender() {
   if (ago) {
     const at = cabFbAt();
     ago.textContent = at ? cabAgo(at) : (cabFb.length ? '' : 'never');
-    /* У ручному режимі «5 годин тому» — не застаріле, а рівно те, що
-       просили. Без цієї обмовки те саме число читається як збій
-       синхронізації, і людина йде шукати ваду. */
+    /* «5 годин тому» — не застаріле, а рівно те, що просили: кабінети
+       оновлюються ЛИШЕ руками. Без цієї обмовки те саме число читається
+       як збій синхронізації, і людина йде шукати ваду, якої немає. */
     ago.title = (at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet')
-      + (cabAutoOff ? '\n\nManual only: the schedule does not touch these cabinets. '
-                    + 'Press ↻ to refresh. (Settings \u2192 Sync schedule)' : '');
-    ago.classList.toggle('is-manual', !!cabAutoOff);
+      + '\n\nCabinets refresh only when you ask: press this button for all of them, '
+      + 'or \u21bb in a row for one. Nothing walks them on a schedule.';
+    ago.classList.add('is-manual');
   }
 
   /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:

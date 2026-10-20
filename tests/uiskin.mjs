@@ -121,20 +121,6 @@ ok('рядок без стану (до міграції) лишається жи
   ban.list.includes('a3') && ban.isBan[2] === false, ban);
 ok('стан читається саме як ban', JSON.stringify(ban.isBan) === JSON.stringify([false, true, false]), ban.isBan);
 
-/* ─────────── 4. ручний режим видно на кнопці ─────────── */
-const man = await page.evaluate(() => {
-  cabAutoOff = true;
-  cabRender();
-  const el = document.getElementById('cab-sync-ago');
-  const t1 = el.title, c1 = el.classList.contains('is-manual');
-  cabAutoOff = false;
-  cabRender();
-  return { t1, c1, t2: document.getElementById('cab-sync-ago').title };
-});
-ok('у ручному режимі підказка каже, чому число не свіже',
-  /Manual only/.test(man.t1) && man.c1, man);
-ok('у звичайному — нічого лишнього не обіцяє', !/Manual only/.test(man.t2), man.t2);
-
 /* ─────────── 22. шапки вікон ─────────── */
 const skin = await page.evaluate(() => {
   const win = id => {
@@ -162,42 +148,31 @@ ok('перемикач Прілки/PWA не фарбується режимом
       && !document.getElementById('ap-title').className.includes('italic');
 }));
 
-/* ─────────── 4. перемикач у налаштуваннях ───────────
+/* ─────────── 4. ручний режим — для всіх і без налаштування ───────────
 
-   Ручний режим стосується ЛИШЕ розкладу: кнопка Sync now працює
-   завжди. А темп у ручному режимі нічого не означає — гасимо рядки,
-   щоб вони не виглядали дієвими. */
-const pace = await page.evaluate(async () => {
-  window.__saved = null;
-  setTeamSetting = async (k, v) => { window.__saved = [k, v]; };
-  /* setSaved малює галочку «збережено» й живе в блоці, який у стенді
-     впав на Chart — тобто його змінні в TDZ. Нам тут важливо, ЩО
-     записалось, а не галочка. */
-  window.setSaved = () => {};
-  getTeamSetting = async () => JSON.stringify({ auto: false, day: 30, night: 120, from: 1, to: 7 });
-  await fbPaceLoad();
-  const loaded = { sel: document.getElementById('fb-pace-auto').value,
-                   dayOff: document.getElementById('fb-pace-day').disabled,
-                   note: document.getElementById('fb-pace-manual-note').style.display };
-  document.getElementById('fb-pace-auto').value = '1';
-  await fbPaceSave();
-  const on = { saved: JSON.parse(window.__saved[1]),
-               dayOff: document.getElementById('fb-pace-day').disabled,
-               note: document.getElementById('fb-pace-manual-note').style.display };
-  document.getElementById('fb-pace-auto').value = '0';
-  await fbPaceSave();
-  return { loaded, on, off: JSON.parse(window.__saved[1]) };
+   Розділу «Sync schedule» більше немає: темп і перемикач описували
+   розклад, якого для кабінетів не існує. Поля, які ні на що не
+   впливають, гірші за відсутні — їх крутять і чекають наслідків. */
+const gone = await page.evaluate(() => ({
+  group: document.documentElement.innerHTML.includes('Sync schedule'),
+  fields: ['fb-pace-auto', 'fb-pace-day', 'fb-pace-night', 'fb-pace-from', 'fb-pace-to']
+    .filter(id => document.getElementById(id)),
+  fns: ['fbPaceLoad', 'fbPaceSave', 'fbPacePaint'].filter(f => typeof window[f] === 'function')
+}));
+ok('розділу Sync schedule немає', !gone.group, gone);
+ok('жодного поля темпу не лишилось', gone.fields.length === 0, gone.fields);
+ok('ні функцій, які їх зберігали', gone.fns.length === 0, gone.fns);
+
+/* «5 годин тому» мусить читатись як «так і просили», а не як збій —
+   і тепер безумовно, бо іншого режиму немає. */
+const man2 = await page.evaluate(() => {
+  cabRender();
+  const el = document.getElementById('cab-sync-ago');
+  return { t: el.title, cls: el.classList.contains('is-manual') };
 });
-ok('збережений ручний режим читається назад', pace.loaded.sel === '0', pace.loaded);
-ok('у ручному режимі темп погашено й сказано, що лишається працювати',
-  pace.loaded.dayOff && pace.loaded.note === '', pace.loaded);
-ok('назад на розклад — темп знову дієвий',
-  pace.on.saved.auto === true && !pace.on.dayOff && pace.on.note === 'none', pace.on);
-ok('ручний режим пишеться як auto:false, а темп лишається на місці',
-  pace.off.auto === false && pace.off.day === 30 && pace.off.night === 120, pace.off);
-ok('у підказці сказано головне: правила судять по останньому синку',
-  await page.evaluate(() => /rules judge by the <b>last sync<\/b>/
-    .test(document.getElementById('fb-pace-manual-note').innerHTML)));
+ok('підказка на кнопці синку каже, що оновлення лише на запит',
+  /only when you ask/.test(man2.t) && man2.cls, man2);
+ok('і більше не посилає в налаштування, яких немає', !/Settings/.test(man2.t), man2.t);
 
 /* ─────────── 24. іконка Report Builder ─────────── */
 const icon = await page.evaluate(() => {
