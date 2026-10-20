@@ -2839,9 +2839,13 @@ function parseKeitaro(content) {
   /* Поле порожнє — пробуємо стовпець, який так і називається. Шукаємо
      ТОЧНИЙ збіг, а не частковий: «traffic source» чи «source id» — це
      вже інше, і мовчки брати їх за постачальника не можна. */
-  const iSrc = trafficMode === 'pwa' ? -1
-    : (keitaroMap.src ? col(keitaroMap.src)
-                      : h.findIndex(x => x === 'source'));
+  /* СТОВПЕЦЬ SOURCE ЧИТАЄМО ЗАВЖДИ, не лише в APP. Він відповідає на
+     питання «чий це рядок», а постачальник буває і в прілок, і в PWA —
+     отже й перебивки стовпців під нього потрібні обом. Доти в PWA
+     стовпець просто не читався, і вписати туда постачальника не мало
+     жодного наслідку. */
+  const iSrc = keitaroMap.src ? col(keitaroMap.src)
+                              : h.findIndex(x => x === 'source');
   const iKtApp = trafficMode === 'pwa' ? -1
     : (col(keitaroMap.app) >= 0 ? col(keitaroMap.app) : col(keitaroMap.plc));
   console.log('Keitaro offer column:', iOff >= 0 ? `"${sp(lines[0])[iOff]}"` : `НЕ ЗНАЙДЕНО (шукали "${keitaroMap.offer}")`,
@@ -2868,8 +2872,12 @@ function parseKeitaro(content) {
      Стовпця App тут немає навмисно: саме з нього ми дізнаємось, чия це
      прілка, — перебивати його означало б шукати постачальника тим, що
      від постачальника й залежить. */
+  /* Перебивки будуємо НЕЗАЛЕЖНО від режиму. Постачальник буває і в
+     прілок, і в PWA; доти в PWA цей список лишався порожнім, і
+     вписані перебивки просто нічого не робили — найтихіший спосіб
+     читати креатив із чужого стовпця. */
   const provIdx = {};
-  if (trafficMode !== 'pwa') {
+  {
     const pv = keitaroMap.prov || {};
     Object.keys(pv).forEach(k => {
       const o = pv[k] || {}, got = {};
@@ -2910,6 +2918,10 @@ function parseKeitaro(content) {
   // Скільки рядків ЦЬОГО файлу якого виду. Окремо від tmSeen: там
   // рядки звіту FB, тут вигрузки Keitaro, і це різні множини.
   const ktSeen = { pwa: 0, app: 0 };
+  /* Кого побачили у стовпці source. Потрібне, щоб сказати вголос: «у
+     файлі три постачальники, перебивки стоять на одного». Без цього
+     неправильно вписаний source нічим себе не виказує. */
+  const provSeen = {};
   const byAccount = {}, byCampaign = {}, byCreative = {}, byDaily = {};
   // Розбивка по офферах — потрібна, щоб рознести спенд FB між офферами у спліті
   /* Лендінг — те, що Keitaro називає оффером: «[Riddick's Partners]
@@ -2969,15 +2981,17 @@ function parseKeitaro(content) {
        незалежно приходять до одного висновку. */
     const rowMode = tmUse(tmRowMode(campRaw));
     ktSeen[rowMode]++;
-    let geo, ktid, pIdx = null;
+    /* ПОСТАЧАЛЬНИК — ДО РОЗБОРУ, і для обох видів. Від нього залежить,
+       у яких стовпцях лежать креатив, гео й оффер (перебивки
+       provIdx), а значить читати рядок, не знаючи його, можна лише
+       поки перебивок немає. Зі стовпця source він відомий прямо; без
+       стовпця — виводиться з дужок назви воронки, як і доти. */
+    const rowProv = (iSrc >= 0 ? String(r[iSrc] || '').trim().toLowerCase() : '')
+      || kmProvOf(rowMode === 'app' && iKtApp >= 0 ? String(r[iKtApp] || '').trim() : '', funRaw);
+    if (rowProv) provSeen[rowProv] = (provSeen[rowProv] || 0) + 1;
+    let geo, ktid, pIdx = provIdx[rowProv] || null;
     if (rowMode === 'app') {
-      /* Порядок важливий: спершу апка, бо саме з неї ми дізнаємось
-         постачальника, а від постачальника залежить, у яких стовпцях
-         лежать креатив, гео й оффер. */
       ktid = (iKtApp >= 0 ? String(r[iKtApp] || '').trim() : '') || '0';
-      const prov = iSrc >= 0 ? String(r[iSrc] || '').trim().toLowerCase()
-                             : kmProvOf(ktid, funRaw);
-      pIdx = provIdx[prov] || null;
       const ic = (pIdx && pIdx.country >= 0) ? pIdx.country : iCountry;
       geo = toGeoCode(ic >= 0 ? String(r[ic] || '').trim() : '') || '??';
     } else {
@@ -3040,6 +3054,7 @@ function parseKeitaro(content) {
     }
   }
   if (tmIsAuto()) console.log(`Keitaro: PWA-рядків ${ktSeen.pwa}, APP-рядків ${ktSeen.app}`);
+  if (iSrc >= 0) console.log('Keitaro: постачальники зі стовпця source:', provSeen);
   if ((!tmIsAuto() || ktSeen.app) && trafficMode !== 'pwa') {
     if (iKtApp < 0) console.warn('Keitaro: app column "' + keitaroMap.app
       + '" not found — the funnel of APP rows will stay unknown');
@@ -3047,7 +3062,8 @@ function parseKeitaro(content) {
       + '" not found — geo of APP rows stays "??"');
   }
   keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyLand, ktPlacements,
-                 days, unlinked, offerMisses };
+                 days, unlinked, offerMisses, provSeen, ktSeen: { ...ktSeen },
+                 hasSrc: iSrc >= 0 };
 
   if (iOff >= 0) {
     console.log('Offers: matched', [...offerHits], '| не розпізнано', offerMisses);
@@ -3372,12 +3388,47 @@ function renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives }) {
   const ktDeps = sum(Object.values(keitaroAgg.byCreative), v => v.deps);
   const crDeps = sum(creatives, r => r.deps);
   const line = (icon, cls, html) => `<div class="flex gap-2 items-start ${cls}"><span>${icon}</span><div>${html}</div></div>`;
+  /* Назви постачальників і стовпців приїхали з файлу — тобто це чужий
+     текст, і в розмітку він іде лише через екранування. */
+  const esc = v => String(v == null ? '' : v)
+    .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const list = arr => arr.slice(0, 12).map(v =>
       `<span class="inline-block px-1.5 py-0.5 rounded bg-black/30 font-mono text-[10px] ml-1">${v.cid || '—'}<span class="opacity-40"> ${v.date}</span></span>`
     ).join('') + (arr.length > 12 ? `<span class="opacity-50"> …+${arr.length - 12} more</span>` : '');
 
   const parts = [line('✅', 'text-slate-400',
     `Refined from Keitaro: <b class="text-emerald-400">${hitD}</b> stat rows, <b class="text-emerald-400">${hitC}</b> creative groups.`)];
+
+  /* ЩО СКАЗАВ СТОВПЕЦЬ SOURCE.
+
+     Він відповідає на питання «чий рядок», і від нього залежать
+     перебивки стовпців під постачальника. Тому показуємо і кого
+     побачили, і скільком із них перебивки справді стоять: source,
+     вписаний із помилкою, інакше нічим себе не виказує — рядки
+     читаються загальними стовпцями й виглядають звичайними.
+
+     Чого цей стовпець НЕ вирішує: форму ключа злиття. Ключ мусить
+     складатись однаково з обох боків, а у звіті Facebook стовпця
+     source немає й бути не може — тож вид трафіку й далі визначає
+     назва кампанії (див. tmRowMode). */
+  const pSeen = keitaroAgg.provSeen || {};
+  const pNames = Object.keys(pSeen);
+  if (keitaroAgg.hasSrc || pNames.length) {
+    const known = pNames.filter(p => (keitaroMap.prov || {})[p]);
+    parts.push(line('🏷', 'text-slate-400 mt-2',
+      (keitaroAgg.hasSrc ? 'Column <b>' + esc(keitaroMap.src || 'source') + '</b>: '
+                         : 'Provider taken from the funnel name brackets: ')
+      + (pNames.length
+          ? pNames.slice(0, 8).map(p => `<span class="font-mono">${esc(p)}</span>`
+              + `<span class="opacity-50"> ${pSeen[p]}</span>`).join(', ')
+            + (pNames.length > 8 ? ` <span class="opacity-50">+${pNames.length - 8}</span>` : '')
+          : '<span class="opacity-60">empty in every row</span>')
+      + (pNames.length
+          ? `<br><span class="opacity-60">Column overrides configured for: ${
+              known.length ? known.join(', ') : '<b>none</b> — every row is read with the general columns'
+            }. Settings &rarr; Keitaro Mapping.</span>`
+          : '')));
+  }
 
   if (missFb.length) {
     const fbDeps = sum(missFb, v => v.deps);

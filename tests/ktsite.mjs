@@ -164,6 +164,51 @@ ok('без домену рядок не ділиться', await page.evaluate(c
       && out[0].landing === '[P] Pinco KG | Form | 50$';
 }, [HEAD.replace(',Site', ',Nothing'), row('x', 10, 5, 2), row('y', 30, 15, 6)].join('\n')));
 
+/* ─────────── стовпець source: чий рядок ───────────
+
+   Доти він читався лише в APP, і вписаний у PWA-рядку постачальник не
+   мав жодного наслідку. Тепер читається завжди — і перебивки стовпців
+   під постачальника працюють на обох видах.
+
+   Чого source НЕ вирішує: форму ключа злиття. Ключ мусить складатись
+   однаково з обох боків, а у звіті Facebook такого стовпця немає й
+   бути не може. */
+const SRC_HEAD = 'Day,Hour,Sub ID 5,Sub ID 1,Sub ID 2,Sub ID 3,Sub ID 4,Offer,Country,Site,Source,UC (campaign),Conv.,Sales';
+const srcRow = (camp, src, ins) =>
+  `2026-10-01,12,123,${camp},,cr1,,[P] Pinco KG | Form | 50$,Kyrgyzstan,mplay-kg.website,${src},${ins},1,1`;
+
+const prov = await page.evaluate(csv => {
+  knownOffers = ['Pinco'];
+  mappingDB = { timezones: { '123': 3 }, agencies: {}, funnels: {}, funnelApp: {} };
+  trafficMode = 'pwa';                       // саме PWA: доти source тут не читався
+  keitaroMap = { ...KM_DEFAULT };
+  parseKeitaro(csv);
+  return { seen: keitaroAgg.provSeen, hasSrc: keitaroAgg.hasSrc };
+}, [SRC_HEAD,
+    srcRow('Mbank_KG_10708-ex8g_09/10', 'satorapps', 10),
+    srcRow('Mbank_KG_10708-ex8g_09/10', 'satorapps', 6),
+    srcRow('Mbank_KG_10708-ex8g_09/10', 'trident', 4)].join('\n'));
+ok('стовпець source знайдено і в PWA-режимі', prov.hasSrc === true, prov);
+ok('постачальники порахувані по рядках',
+  prov.seen.satorapps === 2 && prov.seen.trident === 1, prov.seen);
+
+/* Перебивка стовпця під постачальника тепер діє і на PWA-рядок:
+   креатив цього постачальника лежить в іншому стовпці. */
+const over = await page.evaluate(csv => {
+  knownOffers = ['Pinco'];
+  mappingDB = { timezones: { '123': 3 }, agencies: {}, funnels: {}, funnelApp: {} };
+  trafficMode = 'pwa';
+  // trident тримає назву креатива в Sub ID 2, решта — в Sub ID 3
+  keitaroMap = { ...KM_DEFAULT, prov: { trident: { cr: 'Sub ID 2' } } };
+  parseKeitaro(csv);
+  return Object.values(keitaroAgg.byCreative).map(v => v.cid).sort();
+}, [SRC_HEAD.replace(',Sub ID 2,', ',Sub ID 2,'),
+    '2026-10-01,12,123,Mbank_KG_10708-ex8g_09/10,fromSub2,cr1,,[P] Pinco KG | Form | 50$,Kyrgyzstan,x.site,trident,10,1,1',
+    '2026-10-01,12,123,Mbank_KG_10708-ex8g_09/10,fromSub2,cr1,,[P] Pinco KG | Form | 50$,Kyrgyzstan,x.site,satorapps,10,1,1'
+   ].join('\n'));
+ok('у PWA-рядка trident креатив узято з перебитого стовпця',
+  JSON.stringify(over) === JSON.stringify(['cr1', 'fromSub2']), over);
+
 ok('у Records домен правиться як решта полів', await page.evaluate(() =>
   REC_SCHEMA.daily_stats.some(f => f.key === 'site' && f.label === 'Domain')));
 ok('у налаштуваннях Keitaro є поле Site', await page.evaluate(() =>
