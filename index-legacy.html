@@ -10002,6 +10002,122 @@ function pwDomMark(u) {
     <span class="inline-block w-2 h-2 rounded-full align-middle" style="${style}"></span></span>`;
 }
 
+/* ═══════════ ДОМЕНИ ЗІ СПИСКУ → У КАМПАНІЮ ═══════════
+
+   Доти зв'язок працював В ОДНУ СТОРОНУ: силки кампанії проставляли
+   домену його PWA й гео. Назад — ніяк. Тому коли домени заводять
+   першими (а так і буває: їх купують пачкою й вписують списком), у
+   шаблоні PWA вони не з'являлись, і ту саму адресу доводилось
+   передруковувати руками.
+
+   ЯК СПІВПАДАЄ. Пара «PWA + гео», тобто рівно те, чим домен
+   підписаний у списку доменів. Гео домена порожнє — це НЕ розбіжність,
+   а невідомість: такий домен підходить, бо нічому не суперечить.
+   Гео РІЗНІ — не підходить: KG-домен у TJ-кампанії це не підказка, а
+   підміна.
+
+   ЧОГО ТУТ НЕМА: автоматичного запису. Домени показуються як
+   пропозиція, а в links їх кладе натискання. Кампанія — те, що їде в
+   кабінет; підставити туди адресу, якої людина не бачила, означає
+   залити трафік на чужу силку. */
+const pwKey = s => String(s || '').trim().toLowerCase();
+
+/* Домени зі списку, які належать цій кампанії й ще не стоять у ній
+   силками. Без оффера не шукаємо зовсім: «усі домени команди» — це не
+   пропозиція, а список доменів, він уже є в своєму вікні. */
+function pwDomPool(offer, geo, links) {
+  const off = pwKey(offer);
+  if (!off) return [];
+  const g = pwKey(geo);
+  const have = new Set((links || []).map(u => pwHost(u)).filter(Boolean));
+  return Object.values(pwDom)
+    .filter(r => pwKey(r.pwa) === off)
+    .filter(r => { const rg = pwKey(r.geo); return !rg || !g || rg === g; })
+    .map(r => String(r.domain || '').trim().toLowerCase())
+    .filter(d => d && !have.has(d))
+    .filter((d, i, a) => a.indexOf(d) === i)
+    .sort();
+}
+const pwPoolOf = it => pwDomPool(it.offer, it.geo, it.links);
+
+/* Підставити всі знайдені домени в кампанію одним натисканням. Схему
+   не вигадуємо: у списку доменів лежить ХОСТ, і https:// перед ним —
+   єдине, що робить із нього силку. */
+async function pwDomPull(id, btn) {
+  const it = pwItems.find(x => x.id === id);
+  if (!it) return;
+  const add = pwPoolOf(it);
+  if (!add.length) return;
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const keep = (it.links || []).slice();
+  it.links = [...new Set(keep.concat(add.map(d => 'https://' + d)))];
+  const ok = await pwSave();
+  if (btn) { btn.disabled = false; btn.textContent = was; }
+  /* Не збереглось — повертаємо як було. Силка, яка стоїть на екрані,
+     але не в базі, зникне при перезавантаженні без жодного слова. */
+  if (!ok) { it.links = keep; return; }
+  apSubPaint(); pwRenderTree(); pwRender();
+  if (typeof toast === 'function')
+    toast(add.length === 1 ? 'Додано силку: ' + add[0]
+                           : 'Додано силок зі списку доменів: ' + add.length, 'ok');
+}
+
+/* ── пропозиція в самому редакторі ──
+   Малюється наживо, бо гео й оффер тут міняються просто на очах: їх
+   вгадує назва кампанії, і щойно вона дописана, домени мусять уже
+   стояти під полем силок, а не з'явитись аж після «Зберегти». */
+function pwPoolPaint() {
+  const el = document.getElementById('pw-pool');
+  if (!el) return;
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const g = pwGuess(val('pw-f-name'));
+  const offer = val('pw-f-offer') || g.offer;
+  const geo = val('pw-f-geo') || g.geo;
+  const links = (document.getElementById('pw-f-links')?.value || '')
+    .split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const pool = pwDomPool(offer, geo, links);
+  if (!pool.length) {
+    /* Порожньо з двох різних причин, і сказати, з якої саме, важливіше
+       за сам факт: без оффера шукати НІ ЗА ЧИМ, а з оффером — просто
+       нічого не знайшлось. Одна й та сама порожнеча інакше посилає
+       перевіряти список доменів там, де його ще й не питали. */
+    el.innerHTML = !pwKey(offer)
+      ? `<p class="text-[10px] font-bold text-slate-600">Впиши оффер — і домени з твого списку підтягнуться сюди самі.</p>`
+      : '';
+    return;
+  }
+  el.innerHTML = `
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="text-[9px] font-black uppercase tracking-widest text-emerald-300">
+        зі списку доменів${geo ? ' · ' + apEsc(String(geo).toUpperCase()) : ''}</span>
+      <span class="text-[10px] font-bold text-slate-500">${pool.length} ще не в силках</span>
+      <button type="button" onclick="pwPoolAdd('*')"
+        class="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/30 transition">підставити всі</button>
+    </div>
+    <div class="flex items-center gap-1.5 flex-wrap mt-1.5">
+      ${pool.map(d => `<button type="button" onclick="pwPoolAdd('${apEsc(d)}')"
+        title="Додати в силки: https://${apEsc(d)}"
+        class="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 hover:text-white transition">+ ${apEsc(d)}</button>`).join('')}
+    </div>`;
+}
+
+/* Дописуємо в те саме поле, де силки й так правлять руками: окремого
+   невидимого списку, який потім розійдеться з текстом у полі, тут
+   немає. */
+function pwPoolAdd(d) {
+  const ta = document.getElementById('pw-f-links');
+  if (!ta) return;
+  const val = id => (document.getElementById(id)?.value || '').trim();
+  const g = pwGuess(val('pw-f-name'));
+  const have = ta.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const add = (d === '*'
+    ? pwDomPool(val('pw-f-offer') || g.offer, val('pw-f-geo') || g.geo, have)
+    : [d]).map(x => 'https://' + x);
+  ta.value = [...new Set(have.concat(add))].join('\n');
+  pwPoolPaint();
+}
+
 /* ═══════════ КЛІК = КОПІЯ ═══════════
 
    І силку, і назву кампанії вставляють у кабінет десятки разів на
@@ -10038,7 +10154,10 @@ const pwBadCount = () => pwItems.reduce((s, it) => s + pwBadLinks(it).length, 0)
 async function pwDomLoad(quiet) {
   try {
     const { data, error } = await sb.from('domains')
-      .select('domain, status, flagged_by, checked_at, source')
+      /* pwa й geo тут не для показу, а щоб ЗНАТИ, якій кампанії домен
+         належить: без цих двох стовпців список доменів і довідник PWA
+         лежали б поруч і ніколи не зустрічались. */
+      .select('domain, status, flagged_by, checked_at, source, pwa, geo')
       .eq('team_name', currentTeam);
     if (error) throw error;
     pwDom = {}; pwDomErr = '';
@@ -10220,6 +10339,22 @@ function pwRender() {
           class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі всі силки</button>
       </div>` : ''}
 
+      ${(() => {
+        /* Домени, підписані цим PWA, яких у кампанії ще немає. Рядок
+           з'являється лише коли вони є: «0 доменів зі списку» щодня
+           питало б, чи не зламався зв'язок. */
+        const pool = pwPoolOf(it);
+        if (!pool.length) return '';
+        return `<div class="flex items-center gap-2 flex-wrap mt-2 pt-2 border-t border-white/5">
+          <span class="text-[9px] font-black uppercase tracking-widest text-emerald-300 shrink-0">зі списку доменів</span>
+          <span class="text-[10px] font-mono text-slate-400 min-w-0 truncate">${apEsc(pool.slice(0, 3).join(', '))}${
+            pool.length > 3 ? ' +' + (pool.length - 3) : ''}</span>
+          <button onclick="pwDomPull('${it.id}', this)"
+            title="Додати ці домени в силки цієї кампанії"
+            class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/30 transition">підставити ${pool.length}</button>
+        </div>`;
+      })()}
+
       ${pwDomErr ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
         Стан доменів не прочитався (${apEsc(pwDomErr)}) — якщо списку доменів ще немає, виконай DOMAINS.sql.</p>` : ''}
 
@@ -10275,11 +10410,14 @@ function pwShowEditor(v) {
           class="hidden shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition"></button>
       </div>
       <div class="grid grid-cols-2 gap-2">
-        <input id="pw-f-geo" value="${apEsc(v.geo || '')}" class="${inp} uppercase" placeholder="Гео">
-        <input id="pw-f-offer" value="${apEsc(v.offer || '')}" class="${inp}" placeholder="Оффер">
+        <input id="pw-f-geo" value="${apEsc(v.geo || '')}" oninput="pwPoolPaint()" class="${inp} uppercase" placeholder="Гео">
+        <input id="pw-f-offer" value="${apEsc(v.offer || '')}" oninput="pwPoolPaint()" class="${inp}" placeholder="Оффер">
       </div>
-      <textarea id="pw-f-links" rows="4" class="${inp} w-full font-mono leading-relaxed"
+      <textarea id="pw-f-links" rows="4" oninput="pwPoolPaint()" class="${inp} w-full font-mono leading-relaxed"
         placeholder="Силки — по одній на рядок:&#10;https://mplay-kg-games.website">${apEsc((v.links || []).join('\n'))}</textarea>
+      <!-- Домени зі списку, які вже підписані цим PWA. Стоять ПІД
+           полем силок, бо це пропозиція до нього, а не окреме поле. -->
+      <div id="pw-pool"></div>
       <input id="pw-f-note" value="${apEsc(v.note || '')}" class="${inp} w-full" placeholder="Нотатка для себе">
       <div class="flex gap-2 pt-1">
         <button onclick="pwSubmit()" class="bg-sky-600 hover:bg-sky-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зберегти</button>
@@ -10369,6 +10507,11 @@ function pwNameHint() {
       ? ' У назві є дата. Кнопка праворуч зробить її автоматичною — тоді вона завжди буде сьогоднішньою.'
       : '';
   h.textContent = base + date;
+  /* Гео й оффер читаються з НАЗВИ, тому пул доменів мусить
+     перемальовуватись разом із цією підказкою, а не лише коли поля
+     правлять руками: інакше домени з'являлись би аж після дотику до
+     поля «Оффер», якого при вгаданому оффері ніхто не робить. */
+  pwPoolPaint();
 }
 
 
@@ -11311,6 +11454,10 @@ function txRender() {
         <button onclick="txDelete('${t.id}')" class="text-[10px] text-slate-600 hover:text-rose-400 px-1 transition">✕</button>
       </div>
       <p class="text-[12px] text-slate-300 whitespace-pre-wrap leading-relaxed">${txEsc(t.text)}</p>
+      <!-- Підпис українською лишається з текстом: через місяць «про що
+           цей» — питання, яке виникає саме до збереженого, а не до
+           кандидата. Його ж правлять руками в редакторі. -->
+      ${t.ua ? `<p class="tx-ai-ua">${txEsc(t.ua)}</p>` : ''}
     </div>`).join('');
 }
 
@@ -11339,6 +11486,8 @@ function txShowEditor(v) {
         <input id="tx-f-cat" list="tx-dl-cat" value="${txEsc(v.cat)}" placeholder="Слот / категорія" class="${inp}">
         <input id="tx-f-lang" list="tx-dl-lang" value="${txEsc(v.lang)}" placeholder="Мова (ua, en)" class="${inp}">
         <input id="tx-f-title" value="${txEsc(v.title)}" placeholder="Назва (необовʼязково)" class="${inp}">
+        <input id="tx-f-ua" value="${txEsc(v.ua || '')}" placeholder="Про що це (укр, необовʼязково)"
+          class="${inp} col-span-2 md:col-span-4">
       </div>
       ${dl('tx-dl-geo', txItems.map(t => t.geo))}${dl('tx-dl-cat', txItems.map(t => t.cat))}${dl('tx-dl-lang', txItems.map(t => t.lang))}
       <textarea id="tx-f-text" rows="4" placeholder="Сам текст…"
@@ -11366,12 +11515,26 @@ function txCancel() { txEditId = null; document.getElementById('tx-editor').clas
    й продовжує їх. Беремо ті, що зараз у фільтрі: саме вони й описують
    те місце, куди дописуємо.
 
-   Ключ Anthropic у сторінці не лежить: запит іде у функцію ai, вона
-   його й тримає (див. AI.sql). */
+   ХТО ПИШЕ. Тексти пише Grok (x.ai), а не Claude: по рекламному
+   копірайтингу вони поводяться по-різному, і бриф, який одна
+   відмовляється писати, друга пише. Таблиці й питання по CRM лишились
+   на Claude — там важить точність плану, а не згідливість. Яка саме
+   модель відповіла, видно рядком під кандидатами: коли ключа x.ai
+   немає, функція сама падає назад на Claude, і це мусить бути видно, а
+   не з'ясовуватись по тону текстів.
+
+   Ключів у сторінці не лежить: запит іде у функцію ai, вона їх і
+   тримає (див. AI.sql). */
 let txAiItems = [];      // кандидати на екрані
 let txAiPicked = [];     // вибрані галочкою
 let txAiBusy = false;
 let txAiNote = '';
+/* Мова, під яку просили писати. Зберігали її з ФІЛЬТРА — і це була
+   помилка: фільтр каже, що зараз показано, а не якою мовою щойно
+   попросили написати. Хто генерував під «pl», маючи на екрані «усі
+   мови», отримував порожню мову або мову першого прикладу. Тепер
+   пам'ятаємо саме те, що вписали у вікні. */
+let txAiLang = '';
 
 async function txAiCall(body) {
   const { data: sess } = await sb.auth.getSession();
@@ -11413,12 +11576,18 @@ window.txAi = async function () {
         placeholder: 'ua, ru, en' },
       { key: 'hint', label: 'Чого хочемо', full: true,
         placeholder: 'напр. коротше, без вигуків, акцент на швидкій виплаті',
-        hint: 'Необовʼязково. Числа, бонуси й гарантії модель не вигадує — лише те, що є у зразках.' }
+        /* Доти тут стояло «числа й бонуси модель не вигадує», і це
+           читалось як заборона про них писати. Насправді правило
+           інше: що впишеш — те й піде в текст, чого не впишеш — не
+           з'явиться. Саме тому акцію описують ТУТ. */
+        hint: 'Необовʼязково. Акцію, призи й умови описуй тут: те, що впишеш, '
+            + 'модель використає, а чого не впишеш — не додумає.' }
     ]
   });
   if (!v) return;
 
   txAiBusy = true; txAiNote = 'Думає…'; txAiItems = []; txAiPicked = [];
+  txAiLang = String(v.lang || '').trim().toLowerCase();
   txAiPaint();
   try {
     const j = await txAiCall({
@@ -11427,14 +11596,20 @@ window.txAi = async function () {
       hint: String(v.hint || '').trim(),
       examples: base.slice(0, 12).map(t => ({ title: t.title, text: t.text }))
     });
-    txAiItems = (j.items || []).map((x, i) => ({ i, title: x.title || '', text: x.text || '' }));
+    txAiItems = (j.items || []).map((x, i) => ({ i, title: x.title || '',
+                                                 text: x.text || '', ua: x.ua || '' }));
     /* Ціну одного виклику показуємо відразу. «Копійки» без числа — це
        слова; число робить витрату видимою з першого ж разу. */
     txAiNote = txAiItems.length
       ? `${txAiItems.length} варіант(ів) · ${j.model || 'model'} · ~$${(j.cost_usd || 0).toFixed(5)}`
         + (j.left_today != null ? ` · лишилось сьогодні: ${j.left_today}` : '')
         + ((j.problems || []).length ? ' · ' + j.problems.join('; ') : '')
-      : 'Модель відповіла, але розібрати з відповіді нічого не вдалось.';
+      /* Відмову або зауваження моделі показуємо ЇЇ СЛОВАМИ. «Розібрати
+         нічого не вдалось» на місці сказаного відправляє шукати ваду в
+         функції, тоді як модель щойно прямо сказала, що саме її не
+         влаштувало в брифі. */
+      : (j.said ? `${j.model || 'Модель'} відповіла текстом, а не варіантами: ${j.said}`
+                : 'Модель відповіла, але розібрати з відповіді нічого не вдалось.');
   } catch (e) {
     const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
     txAiNote = (e.code === 'missing' || net)
@@ -11456,14 +11631,17 @@ window.txAiPick = function (i) {
 window.txAiSave = async function () {
   const take = txAiItems.filter(x => txAiPicked.includes(x.i));
   if (!take.length) return;
-  const lang = (document.getElementById('tx-lang-filter')?.value
+  /* Мова — та, під яку просили. Фільтр лишається запасним варіантом:
+     якщо у вікні поле лишили порожнім, беремо хоч щось, аби текст не
+     ліг зовсім без мови. */
+  const lang = (txAiLang || document.getElementById('tx-lang-filter')?.value
     || (txFiltered()[0] || {}).lang || '').toLowerCase();
   take.forEach(x => txItems.unshift({
     id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     geo: txGeo, cat: txCat, lang,
     // Позначка лишається в записі: через місяць «хто це писав» — питання,
     // на яке в банку мусить бути відповідь.
-    title: (x.title || 'AI').slice(0, 80), ai: true, text: x.text
+    title: (x.title || 'AI').slice(0, 80), ai: true, ua: x.ua || '', text: x.text
   }));
   txAiItems = txAiItems.filter(x => !txAiPicked.includes(x.i));
   txAiPicked = [];
@@ -11492,7 +11670,12 @@ function txAiPaint() {
     ${txAiItems.map(x => `<label class="tx-ai-row${txAiPicked.includes(x.i) ? ' is-on' : ''}">
         <input type="checkbox" ${txAiPicked.includes(x.i) ? 'checked' : ''}
           onchange="txAiPick(${x.i})">
-        <span>${x.title ? `<b>${txEsc(x.title)}</b><br>` : ''}${txEsc(x.text)}</span>
+        <span>${x.title ? `<b>${txEsc(x.title)}</b><br>` : ''}${txEsc(x.text)}${
+          /* Підпис українською — щоб не читати текст чужою мовою
+             тільки щоб зрозуміти, чим він відрізняється від
+             сусіднього. Дрібним і притлумленим: це підпис, а не
+             частина самого тексту. */
+          x.ua ? `<span class="tx-ai-ua">${txEsc(x.ua)}</span>` : ''}</span>
       </label>`).join('')}
     ${txAiItems.length ? `<div class="tx-ai-acts">
         <button type="button" class="mw-btn is-main" onclick="txAiSave()"
@@ -11505,7 +11688,8 @@ function txAiPaint() {
 async function txSubmit() {
   const val = id => (document.getElementById(id)?.value || '').trim();
   const rec = { geo: val('tx-f-geo').toUpperCase(), cat: val('tx-f-cat'),
-                lang: val('tx-f-lang').toLowerCase(), title: val('tx-f-title'), text: val('tx-f-text') };
+                lang: val('tx-f-lang').toLowerCase(), title: val('tx-f-title'),
+                ua: val('tx-f-ua'), text: val('tx-f-text') };
   if (!rec.text) { alert('Текст порожній.'); return; }
   if (txEditId) Object.assign(txItems.find(x => x.id === txEditId) || {}, rec);
   else txItems.unshift({ id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), ...rec });

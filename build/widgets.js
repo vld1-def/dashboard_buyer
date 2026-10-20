@@ -1370,6 +1370,59 @@
 
   window.shClearPick = function () { shSel = new Set(); shAnchor = -1; shMark(); };
 
+  /* ── ВІДКРИТИЙ ФАЙЛ — НАЗОВНІ, РІВНО ДЛЯ АСИСТЕНТА ──
+
+     Віддаємо назви стовпців, їхній вид і рядки обʼєктами. Самі дані
+     лишаються тут: асистент питає модель лише про НАЗВИ, а фільтрує й
+     рахує в браузері (див. build/aiask.js).
+
+     Вид стовпця беремо з того самого shNumCol, що вирішує, чи можна
+     сумувати виділене: два різні погляди на «це число?» рано чи пізно
+     розійшлись би, і сума в підсумку виділення не збігалася б із
+     сумою, яку назвав асистент.
+
+     Однакові заголовки в обʼєкті затерли б одне одного, тож другий і
+     далі отримують « (2)» — у вивантаженнях таке буває. */
+  window.shDataset = function () {
+    if (!shFile) return null;
+    const tab = shFile.tabs[shFile.idx] || shFile.tabs[0];
+    const rows = tab && tab.rows || [];
+    if (rows.length < 2) return null;          // лише заголовок — питати нічого
+    const head = rows[0] || [];
+    const body = rows.slice(1);
+    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+
+    const names = [], kinds = [], hows = [];
+    const taken = new Set();
+    for (let c = 0; c < cols; c++) {
+      let nm = String(head[c] == null ? '' : head[c]).trim() || 'col ' + (c + 1);
+      if (taken.has(nm)) { let k = 2; while (taken.has(nm + ' (' + k + ')')) k++; nm = nm + ' (' + k + ')'; }
+      taken.add(nm);
+      names.push(nm);
+      const how = shNumCol(body.map(r => r[c]));
+      hows.push(how && !how.skip ? how : null);
+      kinds.push(how ? (how.skip ? 'date' : 'num') : 'text');
+    }
+
+    return {
+      id: 'sheet',
+      title: shFile.name + (shFile.tabs.length > 1 && tab.name ? ' · ' + tab.name : ''),
+      cols: names.map((n, i) => ({ name: n, kind: kinds[i] })),
+      rows: body.map(r => {
+        const o = {};
+        names.forEach((n, i) => o[n] = r[i] == null ? '' : r[i]);
+        return o;
+      }),
+      // Число з комірки — ЇХНІМ парсером: він вирішує по стовпчику цілком.
+      num: (name, v) => {
+        const i = names.indexOf(name);
+        if (i < 0) return null;
+        const x = shNum(v, hows[i] || {});
+        return x == null ? null : x;
+      }
+    };
+  };
+
   window.shTab = function (i) {
     /* Вибір не переживає зміну аркуша: рядок номер 5 на іншому аркуші —
        зовсім інший рядок, і підсумок по ньому був би вигадкою. */
@@ -1604,6 +1657,7 @@
     ['Records',        'hub:records',                    'Data Hub'],
     ['Expenses',       'hub:expenses',                   'Data Hub'],
     ['Sources',        'hub:providers',                  'Data Hub'],
+    ['Assistant',      'fn:aqOpen',                      'Tool'],
     ['Google Sheets',  'fn:sheetsOpen',                  'Sheets'],
     ['Team',           'nav:team',                       'Page']
   ];
