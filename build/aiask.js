@@ -317,6 +317,77 @@ function aqPaintSets() {
       <span>${s.rows.length} рядк. · ${s.cols.length} стовпц.</span></span>`).join('');
 }
 
+/* ═══════════ ЩО В ТАБЛИЦІ — БЕЗ МОДЕЛІ ═══════════
+
+   Модель НЕ бачить значень — і це не вада, а умова: у вивантаженнях
+   лежать sub-id, а часом і дані людей. Тому на питання «що в цьому
+   файлі» вона відповідає тим, що має — структурою, і виглядає це як
+   «не можу сказати».
+
+   Але дашборд значення бачить: вони в нього й завантажені. Тож огляд
+   він складає САМ — локально, без запиту й без копійки витрат. Для
+   чисел: скільки заповнено, межі й сума. Для тексту: які значення
+   справді зустрічаються — саме їх і треба знати, щоб написати умову
+   («Decline» чи «declined»?).
+
+   Порожнє — це «—», а не нуль: стовпець, де числа немає, і стовпець,
+   де воно нуль, — різні речі. */
+const AQ_PEEK_VALS = 8;      // скільки різних значень показуємо
+const AQ_PEEK_ROWS = 4000;   // скільки рядків читаємо на огляд
+
+function aqPeekCol(set, col) {
+  const rows = set.rows.slice(0, AQ_PEEK_ROWS);
+  let filled = 0, n = 0, sum = 0, min = null, max = null;
+  const freq = new Map();
+  rows.forEach(r => {
+    const raw = r[col.name];
+    const t = String(raw == null ? '' : raw).trim();
+    if (!t) return;
+    filled++;
+    if (col.kind === 'num') {
+      const x = aqNumOf(set, col.name, raw);
+      if (x == null) return;
+      n++; sum += x;
+      if (min == null || x < min) min = x;
+      if (max == null || x > max) max = x;
+    } else {
+      freq.set(t, (freq.get(t) || 0) + 1);
+    }
+  });
+  const vals = [...freq.entries()].sort((a, b) => b[1] - a[1]);
+  return { filled, seen: rows.length, n, sum, min, max,
+           uniq: freq.size, top: vals.slice(0, AQ_PEEK_VALS).map(v => v[0]) };
+}
+
+window.aqPeek = function () {
+  const out = document.getElementById('aq-out');
+  if (!out) return;
+  const sets = aqSets();
+  if (!sets.length) { aqPaintSets(); return; }
+  out.innerHTML = sets.map(set => {
+    const rows = set.rows.length;
+    return `<p class="aq-plan"><b>${aqEsc(set.title)}</b> — ${rows} рядк. · ${
+        set.cols.length} стовпц.</p>`
+      + `<table class="aq-tbl"><thead><tr><th>стовпець</th><th>вид</th>
+         <th>заповнено</th><th>що там</th></tr></thead><tbody>`
+      + set.cols.map(c => {
+          const i = aqPeekCol(set, c);
+          const what = c.kind === 'num'
+            ? (i.n ? `від ${aqFmt(i.min)} до ${aqFmt(i.max)} · сума ${aqFmt(i.sum)}` : '—')
+            : (i.top.length
+                ? i.top.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
+                  + (i.uniq > i.top.length ? ` <span class="aq-dim">+${i.uniq - i.top.length} інших</span>` : '')
+                : '—');
+          return `<tr><td>${aqEsc(c.name)}</td><td class="aq-dim">${
+            c.kind === 'num' ? 'число' : c.kind === 'date' ? 'дата' : 'текст'}</td><td class="aq-n">${
+            i.filled}${i.seen < rows ? ` <span class="aq-dim">з ${i.seen}</span>` : ''}</td><td>${what}</td></tr>`;
+        }).join('')
+      + '</tbody></table>';
+  }).join('')
+  + `<p class="aq-cost">Огляд склав дашборд із відкритих рядків — модель не питали,
+      і значення нікуди не їхали. Тому це безкоштовно.</p>`;
+};
+
 window.aqAsk = async function () {
   if (aqBusy) return;
   const q = (document.getElementById('aq-q')?.value || '').trim();
@@ -354,7 +425,13 @@ window.aqAsk = async function () {
 
   const got = aqCheck(plan, sets);
   if (got.err) {
+    /* Найчастіша причина — питання про ВМІСТ («що тут є?»), а вмісту
+       модель і не бачить: їй дають лише назви стовпців. Відповідь на
+       таке питання є в дашборда, і вона за одне натискання. */
     out.innerHTML = `<p class="aq-note is-bad">${aqEsc(got.err)}</p>`
+      + `<p class="aq-note">Питання про те, ЩО лежить у таблиці, модель і не може
+         розібрати: значень вона не бачить. Натисни «Що в таблиці?» — дашборд
+         покаже стовпці, межі чисел і які значення справді зустрічаються.</p>`
       + `<p class="aq-cost">${aqEsc(j.model || '')} · ~$${(j.cost_usd || 0).toFixed(5)}</p>`;
     return;
   }
