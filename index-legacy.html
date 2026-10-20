@@ -9213,9 +9213,9 @@ function apRender() {
     return;
   }
 
-  const copyBtn = (v, title) => !v ? '' :
-    `<button onclick="apCopy(event, this)" data-v="${apEsc(v)}" title="${title}"
-       class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі</button>`;
+  /* Окремої кнопки «копі» більше немає: копіює сам текст, як у PWA.
+     Кнопка поруч із тим, по чому й так клікають, лише питала щоразу,
+     чим вона відрізняється від кліку. */
 
   /* ВИД ГОТОВОЇ ПРІЛКИ.
 
@@ -9275,13 +9275,15 @@ function apRender() {
 
       ${it.naming ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Неймінг</span>
-        <code class="text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate" title="${apEsc(r.naming)}">${apEsc(r.naming)}</code>
-        ${copyBtn(r.naming, 'Скопіювати неймінг')}</div>` : ''}
+        <code onclick="apCopy(event, this)" data-v="${apEsc(r.naming)}"
+          title="Клік — скопіювати: ${apEsc(r.naming)}"
+          class="ap-copy text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.naming)}</code></div>` : ''}
 
       ${it.deeplink ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Діплінк</span>
-        <code class="text-[11px] font-mono text-sky-300 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate" title="${apEsc(r.deeplink)}">${apEsc(r.deeplink)}</code>
-        ${copyBtn(r.deeplink, 'Скопіювати діплінк')}</div>` : ''}
+        <code onclick="apCopy(event, this)" data-v="${apEsc(r.deeplink)}"
+          title="Клік — скопіювати: ${apEsc(r.deeplink)}"
+          class="ap-copy text-[11px] font-mono text-sky-300 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.deeplink)}</code></div>` : ''}
 
       ${r.left.length ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
         Не підставлено: <code class="font-mono">${r.left.map(apEsc).join(' ')}</code>${
@@ -9300,9 +9302,11 @@ function apRender() {
             <span class="text-[9px] font-black uppercase tracking-widest ${
               x.mode === 'fixed' ? 'text-slate-600' : 'text-emerald-400'}">${
               x.mode === 'fixed' ? 'фікс' : 'макро'}</span>
-            <code class="text-[11px] font-mono text-slate-200 break-all" title="${apEsc(hint || val)}">${apEsc(val)}${
+            <code onclick="apCopy(event, this)" data-v="${apEsc(val)}"
+              class="ap-copy text-[11px] font-mono text-slate-200 break-all cursor-pointer rounded px-1"
+              title="Клік — скопіювати: ${apEsc(hint || val)}">${apEsc(val)}${
               hint ? `<span class="text-slate-500 font-sans"> · ${apEsc(hint)}</span>` : ''}</code>
-            ${copyBtn(val, 'Скопіювати значення')}`;
+            <span></span>`;
         }).join('')}
         </div></details>` : ''}
 
@@ -9403,17 +9407,28 @@ function apAccLabel(id) {
 
 /* Копіювання з підтвердженням на самій кнопці: без нього незрозуміло,
    чи клік узагалі спрацював, і люди тиснуть удруге. */
-async function apCopy(ev, btn) {
-  ev.stopPropagation();
-  const v = btn.getAttribute('data-v') || '';
+/* КОПІЮЄ САМ ТЕКСТ, А НЕ КНОПКА ПОРУЧ.
+
+   Доти копіювання жило в окремій кнопці «копі», а підтвердження —
+   у підміні її підпису на «ок». Через це клікати по самому неймінгу
+   було марно (а це перше, що роблять), і повісити те саме на текст
+   було не можна: підміна textContent стерла б те, що копіюють.
+
+   Тому підтвердження тепер таке саме, як у PWA: рамка спалахує
+   зеленим, а сказане йде тостом. Поведінка одна на обидва екрани —
+   і на кнопці, і на тексті. */
+async function apCopy(ev, el) {
+  ev.preventDefault(); ev.stopPropagation();
+  const v = el.getAttribute('data-v') || el.textContent || '';
+  if (!v) return;
   try { await navigator.clipboard.writeText(v); } catch (e) {
     const t = document.createElement('textarea');
     t.value = v; document.body.appendChild(t); t.select();
     try { document.execCommand('copy'); } finally { t.remove(); }
   }
-  const was = btn.textContent;
-  btn.textContent = 'ок'; btn.classList.add('text-emerald-400');
-  setTimeout(() => { btn.textContent = was; btn.classList.remove('text-emerald-400'); }, 1200);
+  el.style.boxShadow = 'inset 0 0 0 1.5px #22C55E';
+  setTimeout(() => { el.style.boxShadow = ''; }, 900);
+  if (typeof toast === 'function') toast('Скопійовано: ' + v, 'ok', 1600);
 }
 
 /* ─────────── редактор ─────────── */

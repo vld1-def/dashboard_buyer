@@ -165,6 +165,12 @@ const CD_REG = 'complete_registration';
    колонка на кожному PWA-кабінеті — це шум, а відсутня на APP-кабінеті
    — та сама вада, що й була. */
 const CD_INST = 'mobile_app_install';
+/* ПОКУПКА. Те, заради чого все й крутиться: Facebook зве її purchase,
+   і вона приходить у тих самих actions, що ліди й реєстрації. Доти її
+   рахували тільки тоді, коли на неї оптимізується адсет (вона падала в
+   «результат»), — тож кабінет, де частина адсетів на лід, а частина на
+   покупку, свого числа покупок не мав ніде. */
+const CD_BUY = 'purchase';
 
 /* Чи є в знімку інстали — питають уже в cdHasInstalls, і прямо в
    сирих рядків: відповідь потрібна ДО того, як складено дерево. */
@@ -685,6 +691,7 @@ function cdMetrics(r) {
     leadWhy: cdLeadWhy(acts, cdLeads),
     regs: cdPick(acts, CD_REG) || 0,
     installs: cdPick(acts, CD_INST) || 0,
+    buys: cdPick(acts, CD_BUY) || 0,
     result: !suf ? null
           : (suf === 'impressions' || suf === 'reach_as_impressions') ? imps
           : (cdPick(acts, suf) || 0),
@@ -712,7 +719,7 @@ function cdNode(id, name, kind) {
      перемикач. Два різні поля, два різні питання. */
   return { id: String(id || ''), name: name || '', kind, own: '', sw: '', budget: null,
            leadBy: new Map(),        // подія → { v, used } по всіх дітях
-           spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0,
+           spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0, buys: 0,
            result: 0, hasResult: false, goals: new Set(),
            /* ЯКІ саме одиниці склались у result. Набором, бо під
               кампанією бувають адсети з різними цілями, і тоді їхня
@@ -734,7 +741,8 @@ function cdAdd(n, m) {
     n.leadBy.set(x.t, cur);
   });
   n.spend += m.spend; n.imps += m.imps; n.clicks += m.clicks;
-  n.leads += m.leads; n.regs += m.regs; n.installs += m.installs; n.ads++;
+  n.leads += m.leads; n.regs += m.regs; n.installs += m.installs;
+  n.buys += m.buys || 0; n.ads++;
   if (m.result != null) { n.result += m.result; n.hasResult = true;
                           if (m.unit) n.units.add(m.unit); }
   if (m.goal) n.goals.add(m.goal);
@@ -935,12 +943,39 @@ window.cdFields = function (n, depth) {
     leads: String(n.leads), perLead: cdPer(n.spend, n.leads), leadTip: cdLeadTip(n),
     regs: String(n.regs), perReg: cdPer(n.spend, n.regs),
     installs: String(n.installs || 0), perInstall: cdPer(n.spend, n.installs),
+    buys: String(n.buys || 0), perBuy: cdPer(n.spend, n.buys),
     ads: n.kind === 'ad' ? '' : String(n.ads),
     marked: cdMarked.has(String(n.id)),
     kids: n.kids && n.kids.length > 0,
     open: cdOpenIds.has(n.kind + ':' + n.id),
     key: n.kind + ':' + n.id
   };
+};
+
+/* ЩО ЗНІМОК КАЖЕ ПРО ЦІЛИЙ КАБІНЕТ.
+
+   Таблиця кабінетів показувала депозити тільки з нашого імпорту, і поки
+   файл за сьогодні не залитий, стовпчик стояв порожній — хоч Facebook
+   усе це вже порахував і ми це бачили в дереві кампаній того самого
+   кабінета. Тобто одне й те саме число було в одному місці й не було в
+   сусідньому.
+
+   fb_ad_today лежить у базі по ВСІХ кабінетах команди — дерево просто
+   читає з неї свій шматок. Тож підсумок на кабінет складається з тих
+   самих рядків і не коштує жодного запиту до Facebook. */
+window.cdSumRows = function (rows) {
+  const by = {};
+  (Array.isArray(rows) ? rows : []).forEach(r => {
+    const id = String(r.account_id || '').trim();
+    if (!id) return;
+    const o = by[id] || (by[id] = { spend: 0, imps: 0, clicks: 0,
+                                    leads: 0, regs: 0, installs: 0, buys: 0, ads: 0 });
+    const m = cdMetrics(r);
+    o.spend += m.spend; o.imps += m.imps; o.clicks += m.clicks;
+    o.leads += m.leads; o.regs += m.regs; o.installs += m.installs;
+    o.buys += m.buys; o.ads++;
+  });
+  return by;
 };
 
 /* Чи є в знімку хоч один інстал. Питаємо СИРІ рядки, а не складене
