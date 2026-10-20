@@ -1095,7 +1095,8 @@ let mappingDB = { providers: {}, funnels: {} };
 let datasetToImport = [];
 /* Що з ЦЬОГО прев'ю вже лягло в базу. Потрібно для повторного Save
    після часткової відмови: без цього перша таблиця заливалась удруге. */
-let dsSavedDaily = false, dsSavedCrea = false, dsNoLanding = false; 
+let dsSavedDaily = false, dsSavedCrea = false, dsNoLanding = false, dsNoSite = false;
+
 let creativesToImport = [];
 let allFunnels = []; 
 let allProviders = [];
@@ -1526,7 +1527,7 @@ async function tsRead(keys) {
 const KM_DEFAULT = { prov:{}, src:'', acc:'Sub ID 5',
                      camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
-                     country:'Country', app:'Sub ID 4',
+                     country:'Country', app:'Sub ID 4', site:'Site',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
 
@@ -1576,7 +1577,13 @@ const KM_FIELDS = [
      Funnel Mapper. Порожньо — працюємо як раніше, з дужок. */
   { id: 'km-src',     key: 'src',     label: 'Provider (source)', grp: 'app', tone: 'text-amber-300',
     ph: 'Source',
-    tip: 'Необов\'язково. Стовпець зі звіту, де написано постачальника прілки (satorapps, trident). Порожньо — шукаємо стовпець «Source», а якщо його немає, беремо з дужок назви воронки' }
+    tip: 'Необов\'язково. Стовпець зі звіту, де написано постачальника прілки (satorapps, trident). Порожньо — шукаємо стовпець «Source», а якщо його немає, беремо з дужок назви воронки' },
+  /* Домен приїжджає разом зі статистикою — тим самим рядком, що й
+     спенд. Доти він жив окремо: у списку доменів (хто живий) і в
+     оголошеннях на сьогодні. «Скільки ми на цей домен залили за весь
+     час» не мало де взятись. */
+  { id: 'km-site',    key: 'site',    label: 'Site (domain)', grp: 'both', tone: 'text-violet-300',
+    tip: 'Стовпець з доменом — mplay-kg.website. З нього беруться розріз по доменах у Report Builder і тотал у списку доменів' }
 ];
 
 /* Перебити можна лише те, що читається ПІСЛЯ того, як постачальник уже
@@ -1839,6 +1846,7 @@ async function loadKeitaroMap() {
   set('km-plc', keitaroMap.plc); set('km-offer', keitaroMap.offer);
   set('km-country', keitaroMap.country); set('km-app', keitaroMap.app);
   set('km-src', keitaroMap.src);
+  set('km-site', keitaroMap.site);
   set('km-day', keitaroMap.day); set('km-hour', keitaroMap.hour);
   set('km-ins', keitaroMap.ins); set('km-reg', keitaroMap.reg); set('km-dep', keitaroMap.dep);
   set('km-tz', keitaroMap.tz);
@@ -1858,6 +1866,10 @@ async function saveKeitaroMap() {
               // Порожньо — значить стовпця немає; підставляти сюди
               // типове значення означало б шукати колонку, якої нема.
               src:g('km-src'),
+              // Стовпця може не бути у файлі — тоді він просто не
+              // знайдеться. Тож тут типове значення підставляємо, а не
+              // стираємо домен назавжди через порожнє поле.
+              site:g('km-site')||KM_DEFAULT.site,
               day:g('km-day')||KM_DEFAULT.day, hour:g('km-hour')||KM_DEFAULT.hour,
               ins:g('km-ins')||KM_DEFAULT.ins, reg:g('km-reg')||KM_DEFAULT.reg,
               dep:g('km-dep')||KM_DEFAULT.dep, tz: parseInt(g('km-tz'), 10),
@@ -2680,6 +2692,23 @@ function handleKeitaroFile(e) {
   reader.readAsText(file);
 }
 
+/* ДОМЕН З ВИГРУЗКИ → ЧИСТИЙ ХОСТ.
+
+   У стовпці Site трапляється і «https://mplay-kg.website/», і
+   «www.mplay-kg.website», і макрос «{site}», який Keitaro не підставив.
+   У базі мусить лежати одне: той самий хост, за яким рядок статистики
+   зійдеться з рядком у списку доменів (там нормалізація та сама —
+   dmNormDomain). Не схоже на домен — краще порожньо, ніж сміття,
+   яке потім не зійдеться ні з чим. */
+function ktSite(raw) {
+  let v = String(raw == null ? '' : raw).trim().toLowerCase();
+  if (!v || v.startsWith('{')) return '';
+  v = v.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
+  v = v.split('/')[0].split('?')[0].split('#')[0];
+  v = v.replace(/^www\./, '').replace(/\.$/, '').split(':')[0];
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(v) ? v : '';
+}
+
 function parseKeitaro(content) {
   content = content.replace(/﻿/g, '');
   const lines = content.split(/\r?\n/).filter(l => l.trim() !== '');
@@ -2741,6 +2770,14 @@ function parseKeitaro(content) {
     : -1;
   console.log('Keitaro offer column:', iOff >= 0 ? `"${sp(lines[0])[iOff]}"` : `НЕ ЗНАЙДЕНО (шукали "${keitaroMap.offer}")`,
               '| відомі оффери команди:', knownOffers);
+  /* ДОМЕН — ТІЛЬКИ ТОЧНИЙ ЗБІГ. col() після точного пробує частковий,
+     а «site» — короткий токен: у шапці трапляються і «Website», і
+     «Site ID», і брати їх за домен не можна. Стовпця немає — домену
+     просто не буде, і це краще, ніж домен не з того стовпця. */
+  const iSite = (() => {
+    const n = String(keitaroMap.site || '').toLowerCase().trim();
+    return n ? h.findIndex(x => x === n) : -1;
+  })();
   const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
   const iIns = col(keitaroMap.ins), iReg = col(keitaroMap.reg), iDep = col(keitaroMap.dep);
   const fileTz = Number(keitaroMap.tz);
@@ -2902,8 +2939,16 @@ function parseKeitaro(content) {
       /* Нерозпізнаний офер сюди не потрапляє — як і до лендінгів. Так
          набір рядків лишається тим самим, лише дрібнішим. */
       const land = raw || offer;
+      /* КЛЮЧ — ПАРА (лендінг, домен), а не лендінг. Один лендінг
+         крутиться на кількох доменах, і щоб показати спенд по домену,
+         не збрехавши, ділити треба по парах. Суми по оферах і по
+         лендінгах від цього не міняються: ділиться те, що й так
+         належало цій групі. Домену немає — ключ той самий, що був. */
+      const site = iSite >= 0 ? ktSite(r[iSite]) : '';
       const grp = (byDailyLand[dk] = byDailyLand[dk] || {});
-      const cell = (grp[land] = grp[land] || { installs: 0, regs: 0, deps: 0, offer });
+      const gk = site ? land + '\u0001' + site : land;
+      const cell = (grp[gk] = grp[gk] || { installs: 0, regs: 0, deps: 0,
+                                           offer, landing: land, site });
       cell.installs += ins;
       cell.regs += reg;
       cell.deps += dep;
@@ -3032,10 +3077,12 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     rows.forEach(row => {
       const offers = offersOf(keyOf(row));
       const names = offers ? Object.keys(offers) : [];
-      if (names.length < 2) {                       // один лендінг або жодного
+      if (names.length < 2) {                       // одна пара або жодної
         if (names.length === 1) {
-          row.offer = offers[names[0]].offer || names[0];
-          row.landing = names[0];
+          const o = offers[names[0]];
+          row.offer = o.offer || o.landing || names[0];
+          row.landing = o.landing || names[0];
+          row.site = o.site || null;
         }
         out.push(row);
         return;
@@ -3054,7 +3101,8 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
         // Цифри оффера — теж на частку рядка в групі, інакше під APP
         // кожен рядок групи забрав би собі всі інсталли оффера.
         const w = weightOf ? (weightOf(row) || 1) : 1;
-        out.push({ ...row, offer: o.offer || name, landing: name, spend,
+        out.push({ ...row, offer: o.offer || o.landing || name,
+                   landing: o.landing || name, site: o.site || null, spend,
                    installs: w === 1 ? o.installs : Math.round(o.installs * w),
                    regs:     w === 1 ? o.regs     : Math.round(o.regs * w),
                    deps:     w === 1 ? o.deps     : Math.round(o.deps * w) });
@@ -3080,10 +3128,10 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     .filter(([k, v]) => !usedKt.has(k) && (v.installs || v.regs || v.deps))
     .map(([, v]) => v);
 
-  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах: ${dRes.splits} daily`);
+  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах і доменах: ${dRes.splits} daily`);
   renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives: creativesOut });
   showStatus(dRes.splits
-    ? `Keitaro: refined ${hitD} rows, split across landings ${dRes.splits}`
+    ? `Keitaro: refined ${hitD} rows, split across landings/domains ${dRes.splits}`
     : `Keitaro: refined ${hitD} stat rows`);
 
   return { daily: dRes.out, creatives: creativesOut };
@@ -3655,7 +3703,7 @@ async function processCampaignData(map, lines) {
   datasetToImport = merged.daily;
   creativesToImport = merged.creatives;
   // Новий набір — нічого з нього ще не збережено.
-  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false;
+  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false; dsNoSite = false;
   
   renderDualPreview();
 }
@@ -3751,6 +3799,11 @@ function renderDualPreview() {
           ${r.landing
             ? `<span class="text-[11px] font-bold text-amber-300/90 block truncate" title="${String(r.landing).replace(/"/g, '&quot;')}">${r.landing}</span>`
             : '<span class="text-[11px] font-bold text-slate-600">—</span>'}
+          <!-- Домен видно тут же: він з того самого рядка Keitaro, і
+               якщо стовпець Site узято не той, це помітно ДО збереження. -->
+          ${r.site
+            ? `<span class="text-[10px] font-bold text-violet-300/90 block truncate font-mono" title="Домен із вигрузки">${r.site}</span>`
+            : ''}
         </td>
         <td class="p-4 italic">
           <div class="editable-cell border-b border-white/10" contenteditable="true" 
@@ -3882,6 +3935,9 @@ async function confirmDatasetImport() {
     // Повний рядок оффера з Keitaro. Немає — null, а не порожній
     // рядок: порожнє в звіті читається як «лендінг без назви».
     landing: row.landing || null,
+    // Домен із вигрузки Keitaro. Немає — null: порожній рядок у звіті
+    // читався б як «домен без назви».
+    site: row.site || null,
     funnel: row.funnel,
     spend: row.spend,
     installs: row.installs || 0,
@@ -3927,11 +3983,24 @@ async function confirmDatasetImport() {
     /* Немає колонки landing — але дані є, і тримати їх заручником
        одного стовпця немає за що. Зберігаємо без лендінгів і кажемо,
        що виконати, щоб вони з'явились. */
-    if (res1.error && dsMissingCol(res1.error, 'landing')) {
-      dsNoLanding = true;
-      res1 = await sb.from('daily_stats')
-        .insert(finalDaily.map(({ landing, ...rest }) => rest));
+    /* Колонок може не бути двох: landing (LANDINGS.sql) і site
+       (SITES.sql). Знімаємо рівно ту, яку назвала база, і пробуємо
+       ще — доки є що знімати. Одна спроба на всі випадки означала б,
+       що без SITES.sql імпорт ляже цілком, хоч дані в ньому є. */
+    const strip = [];
+    for (let i = 0; i < 2 && res1.error; i++) {
+      const miss = ['landing', 'site']
+        .find(c => !strip.includes(c) && dsMissingCol(res1.error, c));
+      if (!miss) break;
+      strip.push(miss);
+      res1 = await sb.from('daily_stats').insert(finalDaily.map(r => {
+        const x = { ...r };
+        strip.forEach(c => delete x[c]);
+        return x;
+      }));
     }
+    if (strip.includes('landing')) dsNoLanding = true;
+    if (strip.includes('site')) dsNoSite = true;
     if (!res1.error) dsSavedDaily = true;
   }
   let res2 = { error: null };
@@ -3963,13 +4032,19 @@ async function confirmDatasetImport() {
   }
 
   showStatus(`Success! Saved ${finalDaily.length} rows.`
-    + (dsNoLanding ? ' Landings skipped.' : ''));
-  /* Збереглось, але без лендінгів — це не дрібниця: у звітах не буде
-     розбивки, і зрозуміти, чому, можна лише звідси. */
-  if (dsNoLanding)
-    alert('Saved — but WITHOUT landings: the daily_stats table has no "landing" column yet.'
-      + '\n\nRun LANDINGS.sql in Supabase \u2192 SQL Editor, then import this file again'
-      + ' to get the landing split.');
+    + (dsNoLanding ? ' Landings skipped.' : '')
+    + (dsNoSite ? ' Domains skipped.' : ''));
+  /* Збереглось, але без лендінгів чи доменів — це не дрібниця: у
+     звітах не буде розбивки, і зрозуміти, чому, можна лише звідси. */
+  if (dsNoLanding || dsNoSite)
+    alert('Saved — but WITHOUT '
+      + [dsNoLanding && 'landings', dsNoSite && 'domains'].filter(Boolean).join(' and ')
+      + ': the daily_stats table has no '
+      + [dsNoLanding && '"landing"', dsNoSite && '"site"'].filter(Boolean).join(' / ')
+      + ' column yet.'
+      + '\n\nRun '
+      + [dsNoLanding && 'LANDINGS.sql', dsNoSite && 'SITES.sql'].filter(Boolean).join(' and ')
+      + ' in Supabase \u2192 SQL Editor, then import this file again to get the split.');
 
   // Ховаємо плаваючу панель
   const floating = document.getElementById('floating-actions');
@@ -4342,7 +4417,7 @@ function switchMode(m) {
 
 function resetImport(type) {
   // Прев'ю пішло — разом із ним і пам'ять про те, що з нього збережено.
-  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false;
+  dsSavedDaily = false; dsSavedCrea = false; dsNoLanding = false; dsNoSite = false;
   // Приховуємо прев'ю
   const preview = document.getElementById('dataset-preview');
   if (preview) preview.classList.add('hidden');
@@ -4655,6 +4730,8 @@ const REC_SCHEMA = {
        Правиться вручну, як решта: підказок немає навмисно, бо список
        лендінгів — це не довідник, а те, що приїхало з імпорту. */
     { key: 'landing',  label: 'Landing', type: 'text' },
+    // Домен із вигрузки Keitaro — чистий хост, mplay-kg.website.
+    { key: 'site',     label: 'Domain',  type: 'text' },
     { key: 'funnel',   label: 'Funnel', type: 'text', list: 'funnels' },
     { key: 'agent',    label: 'Agent',   type: 'text', list: 'agents' },
     { key: 'spend',    label: 'Spend',   type: 'money' },
