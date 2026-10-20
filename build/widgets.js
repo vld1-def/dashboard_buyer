@@ -1309,7 +1309,10 @@
 
   window.shPickAll = function () {
     const tab = shFile && (shFile.tabs[shFile.idx] || shFile.tabs[0]);
-    const rows = tab ? Math.max(0, (tab.rows || []).length - 1) : 0;
+    /* Скільки рядків ДАНИХ — рахуємо від заголовка, а не «усі мінус
+       один»: над заголовком бувають ще рядки, і «виділити все»
+       прихоплювало б їх теж. */
+    const rows = tab ? shSplit(tab).body.length : 0;
     const shown = Math.min(rows, SH_MAX_ROWS);
     if (shSel.size >= shown) shSel = new Set();
     else { shSel = new Set(); for (let k = 0; k < shown; k++) shSel.add(k); }
@@ -1326,16 +1329,98 @@
     shSum();
   }
 
+  /* ═══════════ ДЕ САМЕ ЗАГОЛОВОК ═══════════
+
+     Доти перший рядок файлу вважався заголовком — беззастережно. У
+     вивантаженнях це часто не так: угорі стоїть назва звіту, діапазон
+     дат, порожній рядок, іноді об'єднана комірка на всю ширину. Тоді
+     заголовок — рядок третій чи п'ятий, а стовпці лишались без назв
+     («col 1 … col 18»), і асистент не міг навіть сформулювати план:
+     питати «суму Spend» нема про що, коли стовпець зветься «col 7».
+
+     ГАДАЄМО, АЛЕ ВІДКРИТО. Здогадку видно в шапці файлу й її можна
+     змінити вибором, разом із «немає заголовка». Непомітна здогадка
+     гірша за її відсутність: помилившись, вона тихо зсуває ВСІ назви
+     на один рядок, і помітно це аж по дивних числах. */
+  const SH_HEAD_SCAN = 12;
+
+  // Комірка, яка виглядає числом (або датою) — тобто даними, а не назвою.
+  const shCellNum = v => {
+    const t = String(v == null ? '' : v).trim();
+    if (!t) return false;
+    return /\d/.test(t) && /^[-+(]?[\d\s.,:/%$€₴-]+\)?$/.test(t);
+  };
+
+  function shHeadGuess(rows) {
+    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+    if (!cols) return -1;
+    const last = Math.min(SH_HEAD_SCAN, Math.max(0, rows.length - 1));
+    for (let i = 0; i < last; i++) {
+      const r = rows[i] || [];
+      const cells = [];
+      for (let c = 0; c < cols; c++) {
+        const t = String(r[c] == null ? '' : r[c]).trim();
+        if (t) cells.push(t);
+      }
+      if (cells.length < 2 || cells.length * 2 < cols) continue;
+      // Заголовок — це СЛОВА. Рядок, де половина комірок числа, це дані.
+      const texty = cells.filter(t => !shCellNum(t)).length;
+      if (texty * 10 < cells.length * 7) continue;
+      /* За заголовком мусять іти дані: останній рядок файлу, що
+         випадково схожий на назви, заголовком не є. */
+      const nxt = rows[i + 1] || [];
+      let nf = 0;
+      for (let c = 0; c < cols; c++) if (String(nxt[c] == null ? '' : nxt[c]).trim()) nf++;
+      if (nf * 2 < cols) continue;
+      return i;
+    }
+    /* Нічого схожого не знайшлось. Перший рядок зі словами — усе ще
+       краща ставка, ніж «немає заголовка»: так виглядає файл, де назви
+       стовпців просто короткі й їх мало. */
+    for (let i = 0; i < last; i++) {
+      const r = rows[i] || [];
+      if (r.some(v => String(v == null ? '' : v).trim() && !shCellNum(v))) return i;
+    }
+    return -1;
+  }
+
+  /* Одне джерело правди для всіх трьох місць, які ділять файл на
+     заголовок і тіло: таблиця, підсумок виділення й асистент. Доти
+     кожне різало по rows[0] саме, і розійтись вони могли будь-коли. */
+  function shHeadAt(tab) {
+    if (!tab) return -1;
+    if (typeof tab.head !== 'number') tab.head = shHeadGuess(tab.rows || []);
+    return tab.head;
+  }
+  function shSplit(tab) {
+    const rows = (tab && tab.rows) || [];
+    const h = shHeadAt(tab);
+    return { h, head: h >= 0 ? (rows[h] || []) : [], body: rows.slice(h + 1),
+             cols: rows.reduce((m, r) => Math.max(m, r.length), 0) };
+  }
+
+  /* Змінили рядок заголовків — виділення знімаємо: рядок номер 5 після
+     зсуву це вже інший рядок, і сума по ньому була б вигадкою. */
+  window.shSetHead = function (v) {
+    const tab = shFile && (shFile.tabs[shFile.idx] || shFile.tabs[0]);
+    if (!tab) return;
+    const n = Number(v);
+    tab.head = Number.isFinite(n) ? n : -1;
+    shSel = new Set(); shAnchor = -1;
+    shPaint();
+  };
+
+  // Що видно в рядку — коротким рядком, щоб вибір не був вибором наосліп.
+  const shRowPeek = r => (r || []).map(v => String(v == null ? '' : v).trim())
+    .filter(Boolean).slice(0, 4).join(' · ').slice(0, 48) || '(порожній)';
+
   function shSum() {
     const box = document.getElementById('sh-sum');
     if (!box) return;
     if (!shFile || !shSel.size) { box.classList.add('hidden'); box.innerHTML = ''; return; }
     const tab = shFile.tabs[shFile.idx] || shFile.tabs[0];
-    const rows = tab.rows || [];
-    const head = rows[0] || [];
-    const body = rows.slice(1);
+    const { head, body, cols } = shSplit(tab);
     const picked = [...shSel].sort((a, b) => a - b).map(i => body[i]).filter(Boolean);
-    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
 
     const bits = [];
     const skipped = [];
@@ -1386,11 +1471,8 @@
   window.shDataset = function () {
     if (!shFile) return null;
     const tab = shFile.tabs[shFile.idx] || shFile.tabs[0];
-    const rows = tab && tab.rows || [];
-    if (rows.length < 2) return null;          // лише заголовок — питати нічого
-    const head = rows[0] || [];
-    const body = rows.slice(1);
-    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+    const { head, body, cols } = shSplit(tab);
+    if (!body.length) return null;             // лише заголовок — питати нічого
 
     const names = [], kinds = [], hows = [];
     const taken = new Set();
@@ -1447,14 +1529,12 @@
     if (!shFile || !bar || !box) return;
     const tab = shFile.tabs[shFile.idx] || shFile.tabs[0];
     const rows = tab.rows || [];
-    const head = rows[0] || [];
-    const body = rows.slice(1);
-    const cut = body.length > SH_MAX_ROWS;
-    const show = cut ? body.slice(0, SH_MAX_ROWS) : body;
     /* Найдовший рядок задає кількість стовпчиків: у вивантаженнях
        хвостові порожні комірки часто просто обрізані, і рівнятись на
        заголовок означало б загубити останні стовпчики. */
-    const cols = rows.reduce((m, r) => Math.max(m, r.length), 0);
+    const { h, head, body, cols } = shSplit(tab);
+    const cut = body.length > SH_MAX_ROWS;
+    const show = cut ? body.slice(0, SH_MAX_ROWS) : body;
 
     bar.innerHTML = '<span class="sh-fname">' + shEsc(shFile.name) + '</span>'
       + (shFile.tabs.length > 1
@@ -1465,6 +1545,16 @@
           : '')
       + '<span class="sh-rows">' + body.length + ' row(s) · ' + cols + ' column(s)'
       + (cut ? ' · showing first ' + SH_MAX_ROWS : '') + '</span>'
+      /* ЗДОГАДКУ ВИДНО Й МОЖНА ЗМІНИТИ. Угорі вивантаження часто
+         стоїть назва звіту або порожній рядок, і заголовок — третій;
+         помилившись тихо, здогадка зсунула б усі назви на рядок. */
+      + '<span class="sh-head">header'
+      + '<select class="sh-tabs" onchange="shSetHead(this.value)">'
+      + rows.slice(0, SH_HEAD_SCAN).map((r, i) => '<option value="' + i + '"'
+          + (i === h ? ' selected' : '') + '>row ' + (i + 1) + ' — '
+          + shEsc(shRowPeek(r)) + '</option>').join('')
+      + '<option value="-1"' + (h < 0 ? ' selected' : '') + '>немає заголовка</option>'
+      + '</select></span>'
       /* Без цього рядка виділення просто не знаходять: номер рядка не
          схожий на кнопку, і «сума не працює» означає «я не здогадався,
          куди тиснути». */
@@ -1484,7 +1574,7 @@
          кожен стовпчик на вагу. */
       + show.map((r, i) => '<tr data-i="' + i + '"' + (shSel.has(i) ? ' class="is-sel"' : '') + '>'
           + '<td class="sh-n is-pick" onclick="shRowPick(' + i + ', event.shiftKey)"'
-          + ' title="Click to pick, shift-click for a range">' + (i + 2) + '</td>'
+          + ' title="Click to pick, shift-click for a range">' + (i + h + 2) + '</td>'
           + pad(r).map(v => cell(v, 'td')).join('') + '</tr>').join('')
       + '</tbody></table>';
     shSum();
