@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 16.10 10:59">
+  <meta name="build" content="build 20.10 08:28">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5070,6 +5070,13 @@ input.ui-in[type="range"] { padding: 0; }
 /* Значок календаря більше не відтісняє текст від центру: він сидить
    на своєму краю й місця під себе не вимагає. */
 .cab-dates input[type="date"]::-webkit-calendar-picker-indicator { margin-right: 0; }
+
+
+/* Текст, який копіюється кліком — у прілках і PWA однаково. Наведення
+   каже, що по ньому можна тиснути: без цього єдиний спосіб дізнатись —
+   спробувати. */
+.ap-copy { transition: background .14s, color .14s; }
+.ap-copy:hover { background: rgba(255,255,255,.10); color: #fff; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -5267,7 +5274,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 16.10 10:59</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 08:28</div>
     </div>
   </aside>
 
@@ -15513,9 +15520,9 @@ function apRender() {
     return;
   }
 
-  const copyBtn = (v, title) => !v ? '' :
-    `<button onclick="apCopy(event, this)" data-v="${apEsc(v)}" title="${title}"
-       class="shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі</button>`;
+  /* Окремої кнопки «копі» більше немає: копіює сам текст, як у PWA.
+     Кнопка поруч із тим, по чому й так клікають, лише питала щоразу,
+     чим вона відрізняється від кліку. */
 
   /* ВИД ГОТОВОЇ ПРІЛКИ.
 
@@ -15575,13 +15582,15 @@ function apRender() {
 
       ${it.naming ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Неймінг</span>
-        <code class="text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate" title="${apEsc(r.naming)}">${apEsc(r.naming)}</code>
-        ${copyBtn(r.naming, 'Скопіювати неймінг')}</div>` : ''}
+        <code onclick="apCopy(event, this)" data-v="${apEsc(r.naming)}"
+          title="Клік — скопіювати: ${apEsc(r.naming)}"
+          class="ap-copy text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.naming)}</code></div>` : ''}
 
       ${it.deeplink ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Діплінк</span>
-        <code class="text-[11px] font-mono text-sky-300 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate" title="${apEsc(r.deeplink)}">${apEsc(r.deeplink)}</code>
-        ${copyBtn(r.deeplink, 'Скопіювати діплінк')}</div>` : ''}
+        <code onclick="apCopy(event, this)" data-v="${apEsc(r.deeplink)}"
+          title="Клік — скопіювати: ${apEsc(r.deeplink)}"
+          class="ap-copy text-[11px] font-mono text-sky-300 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.deeplink)}</code></div>` : ''}
 
       ${r.left.length ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
         Не підставлено: <code class="font-mono">${r.left.map(apEsc).join(' ')}</code>${
@@ -15600,9 +15609,11 @@ function apRender() {
             <span class="text-[9px] font-black uppercase tracking-widest ${
               x.mode === 'fixed' ? 'text-slate-600' : 'text-emerald-400'}">${
               x.mode === 'fixed' ? 'фікс' : 'макро'}</span>
-            <code class="text-[11px] font-mono text-slate-200 break-all" title="${apEsc(hint || val)}">${apEsc(val)}${
+            <code onclick="apCopy(event, this)" data-v="${apEsc(val)}"
+              class="ap-copy text-[11px] font-mono text-slate-200 break-all cursor-pointer rounded px-1"
+              title="Клік — скопіювати: ${apEsc(hint || val)}">${apEsc(val)}${
               hint ? `<span class="text-slate-500 font-sans"> · ${apEsc(hint)}</span>` : ''}</code>
-            ${copyBtn(val, 'Скопіювати значення')}`;
+            <span></span>`;
         }).join('')}
         </div></details>` : ''}
 
@@ -15703,17 +15714,28 @@ function apAccLabel(id) {
 
 /* Копіювання з підтвердженням на самій кнопці: без нього незрозуміло,
    чи клік узагалі спрацював, і люди тиснуть удруге. */
-async function apCopy(ev, btn) {
-  ev.stopPropagation();
-  const v = btn.getAttribute('data-v') || '';
+/* КОПІЮЄ САМ ТЕКСТ, А НЕ КНОПКА ПОРУЧ.
+
+   Доти копіювання жило в окремій кнопці «копі», а підтвердження —
+   у підміні її підпису на «ок». Через це клікати по самому неймінгу
+   було марно (а це перше, що роблять), і повісити те саме на текст
+   було не можна: підміна textContent стерла б те, що копіюють.
+
+   Тому підтвердження тепер таке саме, як у PWA: рамка спалахує
+   зеленим, а сказане йде тостом. Поведінка одна на обидва екрани —
+   і на кнопці, і на тексті. */
+async function apCopy(ev, el) {
+  ev.preventDefault(); ev.stopPropagation();
+  const v = el.getAttribute('data-v') || el.textContent || '';
+  if (!v) return;
   try { await navigator.clipboard.writeText(v); } catch (e) {
     const t = document.createElement('textarea');
     t.value = v; document.body.appendChild(t); t.select();
     try { document.execCommand('copy'); } finally { t.remove(); }
   }
-  const was = btn.textContent;
-  btn.textContent = 'ок'; btn.classList.add('text-emerald-400');
-  setTimeout(() => { btn.textContent = was; btn.classList.remove('text-emerald-400'); }, 1200);
+  el.style.boxShadow = 'inset 0 0 0 1.5px #22C55E';
+  setTimeout(() => { el.style.boxShadow = ''; }, 900);
+  if (typeof toast === 'function') toast('Скопійовано: ' + v, 'ok', 1600);
 }
 
 /* ─────────── редактор ─────────── */
@@ -21853,15 +21875,35 @@ const CAB_COLS = [
     tip: 'Spend \u00f7 results \u2014 campaign level', get: () => null },
   { key: 'cpm', label: 'CPM', ta: 'r', node: 1,
     tip: 'Cost per 1000 impressions \u2014 campaign level', get: () => null },
+  /* ЦІ ЧОТИРИ ЧИТАЮТЬСЯ Й У РЯДКУ КАБІНЕТА. Facebook рахує їх на
+     оголошеннях, а знімок fb_ad_today лежить у базі по всьому парку —
+     отже підсумок на кабінет складається з тих самих рядків і не
+     коштує жодного запиту. Прочерк означає «знімка ще немає», а не
+     нуль. */
   { key: 'leads', label: 'Lead', ta: 'r', node: 1,
-    tip: 'Leads \u2014 campaign level', get: () => null },
-  { key: 'cpl', label: 'Cost / lead', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+    tip: 'Leads Facebook counted on this cabinet\u2019s ads, from the latest snapshot',
+    get: c => cabSnapOf(c, 'leads') },
+  { key: 'cpl', label: 'Cost / lead', ta: 'r', node: 1,
+    tip: 'Spend \u00f7 leads, both from the snapshot',
+    get: c => cabSnapPer(c, 'leads'), cell: (v, c) => cabSnapMoney(v, c) },
   { key: 'regs', label: 'Reg', ta: 'r', node: 1,
-    tip: 'Completed registrations \u2014 campaign level', get: () => null },
-  { key: 'cpreg', label: 'Cost / reg', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+    tip: 'Completed registrations Facebook counted on this cabinet\u2019s ads',
+    get: c => cabSnapOf(c, 'regs') },
+  { key: 'cpreg', label: 'Cost / reg', ta: 'r', node: 1, tip: 'Spend \u00f7 registrations',
+    get: c => cabSnapPer(c, 'regs'), cell: (v, c) => cabSnapMoney(v, c) },
+  /* ПОКУПКИ. Саме те, заради чого крутять. Доти вони були тільки в
+     дереві, та й там лише коли адсет на них оптимізується — тож
+     кабінет свого числа покупок не мав ніде. */
+  { key: 'buys', label: 'Purch', ta: 'r', node: 1,
+    tip: 'Purchases Facebook counted on this cabinet\u2019s ads \u2014 not the deposits from our own imports, which is the Deps column',
+    get: c => cabSnapOf(c, 'buys') },
+  { key: 'cpbuy', label: 'Cost / purch', ta: 'r', node: 1, tip: 'Spend \u00f7 purchases',
+    get: c => cabSnapPer(c, 'buys'), cell: (v, c) => cabSnapMoney(v, c) },
   { key: 'inst', label: 'Install', ta: 'r', node: 1,
-    tip: 'Mobile app installs \u2014 campaign level', get: () => null },
-  { key: 'cpi', label: 'Cost / install', ta: 'r', node: 1, tip: 'Campaign level', get: () => null }
+    tip: 'Mobile app installs Facebook counted on this cabinet\u2019s ads',
+    get: c => cabSnapOf(c, 'installs') },
+  { key: 'cpi', label: 'Cost / install', ta: 'r', node: 1, tip: 'Spend \u00f7 installs',
+    get: c => cabSnapPer(c, 'installs'), cell: (v, c) => cabSnapMoney(v, c) }
   /* КАРТКА, BM, ТАЙМЗОНА Й ОСТАННІЙ СПЕНД ТУТ НЕ ЖИВУТЬ.
      Усе це вже є в панелі кабінета, яку відкриває кнопка дій, і там
      воно стоїть поруч із тим, що пояснює: валютою, станом Facebook,
@@ -22371,6 +22413,7 @@ async function cabInit() {
   cabCols.fb_account_id = 'fb_account_id' in sample;
   await cabFbLoad();
   await cabDaysLoad();
+  await cabSnapLoad();
   if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
@@ -22542,6 +22585,52 @@ async function cabFbLoad() {
    причини: в адміна політика fb_spend_daily_read_team віддає чужі
    рядки теж, а показати чужий спенд під своїм кабінетом гірше, ніж
    не показати нічого. */
+/* ЗНІМОК ОГОЛОШЕНЬ — ПІДСУМКОМ НА КАБІНЕТ.
+
+   Ліди, реєстрації, інсталі й ПОКУПКИ Facebook рахує на оголошеннях, і
+   в дереві кампаній ми їх показуємо. А в рядку самого кабінета їх не
+   було: там стояли тільки депозити з нашого імпорту, і поки файл за
+   сьогодні не залитий, стовпчик був порожній. Те саме число є в одному
+   місці й немає в сусідньому — а питання ж одне.
+
+   Таблиця fb_ad_today лежить у базі по всіх кабінетах команди, тож це
+   один запит на завантаження сторінки й жодного до Facebook. Помилка
+   тут нічого не ламає: лишаємось без цих стовпчиків, решта таблиці на
+   місці. */
+let cabSnap = {}, cabSnapErr = '';
+
+async function cabSnapLoad() {
+  cabSnap = {};
+  cabSnapErr = '';
+  if (typeof cdSumRows !== 'function') return;
+  try {
+    const rows = await sbFetchAll('fb_ad_today', q => q);
+    cabSnap = cdSumRows(rows.filter(r => !r.team_name || r.team_name === currentTeam));
+  } catch (e) {
+    cabSnapErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+/* Число зі знімка. null означає «не знаємо» — знімка ще немає або
+   кабінет у ньому не згадується; нуль означав би «порахували, вийшло
+   нуль», а це різні відповіді. */
+function cabSnapOf(c, key) {
+  const o = cabSnap[String(c.id || '')];
+  return o ? o[key] : null;
+}
+
+/* Ціна за подію — зі знімка, а не з наших грошей: ділити спенд із
+   одного джерела на події з іншого означало б число, яке не сходиться
+   ні з тим, ні з тим. Нуль подій — не нескінченність, а прочерк: ми не
+   ділимо, бо ділити нема на що. */
+function cabSnapPer(c, key) {
+  const o = cabSnap[String(c.id || '')];
+  if (!o) return null;
+  const n = Number(o[key]) || 0;
+  return n > 0 ? o.spend / n : null;
+}
+const cabSnapMoney = (v, c) => v == null ? null : cabMoneyCur(v, c.fb && c.fb.currency);
+
 async function cabDaysLoad() {
   cabDays = {};
   cabDaysErr = '';
@@ -22706,6 +22795,8 @@ async function cabSyncScope(what, opts) {
     await fbSync(say, opts);
     await cabFbLoad();
     await cabDaysLoad();
+    // Знімок оголошень переписує сама синхронізація — перечитуємо.
+    await cabSnapLoad();
     step.done(last.html || ('Synced ' + cabEsc(what)), last.kind || 'is-ok', true);
     cabRender();
   } catch (e) {
@@ -22752,6 +22843,7 @@ window.cabSync = async function () {
     await fbSync(say);
     await cabFbLoad();
     await cabDaysLoad();
+    await cabSnapLoad();
     if (typeof fpLoad === 'function') await fpLoad();
     /* Останнє, що сказала fbSync, лишаємо на екрані — але вже як
        звичайний тост, який згасне сам. Живий тост, забутий увімкненим,
@@ -26856,6 +26948,12 @@ const CD_REG = 'complete_registration';
    колонка на кожному PWA-кабінеті — це шум, а відсутня на APP-кабінеті
    — та сама вада, що й була. */
 const CD_INST = 'mobile_app_install';
+/* ПОКУПКА. Те, заради чого все й крутиться: Facebook зве її purchase,
+   і вона приходить у тих самих actions, що ліди й реєстрації. Доти її
+   рахували тільки тоді, коли на неї оптимізується адсет (вона падала в
+   «результат»), — тож кабінет, де частина адсетів на лід, а частина на
+   покупку, свого числа покупок не мав ніде. */
+const CD_BUY = 'purchase';
 
 /* Чи є в знімку інстали — питають уже в cdHasInstalls, і прямо в
    сирих рядків: відповідь потрібна ДО того, як складено дерево. */
@@ -27376,6 +27474,7 @@ function cdMetrics(r) {
     leadWhy: cdLeadWhy(acts, cdLeads),
     regs: cdPick(acts, CD_REG) || 0,
     installs: cdPick(acts, CD_INST) || 0,
+    buys: cdPick(acts, CD_BUY) || 0,
     result: !suf ? null
           : (suf === 'impressions' || suf === 'reach_as_impressions') ? imps
           : (cdPick(acts, suf) || 0),
@@ -27403,7 +27502,7 @@ function cdNode(id, name, kind) {
      перемикач. Два різні поля, два різні питання. */
   return { id: String(id || ''), name: name || '', kind, own: '', sw: '', budget: null,
            leadBy: new Map(),        // подія → { v, used } по всіх дітях
-           spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0,
+           spend: 0, imps: 0, clicks: 0, leads: 0, regs: 0, installs: 0, buys: 0,
            result: 0, hasResult: false, goals: new Set(),
            /* ЯКІ саме одиниці склались у result. Набором, бо під
               кампанією бувають адсети з різними цілями, і тоді їхня
@@ -27425,7 +27524,8 @@ function cdAdd(n, m) {
     n.leadBy.set(x.t, cur);
   });
   n.spend += m.spend; n.imps += m.imps; n.clicks += m.clicks;
-  n.leads += m.leads; n.regs += m.regs; n.installs += m.installs; n.ads++;
+  n.leads += m.leads; n.regs += m.regs; n.installs += m.installs;
+  n.buys += m.buys || 0; n.ads++;
   if (m.result != null) { n.result += m.result; n.hasResult = true;
                           if (m.unit) n.units.add(m.unit); }
   if (m.goal) n.goals.add(m.goal);
@@ -27626,12 +27726,39 @@ window.cdFields = function (n, depth) {
     leads: String(n.leads), perLead: cdPer(n.spend, n.leads), leadTip: cdLeadTip(n),
     regs: String(n.regs), perReg: cdPer(n.spend, n.regs),
     installs: String(n.installs || 0), perInstall: cdPer(n.spend, n.installs),
+    buys: String(n.buys || 0), perBuy: cdPer(n.spend, n.buys),
     ads: n.kind === 'ad' ? '' : String(n.ads),
     marked: cdMarked.has(String(n.id)),
     kids: n.kids && n.kids.length > 0,
     open: cdOpenIds.has(n.kind + ':' + n.id),
     key: n.kind + ':' + n.id
   };
+};
+
+/* ЩО ЗНІМОК КАЖЕ ПРО ЦІЛИЙ КАБІНЕТ.
+
+   Таблиця кабінетів показувала депозити тільки з нашого імпорту, і поки
+   файл за сьогодні не залитий, стовпчик стояв порожній — хоч Facebook
+   усе це вже порахував і ми це бачили в дереві кампаній того самого
+   кабінета. Тобто одне й те саме число було в одному місці й не було в
+   сусідньому.
+
+   fb_ad_today лежить у базі по ВСІХ кабінетах команди — дерево просто
+   читає з неї свій шматок. Тож підсумок на кабінет складається з тих
+   самих рядків і не коштує жодного запиту до Facebook. */
+window.cdSumRows = function (rows) {
+  const by = {};
+  (Array.isArray(rows) ? rows : []).forEach(r => {
+    const id = String(r.account_id || '').trim();
+    if (!id) return;
+    const o = by[id] || (by[id] = { spend: 0, imps: 0, clicks: 0,
+                                    leads: 0, regs: 0, installs: 0, buys: 0, ads: 0 });
+    const m = cdMetrics(r);
+    o.spend += m.spend; o.imps += m.imps; o.clicks += m.clicks;
+    o.leads += m.leads; o.regs += m.regs; o.installs += m.installs;
+    o.buys += m.buys; o.ads++;
+  });
+  return by;
 };
 
 /* Чи є в знімку хоч один інстал. Питаємо СИРІ рядки, а не складене

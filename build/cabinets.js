@@ -327,15 +327,35 @@ const CAB_COLS = [
     tip: 'Spend \u00f7 results \u2014 campaign level', get: () => null },
   { key: 'cpm', label: 'CPM', ta: 'r', node: 1,
     tip: 'Cost per 1000 impressions \u2014 campaign level', get: () => null },
+  /* ЦІ ЧОТИРИ ЧИТАЮТЬСЯ Й У РЯДКУ КАБІНЕТА. Facebook рахує їх на
+     оголошеннях, а знімок fb_ad_today лежить у базі по всьому парку —
+     отже підсумок на кабінет складається з тих самих рядків і не
+     коштує жодного запиту. Прочерк означає «знімка ще немає», а не
+     нуль. */
   { key: 'leads', label: 'Lead', ta: 'r', node: 1,
-    tip: 'Leads \u2014 campaign level', get: () => null },
-  { key: 'cpl', label: 'Cost / lead', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+    tip: 'Leads Facebook counted on this cabinet\u2019s ads, from the latest snapshot',
+    get: c => cabSnapOf(c, 'leads') },
+  { key: 'cpl', label: 'Cost / lead', ta: 'r', node: 1,
+    tip: 'Spend \u00f7 leads, both from the snapshot',
+    get: c => cabSnapPer(c, 'leads'), cell: (v, c) => cabSnapMoney(v, c) },
   { key: 'regs', label: 'Reg', ta: 'r', node: 1,
-    tip: 'Completed registrations \u2014 campaign level', get: () => null },
-  { key: 'cpreg', label: 'Cost / reg', ta: 'r', node: 1, tip: 'Campaign level', get: () => null },
+    tip: 'Completed registrations Facebook counted on this cabinet\u2019s ads',
+    get: c => cabSnapOf(c, 'regs') },
+  { key: 'cpreg', label: 'Cost / reg', ta: 'r', node: 1, tip: 'Spend \u00f7 registrations',
+    get: c => cabSnapPer(c, 'regs'), cell: (v, c) => cabSnapMoney(v, c) },
+  /* ПОКУПКИ. Саме те, заради чого крутять. Доти вони були тільки в
+     дереві, та й там лише коли адсет на них оптимізується — тож
+     кабінет свого числа покупок не мав ніде. */
+  { key: 'buys', label: 'Purch', ta: 'r', node: 1,
+    tip: 'Purchases Facebook counted on this cabinet\u2019s ads \u2014 not the deposits from our own imports, which is the Deps column',
+    get: c => cabSnapOf(c, 'buys') },
+  { key: 'cpbuy', label: 'Cost / purch', ta: 'r', node: 1, tip: 'Spend \u00f7 purchases',
+    get: c => cabSnapPer(c, 'buys'), cell: (v, c) => cabSnapMoney(v, c) },
   { key: 'inst', label: 'Install', ta: 'r', node: 1,
-    tip: 'Mobile app installs \u2014 campaign level', get: () => null },
-  { key: 'cpi', label: 'Cost / install', ta: 'r', node: 1, tip: 'Campaign level', get: () => null }
+    tip: 'Mobile app installs Facebook counted on this cabinet\u2019s ads',
+    get: c => cabSnapOf(c, 'installs') },
+  { key: 'cpi', label: 'Cost / install', ta: 'r', node: 1, tip: 'Spend \u00f7 installs',
+    get: c => cabSnapPer(c, 'installs'), cell: (v, c) => cabSnapMoney(v, c) }
   /* КАРТКА, BM, ТАЙМЗОНА Й ОСТАННІЙ СПЕНД ТУТ НЕ ЖИВУТЬ.
      Усе це вже є в панелі кабінета, яку відкриває кнопка дій, і там
      воно стоїть поруч із тим, що пояснює: валютою, станом Facebook,
@@ -845,6 +865,7 @@ async function cabInit() {
   cabCols.fb_account_id = 'fb_account_id' in sample;
   await cabFbLoad();
   await cabDaysLoad();
+  await cabSnapLoad();
   if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
@@ -1016,6 +1037,52 @@ async function cabFbLoad() {
    причини: в адміна політика fb_spend_daily_read_team віддає чужі
    рядки теж, а показати чужий спенд під своїм кабінетом гірше, ніж
    не показати нічого. */
+/* ЗНІМОК ОГОЛОШЕНЬ — ПІДСУМКОМ НА КАБІНЕТ.
+
+   Ліди, реєстрації, інсталі й ПОКУПКИ Facebook рахує на оголошеннях, і
+   в дереві кампаній ми їх показуємо. А в рядку самого кабінета їх не
+   було: там стояли тільки депозити з нашого імпорту, і поки файл за
+   сьогодні не залитий, стовпчик був порожній. Те саме число є в одному
+   місці й немає в сусідньому — а питання ж одне.
+
+   Таблиця fb_ad_today лежить у базі по всіх кабінетах команди, тож це
+   один запит на завантаження сторінки й жодного до Facebook. Помилка
+   тут нічого не ламає: лишаємось без цих стовпчиків, решта таблиці на
+   місці. */
+let cabSnap = {}, cabSnapErr = '';
+
+async function cabSnapLoad() {
+  cabSnap = {};
+  cabSnapErr = '';
+  if (typeof cdSumRows !== 'function') return;
+  try {
+    const rows = await sbFetchAll('fb_ad_today', q => q);
+    cabSnap = cdSumRows(rows.filter(r => !r.team_name || r.team_name === currentTeam));
+  } catch (e) {
+    cabSnapErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+/* Число зі знімка. null означає «не знаємо» — знімка ще немає або
+   кабінет у ньому не згадується; нуль означав би «порахували, вийшло
+   нуль», а це різні відповіді. */
+function cabSnapOf(c, key) {
+  const o = cabSnap[String(c.id || '')];
+  return o ? o[key] : null;
+}
+
+/* Ціна за подію — зі знімка, а не з наших грошей: ділити спенд із
+   одного джерела на події з іншого означало б число, яке не сходиться
+   ні з тим, ні з тим. Нуль подій — не нескінченність, а прочерк: ми не
+   ділимо, бо ділити нема на що. */
+function cabSnapPer(c, key) {
+  const o = cabSnap[String(c.id || '')];
+  if (!o) return null;
+  const n = Number(o[key]) || 0;
+  return n > 0 ? o.spend / n : null;
+}
+const cabSnapMoney = (v, c) => v == null ? null : cabMoneyCur(v, c.fb && c.fb.currency);
+
 async function cabDaysLoad() {
   cabDays = {};
   cabDaysErr = '';
@@ -1180,6 +1247,8 @@ async function cabSyncScope(what, opts) {
     await fbSync(say, opts);
     await cabFbLoad();
     await cabDaysLoad();
+    // Знімок оголошень переписує сама синхронізація — перечитуємо.
+    await cabSnapLoad();
     step.done(last.html || ('Synced ' + cabEsc(what)), last.kind || 'is-ok', true);
     cabRender();
   } catch (e) {
@@ -1226,6 +1295,7 @@ window.cabSync = async function () {
     await fbSync(say);
     await cabFbLoad();
     await cabDaysLoad();
+    await cabSnapLoad();
     if (typeof fpLoad === 'function') await fpLoad();
     /* Останнє, що сказала fbSync, лишаємо на екрані — але вже як
        звичайний тост, який згасне сам. Живий тост, забутий увімкненим,
