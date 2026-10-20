@@ -158,6 +158,97 @@ async function dmInit() {
   }
   dmLoaded = true;
   dmRender();
+  /* Після малювання, а не до: сторінка не мусить чекати на запис,
+     якого людина не просила. Якщо щось допишеться — перемалюємо. */
+  dmAutoLink();
+}
+
+/* ═══════════ ДОМЕН САМ ЗНАЄ, ЧИЙ ВІН ═══════════
+
+   У PWA-кампанії домени вже перелічені: це її силки. Тобто відповідь
+   на питання «ця адреса чия» в базі лежить — тільки в іншому ключі
+   (team_settings → pwa_links), і доти список доменів про неї не знав
+   нічого. Через це домен, доданий вставкою, лишався без гео, і в
+   таблиці виглядав як початок нової PWA, хоч кампанія з цією самою
+   силкою давно є.
+
+   ПРО ВГАДУВАННЯ. Тут його немає: збіг іде по ПОВНОМУ домену після тієї
+   самої нормалізації, що й усюди (dmNormDomain). Якщо домен стоїть у
+   силках кампанії — він її, і це не догадка, а те, що вписали руками.
+
+   Гео й оффер беремо з полів запису, а не з розбору назви: у PWA їх
+   можна переписати руками, і написане руками завжди свіжіше. */
+let dmPwaMap = null;
+
+async function dmPwaLoad() {
+  if (dmPwaMap) return dmPwaMap;
+  dmPwaMap = new Map();
+  try {
+    const raw = await getTeamSetting('pwa_links');
+    const items = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+    (Array.isArray(items) ? items : []).forEach(it => {
+      const info = dmHeadInfo(String(it.name || ''));
+      const pwa = String(it.offer || '').trim() || info.pwa || null;
+      const geo = (String(it.geo || '').trim() || info.geo || '').toUpperCase() || null;
+      (Array.isArray(it.links) ? it.links : []).forEach(l => {
+        const d = dmNormDomain(l);
+        // Перший, хто назвав домен своїм, і лишається: та сама адреса в
+        // двох кампаніях — це вже питання до кампаній, не до нас.
+        if (d && !dmPwaMap.has(d)) dmPwaMap.set(d, {
+          pwa, geo, ktid: info.ktid || null,
+          campaign: String(it.name || '').trim() || null });
+      });
+    });
+  } catch (e) { /* довідника немає — працюємо як доти */ }
+  return dmPwaMap;
+}
+
+/* ДОПИСУЄМО ПОРОЖНЄ, І ТІЛЬКИ ПОРОЖНЄ.
+
+   Той самий набір меж, що в кабінетах (cabAutoFill), і з тих самих
+   причин:
+     • лише порожні поля — вписане руками завжди свіжіше за довідник;
+     • лише точний збіг домену — без «схожих» і без піддоменів;
+     • помилку запису — вголос, бо мовчки не збережене виглядає як
+       збережене, і наступного разу поле знову порожнє без причини. */
+async function dmAutoLink() {
+  const map = await dmPwaLoad();
+  if (!map.size) return;
+  const todo = [];
+  dmRows.forEach(r => {
+    const hit = map.get(String(r.domain || '').toLowerCase());
+    if (!hit) return;
+    const patch = {};
+    ['pwa', 'geo', 'ktid', 'campaign'].forEach(k => {
+      if (hit[k] && !String(r[k] || '').trim()) patch[k] = hit[k];
+    });
+    if (Object.keys(patch).length) todo.push({ r, patch });
+  });
+  if (!todo.length) return;
+
+  // Малюємо одразу, пишемо потім: рядок на екрані вже правильний.
+  const prev = todo.map(t => {
+    const was = {};
+    Object.keys(t.patch).forEach(k => was[k] = t.r[k]);
+    Object.assign(t.r, t.patch);
+    return was;
+  });
+  dmRender();
+
+  const bad = [];
+  for (let i = 0; i < todo.length; i++) {
+    const { r, patch } = todo[i];
+    const { error } = await sb.from('domains').update(patch).eq('id', r.id);
+    if (error) { Object.assign(r, prev[i]); bad.push(error.message); }
+  }
+  if (bad.length) {
+    dmRender();
+    if (typeof toast === 'function')
+      toast('Could not attach ' + bad.length + ' domain(s) to their PWA: ' + bad[0], 'error', 10000);
+    return;
+  }
+  if (typeof toast === 'function')
+    toast(todo.length + ' domain(s) picked up their PWA from the campaign links', 'ok');
 }
 
 /* ── перевірка ── */
@@ -551,6 +642,9 @@ function dmTogglePaste() {
   box.classList.toggle('hidden');
   if (box.classList.contains('hidden')) return;
   dmFillGroups();
+  // Довідник силок потрібен уже в прев'ю — тягнемо його до першого
+  // розбору, а не після.
+  dmPwaLoad().then(() => dmPastePreview());
   document.getElementById('dm-paste-text')?.focus();
 }
 
@@ -587,22 +681,69 @@ function dmPastePreview() {
     (groups[p.pwa || '— no PWA —'] = groups[p.pwa || '— no PWA —'] || []).push(p.domain);
     if (p.ktid) kt.add(p.ktid);
   });
+  /* Скільком бракує гео — і чому саме. Доти прев'ю про це мовчало, і
+     різниця між «гео приїхало» й «гео не приїхало» виявлялась уже в
+     таблиці, де такий рядок виглядає як нова PWA. */
+  const noGeo = parsed.filter(p => seen.has(p.domain) && !p.geo).length;
+  const gi = dmGroupInfo(dmPasteGroup());
   el.innerHTML = `<b class="text-dynamic">${add}</b> new`
     + (dup ? ` · <span class="text-amber-400">${dup} already here, skipped</span>` : '')
     + (add ? '<br>' + Object.entries(groups).map(([g, d]) =>
         `<span class="opacity-70">${dmEsc(g)}</span> — ${d.length}`).join(' · ') : '')
-    + (add && kt.size ? `<br><span class="opacity-60">KTID picked up from the headers: ${
-        [...kt].slice(0, 8).map(dmEsc).join(', ')}${kt.size > 8 ? ` +${kt.size - 8}` : ''}</span>` : '');
+    + (add && kt.size ? `<br><span class="opacity-60">KTID: ${
+        [...kt].slice(0, 8).map(dmEsc).join(', ')}${kt.size > 8 ? ` +${kt.size - 8}` : ''}</span>` : '')
+    + (add && noGeo ? `<br><span class="text-amber-400">${noGeo} without geo</span>
+        <span class="opacity-60">${gi.geos > 1
+          ? '— this PWA has ' + gi.geos + ' geos in the list, so it cannot be picked for you. '
+            + 'Put the campaign name as a header line (Mbank_KG_10708…) and geo comes with it.'
+          : '— no campaign of this PWA lists these domains yet. A header line with the campaign '
+            + 'name (Mbank_KG_10708…) brings geo and KTID along.'}</span>` : '');
+}
+
+/* ЩО ГРУПА ПРО СЕБЕ ЗНАЄ.
+
+   Вибрав PWA — значить гео й ktid теж відомі, і питати їх другим
+   разом не треба. Але взяти їх можна лише там, де група сама не
+   суперечить собі: якщо в її рядках одне гео — це і є гео групи, а не
+   догадка. Якщо їх два (та сама PWA під KZ і TJ), не вибираємо
+   навмання: лишаємо порожнім і кажемо це в прев'ю. */
+function dmGroupInfo(name) {
+  const g = String(name || '').trim().toLowerCase();
+  if (!g) return { geo: null, ktid: null, geos: 0 };
+  const mine = dmRows.filter(r => String(r.pwa || '').trim().toLowerCase() === g);
+  const uniq = k => [...new Set(mine.map(r => String(r[k] || '').trim())
+    .filter(Boolean))];
+  const geos = uniq('geo'), kts = uniq('ktid');
+  return { geo: geos.length === 1 ? geos[0].toUpperCase() : null,
+           ktid: kts.length === 1 ? kts[0] : null, geos: geos.length };
 }
 
 /* Розбір плюс вибрана група. Коли група задана явно, вона перекриває
    заголовки з тексту — інакше вибір у випадайці нічого б не означав для
-   списку, у якому заголовки вже є. Гео й ktid при цьому не вигадуємо:
-   вони належать конкретній кампанії, а не групі. */
+   списку, у якому заголовки вже є.
+
+   А гео й ktid дописуємо з двох боків, і обидва — не вигадка:
+     • силки PWA-кампанії: цей домен у ній уже перелічений (dmPwaMap);
+     • сама група, коли вона однозначна (dmGroupInfo).
+   Доти не дописувались нізвідки, і домен, доданий до вибраної PWA,
+   лягав без гео — у таблиці це читалось як початок нової PWA. */
 function dmPasteRows() {
   const g = dmPasteGroup();
+  const gi = dmGroupInfo(g);
+  const map = dmPwaMap || new Map();
   const parsed = dmParsePaste(document.getElementById('dm-paste-text')?.value || '');
-  return g ? parsed.map(p => ({ ...p, pwa: g })) : parsed;
+  return parsed.map(p => {
+    const hit = map.get(p.domain) || {};
+    const out = { ...p };
+    if (g) out.pwa = g;
+    else if (!out.pwa && hit.pwa) out.pwa = hit.pwa;
+    // Порядок: що написали в тексті → що знає кампанія з цим доменом →
+    // що знає група. Від точнішого до загальнішого.
+    out.geo = out.geo || hit.geo || (g ? gi.geo : null) || null;
+    out.ktid = out.ktid || hit.ktid || (g ? gi.ktid : null) || null;
+    out.campaign = out.campaign || hit.campaign || null;
+    return out;
+  });
 }
 
 async function dmPasteSave() {

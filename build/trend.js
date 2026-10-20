@@ -144,6 +144,31 @@ function cfMoneyTight(v) {
   return `${sign}$${Math.round(a)}`;
 }
 
+/* ═══════════ ПІДКАЗКА НА БАГАТО ГЕО ═══════════
+
+   Межа саме 4: до чотирьох гео докладний вигляд (шість рядків на гео)
+   ще влазить у екран, від пʼяти — вже ні.
+
+   cfTipN заповнює beforeBody, бо саме йому Chart.js віддає ВЖЕ
+   відфільтрований список точок; label() бачить по одній і порахувати
+   їх не може. Chart.js кличе beforeBody перед label — порядок тут не
+   збіг, а те, на чому це тримається. */
+const CF_TIP_WIDE = 4;
+const CF_TIP_COLS = [4, 9, 9, 5, 5, 5, 8];
+let cfTipN = 0;
+
+const cfTipWide = () => cfTipN > CF_TIP_WIDE;
+
+/* Перший стовпець по лівому краю — назви читають згори вниз; решта по
+   правому — числа порівнюють саме так. */
+function cfTipRow(cells) {
+  return cells.map((c, i) => {
+    const w = CF_TIP_COLS[i] || 6;
+    const v = String(c);
+    return i === 0 ? v.padEnd(w) : v.padStart(w);
+  }).join(' ');
+}
+
 function renderTrend(data) {
   const el = document.getElementById('chart-trend');
   if (!el || !data.length) return;
@@ -337,7 +362,32 @@ function renderTrend(data) {
             const v = (item.dataset.allStats || [])[item.dataIndex];
             return !!v && v.s > 0;
           },
+          /* Моноширинний шрифт у тілі — не косметика: від CF_TIP_WIDE
+             гео підказка переходить на «рядок на гео», і стовпці в ній
+             тримаються пробілами. У пропорційному шрифті вони
+             розсипались би. На докладному вигляді він не шкодить:
+             рядки там і так із підписами, а не таблицею. */
+          bodyFont: { family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', size: 11 },
           callbacks: {
+            /* ЧОМУ ДВА ФОРМАТИ.
+
+               Шість рядків на гео читаються добре, поки гео одне-два. А
+               на десяти це шістдесят рядків: підказка виростає вище за
+               екран, верх із низом не видно — тобто найпотрібніше
+               зникає першим, разом із датою в заголовку.
+
+               Тому від пʼяти гео підказка стає таблицею: рядок на гео,
+               стовпці — спенд, профіт, інсталли, реги, депи, CPA.
+               Нічого не викидаємо, міняється лише розкладка.
+
+               Скільки їх — рахуємо ТУТ: items уже пройшли filter вище,
+               тобто це рівно ті гео, що потраплять у підказку (без
+               нульових і без вимкнених у легенді). label() бачить по
+               одному рядку за раз, тому число лишаємо йому в cfTipN. */
+            beforeBody(items) {
+              cfTipN = isGeo ? (items || []).length : 0;
+              return cfTipWide() ? cfTipRow(['GEO', 'SPEND', 'PROFIT', 'INS', 'REG', 'DEP', 'CPA']) : '';
+            },
             label(c) {
               const v = isGeo ? (c.dataset.allStats || [])[c.dataIndex]
                               : (c.datasetIndex === 0 ? stats[c.dataIndex] : null);
@@ -346,6 +396,15 @@ function renderTrend(data) {
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
+
+              if (cfTipWide()) return cfTipRow([
+                String(c.dataset.label || '—').toUpperCase(),
+                '$' + Math.round(v.s).toLocaleString(),
+                (profit >= 0 ? '+' : '\u2212') + '$' + Math.abs(Math.round(profit)).toLocaleString(),
+                String(v.i), String(v.r), String(v.d),
+                v.d > 0 ? '$' + cpa : '—'
+              ]);
+
               const head = isGeo ? ` \u{1F4CD} ${c.dataset.label}` : ' \u{1F4CD} TOTAL';
               return [
                 head,

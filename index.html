@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.10 10:22">
+  <meta name="build" content="build 20.10 13:07">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2977,8 +2977,17 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    у кінці назви, перемикачі ставали на різній відстані від краю: назви
    різної довжини. У стовпчику вони стоять один під одним. */
 .cab-nd-sw { width: 1%; padding-left: 4px; padding-right: 4px; text-align: center; }
-.cab-node.cd-d1 .cab-nd-in { padding-left: 18px; }
-.cab-node.cd-d2 .cab-nd-in { padding-left: 36px; }
+/* Клітинка назви в дереві накриває й три порожні стовпці перед нею
+   (див. cabNodeRow), тож стеля в неї своя: 340px, як у кабінетів, тут
+   означали б ВУЖЧУ назву — ті ж 340 поділені ще й на відвойовані
+   пікселі. Додаємо рівно те, що відвоювали. */
+.cab-node .cab-nd { max-width: 52vw; }
+@media (min-width: 900px) { .cab-node .cab-nd { max-width: 420px; } }
+/* Відступ за рівнем: менший, ніж був. Його завдання — показати
+   вкладеність, а не відсунути назву від краю; на трьох рівнях
+   половина клітинки йшла під пусте поле. */
+.cab-node.cd-d1 .cab-nd-in { padding-left: 12px; }
+.cab-node.cd-d2 .cab-nd-in { padding-left: 24px; }
 /* Глибина читається ще й тоном: кампанія важить більше за оголошення,
    і однаковий підпис на всіх трьох рівнях робив би дерево пласким. */
 .cab-node.cd-d1 .cd-lbl { font-weight: 600; }
@@ -4188,6 +4197,107 @@ body.is-lead-only .admin-only { display: none; }
   }
 }
 
+/* ═══════════ ШАПКА ВІКНА — ОДНА НА ВСІ ВІКНА ═══════════
+
+   Files, Texts, Прілки й Accounts писались у різний time і кожне
+   принесло свій колір: бірюзову кнопку, смарагдовий інпут, рожевий
+   заголовок. Поруч із налаштуваннями, унікалізатором і звітом, які
+   стоять на токенах дизайну, це читається як чотири різні програми в
+   одному вікні — і кожен колір щось обіцяє, хоч нічого не означає.
+
+   Тому шапка в них тепер одна: ті самі поверхні, та сама рамка, той
+   самий акцент на головній дії. Colour лишається там, де він НЕСЕ
+   зміст — стан кабінета, бан, попередження. */
+.mw-title {
+  margin: 0; font-size: 15px; font-weight: 900; letter-spacing: -.01em;
+  color: var(--text-main);
+}
+.mw-sub {
+  margin: 2px 0 0; font-size: 9px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .14em; color: var(--text-muted);
+}
+.mw-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mw-in, .mw-sel {
+  height: 32px; box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0 10px; font-size: 11px; font-weight: 700; color: var(--text-main);
+  outline: none; font-family: inherit;
+}
+.mw-in:focus, .mw-sel:focus { border-color: var(--accent); }
+/* Поле у формі всередині вікна. Без фіксованої висоти — ним бувають і
+   textarea на чотири рядки, і однорядковий інпут. */
+.mw-fld {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 10px; font-size: 12px; font-weight: 700; color: var(--text-main);
+  outline: none; font-family: inherit;
+}
+.mw-fld:focus { border-color: var(--accent); }
+.mw-fld::placeholder { color: var(--text-muted); opacity: .7; }
+.mw-btn {
+  height: 32px; padding: 0 13px; border-radius: 10px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.mw-btn:hover { background: var(--surface-3); color: var(--text-main); }
+/* Головна дія у вікні одна — вона й носить акцент. Друга кнопка того
+   самого кольору означала б, що вибір між ними однаковий. */
+.mw-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
+.mw-btn.is-main:hover { filter: brightness(1.12); }
+.mw-x {
+  background: none; border: 0; cursor: pointer; line-height: 1;
+  font-size: 18px; color: var(--text-muted); padding: 0 2px;
+}
+.mw-x:hover { color: var(--bad); }
+
+/* Перемикач «Прілки / PWA APP» — той самий вигляд, що в решти
+   перемикачів дизайну: активний світліший, а не іншого кольору. */
+.ap-tab {
+  height: 28px; padding: 0 11px; border-radius: 9px; border: 0; cursor: pointer;
+  background: none; color: var(--text-muted);
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  transition: background .15s, color .15s;
+}
+.ap-tab:hover { color: var(--text-main); }
+.ap-tab.is-on { background: var(--surface-3); color: var(--text-main); }
+
+/* ── ВІКНО ACCOUNTS ──
+   Плитки й рядки на поверхнях дизайну. Colour лишається рівно там, де
+   він щось означає: число стану й вибрана кнопка стану. */
+.acc-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.acc-tile {
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  padding: 7px 10px; border-radius: 12px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  transition: background .15s, border-color .15s;
+}
+.acc-tile:hover { background: var(--surface-3); }
+.acc-tile.is-on { border-color: var(--accent); background: var(--surface-3); }
+.acc-tile-l {
+  font-size: 9px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted);
+}
+.acc-tile-n { font-size: 17px; font-weight: 900; line-height: 1.1; color: var(--text-main); }
+.acc-row {
+  padding: 8px 14px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.acc-sts { display: flex; gap: 4px; }
+.acc-st {
+  flex: 1; padding: 5px 0; border-radius: 9px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.acc-st:hover { color: var(--text-main); }
+/* Вибраний стан тримається кольором самого стану (його дає розмітка),
+   а тло лишається спільним: два сигнали на одне й те саме зайві. */
+.acc-st.is-on { background: var(--surface-3); }
+
+/* Ручний режим: число на кнопці синку підкреслено пунктиром — ознака
+   того, що в підказці є пояснення, чому воно не свіже. */
+.cab-syncago.is-manual { border-bottom: 1px dotted var(--border); cursor: help; }
+
 /* ── СПИСОК СТОРІНОК ──
    Рядок-кнопка, під нею розкриваються коментарі. Той самий вигляд, що
    й у правил: інший вид у тому самому місці читався б як інша
@@ -4773,17 +4883,49 @@ input.ui-in[type="range"] { padding: 0; }
    Розмито тло, а не затемнено начорно: видно, що сторінка на місці й
    нікуди не поділась — питання не аварія. */
 
+/* РІДКЕ СКЛО, А НЕ ПІВПРОЗОРА ПЛІВКА.
+
+   Різниця не в тому, скільки видно наскрізь, а в тому, ЩО видно.
+   Півпрозоре тло лишає під собою читабельний текст сторінки — і око
+   читає його замість питання. Скло натомість РОЗМИВАЄ: під вікном
+   лишаються лише плями кольору, тож видно, що сторінка на місці, але
+   конкурувати за увагу їй нічим.
+
+   Тому замість темнішої плівки — сильне розмиття з підсиленим кольором
+   (saturate), світлий тонкий відблиск по верхньому краю й м'яка тінь:
+   вікно виглядає шаром НАД сторінкою, а не вирізаним у ній.
+
+   Без backdrop-filter (старий браузер) скла не буде, і тоді
+   півпрозоре тло лишиться читабельним — тому @supports повертає
+   щільну підкладку: краще суцільний колір, ніж вікно, яке не
+   відділяється від тексту під ним. */
 .askwrap {
   position: fixed; inset: 0; z-index: 9000;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(6, 6, 12, .62); backdrop-filter: blur(3px);
-  animation: ask-in .12s ease-out;
+  background: rgba(8, 8, 14, .34);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  animation: ask-in .14s ease-out;
 }
 @keyframes ask-in { from { opacity: 0 } to { opacity: 1 } }
 .askbox {
   width: 100%; max-width: 380px; padding: 18px;
-  border-radius: 20px; background: var(--surface-1); border: 1px solid var(--border);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+  border-radius: 22px;
+  /* Градієнт, а не рівний колір: скло ловить світло згори, і без
+     цього перепаду поверхня читається як матовий пластик. */
+  background: linear-gradient(170deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, .045) 42%,
+                                      rgba(255, 255, 255, .025));
+  backdrop-filter: blur(26px) saturate(165%);
+  -webkit-backdrop-filter: blur(26px) saturate(165%);
+  border: 1px solid rgba(255, 255, 255, .14);
+  /* Внутрішній відблиск по верхньому краю — те, через що край скла
+     видно; зовнішня тінь відриває вікно від сторінки. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22),
+              0 26px 70px rgba(0, 0, 0, .55);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .askwrap { background: rgba(6, 6, 12, .82); }
+  .askbox { background: var(--surface-1); border-color: var(--border); }
 }
 .ask-title {
   margin: 0 0 8px; font-size: 12px; font-weight: 900;
@@ -4800,8 +4942,10 @@ input.ui-in[type="range"] { padding: 0; }
 .fb-proxy.is-warn { color: #FBBF24; }
 .ask-in {
   width: 100%; margin: 10px 0 2px; padding: 9px 11px;
-  border-radius: 10px; border: 1px solid var(--border);
-  background: var(--surface-2); color: var(--text-main);
+  border-radius: 10px; border: 1px solid rgba(255, 255, 255, .16);
+  /* Темніше за саме скло, а не світліше: поле — це заглибина в
+     поверхні, і світлий прямокутник на склі читався б як наліпка. */
+  background: rgba(0, 0, 0, .28); color: var(--text-main);
   font-size: 12px; font-family: inherit;
 }
 .ask-in:focus { outline: none; border-color: var(--accent, #8B5CF6); }
@@ -4839,10 +4983,11 @@ input.ui-in[type="range"] { padding: 0; }
 .ask-row button {
   flex: 1; padding: 9px 12px; border-radius: 12px; cursor: pointer;
   font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .06); color: var(--text-muted);
   transition: background .15s, color .15s;
 }
-.ask-row button:hover { background: var(--surface-3); color: var(--text-main); }
+.ask-row button:hover { background: rgba(255, 255, 255, .13); color: var(--text-main); }
 .ask-yes { background: #7C3AED !important; border-color: #7C3AED !important; color: #fff !important; }
 .ask-yes:hover { filter: brightness(1.12); }
 /* Незворотне — червоним. Colour тут єдине, що встигають прочитати. */
@@ -5103,8 +5248,8 @@ input.ui-in[type="range"] { padding: 0; }
 
   /* Відступи дерева вдвічі менші: на телефоні кожні десять пікселів
      ліворуч — це десять пікселів, яких бракує назві. */
-  .cab-node.cd-d1 .cab-nd-in { padding-left: 12px; }
-  .cab-node.cd-d2 .cab-nd-in { padding-left: 24px; }
+  .cab-node.cd-d1 .cab-nd-in { padding-left: 8px; }
+  .cab-node.cd-d2 .cab-nd-in { padding-left: 16px; }
 
   /* Док не влазить у ряд — гортаємо його, а не обрізаємо кнопки.
      Обрізана кнопка виглядає як кнопка, якої немає. */
@@ -5313,8 +5458,12 @@ input.ui-in[type="range"] { padding: 0; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <span class="sb-lbl">Team</span>
       </button>
+      <!-- Був аркуш із загнутим кутом — той самий значок, що в усього
+           файлового: і в Files, і в імпортах. А тут не документ, а
+           зведення, яке СКЛАДАЮТЬ зі стовпців. Тож сітка з колонками
+           різної висоти: видно і таблицю, і те, що в ній рахують. -->
       <button class="sb-item" data-nav="reports" onclick="navGo('reports')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 8h18M9 8v13"/><path d="M12 17v-4M15.5 17v-6M19 17v-2"/></svg>
         <span class="sb-lbl">Report Builder</span>
       </button>
 
@@ -5349,7 +5498,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 10:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 13:07</div>
     </div>
   </aside>
 
@@ -6414,19 +6563,18 @@ input.ui-in[type="range"] { padding: 0; }
   <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
-        <h2 class="text-xl font-black italic tracking-tighter text-amber-300">Files</h2>
-        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Drop a file anywhere in this window</p>
+        <h2 class="mw-title">Files</h2>
+        <p class="mw-sub">Drop a file anywhere in this window</p>
         <!-- Куди лягає файл. Бакет приватний і прямого посилання немає,
              тож без цього рядка видно лише список і жодного «де». -->
         <p id="fl-where" class="fl-where"></p>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="mw-acts">
         <span id="fl-count" class="fl-count"></span>
-        <input id="fl-q" oninput="flRender()" placeholder="Search…"
-          class="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none focus:border-amber-400 w-40">
-        <button type="button" onclick="flPick()" class="fl-btn is-main">+ Upload</button>
+        <input id="fl-q" oninput="flRender()" placeholder="Search…" class="mw-in" style="width:160px">
+        <button type="button" onclick="flPick()" class="mw-btn is-main">+ Upload</button>
         <input type="file" id="fl-input" multiple onchange="flChose(this.files)">
-        <button onclick="closeFilesModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+        <button type="button" onclick="closeFilesModal()" class="mw-x" title="Close">&times;</button>
       </div>
     </div>
     <!-- Кидати файл можна на все вікно, а не лише на кнопку: коли він уже
@@ -7443,6 +7591,31 @@ function cfMoneyTight(v) {
   return `${sign}$${Math.round(a)}`;
 }
 
+/* ═══════════ ПІДКАЗКА НА БАГАТО ГЕО ═══════════
+
+   Межа саме 4: до чотирьох гео докладний вигляд (шість рядків на гео)
+   ще влазить у екран, від пʼяти — вже ні.
+
+   cfTipN заповнює beforeBody, бо саме йому Chart.js віддає ВЖЕ
+   відфільтрований список точок; label() бачить по одній і порахувати
+   їх не може. Chart.js кличе beforeBody перед label — порядок тут не
+   збіг, а те, на чому це тримається. */
+const CF_TIP_WIDE = 4;
+const CF_TIP_COLS = [4, 9, 9, 5, 5, 5, 8];
+let cfTipN = 0;
+
+const cfTipWide = () => cfTipN > CF_TIP_WIDE;
+
+/* Перший стовпець по лівому краю — назви читають згори вниз; решта по
+   правому — числа порівнюють саме так. */
+function cfTipRow(cells) {
+  return cells.map((c, i) => {
+    const w = CF_TIP_COLS[i] || 6;
+    const v = String(c);
+    return i === 0 ? v.padEnd(w) : v.padStart(w);
+  }).join(' ');
+}
+
 function renderTrend(data) {
   const el = document.getElementById('chart-trend');
   if (!el || !data.length) return;
@@ -7636,7 +7809,32 @@ function renderTrend(data) {
             const v = (item.dataset.allStats || [])[item.dataIndex];
             return !!v && v.s > 0;
           },
+          /* Моноширинний шрифт у тілі — не косметика: від CF_TIP_WIDE
+             гео підказка переходить на «рядок на гео», і стовпці в ній
+             тримаються пробілами. У пропорційному шрифті вони
+             розсипались би. На докладному вигляді він не шкодить:
+             рядки там і так із підписами, а не таблицею. */
+          bodyFont: { family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', size: 11 },
           callbacks: {
+            /* ЧОМУ ДВА ФОРМАТИ.
+
+               Шість рядків на гео читаються добре, поки гео одне-два. А
+               на десяти це шістдесят рядків: підказка виростає вище за
+               екран, верх із низом не видно — тобто найпотрібніше
+               зникає першим, разом із датою в заголовку.
+
+               Тому від пʼяти гео підказка стає таблицею: рядок на гео,
+               стовпці — спенд, профіт, інсталли, реги, депи, CPA.
+               Нічого не викидаємо, міняється лише розкладка.
+
+               Скільки їх — рахуємо ТУТ: items уже пройшли filter вище,
+               тобто це рівно ті гео, що потраплять у підказку (без
+               нульових і без вимкнених у легенді). label() бачить по
+               одному рядку за раз, тому число лишаємо йому в cfTipN. */
+            beforeBody(items) {
+              cfTipN = isGeo ? (items || []).length : 0;
+              return cfTipWide() ? cfTipRow(['GEO', 'SPEND', 'PROFIT', 'INS', 'REG', 'DEP', 'CPA']) : '';
+            },
             label(c) {
               const v = isGeo ? (c.dataset.allStats || [])[c.dataIndex]
                               : (c.datasetIndex === 0 ? stats[c.dataIndex] : null);
@@ -7645,6 +7843,15 @@ function renderTrend(data) {
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
+
+              if (cfTipWide()) return cfTipRow([
+                String(c.dataset.label || '—').toUpperCase(),
+                '$' + Math.round(v.s).toLocaleString(),
+                (profit >= 0 ? '+' : '\u2212') + '$' + Math.abs(Math.round(profit)).toLocaleString(),
+                String(v.i), String(v.r), String(v.d),
+                v.d > 0 ? '$' + cpa : '—'
+              ]);
+
               const head = isGeo ? ` \u{1F4CD} ${c.dataset.label}` : ' \u{1F4CD} TOTAL';
               return [
                 head,
@@ -14869,6 +15076,16 @@ document.addEventListener('keydown', e => {
 <div class="set-group">
             <h3 class="set-gtitle">Sync schedule</h3>
             <p class="set-gsub">How often the dashboard walks the cabinets — and, with it, how often rules get a chance to act: they run right after each sync, on a snapshot that is seconds old. The schedule itself ticks every 15 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
+            <!-- Перше питання тут не «як часто», а «чи взагалі саме».
+                 Ручний режим стосується ЛИШЕ розкладу: кнопка Sync now
+                 працює завжди — вона і є той ручний режим. -->
+            <div class="set-row" data-setting="auto sync manual only ручний режим оновлення кабінетів">
+              <label class="set-label" for="fb-pace-auto">Cabinets refresh</label>
+              <select id="fb-pace-auto" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="1">On the schedule</option>
+                <option value="0">Manual only</option>
+              </select>
+            </div>
             <div class="set-row" data-setting="sync pace interval синхронізація темп інтервал">
               <label class="set-label" for="fb-pace-day">Daytime, every</label>
               <select id="fb-pace-day" onchange="fbPaceSave()" class="set-input w-44">
@@ -14898,6 +15115,12 @@ document.addEventListener('keydown', e => {
                 <span class="set-hint" style="margin:0" id="fb-pace-tz"></span>
               </span>
             </div>
+            <p class="set-hint opacity-60" id="fb-pace-manual-note" style="display:none">
+              <b>Manual only:</b> the schedule will not touch your cabinets — the numbers change when you press
+              <b>Sync now</b>, and not before. Two things keep running on their own, as asked: the comment scan and
+              the rules. But rules judge by the <b>last sync</b> — they read the snapshot that sync writes, so with
+              manual refresh they act on numbers as old as your last press. Comments do not depend on sync at all.
+            </p>
             <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. 15 minutes is as fast as the schedule ticks, so a smaller number changes nothing until you change the schedule too (the alter_job note at the bottom of FB_SYNC_CRON.sql). Facebook counts even refused requests against the limit, so faster is not always more data: 15 minutes costs twice what 30 does.</p>
           </div>
 
@@ -15325,8 +15548,8 @@ function gcDiff(geo, results) {
            середину центрувало те, що лишилось від країв, — і перемикач
            совався щоразу, коли його ж і натискали. -->
       <div class="flex-1 basis-0 min-w-0">
-        <h2 id="ap-title" class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
-        <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
+        <h2 id="ap-title" class="mw-title">Прілки</h2>
+        <p id="ap-sub" class="mw-sub"></p>
       </div>
       <div class="flex items-center gap-2 flex-wrap justify-center shrink-0">
         <!-- ОДНЕ ВІКНО, ДВА ДОВІДНИКИ.
@@ -15335,26 +15558,24 @@ function gcDiff(geo, results) {
              тому екран, дерево й пошук ті самі. Третя іконка в доку під
              те саме гео означала б ще одне місце, яке треба згадати. -->
         <div class="flex items-center gap-0.5 bg-black/30 border border-white/10 rounded-xl p-0.5 shrink-0">
-          <button id="ap-tab-app" onclick="apSetMode('app')"
-            class="h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition">Прілки</button>
-          <button id="ap-tab-pwa" onclick="apSetMode('pwa')"
-            class="h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition">PWA APP</button>
+          <button id="ap-tab-app" onclick="apSetMode('app')" class="ap-tab">Прілки</button>
+          <button id="ap-tab-pwa" onclick="apSetMode('pwa')" class="ap-tab">PWA APP</button>
         </div>
         <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
-          class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
+          class="mw-in" style="width:224px">
       </div>
       <div class="flex items-center gap-2 flex-wrap flex-1 basis-0 min-w-0 justify-end">
         <button id="ap-dom" onclick="pwDomRefresh(this)" title="Перечитати стан доменів зі списку доменів — його міняє перевірка, а не ми"
-          class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">↻ домени</button>
+          class="hidden mw-btn">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
-          class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">Списком</button>
+          class="hidden mw-btn">Списком</button>
         <!-- Апка — це воронка з позначкою APP. Шаблон прілки без неї
              нічого не покаже: список апок у редакторі читається саме з
              воронок, і доти по нову апку треба було йти в Settings. -->
         <button id="ap-addfun" onclick="apAddFunnel(true)" title="Завести апку (воронку з позначкою APP)"
-          class="h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-orange-300 transition">+ Апка</button>
-        <button id="ap-add" onclick="apAddNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
-        <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
+          class="mw-btn">+ Апка</button>
+        <button id="ap-add" onclick="apAddNew()" class="mw-btn is-main">+ Шаблон</button>
+        <button type="button" onclick="closeAppsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
     </div>
 
@@ -15510,7 +15731,11 @@ async function apLoad() {
        помилку ловить сам, тому Promise.all на ньому не падає. */
     const [ts, fn, ac] = await Promise.all([
       sb.from('team_settings').select('key, value').in('key', ['app_links', 'pwa_links']),
-      sb.from('funnels_mapping').select('ktid, funnel_name, geo, is_app').eq('team_name', currentTeam),
+      /* Перелічувати колонки тут більше не можна: щойно в довіднику
+         зʼявляється нова (status), запит із її іменем падає для всіх,
+         хто ще не виконав міграцію, і разом із ним — усе вікно.
+         Секретних стовпців у funnels_mapping немає, тож беремо як є. */
+      sb.from('funnels_mapping').select('*').eq('team_name', currentTeam),
       sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam),
       pwDomLoad(true)
     ]);
@@ -15576,7 +15801,13 @@ function apSubText() {
     return `${pwItems.length} кампаній · ${links} силок`
          + (bad ? ` · ${bad} під увагою` : '');
   }
-  return `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
+  /* Апки рахуємо живі: число, у яке входять забанені, відповідає на
+     питання, якого ніхто не ставить. Забанені — окремо, бо саме їх і
+     шукають, коли шаблон раптом нікуди не ліпиться. */
+  const live = apFunnels.filter(f => f.is_app && !apIsBan(f)).length;
+  const ban = apFunnels.filter(f => f.is_app && apIsBan(f)).length;
+  return `${apItems.length} шаблонів · ${live} апок${ban ? ` (+${ban} у бані)` : ''
+    } · ${apAccounts.length} кабінетів`;
 }
 function apSubPaint() {
   const el = document.getElementById('ap-sub');
@@ -15604,29 +15835,23 @@ function apSetMode(m) {
 
 function apModePaint() {
   const pwa = apMode === 'pwa';
-  const on  = 'bg-emerald-600 text-white', onP = 'bg-sky-600 text-white';
-  const off = 'text-slate-400 hover:text-white';
-  const tab = (id, active, cls) => {
+  /* Вкладка, заголовок і головна кнопка більше не міняють КОЛІР від
+     режиму: однакові за змістом речі, пофарбовані по-різному, читались
+     як два різні вікна, хоч це одне. Що саме відкрито, кажуть підпис
+     вкладки й заголовок — цього достатньо, а колір у дизайні
+     лишається за змістом (стан, бан, попередження). */
+  const tab = (id, active) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.className = 'h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition '
-                 + (active ? cls : off);
+    el.className = 'ap-tab' + (active ? ' is-on' : '');
   };
-  tab('ap-tab-app', !pwa, on);
-  tab('ap-tab-pwa', pwa, onP);
+  tab('ap-tab-app', !pwa);
+  tab('ap-tab-pwa', pwa);
 
   const t = document.getElementById('ap-title');
-  if (t) {
-    t.textContent = pwa ? 'PWA' : 'Прілки';
-    t.className = 'text-xl font-black italic tracking-tighter '
-                + (pwa ? 'text-sky-300' : 'text-emerald-300');
-  }
+  if (t) t.textContent = pwa ? 'PWA' : 'Прілки';
   const add = document.getElementById('ap-add');
-  if (add) {
-    add.textContent = pwa ? '+ Кампанія' : '+ Шаблон';
-    add.className = 'h-[34px] px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition '
-                  + (pwa ? 'bg-sky-600 hover:bg-sky-500' : 'bg-emerald-600 hover:bg-emerald-500');
-  }
+  if (add) add.textContent = pwa ? '+ Кампанія' : '+ Шаблон';
   const paste = document.getElementById('ap-paste');
   if (paste) paste.classList.toggle('hidden', !pwa);
   /* У PWA кнопка воронки стоїть у рядку з назвою кампанії — там, де
@@ -15703,6 +15928,10 @@ async function apAddFunnel(isApp) {
 
   const row = { ktid, funnel_name: name, team_name: currentTeam,
                 is_app: !!v.is_app, geo: String(v.geo || '').trim().toUpperCase() };
+  /* Нова воронка жива — але стан пишемо лише якщо колонка вже є:
+     інакше upsert із невідомим полем відмовить цілком, і завести
+     воронку стало б неможливо до міграції. */
+  if (apFunnels.some(f => 'status' in f)) row.status = 'active';
   const { error } = await sb.from('funnels_mapping').upsert(row);
   if (error) {
     const m = String(error.message || error.code || '');
@@ -15716,7 +15945,8 @@ async function apAddFunnel(isApp) {
      чотири поля, і відсортований за назвою — інакше нова воронка
      стрибнула б у кінець списку, а після перезавантаження вікна
      опинилась на своєму місці. */
-  const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app };
+  const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app,
+                 status: row.status || (was && was.status) || 'active' };
   if (was) Object.assign(was, kept); else apFunnels.push(kept);
   apFunnels.sort((a, b) => String(a.funnel_name || '')
     .localeCompare(String(b.funnel_name || ''), 'uk'));
@@ -15907,6 +16137,15 @@ function apProvOf(f) {
   const m = String(f.funnel_name || '').match(/\[([^\]]+)\]/);
   return m ? m[1].trim() : '';
 }
+
+/* ЗАБАНЕНА АПКА. Стан лежить у funnels_mapping.status (APP_STATUS.sql),
+   і поки колонки немає, усі воронки читаються як живі — як і доти.
+   Саме === 'ban', а не «не active»: порожнє значення в старих рядках
+   означає «невідомо», і читати його як бан означало б сховати зі
+   списку все, що завели до міграції. */
+function apIsBan(f) {
+  return String((f && f.status) || '').toLowerCase() === 'ban';
+}
 function apFunnelsFor(it) {
   /* ТІЛЬКИ ПОЗНАЧЕНЕ APP.
 
@@ -15918,7 +16157,11 @@ function apFunnelsFor(it) {
      Якщо воронок з міткою APP немає ЗОВСІМ — список лишається
      порожнім, і ми кажемо, чому. Падати назад на весь довідник тут
      не можна: саме так PWA і потрапляли у вибір апок. */
-  const apps = apFunnels.filter(f => f.is_app);
+  /* Забанена апка зі списку зникає: саме тут із неї робили б новий
+     шаблон, а неймінг забаненої їде в кабінет так само легко, як
+     живої. У таблиці KTID Mappings вона лишається — там її й знімають
+     з бану. */
+  const apps = apFunnels.filter(f => f.is_app && !apIsBan(f));
   if (!apps.length) return { list: [], narrowed: false, noApps: true };
 
   const prov = String(it.provider || '').trim().toLowerCase();
@@ -16013,7 +16256,7 @@ function apCancel() { apEditId = null; document.getElementById('ap-editor').clas
 
 function apShowEditor(v) {
   const el = document.getElementById('ap-editor');
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-emerald-500';
+  const inp = 'mw-fld';
   const dl = (id, items) => `<datalist id="${id}">${
     [...new Set(items)].filter(Boolean).map(x => `<option value="${apEsc(x)}"></option>`).join('')}</datalist>`;
 
@@ -16089,7 +16332,7 @@ function apSubSet(i, field, val) {
 function apSubsRender() {
   const el = document.getElementById('ap-subs');
   if (!el) return;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-emerald-500';
+  const inp = 'mw-fld';
   el.innerHTML = apSubsDraft.map((x, i) => {
     let valField;
     if (x.mode === 'app') {
@@ -16184,7 +16427,7 @@ function apGeoHints(it) {
     .filter(x => String(x.provider || '').trim().toLowerCase() === prov)
     .map(x => String(x.geo || '').trim().toUpperCase()).filter(Boolean));
   const apps = [...new Set(apFunnels
-    .filter(f => f.is_app && (!prov || apProvOf(f).toLowerCase() === prov))
+    .filter(f => f.is_app && !apIsBan(f) && (!prov || apProvOf(f).toLowerCase() === prov))
     .map(f => String(f.geo || '').trim().toUpperCase()).filter(Boolean))].sort();
   return { mine, free: apps.filter(g => !mine.has(g)) };
 }
@@ -16709,7 +16952,7 @@ function pwCancel() {
 function pwShowEditor(v) {
   const el = document.getElementById('ap-editor');
   if (!el) return;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500';
+  const inp = 'mw-fld';
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-sky-500/[0.06] border border-sky-500/25 rounded-2xl p-3 space-y-2">
@@ -16912,7 +17155,7 @@ function pwPaste() {
   pwEditId = null; pwBulkDraft = null;
   const el = document.getElementById('ap-editor');
   if (!el) return;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500';
+  const inp = 'mw-fld';
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-sky-500/[0.06] border border-sky-500/25 rounded-2xl p-3 space-y-2">
@@ -17064,17 +17307,16 @@ async function pwBulkApply() {
   <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
       <div>
-        <h2 class="text-xl font-black italic tracking-tighter text-teal-300">Texts</h2>
-        <p id="tx-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
+        <h2 class="mw-title">Texts</h2>
+        <p id="tx-sub" class="mw-sub"></p>
       </div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <input id="tx-search" oninput="txRender()" placeholder="Search text…"
-          class="h-[34px] w-52 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-teal-500">
-        <select id="tx-lang-filter" onchange="txRender()" class="h-[34px] bg-black/30 border border-white/10 rounded-xl px-2.5 text-[11px] font-bold text-white outline-none focus:border-teal-500">
+      <div class="mw-acts">
+        <input id="tx-search" oninput="txRender()" placeholder="Search text…" class="mw-in" style="width:208px">
+        <select id="tx-lang-filter" onchange="txRender()" class="mw-sel">
           <option value="">All languages</option>
         </select>
-        <button onclick="txNew()" class="h-[34px] bg-teal-600 hover:bg-teal-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Text</button>
-        <button onclick="closeTextsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">✕</button>
+        <button type="button" onclick="txNew()" class="mw-btn is-main">+ Text</button>
+        <button type="button" onclick="closeTextsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
     </div>
 
@@ -17380,23 +17622,20 @@ async function pwBulkApply() {
   <div class="card w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
-        <h2 class="text-xl font-black italic tracking-tighter text-sky-400">Accounts</h2>
-        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Account status · saved instantly · click a tile to filter</p>
+        <h2 class="mw-title">Accounts</h2>
+        <p class="mw-sub">Account status · saved instantly · click a tile to filter</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="mw-acts">
         <!-- «Скільки цього місяця завели» — питання, на яке досі
              відповідали очима. Date додавання в рядку вже є, тож
              фільтр нічого не коштує. -->
-        <select id="acc-month" onchange="renderAccountsModal()"
-          class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-white outline-none focus:border-sky-500"></select>
-        <input id="acc-search" oninput="renderAccountsModal()" placeholder="Search…"
-          class="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none focus:border-sky-500 w-40">
+        <select id="acc-month" onchange="renderAccountsModal()" class="mw-sel"></select>
+        <input id="acc-search" oninput="renderAccountsModal()" placeholder="Search…" class="mw-in" style="width:160px">
         <!-- Account завели — і його відразу видно тут же. Доти по нього
              треба було йти в Settings → Cabinets, у вікно, яке про
              статуси нічого не знає. -->
-        <button onclick="accAdd()" title="Додати кабінет"
-          class="bg-sky-600 hover:bg-sky-500 w-8 h-8 rounded-lg font-black text-white text-lg leading-none transition">+</button>
-        <button onclick="closeAccountsModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+        <button type="button" onclick="accAdd()" title="Додати кабінет" class="mw-btn is-main">+ Account</button>
+        <button type="button" onclick="closeAccountsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
     </div>
     <div id="acc-summary" class="px-5 pt-4 flex-shrink-0"></div>
@@ -17939,7 +18178,7 @@ function txEdit(id) {
 function txShowEditor(v) {
   const el = document.getElementById('tx-editor');
   const dl = (id, items) => `<datalist id="${id}">${[...new Set(items)].filter(Boolean).map(x => `<option value="${txEsc(x)}"></option>`).join('')}</datalist>`;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-teal-500';
+  const inp = 'mw-fld';
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-teal-500/[0.06] border border-teal-500/25 rounded-2xl p-3 space-y-2">
@@ -19169,9 +19408,9 @@ async function uqRun() {
 // Status живе в accounts_mapping.status: active | ban | problem.
 // Колонок може ще не бути в базі — тоді показуємо підказку з SQL, а не падаємо.
 const ACC_STATUS = {
-  active:  { label: 'Active', cls: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
-  ban:     { label: 'Ban',      cls: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' },
-  problem: { label: 'Issue', cls: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/30' }
+  active:  { label: 'Active', tone: 'var(--ok)' },
+  ban:     { label: 'Ban',      tone: 'var(--bad)' },
+  problem: { label: 'Issue', tone: 'var(--warn)' }
 };
 let accRows = [];
 let accTeam = '';          // для якої команди лежить кеш
@@ -19366,17 +19605,21 @@ function renderAccountsModal() {
   if (dot) dot.classList.toggle('hidden', !(counts.ban || counts.problem));
 
   // Плитка = і лічильник, і фільтр: клік лишає тільки цей статус, повторний — знімає
-  const tile = (k, label, cls, bg, n) => `
-    <button onclick="accSetFilter('${k}')" title="${k ? 'Show only: ' + label : 'Show all accounts'}"
-      class="rounded-xl border px-3 py-2 text-center transition ${bg}
-             ${accFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'opacity-90 hover:opacity-100 hover:brightness-110'}">
-      <p class="text-[9px] font-black uppercase tracking-widest text-slate-400">${label}</p>
-      <p class="text-lg font-black ${cls} leading-tight">${n}</p>
+  /* Плитка — на поверхнях дизайну, а не на власному кольорі. Colour
+     лишається там, де він НЕСЕ зміст: саме число стану. Пофарбоване
+     тло на всіх чотирьох плитках читалось як чотири однаково важливі
+     тривоги. */
+  const tile = (k, label, cls, n) => `
+    <button type="button" onclick="accSetFilter('${k}')"
+      title="${k ? 'Show only: ' + label : 'Show all accounts'}"
+      class="acc-tile${accFilter === k ? ' is-on' : ''}">
+      <span class="acc-tile-l">${label}</span>
+      <span class="acc-tile-n" style="${cls}">${n}</span>
     </button>`;
 
-  sumEl.innerHTML = `<div class="grid grid-cols-4 gap-2">
-    ${tile('', 'All', 'text-slate-200', 'bg-white/[0.04] border-white/10', accRows.length)}
-    ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, s.cls, s.bg, counts[k])).join('')}
+  sumEl.innerHTML = `<div class="acc-tiles">
+    ${tile('', 'All', '', accRows.length)}
+    ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k])).join('')}
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
@@ -19418,21 +19661,20 @@ function renderAccountsModal() {
     <div class="space-y-1.5">
       ${rows.map(r => {
         const st = accStatusOf(r);
-        return `<div class="bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-2.5 ${GRID}" style="${COLS}">
+        return `<div class="acc-row ${GRID}" style="${COLS}">
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
           <span class="text-[12px] font-bold text-slate-400 truncate">${r.provider_name || '—'}</span>
           <span class="text-[12px] font-bold text-violet-300 truncate" title="${(r.profile || '').replace(/"/g, '&quot;')}">${r.profile || '<span class="opacity-25">—</span>'}</span>
           <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>
           <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Date the account was added">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>
-          <div class="flex gap-1">
+          <div class="acc-sts">
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
-              <button onclick="accSetStatus('${r.id}','${k}')"
-                class="flex-1 text-[10px] font-black uppercase tracking-wider py-1.5 rounded-lg border transition
-                       ${st === k ? s.bg + ' ' + s.cls : 'border-white/5 text-slate-600 hover:text-slate-300'}">${s.label}</button>`).join('')}
+              <button type="button" onclick="accSetStatus('${r.id}','${k}')"
+                class="acc-st${st === k ? ' is-on' : ''}"${st === k ? ` style="color:${s.tone};border-color:${s.tone}"` : ''
+                }>${s.label}</button>`).join('')}
           </div>
           <input value="${(r.status_note || '').replace(/"/g, '&quot;')}" placeholder="напр. ЗРД, ліміт, чек"
-            onchange="accSetNote('${r.id}', this.value.trim())"
-            class="bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500 w-full">
+            onchange="accSetNote('${r.id}', this.value.trim())" class="mw-in" style="width:100%;height:28px">
         </div>`;
       }).join('')}
     </div>`;
@@ -20329,7 +20571,7 @@ async function fbInspect(token) {
 /* 15 хвилин удень — стільки ж, скільки стукає розклад. Темп задає не
    лише свіжість чисел: правила йдуть слідом за синхронізацією, тож це
    водночас і те, як швидко правило встигне зупинити оголошення. */
-const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8 };
+const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8, auto: true };
 
 window.fbPaceLoad = async function () {
   const dEl = document.getElementById('fb-pace-day');
@@ -20340,6 +20582,11 @@ window.fbPaceLoad = async function () {
     v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
   } catch (e) { v = {}; }
   const pick = (id, val) => { const el = document.getElementById(id); if (el) el.value = String(val); };
+  /* auto === false — це ручний режим. Саме === false, а не !v.auto:
+     у старих записах поля немає зовсім, і читати його відсутність як
+     «вимкнено» означало б мовчки заморозити всім синхронізацію. */
+  pick('fb-pace-auto', v.auto === false ? '0' : '1');
+  fbPacePaint(v.auto === false);
   pick('fb-pace-day', v.day || FB_PACE_DEF.day);
   pick('fb-pace-night', v.night || FB_PACE_DEF.night);
   pick('fb-pace-from', v.from == null ? FB_PACE_DEF.from : v.from);
@@ -20352,18 +20599,36 @@ window.fbPaceLoad = async function () {
     + Math.abs(-new Date().getTimezoneOffset() / 60);
 };
 
+/* У ручному режимі темп нічого не означає — гасимо рядки, щоб не
+   виглядало, ніби вони на щось впливають, і показуємо, що саме
+   лишається працювати саме. */
+function fbPacePaint(manual) {
+  ['fb-pace-day', 'fb-pace-night', 'fb-pace-from', 'fb-pace-to'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = !!manual;
+    const row = el.closest('.set-row');
+    if (row) row.style.opacity = manual ? '.4' : '';
+  });
+  const note = document.getElementById('fb-pace-manual-note');
+  if (note) note.style.display = manual ? '' : 'none';
+}
+
 window.fbPaceSave = async function () {
   const num = (id, lo, hi, fb) => {
     const n = Number(document.getElementById(id)?.value);
     return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n) : fb;
   };
+  const manual = (document.getElementById('fb-pace-auto')?.value || '1') === '0';
   const pace = {
+    auto:  !manual,
     day:   num('fb-pace-day', 5, 1440, FB_PACE_DEF.day),
     night: num('fb-pace-night', 5, 1440, FB_PACE_DEF.night),
     from:  num('fb-pace-from', 0, 23, FB_PACE_DEF.from),
     to:    num('fb-pace-to', 0, 23, FB_PACE_DEF.to),
     tz:    -new Date().getTimezoneOffset()
   };
+  fbPacePaint(manual);
   await setTeamSetting('fb_sync_pace', JSON.stringify(pace));
   if (typeof setSaved === 'function') setSaved();
 };
@@ -22800,6 +23065,7 @@ async function cabInit() {
   await cabFbLoad();
   await cabDaysLoad();
   await cabSnapLoad();
+  await cabAutoLoad();
   if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
@@ -22984,6 +23250,20 @@ async function cabFbLoad() {
    тут нічого не ламає: лишаємось без цих стовпчиків, решта таблиці на
    місці. */
 let cabSnap = {}, cabSnapErr = '';
+
+/* ЧИ ОНОВЛЮЄ СЕБЕ РОЗКЛАД. Те саме налаштування, що в Settings →
+   Sync schedule (fb_sync_pace.auto). Тут воно потрібне рівно для
+   одного: щоб «5 годин тому» на кнопці не читалось як поломка, коли
+   так і просили. Немає запису — розклад працює, як і доти. */
+let cabAutoOff = false;
+
+async function cabAutoLoad() {
+  try {
+    const raw = await getTeamSetting('fb_sync_pace');
+    const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+    cabAutoOff = v && v.auto === false;
+  } catch (e) { cabAutoOff = false; }
+}
 
 async function cabSnapLoad() {
   cabSnap = {};
@@ -23896,7 +24176,13 @@ function cabRender() {
   if (ago) {
     const at = cabFbAt();
     ago.textContent = at ? cabAgo(at) : (cabFb.length ? '' : 'never');
-    ago.title = at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet';
+    /* У ручному режимі «5 годин тому» — не застаріле, а рівно те, що
+       просили. Без цієї обмовки те саме число читається як збій
+       синхронізації, і людина йде шукати ваду. */
+    ago.title = (at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet')
+      + (cabAutoOff ? '\n\nManual only: the schedule does not touch these cabinets. '
+                    + 'Press ↻ to refresh. (Settings \u2192 Sync schedule)' : '');
+    ago.classList.toggle('is-manual', !!cabAutoOff);
   }
 
   /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:
@@ -24220,10 +24506,12 @@ function cabNodeRow(n, depth, band, cols) {
   const hit = f.kids ? ` onclick="cdToggle('${cabEsc(key)}')"` : '';
   return `<tr class="cab-node cd-r cd-d${depth}${band ? ' is-band' : ''}${
       f.marked ? ' is-mk' : ''}">
-    <td class="cab-x"></td>
-    <td class="cab-x"></td>
-    <td class="cab-x"></td>
-    <td class="cab-nd${f.kids ? ' cd-can' : ''}"${hit}>
+    <!-- Три перші стовпці (стрілка, шпилька, кружок) у дереві порожні —
+         і це були ~70 пікселів пустого поля ліворуч від кожної назви,
+         щодня. Забираємо їх під саму назву: colspan лишає сітку
+         таблиці цілою, тож світчер, статус і числа стоять там, де й
+         стояли, а назва починається від краю. -->
+    <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="4"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
     <td class="cab-nd-st">${f.status}</td>
@@ -25420,6 +25708,97 @@ async function dmInit() {
   }
   dmLoaded = true;
   dmRender();
+  /* Після малювання, а не до: сторінка не мусить чекати на запис,
+     якого людина не просила. Якщо щось допишеться — перемалюємо. */
+  dmAutoLink();
+}
+
+/* ═══════════ ДОМЕН САМ ЗНАЄ, ЧИЙ ВІН ═══════════
+
+   У PWA-кампанії домени вже перелічені: це її силки. Тобто відповідь
+   на питання «ця адреса чия» в базі лежить — тільки в іншому ключі
+   (team_settings → pwa_links), і доти список доменів про неї не знав
+   нічого. Через це домен, доданий вставкою, лишався без гео, і в
+   таблиці виглядав як початок нової PWA, хоч кампанія з цією самою
+   силкою давно є.
+
+   ПРО ВГАДУВАННЯ. Тут його немає: збіг іде по ПОВНОМУ домену після тієї
+   самої нормалізації, що й усюди (dmNormDomain). Якщо домен стоїть у
+   силках кампанії — він її, і це не догадка, а те, що вписали руками.
+
+   Гео й оффер беремо з полів запису, а не з розбору назви: у PWA їх
+   можна переписати руками, і написане руками завжди свіжіше. */
+let dmPwaMap = null;
+
+async function dmPwaLoad() {
+  if (dmPwaMap) return dmPwaMap;
+  dmPwaMap = new Map();
+  try {
+    const raw = await getTeamSetting('pwa_links');
+    const items = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+    (Array.isArray(items) ? items : []).forEach(it => {
+      const info = dmHeadInfo(String(it.name || ''));
+      const pwa = String(it.offer || '').trim() || info.pwa || null;
+      const geo = (String(it.geo || '').trim() || info.geo || '').toUpperCase() || null;
+      (Array.isArray(it.links) ? it.links : []).forEach(l => {
+        const d = dmNormDomain(l);
+        // Перший, хто назвав домен своїм, і лишається: та сама адреса в
+        // двох кампаніях — це вже питання до кампаній, не до нас.
+        if (d && !dmPwaMap.has(d)) dmPwaMap.set(d, {
+          pwa, geo, ktid: info.ktid || null,
+          campaign: String(it.name || '').trim() || null });
+      });
+    });
+  } catch (e) { /* довідника немає — працюємо як доти */ }
+  return dmPwaMap;
+}
+
+/* ДОПИСУЄМО ПОРОЖНЄ, І ТІЛЬКИ ПОРОЖНЄ.
+
+   Той самий набір меж, що в кабінетах (cabAutoFill), і з тих самих
+   причин:
+     • лише порожні поля — вписане руками завжди свіжіше за довідник;
+     • лише точний збіг домену — без «схожих» і без піддоменів;
+     • помилку запису — вголос, бо мовчки не збережене виглядає як
+       збережене, і наступного разу поле знову порожнє без причини. */
+async function dmAutoLink() {
+  const map = await dmPwaLoad();
+  if (!map.size) return;
+  const todo = [];
+  dmRows.forEach(r => {
+    const hit = map.get(String(r.domain || '').toLowerCase());
+    if (!hit) return;
+    const patch = {};
+    ['pwa', 'geo', 'ktid', 'campaign'].forEach(k => {
+      if (hit[k] && !String(r[k] || '').trim()) patch[k] = hit[k];
+    });
+    if (Object.keys(patch).length) todo.push({ r, patch });
+  });
+  if (!todo.length) return;
+
+  // Малюємо одразу, пишемо потім: рядок на екрані вже правильний.
+  const prev = todo.map(t => {
+    const was = {};
+    Object.keys(t.patch).forEach(k => was[k] = t.r[k]);
+    Object.assign(t.r, t.patch);
+    return was;
+  });
+  dmRender();
+
+  const bad = [];
+  for (let i = 0; i < todo.length; i++) {
+    const { r, patch } = todo[i];
+    const { error } = await sb.from('domains').update(patch).eq('id', r.id);
+    if (error) { Object.assign(r, prev[i]); bad.push(error.message); }
+  }
+  if (bad.length) {
+    dmRender();
+    if (typeof toast === 'function')
+      toast('Could not attach ' + bad.length + ' domain(s) to their PWA: ' + bad[0], 'error', 10000);
+    return;
+  }
+  if (typeof toast === 'function')
+    toast(todo.length + ' domain(s) picked up their PWA from the campaign links', 'ok');
 }
 
 /* ── перевірка ── */
@@ -25813,6 +26192,9 @@ function dmTogglePaste() {
   box.classList.toggle('hidden');
   if (box.classList.contains('hidden')) return;
   dmFillGroups();
+  // Довідник силок потрібен уже в прев'ю — тягнемо його до першого
+  // розбору, а не після.
+  dmPwaLoad().then(() => dmPastePreview());
   document.getElementById('dm-paste-text')?.focus();
 }
 
@@ -25849,22 +26231,69 @@ function dmPastePreview() {
     (groups[p.pwa || '— no PWA —'] = groups[p.pwa || '— no PWA —'] || []).push(p.domain);
     if (p.ktid) kt.add(p.ktid);
   });
+  /* Скільком бракує гео — і чому саме. Доти прев'ю про це мовчало, і
+     різниця між «гео приїхало» й «гео не приїхало» виявлялась уже в
+     таблиці, де такий рядок виглядає як нова PWA. */
+  const noGeo = parsed.filter(p => seen.has(p.domain) && !p.geo).length;
+  const gi = dmGroupInfo(dmPasteGroup());
   el.innerHTML = `<b class="text-dynamic">${add}</b> new`
     + (dup ? ` · <span class="text-amber-400">${dup} already here, skipped</span>` : '')
     + (add ? '<br>' + Object.entries(groups).map(([g, d]) =>
         `<span class="opacity-70">${dmEsc(g)}</span> — ${d.length}`).join(' · ') : '')
-    + (add && kt.size ? `<br><span class="opacity-60">KTID picked up from the headers: ${
-        [...kt].slice(0, 8).map(dmEsc).join(', ')}${kt.size > 8 ? ` +${kt.size - 8}` : ''}</span>` : '');
+    + (add && kt.size ? `<br><span class="opacity-60">KTID: ${
+        [...kt].slice(0, 8).map(dmEsc).join(', ')}${kt.size > 8 ? ` +${kt.size - 8}` : ''}</span>` : '')
+    + (add && noGeo ? `<br><span class="text-amber-400">${noGeo} without geo</span>
+        <span class="opacity-60">${gi.geos > 1
+          ? '— this PWA has ' + gi.geos + ' geos in the list, so it cannot be picked for you. '
+            + 'Put the campaign name as a header line (Mbank_KG_10708…) and geo comes with it.'
+          : '— no campaign of this PWA lists these domains yet. A header line with the campaign '
+            + 'name (Mbank_KG_10708…) brings geo and KTID along.'}</span>` : '');
+}
+
+/* ЩО ГРУПА ПРО СЕБЕ ЗНАЄ.
+
+   Вибрав PWA — значить гео й ktid теж відомі, і питати їх другим
+   разом не треба. Але взяти їх можна лише там, де група сама не
+   суперечить собі: якщо в її рядках одне гео — це і є гео групи, а не
+   догадка. Якщо їх два (та сама PWA під KZ і TJ), не вибираємо
+   навмання: лишаємо порожнім і кажемо це в прев'ю. */
+function dmGroupInfo(name) {
+  const g = String(name || '').trim().toLowerCase();
+  if (!g) return { geo: null, ktid: null, geos: 0 };
+  const mine = dmRows.filter(r => String(r.pwa || '').trim().toLowerCase() === g);
+  const uniq = k => [...new Set(mine.map(r => String(r[k] || '').trim())
+    .filter(Boolean))];
+  const geos = uniq('geo'), kts = uniq('ktid');
+  return { geo: geos.length === 1 ? geos[0].toUpperCase() : null,
+           ktid: kts.length === 1 ? kts[0] : null, geos: geos.length };
 }
 
 /* Розбір плюс вибрана група. Коли група задана явно, вона перекриває
    заголовки з тексту — інакше вибір у випадайці нічого б не означав для
-   списку, у якому заголовки вже є. Гео й ktid при цьому не вигадуємо:
-   вони належать конкретній кампанії, а не групі. */
+   списку, у якому заголовки вже є.
+
+   А гео й ktid дописуємо з двох боків, і обидва — не вигадка:
+     • силки PWA-кампанії: цей домен у ній уже перелічений (dmPwaMap);
+     • сама група, коли вона однозначна (dmGroupInfo).
+   Доти не дописувались нізвідки, і домен, доданий до вибраної PWA,
+   лягав без гео — у таблиці це читалось як початок нової PWA. */
 function dmPasteRows() {
   const g = dmPasteGroup();
+  const gi = dmGroupInfo(g);
+  const map = dmPwaMap || new Map();
   const parsed = dmParsePaste(document.getElementById('dm-paste-text')?.value || '');
-  return g ? parsed.map(p => ({ ...p, pwa: g })) : parsed;
+  return parsed.map(p => {
+    const hit = map.get(p.domain) || {};
+    const out = { ...p };
+    if (g) out.pwa = g;
+    else if (!out.pwa && hit.pwa) out.pwa = hit.pwa;
+    // Порядок: що написали в тексті → що знає кампанія з цим доменом →
+    // що знає група. Від точнішого до загальнішого.
+    out.geo = out.geo || hit.geo || (g ? gi.geo : null) || null;
+    out.ktid = out.ktid || hit.ktid || (g ? gi.ktid : null) || null;
+    out.campaign = out.campaign || hit.campaign || null;
+    return out;
+  });
 }
 
 async function dmPasteSave() {

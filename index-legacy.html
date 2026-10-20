@@ -2736,6 +2736,7 @@ function renderTrend(data) {
               const cpl = stats.r > 0 ? (stats.s / stats.r).toFixed(1) : 0;
               const cpa = stats.d > 0 ? (stats.s / stats.d).toFixed(1) : 0;
 
+
               // Виручка і Net Profit тією ж формулою, що й у KPI-картці:
               // депозити × виплата, мінус спенд. Є в обох режимах — у daily це
               // підсумок по всіх гео, у geo — по конкретному гео за цей день.
@@ -8849,8 +8850,8 @@ function gcDiff(geo, results) {
            середину центрувало те, що лишилось від країв, — і перемикач
            совався щоразу, коли його ж і натискали. -->
       <div class="flex-1 basis-0 min-w-0">
-        <h2 id="ap-title" class="text-xl font-black italic tracking-tighter text-emerald-300">Прілки</h2>
-        <p id="ap-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
+        <h2 id="ap-title" class="mw-title">Прілки</h2>
+        <p id="ap-sub" class="mw-sub"></p>
       </div>
       <div class="flex items-center gap-2 flex-wrap justify-center shrink-0">
         <!-- ОДНЕ ВІКНО, ДВА ДОВІДНИКИ.
@@ -8859,26 +8860,24 @@ function gcDiff(geo, results) {
              тому екран, дерево й пошук ті самі. Третя іконка в доку під
              те саме гео означала б ще одне місце, яке треба згадати. -->
         <div class="flex items-center gap-0.5 bg-black/30 border border-white/10 rounded-xl p-0.5 shrink-0">
-          <button id="ap-tab-app" onclick="apSetMode('app')"
-            class="h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition">Прілки</button>
-          <button id="ap-tab-pwa" onclick="apSetMode('pwa')"
-            class="h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition">PWA APP</button>
+          <button id="ap-tab-app" onclick="apSetMode('app')" class="ap-tab">Прілки</button>
+          <button id="ap-tab-pwa" onclick="apSetMode('pwa')" class="ap-tab">PWA APP</button>
         </div>
         <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
-          class="h-[34px] w-56 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-emerald-500">
+          class="mw-in" style="width:224px">
       </div>
       <div class="flex items-center gap-2 flex-wrap flex-1 basis-0 min-w-0 justify-end">
         <button id="ap-dom" onclick="pwDomRefresh(this)" title="Перечитати стан доменів зі списку доменів — його міняє перевірка, а не ми"
-          class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">↻ домени</button>
+          class="hidden mw-btn">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
-          class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">Списком</button>
+          class="hidden mw-btn">Списком</button>
         <!-- Апка — це воронка з позначкою APP. Шаблон прілки без неї
              нічого не покаже: список апок у редакторі читається саме з
              воронок, і доти по нову апку треба було йти в Settings. -->
         <button id="ap-addfun" onclick="apAddFunnel(true)" title="Завести апку (воронку з позначкою APP)"
-          class="h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-orange-300 transition">+ Апка</button>
-        <button id="ap-add" onclick="apAddNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
-        <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
+          class="mw-btn">+ Апка</button>
+        <button id="ap-add" onclick="apAddNew()" class="mw-btn is-main">+ Шаблон</button>
+        <button type="button" onclick="closeAppsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
     </div>
 
@@ -9034,7 +9033,11 @@ async function apLoad() {
        помилку ловить сам, тому Promise.all на ньому не падає. */
     const [ts, fn, ac] = await Promise.all([
       sb.from('team_settings').select('key, value').in('key', ['app_links', 'pwa_links']),
-      sb.from('funnels_mapping').select('ktid, funnel_name, geo, is_app').eq('team_name', currentTeam),
+      /* Перелічувати колонки тут більше не можна: щойно в довіднику
+         зʼявляється нова (status), запит із її іменем падає для всіх,
+         хто ще не виконав міграцію, і разом із ним — усе вікно.
+         Секретних стовпців у funnels_mapping немає, тож беремо як є. */
+      sb.from('funnels_mapping').select('*').eq('team_name', currentTeam),
       sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam),
       pwDomLoad(true)
     ]);
@@ -9100,7 +9103,13 @@ function apSubText() {
     return `${pwItems.length} кампаній · ${links} силок`
          + (bad ? ` · ${bad} під увагою` : '');
   }
-  return `${apItems.length} шаблонів · ${apFunnels.filter(f => f.is_app).length} апок · ${apAccounts.length} кабінетів`;
+  /* Апки рахуємо живі: число, у яке входять забанені, відповідає на
+     питання, якого ніхто не ставить. Забанені — окремо, бо саме їх і
+     шукають, коли шаблон раптом нікуди не ліпиться. */
+  const live = apFunnels.filter(f => f.is_app && !apIsBan(f)).length;
+  const ban = apFunnels.filter(f => f.is_app && apIsBan(f)).length;
+  return `${apItems.length} шаблонів · ${live} апок${ban ? ` (+${ban} у бані)` : ''
+    } · ${apAccounts.length} кабінетів`;
 }
 function apSubPaint() {
   const el = document.getElementById('ap-sub');
@@ -9128,29 +9137,23 @@ function apSetMode(m) {
 
 function apModePaint() {
   const pwa = apMode === 'pwa';
-  const on  = 'bg-emerald-600 text-white', onP = 'bg-sky-600 text-white';
-  const off = 'text-slate-400 hover:text-white';
-  const tab = (id, active, cls) => {
+  /* Вкладка, заголовок і головна кнопка більше не міняють КОЛІР від
+     режиму: однакові за змістом речі, пофарбовані по-різному, читались
+     як два різні вікна, хоч це одне. Що саме відкрито, кажуть підпис
+     вкладки й заголовок — цього достатньо, а колір у дизайні
+     лишається за змістом (стан, бан, попередження). */
+  const tab = (id, active) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.className = 'h-[28px] px-3 rounded-[10px] text-[10px] font-black uppercase tracking-widest transition '
-                 + (active ? cls : off);
+    el.className = 'ap-tab' + (active ? ' is-on' : '');
   };
-  tab('ap-tab-app', !pwa, on);
-  tab('ap-tab-pwa', pwa, onP);
+  tab('ap-tab-app', !pwa);
+  tab('ap-tab-pwa', pwa);
 
   const t = document.getElementById('ap-title');
-  if (t) {
-    t.textContent = pwa ? 'PWA' : 'Прілки';
-    t.className = 'text-xl font-black italic tracking-tighter '
-                + (pwa ? 'text-sky-300' : 'text-emerald-300');
-  }
+  if (t) t.textContent = pwa ? 'PWA' : 'Прілки';
   const add = document.getElementById('ap-add');
-  if (add) {
-    add.textContent = pwa ? '+ Кампанія' : '+ Шаблон';
-    add.className = 'h-[34px] px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition '
-                  + (pwa ? 'bg-sky-600 hover:bg-sky-500' : 'bg-emerald-600 hover:bg-emerald-500');
-  }
+  if (add) add.textContent = pwa ? '+ Кампанія' : '+ Шаблон';
   const paste = document.getElementById('ap-paste');
   if (paste) paste.classList.toggle('hidden', !pwa);
   /* У PWA кнопка воронки стоїть у рядку з назвою кампанії — там, де
@@ -9227,6 +9230,10 @@ async function apAddFunnel(isApp) {
 
   const row = { ktid, funnel_name: name, team_name: currentTeam,
                 is_app: !!v.is_app, geo: String(v.geo || '').trim().toUpperCase() };
+  /* Нова воронка жива — але стан пишемо лише якщо колонка вже є:
+     інакше upsert із невідомим полем відмовить цілком, і завести
+     воронку стало б неможливо до міграції. */
+  if (apFunnels.some(f => 'status' in f)) row.status = 'active';
   const { error } = await sb.from('funnels_mapping').upsert(row);
   if (error) {
     const m = String(error.message || error.code || '');
@@ -9240,7 +9247,8 @@ async function apAddFunnel(isApp) {
      чотири поля, і відсортований за назвою — інакше нова воронка
      стрибнула б у кінець списку, а після перезавантаження вікна
      опинилась на своєму місці. */
-  const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app };
+  const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app,
+                 status: row.status || (was && was.status) || 'active' };
   if (was) Object.assign(was, kept); else apFunnels.push(kept);
   apFunnels.sort((a, b) => String(a.funnel_name || '')
     .localeCompare(String(b.funnel_name || ''), 'uk'));
@@ -9431,6 +9439,15 @@ function apProvOf(f) {
   const m = String(f.funnel_name || '').match(/\[([^\]]+)\]/);
   return m ? m[1].trim() : '';
 }
+
+/* ЗАБАНЕНА АПКА. Стан лежить у funnels_mapping.status (APP_STATUS.sql),
+   і поки колонки немає, усі воронки читаються як живі — як і доти.
+   Саме === 'ban', а не «не active»: порожнє значення в старих рядках
+   означає «невідомо», і читати його як бан означало б сховати зі
+   списку все, що завели до міграції. */
+function apIsBan(f) {
+  return String((f && f.status) || '').toLowerCase() === 'ban';
+}
 function apFunnelsFor(it) {
   /* ТІЛЬКИ ПОЗНАЧЕНЕ APP.
 
@@ -9442,7 +9459,11 @@ function apFunnelsFor(it) {
      Якщо воронок з міткою APP немає ЗОВСІМ — список лишається
      порожнім, і ми кажемо, чому. Падати назад на весь довідник тут
      не можна: саме так PWA і потрапляли у вибір апок. */
-  const apps = apFunnels.filter(f => f.is_app);
+  /* Забанена апка зі списку зникає: саме тут із неї робили б новий
+     шаблон, а неймінг забаненої їде в кабінет так само легко, як
+     живої. У таблиці KTID Mappings вона лишається — там її й знімають
+     з бану. */
+  const apps = apFunnels.filter(f => f.is_app && !apIsBan(f));
   if (!apps.length) return { list: [], narrowed: false, noApps: true };
 
   const prov = String(it.provider || '').trim().toLowerCase();
@@ -9537,7 +9558,7 @@ function apCancel() { apEditId = null; document.getElementById('ap-editor').clas
 
 function apShowEditor(v) {
   const el = document.getElementById('ap-editor');
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-emerald-500';
+  const inp = 'mw-fld';
   const dl = (id, items) => `<datalist id="${id}">${
     [...new Set(items)].filter(Boolean).map(x => `<option value="${apEsc(x)}"></option>`).join('')}</datalist>`;
 
@@ -9613,7 +9634,7 @@ function apSubSet(i, field, val) {
 function apSubsRender() {
   const el = document.getElementById('ap-subs');
   if (!el) return;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-[11px] font-bold text-white outline-none focus:border-emerald-500';
+  const inp = 'mw-fld';
   el.innerHTML = apSubsDraft.map((x, i) => {
     let valField;
     if (x.mode === 'app') {
@@ -9708,7 +9729,7 @@ function apGeoHints(it) {
     .filter(x => String(x.provider || '').trim().toLowerCase() === prov)
     .map(x => String(x.geo || '').trim().toUpperCase()).filter(Boolean));
   const apps = [...new Set(apFunnels
-    .filter(f => f.is_app && (!prov || apProvOf(f).toLowerCase() === prov))
+    .filter(f => f.is_app && !apIsBan(f) && (!prov || apProvOf(f).toLowerCase() === prov))
     .map(f => String(f.geo || '').trim().toUpperCase()).filter(Boolean))].sort();
   return { mine, free: apps.filter(g => !mine.has(g)) };
 }
@@ -10233,7 +10254,7 @@ function pwCancel() {
 function pwShowEditor(v) {
   const el = document.getElementById('ap-editor');
   if (!el) return;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500';
+  const inp = 'mw-fld';
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-sky-500/[0.06] border border-sky-500/25 rounded-2xl p-3 space-y-2">
@@ -10436,7 +10457,7 @@ function pwPaste() {
   pwEditId = null; pwBulkDraft = null;
   const el = document.getElementById('ap-editor');
   if (!el) return;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500';
+  const inp = 'mw-fld';
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-sky-500/[0.06] border border-sky-500/25 rounded-2xl p-3 space-y-2">
@@ -10588,17 +10609,16 @@ async function pwBulkApply() {
   <div class="card w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
       <div>
-        <h2 class="text-xl font-black italic tracking-tighter text-teal-300">Тексти</h2>
-        <p id="tx-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5"></p>
+        <h2 class="mw-title">Тексти</h2>
+        <p id="tx-sub" class="mw-sub"></p>
       </div>
-      <div class="flex items-center gap-2 flex-wrap">
-        <input id="tx-search" oninput="txRender()" placeholder="Пошук по тексту…"
-          class="h-[34px] w-52 bg-black/30 border border-white/10 rounded-xl px-3 text-[11px] font-bold text-white outline-none focus:border-teal-500">
-        <select id="tx-lang-filter" onchange="txRender()" class="h-[34px] bg-black/30 border border-white/10 rounded-xl px-2.5 text-[11px] font-bold text-white outline-none focus:border-teal-500">
+      <div class="mw-acts">
+        <input id="tx-search" oninput="txRender()" placeholder="Пошук по тексту…" class="mw-in" style="width:208px">
+        <select id="tx-lang-filter" onchange="txRender()" class="mw-sel">
           <option value="">Усі мови</option>
         </select>
-        <button onclick="txNew()" class="h-[34px] bg-teal-600 hover:bg-teal-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Текст</button>
-        <button onclick="closeTextsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">✕</button>
+        <button type="button" onclick="txNew()" class="mw-btn is-main">+ Текст</button>
+        <button type="button" onclick="closeTextsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
     </div>
 
@@ -10753,23 +10773,20 @@ async function pwBulkApply() {
   <div class="card w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
-        <h2 class="text-xl font-black italic tracking-tighter text-sky-400">Accounts</h2>
-        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Статус кабінетів · зберігається одразу · клік по плитці — фільтр</p>
+        <h2 class="mw-title">Accounts</h2>
+        <p class="mw-sub">Статус кабінетів · зберігається одразу · клік по плитці — фільтр</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="mw-acts">
         <!-- «Скільки цього місяця завели» — питання, на яке досі
              відповідали очима. Дата додавання в рядку вже є, тож
              фільтр нічого не коштує. -->
-        <select id="acc-month" onchange="renderAccountsModal()"
-          class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-white outline-none focus:border-sky-500"></select>
-        <input id="acc-search" oninput="renderAccountsModal()" placeholder="Пошук…"
-          class="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none focus:border-sky-500 w-40">
+        <select id="acc-month" onchange="renderAccountsModal()" class="mw-sel"></select>
+        <input id="acc-search" oninput="renderAccountsModal()" placeholder="Пошук…" class="mw-in" style="width:160px">
         <!-- Кабінет завели — і його відразу видно тут же. Доти по нього
              треба було йти в Settings → Cabinets, у вікно, яке про
              статуси нічого не знає. -->
-        <button onclick="accAdd()" title="Додати кабінет"
-          class="bg-sky-600 hover:bg-sky-500 w-8 h-8 rounded-lg font-black text-white text-lg leading-none transition">+</button>
-        <button onclick="closeAccountsModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
+        <button type="button" onclick="accAdd()" title="Додати кабінет" class="mw-btn is-main">+ Кабінет</button>
+        <button type="button" onclick="closeAccountsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
     </div>
     <div id="acc-summary" class="px-5 pt-4 flex-shrink-0"></div>
@@ -11308,7 +11325,7 @@ function txEdit(id) {
 function txShowEditor(v) {
   const el = document.getElementById('tx-editor');
   const dl = (id, items) => `<datalist id="${id}">${[...new Set(items)].filter(Boolean).map(x => `<option value="${txEsc(x)}"></option>`).join('')}</datalist>`;
-  const inp = 'bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-teal-500';
+  const inp = 'mw-fld';
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="bg-teal-500/[0.06] border border-teal-500/25 rounded-2xl p-3 space-y-2">
@@ -11678,9 +11695,9 @@ async function uqRun() {
 // Статус живе в accounts_mapping.status: active | ban | problem.
 // Колонок може ще не бути в базі — тоді показуємо підказку з SQL, а не падаємо.
 const ACC_STATUS = {
-  active:  { label: 'Активний', cls: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' },
-  ban:     { label: 'Бан',      cls: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' },
-  problem: { label: 'Проблема', cls: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/30' }
+  active:  { label: 'Активний', tone: 'var(--ok)' },
+  ban:     { label: 'Бан',      tone: 'var(--bad)' },
+  problem: { label: 'Проблема', tone: 'var(--warn)' }
 };
 let accRows = [];
 let accHasStatusCol = true;
@@ -11861,17 +11878,21 @@ function renderAccountsModal() {
   if (dot) dot.classList.toggle('hidden', !(counts.ban || counts.problem));
 
   // Плитка = і лічильник, і фільтр: клік лишає тільки цей статус, повторний — знімає
-  const tile = (k, label, cls, bg, n) => `
-    <button onclick="accSetFilter('${k}')" title="${k ? 'Показати тільки: ' + label : 'Показати всі кабінети'}"
-      class="rounded-xl border px-3 py-2 text-center transition ${bg}
-             ${accFilter === k ? 'ring-2 ring-white/40 brightness-125' : 'opacity-90 hover:opacity-100 hover:brightness-110'}">
-      <p class="text-[9px] font-black uppercase tracking-widest text-slate-400">${label}</p>
-      <p class="text-lg font-black ${cls} leading-tight">${n}</p>
+  /* Плитка — на поверхнях дизайну, а не на власному кольорі. Колір
+     лишається там, де він НЕСЕ зміст: саме число стану. Пофарбоване
+     тло на всіх чотирьох плитках читалось як чотири однаково важливі
+     тривоги. */
+  const tile = (k, label, cls, n) => `
+    <button type="button" onclick="accSetFilter('${k}')"
+      title="${k ? 'Показати тільки: ' + label : 'Показати всі кабінети'}"
+      class="acc-tile${accFilter === k ? ' is-on' : ''}">
+      <span class="acc-tile-l">${label}</span>
+      <span class="acc-tile-n" style="${cls}">${n}</span>
     </button>`;
 
-  sumEl.innerHTML = `<div class="grid grid-cols-4 gap-2">
-    ${tile('', 'Усі', 'text-slate-200', 'bg-white/[0.04] border-white/10', accRows.length)}
-    ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, s.cls, s.bg, counts[k])).join('')}
+  sumEl.innerHTML = `<div class="acc-tiles">
+    ${tile('', 'Усі', '', accRows.length)}
+    ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k])).join('')}
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
@@ -11913,20 +11934,19 @@ function renderAccountsModal() {
     <div class="space-y-1.5">
       ${rows.map(r => {
         const st = accStatusOf(r);
-        return `<div class="bg-white/[0.03] border border-white/5 rounded-2xl px-4 py-2.5 ${GRID}" style="${COLS}">
+        return `<div class="acc-row ${GRID}" style="${COLS}">
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
           <span class="text-[12px] font-bold text-slate-400 truncate">${r.provider_name || '—'}</span>
           <span class="text-[12px] font-bold text-violet-300 truncate" title="${(r.profile || '').replace(/"/g, '&quot;')}">${r.profile || '<span class="opacity-25">—</span>'}</span>
           <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>
-          <div class="flex gap-1">
+          <div class="acc-sts">
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
-              <button onclick="accSetStatus('${r.id}','${k}')"
-                class="flex-1 text-[10px] font-black uppercase tracking-wider py-1.5 rounded-lg border transition
-                       ${st === k ? s.bg + ' ' + s.cls : 'border-white/5 text-slate-600 hover:text-slate-300'}">${s.label}</button>`).join('')}
+              <button type="button" onclick="accSetStatus('${r.id}','${k}')"
+                class="acc-st${st === k ? ' is-on' : ''}"${st === k ? ` style="color:${s.tone};border-color:${s.tone}"` : ''
+                }>${s.label}</button>`).join('')}
           </div>
           <input value="${(r.status_note || '').replace(/"/g, '&quot;')}" placeholder="напр. ЗРД, ліміт, чек"
-            onchange="accSetNote('${r.id}', this.value.trim())"
-            class="bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-sky-500 w-full">
+            onchange="accSetNote('${r.id}', this.value.trim())" class="mw-in" style="width:100%;height:28px">
         </div>`;
       }).join('')}
     </div>`;

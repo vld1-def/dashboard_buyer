@@ -1597,6 +1597,30 @@ async function syncPace(base: string, hdr: Json): Promise<typeof PACE> {
   return out;
 }
 
+/* ── «ОНОВЛЮЙ ЛИШЕ КОЛИ Я ПОПРОШУ» ──
+
+   Темп вище відповідає на «як часто», а це — на «чи взагалі сам».
+   Лежить у тому ж налаштуванні (fb_sync_pace.auto === false), але
+   читається ПООСІБНО, а не зведенням: темп у парку спільний, а
+   рішення «мої кабінети оновлюються лише руками» — ні, і дати одному
+   заморозити чужі кабінети було б не правом, а поломкою.
+
+   Межа тільки для розкладу. Натиснута людиною кнопка Sync now
+   проходить завжди: вона і є той ручний режим, про який просили. */
+async function syncManualOnly(base: string, hdr: Json): Promise<Set<string>> {
+  const out = new Set<string>();
+  let rows: Json[] = [];
+  try { rows = await pgGet(base, hdr, 'team_settings?select=created_by,value&key=eq.fb_sync_pace'); }
+  catch (_e) { return out; }
+  rows.forEach(r => {
+    let v: Json = {};
+    try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
+    catch (_e) { return; }
+    if (v.auto === false && r.created_by) out.add(String(r.created_by));
+  });
+  return out;
+}
+
 /* Чи зараз ніч за налаштованим вікном. Вікно може перетинати
    полуніч (22 → 6), і тоді порівняння «більше і менше» не працює —
    потрібне саме «або». */
@@ -1989,6 +2013,9 @@ async function handle(req: Request): Promise<Response> {
   if (onlyToken) q += '&id=eq.' + onlyToken;
 
   let tokens: TokenRow[];
+  // Скільком токенам розклад не дістався через ручний режим. Саме
+  // повідомлення дописуємо нижче, де вже є problems.
+  let skippedManual = 0;
   try {
     tokens = await pgGet(base, hdr, q) as TokenRow[];
     /* Браузер відбираємо вже тут, а не запитом: він живе не окремим
@@ -1996,6 +2023,20 @@ async function handle(req: Request): Promise<Response> {
        лише tokenBrowser. Один розбір на обидва місця — одна правда. */
     if (onlyBrowser) tokens = tokens.filter(t =>
       tokenBrowser(t).toLowerCase() === onlyBrowser);
+    /* Чиї кабінети оновлюються лише руками — тих розклад не чіпає.
+       Відсіюємо тут, одразу після списку: далі починаються запити до
+       Facebook, і за них платить ліміт того самого кабінета. */
+    if (cron && !onDemand) {
+      const manual = await syncManualOnly(base, hdr);
+      if (manual.size) {
+        const was = tokens.length;
+        tokens = tokens.filter(t => !manual.has(String(t.created_by || '')));
+        if (!tokens.length) return reply({ fn: FN_VERSION, cron: true,
+          skipped: 'manual only', tokens: 0, accounts: 0, changed: 0,
+          note: 'every token belongs to someone who asked for manual refresh only' });
+        skippedManual = was - tokens.length;
+      }
+    }
   } catch (e) {
     const msg = (e as Error).message;
     return reply({ error: /fb_tokens|does not exist/i.test(msg)
@@ -2012,6 +2053,10 @@ async function handle(req: Request): Promise<Response> {
   let days = 0, noHistory = 0, historyError = '';
   let snapshot = 0, snapshotError = '', linkError = '';
   const problems: string[] = [];
+  /* Пропущені через ручний режим — у звіт, а не в тишу: інакше
+     «оновилось не все» виглядало б як збій. */
+  if (skippedManual) problems.push(skippedManual
+    + ' token(s) skipped: their owner asked for manual refresh only');
   let throttled = false;
   /* До яких токенів черга дійшла. Рахуємо на вході в тіло циклу, а не
      по done: токен, що впав із винятком, ОБІЙДЕНИЙ — просто невдало, і

@@ -1868,8 +1868,17 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    у кінці назви, перемикачі ставали на різній відстані від краю: назви
    різної довжини. У стовпчику вони стоять один під одним. */
 .cab-nd-sw { width: 1%; padding-left: 4px; padding-right: 4px; text-align: center; }
-.cab-node.cd-d1 .cab-nd-in { padding-left: 18px; }
-.cab-node.cd-d2 .cab-nd-in { padding-left: 36px; }
+/* Клітинка назви в дереві накриває й три порожні стовпці перед нею
+   (див. cabNodeRow), тож стеля в неї своя: 340px, як у кабінетів, тут
+   означали б ВУЖЧУ назву — ті ж 340 поділені ще й на відвойовані
+   пікселі. Додаємо рівно те, що відвоювали. */
+.cab-node .cab-nd { max-width: 52vw; }
+@media (min-width: 900px) { .cab-node .cab-nd { max-width: 420px; } }
+/* Відступ за рівнем: менший, ніж був. Його завдання — показати
+   вкладеність, а не відсунути назву від краю; на трьох рівнях
+   половина клітинки йшла під пусте поле. */
+.cab-node.cd-d1 .cab-nd-in { padding-left: 12px; }
+.cab-node.cd-d2 .cab-nd-in { padding-left: 24px; }
 /* Глибина читається ще й тоном: кампанія важить більше за оголошення,
    і однаковий підпис на всіх трьох рівнях робив би дерево пласким. */
 .cab-node.cd-d1 .cd-lbl { font-weight: 600; }
@@ -3079,6 +3088,107 @@ body.is-lead-only .admin-only { display: none; }
   }
 }
 
+/* ═══════════ ШАПКА ВІКНА — ОДНА НА ВСІ ВІКНА ═══════════
+
+   Files, Тексти, Прілки й Accounts писались у різний час і кожне
+   принесло свій колір: бірюзову кнопку, смарагдовий інпут, рожевий
+   заголовок. Поруч із налаштуваннями, унікалізатором і звітом, які
+   стоять на токенах дизайну, це читається як чотири різні програми в
+   одному вікні — і кожен колір щось обіцяє, хоч нічого не означає.
+
+   Тому шапка в них тепер одна: ті самі поверхні, та сама рамка, той
+   самий акцент на головній дії. Колір лишається там, де він НЕСЕ
+   зміст — стан кабінета, бан, попередження. */
+.mw-title {
+  margin: 0; font-size: 15px; font-weight: 900; letter-spacing: -.01em;
+  color: var(--text-main);
+}
+.mw-sub {
+  margin: 2px 0 0; font-size: 9px; font-weight: 900;
+  text-transform: uppercase; letter-spacing: .14em; color: var(--text-muted);
+}
+.mw-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mw-in, .mw-sel {
+  height: 32px; box-sizing: border-box;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 0 10px; font-size: 11px; font-weight: 700; color: var(--text-main);
+  outline: none; font-family: inherit;
+}
+.mw-in:focus, .mw-sel:focus { border-color: var(--accent); }
+/* Поле у формі всередині вікна. Без фіксованої висоти — ним бувають і
+   textarea на чотири рядки, і однорядковий інпут. */
+.mw-fld {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 10px; font-size: 12px; font-weight: 700; color: var(--text-main);
+  outline: none; font-family: inherit;
+}
+.mw-fld:focus { border-color: var(--accent); }
+.mw-fld::placeholder { color: var(--text-muted); opacity: .7; }
+.mw-btn {
+  height: 32px; padding: 0 13px; border-radius: 10px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.mw-btn:hover { background: var(--surface-3); color: var(--text-main); }
+/* Головна дія у вікні одна — вона й носить акцент. Друга кнопка того
+   самого кольору означала б, що вибір між ними однаковий. */
+.mw-btn.is-main { background: var(--accent); border-color: transparent; color: #fff; }
+.mw-btn.is-main:hover { filter: brightness(1.12); }
+.mw-x {
+  background: none; border: 0; cursor: pointer; line-height: 1;
+  font-size: 18px; color: var(--text-muted); padding: 0 2px;
+}
+.mw-x:hover { color: var(--bad); }
+
+/* Перемикач «Прілки / PWA APP» — той самий вигляд, що в решти
+   перемикачів дизайну: активний світліший, а не іншого кольору. */
+.ap-tab {
+  height: 28px; padding: 0 11px; border-radius: 9px; border: 0; cursor: pointer;
+  background: none; color: var(--text-muted);
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  transition: background .15s, color .15s;
+}
+.ap-tab:hover { color: var(--text-main); }
+.ap-tab.is-on { background: var(--surface-3); color: var(--text-main); }
+
+/* ── ВІКНО ACCOUNTS ──
+   Плитки й рядки на поверхнях дизайну. Колір лишається рівно там, де
+   він щось означає: число стану й вибрана кнопка стану. */
+.acc-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.acc-tile {
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  padding: 7px 10px; border-radius: 12px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  transition: background .15s, border-color .15s;
+}
+.acc-tile:hover { background: var(--surface-3); }
+.acc-tile.is-on { border-color: var(--accent); background: var(--surface-3); }
+.acc-tile-l {
+  font-size: 9px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-muted);
+}
+.acc-tile-n { font-size: 17px; font-weight: 900; line-height: 1.1; color: var(--text-main); }
+.acc-row {
+  padding: 8px 14px; border-radius: 14px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.acc-sts { display: flex; gap: 4px; }
+.acc-st {
+  flex: 1; padding: 5px 0; border-radius: 9px; cursor: pointer;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em;
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.acc-st:hover { color: var(--text-main); }
+/* Вибраний стан тримається кольором самого стану (його дає розмітка),
+   а тло лишається спільним: два сигнали на одне й те саме зайві. */
+.acc-st.is-on { background: var(--surface-3); }
+
+/* Ручний режим: число на кнопці синку підкреслено пунктиром — ознака
+   того, що в підказці є пояснення, чому воно не свіже. */
+.cab-syncago.is-manual { border-bottom: 1px dotted var(--border); cursor: help; }
+
 /* ── СПИСОК СТОРІНОК ──
    Рядок-кнопка, під нею розкриваються коментарі. Той самий вигляд, що
    й у правил: інший вид у тому самому місці читався б як інша
@@ -3664,17 +3774,49 @@ input.ui-in[type="range"] { padding: 0; }
    Розмито тло, а не затемнено начорно: видно, що сторінка на місці й
    нікуди не поділась — питання не аварія. */
 
+/* РІДКЕ СКЛО, А НЕ ПІВПРОЗОРА ПЛІВКА.
+
+   Різниця не в тому, скільки видно наскрізь, а в тому, ЩО видно.
+   Півпрозоре тло лишає під собою читабельний текст сторінки — і око
+   читає його замість питання. Скло натомість РОЗМИВАЄ: під вікном
+   лишаються лише плями кольору, тож видно, що сторінка на місці, але
+   конкурувати за увагу їй нічим.
+
+   Тому замість темнішої плівки — сильне розмиття з підсиленим кольором
+   (saturate), світлий тонкий відблиск по верхньому краю й м'яка тінь:
+   вікно виглядає шаром НАД сторінкою, а не вирізаним у ній.
+
+   Без backdrop-filter (старий браузер) скла не буде, і тоді
+   півпрозоре тло лишиться читабельним — тому @supports повертає
+   щільну підкладку: краще суцільний колір, ніж вікно, яке не
+   відділяється від тексту під ним. */
 .askwrap {
   position: fixed; inset: 0; z-index: 9000;
   display: flex; align-items: center; justify-content: center; padding: 20px;
-  background: rgba(6, 6, 12, .62); backdrop-filter: blur(3px);
-  animation: ask-in .12s ease-out;
+  background: rgba(8, 8, 14, .34);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  animation: ask-in .14s ease-out;
 }
 @keyframes ask-in { from { opacity: 0 } to { opacity: 1 } }
 .askbox {
   width: 100%; max-width: 380px; padding: 18px;
-  border-radius: 20px; background: var(--surface-1); border: 1px solid var(--border);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+  border-radius: 22px;
+  /* Градієнт, а не рівний колір: скло ловить світло згори, і без
+     цього перепаду поверхня читається як матовий пластик. */
+  background: linear-gradient(170deg, rgba(255, 255, 255, .11), rgba(255, 255, 255, .045) 42%,
+                                      rgba(255, 255, 255, .025));
+  backdrop-filter: blur(26px) saturate(165%);
+  -webkit-backdrop-filter: blur(26px) saturate(165%);
+  border: 1px solid rgba(255, 255, 255, .14);
+  /* Внутрішній відблиск по верхньому краю — те, через що край скла
+     видно; зовнішня тінь відриває вікно від сторінки. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22),
+              0 26px 70px rgba(0, 0, 0, .55);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .askwrap { background: rgba(6, 6, 12, .82); }
+  .askbox { background: var(--surface-1); border-color: var(--border); }
 }
 .ask-title {
   margin: 0 0 8px; font-size: 12px; font-weight: 900;
@@ -3691,8 +3833,10 @@ input.ui-in[type="range"] { padding: 0; }
 .fb-proxy.is-warn { color: #FBBF24; }
 .ask-in {
   width: 100%; margin: 10px 0 2px; padding: 9px 11px;
-  border-radius: 10px; border: 1px solid var(--border);
-  background: var(--surface-2); color: var(--text-main);
+  border-radius: 10px; border: 1px solid rgba(255, 255, 255, .16);
+  /* Темніше за саме скло, а не світліше: поле — це заглибина в
+     поверхні, і світлий прямокутник на склі читався б як наліпка. */
+  background: rgba(0, 0, 0, .28); color: var(--text-main);
   font-size: 12px; font-family: inherit;
 }
 .ask-in:focus { outline: none; border-color: var(--accent, #8B5CF6); }
@@ -3730,10 +3874,11 @@ input.ui-in[type="range"] { padding: 0; }
 .ask-row button {
   flex: 1; padding: 9px 12px; border-radius: 12px; cursor: pointer;
   font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .06); color: var(--text-muted);
   transition: background .15s, color .15s;
 }
-.ask-row button:hover { background: var(--surface-3); color: var(--text-main); }
+.ask-row button:hover { background: rgba(255, 255, 255, .13); color: var(--text-main); }
 .ask-yes { background: #7C3AED !important; border-color: #7C3AED !important; color: #fff !important; }
 .ask-yes:hover { filter: brightness(1.12); }
 /* Незворотне — червоним. Колір тут єдине, що встигають прочитати. */
@@ -3994,8 +4139,8 @@ input.ui-in[type="range"] { padding: 0; }
 
   /* Відступи дерева вдвічі менші: на телефоні кожні десять пікселів
      ліворуч — це десять пікселів, яких бракує назві. */
-  .cab-node.cd-d1 .cab-nd-in { padding-left: 12px; }
-  .cab-node.cd-d2 .cab-nd-in { padding-left: 24px; }
+  .cab-node.cd-d1 .cab-nd-in { padding-left: 8px; }
+  .cab-node.cd-d2 .cab-nd-in { padding-left: 16px; }
 
   /* Док не влазить у ряд — гортаємо його, а не обрізаємо кнопки.
      Обрізана кнопка виглядає як кнопка, якої немає. */

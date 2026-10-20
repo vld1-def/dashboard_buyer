@@ -866,6 +866,7 @@ async function cabInit() {
   await cabFbLoad();
   await cabDaysLoad();
   await cabSnapLoad();
+  await cabAutoLoad();
   if (typeof fpLoad === 'function') await fpLoad();
   cabLoaded = true;
   cabRender();
@@ -1050,6 +1051,20 @@ async function cabFbLoad() {
    тут нічого не ламає: лишаємось без цих стовпчиків, решта таблиці на
    місці. */
 let cabSnap = {}, cabSnapErr = '';
+
+/* ЧИ ОНОВЛЮЄ СЕБЕ РОЗКЛАД. Те саме налаштування, що в Settings →
+   Sync schedule (fb_sync_pace.auto). Тут воно потрібне рівно для
+   одного: щоб «5 годин тому» на кнопці не читалось як поломка, коли
+   так і просили. Немає запису — розклад працює, як і доти. */
+let cabAutoOff = false;
+
+async function cabAutoLoad() {
+  try {
+    const raw = await getTeamSetting('fb_sync_pace');
+    const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+    cabAutoOff = v && v.auto === false;
+  } catch (e) { cabAutoOff = false; }
+}
 
 async function cabSnapLoad() {
   cabSnap = {};
@@ -1962,7 +1977,13 @@ function cabRender() {
   if (ago) {
     const at = cabFbAt();
     ago.textContent = at ? cabAgo(at) : (cabFb.length ? '' : 'never');
-    ago.title = at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet';
+    /* У ручному режимі «5 годин тому» — не застаріле, а рівно те, що
+       просили. Без цієї обмовки те саме число читається як збій
+       синхронізації, і людина йде шукати ваду. */
+    ago.title = (at ? 'Last checked ' + new Date(at).toLocaleString() : 'Never synced yet')
+      + (cabAutoOff ? '\n\nManual only: the schedule does not touch these cabinets. '
+                    + 'Press ↻ to refresh. (Settings \u2192 Sync schedule)' : '');
+    ago.classList.toggle('is-manual', !!cabAutoOff);
   }
 
   /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:
@@ -2286,10 +2307,12 @@ function cabNodeRow(n, depth, band, cols) {
   const hit = f.kids ? ` onclick="cdToggle('${cabEsc(key)}')"` : '';
   return `<tr class="cab-node cd-r cd-d${depth}${band ? ' is-band' : ''}${
       f.marked ? ' is-mk' : ''}">
-    <td class="cab-x"></td>
-    <td class="cab-x"></td>
-    <td class="cab-x"></td>
-    <td class="cab-nd${f.kids ? ' cd-can' : ''}"${hit}>
+    <!-- Три перші стовпці (стрілка, шпилька, кружок) у дереві порожні —
+         і це були ~70 пікселів пустого поля ліворуч від кожної назви,
+         щодня. Забираємо їх під саму назву: colspan лишає сітку
+         таблиці цілою, тож світчер, статус і числа стоять там, де й
+         стояли, а назва починається від краю. -->
+    <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="4"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
     <td class="cab-nd-st">${f.status}</td>
