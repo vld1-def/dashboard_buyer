@@ -1539,109 +1539,30 @@ async function markToken(base: string, hdr: Json, t: TokenRow,
   } catch (_e) { /* не привід валити імпорт */ }
 }
 
-/* ═══════════ ТЕМП РОЗКЛАДУ ═══════════
+/* ═══════════ КАБІНЕТИ ОНОВЛЮЮТЬСЯ ЛИШЕ РУКАМИ ═══════════
 
-   Розклад стукає щопівгодини, а вирішує, чи працювати цього разу, ця
-   функція. Так інтервал міняється в налаштуваннях дашборда — без SQL і
-   без пароля до бази: вдень частіше, вночі рідше, бо вночі й міняється
-   менше, а ліміти Facebook спільні на застосунок і витрачати їх на
-   сон немає сенсу.
+   Темпу розкладу тут більше немає — немає і самого розкладу для
+   кабінетів. Вхід за спільним секретом БЕЗ явного запиту людини
+   відхиляється: жодного запиту до Facebook, жодного запису.
 
-   Кнопка Sync now сюди не заходить і не пропускається НІКОЛИ: людина
-   натиснула — значить їй треба зараз, а не «за розкладом».
+   ЩО ЦЕ ЗНАЧИТЬ ДЛЯ РЕШТИ, і це не дрібниці:
+     • правила автопаузи читають знімок fb_ad_today, а пише його саме
+       синк — отже вони судять по цифрах від останнього Sync now;
+     • сповіщення про бани й зміни стану народжуються в синку, тож
+       приходять тоді, коли його запустили;
+     • обхід коментарів (fb-comments) від синку не залежить і працює
+       за своїм розкладом.
 
-   Коли команд кілька і кожна просить свій темп, беремо найкоротший
-   інтервал: прогін усе одно обходить усі токени разом, і та команда,
-   що просила частіше, інакше не отримала б нічого. */
-/* 15 хвилин удень — стільки ж, скільки стукає розклад. Темп задає не
-   лише свіжість чисел: правила йдуть слідом за синхронізацією, тож це
-   водночас і межа того, як швидко правило встигне зупинити оголошення. */
-const PACE = { day: 15, night: 60, from: 0, to: 8, tz: 180 };  // хвилини, години, зсув у хвилинах
-// Скільки дозволяємо прийти раніше. Розклад стукає у фіксовані хвилини,
-// і без цього запасу прогін із інтервалом 30 попадав би на 29.8 хвилини,
-// пропускався і виходив раз на годину замість двох.
-const PACE_GRACE_MS = 3 * 60_000;
+   ОДИН ВИНЯТОК, І ВІН ТЕЖ РУЧНИЙ. Бот у Telegram не має токена
+   людини: кнопку «оновити зараз» він проводить cron-ключем із полем
+   owner і on_demand. За цим входом стоїть натиснута людиною кнопка —
+   тобто рівно той ручний режим, про який і йдеться, просто з іншого
+   екрана. Повний прогін без звуження до власника таким не є: саме він
+   і був розкладом. */
 
 /* Скільки кабінетів перелічуємо у відповіді. Решта лишається числом:
    перелік на триста рядків — це вже не підсумок. */
 const TOUCHED_MAX = 60;
-
-function paceNum(v: unknown, lo: number, hi: number, fallback: number): number {
-  const n = Number(v);
-  return Number.isFinite(n) && n >= lo && n <= hi ? n : fallback;
-}
-
-async function syncPace(base: string, hdr: Json): Promise<typeof PACE> {
-  let rows: Json[] = [];
-  try { rows = await pgGet(base, hdr, 'team_settings?select=value&key=eq.fb_sync_pace'); }
-  catch (_e) { /* налаштування немає — лишаємось на значеннях за замовчуванням */ }
-  const out = { ...PACE };
-  let first = true;
-  rows.forEach(r => {
-    let v: Json = {};
-    try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
-    catch (_e) { return; }
-    const day = paceNum(v.day, 5, 1440, PACE.day);
-    const night = paceNum(v.night, 5, 1440, PACE.night);
-    out.day = first ? day : Math.min(out.day, day);
-    out.night = first ? night : Math.min(out.night, night);
-    // Нічне вікно беремо з першого рядка, який його має: воно про час
-    // доби, а не про темп, і мінімум із двох вікон нічого не означає.
-    if (first) {
-      out.from = paceNum(v.from, 0, 23, PACE.from);
-      out.to = paceNum(v.to, 0, 23, PACE.to);
-      out.tz = paceNum(v.tz, -720, 840, PACE.tz);
-    }
-    first = false;
-  });
-  return out;
-}
-
-/* ── «ОНОВЛЮЙ ЛИШЕ КОЛИ Я ПОПРОШУ» ──
-
-   Темп вище відповідає на «як часто», а це — на «чи взагалі сам».
-   Лежить у тому ж налаштуванні (fb_sync_pace.auto === false), але
-   читається ПООСІБНО, а не зведенням: темп у парку спільний, а
-   рішення «мої кабінети оновлюються лише руками» — ні, і дати одному
-   заморозити чужі кабінети було б не правом, а поломкою.
-
-   Межа тільки для розкладу. Натиснута людиною кнопка Sync now
-   проходить завжди: вона і є той ручний режим, про який просили. */
-async function syncManualOnly(base: string, hdr: Json): Promise<Set<string>> {
-  const out = new Set<string>();
-  let rows: Json[] = [];
-  try { rows = await pgGet(base, hdr, 'team_settings?select=created_by,value&key=eq.fb_sync_pace'); }
-  catch (_e) { return out; }
-  rows.forEach(r => {
-    let v: Json = {};
-    try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
-    catch (_e) { return; }
-    if (v.auto === false && r.created_by) out.add(String(r.created_by));
-  });
-  return out;
-}
-
-/* Чи зараз ніч за налаштованим вікном. Вікно може перетинати
-   полуніч (22 → 6), і тоді порівняння «більше і менше» не працює —
-   потрібне саме «або». */
-function paceIsNight(p: typeof PACE, now: Date): boolean {
-  if (p.from === p.to) return false;          // вікно нульової довжини — ночі немає
-  const h = new Date(now.getTime() + p.tz * 60_000).getUTCHours();
-  return p.from < p.to ? (h >= p.from && h < p.to) : (h >= p.from || h < p.to);
-}
-
-/* Коли останній раз ходили в Facebook. Окремої таблиці для цього не
-   заводимо: checked_at у fb_tokens проставляється кожному токену на
-   кожному прогоні, тож найсвіжіший із них і є час останнього прогону.
-   Немає жодного — значить не ходили ніколи, і треба йти. */
-async function lastRunAt(base: string, hdr: Json): Promise<number> {
-  try {
-    const rows = await pgGet(base, hdr,
-      'fb_tokens?select=checked_at&checked_at=not.is.null&order=checked_at.desc&limit=1');
-    const at = Date.parse(String((rows[0] || {}).checked_at || ''));
-    return Number.isFinite(at) ? at : 0;
-  } catch (_e) { return 0; }
-}
 
 /* ═══════════ TELEGRAM ═══════════
 
@@ -1968,22 +1889,21 @@ async function handle(req: Request): Promise<Response> {
     return reply(await tgTest(base, hdr, onlyOwner));
   }
 
-  /* Розклад стукає частіше, ніж треба працювати. Пропускаємо зайвий
-     стук тут — до того, як піти по токени й у Facebook: інакше «раз на
-     годину вночі» коштувало б рівно стільки ж запитів, скільки й
-     щопівгодинний прогін. */
+  /* ЗУПИНКА ДЛЯ РОЗКЛАДУ — ТУТ, ДО ВСЬОГО.
+
+     Раніше тут вирішувалось «чи не зарано»; тепер відповідь на вхід за
+     розкладом одна й та сама. Відхиляємо ДО того, як піти по токени й
+     у Facebook: за кожен зайвий запит платить ліміт самого кабінета.
+
+     Задачу в базі варто зняти (select cron.unschedule('fb-sync-hourly')),
+     але поки вона стоїть, кожен її стук приходить сюди й нічого не
+     коштує. */
   if (cron && !onDemand) {
-    const pace = await syncPace(base, hdr);
-    const night = paceIsNight(pace, new Date());
-    const everyMs = (night ? pace.night : pace.day) * 60_000;
-    const since = Date.now() - await lastRunAt(base, hdr);
-    if (since + PACE_GRACE_MS < everyMs) {
-      return reply({ fn: FN_VERSION, cron: true, skipped: 'too soon',
-        pace: { every_min: everyMs / 60_000, night, day: pace.day, night_min: pace.night,
-                window: pace.from + '-' + pace.to, tz_min: pace.tz },
-        since_min: Math.round(since / 60_000),
-        note: 'the schedule ticks more often than the configured pace' });
-    }
+    return reply({ fn: FN_VERSION, cron: true, skipped: 'manual only',
+      tokens: 0, accounts: 0, changed: 0,
+      note: 'cabinets refresh only when a person asks: Sync now in the dashboard, '
+          + 'or the bot button (cron key with owner + on_demand). '
+          + "Drop the schedule with select cron.unschedule('fb-sync-hourly')." });
   }
 
   /* ПОРЯДОК ТОКЕНІВ — ЗА ДАВНІСТЮ, А НЕ ЗА НОМЕРОМ. Це не косметика.
@@ -2013,9 +1933,6 @@ async function handle(req: Request): Promise<Response> {
   if (onlyToken) q += '&id=eq.' + onlyToken;
 
   let tokens: TokenRow[];
-  // Скільком токенам розклад не дістався через ручний режим. Саме
-  // повідомлення дописуємо нижче, де вже є problems.
-  let skippedManual = 0;
   try {
     tokens = await pgGet(base, hdr, q) as TokenRow[];
     /* Браузер відбираємо вже тут, а не запитом: він живе не окремим
@@ -2023,20 +1940,7 @@ async function handle(req: Request): Promise<Response> {
        лише tokenBrowser. Один розбір на обидва місця — одна правда. */
     if (onlyBrowser) tokens = tokens.filter(t =>
       tokenBrowser(t).toLowerCase() === onlyBrowser);
-    /* Чиї кабінети оновлюються лише руками — тих розклад не чіпає.
-       Відсіюємо тут, одразу після списку: далі починаються запити до
-       Facebook, і за них платить ліміт того самого кабінета. */
-    if (cron && !onDemand) {
-      const manual = await syncManualOnly(base, hdr);
-      if (manual.size) {
-        const was = tokens.length;
-        tokens = tokens.filter(t => !manual.has(String(t.created_by || '')));
-        if (!tokens.length) return reply({ fn: FN_VERSION, cron: true,
-          skipped: 'manual only', tokens: 0, accounts: 0, changed: 0,
-          note: 'every token belongs to someone who asked for manual refresh only' });
-        skippedManual = was - tokens.length;
-      }
-    }
+
   } catch (e) {
     const msg = (e as Error).message;
     return reply({ error: /fb_tokens|does not exist/i.test(msg)
@@ -2053,10 +1957,6 @@ async function handle(req: Request): Promise<Response> {
   let days = 0, noHistory = 0, historyError = '';
   let snapshot = 0, snapshotError = '', linkError = '';
   const problems: string[] = [];
-  /* Пропущені через ручний режим — у звіт, а не в тишу: інакше
-     «оновилось не все» виглядало б як збій. */
-  if (skippedManual) problems.push(skippedManual
-    + ' token(s) skipped: their owner asked for manual refresh only');
   let throttled = false;
   /* До яких токенів черга дійшла. Рахуємо на вході в тіло циклу, а не
      по done: токен, що впав із винятком, ОБІЙДЕНИЙ — просто невдало, і

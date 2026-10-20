@@ -2404,7 +2404,6 @@ rest = sub(rest,
   if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
   if (typeof setSubTabInit === 'function') setSubTabInit();
   if (typeof fbLoad === 'function') fbLoad();
-  if (typeof fbPaceLoad === 'function') fbPaceLoad();
   if (typeof fcLoadAutoHide === 'function') fcLoadAutoHide();
 }""",
   'Телеграм і токени FB: підвантаження при відкритті налаштувань')
