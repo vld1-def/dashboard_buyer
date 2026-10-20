@@ -25,7 +25,7 @@ def sub(hay, old, new, what):
 def read(f):
     return open(f, encoding='utf-8').read().rstrip('\n')
 
-head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, geocostjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, tmhtml, tmjs, flhtml, fljs = (read(f) for f in
+head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, geocostjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs = (read(f) for f in
     ('head.html', 'design.css', 'shell.html', 'widgets.js', 'trend.js', 'settings.html',
      'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js', 'geocost.js',
      'fresh.js', 'geomodal.js', 'cabinets.html', 'cabinets.js', 'tg.js', 'events.js',
@@ -33,6 +33,7 @@ head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs
      'uniq.html', 'uniq.js', 'rules.html', 'rules.js', 'pages.html', 'pages.js',
      'cabdrill.js',
      'files.html', 'files.js',
+     'aiask.html', 'aiask.js',
      'team.html', 'team.js'))
 
 # Версію Edge Function беремо просто з її коду: дублювати це число в
@@ -2539,6 +2540,12 @@ rest = sub(rest,
 # сторінка під ногами мінятись не повинна.
 i = rest.rindex('</body>')
 rest = rest[:i] + flhtml.rstrip() + '\n\n' + fljs.strip() + '\n\n' + rest[i:]
+
+# ── асистент: вікно з питанням і сам рахувальник ──
+# Вікно, а не сторінка: питання виникає посеред роботи. Числа рахує
+# сам дашборд, модель складає лише план (див. build/aiask.js).
+i = rest.rindex('</body>')
+rest = rest[:i] + aqhtml.rstrip() + '\n\n' + aqjs.strip() + '\n\n' + rest[i:]
 
 
 

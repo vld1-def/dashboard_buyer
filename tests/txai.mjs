@@ -99,6 +99,65 @@ ok('із позначкою, що це AI — через місяць «хто �
   savedOne.first.ai === true, savedOne.first);
 ok('записали в той самий банк текстів', savedOne.key === 'texts_bank', savedOne.key);
 
+/* ─────────── мова та, яку просили, а не та, що у фільтрі ───────────
+   Зберігали її з ФІЛЬТРА, і хто генерував під «pl», маючи на екрані
+   «усі мови», отримував у банку мову першого зразка. Мова — це те, що
+   вписали у вікні генерації, і більше ніщо. */
+await setup();
+const langCase = await page.evaluate(async () => {
+  const f = document.getElementById('tx-lang-filter');
+  if (f) f.value = '';            // у фільтрі «усі мови»
+  txAiCall = async () => ({ items: [{ title: 'P', text: 'Odbierz bonus dzisiaj', ua: 'про бонус' }],
+                            model: 'grok-4.7', engine: 'xai', cost_usd: 0.001,
+                            left_today: 9, problems: [] });
+  const p = txAi();
+  await new Promise(r => setTimeout(r, 60));
+  const w = document.querySelector('.askwrap');
+  w.querySelector('[data-k="lang"]').value = 'pl';
+  w.querySelector('.ask-yes').click();
+  await p;
+  // Рядок під кандидатами читаємо ДО збереження: після нього там уже
+  // звіт про збереження, а не про те, хто відповів.
+  const note = txAiNote;
+  txAiPick(0);
+  await txAiSave();
+  const fresh = txItems.find(t => t.text === 'Odbierz bonus dzisiaj');
+  return { lang: fresh && fresh.lang, ua: fresh && fresh.ua, note };
+});
+ok('у банк пішла мова з вікна генерації, а не з фільтра', langCase.lang === 'pl', langCase);
+ok('і український підпис зберігся разом із текстом', langCase.ua === 'про бонус', langCase);
+ok('видно, яка саме модель відповіла', /grok/.test(langCase.note), langCase.note);
+
+/* Підпис українською — щоб не читати десять варіантів чужою мовою
+   заради того, щоб зрозуміти, чим вони різняться. */
+await setup();
+ok('підпис українською видно під кандидатом', await page.evaluate(async () => {
+  txAiCall = async () => ({ items: [{ title: 'A', text: 'Odbierz bonus', ua: 'коротко про бонус' }],
+                            model: 'grok-4.7', cost_usd: 0, left_today: 1, problems: [] });
+  const p = txAi();
+  await new Promise(r => setTimeout(r, 60));
+  document.querySelector('.askwrap .ask-yes').click();
+  await p;
+  const box = document.getElementById('tx-ai-box');
+  return !!box.querySelector('.tx-ai-ua')
+      && box.querySelector('.tx-ai-ua').textContent.includes('коротко про бонус');
+}));
+
+/* Модель відмовилась або зробила зауваження — показуємо ЇЇ СЛОВА.
+   «Розібрати нічого не вдалось» на місці сказаного відправляє шукати
+   ваду в функції, якої там немає. */
+await setup();
+ok('сказане моделею видно замість «нічого не вдалось»', await page.evaluate(async () => {
+  txAiCall = async () => ({ items: [], model: 'grok-4.7', cost_usd: 0.0007, left_today: 5,
+                            problems: [], said: 'Не можу вигадувати подробиці призів.' });
+  const p = txAi();
+  await new Promise(r => setTimeout(r, 60));
+  document.querySelector('.askwrap .ask-yes').click();
+  await p;
+  const t = document.querySelector('#tx-ai-box .tx-ai-h span').textContent;
+  return /Не можу вигадувати подробиці призів/.test(t) && /grok/.test(t);
+}));
+
 /* ─────────── відмова моделі не виглядає як порожнеча ─────────── */
 ok('нерозгорнута функція називає команду розгортання', await page.evaluate(async () => {
   txAiCall = async () => { throw Object.assign(new Error('not deployed'), { code: 'missing' }); };
