@@ -272,7 +272,10 @@ function aqPlanWords(spec, set) {
   const what = m.op === 'count' ? 'кількість рядків'
     : m.op === 'per' ? `${m.num} / ${m.den} (сума на суму)`
     : `${AQ_MET_UA[m.op]} ${m.col}`;
-  const bits = [what, 'у «' + set.title + '»'];
+  /* Назву набору сюди більше не пишемо: вона стоїть списком у шапці
+     вікна, і повторювати її в кожному рядку плану — рівно те зайве,
+     від якого ми й ішли. */
+  const bits = [what];
   if (spec.where.length) bits.push('де ' + spec.where.map(w =>
     `${w.col} ${AQ_OP_UA[w.op]}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`).join(' і '));
   if (spec.group) bits.push('по ' + spec.group
@@ -287,47 +290,18 @@ function aqPlanWords(spec, set) {
 const aqFmt = v => v == null ? '—'
   : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
-/* ── ВІКНО ── */
-window.aqOpen = function (q) {
-  const box = document.getElementById('aq-modal');
-  if (!box) return;
-  box.classList.remove('hidden');
-  aqPaintSets();
-  const inp = document.getElementById('aq-q');
-  if (inp) { if (q) inp.value = q; inp.focus(); }
-};
-window.aqClose = function () { document.getElementById('aq-modal')?.classList.add('hidden'); };
+/* ═══════════ ЩО В СТОВПЦІ — БЕЗ МОДЕЛІ ═══════════
 
-function aqPaintSets() {
-  const el = document.getElementById('aq-sets');
-  const sub = document.getElementById('aq-sub');
-  if (!el) return;
-  const sets = aqSets();
-  if (sub) sub.textContent = sets.length
-    ? sets.length + ' набір(ів) відкрито'
-    : 'немає відкритих даних';
-  if (!sets.length) {
-    el.innerHTML = `<p class="aq-note">Немає чого питати: відкрий файл у Таблицях або зайди на
-      дашборд, щоб підтягнулась статистика.<br>
-      <span class="opacity-70">Google-таблицю в рамці асистент не бачить — вона живе в Google,
-      ми лише вбудовуємо її сторінку. Експортуй і відкрий файлом.</span></p>`;
-    return;
-  }
-  el.innerHTML = sets.map(s => `<span class="aq-set"><b>${aqEsc(s.title)}</b>
-      <span>${s.rows.length} рядк. · ${s.cols.length} стовпц.</span></span>`).join('');
-}
+   Модель НЕ бачить значень — і це умова, а не вада: у вивантаженнях
+   лежать sub-id, а часом і дані людей. Тому на питання «що тут
+   лежить» вона відповідає тим, що має — структурою.
 
-/* ═══════════ ЩО В ТАБЛИЦІ — БЕЗ МОДЕЛІ ═══════════
-
-   Модель НЕ бачить значень — і це не вада, а умова: у вивантаженнях
-   лежать sub-id, а часом і дані людей. Тому на питання «що в цьому
-   файлі» вона відповідає тим, що має — структурою, і виглядає це як
-   «не можу сказати».
-
-   Але дашборд значення бачить: вони в нього й завантажені. Тож огляд
-   він складає САМ — локально, без запиту й без копійки витрат. Для
-   чисел: скільки заповнено, межі й сума. Для тексту: які значення
-   справді зустрічаються — саме їх і треба знати, щоб написати умову
+   Але дашборд значення бачить: вони в нього й завантажені. Тож
+   відповідь складає САМ — локально, без запиту й без копійки витрат.
+   Окремої кнопки під це немає й не треба: стовпці стоять у стрічці
+   чипами, і клік по чипу й є те питання. Для чисел: скільки
+   заповнено, межі й сума. Для тексту: які значення справді
+   зустрічаються — саме їх і треба знати, щоб написати умову
    («Decline» чи «declined»?).
 
    Порожнє — це «—», а не нуль: стовпець, де числа немає, і стовпець,
@@ -359,62 +333,178 @@ function aqPeekCol(set, col) {
            uniq: freq.size, top: vals.slice(0, AQ_PEEK_VALS).map(v => v[0]) };
 }
 
-window.aqPeek = function () {
-  const out = document.getElementById('aq-out');
-  if (!out) return;
+
+/* ══════════════ ЧАТ ══════════════
+
+   Стрічка повідомлень, а не один екран, що перемальовується: друге
+   питання майже завжди уточнює перше, і забрати попереднє число
+   означає забрати те, з чим його порівнюють.
+
+   Під кожною відповіддю один муторний рядок — план і ціна. Доти на
+   екрані стояло п'ять абзаців службового тексту на одне число. Те, що
+   треба бачити ЩОРАЗУ, — це число й план; решта (приватність, звідки
+   беруться набори) сказана один раз і стоїть собі внизу. */
+let aqSetId = '';          // який набір питаємо
+let aqGreeted = '';        // для якого набору вже показали стовпці
+
+function aqSetNow() {
   const sets = aqSets();
-  if (!sets.length) { aqPaintSets(); return; }
-  out.innerHTML = sets.map(set => {
-    const rows = set.rows.length;
-    return `<p class="aq-plan"><b>${aqEsc(set.title)}</b> — ${rows} рядк. · ${
-        set.cols.length} стовпц.</p>`
-      + `<table class="aq-tbl"><thead><tr><th>стовпець</th><th>вид</th>
-         <th>заповнено</th><th>що там</th></tr></thead><tbody>`
-      + set.cols.map(c => {
-          const i = aqPeekCol(set, c);
-          const what = c.kind === 'num'
-            ? (i.n ? `від ${aqFmt(i.min)} до ${aqFmt(i.max)} · сума ${aqFmt(i.sum)}` : '—')
-            : (i.top.length
-                ? i.top.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
-                  + (i.uniq > i.top.length ? ` <span class="aq-dim">+${i.uniq - i.top.length} інших</span>` : '')
-                : '—');
-          return `<tr><td>${aqEsc(c.name)}</td><td class="aq-dim">${
-            c.kind === 'num' ? 'число' : c.kind === 'date' ? 'дата' : 'текст'}</td><td class="aq-n">${
-            i.filled}${i.seen < rows ? ` <span class="aq-dim">з ${i.seen}</span>` : ''}</td><td>${what}</td></tr>`;
-        }).join('')
-      + '</tbody></table>';
-  }).join('')
-  + `<p class="aq-cost">Огляд склав дашборд із відкритих рядків — модель не питали,
-      і значення нікуди не їхали. Тому це безкоштовно.</p>`;
+  return sets.find(s => s.id === aqSetId) || sets[0] || null;
+}
+
+const aqThread = () => document.getElementById('aq-thread');
+
+/* Нове знизу, і прокрутка туди ж: відповідь, якої не видно без
+   прокрутки, читається як відсутність відповіді. */
+function aqPush(cls, html) {
+  const box = aqThread();
+  if (!box) return null;
+  const el = document.createElement('div');
+  el.className = 'aq-msg ' + cls;
+  el.innerHTML = html;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  return el;
+}
+
+/* Поле росте під текст — до межі, після якої починає прокручуватись
+   саме. Тягнути за ріжок теж можна: resize лишається вертикальним. */
+window.aqGrow = function (el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = Math.min(180, Math.max(38, el.scrollHeight)) + 'px';
 };
+
+/* ── СТОВПЦІ ЧИПАМИ ──
+   Клік по чипу — питання «що в цьому стовпці», на яке відповідає
+   дашборд. Назва стовпця їде в атрибуті, а не в onclick: у заголовках
+   вивантажень трапляються і лапки, і апострофи. */
+function aqChips(set) {
+  return set.cols.map((c, i) => `<button type="button" class="aq-chip${
+    c.kind === 'num' ? ' is-num' : ''}" data-c="${i}" onclick="aqCol(this)"
+    title="Клік — що в цьому стовпці">${aqEsc(c.name)}</button>`).join('');
+}
+
+window.aqCol = function (btn) {
+  const set = aqSetNow();
+  if (!set) return;
+  const c = set.cols[Number(btn.getAttribute('data-c'))];
+  if (!c) return;
+  const i = aqPeekCol(set, c);
+  const what = c.kind === 'num'
+    ? (i.n ? `від <b>${aqFmt(i.min)}</b> до <b>${aqFmt(i.max)}</b> · сума <b>${aqFmt(i.sum)}</b>`
+           : 'чисел не знайшлось')
+    : (i.top.length
+        ? i.top.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
+          + (i.uniq > i.top.length ? ` <span class="aq-dim">+${i.uniq - i.top.length} інших</span>` : '')
+        : '—');
+  aqPush('is-bot', `<p class="aq-h">${aqEsc(c.name)} <span class="aq-dim">· ${
+      c.kind === 'num' ? 'число' : c.kind === 'date' ? 'дата' : 'текст'} · заповнено ${i.filled}${
+      i.seen < set.rows.length ? ' з ' + i.seen + ' прочитаних' : ''}</span></p>
+    <p class="aq-val">${what}</p>
+    <p class="aq-meta">порахував дашборд, модель не питали</p>`);
+};
+
+/* ── ВІКНО ── */
+window.aqOpen = function (q) {
+  const box = document.getElementById('aq-modal');
+  if (!box) return;
+  box.classList.remove('hidden');
+  aqPaintSets();
+  const inp = document.getElementById('aq-q');
+  if (inp) { if (q) { inp.value = q; aqGrow(inp); } inp.focus(); }
+};
+window.aqClose = function () { document.getElementById('aq-modal')?.classList.add('hidden'); };
+
+/* Вибір набору — окреме повідомлення в стрічці, а не тиха зміна:
+   інакше наступна відповідь приїхала б по іншій таблиці без жодної
+   позначки, коли саме це сталось. */
+window.aqPick = function (id) {
+  aqSetId = String(id || '');
+  try { localStorage.setItem('aq_set', aqSetId); } catch (e) { /* приватний режим */ }
+  aqPaintSets();
+};
+
+function aqPaintSets() {
+  const sel = document.getElementById('aq-set');
+  const sub = document.getElementById('aq-sub');
+  const sets = aqSets();
+  if (!sel) return;
+
+  if (!sets.length) {
+    sel.innerHTML = '<option>немає відкритих даних</option>';
+    sel.disabled = true;
+    if (sub) sub.textContent = 'нічого не відкрито';
+    if (aqGreeted !== '—none—') {
+      aqGreeted = '—none—';
+      aqPush('is-bot', `<p class="aq-val">Немає чого питати: відкрий файл у Таблицях або зайди на
+        дашборд, щоб підтягнулась статистика.</p>
+        <p class="aq-meta">Google-таблицю в рамці я не бачу — вона живе в Google, ми лише
+        вбудовуємо її сторінку. Експортуй і відкрий файлом.</p>`);
+    }
+    return;
+  }
+
+  sel.disabled = false;
+  let want = aqSetId;
+  if (!want) { try { want = localStorage.getItem('aq_set') || ''; } catch (e) { want = ''; } }
+  const set = sets.find(s => s.id === want) || sets[0];
+  aqSetId = set.id;
+  sel.innerHTML = sets.map(s => `<option value="${aqEsc(s.id)}"${
+    s.id === set.id ? ' selected' : ''}>${aqEsc(s.title)}</option>`).join('');
+  if (sub) sub.textContent = set.rows.length + ' рядк. · ' + set.cols.length + ' стовпц.';
+
+  /* Стовпці показуємо один раз на набір: це і є відповідь на «що тут
+     є», і повторювати її перед кожним питанням — те саме сміття, від
+     якого ми тут і йдемо. */
+  if (aqGreeted !== set.id) {
+    aqGreeted = set.id;
+    aqPush('is-bot', `<p class="aq-h">${aqEsc(set.title)} <span class="aq-dim">· ${
+        set.rows.length} рядк.</span></p>
+      <div class="aq-chips">${aqChips(set)}</div>
+      <p class="aq-meta">Клік по стовпцю — що в ньому. Питання пиши словами.</p>`);
+  }
+}
 
 window.aqAsk = async function () {
   if (aqBusy) return;
-  const q = (document.getElementById('aq-q')?.value || '').trim();
-  const out = document.getElementById('aq-out');
-  if (!q || !out) return;
-  const sets = aqSets();
-  if (!sets.length) { aqPaintSets(); return; }
+  const inp = document.getElementById('aq-q');
+  const q = (inp?.value || '').trim();
+  if (!q) return;
+  const set = aqSetNow();
+  if (!set) { aqPaintSets(); return; }
+
+  aqPush('is-me', `<p class="aq-val">${aqEsc(q)}</p>`);
+  if (inp) { inp.value = ''; aqGrow(inp); }
 
   aqBusy = true;
   document.getElementById('aq-go')?.setAttribute('disabled', 'disabled');
-  out.innerHTML = '<p class="aq-note">Думає…</p>';
-  let j;
-  try {
-    j = await aqCall({ action: 'plan', q,
-      sets: sets.map(s => ({ id: s.id, title: s.title, rows: s.rows.length,
-                             cols: s.cols.map(c => ({ name: c.name, kind: c.kind })) })) });
-  } catch (e) {
-    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
-    out.innerHTML = `<p class="aq-note is-bad">${(e.code === 'missing' || net)
-      ? 'Функція ai не відповіла — спершу розгорни її: <span class="font-mono">supabase functions deploy ai</span>'
-      : aqEsc(e.message)}</p>`;
+  const wait = aqPush('is-bot', '<p class="aq-val aq-dim">Думає…</p>');
+
+  const fin = html => {
+    if (wait) wait.innerHTML = html;
+    const box = aqThread();
+    if (box) box.scrollTop = box.scrollHeight;
     aqBusy = false;
     document.getElementById('aq-go')?.removeAttribute('disabled');
+    inp?.focus();
+  };
+
+  let j;
+  try {
+    /* Їде ОДИН набір — той, що вибрано. Доти їхали всі відкриті, і
+       модель мусила ще й угадати, про який питають: зайва здогадка на
+       рівному місці, та ще й зайві назви стовпців у запиті. */
+    j = await aqCall({ action: 'plan', q,
+      sets: [{ id: set.id, title: set.title, rows: set.rows.length,
+               cols: set.cols.map(c => ({ name: c.name, kind: c.kind })) }] });
+  } catch (e) {
+    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    fin(`<p class="aq-val is-bad">${(e.code === 'missing' || net)
+      ? 'Функція ai не відповіла — спершу розгорни її: <span class="font-mono">supabase functions deploy ai</span>'
+      : aqEsc(e.message)}</p>`);
     return;
   }
-  aqBusy = false;
-  document.getElementById('aq-go')?.removeAttribute('disabled');
 
   let plan = null;
   try {
@@ -423,55 +513,56 @@ window.aqAsk = async function () {
     if (a >= 0 && b > a) plan = JSON.parse(raw.slice(a, b + 1));
   } catch (e) { /* нижче скажемо, що плану немає */ }
 
-  const got = aqCheck(plan, sets);
+  const cost = `${aqEsc(j.model || '')} · ~$${(j.cost_usd || 0).toFixed(5)}${
+    j.left_today != null ? ' · лишилось сьогодні: ' + j.left_today : ''}`;
+
+  const got = aqCheck(plan, [set]);
   if (got.err) {
     /* Найчастіша причина — питання про ВМІСТ («що тут є?»), а вмісту
-       модель і не бачить: їй дають лише назви стовпців. Відповідь на
-       таке питання є в дашборда, і вона за одне натискання. */
-    out.innerHTML = `<p class="aq-note is-bad">${aqEsc(got.err)}</p>`
-      + `<p class="aq-note">Питання про те, ЩО лежить у таблиці, модель і не може
-         розібрати: значень вона не бачить. Натисни «Що в таблиці?» — дашборд
-         покаже стовпці, межі чисел і які значення справді зустрічаються.</p>`
-      + `<p class="aq-cost">${aqEsc(j.model || '')} · ~$${(j.cost_usd || 0).toFixed(5)}</p>`;
+       модель і не бачить. Відповідь на таке питання є в дашборда, і
+       вона за один клік по стовпцю. */
+    fin(`<p class="aq-val is-bad">${aqEsc(got.err)}</p>`
+      + `<div class="aq-chips">${aqChips(set)}</div>`
+      + `<p class="aq-meta">Клік по стовпцю — що в ньому. ${cost}</p>`);
     return;
   }
 
-  const { spec, set } = got;
+  const { spec } = got;
   const res = aqRun(spec, set);
   aqLast = { spec, set: set.id, res };
 
-  const head = `<p class="aq-plan"><b>Порахував:</b> ${aqEsc(aqPlanWords(spec, set))}</p>`
-    + `<p class="aq-rows">${res.rows} рядк. зі ${res.total}${
-        spec.group ? ' · груп: ' + res.groups : ''}</p>`
-    + (spec.say ? `<p class="aq-say">Як я зрозумів питання: ${aqEsc(spec.say)}</p>` : '');
-
-  /* Фільтр, який не знайшов нічого, — найчастіша причина нуля, і
-     майже завжди це написання значення. Тому показуємо, ЩО справді
-     лежить у тому стовпці: локально, нікуди не відправляючи. */
-  let hint = '';
-  if (!res.rows && spec.where.length) {
+  /* Фільтр, який не знайшов нічого, — найчастіша причина нуля, і майже
+     завжди це написання значення. Тому показуємо, ЩО справді лежить у
+     тому стовпці: локально, нікуди не відправляючи. */
+  let body;
+  if (!res.rows) {
     const w = spec.where.find(x => !['empty', 'not_empty'].includes(x.op)) || spec.where[0];
-    const vals = [...new Set(set.rows.slice(0, 2000)
-      .map(r => String(r[w.col] == null ? '' : r[w.col]).trim()).filter(Boolean))].slice(0, 12);
-    hint = `<p class="aq-note">Під умову не підійшов жоден рядок. У стовпці
-      <b>${aqEsc(w.col)}</b> зустрічається: ${vals.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
-      }${vals.length === 12 ? ' …' : ''}</p>`;
-  }
-
-  const body = spec.group
-    ? `<table class="aq-tbl"><thead><tr><th>${aqEsc(spec.group)}</th><th>${
+    const vals = w ? [...new Set(set.rows.slice(0, 2000)
+      .map(r => String(r[w.col] == null ? '' : r[w.col]).trim()).filter(Boolean))].slice(0, 12) : [];
+    body = `<p class="aq-val">Жодного рядка під цю умову.</p>`
+      + (vals.length ? `<p class="aq-meta">У «${aqEsc(w.col)}» зустрічається: ${
+          vals.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
+          }${vals.length === 12 ? ' …' : ''}</p>` : '');
+  } else if (spec.group) {
+    body = `<table class="aq-tbl"><thead><tr><th>${aqEsc(spec.group)}</th><th>${
         aqEsc(spec.metric.op === 'count' ? 'рядків' : spec.metric.op === 'per'
           ? spec.metric.num + '/' + spec.metric.den : spec.metric.col)}</th><th>рядків</th></tr></thead>
        <tbody>${res.list.map(r => `<tr><td>${aqEsc(r.k)}</td><td class="aq-n">${
-         aqFmt(r.v)}</td><td class="aq-n aq-dim">${r.rows}</td></tr>`).join('')}</tbody></table>`
-    : `<p class="aq-big">${aqFmt(res.one.v)}</p>`
+         aqFmt(r.v)}</td><td class="aq-n aq-dim">${r.rows}</td></tr>`).join('')}</tbody></table>`;
+  } else {
+    body = `<p class="aq-big">${aqFmt(res.one.v)}</p>`
       + (spec.metric.op === 'per'
-          ? `<p class="aq-rows">${aqEsc(spec.metric.num)} ${aqFmt(res.one.num)} / ${
+          ? `<p class="aq-meta">${aqEsc(spec.metric.num)} ${aqFmt(res.one.num)} / ${
               aqEsc(spec.metric.den)} ${aqFmt(res.one.den)}</p>` : '');
+  }
 
-  out.innerHTML = head + hint + (res.rows ? body : '')
-    + `<p class="aq-cost">Числа порахував дашборд із відкритих рядків — модель склала лише план.
-        ${aqEsc(j.model || '')} · ~$${(j.cost_usd || 0).toFixed(5)}${
-        j.left_today != null ? ' · лишилось сьогодні: ' + j.left_today : ''}</p>`;
+  /* ПЛАН ОДНИМ РЯДКОМ — але він є завжди. Число без плану перевірити
+     нічим; «як я зрозумів питання» своїми словами моделі лишаємо
+     поруч, бо саме воно ловить неправильно зрозуміле питання. */
+  fin(body
+    + `<p class="aq-meta"><b>${aqEsc(aqPlanWords(spec, set))}</b> · ${res.rows} з ${res.total} рядк.${
+        spec.group ? ' · груп: ' + res.groups : ''}</p>`
+    + (spec.say ? `<p class="aq-meta">${aqEsc(spec.say)}</p>` : '')
+    + `<p class="aq-meta aq-dim">рахував дашборд, модель склала план · ${cost}</p>`);
 };
 </script>

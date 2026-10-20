@@ -30,6 +30,11 @@
   --text-main:   #E9E9EC;
   --text-muted:  #8A8A95;
   --accent:      #8B5CF6;
+  /* Акцент на поверхні й у рамці. Доти кожне місце мішало свою
+     прозорість від руки, і два «акцентних» блоки поряд виходили різних
+     відтінків. */
+  --accent-soft: rgba(139,92,246,.14);
+  --accent-bd:   rgba(139,92,246,.32);
   --ok:          #22C55E;
   --warn:        #EAB308;
   --bad:         #EF4444;
@@ -3201,44 +3206,50 @@ body.is-lead-only .admin-only { display: none; }
   color: var(--text-muted); opacity: .8;
 }
 
-/* ── АСИСТЕНТ ──
-   Питання вгорі, план і число під ним. План не дрібніший за число
-   навмисно: саме він дає змогу не вірити на слово. */
-.aq-bar { display: flex; gap: 8px; align-items: center; }
-.aq-bar .mw-fld { flex: 1 1 auto; min-width: 0; }
-.aq-privacy {
-  margin: 8px 0 0; font-size: 10px; font-weight: 700; line-height: 1.5;
-  color: var(--text-muted);
+/* ── АСИСТЕНТ: ЧАТ ──
+   Стрічка повідомлень: своє питання праворуч, відповідь ліворуч.
+   Під відповіддю один муторний рядок — план і ціна. План лишається
+   видимим завжди: саме він дає змогу не вірити числу на слово. */
+.aq-thread { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.aq-msg { max-width: 86%; padding: 10px 13px; border-radius: 16px; }
+.aq-msg.is-bot {
+  align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border);
+  border-bottom-left-radius: 6px;
 }
-.aq-sets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.aq-set {
-  display: inline-flex; gap: 6px; align-items: baseline;
-  padding: 4px 9px; border-radius: 9px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  font-size: 10px; font-weight: 800; color: var(--text-main);
+.aq-msg.is-me {
+  align-self: flex-end; background: var(--accent-soft); border: 1px solid var(--accent-bd);
+  border-bottom-right-radius: 6px;
 }
-.aq-set span { font-weight: 700; color: var(--text-muted); }
-.aq-out { margin-top: 14px; }
-.aq-note { margin: 0 0 8px; font-size: 11px; font-weight: 700; line-height: 1.6; color: var(--text-muted); }
-.aq-note.is-bad { color: var(--bad); }
+.aq-msg p { margin: 0; }
+.aq-msg p + p, .aq-msg .aq-chips + p, .aq-msg p + .aq-chips { margin-top: 6px; }
+.aq-h { font-size: 11px; font-weight: 900; color: var(--text-main); }
+.aq-val { font-size: 12px; font-weight: 700; line-height: 1.6; color: var(--text-main); }
+.aq-val.is-bad { color: var(--bad); }
+.aq-meta { font-size: 10px; font-weight: 700; line-height: 1.55; color: var(--text-muted); }
+.aq-meta b { color: var(--accent); font-weight: 800; }
+.aq-dim { color: var(--text-muted); font-weight: 700; }
+.aq-big {
+  font-size: 30px; font-weight: 900; letter-spacing: -.02em; line-height: 1.1;
+  color: var(--text-main); font-family: ui-monospace, Menlo, monospace;
+}
 .aq-v {
   display: inline-block; padding: 1px 6px; margin: 1px 0; border-radius: 6px;
   background: var(--surface-3); font-family: ui-monospace, Menlo, monospace; font-size: 10px;
 }
-.aq-plan { margin: 0 0 4px; font-size: 12px; font-weight: 700; line-height: 1.55; color: var(--text-main); }
-.aq-plan b { color: var(--accent); }
-.aq-rows, .aq-say, .aq-cost {
-  margin: 0 0 4px; font-size: 10px; font-weight: 700; line-height: 1.5; color: var(--text-muted);
+/* Стовпці чипами — і кожен із них питання: клік показує, що в ньому.
+   Числові відрізняються кольором, бо саме їх сумують. */
+.aq-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.aq-chip {
+  padding: 3px 8px; border-radius: 8px; cursor: pointer;
+  background: var(--surface-3); border: 1px solid var(--border);
+  font-size: 10px; font-weight: 800; color: var(--text-main);
+  font-family: ui-monospace, Menlo, monospace; transition: background .15s, color .15s;
 }
-.aq-say { font-style: italic; }
-.aq-cost { margin-top: 10px; opacity: .8; }
-.aq-big {
-  margin: 10px 0 2px; font-size: 30px; font-weight: 900; letter-spacing: -.02em;
-  color: var(--text-main); font-family: ui-monospace, Menlo, monospace;
-}
-.aq-tbl { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.aq-chip:hover { background: var(--accent-soft); border-color: var(--accent-bd); }
+.aq-chip.is-num { color: var(--accent); }
+.aq-tbl { width: 100%; border-collapse: collapse; }
 .aq-tbl th, .aq-tbl td {
-  padding: 6px 8px; border-bottom: 1px solid var(--border);
+  padding: 5px 8px; border-bottom: 1px solid var(--border);
   font-size: 11.5px; font-weight: 700; text-align: left; color: var(--text-main);
 }
 .aq-tbl th {
@@ -3247,6 +3258,28 @@ body.is-lead-only .admin-only { display: none; }
 }
 .aq-tbl .aq-n { text-align: right; font-family: ui-monospace, Menlo, monospace; }
 .aq-tbl .aq-dim { color: var(--text-muted); font-weight: 700; }
+
+/* Поле питання. Росте під текст скриптом, але й ріжок лишається: на
+   довгому питанні вирішувати, скільки місця йому дати, краще людині. */
+.aq-foot {
+  display: flex; gap: 8px; align-items: flex-end;
+  padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface-2);
+}
+.aq-in {
+  flex: 1 1 auto; min-width: 0; min-height: 38px; max-height: 180px; resize: vertical;
+  padding: 9px 12px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 12px; font-weight: 700; line-height: 1.5; color: var(--text-main);
+  font-family: inherit; outline: none;
+}
+.aq-in:focus { border-color: var(--accent-bd); }
+.aq-send {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 12px; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--accent); border: none; color: #fff; transition: opacity .15s;
+}
+.aq-send svg { width: 17px; height: 17px; }
+.aq-send:disabled { opacity: .45; cursor: default; }
 
 /* ── ВІКНО ACCOUNTS ──
    Плитки й рядки на поверхнях дизайну. Колір лишається рівно там, де
@@ -3936,6 +3969,12 @@ input.ui-in[type="range"] { padding: 0; }
   font-size: 12px; font-family: inherit;
 }
 .ask-in:focus { outline: none; border-color: var(--accent, #8B5CF6); }
+/* Промпт тягнеться за ріжок — тільки вгору-вниз: горизонтальний
+   розтяг рвав би сітку вікна. */
+.ask-in.is-area {
+  resize: vertical; min-height: 64px; max-height: 50vh;
+  line-height: 1.55; font-family: inherit;
+}
 /* КІЛЬКА ПОЛІВ В ОДНОМУ ПИТАННІ. Два стовпці, бо пари значень тут
    природні: id і пояс, браузер і агент. Довге поле бере рядок цілком
    (is-full), інакше назва воронки не влазить і її читають по буквах. */

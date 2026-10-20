@@ -129,33 +129,48 @@ ok('нумерація звичайного файлу не зсунулась',
   JSON.stringify(cl.nums) === JSON.stringify(['2', '3']), cl.nums);
 ok('і рядки даних порахувались як раніше', cl.rows === 2, cl.rows);
 
-/* ─────────── огляд таблиці складає дашборд, не модель ─────────── */
+/* ─────────── асистент бачить справжні назви, і стовпці — чипами ───────────
+   Окремої кнопки «що в таблиці» немає й не треба: стовпці стоять
+   чипами в стрічці, і клік по чипу — те саме питання, тільки на нього
+   відповідає дашборд, а не модель. */
 await put(MESSY, 'report.csv');
-const peek = await page.evaluate(() => {
+const chips = await page.evaluate(() => {
   window.__called = 0;
   aqCall = async () => { window.__called++; throw new Error('модель не мусила знадобитись'); };
+  rawData = []; window.creativesRawData = [];
   aqOpen();
-  aqPeek();
-  const t = document.getElementById('aq-out').textContent;
-  return { t, called: window.__called };
+  return { names: [...document.querySelectorAll('#aq-thread .aq-chip')].map(c => c.textContent.trim()),
+           sub: document.getElementById('aq-sub').textContent,
+           set: document.getElementById('aq-set').options[0].textContent };
 });
-ok('огляд не питає модель зовсім', peek.called === 0, peek.called);
-ok('видно назви стовпців і їхній вид',
-  /Spend/.test(peek.t) && /число/.test(peek.t) && /текст/.test(peek.t), peek.t.slice(0, 200));
+ok('у чипах стоять справжні назви з файлу',
+  JSON.stringify(chips.names) === JSON.stringify(['Date', 'Campaign', 'Spend', 'Status']), chips.names);
+ok('набір підписаний назвою файлу', /report\.csv/.test(chips.set), chips.set);
+ok('і рядків у підписі стільки, скільки під заголовком',
+  /4 рядк/.test(chips.sub), chips.sub);
+
+const peek = await page.evaluate(() => {
+  const all = [...document.querySelectorAll('#aq-thread .aq-chip')];
+  all.find(c => c.textContent.trim() === 'Spend').click();
+  all.find(c => c.textContent.trim() === 'Status').click();
+  const bots = [...document.querySelectorAll('#aq-thread .aq-msg.is-bot')];
+  return { t: bots.slice(-2).map(b => b.textContent).join(' | '), called: window.__called };
+});
+ok('клік по стовпцю не питає модель зовсім', peek.called === 0, peek.called);
 ok('для числа — межі й сума',
   /від 310\.75 до 1,500/.test(peek.t) && /сума 3,991\.5/.test(peek.t), peek.t);
 ok('для тексту — які значення справді зустрічаються',
   /Approved/.test(peek.t) && /Decline/.test(peek.t), peek.t);
-ok('і сказано, що це безкоштовно й нікуди не їхало',
-  /безкоштовно/.test(peek.t) && /нікуди не їхали/.test(peek.t), peek.t);
+ok('і сказано, що рахував дашборд, а не модель',
+  /модель не питали/.test(peek.t), peek.t);
 
 /* Значення не їдуть у модель навіть тепер, коли назви стовпців справжні. */
-await page.evaluate(() => {
+await page.evaluate(async () => {
   window.__sent = null;
   aqCall = async body => { window.__sent = JSON.stringify(body); return { plan_raw: '{"error":"ні"}' }; };
   document.getElementById('aq-q').value = 'сума Spend без Decline';
+  await aqAsk();
 });
-await page.evaluate(() => aqAsk());
 const sent = await page.evaluate(() => window.__sent);
 ok('у модель поїхали назви стовпців', /Spend/.test(sent) && /Status/.test(sent), sent);
 ok('а значення — ні', !/Approved/.test(sent) && !/1 200\.50/.test(sent)
