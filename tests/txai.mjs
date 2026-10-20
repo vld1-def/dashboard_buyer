@@ -69,6 +69,31 @@ ok('у функцію пішли приклади САМЕ цього гео й 
 ok('гео, слот і побажання теж', sent.geo === 'KG' && sent.cat === 'push' && sent.hint === 'коротше', sent);
 ok('дія названа', sent.action === 'text' && sent.n === 2, sent);
 
+/* Промпт — не рядок: сюди вписують акцію, умови й тон. Поле
+   багаторядкове й тягнеться за ріжок, а Enter у ньому переводить
+   рядок, а не закриває вікно недописаним. */
+ok('поле «Чого хочемо» багаторядкове й розтяжне', await page.evaluate(async () => {
+  const p = txAi();
+  await new Promise(r => setTimeout(r, 60));
+  const el = document.querySelector('.askwrap [data-k="hint"]');
+  const ok = el.tagName === 'TEXTAREA' && getComputedStyle(el).resize === 'vertical';
+  document.querySelector('.askwrap .ask-no').click();
+  await p;
+  return ok;
+}));
+ok('Enter у промпті не закриває вікно', await page.evaluate(async () => {
+  const p = txAi();
+  await new Promise(r => setTimeout(r, 60));
+  const el = document.querySelector('.askwrap [data-k="hint"]');
+  el.focus();
+  el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await new Promise(r => setTimeout(r, 40));
+  const still = !!document.querySelector('.askwrap');
+  if (still) document.querySelector('.askwrap .ask-no').click();
+  await p;
+  return still;
+}));
+
 /* ─────────── кандидати лежать ОКРЕМО від банку ─────────── */
 const cand = await page.evaluate(() => ({
   shown: !document.getElementById('tx-ai-box').classList.contains('hidden'),

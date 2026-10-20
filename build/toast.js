@@ -113,6 +113,15 @@ window.ask = function (opts) {
           return `<option value="${esc(val)}"${
             String(f.value == null ? '' : f.value) === String(val) ? ' selected' : ''}>${esc(txt)}</option>`;
         }).join('')}</select>${hint}</label>`;
+    /* ПОЛЕ, ЯКЕ РОСТЕ. Промпт — не рядок: у нього вписують акцію,
+       умови й те, чого хочеться, і в одну лінію це не читається.
+       Ріжок лишається вертикальним: горизонтальний розтяг ламав би
+       сітку вікна. Enter тут переводить рядок, а не зберігає — за це
+       відповідає обробник клавіш нижче. */
+    if (f.type === 'area') return `<label class="ask-f${f.full ? ' is-full' : ''}">${lab}
+      <textarea class="ask-in is-area" data-k="${k}" rows="${Number(f.rows) || 3}"
+        spellcheck="false" placeholder="${esc(f.placeholder || '')}">${
+        esc(f.value == null ? '' : f.value)}</textarea>${hint}</label>`;
     // Підказки з уже відомих значень: агента вписують той самий, що й
     // у решти кабінетів, і друкувати його щоразу наново — зайве.
     const dl = (f.list || []).length ? 'ask-dl-' + k : '';
@@ -189,6 +198,12 @@ window.ask = function (opts) {
 
     const key = e => {
       if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      /* У багаторядковому полі Enter мусить переводити рядок: інакше
+         перший же абзац промпту закриває вікно й відправляє запит
+         недописаним. Зберегти звідти — Ctrl/⌘+Enter. */
+      else if (e.key === 'Enter' && e.target && e.target.tagName === 'TEXTAREA') {
+        if (e.ctrlKey || e.metaKey) { e.preventDefault(); take(); }
+      }
       else if (e.key === 'Enter') { e.preventDefault(); take(); }
     };
 
