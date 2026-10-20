@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.10 19:58">
+  <meta name="build" content="build 20.10 20:42">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4273,6 +4273,37 @@ body.is-lead-only .admin-only { display: none; }
   transition: background .15s, color .15s;
 }
 .ap-tab:hover { color: var(--text-main); }
+/* ── ДЕРЕВО: ЗАКРІПЛЕНЕ ЗВЕРХУ ──
+   Булавка з'являється на наведенні, бо в спокої рядок — це гео й
+   число, а не набір кнопок. Закріплена лишається видимою завжди:
+   інакше незрозуміло, чому рядок стоїть зверху. */
+.ap-tree-cap {
+  margin: 10px 0 2px; padding: 0 8px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--text-muted);
+}
+.ap-tree-sep { margin: 8px 8px 2px; border-top: 1px solid var(--border); }
+.ap-pin {
+  display: grid; place-items: center; width: 18px; height: 18px; border-radius: 6px;
+  background: transparent; border: none; cursor: pointer; padding: 0;
+  color: var(--text-muted); opacity: 0; transition: opacity .15s, color .15s, background .15s;
+}
+.ap-pin svg { width: 12px; height: 12px; }
+.ap-row:hover .ap-pin { opacity: .7; }
+.ap-pin:hover { opacity: 1 !important; color: var(--text-main); background: rgba(255,255,255,.12); }
+.ap-pin.is-on { opacity: 1; color: var(--accent); }
+.ap-pin.is-on svg { fill: currentColor; }
+
+/* «Під увагою» живе в підписі вікна, а не рядком у меню: меню — це
+   гео й оффери, тобто те, чим шукають. */
+.ap-sub-bad {
+  margin-left: 2px; padding: 1px 7px; border-radius: 7px; cursor: pointer;
+  background: rgba(239,68,68,.14); border: 1px solid rgba(239,68,68,.30);
+  font: inherit; font-weight: 800; color: #FCA5A5;
+  transition: background .15s, color .15s;
+}
+.ap-sub-bad:hover { background: rgba(239,68,68,.26); color: #fff; }
+.ap-sub-bad.is-on { background: #DC2626; border-color: #DC2626; color: #fff; }
 .ap-tab.is-on { background: var(--surface-3); color: var(--text-main); }
 
 /* ── КАНДИДАТИ ВІД МОДЕЛІ (вікно Texts) ──
@@ -5640,7 +5671,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 19:58</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 20:42</div>
     </div>
   </aside>
 
@@ -15950,8 +15981,14 @@ function apSubText() {
   if (apMode === 'pwa') {
     const links = pwItems.reduce((s, x) => s + ((x.links || []).length), 0);
     const bad = pwBadCount();
+    /* «Під увагою» більше не займає рядок у меню: меню — це гео й
+       оффери, тобто те, чим шукають, а не стан перевірки. Але сама
+       можливість нікуди не поділась: число в підписі вікна й є той
+       фільтр, і воно стоїть там, де його й так читають. */
     return `${pwItems.length} кампаній · ${links} силок`
-         + (bad ? ` · ${bad} під увагою` : '');
+         + (bad ? ` · <button type="button" onclick="pwPickBad()"
+             title="Показати лише силки, які вимагають уваги"
+             class="ap-sub-bad${pwOnlyBad ? ' is-on' : ''}">⚠ ${bad} під увагою</button>` : '');
   }
   /* Апки рахуємо живі: число, у яке входять забанені, відповідає на
      питання, якого ніхто не ставить. Забанені — окремо, бо саме їх і
@@ -15963,7 +16000,10 @@ function apSubText() {
 }
 function apSubPaint() {
   const el = document.getElementById('ap-sub');
-  if (el) el.textContent = apSubText();
+  /* innerHTML, бо в підписі PWA живе кнопка фільтра. Усе, що приходить
+     із довідників, іде через apEsc у самому apSubText — тут лише числа
+     й наша ж розмітка. */
+  if (el) el.innerHTML = apSubText();
 }
 
 /* Перемикання режиму. Що тут важливо, окрім самого перемальовування:
@@ -16136,12 +16176,24 @@ function apPick(g, p) { apGeo = g; apProv = p; apRenderTree(); apRender(); }
 /* Рядок дерева. Один на оба режими: відрізняється лише колір
    виділеного, і заводити під це другу копію розмітки означало б, що
    правка відступів одного дня доїде тільки до половини екрана. */
-function apTreeBtn(label, active, onclick, pad, count, accent) {
+/* Булавка в рядку дерева. Ключ їде АТРИБУТОМ, а не в onclick: у
+   назвах офферів трапляються і лапки, і апострофи, і зібраний рядком
+   виклик на них ламається. */
+const AP_PIN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"'
+  + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6z"/></svg>';
+
+function apTreeBtn(label, active, onclick, pad, count, accent, pin) {
   return `
-    <div onclick="${onclick}" class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
+    <div onclick="${onclick}" class="ap-row flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
          ${active ? (accent || 'bg-emerald-600') + ' text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
       <span class="text-[11px] font-black uppercase truncate">${apEsc(label)}</span>
-      ${count != null ? `<span class="text-[10px] font-bold opacity-60">${count}</span>` : ''}
+      <span class="flex items-center gap-1 shrink-0">
+        ${pin ? `<button type="button" class="ap-pin${pin.on ? ' is-on' : ''}" data-k="${apEsc(pin.key)}"
+          onclick="pwPinToggle(event, this)"
+          title="${pin.on ? 'Відкріпити від меню' : 'Закріпити в меню — буде зверху'}">${AP_PIN_SVG}</button>` : ''}
+        ${count != null ? `<span class="text-[10px] font-bold opacity-60">${count}</span>` : ''}
+      </span>
     </div>`;
 }
 
@@ -17071,6 +17123,55 @@ async function pwDomAdd(ev, btn) {
 }
 
 /* ─────────── дерево гео → оффер ─────────── */
+/* ═══════════ ЗАКРІПЛЕНЕ В МЕНЮ ═══════════
+
+   Гео й офферів набирається десятками, а щодня працюють із трьома.
+   Шукати їх прокруткою — робота, якої можна не робити, тому
+   закріплене стоїть ЗВЕРХУ окремим блоком: один клік із будь-якого
+   місця дерева.
+
+   ЧОМУ В БРАУЗЕРІ, А НЕ В БАЗІ. Це не дані команди, а звичка одного
+   чоловіка за одним комп'ютером: закріплене в мене не має з'являтись
+   у тебе. Ключ із назвою команди — щоб два проєкти в одному браузері
+   не перемішали свої закріплення.
+
+   Закріплений оффер видно і в блоці зверху, і в своєму гео — там його
+   й відкріплюють. Повтор тут навмисний: інакше відкріпити можна було б
+   лише там, звідки воно й так зникає. */
+let pwPins = null;
+const pwPinsKey = () => 'pw_pins:' + (typeof currentTeam === 'string' ? currentTeam : '');
+
+function pwPinsGet() {
+  if (pwPins) return pwPins;
+  pwPins = new Set();
+  try {
+    (JSON.parse(localStorage.getItem(pwPinsKey()) || '[]') || [])
+      .forEach(k => pwPins.add(String(k)));
+  } catch (e) { /* приватний режим або зламаний JSON — просто без закріплень */ }
+  return pwPins;
+}
+
+// Ключ рядка. Гео й оффер розділені \n: у назвах буває що завгодно,
+// але не перенос рядка.
+const pwPinKey = (g, o) => (o ? 'o' : 'g') + '\n' + g + (o ? '\n' + o : '');
+
+window.pwPinToggle = function (ev, btn) {
+  ev.stopPropagation();
+  const key = btn.getAttribute('data-k') || '';
+  if (!key) return;
+  const set = pwPinsGet();
+  if (set.has(key)) set.delete(key); else set.add(key);
+  /* Не збереглось (приватний режим) — кажемо, а не вдаємо: закріплення,
+     яке зникне при перезавантаженні, гірше за його відсутність. */
+  try { localStorage.setItem(pwPinsKey(), JSON.stringify([...set])); }
+  catch (e) {
+    if (typeof toast === 'function')
+      toast('Закріплення не збереглось: браузер не дає писати в localStorage. '
+          + 'До перезавантаження воно працює.', 'error', 8000);
+  }
+  pwRenderTree();
+};
+
 function pwRenderTree() {
   const el = document.getElementById('ap-tree');
   if (!el) return;
@@ -17079,31 +17180,63 @@ function pwRenderTree() {
     const g = (it.geo || '—').toUpperCase();
     (byGeo[g] = byGeo[g] || new Set()).add(it.offer || '—');
   });
-  const btn = (label, active, onclick, pad, count) =>
-    apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600');
+  const nGeo = g => pwItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
+  const nOff = (g, o) => pwItems.filter(i =>
+    (i.geo || '—').toUpperCase() === g && (i.offer || '—') === o).length;
+  const btn = (label, active, onclick, pad, count, pin) =>
+    apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600', pin);
+
+  const pins = pwPinsGet();
   let html = btn('Усі', !pwGeo && !pwOffer && !pwOnlyBad, "pwPick('','')", 8, pwItems.length);
-  /* Рядок під увагу — тільки коли є на що дивитись. Порожній фільтр
-     «проблемні 0» щодня питав би, чи не зламалась перевірка. */
-  const bad = pwBadCount();
-  if (bad) html += apTreeBtn('⚠ Під увагою', pwOnlyBad, 'pwPickBad()', 8, bad, 'bg-rose-600');
+
+  /* Блок зверху — тільки коли є що закріплене. Порожній заголовок
+     «Закріплені» щодня питав би, чи не загубились закріплення. */
+  const pinned = [...pins].map(k => k.split('\n'))
+    .filter(p => p[0] === 'g' ? byGeo[p[1]] : (byGeo[p[1]] && byGeo[p[1]].has(p[2])))
+    .sort((a, b) => (a[1] + (a[2] || '')).localeCompare(b[1] + (b[2] || ''), 'uk'));
+  if (pinned.length) {
+    html += '<p class="ap-tree-cap">закріплені</p>';
+    pinned.forEach(([kind, g, o]) => {
+      const key = pwPinKey(g, o);
+      html += btn(o ? g + ' · ' + o : g,
+        o ? (pwGeo === g && pwOffer === o) : (pwGeo === g && !pwOffer),
+        `pwPickKey(this)`, 8, o ? nOff(g, o) : nGeo(g), { key, on: true });
+    });
+    html += '<p class="ap-tree-sep"></p>';
+  }
+
   Object.keys(byGeo).sort().forEach(g => {
-    const n = pwItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
-    html += btn(g, pwGeo === g && !pwOffer, `pwPick('${apEsc(g)}','')`, 8, n);
+    html += btn(g, pwGeo === g && !pwOffer, `pwPickKey(this)`, 8, nGeo(g),
+      { key: pwPinKey(g, ''), on: pins.has(pwPinKey(g, '')) });
     if (pwGeo === g) [...byGeo[g]].sort().forEach(o => {
-      const no = pwItems.filter(i => (i.geo || '—').toUpperCase() === g && (i.offer || '—') === o).length;
-      html += btn(o, pwOffer === o, `pwPick('${apEsc(g)}','${apEsc(o)}')`, 22, no);
+      html += btn(o, pwOffer === o, `pwPickKey(this)`, 22, nOff(g, o),
+        { key: pwPinKey(g, o), on: pins.has(pwPinKey(g, o)) });
     });
   });
   el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
 }
+
+/* Гео й оффер беремо з ключа булавки того ж рядка: зібраний рядком
+   pwPick('KG','Mbank's app') ламався б на апострофі в назві. */
+window.pwPickKey = function (el) {
+  const b = el.querySelector('.ap-pin');
+  const p = String(b && b.getAttribute('data-k') || '').split('\n');
+  if (p.length < 2) return;
+  pwPick(p[1], p[2] || '');
+};
 function pwPick(g, o) {
   pwGeo = g; pwOffer = o; pwOnlyBad = false;
+  /* Підпис вікна тримає кнопку «під увагою», і її стан мусить
+     гаснути разом із фільтром: інакше вона світилась би ввімкненою
+     над списком, який уже не фільтрований. */
+  apSubPaint();
   pwRenderTree(); pwRender();
 }
 /* Під увагою — це не гео й не оффер, тому інші фільтри знімаються:
    «⚠ у KG» лишало б питання, чи решта чиста, чи просто відфільтрована. */
 function pwPickBad() {
   pwOnlyBad = !pwOnlyBad; pwGeo = ''; pwOffer = '';
+  apSubPaint();
   pwRenderTree(); pwRender();
 }
 
