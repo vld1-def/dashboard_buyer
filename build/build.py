@@ -25,12 +25,13 @@ def sub(hay, old, new, what):
 def read(f):
     return open(f, encoding='utf-8').read().rstrip('\n')
 
-head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, geocostjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, cdjs, tmhtml, tmjs, flhtml, fljs = (read(f) for f in
+head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, geocostjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, tmhtml, tmjs, flhtml, fljs = (read(f) for f in
     ('head.html', 'design.css', 'shell.html', 'widgets.js', 'trend.js', 'settings.html',
      'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js', 'geocost.js',
      'fresh.js', 'geomodal.js', 'cabinets.html', 'cabinets.js', 'tg.js', 'events.js',
      'domains.html', 'domains.js', 'fbtok.js', 'fbrep.js', 'fbcom.js', 'fbpages.js',
-     'uniq.html', 'uniq.js', 'rules.html', 'rules.js', 'cabdrill.js',
+     'uniq.html', 'uniq.js', 'rules.html', 'rules.js', 'pages.html', 'pages.js',
+     'cabdrill.js',
      'files.html', 'files.js',
      'team.html', 'team.js'))
 
@@ -151,6 +152,13 @@ cabhtml = sub(cabhtml,
   '<div id="rules-panel" class="hidden shrink-0" style="width:452px">\n'
   + rlhtml.rstrip() + '\n    </div>',
   'правила: панель на сторінці кабінетів')
+
+# Сторінки — у своєму слоті того самого ряду, поруч із правилами.
+cabhtml = sub(cabhtml,
+  '<div id="pages-panel" class="hidden shrink-0" style="width:452px"></div>',
+  '<div id="pages-panel" class="hidden shrink-0" style="width:452px">\n'
+  + pghtml.rstrip() + '\n    </div>',
+  'сторінки: панель на сторінці кабінетів')
 
 mid = mid.replace(CAB_END, cabhtml.rstrip() + '\n\n' + dmhtml.rstrip() + '\n\n'
                   + tmhtml.rstrip() + '\n\n' + CAB_END)
@@ -2478,6 +2486,10 @@ rest = rest[:i] + uqjs.strip() + '\n\n' + rest[i:]
 # ── правила автоматичного вимикання: редактор і журнал ──
 i = rest.rindex('</body>')
 rest = rest[:i] + rljs.strip() + '\n\n' + rest[i:]
+
+# ── сторінки й коментарі під ними ──
+i = rest.rindex('</body>')
+rest = rest[:i] + pgjs.strip() + '\n\n' + rest[i:]
 
 # ── що всередині кабінета: кампанії й оголошення з числами ──
 i = rest.rindex('</body>')

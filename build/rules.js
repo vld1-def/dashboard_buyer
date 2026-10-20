@@ -82,6 +82,8 @@ window.rlPanel = function (want) {
   box.classList.toggle('hidden', !open);
   document.getElementById('cab-rules-btn')?.classList.toggle('is-on', open);
   if (open) {
+    // Праве місце одне: Сторінки й правила взаємно виключаються.
+    if (typeof pgPanel === 'function') pgPanel(false);
     if (typeof cabSel !== 'undefined' && cabSel) { cabSel = null; cabRender(); }
     rlInit();
   }

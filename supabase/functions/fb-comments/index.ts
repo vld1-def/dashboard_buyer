@@ -532,6 +532,30 @@ async function handle(req: Request): Promise<Response> {
     return await scanAll(base, hdr, who);
   }
 
+  /* ── ОДНА СТОРІНКА ──
+
+     Інший вхід у ті самі коментарі: не «що пишуть під оголошеннями
+     цього кабінета», а «що пишуть на цій Сторінці». Питання різні, і
+     друге не зводиться до першого: пост Сторінки живе довше за
+     оголошення, а коментар під ним лишається й після того, як
+     оголошення зупинили.
+
+     МЕЖА ТУТ ІНША, АЛЕ НЕ СЛАБША. У кабінетному шляху список постів
+     будується з оголошень кабінета, і все, чого в ньому немає, ми не
+     чіпаємо. Тут межу ставить сама Сторінка: page_id із тіла запиту
+     мусить виявитись серед тих, які мають ТОКЕНИ ТОГО, ХТО ПРИЙШОВ.
+     Не серед «усіх Сторінок бізнесу» і не серед того, що попросили в
+     тілі. А далі токен Сторінки виводиться з цієї ж перевіреної
+     Сторінки — тобто дотягнутись ним можна рівно туди, куди тобі й
+     так видали доступ. */
+  if (action === 'pages' || action === 'page_list' || action === 'page_act') {
+    const a = req.headers.get('Authorization') || '';
+    if (!a) return reply({ error: 'no authorization header' }, 401);
+    const who = await whoAmI(base, anon, a);
+    if (!who) return reply({ error: 'could not verify who is calling' }, 401);
+    return await byPage(base, hdr, who, action, body);
+  }
+
   /* ── ОДИН КАБІНЕТ ──
      Усе інше — тільки з токеном людини. Спільний секрет сюди не веде:
      серед цих дій є delete, а вона незворотна. */
@@ -580,7 +604,9 @@ async function handle(req: Request): Promise<Response> {
     error: 'the token "' + tok.label + '" can only read comments: it has no '
          + needWrite + '. Add it to the system user and re-add the token.' }, 400);
 
-  let posts: Map<string, string[]>;
+  // Той самий тип, що віддає ourPosts: під кожним постом імена
+  // оголошень і чи крутиться хоч одне (див. Post).
+  let posts: Map<string, Post>;
   try {
     posts = await ourPosts(tok.token, accountId);
   } catch (e) {
@@ -592,6 +618,195 @@ async function handle(req: Request): Promise<Response> {
   if (action === 'hide' || action === 'unhide' || action === 'delete')
     return await moderate(tok.token, posts, action, body, cache);
   return reply({ error: 'unknown action: ' + action }, 400);
+}
+
+/* ═══════════ СТОРІНКАМИ, А НЕ КАБІНЕТАМИ ═══════════
+
+   Скільки останніх постів Сторінки обходимо за виклик. Менше, ніж
+   постів кабінета: там вони вже відсортовані за «під ним крутиться
+   оголошення», а тут просто найсвіжіші — і саме під свіжими й пишуть. */
+const PAGE_POSTS = 15;
+
+type PgRow = { page_id: string; name: string; tasks: string[];
+               can_moderate: boolean; token: string; token_label: string };
+
+/* Сторінки, які мають ТОКЕНИ ЦІЄЇ ЛЮДИНИ. Не «усі Сторінки бізнесу»:
+   у дашборді кілька людей, і токени в них різні.
+
+   can_moderate — це ДВІ умови разом: завдання модерації на самій
+   Сторінці і pages_manage_engagement у токені. Жодна з них окремо
+   нічого не дає, а показати «можна» там, де насправді не можна,
+   означало б дізнатись про це в мить, коли під оголошенням уже висить
+   спам. */
+async function pagesOf(base: string, hdr: Json, me: string):
+    Promise<{ pages: PgRow[]; problems: string[] }> {
+  const toks = await pgGet(base, hdr,
+    'fb_tokens?select=id,label,token,scopes&created_by=eq.' + encodeURIComponent(me));
+  const out = new Map<string, PgRow>();
+  const problems: string[] = [];
+  for (const t of toks) {
+    const scopes: string[] = Array.isArray(t.scopes) ? t.scopes : [];
+    if (!scopes.includes('pages_read_engagement')) {
+      problems.push('token "' + t.label + '" cannot read Page comments: no pages_read_engagement');
+      continue;
+    }
+    const { mine, failed } = await myPages(String(t.token));
+    if (failed) { problems.push('token "' + t.label + '": ' + failed); continue; }
+    mine.forEach((v, id) => {
+      const can = v.tasks.some(x => MOD_TASKS.includes(x))
+               && scopes.includes('pages_manage_engagement');
+      const had = out.get(id);
+      /* Одна Сторінка може бути видана двом токенам. Лишаємо той, що
+         дає БІЛЬШЕ прав: інакше випадковий порядок рядків вирішував
+         би, чи можна тут прибрати коментар. */
+      if (!had || (can && !had.can_moderate)) out.set(id, {
+        page_id: id, name: v.name, tasks: v.tasks, can_moderate: can,
+        token: String(t.token), token_label: String(t.label || '')
+      });
+    });
+  }
+  return { pages: [...out.values()], problems };
+}
+
+async function byPage(base: string, hdr: Json, me: string,
+                      action: string, body: Json): Promise<Response> {
+  let found: { pages: PgRow[]; problems: string[] };
+  try {
+    found = await pagesOf(base, hdr, me);
+  } catch (e) {
+    return reply({ error: 'could not read your tokens: ' + (e as Error).message }, 502);
+  }
+  const { pages, problems } = found;
+
+  /* Сам токен назовні не йде НІКОЛИ — ні тут, ні деінде. Браузеру
+     потрібна назва, щоб було видно, через який токен Сторінка видна;
+     сам рядок токена в дашборді не потрібен ні для чого. */
+  if (action === 'pages') return reply({
+    pages: pages
+      .sort((a, b) => (b.can_moderate ? 1 : 0) - (a.can_moderate ? 1 : 0)
+                   || a.name.localeCompare(b.name))
+      .map(p => ({ page_id: p.page_id, name: p.name, tasks: p.tasks,
+                   can_moderate: p.can_moderate, token: p.token_label })),
+    problems: problems.slice(0, 5)
+  });
+
+  const pageId = String(body?.page_id || '').replace(/\D/g, '');
+  const row = pages.find(p => p.page_id === pageId);
+  if (!row) return reply({
+    error: 'that Page is not among the ones your tokens have. In Business Manager add it to the '
+         + 'system user with the Moderate content task, then re-add the token.' }, 403);
+
+  const cache = new Map<string, { token: string; name: string }>();
+  let pg: { token: string; name: string };
+  try {
+    pg = await pageToken(row.token, pageId, cache);
+  } catch (e) {
+    return reply({ error: (e as Error).message }, 400);
+  }
+
+  if (action === 'page_list') return await pageComments(pg, row);
+  if (!row.can_moderate) return reply({
+    error: 'the token "' + row.token_label + '" can only READ comments on "' + row.name
+         + '": it needs pages_manage_engagement, and the Page needs the Moderate content task.' }, 400);
+  return await pageModerate(pg, body);
+}
+
+/* Пости Сторінки. Беремо promotable_posts: у ньому є й НЕопубліковані
+   пости — а саме ними й крутять оголошення. /posts їх не віддає
+   зовсім, тож список коментарів під рекламою був би порожній при
+   повних правах. Не вийшло — відкочуємось на /posts і кажемо це: пів
+   відповіді краще за порожній екран. */
+async function pagePosts(pg: { token: string }, pageId: string):
+    Promise<{ list: Json[]; why: string }> {
+  try {
+    const j = await graph('/' + pageId + '/promotable_posts', pg.token, {
+      fields: 'id,message,created_time,permalink_url,is_published', limit: PAGE_POSTS });
+    return { list: Array.isArray(j.data) ? j.data : [], why: '' };
+  } catch (e) {
+    try {
+      const j = await graph('/' + pageId + '/posts', pg.token, {
+        fields: 'id,message,created_time,permalink_url', limit: PAGE_POSTS });
+      return { list: Array.isArray(j.data) ? j.data : [],
+               why: 'Only published posts are shown: ' + (e as Error).message };
+    } catch (e2) {
+      return { list: [], why: (e2 as Error).message };
+    }
+  }
+}
+
+async function pageComments(pg: { token: string; name: string }, row: PgRow): Promise<Response> {
+  const { list, why } = await pagePosts(pg, row.page_id);
+  const problems: string[] = why ? [why] : [];
+  if (!list.length) return reply({ comments: [], page: pg.name, posts: 0, looked: 0,
+    can_moderate: row.can_moderate, problems,
+    note: 'This Page has no posts we can see yet.' });
+
+  const deadline = Date.now() + DEADLINE_MS;
+  const out: Json[] = [];
+  let seen = 0;
+  for (const p of list) {
+    if (Date.now() > deadline) break;
+    seen++;
+    // Підпис посту — його ж текст, обрізаний: по ньому пост і впізнають.
+    const title = String(p.message || '').replace(/\s+/g, ' ').trim();
+    try {
+      const j = await graph('/' + p.id + '/comments', pg.token, {
+        fields: 'id,message,created_time,is_hidden,like_count,permalink_url,from{name,id}',
+        filter: 'stream', limit: PER_POST });
+      (Array.isArray(j.data) ? j.data : []).forEach((c: Json) => out.push({
+        id: String(c.id || ''),
+        story: String(p.id || ''),
+        page: pg.name,
+        ad: title ? (title.length > 60 ? title.slice(0, 60) + '\u2026' : title) : 'post',
+        ads: 1,
+        live: p.is_published !== false,
+        message: String(c.message || ''),
+        from: String(c.from?.name || ''),
+        created_time: c.created_time || null,
+        is_hidden: !!c.is_hidden,
+        likes: Number(c.like_count) || 0,
+        permalink_url: c.permalink_url || null
+      }));
+    } catch (e) {
+      // Один пост без доступу не має ховати коментарі з усіх інших.
+      problems.push((e as Error).message);
+    }
+  }
+
+  out.sort((a, b) => String(b.created_time || '').localeCompare(String(a.created_time || '')));
+  return reply({ comments: out, page: pg.name, posts: list.length, looked: seen,
+                 more: seen < list.length, can_moderate: row.can_moderate,
+                 problems: problems.slice(0, 5) });
+}
+
+/* Модерація на рівні Сторінки. Звіряти коментар зі списком постів тут
+   не потрібно й не можна: пости ми взяли ті, які Facebook віддав за
+   один виклик, а коментар може лежати під старішим. Межу ставить
+   ТОКЕН: він виданий саме цій Сторінці, і чужий коментар ним не
+   чіпається — Facebook просто відмовить. Тому відмову показуємо, а не
+   глушимо. */
+async function pageModerate(pg: { token: string; name: string }, body: Json): Promise<Response> {
+  const ids: string[] = Array.isArray(body?.comment_ids)
+    ? body.comment_ids.map((x: unknown) => String(x))
+    : [String(body?.comment_id || '')].filter(Boolean);
+  if (!ids.length) return reply({ error: 'comment_id is required' }, 400);
+  const act = String(body?.what || 'hide');
+  if (!['hide', 'unhide', 'delete'].includes(act))
+    return reply({ error: 'unknown what: ' + act }, 400);
+
+  const done: string[] = [];
+  const failed: { id: string; why: string }[] = [];
+  for (const id of ids) {
+    try {
+      if (act === 'delete') await graph('/' + id, pg.token, {}, 'DELETE');
+      else await graph('/' + id, pg.token, { is_hidden: act === 'hide' }, 'POST');
+      done.push(id);
+    } catch (e) {
+      failed.push({ id, why: (e as Error).message });
+    }
+  }
+  return reply({ action: act, done: done.length, failed: failed.length,
+                 problems: failed.slice(0, 5).map(f => f.why) });
 }
 
 /* ── показати, що там пишуть ── */
