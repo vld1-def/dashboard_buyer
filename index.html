@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.10 14:26">
+  <meta name="build" content="build 20.10 14:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4261,6 +4261,39 @@ body.is-lead-only .admin-only { display: none; }
 .ap-tab:hover { color: var(--text-main); }
 .ap-tab.is-on { background: var(--surface-3); color: var(--text-main); }
 
+/* ── КАНДИДАТИ ВІД МОДЕЛІ (вікно Texts) ──
+   Окрема рамка над банком: вони ще не його частина, поки їх не
+   вибрали. Пунктирна межа саме про це — «тут не збережене». */
+.tx-ai {
+  border: 1px dashed var(--border-2, var(--border)); border-radius: 16px;
+  padding: 10px 12px; background: var(--surface-2);
+}
+.tx-ai-h {
+  margin: 0 0 8px; display: flex; align-items: center; gap: 8px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--text-main);
+}
+.tx-ai-h span {
+  flex: 1 1 auto; min-width: 0; font-size: 10px; font-weight: 700;
+  text-transform: none; letter-spacing: 0; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tx-ai-h button {
+  flex: 0 0 auto; background: none; border: 0; cursor: pointer;
+  font-size: 16px; line-height: 1; color: var(--text-muted);
+}
+.tx-ai-h button:hover { color: var(--bad); }
+.tx-ai-row {
+  display: flex; gap: 8px; align-items: flex-start; cursor: pointer;
+  padding: 7px 8px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; line-height: 1.5; color: var(--text-main);
+}
+.tx-ai-row:hover { background: var(--surface-3); }
+.tx-ai-row.is-on { background: rgba(139, 92, 246, .14); }
+.tx-ai-row input { margin-top: 3px; accent-color: var(--accent); flex: 0 0 auto; }
+.tx-ai-row span { min-width: 0; white-space: pre-wrap; }
+.tx-ai-acts { display: flex; gap: 6px; margin-top: 8px; }
+
 /* ── ВІКНО ACCOUNTS ──
    Плитки й рядки на поверхнях дизайну. Colour лишається рівно там, де
    він щось означає: число стану й вибрана кнопка стану. */
@@ -5498,7 +5531,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 14:26</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.10 14:47</div>
     </div>
   </aside>
 
@@ -17286,6 +17319,8 @@ async function pwBulkApply() {
         <select id="tx-lang-filter" onchange="txRender()" class="mw-sel">
           <option value="">All languages</option>
         </select>
+        <button type="button" onclick="txAi()" class="mw-btn" id="tx-ai"
+          title="Дописати варіанти в тому ж тоні — за прикладами з твого банку">+ AI</button>
         <button type="button" onclick="txNew()" class="mw-btn is-main">+ Text</button>
         <button type="button" onclick="closeTextsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
@@ -17297,6 +17332,9 @@ async function pwBulkApply() {
       <!-- Texts -->
       <div class="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4">
         <div id="tx-editor" class="hidden mb-4"></div>
+        <!-- Кандидати від моделі. Над банком, а не в ньому: вони ще не
+             його частина, поки їх не вибрали. -->
+        <div id="tx-ai-box" class="hidden mb-4"></div>
         <div id="tx-list" class="space-y-2"></div>
       </div>
     </div>
@@ -18170,6 +18208,156 @@ function txShowEditor(v) {
   document.getElementById('tx-f-text').focus();
 }
 function txCancel() { txEditId = null; document.getElementById('tx-editor').classList.add('hidden'); }
+
+/* ═══════════ ДОПИСАТИ ВАРІАНТИ МОДЕЛЛЮ ═══════════
+
+   ЩО ТУТ НЕ ВІДБУВАЄТЬСЯ. Нічого не зберігається саме. Модель віддає
+   кандидатів, вони лежать на екрані з позначкою AI, і в банк іде
+   ТІЛЬКИ вибране галочкою. Текст, який поїде в кабінет, мусить пройти
+   через людину: модель помиляється мовчки, а неправдива обіцянка в
+   оголошенні — найдорожче, що тут можна згенерувати.
+
+   ЧОМУ ПРИКЛАДИ, А НЕ ОПИС ЗАДАЧІ. «Напиши рекламу» дає стерильний
+   текст, не схожий на наш. Тому в запит ідуть РЕАЛЬНІ тексти того
+   самого гео й слота — модель бачить тон, довжину й звички пунктуації
+   й продовжує їх. Беремо ті, що зараз у фільтрі: саме вони й описують
+   те місце, куди дописуємо.
+
+   Ключ Anthropic у сторінці не лежить: запит іде у функцію ai, вона
+   його й тримає (див. AI.sql). */
+let txAiItems = [];      // кандидати на екрані
+let txAiPicked = [];     // вибрані галочкою
+let txAiBusy = false;
+let txAiNote = '';
+
+async function txAiCall(body) {
+  const { data: sess } = await sb.auth.getSession();
+  const token = sess && sess.session && sess.session.access_token;
+  if (!token) throw new Error('not signed in');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/ai', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + token, 'apikey': SUPABASE_KEY,
+               'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+  return j;
+}
+
+window.txAi = async function () {
+  if (txAiBusy) return;
+  if (typeof ask !== 'function') { alert('Вікно питання недоступне.'); return; }
+
+  /* Приклади — з ПОТОЧНОГО фільтра: гео, слот і мова вже вибрані
+     деревом, і питати їх другим разом означало б питати те, що й так
+     стоїть на екрані. */
+  const base = txFiltered();
+  const lang = document.getElementById('tx-lang-filter')?.value || '';
+  const v = await ask({
+    title: 'Дописати варіанти',
+    body: base.length
+      ? `За зразок беру ${Math.min(base.length, 12)} текст(ів) із того, що зараз у фільтрі`
+        + `${txGeo ? ' · ' + txGeo : ''}${txCat ? ' / ' + txCat : ''}. `
+        + 'Модель продовжить їхній тон; зберегти чи ні — вибереш сам.'
+      : 'У фільтрі немає жодного тексту, тож зразка теж немає — модель напише '
+        + 'простим прямим тоном. Краще спершу додати один свій текст.',
+    ok: 'Написати', cancel: 'Cancel',
+    fields: [
+      { key: 'n', label: 'Скільки варіантів', type: 'number', value: '5' },
+      { key: 'lang', label: 'Мова', value: lang || (base[0] && base[0].lang) || '',
+        placeholder: 'ua, ru, en' },
+      { key: 'hint', label: 'Чого хочемо', full: true,
+        placeholder: 'напр. коротше, без вигуків, акцент на швидкій виплаті',
+        hint: 'Необовʼязково. Числа, бонуси й гарантії модель не вигадує — лише те, що є у зразках.' }
+    ]
+  });
+  if (!v) return;
+
+  txAiBusy = true; txAiNote = 'Думає…'; txAiItems = []; txAiPicked = [];
+  txAiPaint();
+  try {
+    const j = await txAiCall({
+      action: 'text', n: Number(v.n) || 5,
+      geo: txGeo, cat: txCat, lang: String(v.lang || '').trim(),
+      hint: String(v.hint || '').trim(),
+      examples: base.slice(0, 12).map(t => ({ title: t.title, text: t.text }))
+    });
+    txAiItems = (j.items || []).map((x, i) => ({ i, title: x.title || '', text: x.text || '' }));
+    /* Ціну одного виклику показуємо відразу. «Копійки» без числа — це
+       слова; число робить витрату видимою з першого ж разу. */
+    txAiNote = txAiItems.length
+      ? `${txAiItems.length} варіант(ів) · ${j.model || 'model'} · ~$${(j.cost_usd || 0).toFixed(5)}`
+        + (j.left_today != null ? ` · лишилось сьогодні: ${j.left_today}` : '')
+        + ((j.problems || []).length ? ' · ' + j.problems.join('; ') : '')
+      : 'Модель відповіла, але розібрати з відповіді нічого не вдалось.';
+  } catch (e) {
+    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    txAiNote = (e.code === 'missing' || net)
+      ? 'Функція ai не відповіла — спершу розгорни її: supabase functions deploy ai'
+      : txEsc(e.message);
+  }
+  txAiBusy = false;
+  txAiPaint();
+};
+
+window.txAiPick = function (i) {
+  const k = txAiPicked.indexOf(i);
+  if (k < 0) txAiPicked.push(i); else txAiPicked.splice(k, 1);
+  txAiPaint();
+};
+
+/* Зберігаємо вибране — і тільки його. Гео, слот і мову беремо ті, в
+   яких працювали: кандидат народився саме для цього місця. */
+window.txAiSave = async function () {
+  const take = txAiItems.filter(x => txAiPicked.includes(x.i));
+  if (!take.length) return;
+  const lang = (document.getElementById('tx-lang-filter')?.value
+    || (txFiltered()[0] || {}).lang || '').toLowerCase();
+  take.forEach(x => txItems.unshift({
+    id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    geo: txGeo, cat: txCat, lang,
+    // Позначка лишається в записі: через місяць «хто це писав» — питання,
+    // на яке в банку мусить бути відповідь.
+    title: (x.title || 'AI').slice(0, 80), ai: true, text: x.text
+  }));
+  txAiItems = txAiItems.filter(x => !txAiPicked.includes(x.i));
+  txAiPicked = [];
+  txAiNote = take.length + ' додано в банк';
+  await txSave();
+  txRenderTree(); txRender(); txAiPaint();
+};
+
+window.txAiClose = function () {
+  txAiItems = []; txAiPicked = []; txAiNote = '';
+  txAiPaint();
+};
+
+function txAiPaint() {
+  const el = document.getElementById('tx-ai-box');
+  if (!el) return;
+  const btn = document.getElementById('tx-ai');
+  if (btn) btn.disabled = txAiBusy;
+  if (!txAiItems.length && !txAiNote) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.classList.remove('hidden');
+  const n = txAiPicked.length;
+  el.innerHTML = `<div class="tx-ai">
+    <p class="tx-ai-h">Кандидати
+      <span>${txEsc(txAiNote)}</span>
+      <button type="button" onclick="txAiClose()" title="Прибрати">&times;</button></p>
+    ${txAiItems.map(x => `<label class="tx-ai-row${txAiPicked.includes(x.i) ? ' is-on' : ''}">
+        <input type="checkbox" ${txAiPicked.includes(x.i) ? 'checked' : ''}
+          onchange="txAiPick(${x.i})">
+        <span>${x.title ? `<b>${txEsc(x.title)}</b><br>` : ''}${txEsc(x.text)}</span>
+      </label>`).join('')}
+    ${txAiItems.length ? `<div class="tx-ai-acts">
+        <button type="button" class="mw-btn is-main" onclick="txAiSave()"
+          ${n ? '' : 'disabled'}>Save${n ? ' ' + n : ''}</button>
+        <button type="button" class="mw-btn" onclick="txAi()">More варіанти</button>
+      </div>` : ''}
+  </div>`;
+}
 
 async function txSubmit() {
   const val = id => (document.getElementById(id)?.value || '').trim();
