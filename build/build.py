@@ -801,10 +801,13 @@ rest = sub(rest,
   "  const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 84px 210px minmax(110px,1.3fr);';",
   'ширини колонок кабінетів')
 
+COUNT = """${[`Account <span class="opacity-50">(${
+          rows.length < accRows.length ? rows.length + ' / ' + accRows.length : rows.length
+        })</span>`,"""
 rest = sub(rest,
-  """      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','Browser','TZ','Статус','Нотатка'].map(h =>
+  """      """ + COUNT + """'Agent','Browser','TZ','Статус','Нотатка'].map(h =>
         `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' ? 'text-center' : ''}">${h}</span>`).join('')}""",
-  """      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','Browser','TZ','Додано','Статус','Нотатка'].map(h =>
+  """      """ + COUNT + """'Agent','Browser','TZ','Додано','Статус','Нотатка'].map(h =>
         `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' || h === 'Додано' ? 'text-center' : ''}">${h}</span>`).join('')}""",
   'заголовки кабінетів')
 

@@ -8868,6 +8868,11 @@ function gcDiff(geo, results) {
           class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
           class="hidden h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-slate-300 transition">Списком</button>
+        <!-- Апка — це воронка з позначкою APP. Шаблон прілки без неї
+             нічого не покаже: список апок у редакторі читається саме з
+             воронок, і доти по нову апку треба було йти в Settings. -->
+        <button id="ap-addfun" onclick="apAddFunnel(true)" title="Завести апку (воронку з позначкою APP)"
+          class="h-[34px] bg-white/5 hover:bg-white/15 px-3 rounded-xl font-black uppercase text-[10px] tracking-widest text-orange-300 transition">+ Апка</button>
         <button id="ap-add" onclick="apAddNew()" class="h-[34px] bg-emerald-600 hover:bg-emerald-500 px-4 rounded-xl font-black uppercase text-[11px] tracking-widest transition">+ Шаблон</button>
         <button onclick="closeAppsModal()" class="text-slate-400 hover:text-red-500 transition text-lg px-1">&times;</button>
       </div>
@@ -9144,6 +9149,11 @@ function apModePaint() {
   }
   const paste = document.getElementById('ap-paste');
   if (paste) paste.classList.toggle('hidden', !pwa);
+  /* У PWA кнопка воронки стоїть у рядку з назвою кампанії — там, де
+     про воронку й згадують. Тримати її ще й у шапці означало б дві
+     кнопки на одну дію в одному вікні. */
+  const af = document.getElementById('ap-addfun');
+  if (af) af.classList.toggle('hidden', pwa);
   const dom = document.getElementById('ap-dom');
   if (dom) dom.classList.toggle('hidden', !pwa);
   const s = document.getElementById('ap-search');
@@ -9157,6 +9167,84 @@ function apRenderMode() {
   else { apRenderTree(); apRender(); }
 }
 function apAddNew() { if (apMode === 'pwa') pwNew(); else apNew(); }
+
+/* ═══════════ ЗАВЕСТИ ВОРОНКУ, НЕ ВИХОДЯЧИ З ВІКНА ═══════════
+
+   Воронка (funnels_mapping) потрібна обом половинам цього вікна: у
+   прілках із неї беруться апки, у PWA — ktid, до якого прив'яжеться
+   статистика. А заводилась вона тільки в Settings → Funnels, тобто на
+   іншій сторінці, через перезавантаження дашборда. Тому те саме
+   збереження живе тут: поля ті самі, таблиця та сама.
+
+   isApp лише ВИСТАВЛЯЄ позначку, а не вирішує за людину: з PWA теж
+   буває потрібна апка, і галочка лишається видимою. */
+async function apAddFunnel(isApp) {
+  if (typeof ask !== 'function') {
+    alert('Воронку можна завести в Settings → Funnels.');
+    return;
+  }
+  // Постачальники — з квадратних дужок уже збережених назв: окремого
+  // списку, який колись розійдеться з назвами, не тримаємо.
+  const provs = [...new Set(apFunnels.map(f => {
+    const m = String(f.funnel_name || '').match(/\[([^\]]+)\]/);
+    return m ? m[1].trim() : '';
+  }).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
+
+  const v = await ask({
+    title: isApp ? 'Додати апку' : 'Додати воронку',
+    body: isApp
+      ? 'Постачальник — у квадратних дужках назви: «Mostbet [satorapps]». Саме за ним '
+        + 'підбирається профіль розбору сабок.'
+      : 'KTID — те, чим воронка названа в Keitaro: за ним статистика й зійдеться з кампанією.',
+    ok: 'Додати', cancel: 'Скасувати',
+    fields: [
+      { key: 'name', label: 'Назва воронки', need: true, full: true,
+        placeholder: isApp ? 'Mostbet [satorapps]' : 'Mostbet',
+        hint: provs.length ? 'Відомі постачальники: ' + provs.join(', ') : '' },
+      { key: 'ktid', label: isApp ? 'Назва апки / KTID' : 'KTID', need: true,
+        placeholder: 'як у Keitaro' },
+      { key: 'geo', label: 'Гео', upper: true, placeholder: 'KG',
+        hint: 'Без гео список апок у прілках не звузиться.' },
+      { key: 'is_app', label: 'Це APP (апка)', type: 'checkbox', value: !!isApp, full: true }
+    ]
+  });
+  if (!v) return;
+
+  const name = String(v.name || '').trim();
+  const ktid = String(v.ktid || '').trim();
+  /* KTID у funnels_mapping один на воронку, і upsert по ньому МОВЧКИ
+     перепише чужу назву. Питаємо, бо перезапис непомітний: у списку
+     просто колись виявиться інша воронка під знайомим ktid. */
+  const was = apFunnels.find(f => String(f.ktid) === ktid);
+  if (was && !await ask({
+        title: 'KTID уже зайнятий', danger: true, ok: 'Перезаписати',
+        body: 'Під «' + ktid + '» уже стоїть воронка «' + (was.funnel_name || '—')
+            + '». Зберегти — значить замінити її на «' + name + '».' })) return;
+
+  const row = { ktid, funnel_name: name, team_name: currentTeam,
+                is_app: !!v.is_app, geo: String(v.geo || '').trim().toUpperCase() };
+  const { error } = await sb.from('funnels_mapping').upsert(row);
+  if (error) {
+    const m = String(error.message || error.code || '');
+    toast('Не вдалось зберегти воронку: ' + m
+      + (/geo/i.test(m) && /(does not exist|schema cache)/i.test(m)
+         ? ' · У funnels_mapping ще немає колонки geo — виконай FUNNEL_GEO.sql' : ''),
+      'error', 12000);
+    return;
+  }
+  /* Довідник у пам'яті тримаємо в тому ж вигляді, що й apLoad: лише ті
+     чотири поля, і відсортований за назвою — інакше нова воронка
+     стрибнула б у кінець списку, а після перезавантаження вікна
+     опинилась на своєму місці. */
+  const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app };
+  if (was) Object.assign(was, kept); else apFunnels.push(kept);
+  apFunnels.sort((a, b) => String(a.funnel_name || '')
+    .localeCompare(String(b.funnel_name || ''), 'uk'));
+  apSubPaint();
+  apRenderMode();
+  toast((row.is_app ? 'Апку «' : 'Воронку «') + name + '» '
+      + (was ? 'перезаписано' : 'додано'), 'ok');
+}
 
 /* ─────────── дерево гео → постачальник ─────────── */
 function apRenderTree() {
@@ -10148,8 +10236,14 @@ function pwShowEditor(v) {
       <!-- Дату підставляємо на ВИХОДІ з поля, а не на кожному натисканні:
            посеред набору «09/1» уже схоже на дату, і заміна з'їдала б
            наступну цифру прямо під пальцями. -->
-      <input id="pw-f-name" value="${apEsc(v.name || '')}" oninput="pwNameHint()" onblur="pwNameBlur()"
-             class="${inp} w-full font-mono" placeholder="Назва кампанії — як у кабінеті: Mbank_KG_10708-ex8g_09/10">
+      <!-- Воронка заводиться тут же, в рядку з назвою: саме тут
+           виявляється, що кампанія є, а воронки під неї ще немає. -->
+      <div class="flex items-center gap-2">
+        <input id="pw-f-name" value="${apEsc(v.name || '')}" oninput="pwNameHint()" onblur="pwNameBlur()"
+               class="${inp} flex-1 min-w-0 font-mono" placeholder="Назва кампанії — як у кабінеті: Mbank_KG_10708-ex8g_09/10">
+        <button type="button" onclick="apAddFunnel(false)" title="Завести воронку (KTID), не виходячи з кампанії"
+          class="shrink-0 h-[31px] bg-white/5 hover:bg-white/15 px-3 rounded-lg font-black uppercase text-[10px] tracking-widest text-purple-300 transition">+ Воронка</button>
+      </div>
       <div class="flex items-start gap-2">
         <p id="pw-guess" class="text-[10px] text-slate-500 font-bold flex-1 min-w-0 leading-relaxed"></p>
         <button id="pw-datebtn" onclick="pwDateBtn()" type="button"
@@ -10658,9 +10752,19 @@ async function pwBulkApply() {
         <h2 class="text-xl font-black italic tracking-tighter text-sky-400">Accounts</h2>
         <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Статус кабінетів · зберігається одразу · клік по плитці — фільтр</p>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
+        <!-- «Скільки цього місяця завели» — питання, на яке досі
+             відповідали очима. Дата додавання в рядку вже є, тож
+             фільтр нічого не коштує. -->
+        <select id="acc-month" onchange="renderAccountsModal()"
+          class="bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-white outline-none focus:border-sky-500"></select>
         <input id="acc-search" oninput="renderAccountsModal()" placeholder="Пошук…"
           class="bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white outline-none focus:border-sky-500 w-40">
+        <!-- Кабінет завели — і його відразу видно тут же. Доти по нього
+             треба було йти в Settings → Cabinets, у вікно, яке про
+             статуси нічого не знає. -->
+        <button onclick="accAdd()" title="Додати кабінет"
+          class="bg-sky-600 hover:bg-sky-500 w-8 h-8 rounded-lg font-black text-white text-lg leading-none transition">+</button>
         <button onclick="closeAccountsModal()" class="text-slate-400 hover:text-red-500 transition text-lg">✕</button>
       </div>
     </div>
@@ -11585,6 +11689,28 @@ function accSetFilter(k) {
   renderAccountsModal();
 }
 
+/* МІСЯЦЬ, КОЛИ КАБІНЕТ ЗАВЕЛИ. Беремо created_at, а як його немає —
+   added_at: та сама дата, що й у колонці Added у Settings. Рядок без
+   дати не ховаємо ні в якому місяці, крім «усі»: він нічого не
+   стверджує про час, і приписати його до місяця було б вигадкою. */
+const accMonthOf = r => String(r.created_at || r.added_at || '').slice(0, 7);
+const ACC_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function accFillMonths() {
+  const sel = document.getElementById('acc-month');
+  if (!sel) return;
+  const was = sel.value;
+  const months = [...new Set(accRows.map(accMonthOf).filter(Boolean))].sort().reverse();
+  const n = m => accRows.filter(r => accMonthOf(r) === m).length;
+  sel.innerHTML = '<option value="">Усі місяці</option>'
+    + months.map(m => `<option value="${m}">${
+        ACC_MON[Number(m.slice(5)) - 1]} ${m.slice(0, 4)} · ${n(m)}</option>`).join('');
+  // Місяця більше немає серед дат — фільтр по ньому показував би вічну
+  // пустку, тож вибір падає на «усі».
+  sel.value = months.includes(was) ? was : '';
+}
+
 async function openAccountsModal() {
   document.getElementById('accounts-modal').classList.remove('hidden');
   accFilter = '';
@@ -11626,10 +11752,92 @@ async function accSetNote(id, note) {
   if (error) { row.status_note = prev; renderAccountsModal(); alert('Не вдалось зберегти нотатку: ' + error.message); }
 }
 
+/* ДОДАТИ КАБІНЕТ ПРЯМО ТУТ.
+
+   Досі кабінет заводили в Settings → Cabinets, а статус йому ставили
+   тут — два вікна на одну дію, і між ними перезавантаження сторінки.
+   Поля ті самі, що й у формі Link Cabinet, і пишемо ми в ту саму
+   accounts_mapping: це той самий запис, а не другий його різновид.
+
+   Агент підказується з уже заведених кабінетів: його вписують той
+   самий, що й у решти, і друкувати назву агенції наново щоразу —
+   зайве. Але це підказка, а не список: новий агент вписується руками,
+   інакше першого кабінета нового агента не завести. */
+async function accAdd() {
+  if (typeof ask !== 'function') {
+    alert('Додати кабінет можна в Settings → Cabinets.');
+    return;
+  }
+  const agents = [...new Set(accRows.map(r => String(r.provider_name || '').trim())
+    .filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
+  const v = await ask({
+    title: 'Додати кабінет',
+    body: 'Ляже в команду ' + (currentTeam || '—').toUpperCase()
+        + '. Статус — активний, змінити можна тут же в рядку.',
+    ok: 'Додати', cancel: 'Скасувати',
+    fields: [
+      { key: 'acc', label: 'Account ID', need: true, full: true,
+        placeholder: 'напр. 1234567890123456' },
+      { key: 'tz', label: 'TZ', type: 'number', placeholder: '-8, 0, 3' },
+      { key: 'agent', label: 'Agent', list: agents, placeholder: 'агенція або порожньо' },
+      { key: 'browser', label: 'Browser', full: true, list: [...new Set(accRows
+          .map(r => String(r.profile || '').trim()).filter(Boolean))].sort(),
+        placeholder: 'де цей кабінет лежить, напр. AdsPower 12',
+        hint: 'Facebook про це не знає нічого, а без цього кабінет шукають, відкриваючи профілі по черзі.' }
+    ]
+  });
+  if (!v) return;
+
+  const acc = String(v.acc || '').trim();
+  /* Той самий id уже в списку — це не новий кабінет, а друга його
+     копія: статуси й нотатки розійдуться по двох рядках, і який із
+     них правда, не скаже ніхто. */
+  if (accRows.some(r => String(r.account_id) === acc)) {
+    toast('Кабінет ' + acc + ' уже в списку', 'warn');
+    return;
+  }
+
+  const tz = String(v.tz || '').trim();
+  const row = {
+    account_id: acc,
+    provider_name: String(v.agent || '').trim() || null,
+    timezone: tz === '' ? null : parseInt(tz, 10),
+    team_name: currentTeam
+  };
+  const browser = String(v.browser || '').trim();
+  // Колонки profile може ще не бути — тоді браузер не пишемо, але й не
+  // вдаємо, що записали: про це скаже тост після збереження.
+  const hasProfile = !accRows.length || 'profile' in accRows[0];
+  if (browser && hasProfile) row.profile = browser;
+
+  const { data, error } = await sb.from('accounts_mapping').insert([row]).select();
+  if (error) {
+    toast('Не вдалось додати: ' + (error.message || error.code), 'error', 10000);
+    return;
+  }
+  /* Беремо рядок, яким його віддала база: у ньому вже є id і
+     created_at, тобто те, за що чіпляються статус і фільтр по
+     місяцях. Склеїти його з того, що ми відправили, означало б
+     кабінет без місяця до наступного відкриття вікна. */
+  accRows.push((data && data[0]) || row);
+  renderAccountsModal();
+  if (browser && !hasProfile) {
+    tell('Кабінет додано, браузер — ні',
+         'У цій базі ще немає колонки profile. Виконай у Supabase:\n\n'
+       + 'alter table accounts_mapping add column if not exists profile text;');
+  } else {
+    toast('Кабінет ' + acc + ' додано', 'ok');
+  }
+}
+
 function renderAccountsModal() {
   const body = document.getElementById('accounts-modal-body');
   const sumEl = document.getElementById('acc-summary');
   if (!body) return;
+  /* Список місяців перебудовуємо тут, а не при завантаженні: рядки
+     міняються і без нового запиту (додали кабінет), а вибір
+     accFillMonths зберігає сам. */
+  accFillMonths();
 
   if (!accHasStatusCol) {
     sumEl.innerHTML = '';
@@ -11663,8 +11871,10 @@ function renderAccountsModal() {
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
+  const month = document.getElementById('acc-month')?.value || '';
   const rows = accRows.filter(r =>
     (!accFilter || accStatusOf(r) === accFilter) &&
+    (!month || accMonthOf(r) === month) &&
     (!q ||
       String(r.account_id || '').toLowerCase().includes(q) ||
       String(r.provider_name || '').toLowerCase().includes(q) ||
@@ -11672,7 +11882,8 @@ function renderAccountsModal() {
       String(r.status_note || '').toLowerCase().includes(q)));
 
   if (!rows.length) {
-    const why = accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Нічого не знайдено';
+    const why = month && !q && !accFilter ? 'У цьому місяці кабінетів не завели'
+             : accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Нічого не знайдено';
     body.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     return;
   }
@@ -11690,7 +11901,9 @@ function renderAccountsModal() {
 
   body.innerHTML = `
     <div class="${GRID} px-4 pb-2" style="${COLS}">
-      ${[`Account <span class="opacity-50">(${rows.length})</span>`,'Agent','Browser','TZ','Статус','Нотатка'].map(h =>
+      ${[`Account <span class="opacity-50">(${
+          rows.length < accRows.length ? rows.length + ' / ' + accRows.length : rows.length
+        })</span>`,'Agent','Browser','TZ','Статус','Нотатка'].map(h =>
         `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' ? 'text-center' : ''}">${h}</span>`).join('')}
     </div>
     <div class="space-y-1.5">
