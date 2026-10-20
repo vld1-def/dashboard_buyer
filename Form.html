@@ -517,20 +517,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         </div>
       </div>
 
-      <!-- Тугл: уточнити конверсії з Keitaro -->
-      <div class="max-w-3xl mx-auto flex items-center justify-between gap-4 card px-6 py-4 rounded-3xl border border-white/5">
-        <div>
-          <p class="text-xs font-black uppercase tracking-widest text-emerald-400">Refine the data with Keitaro</p>
-          <p class="text-[10px] opacity-40 font-bold mt-0.5">FB gives spend / clicks / devices, Keitaro gives exact installs, regs and deposits (in the account timezone)</p>
-        </div>
-        <label class="relative inline-block w-12 h-6 flex-shrink-0">
-          <input type="checkbox" id="kt-toggle" onchange="toggleKeitaro()" class="opacity-0 w-0 h-0 peer">
-          <span class="absolute inset-0 bg-slate-700 rounded-full transition peer-checked:bg-emerald-500 cursor-pointer"></span>
-          <span class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition peer-checked:translate-x-6 pointer-events-none"></span>
-        </label>
-      </div>
-
-      <div id="dual-zones" class="grid grid-cols-1 gap-4 max-w-3xl mx-auto">
+      <!-- Тугла «уточнити з Keitaro» тут більше немає. Вимикали його
+           рідше, ніж забували ввімкнути, а ціна забутого — залитий
+           день із конверсіями самого Facebook: вони інші й лягають в
+           інший день (у Keitaro — у поясі кабінета). Зона просто стоїть
+           поруч: не залив файл — нічого не сталось, рівно як при
+           вимкненому тугли. -->
+      <div id="dual-zones" class="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
       <div id="csv-drop-zone-dataset" class="drop-zone card p-8 rounded-[2rem] text-center cursor-pointer group" onclick="document.getElementById('csv-input-dataset').click()">
         <input type="file" id="csv-input-dataset" accept=".csv" multiple class="hidden" onchange="handleCSV(event, 'dataset')">
         <div class="flex flex-col items-center gap-3">
@@ -545,8 +538,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         </div>
       </div>
 
-      <!-- Keitaro zone (прихована доки тугл вимкнено) -->
-      <div id="csv-drop-zone-keitaro" class="hidden drop-zone card p-8 rounded-[2rem] text-center cursor-pointer group border-emerald-500/20" onclick="document.getElementById('csv-input-keitaro').click()">
+      <!-- Keitaro zone — стоїть завжди, поруч із зоною FB -->
+      <div id="csv-drop-zone-keitaro" class="drop-zone card p-8 rounded-[2rem] text-center cursor-pointer group border-emerald-500/20" onclick="document.getElementById('csv-input-keitaro').click()">
         <input type="file" id="csv-input-keitaro" accept=".csv" class="hidden" onchange="handleKeitaroFile(event)">
         <div class="flex flex-col items-center gap-3">
            <div class="w-14 h-14 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 group-hover:scale-110 transition-transform">
@@ -884,7 +877,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
              <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
                 <table class="w-full text-[13px] text-left">
                   <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
-                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-center">GEO</th><th class="p-3 text-right">KTID</th><th class="p-3"></th></tr>
+                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-center">GEO</th><th class="p-3 text-right">KTID</th><th class="p-3 text-center">State</th><th class="p-3"></th></tr>
                   </thead>
                   <tbody id="funnels-list-body" class="divide-y divide-white/5">
                     <!-- JS Rows -->
@@ -2752,18 +2745,6 @@ function splitKeitaroPlacement(raw) {
   return { platform: '', placement: s.replace(/[_-]+/g, ' ').trim() };
 }
 
-function toggleKeitaro() {
-  const on = document.getElementById('kt-toggle').checked;
-  document.getElementById('csv-drop-zone-keitaro').classList.toggle('hidden', !on);
-  // коли Keitaro вимкнено — FB-зона на всю ширину
-  document.getElementById('dual-zones').classList.toggle('md:grid-cols-2', on);
-  if (!on) {
-    keitaroAgg = null;
-    document.getElementById('kt-file-name').classList.add('hidden');
-    document.getElementById('csv-input-keitaro').value = '';
-  }
-}
-
 function handleKeitaroFile(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -4432,7 +4413,7 @@ function renderFunnelsTable(data) {
   if (!body) return console.error("❌ Не знайдено funnels-list-body");
 
   if (!data || data.length === 0) {
-    body.innerHTML = '<tr><td colspan="4" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="5" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
     return;
   }
 
@@ -4447,11 +4428,55 @@ function renderFunnelsTable(data) {
               title="Клік — вписати або змінити гео. Воронку перезаносити не треба">${
           r.geo ? String(r.geo).toUpperCase() : '—'}</span></td>
       <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
+      <!-- Бан — це стан, а не видалення: на KTID тримається вся залита
+           статистика, і без рядка вона стає «Unknown (CS11003)» у
+           кожному звіті за минулі місяці. Забанена воронка лишається
+           тут, але зі списку апок у Прілках зникає. -->
+      <td class="p-3 text-center">${funStateBtn(r)}</td>
       <td class="p-3 text-right">
         <button onclick="deleteFunnelMapping('${r.id}')" class="text-red-500 opacity-50 hover:opacity-100">✕</button>
       </td>
     </tr>`).join('');
 }
+/* СТАН ВОРОНКИ В ТАБЛИЦІ.
+
+   Кнопка-перемикач, а не випадайка: станів два, і клік — коротший
+   шлях, ніж вибір зі списку з двох.
+
+   Порожній стан (рядки до міграції) показуємо як Active: саме так їх
+   читають і Прілки. Якщо колонки ще немає — кажемо це при спробі
+   змінити, а не ховаємо кнопку: схована кнопка не пояснює нічого. */
+const funIsBan = r => String((r && r.status) || '').toLowerCase() === 'ban';
+
+function funStateBtn(r) {
+  const ban = funIsBan(r);
+  return `<button type="button" onclick="toggleFunnelState('${r.id}', ${ban ? 'false' : 'true'})"
+    title="${ban
+      ? 'Забанена: у Прілках її немає в списку апок. Клік — повернути в роботу'
+      : 'У роботі. Клік — позначити як забанену: зникне зі списку апок у Прілках'}"
+    class="text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded border transition ${ban
+      ? 'bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25'
+      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20'}">${
+    ban ? 'Ban' : 'Active'}</button>`;
+}
+
+async function toggleFunnelState(id, ban) {
+  const status = ban ? 'ban' : 'active';
+  const { error } = await sb.from('funnels_mapping').update({ status }).eq('id', id);
+  if (error) {
+    const m = String(error.message || '');
+    alert('Не вдалось зберегти стан: ' + m
+      + (/status/i.test(m) && /(does not exist|schema cache)/i.test(m)
+         ? '\n\nУ funnels_mapping ще немає колонки status. Виконай APP_STATUS.sql, тоді Ctrl+Shift+R.'
+         : ''));
+    return;
+  }
+  showStatus(ban ? 'Позначено як Ban' : 'Повернуто в роботу');
+  // Довідник тримає і список апок у Прілках — перечитуємо обидва.
+  await refreshFunnelsTable();
+  await loadMappings();
+}
+
 /* ГЕО ПРАВИМО ПРЯМО В ТАБЛИЦІ.
 
    Колонка geo зʼявилась пізніше за самі воронки, і в усіх уже

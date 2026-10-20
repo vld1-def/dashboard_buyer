@@ -172,7 +172,7 @@ async function fbInspect(token) {
 /* 15 хвилин удень — стільки ж, скільки стукає розклад. Темп задає не
    лише свіжість чисел: правила йдуть слідом за синхронізацією, тож це
    водночас і те, як швидко правило встигне зупинити оголошення. */
-const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8 };
+const FB_PACE_DEF = { day: 15, night: 60, from: 0, to: 8, auto: true };
 
 window.fbPaceLoad = async function () {
   const dEl = document.getElementById('fb-pace-day');
@@ -183,6 +183,11 @@ window.fbPaceLoad = async function () {
     v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
   } catch (e) { v = {}; }
   const pick = (id, val) => { const el = document.getElementById(id); if (el) el.value = String(val); };
+  /* auto === false — це ручний режим. Саме === false, а не !v.auto:
+     у старих записах поля немає зовсім, і читати його відсутність як
+     «вимкнено» означало б мовчки заморозити всім синхронізацію. */
+  pick('fb-pace-auto', v.auto === false ? '0' : '1');
+  fbPacePaint(v.auto === false);
   pick('fb-pace-day', v.day || FB_PACE_DEF.day);
   pick('fb-pace-night', v.night || FB_PACE_DEF.night);
   pick('fb-pace-from', v.from == null ? FB_PACE_DEF.from : v.from);
@@ -195,18 +200,36 @@ window.fbPaceLoad = async function () {
     + Math.abs(-new Date().getTimezoneOffset() / 60);
 };
 
+/* У ручному режимі темп нічого не означає — гасимо рядки, щоб не
+   виглядало, ніби вони на щось впливають, і показуємо, що саме
+   лишається працювати саме. */
+function fbPacePaint(manual) {
+  ['fb-pace-day', 'fb-pace-night', 'fb-pace-from', 'fb-pace-to'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = !!manual;
+    const row = el.closest('.set-row');
+    if (row) row.style.opacity = manual ? '.4' : '';
+  });
+  const note = document.getElementById('fb-pace-manual-note');
+  if (note) note.style.display = manual ? '' : 'none';
+}
+
 window.fbPaceSave = async function () {
   const num = (id, lo, hi, fb) => {
     const n = Number(document.getElementById(id)?.value);
     return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n) : fb;
   };
+  const manual = (document.getElementById('fb-pace-auto')?.value || '1') === '0';
   const pace = {
+    auto:  !manual,
     day:   num('fb-pace-day', 5, 1440, FB_PACE_DEF.day),
     night: num('fb-pace-night', 5, 1440, FB_PACE_DEF.night),
     from:  num('fb-pace-from', 0, 23, FB_PACE_DEF.from),
     to:    num('fb-pace-to', 0, 23, FB_PACE_DEF.to),
     tz:    -new Date().getTimezoneOffset()
   };
+  fbPacePaint(manual);
   await setTeamSetting('fb_sync_pace', JSON.stringify(pace));
   if (typeof setSaved === 'function') setSaved();
 };

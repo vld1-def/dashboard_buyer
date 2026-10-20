@@ -308,6 +308,16 @@
 <div class="set-group">
             <h3 class="set-gtitle">Sync schedule</h3>
             <p class="set-gsub">How often the dashboard walks the cabinets — and, with it, how often rules get a chance to act: they run right after each sync, on a snapshot that is seconds old. The schedule itself ticks every 15 minutes; these two numbers decide when a tick actually does the work, so you change the pace here and never in SQL.</p>
+            <!-- Перше питання тут не «як часто», а «чи взагалі саме».
+                 Ручний режим стосується ЛИШЕ розкладу: кнопка Sync now
+                 працює завжди — вона і є той ручний режим. -->
+            <div class="set-row" data-setting="auto sync manual only ручний режим оновлення кабінетів">
+              <label class="set-label" for="fb-pace-auto">Cabinets refresh</label>
+              <select id="fb-pace-auto" onchange="fbPaceSave()" class="set-input w-44">
+                <option value="1">On the schedule</option>
+                <option value="0">Manual only</option>
+              </select>
+            </div>
             <div class="set-row" data-setting="sync pace interval синхронізація темп інтервал">
               <label class="set-label" for="fb-pace-day">Daytime, every</label>
               <select id="fb-pace-day" onchange="fbPaceSave()" class="set-input w-44">
@@ -337,6 +347,12 @@
                 <span class="set-hint" style="margin:0" id="fb-pace-tz"></span>
               </span>
             </div>
+            <p class="set-hint opacity-60" id="fb-pace-manual-note" style="display:none">
+              <b>Manual only:</b> the schedule will not touch your cabinets — the numbers change when you press
+              <b>Sync now</b>, and not before. Two things keep running on their own, as asked: the comment scan and
+              the rules. But rules judge by the <b>last sync</b> — they read the snapshot that sync writes, so with
+              manual refresh they act on numbers as old as your last press. Comments do not depend on sync at all.
+            </p>
             <p class="set-hint opacity-60">Set both to the same hour and there is no night — the daytime pace runs around the clock. 15 minutes is as fast as the schedule ticks, so a smaller number changes nothing until you change the schedule too (the alter_job note at the bottom of FB_SYNC_CRON.sql). Facebook counts even refused requests against the limit, so faster is not always more data: 15 minutes costs twice what 30 does.</p>
           </div>
 
