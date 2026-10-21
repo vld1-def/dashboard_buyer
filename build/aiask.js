@@ -51,15 +51,28 @@ const aqEsc = v => String(v == null ? '' : v)
    Назва тут не аргумент саме тому, що вона приїхала з чужого файлу. */
 const AQ_PEEK = 400;
 
+/* ДЕНЬ — ЦЕ НЕ ЧИСЛО Й НЕ ТЕКСТ.
+
+   «2026-10-15» не парситься як число (два дефіси), тож досі такий
+   стовпець рахувався текстом — а текст порівнюють лише на «дорівнює»
+   і «містить». Питання «за останній тиждень» не мало де взятись.
+
+   ISO-день тим і зручний, що як РЯДОК він сортується правильно:
+   '2026-10-09' < '2026-10-15'. Тому окремого типу даних тут не
+   заводимо — досить знати, що стовпець денний. */
+const aqIsDay = v => /^\d{4}-\d{2}-\d{2}/.test(String(v == null ? '' : v).trim());
+
 function aqKind(rows, key) {
-  let num = 0, all = 0;
+  let num = 0, day = 0, all = 0;
   for (let i = 0; i < rows.length && i < AQ_PEEK; i++) {
     const v = rows[i][key];
     if (v == null || String(v).trim() === '') continue;
     all++;
-    if (Number.isFinite(aqNum(v))) num++;
+    if (aqIsDay(v)) day++;
+    else if (Number.isFinite(aqNum(v))) num++;
   }
   if (!all) return 'text';
+  if (day * 2 >= all) return 'date';
   return num * 2 >= all ? 'num' : 'text';
 }
 
@@ -161,6 +174,13 @@ function aqCheck(plan, sets) {
 
   const group = plan.group ? String(plan.group) : '';
   if (group && !has(group)) return bad(group);
+  /* ДРУГИЙ РІВЕНЬ. «Яка воронка найкраще працювала по днях» — це два
+     розрізи одночасно, і одним їх не підміниш: по днях без воронки
+     видно тільки підсумок дня, по воронках без днів — тільки підсумок
+     за весь період, а питали про перетин. Другий рівень без першого
+     не існує, і сам по собі він той самий перший. */
+  const group2 = plan.group2 && group && String(plan.group2) !== group ? String(plan.group2) : '';
+  if (group2 && !has(group2)) return bad(group2);
 
   const m = plan.metric || {};
   const op = String(m.op || 'count');
@@ -176,7 +196,7 @@ function aqCheck(plan, sets) {
   }
 
   const limit = Math.min(AQ_LIMIT_MAX, Math.max(1, Number(plan.limit) || 10));
-  return { spec: { set: set.id, where, group, metric: met,
+  return { spec: { set: set.id, where, group, group2, metric: met,
                    sort: plan.sort === 'asc' ? 'asc' : 'desc', limit,
                    say: String(plan.say || '').slice(0, 300) }, set };
 }
@@ -201,6 +221,15 @@ function aqKeep(set, row, where) {
       case 'eq': return sl === vl;
       case 'ne': return sl !== vl;
       default: {
+        /* ДЕНЬ ПОРІВНЮЄМО ЯК ДЕНЬ. ISO-рядок сортується правильно сам,
+           а числом він не читається взагалі — отже «з 14 жовтня»
+           мовчки не знаходило б нічого. Беремо лише перші 10 знаків:
+           у стовпці трапляється і «2026-10-15 03:40». */
+        if (aqIsDay(s) && aqIsDay(w.val)) {
+          const a = s.slice(0, 10), b = String(w.val).trim().slice(0, 10);
+          return w.op === 'gt' ? a > b : w.op === 'ge' ? a >= b
+               : w.op === 'lt' ? a < b : a <= b;
+        }
         /* Порівняння чисел — числами. Рядкове «9» > «10» дало б
            відповідь, яка виглядає як відповідь. */
         const a = aqNumOf(set, w.col, raw), b = aqNum(w.val);
@@ -240,13 +269,21 @@ function aqRun(spec, set) {
   const rows = set.rows.filter(r => aqKeep(set, r, spec.where));
   if (!spec.group) return { rows: rows.length, total: set.rows.length, one: aqAgg(set, rows, spec.metric) };
 
+  /* Ключ групи — одна або дві частини. Складаємо їх через \u0000:
+     у даних цього знака немає, а будь-який видимий роздільник
+     («·», «|») колись трапиться всередині самої назви лендінга, і дві
+     різні групи злипнуться в одну. */
+  const cell = (r, col) => String(r[col] == null || r[col] === '' ? '—' : r[col]);
   const by = new Map();
   rows.forEach(r => {
-    const k = String(r[spec.group] == null || r[spec.group] === '' ? '—' : r[spec.group]);
+    const k = cell(r, spec.group) + (spec.group2 ? '\u0000' + cell(r, spec.group2) : '');
     if (!by.has(k)) by.set(k, []);
     by.get(k).push(r);
   });
-  const list = [...by.entries()].map(([k, rs]) => ({ k, ...aqAgg(set, rs, spec.metric), rows: rs.length }));
+  const list = [...by.entries()].map(([k, rs]) => {
+    const p = k.split('\u0000');
+    return { k: p[0], k2: p[1] || '', ...aqAgg(set, rs, spec.metric), rows: rs.length };
+  });
   /* Групи без значення — в хвіст, а не в початок: «найдешевший CPA»
      при сортуванні за зростанням інакше завжди вертав би групу, де
      депозитів нема зовсім, тобто де ціни немає. */
@@ -263,6 +300,10 @@ function aqRun(spec, set) {
 /* ── ПЛАН СЛОВАМИ. Нашими, а не моделі: на екрані мусить стояти те,
       що ми СПРАВДІ зробили. ── */
 const AQ_OP_UA = { eq: '=', ne: '≠', contains: 'містить', not_contains: 'не містить',
+  /* Для дня «≥» читається як «з такого-то», і це саме те, що людина
+     питала. Але підміняти знак словом не можна: стовпець може бути й
+     числовим, і тоді «з 150» — нісенітниця. Тому лишаємо знак, а
+     словами пояснює сам рядок плану. */
                    gt: '>', ge: '≥', lt: '<', le: '≤', empty: 'порожнє', not_empty: 'не порожнє' };
 const AQ_MET_UA = { sum: 'сума', count: 'кількість рядків', avg: 'середнє',
                     min: 'мінімум', max: 'максимум', per: 'на одну подію' };
@@ -278,7 +319,7 @@ function aqPlanWords(spec, set) {
   const bits = [what];
   if (spec.where.length) bits.push('де ' + spec.where.map(w =>
     `${w.col} ${AQ_OP_UA[w.op]}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`).join(' і '));
-  if (spec.group) bits.push('по ' + spec.group
+  if (spec.group) bits.push('по ' + spec.group + (spec.group2 ? ' × ' + spec.group2 : '')
     + (spec.sort === 'asc' ? ', знизу вгору' : ', згори вниз'));
   return bits.join(', ');
 }
@@ -376,14 +417,50 @@ window.aqGrow = function (el) {
 };
 
 /* ── СТОВПЦІ ЧИПАМИ ──
-   Клік по чипу — питання «що в цьому стовпці», на яке відповідає
-   дашборд. Назва стовпця їде в атрибуті, а не в onclick: у заголовках
-   вивантажень трапляються і лапки, і апострофи. */
+
+   ДВІ ДІЇ НА ОДИН ЧИП, і це той самий поділ, що в силках PWA: часте —
+   на самому чипі, рідкісне — окремою кнопкою поряд.
+
+     клік по назві  → вставити її В ПИТАННЯ. Назви в вивантаженнях
+                      довгі й з пробілами («Sub ID 5»), і набирати їх
+                      руками означає помилятись на регістрі й пробілі —
+                      а план із неіснуючим стовпцем просто відмовить;
+     клік по «?»    → що в цьому стовпці (межі, значення), локально.
+
+   Назва їде в АТРИБУТІ, а не в onclick: у заголовках вивантажень
+   трапляються і лапки, і апострофи, і зібраний рядком виклик на них
+   ламається. */
 function aqChips(set) {
-  return set.cols.map((c, i) => `<button type="button" class="aq-chip${
-    c.kind === 'num' ? ' is-num' : ''}" data-c="${i}" onclick="aqCol(this)"
-    title="Клік — що в цьому стовпці">${aqEsc(c.name)}</button>`).join('');
+  return set.cols.map((c, i) => `<span class="aq-chip${c.kind === 'num' ? ' is-num' : ''}">
+    <button type="button" class="aq-chip-n" data-c="${i}" onclick="aqPut(this)"
+      title="Вставити «${aqEsc(c.name)}» у питання">${aqEsc(c.name)}</button>
+    <button type="button" class="aq-chip-i" data-c="${i}" onclick="aqCol(this)"
+      title="Що лежить у цьому стовпці">?</button>
+  </span>`).join('');
 }
+
+/* Вставляємо В МІСЦЕ КУРСОРА, а не в кінець: питання набирають
+   посередині («сума ___ без Decline»), і дописування в хвіст змусило б
+   переставляти слова руками. У лапках — щоб назва з пробілами читалась
+   як одне ціле і моделлю, і очима. */
+window.aqPut = function (btn) {
+  const set = aqSetNow();
+  const inp = document.getElementById('aq-q');
+  if (!set || !inp) return;
+  const c = set.cols[Number(btn.getAttribute('data-c'))];
+  if (!c) return;
+  const txt = '«' + c.name + '»';
+  const a = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+  const b = inp.selectionEnd == null ? a : inp.selectionEnd;
+  const before = inp.value.slice(0, a), after = inp.value.slice(b);
+  // Пробіл ставимо лише там, де його бракує: подвійний виглядає як огріх.
+  const sep = before && !/\s$/.test(before) ? ' ' : '';
+  inp.value = before + sep + txt + (after && !/^\s/.test(after) ? ' ' : '') + after;
+  const pos = (before + sep + txt).length;
+  inp.focus();
+  try { inp.setSelectionRange(pos, pos); } catch (e) { /* старий браузер */ }
+  aqGrow(inp);
+};
 
 window.aqCol = function (btn) {
   const set = aqSetNow();
@@ -405,12 +482,115 @@ window.aqCol = function (btn) {
     <p class="aq-meta">порахував дашборд, модель не питали</p>`);
 };
 
+/* ═══════════ ЗБЕРЕЖЕНІ ПИТАННЯ ═══════════
+
+   Питання повторюються: «спенд за вчора по гео» питають щодня, і
+   щодня набирають заново. Збережене стає кнопкою над полем — один
+   клік замість рядка тексту.
+
+   У БРАУЗЕРІ, А НЕ В БАЗІ: це звички одного чоловіка за одним
+   комп'ютером, як і закріплене в меню PWA. Ключ із назвою команди —
+   щоб два проєкти в одному браузері не перемішали свої кнопки. */
+const AQ_SAVE_MAX = 12;
+const aqSaveKey = () => 'aq_saved:' + (typeof currentTeam === 'string' ? currentTeam : '');
+let aqSaved = null, aqLastQ = '';
+
+function aqSavedGet() {
+  if (aqSaved) return aqSaved;
+  aqSaved = [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(aqSaveKey()) || '[]');
+    if (Array.isArray(raw)) aqSaved = raw
+      .map(x => ({ name: String(x && x.name || '').slice(0, 40),
+                   q: String(x && x.q || '').slice(0, 400) }))
+      .filter(x => x.q);
+  } catch (e) { /* приватний режим або зламаний JSON */ }
+  return aqSaved;
+}
+
+function aqSavedPut() {
+  try { localStorage.setItem(aqSaveKey(), JSON.stringify(aqSaved)); }
+  catch (e) {
+    if (typeof toast === 'function')
+      toast('Кнопка не збереглась: браузер не дає писати в localStorage. '
+          + 'До перезавантаження вона працює.', 'error', 8000);
+  }
+}
+
+window.aqSave = async function () {
+  const inp = document.getElementById('aq-q');
+  /* Зберігаємо те, що в полі, а якщо воно порожнє — останнє спитане:
+     кнопку найчастіше хочуть саме після того, як відповідь сподобалась. */
+  const q = String((inp && inp.value) || aqLastQ || '').trim();
+  if (!q) {
+    if (typeof toast === 'function') toast('Спершу спитай щось — тоді буде що зберегти.', 'warn');
+    return;
+  }
+  if (aqSavedGet().some(x => x.q === q)) {
+    if (typeof toast === 'function') toast('Таке питання вже є кнопкою.', 'warn');
+    return;
+  }
+  let name = q.slice(0, 28);
+  if (typeof ask === 'function') {
+    const v = await ask({
+      title: 'Зберегти питання кнопкою',
+      body: q,
+      ok: 'Зберегти', cancel: 'Скасувати',
+      fields: [{ key: 'name', label: 'Підпис кнопки', value: name, need: true,
+                 hint: 'Коротко — кнопок поміщається кілька в рядок.' }]
+    });
+    if (!v) return;
+    name = String(v.name || '').trim() || name;
+  }
+  aqSavedGet().unshift({ name, q });
+  /* Межа не з економії: тринадцята кнопка витісняє поле питання за
+     край екрана, і вікно перестає бути вікном питання. */
+  if (aqSaved.length > AQ_SAVE_MAX) aqSaved.length = AQ_SAVE_MAX;
+  aqSavedPut();
+  aqPinsPaint();
+};
+
+window.aqUnsave = function (ev, i) {
+  ev.stopPropagation();
+  const list = aqSavedGet();
+  if (i < 0 || i >= list.length) return;
+  list.splice(i, 1);
+  aqSavedPut();
+  aqPinsPaint();
+};
+
+/* Клік по кнопці — питаємо одразу: саме за цим її й зберігали.
+
+   НЕ aqRun: так зветься рахувальник, і window.aqRun = … тихо затер би
+   його — на верхньому рівні function aqRun теж лежить у window.
+   Знайшлось це стендом, бо зовні виглядало як «асистент перестав
+   рахувати», без жодної помилки в консолі. */
+window.aqPinRun = function (i) {
+  const it = aqSavedGet()[i];
+  const inp = document.getElementById('aq-q');
+  if (!it || !inp) return;
+  inp.value = it.q;
+  aqGrow(inp);
+  aqAsk();
+};
+
+function aqPinsPaint() {
+  const el = document.getElementById('aq-pins');
+  if (!el) return;
+  const list = aqSavedGet();
+  el.innerHTML = list.map((x, i) => `<span class="aq-pin" onclick="aqPinRun(${i})"
+      title="${aqEsc(x.q)}">${aqEsc(x.name)}<button type="button" class="aq-pin-x"
+      onclick="aqUnsave(event, ${i})" title="Прибрати кнопку">×</button></span>`).join('');
+  el.classList.toggle('hidden', !list.length);
+}
+
 /* ── ВІКНО ── */
 window.aqOpen = function (q) {
   const box = document.getElementById('aq-modal');
   if (!box) return;
   box.classList.remove('hidden');
   aqPaintSets();
+  aqPinsPaint();
   const inp = document.getElementById('aq-q');
   if (inp) { if (q) { inp.value = q; aqGrow(inp); } inp.focus(); }
 };
@@ -474,6 +654,7 @@ window.aqAsk = async function () {
   const set = aqSetNow();
   if (!set) { aqPaintSets(); return; }
 
+  aqLastQ = q;                       // щоб його можна було зберегти кнопкою
   aqPush('is-me', `<p class="aq-val">${aqEsc(q)}</p>`);
   if (inp) { inp.value = ''; aqGrow(inp); }
 
@@ -496,6 +677,10 @@ window.aqAsk = async function () {
        модель мусила ще й угадати, про який питають: зайва здогадка на
        рівному місці, та ще й зайві назви стовпців у запиті. */
     j = await aqCall({ action: 'plan', q,
+      /* Сьогоднішній день шлемо СВІЙ: функція живе в UTC, а питають із
+         Києва — о другій ночі «вчора» розійшлось би на добу. */
+      today: new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+        .toISOString().slice(0, 10),
       sets: [{ id: set.id, title: set.title, rows: set.rows.length,
                cols: set.cols.map(c => ({ name: c.name, kind: c.kind })) }] });
   } catch (e) {
@@ -544,10 +729,13 @@ window.aqAsk = async function () {
           vals.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
           }${vals.length === 12 ? ' …' : ''}</p>` : '');
   } else if (spec.group) {
-    body = `<table class="aq-tbl"><thead><tr><th>${aqEsc(spec.group)}</th><th>${
+    const g2 = !!spec.group2;
+    body = `<table class="aq-tbl"><thead><tr><th>${aqEsc(spec.group)}</th>${
+        g2 ? `<th>${aqEsc(spec.group2)}</th>` : ''}<th>${
         aqEsc(spec.metric.op === 'count' ? 'рядків' : spec.metric.op === 'per'
           ? spec.metric.num + '/' + spec.metric.den : spec.metric.col)}</th><th>рядків</th></tr></thead>
-       <tbody>${res.list.map(r => `<tr><td>${aqEsc(r.k)}</td><td class="aq-n">${
+       <tbody>${res.list.map(r => `<tr><td>${aqEsc(r.k)}</td>${
+         g2 ? `<td>${aqEsc(r.k2)}</td>` : ''}<td class="aq-n">${
          aqFmt(r.v)}</td><td class="aq-n aq-dim">${r.rows}</td></tr>`).join('')}</tbody></table>`;
   } else {
     body = `<p class="aq-big">${aqFmt(res.one.v)}</p>`
