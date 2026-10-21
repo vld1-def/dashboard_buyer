@@ -298,6 +298,86 @@ ok('і стовпці саме його',
   && !sw.sent.sets[0].cols.some(c => c.name === 'Amount'), sw.sent.sets[0].cols);
 ok('скільки рядків і стовпців — у підписі вікна', /2 рядк/.test(sw.note), sw.note);
 
+/* ═══════════ «ЯКЕ НАЙКРАЩЕ — РОЗПИШИ ЙОГО ДАНІ» ═══════════
+
+   Питали про ОДИН креатив і його цифри — а отримували топ-10 з однією
+   колонкою. Модель питання розуміла (так і писала в «say»), але плану
+   не було чим це сказати: місце було рівно на одну цифру.
+
+   І друге, гірше: «найдешевший депозит» без порога завжди вигравало
+   те, де даних майже немає — вісім рядків і один депозит. Поріг
+   рахується по СУМІ групи, бо where ріже рядки, а не групи. */
+const CREO = [
+  { cid: 'A', spend: '100', deps: '10', regs: '40' },
+  { cid: 'A', spend: '40',  deps: '5',  regs: '12' },
+  { cid: 'B', spend: '7',   deps: '1',  regs: '3'  },   // майже немає даних
+  { cid: 'C', spend: '300', deps: '20', regs: '90' }
+];
+
+await page.evaluate(rows => {
+  window.__sent = [];
+  window.shDataset = () => ({
+    id: 'sheet', title: 'creo.csv',
+    cols: [{ name: 'cid', kind: 'text' }, { name: 'spend', kind: 'num' },
+           { name: 'deps', kind: 'num' }, { name: 'regs', kind: 'num' }],
+    rows: rows.map(r => ({ ...r })), num: null
+  });
+  rawData = []; window.creativesRawData = [];
+  aqCall = async body => {
+    window.__sent.push(body);
+    return { plan_raw: JSON.stringify(window.__plan), model: 'claude-haiku-5-5',
+             cost_usd: 0.0001, left_today: 9, problems: [] };
+  };
+  aqSetId = 'sheet';
+  aqOpen();
+}, CREO);
+
+/* Один — це картка, а не таблиця з одного рядка. */
+const one = await askWith({ group: 'cid', limit: 1, sort: 'asc',
+  metric: { op: 'per', num: 'spend', den: 'deps' },
+  metrics: [{ op: 'sum', col: 'spend' }, { op: 'sum', col: 'deps' },
+            { op: 'sum', col: 'regs' }],
+  having: { col: 'deps', op: 'ge', val: 5 },
+  say: 'найдешевший депозит за місяць' }, 'яке крео найкраще, розпиши його дані');
+ok('відповідь — картка одного, а не таблиця топ-10',
+  /aq-card/.test(one.html) && !/aq-tbl/.test(one.html), one.html.slice(0, 200));
+ok('названо саме того, хто виграв',
+  /<p class="aq-h">A</.test(one.html), one.html.slice(0, 120));
+ok('поріг відсіяв групу, де даних майже немає',
+  !/aq-h">B/.test(one.html), one.html.slice(0, 200));
+ok('у картці всі замовлені числа, а не одне',
+  /spend \/ deps/.test(one.txt) && /сума spend/.test(one.txt)
+  && /сума deps/.test(one.txt) && /сума regs/.test(one.txt), one.txt.slice(0, 300));
+ok('ціна депозиту порахована сумою на суму',
+  /9\.33/.test(one.txt), one.txt.slice(0, 200));
+ok('і видно, з чого вона вийшла — інакше число перевірити нічим',
+  /140 \/ 15/.test(one.txt), one.txt.slice(0, 300));
+ok('поріг названо в плані — мовчазний відсів виглядає як «такого немає»',
+  /лише де сума deps ≥ 5/.test(one.txt), one.txt.slice(0, 300));
+
+/* Кілька — таблиця, але з усіма показниками поруч. */
+const many = await askWith({ group: 'cid', limit: 10, sort: 'asc',
+  metric: { op: 'per', num: 'spend', den: 'deps' },
+  metrics: [{ op: 'sum', col: 'spend' }, { op: 'sum', col: 'deps' }] },
+  'крео по ціні депозиту');
+ok('кілька — це таблиця, і в ній колонка на кожен показник',
+  /aq-tbl/.test(many.html) && /<th>сума spend<\/th>/.test(many.html.replace(/\s+/g, ' '))
+  && /<th>сума deps<\/th>/.test(many.html.replace(/\s+/g, ' ')), many.html.slice(0, 400));
+ok('без порога в хвіст іде той, де даних майже немає',
+  /B/.test(many.txt), many.txt.slice(0, 200));
+
+/* Межі: вигаданий стовпець у додатковому показнику — та сама відмова. */
+const badm = await askWith({ group: 'cid', metric: { op: 'count' },
+  metrics: [{ op: 'sum', col: 'немає' }] }, 'щось');
+ok('вигаданий стовпець у додатковому показнику не виконується',
+  /немає стовпця «немає»/.test(badm.txt), badm.txt.slice(0, 200));
+
+const badh = await askWith({ group: 'cid', metric: { op: 'count' },
+  having: { col: 'deps', op: 'regex', val: 5 } }, 'щось');
+ok('невідомий поріг не виконується', /невідомий поріг/.test(badh.txt), badh.txt.slice(0, 200));
+
+await page.evaluate(() => { window.__setup(); aqSetId = 'sheet'; aqOpen(); });
+
 /* ─────────── чип: назва вставляється, «?» показує вміст ───────────
    Дві дії на один чип, як у силках PWA: часте — на самому чипі,
    рідкісне — окремою кнопкою. Набирати «Sub ID 5» руками означає
