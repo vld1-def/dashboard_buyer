@@ -85,8 +85,18 @@ const EX_MAX = 12;
 const EX_LEN = 600;
 // Скільки варіантів можна попросити за раз.
 const N_MIN = 1, N_MAX = 10;
-// Стеля відповіді. 10 варіантів × ~250 токенів + розмітка JSON.
-const MAX_TOKENS = 3000;
+// Стеля відповіді. 10 варіантів × ~250 токенів + розмітка JSON, і запас
+// на довші варіанти: обрізана на півслові відповідь не розбирається
+// взагалі, тобто виклик оплачений, а варіантів нема.
+const MAX_TOKENS = 4000;
+
+/* ТЕМПЕРАТУРА РІЗНА ДЛЯ РІЗНИХ ЗАДАЧ, і це не дрібниця.
+   Тексти: висока — рекламний рядок, який «правильний», нікого не
+   зупиняє, а п'ять обережних варіантів це один варіант.
+   План запиту до таблиці: нуль — там потрібна точність, і вигадана
+   назва стовпця це просто помилка. */
+const TEMP_TEXT = 1;
+const TEMP_PLAN = 0;
 
 type Json = Record<string, any>;
 
@@ -143,7 +153,8 @@ async function addUsage(base: string, hdr: Json, me: string, action: string,
 }
 
 /* ── САМ ЗАПИТ ДО МОДЕЛІ ── */
-async function callModel(key: string, model: string, system: string, user: string):
+async function callModel(key: string, model: string, system: string, user: string,
+                         temp: number):
     Promise<{ text: string; inTok: number; outTok: number }> {
   const res = await fetch(API, {
     method: 'POST',
@@ -152,6 +163,7 @@ async function callModel(key: string, model: string, system: string, user: strin
     body: JSON.stringify({
       model,
       max_tokens: MAX_TOKENS,
+      temperature: temp,
       system,
       messages: [{ role: 'user', content: user }]
     })
@@ -177,7 +189,8 @@ async function callModel(key: string, model: string, system: string, user: strin
    Відмову моделі видно не в коді помилки, а в самому тексті — тому
    тут її не вгадуємо, а віддаємо як є: сказане моделею краще
    показати людині, ніж підмінити своїм «не вийшло». */
-async function callXai(key: string, model: string, system: string, user: string):
+async function callXai(key: string, model: string, system: string, user: string,
+                       temp: number):
     Promise<{ text: string; inTok: number; outTok: number }> {
   const res = await fetch(XAI_API, {
     method: 'POST',
@@ -185,6 +198,7 @@ async function callXai(key: string, model: string, system: string, user: string)
     body: JSON.stringify({
       model,
       max_tokens: MAX_TOKENS,
+      temperature: temp,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }]
     })
   });
@@ -231,10 +245,25 @@ function parseItems(raw: string): { title: string; text: string; ua?: string }[]
 }
 
 const SYSTEM = [
-  'You write short ad copy for mobile app and PWA campaigns.',
-  'You are given real examples written by this team. Match their tone, length,',
-  'punctuation habits and language exactly — the new lines must look like the same',
-  'person wrote them, not like a polished brochure.',
+  'You write short ad copy for mobile app and PWA campaigns. You are good at this:',
+  'write copy that makes someone stop and tap, not copy that fills a slot.',
+  /* МЕНШЕ МУШТРИ. Тут стояло «match their tone, length, punctuation habits and
+     language EXACTLY» — і виходили перетасовані зразки: ті самі звороти,
+     той самий початок, п'ять варіантів, між якими немає різниці. Голос
+     команди копіювати треба, речення — ні. */
+  'The examples show the team VOICE: how direct they are, how long the lines run, how they',
+  'punctuate, how much they promise. Take the voice. Do not take their sentences: a variant',
+  'that reshuffles an example is a wasted variant.',
+  'Make the variants genuinely different FROM EACH OTHER — different hook, different angle,',
+  'different first words. If one leans on a question, let the next lean on a number, an',
+  'imperative, a curiosity gap, a local detail. Five near-identical lines are one line.',
+  /* МОВА — НЕ ЗІ ЗРАЗКІВ. Тут було «Language: X (same as the examples)» —
+     тобто моделі прямо казали, що зразки вже тією мовою, хоч у банку
+     вони бувають будь-якою. На суперечності вона слухалась зразків, і
+     текст виходив мовою гео замість замовленої. */
+  'When the brief names a language, that language wins over everything else, including the',
+  'language of the examples: they may be in another language entirely. Geo is a market, not',
+  'a language.',
   /* ФАКТИ ДАЄ БРИФ. Доти тут стояла заборона на будь-які числа й
      бонуси — і вона з'їдала саме те, по що приходять: акцію, призи,
      умови. Модель відмовлялась писати про розіграш, який у клієнта
@@ -246,6 +275,8 @@ const SYSTEM = [
   'add — an invented payout is the one thing nobody can stand behind afterwards.',
   'Write the copy itself. If part of the brief is something you will not write, still return',
   'the variants for the rest, and put the reason in the "ua" field of a variant.',
+  'Length: in the ballpark of the examples, but exact length is not the point — one variant',
+  'may be three words if three words hit harder.',
   /* Підпис українською — не переклад, а зміст у кількох словах. Тексти
      бувають будь-якою мовою гео, і читати десять варіантів чужою
      мовою, щоб зрозуміти, чим вони різняться, — та сама робота, якої
@@ -321,15 +352,23 @@ function buildUser(body: Json): string {
 
   const lines = [
     ex.length
-      ? 'Examples from our bank' + (geo ? ' (geo ' + geo + ')' : '') + ':'
-      : 'We have no examples saved yet, so write in a plain, direct style.',
+      /* «geo KG» без пояснення читалось як «пиши киргизькою». Гео — це
+         ринок, і сказати це треба словами, бо мова приходить окремо. */
+      ? 'Examples of our own copy' + (geo ? ' (market ' + geo + ')' : '')
+        + ' — for VOICE only, not for language and not for wording:'
+      : 'We have no examples saved yet, so write in a plain, direct voice.',
     ...ex.map((e, i) => (i + 1) + '. ' + (e.title ? '[' + e.title + '] ' : '') + e.text),
     '',
-    'Write ' + n + ' NEW variants.',
+    'Write ' + n + ' NEW variants, each different from the others.',
     cat ? 'Slot: ' + cat + '.' : '',
-    lang ? 'Language: ' + lang + ' (same as the examples).' : 'Keep the language of the examples.',
-    hint ? 'What to aim for: ' + hint : '',
-    'Keep each variant about as long as the examples. No numbering in the text itself.'
+    /* МОВА ОКРЕМИМ НАКАЗОМ, і сказано, що зразки можуть бути іншою:
+       без цього модель вирішувала суперечність на користь зразків. */
+    lang
+      ? 'LANGUAGE: ' + lang + '. Write every variant in ' + lang + ' and nothing else. '
+        + 'The examples above may be in a different language — that does not matter.'
+      : 'Language: the one the examples are written in.',
+    hint ? 'Brief: ' + hint : '',
+    'No numbering inside the copy itself.'
   ];
   return lines.filter(Boolean).join('\n');
 }
@@ -397,9 +436,14 @@ async function handle(req: Request): Promise<Response> {
   let got: { text: string; inTok: number; outTok: number };
   try {
     const ask = engine === 'xai' ? callXai : callModel;
+    /* Температуру можна перебити секретом AI_TEMP_TEXT — якщо тексти
+       почнуть заносити, це єдине, що треба підкрутити, без деплою
+       нового коду. */
+    const envTemp = Number(Deno.env.get('AI_TEMP_TEXT'));
+    const tText = Number.isFinite(envTemp) && envTemp >= 0 && envTemp <= 2 ? envTemp : TEMP_TEXT;
     got = action === 'plan'
-      ? await ask(key, model, PLAN_SYSTEM, buildPlanUser(body))
-      : await ask(key, model, SYSTEM, buildUser(body));
+      ? await ask(key, model, PLAN_SYSTEM, buildPlanUser(body), TEMP_PLAN)
+      : await ask(key, model, SYSTEM, buildUser(body), tText);
   } catch (e) {
     return reply({ error: (e as Error).message }, 502);
   }

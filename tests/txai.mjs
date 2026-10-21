@@ -183,6 +183,66 @@ ok('сказане моделею видно замість «нічого не 
   return /Не можу вигадувати подробиці призів/.test(t) && /grok/.test(t);
 }));
 
+/* ─────────── мова, яку замовили, важить більше за зразки ───────────
+   Модель писала мовою гео замість замовленої, і причина була подвійна:
+   у промті стояло «Language: X (same as the examples)» — тобто моделі
+   прямо казали, що зразки вже тією мовою, — а в запит першими
+   потрапляли зразки тієї мови, якої в банку більше. */
+const order = await page.evaluate(async () => {
+  txItems = [
+    { id: 'a1', geo: 'KG', cat: 'push', lang: 'ru', title: '', text: 'ру один' },
+    { id: 'a2', geo: 'KG', cat: 'push', lang: 'ru', title: '', text: 'ру два' },
+    { id: 'a3', geo: 'KG', cat: 'push', lang: 'ru', title: '', text: 'ру три' },
+    { id: 'a4', geo: 'KG', cat: 'push', lang: 'pl', title: '', text: 'pl jeden' },
+    { id: 'a5', geo: 'KG', cat: 'push', lang: 'pl', title: '', text: 'pl dwa' }
+  ];
+  txGeo = 'KG'; txCat = 'push';
+  txAiItems = []; txAiPicked = []; txAiNote = '';
+  window.__sent = [];
+  txAiCall = async body => {
+    window.__sent.push(body);
+    return { items: [{ title: 'P', text: 'Odbierz bonus', ua: 'про бонус' }],
+             model: 'grok-4.7', cost_usd: 0.001, left_today: 9, problems: [] };
+  };
+  const f = document.getElementById('tx-lang-filter');
+  if (f) f.value = '';                       // у фільтрі «усі мови»
+  const p = txAi();
+  await new Promise(r => setTimeout(r, 60));
+  const w = document.querySelector('.askwrap');
+  w.querySelector('[data-k="lang"]').value = 'pl';
+  w.querySelector('.ask-yes').click();
+  await p;
+  return { sent: window.__sent[0], note: txAiNote };
+});
+ok('у запит першими їдуть зразки замовленою мовою',
+  order.sent.examples.slice(0, 2).every(e => /^pl /.test(e.text)), order.sent.examples);
+ok('але решта теж їде — тон у команди один на всі мови',
+  order.sent.examples.length === 5, order.sent.examples.length);
+ok('мова їде в запит окремим полем', order.sent.lang === 'pl', order.sent);
+ok('і видно, скільки зразків було тією мовою',
+  /зразків мовою pl: 2 з 5/.test(order.note), order.note);
+
+/* Промт більше не каже моделі, що зразки вже замовленою мовою: саме на
+   цій суперечності вона й слухалась зразків. */
+import { readFileSync as _read } from 'node:fs';
+const FN = _read('/home/user/dashboard_buyer/supabase/functions/ai/index.ts', 'utf8');
+/* Шукаємо саме той РЯДОК, що йшов у модель, а не згадку про нього:
+   у коментарі він лишився навмисно — як запис того, що саме було не
+   так. Тест, який би його не розрізняв, завалився б на пояснення. */
+ok('у промт більше не йде «(same as the examples)»',
+  !/'Language: ' \+ lang \+ ' \(same as the examples\)/.test(FN));
+ok('натомість мова названа наказом',
+  /LANGUAGE: ' \+ lang/.test(FN) && /may be in a different language/.test(FN));
+ok('гео назване ринком, а не мовою', /market ' \+ geo/.test(FN) && /Geo is a market, not/.test(FN));
+/* Свободи більше: муштра «exactly» пішла, різниця між варіантами
+   вимагається прямо. */
+ok('промт не вимагає копіювати зразки дослівно',
+  !/punctuation habits and language exactly/.test(FN) && /Do not take their sentences/.test(FN), '');
+ok('і вимагає різних варіантів, а не п\'яти однакових',
+  /different FROM EACH OTHER/.test(FN));
+ok('температура текстів вища за температуру плану',
+  /const TEMP_TEXT = 1;/.test(FN) && /const TEMP_PLAN = 0;/.test(FN));
+
 /* ─────────── відмова моделі не виглядає як порожнеча ─────────── */
 ok('нерозгорнута функція називає команду розгортання', await page.evaluate(async () => {
   txAiCall = async () => { throw Object.assign(new Error('not deployed'), { code: 'missing' }); };
