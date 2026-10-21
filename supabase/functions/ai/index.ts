@@ -94,7 +94,13 @@ const MAX_TOKENS = 4000;
    Тексти: висока — рекламний рядок, який «правильний», нікого не
    зупиняє, а п'ять обережних варіантів це один варіант.
    План запиту до таблиці: нуль — там потрібна точність, і вигадана
-   назва стовпця це просто помилка. */
+   назва стовпця це просто помилка.
+
+   ⚠️ ДІЄ ЛИШЕ НА x.ai. Нові моделі Anthropic поле temperature не
+   приймають узагалі (див. callModel), тож для планів це число —
+   намір, а не налаштування. Прибирати його звідси не варто: тексти
+   можуть їхати і через Claude, і через x.ai, а сигнатура виклику
+   спільна. */
 const TEMP_TEXT = 1;
 const TEMP_PLAN = 0;
 
@@ -152,9 +158,20 @@ async function addUsage(base: string, hdr: Json, me: string, action: string,
   } catch (e) { return (e as Error).message; }
 }
 
-/* ── САМ ЗАПИТ ДО МОДЕЛІ ── */
+/* ── САМ ЗАПИТ ДО МОДЕЛІ ──
+
+   ТЕМПЕРАТУРУ СЮДИ НЕ ШЛЕМО, і це не недогляд. На нових моделях
+   Anthropic поле temperature більше не приймається: запит падає з
+   «`temperature` is deprecated for this model», тобто не відповідає
+   взагалі. Саме це й зловили питання по таблицях — вони ходять до
+   Claude.
+
+   Параметр лишився там, де він працює: x.ai (формат OpenAI). Тут
+   temp приймаємо, щоб виклик був однаковий з обох боків, і свідомо
+   ігноруємо — мовчазна різниця в сигнатурі коштувала б дорожче за
+   цей коментар. */
 async function callModel(key: string, model: string, system: string, user: string,
-                         temp: number):
+                         _temp: number):
     Promise<{ text: string; inTok: number; outTok: number }> {
   const res = await fetch(API, {
     method: 'POST',
@@ -163,7 +180,6 @@ async function callModel(key: string, model: string, system: string, user: strin
     body: JSON.stringify({
       model,
       max_tokens: MAX_TOKENS,
-      temperature: temp,
       system,
       messages: [{ role: 'user', content: user }]
     })
@@ -173,9 +189,16 @@ async function callModel(key: string, model: string, system: string, user: strin
     const msg = String(j?.error?.message || 'HTTP ' + res.status);
     /* Найчастіші дві причини називаємо прямо: інакше «400» відправляє
        шукати ваду в запиті, тоді як справа в ключі або в балансі. */
+    /* Відмову через застаріле поле називаємо прямо: інакше «400» з
+       чужої англійської відправляє шукати ваду в питанні, тоді як
+       справа в тому, що функцію давно не оновлювали. */
+    const stale = /deprecated for this model/i.test(msg)
+      ? ' — це стара версія функції ai: розгорни її наново '
+        + '(supabase functions deploy ai)'
+      : '';
     throw new Error(res.status === 401 ? 'the ANTHROPIC_API_KEY is not accepted: ' + msg
                   : res.status === 429 ? 'rate limit or no credit on the Anthropic account: ' + msg
-                  : msg);
+                  : msg + stale);
   }
   const text = (Array.isArray(j.content) ? j.content : [])
     .filter((b: Json) => b && b.type === 'text').map((b: Json) => String(b.text || '')).join('\n');
@@ -307,13 +330,39 @@ const PLAN_SYSTEM = [
   'anything yourself and never state numbers: the application computes from its own rows.',
   'Answer with JSON only, no prose:',
   '{"set":"<set id>","where":[{"col":"<column>","op":"eq|ne|contains|not_contains|gt|ge|lt|le|empty|not_empty","val":"<value>"}],',
-  '"group":"<column or null>","metric":{"op":"sum|count|avg|min|max|per","col":"<column>","num":"<column>","den":"<column>"},',
+  '"group":"<column or null>","group2":"<second column or null>",',
+  '"metric":{"op":"sum|count|avg|min|max|per","col":"<column>","num":"<column>","den":"<column>"},',
   '"sort":"desc|asc","limit":<1..50>,"say":"<one short sentence in Ukrainian: what you understood>"}',
   'Rules: use ONLY column names given for the chosen set, spelled exactly as given.',
   'metric.col is for sum/avg/min/max; metric.num and metric.den are for "per" (a ratio',
   'like cost per action = sum(num)/sum(den)); count needs neither.',
   'For "best/cheapest CPA" use op "per" with num=spend and den=the conversion column, sort "asc".',
   'For "most/biggest" sort "desc". If the question names a value to exclude, use op "ne" or "not_contains".',
+  /* ДНІ. Питання майже завжди про період — «за тиждень», «учора»,
+     «цього місяця». Модель не знає сьогоднішньої дати, поки ми її не
+     скажемо, тож вона їде в запиті; а межі періоду — це звичайні
+     ge/le по денному стовпцю, нової операції не треба. */
+  'Columns marked (date) hold an ISO day, YYYY-MM-DD. Today\'s date is given below. Turn any',
+  'period in the question into a range on that column: "last 7 days" is ge <today minus 6 days>,',
+  '"yesterday" is both ge and le on that day, "this month" is ge <first day of this month>.',
+  'Never invent a column named "last week" — the period is always a filter on the date column.',
+  /* КРЕАТИВИ. Питання про них ставлять щодня, і майже завжди це
+     «згрупуй по креативу й відсортуй». Назвати це прямо дешевше, ніж
+     щоразу сподіватись, що модель вгадає, що саме вважати
+     «результатом». */
+  'Questions about creatives ("креативи", "крео") mean: group by the creative column and rank it.',
+  '"Best results" with a spend column means cost per conversion — op "per", num=spend,',
+  'den=the conversion column (deposits first, then registrations, then installs), sort "asc".',
+  'Without a spend column, rank by the conversion column itself with sum and sort "desc".',
+  'Keep limit at 10 unless the question asks for more: a top is a top.',
+  /* ДВА РОЗРІЗИ ОДНОЧАСНО. «Яка воронка найкраще працювала по днях на
+     такому-то лендінгу» — це фільтр по лендінгу й пара день × воронка.
+     Одним рівнем це не передати, і модель, яка має лише один, почне
+     вигадувати: то склеїть два стовпці в один, то загубить питання. */
+  'Use group2 for a second breakdown when the question asks for a pair, for example',
+  '"by day, which funnel" is group=<day column>, group2=<funnel column>. Keep group2 null',
+  'when one breakdown answers the question. A value named in the question (a landing, an',
+  'offer, a country) is a FILTER in where, not a group.',
   'If the question cannot be answered from these columns, return',
   '{"error":"<one short sentence in Ukrainian saying what is missing>"}'
 ].join(' ');
@@ -332,6 +381,13 @@ function buildPlanUser(body: Json): string {
   });
   return [
     lines.length ? lines.join('\n') : 'No data sets are open.',
+    '',
+    /* Сьогоднішній день беремо З БРАУЗЕРА, а не з серверного годинника:
+       функція живе в UTC, а питають із Києва, і о другій ночі «вчора»
+       розійшлось би на добу. Немає — ставимо своє, але це запасний
+       шлях. */
+    'Today is ' + (/^\d{4}-\d{2}-\d{2}$/.test(String(body?.today || ''))
+      ? String(body.today) : today()) + '.',
     '',
     'Question: ' + String(body?.q || '').slice(0, 500)
   ].join('\n');

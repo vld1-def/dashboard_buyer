@@ -176,6 +176,100 @@ ok('модель сказала, що не може — показуємо це 
   /немає такого стовпця/.test(r9.txt), r9.txt.slice(0, 200));
 
 /* ─────────── коли питати нічого ─────────── */
+/* ═══════════ ДНІ, КРЕАТИВИ, ДВА РОЗРІЗИ ═══════════
+
+   Питання майже завжди про період і майже завжди про перетин: «яка
+   воронка найкраще працювала по днях на такому-то лендінгу».
+
+     • день — не число й не текст: «2026-10-15» числом не читається,
+       тож «за останній тиждень» мовчки не знаходило б нічого;
+     • два розрізи одним не підміниш: по днях без воронки видно лише
+       підсумок дня, по воронках без днів — лише підсумок періоду;
+     • значення, назване в питанні (лендінг, оффер), — це ФІЛЬТР, а не
+       розріз. */
+const DAYS = [
+  { date: '2026-10-09', land: 'form-a', funnel: 'F1', spend: '10', deps: '1' },
+  { date: '2026-10-15', land: 'form-a', funnel: 'F1', spend: '20', deps: '4' },
+  { date: '2026-10-15', land: 'form-a', funnel: 'F2', spend: '30', deps: '2' },
+  { date: '2026-10-16', land: 'form-b', funnel: 'F1', spend: '40', deps: '8' },
+  { date: '2026-10-16', land: 'form-a', funnel: 'F2', spend: '50', deps: '5' }
+];
+
+const dayset = () => page.evaluate(rows => {
+  window.__sent = [];
+  window.shDataset = () => ({
+    id: 'sheet', title: 'daily.csv',
+    cols: [{ name: 'date', kind: 'date' }, { name: 'land', kind: 'text' },
+           { name: 'funnel', kind: 'text' }, { name: 'spend', kind: 'num' },
+           { name: 'deps', kind: 'num' }],
+    rows: rows.map(r => ({ ...r })), num: null
+  });
+  rawData = []; window.creativesRawData = [];
+  aqCall = async body => {
+    window.__sent.push(body);
+    return { plan_raw: JSON.stringify(window.__plan), model: 'claude-haiku-5-5',
+             cost_usd: 0.0001, left_today: 9, problems: [] };
+  };
+  aqSetId = 'sheet';
+  aqOpen();
+}, DAYS);
+
+await dayset();
+
+/* Вид стовпця з днем — саме «date», і він їде в модель: інакше вона не
+   знає, що з цим стовпцем можна робити діапазон. */
+const kinds = await page.evaluate(async () => {
+  window.__plan = { metric: { op: 'count' } };
+  document.getElementById('aq-q').value = 'скільки рядків';
+  await aqAsk();
+  const sent = window.__sent[window.__sent.length - 1];
+  return { cols: sent.sets[0].cols, today: sent.today };
+});
+ok('денний стовпець названо датою, а не текстом',
+  (kinds.cols.find(c => c.name === 'date') || {}).kind === 'date', kinds.cols);
+ok('сьогоднішній день їде в модель — інакше «за тиждень» нема від чого рахувати',
+  /^\d{4}-\d{2}-\d{2}$/.test(kinds.today || ''), kinds.today);
+
+const week = await askWith({ where: [{ col: 'date', op: 'ge', val: '2026-10-15' }],
+  metric: { op: 'sum', col: 'spend' }, say: 'спенд за тиждень' }, 'спенд за останній тиждень');
+ok('діапазон по днях рахується, а не мовчить', week.big === '140', week.big);
+
+const until = await askWith({ where: [{ col: 'date', op: 'le', val: '2026-10-09' }],
+  metric: { op: 'sum', col: 'spend' } }, 'спенд до 9-го');
+ok('і межа «до» теж', until.big === '10', until.big);
+
+/* ДВА РОЗРІЗИ: фільтр по лендінгу, пара день × воронка. */
+const pair = await askWith({ where: [{ col: 'land', op: 'eq', val: 'form-a' }],
+  group: 'date', group2: 'funnel',
+  metric: { op: 'per', num: 'spend', den: 'deps' }, sort: 'asc', limit: 10 },
+  'по днях яка воронка найкраще працювала на form-a');
+ok('у таблиці два стовпці розрізу, а не склеєний один',
+  /date/.test(pair.html) && /funnel/.test(pair.html)
+  && /<td>2026-10-15<\/td><td>F1<\/td>/.test(pair.html.replace(/\s+/g, '')), pair.html.slice(0, 400));
+ok('пари рахуються окремо: 2026-10-15 × F1 — це 5',
+  /<td>2026-10-15<\/td><td>F1<\/td><tdclass="aq-n">5<\/td>/.test(pair.html.replace(/\s+/g, '')),
+  pair.html.slice(0, 500));
+ok('чужий лендінг у розріз не потрапив', !/form-b/.test(pair.txt) && !/<td>F1<\/td>.*40/.test(pair.html),
+  pair.txt.slice(0, 200));
+ok('план називає обидва розрізи', /по date × funnel/.test(pair.txt), pair.txt.slice(0, 200));
+ok('і рядків узято лише з лендінга', /4 з 5 рядк\./.test(pair.txt), pair.txt.slice(0, 200));
+
+/* Другий рівень не існує без першого, і той самий стовпець двічі — не
+   розріз, а помилка плану. */
+const solo = await askWith({ group2: 'funnel', metric: { op: 'count' } }, 'щось');
+ok('group2 без group не створює привида розрізу', solo.big === '5', solo.big);
+const same = await askWith({ group: 'funnel', group2: 'funnel', metric: { op: 'count' } }, 'щось');
+ok('той самий стовпець двічі не подвоює таблицю',
+  !/<th>funnel<\/th><th>funnel<\/th>/.test(same.html.replace(/\s+/g, '')), same.html.slice(0, 200));
+
+/* Неіснуючий стовпець у другому рівні — та сама відмова, що й у першому. */
+const badg2 = await askWith({ group: 'date', group2: 'нема', metric: { op: 'count' } }, 'щось');
+ok('вигаданий стовпець у другому розрізі не виконується',
+  /немає стовпця «нема»/.test(badg2.txt), badg2.txt.slice(0, 200));
+
+// Повертаємо набір, на якому стоять решта перевірок.
+await page.evaluate(() => { window.__setup(); aqSetId = 'sheet'; aqOpen(); });
+
 /* ─────────── набір вибирають, а не називають ─────────── */
 const picked = await page.evaluate(() => {
   window.__setup();
@@ -204,34 +298,96 @@ ok('і стовпці саме його',
   && !sw.sent.sets[0].cols.some(c => c.name === 'Amount'), sw.sent.sets[0].cols);
 ok('скільки рядків і стовпців — у підписі вікна', /2 рядк/.test(sw.note), sw.note);
 
-/* ─────────── клік по стовпцю: відповідає дашборд ─────────── */
-const chip = await page.evaluate(() => {
+/* ─────────── чип: назва вставляється, «?» показує вміст ───────────
+   Дві дії на один чип, як у силках PWA: часте — на самому чипі,
+   рідкісне — окремою кнопкою. Набирати «Sub ID 5» руками означає
+   помилитись на пробілі, а план із неіснуючим стовпцем відмовить. */
+const put = await page.evaluate(() => {
   window.__setup();
   aqPick('sheet');
   aqOpen();
-  window.__sent = [];
-  const chips = [...document.querySelectorAll('#aq-thread .aq-chip')];
-  const amount = chips.find(c => c.textContent.trim() === 'Amount');
-  amount.click();
-  const bots = [...document.querySelectorAll('#aq-thread .aq-msg.is-bot')];
-  return { txt: bots[bots.length - 1].textContent, sent: window.__sent.length,
-           names: chips.map(c => c.textContent.trim()) };
+  const inp = document.getElementById('aq-q');
+  inp.value = 'сума  без Decline';
+  inp.setSelectionRange(5, 5);                 // курсор після «сума »
+  const name = [...document.querySelectorAll('#aq-thread .aq-chip-n')]
+    .find(c => c.textContent.trim() === 'Amount');
+  name.click();
+  return { val: inp.value, caret: inp.selectionStart,
+           names: [...document.querySelectorAll('#aq-thread .aq-chip-n')]
+             .map(c => c.textContent.trim()) };
 });
 ok('стовпці стоять чипами — назву не треба набирати',
-  chip.names.includes('Status') && chip.names.includes('Amount'), chip.names);
-ok('клік по стовпцю не питає модель зовсім', chip.sent === 0, chip.sent);
+  put.names.includes('Status') && put.names.includes('Amount'), put.names);
+ok('клік по назві вставляє її в питання, у лапках',
+  put.val === 'сума «Amount» без Decline', put.val);
+ok('і курсор лишається одразу за вставленим',
+  put.caret === 'сума «Amount»'.length, put.caret);
+
+const chip = await page.evaluate(() => {
+  window.__sent = [];
+  const info = [...document.querySelectorAll('#aq-thread .aq-chip')]
+    .find(c => c.querySelector('.aq-chip-n').textContent.trim() === 'Amount')
+    .querySelector('.aq-chip-i');
+  info.click();
+  const bots = [...document.querySelectorAll('#aq-thread .aq-msg.is-bot')];
+  return { txt: bots[bots.length - 1].textContent, sent: window.__sent.length };
+});
+ok('клік по «?» не питає модель зовсім', chip.sent === 0, chip.sent);
 ok('і показує межі з сумою по ньому',
   /від 100 до 1,200\.5/.test(chip.txt) && /сума 2,500\.5/.test(chip.txt), chip.txt);
 ok('сказано, що це локально', /модель не питали/.test(chip.txt), chip.txt);
 
 const chipTxt = await page.evaluate(() => {
-  const chips = [...document.querySelectorAll('#aq-thread .aq-chip')];
-  chips.find(c => c.textContent.trim() === 'Status').click();
+  [...document.querySelectorAll('#aq-thread .aq-chip')]
+    .find(c => c.querySelector('.aq-chip-n').textContent.trim() === 'Status')
+    .querySelector('.aq-chip-i').click();
   const bots = [...document.querySelectorAll('#aq-thread .aq-msg.is-bot')];
   return bots[bots.length - 1].textContent;
 });
 ok('для тексту видно, які значення справді зустрічаються',
   /Approved/.test(chipTxt) && /Decline/.test(chipTxt) && /Hold/.test(chipTxt), chipTxt);
+
+/* ─────────── збережені питання кнопками ───────────
+   Питання повторюються щодня, і щодня їх набирають заново. */
+const pins = await page.evaluate(async () => {
+  try { localStorage.removeItem('aq_saved:' + currentTeam); } catch (e) {}
+  aqSaved = null;
+  window.__setup();
+  aqPick('sheet');
+  aqOpen();
+  const inp = document.getElementById('aq-q');
+  inp.value = 'сума Amount без Decline';
+  const p = aqSave();
+  await new Promise(r => setTimeout(r, 60));
+  const w = document.querySelector('.askwrap');
+  w.querySelector('[data-k="name"]').value = 'Без відмов';
+  w.querySelector('.ask-yes').click();
+  await p;
+  return { shown: document.getElementById('aq-pins').textContent,
+           hidden: document.getElementById('aq-pins').classList.contains('hidden'),
+           stored: localStorage.getItem('aq_saved:' + currentTeam) };
+});
+ok('збережене питання стало кнопкою', /Без відмов/.test(pins.shown) && !pins.hidden, pins);
+ok('і пережило б перезавантаження', /сума Amount без Decline/.test(pins.stored || ''), pins.stored);
+
+const ran = await page.evaluate(async () => {
+  window.__plan = { metric: { op: 'count' } };
+  window.__sent = [];
+  document.querySelector('#aq-pins .aq-pin').click();
+  await new Promise(r => setTimeout(r, 80));
+  return { sent: window.__sent.length, q: (window.__sent[0] || {}).q };
+});
+ok('клік по кнопці питає одразу — за цим її й зберігали',
+  ran.sent === 1 && ran.q === 'сума Amount без Decline', ran);
+
+const gone = await page.evaluate(() => {
+  document.querySelector('#aq-pins .aq-pin-x').click();
+  return { shown: document.getElementById('aq-pins').textContent,
+           hidden: document.getElementById('aq-pins').classList.contains('hidden'),
+           stored: localStorage.getItem('aq_saved:' + currentTeam) };
+});
+ok('кнопку можна прибрати, і вона не вертається',
+  !/Без відмов/.test(gone.shown) && gone.hidden && gone.stored === '[]', gone);
 
 /* ─────────── поле питання тягнеться ─────────── */
 ok('поле питання багаторядкове й розтяжне', await page.evaluate(() => {
