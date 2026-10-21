@@ -1527,7 +1527,7 @@ async function tsRead(keys) {
 const KM_DEFAULT = { prov:{}, src:'', acc:'Sub ID 5',
                      camp:'Sub ID 1', funnel:'Sub ID 2', cr:'Sub ID 3',
                      crApp:'Sub ID 20', plc:'Sub ID 4', offer:'Offer',
-                     country:'Country', app:'Sub ID 4', site:'Site',
+                     country:'Country', app:'Sub ID 4', site:'Referrer',
                      day:'Day', hour:'Hour', ins:'UC (campaign)', reg:'Conv.', dep:'Sales', tz:3 };
 let keitaroMap = { ...KM_DEFAULT };
 
@@ -1582,8 +1582,10 @@ const KM_FIELDS = [
      спенд. Доти він жив окремо: у списку доменів (хто живий) і в
      оголошеннях на сьогодні. «Скільки ми на цей домен залили за весь
      час» не мало де взятись. */
-  { id: 'km-site',    key: 'site',    label: 'Site (domain)', grp: 'both', tone: 'text-violet-300',
-    tip: 'Стовпець з доменом — mplay-kg.website. З нього беруться розріз по доменах у Report Builder і тотал у списку доменів' }
+  { id: 'km-site',    key: 'site',    label: 'Referrer (domain)', grp: 'both', tone: 'text-violet-300',
+    tip: 'Стовпець із доменом — у новій вигрузці це Referrer із повною силкою '
+       + '(https://mplay-games-kg.com/), у старій був Site. Обидві назви імпорт знайде сам; '
+       + 'лишається хост. З нього — розріз по доменах у Report Builder і тотал у списку доменів' }
 ];
 
 /* Перебити можна лише те, що читається ПІСЛЯ того, як постачальник уже
@@ -2768,8 +2770,12 @@ function handleKeitaroFile(e) {
 
 /* ДОМЕН З ВИГРУЗКИ → ЧИСТИЙ ХОСТ.
 
-   У стовпці Site трапляється і «https://mplay-kg.website/», і
-   «www.mplay-kg.website», і макрос «{site}», який Keitaro не підставив.
+   Стовпець у вигрузці змінився: домен тепер приїжджає в Referrer, і
+   там лежить повна силка — «https://mplay-games-kg.com/». Раніше був
+   Site, де траплялось і «www.mplay-kg.website», і макрос «{site}»,
+   який Keitaro не підставив. Для цієї функції різниці немає: вона й
+   робилась так, щоб із будь-якого написання лишався ХОСТ.
+
    У базі мусить лежати одне: той самий хост, за яким рядок статистики
    зійдеться з рядком у списку доменів (там нормалізація та сама —
    dmNormDomain). Не схоже на домен — краще порожньо, ніж сміття,
@@ -2853,11 +2859,32 @@ function parseKeitaro(content) {
   /* ДОМЕН — ТІЛЬКИ ТОЧНИЙ ЗБІГ. col() після точного пробує частковий,
      а «site» — короткий токен: у шапці трапляються і «Website», і
      «Site ID», і брати їх за домен не можна. Стовпця немає — домену
-     просто не буде, і це краще, ніж домен не з того стовпця. */
+     просто не буде, і це краще, ніж домен не з того стовпця.
+
+     ДВІ НАЗВИ, А НЕ ОДНА. Вигрузка переїхала зі Site на Referrer, і
+     однією назвою тут не обійтись із двох боків: у команд, які вже
+     зберегли мапінг, у налаштуваннях лежить старе «Site» — нова
+     вигрузка дала б їм порожній домен; а в кого мапінг типовий, той
+     читав би нову назву й спотикався на старих файлах. Тому: спершу
+     те, що стоїть у налаштуваннях, потім відомі назви. Точний збіг і
+     там, і там. */
+  const SITE_ALIAS = ['referrer', 'site'];
   const iSite = (() => {
-    const n = String(keitaroMap.site || '').toLowerCase().trim();
-    return n ? h.findIndex(x => x === n) : -1;
+    const want = [String(keitaroMap.site || '').toLowerCase().trim(), ...SITE_ALIAS]
+      .filter(Boolean)
+      .filter((v, i, a) => a.indexOf(v) === i);
+    for (const n of want) {
+      const i = h.findIndex(x => x === n);
+      if (i >= 0) return i;
+    }
+    return -1;
   })();
+  /* Яку саме колонку взяли під домен — у консоль, поруч із оффером.
+     Домен не з того стовпця виглядає як звичайний домен, і помітити
+     це можна аж тоді, коли тотали не сходяться. */
+  console.log('Keitaro domain column:', iSite >= 0
+    ? `"${sp(lines[0])[iSite]}"`
+    : `НЕ ЗНАЙДЕНО (шукали "${keitaroMap.site}", потім ${SITE_ALIAS.join(', ')})`);
   const iDay = col(keitaroMap.day), iHour = col(keitaroMap.hour);
   const iIns = col(keitaroMap.ins), iReg = col(keitaroMap.reg), iDep = col(keitaroMap.dep);
   const fileTz = Number(keitaroMap.tz);
