@@ -211,7 +211,72 @@ ok('у PWA-рядка trident креатив узято з перебитого 
 
 ok('у Records домен правиться як решта полів', await page.evaluate(() =>
   REC_SCHEMA.daily_stats.some(f => f.key === 'site' && f.label === 'Domain')));
-ok('у налаштуваннях Keitaro є поле Site', await page.evaluate(() =>
-  KM_FIELDS.some(f => f.key === 'site') && KM_DEFAULT.site === 'Site'));
+ok('у налаштуваннях Keitaro є поле під домен, і типово це Referrer',
+  await page.evaluate(() =>
+    KM_FIELDS.some(f => f.key === 'site') && KM_DEFAULT.site === 'Referrer'));
+
+/* ═══════════ ВИГРУЗКА ПЕРЕЇХАЛА: SITE → REFERRER ═══════════
+
+   Домен тепер приїжджає в стовпці Referrer, і там повна силка:
+   «https://mplay-games-kg.com/». Для нормалізації різниці немає — вона
+   й робилась так, щоб лишався хост. Ламається тут інше: НАЗВА
+   СТОВПЦЯ, і з двох боків одночасно.
+
+     • у команд, які вже зберегли мапінг, у налаштуваннях лежить старе
+       «Site» — нова вигрузка дала б їм порожній домен;
+     • у кого мапінг типовий, той читав би нову назву й спотикався на
+       старих файлах, які ще лежать у теці.
+
+   Тому шукаємо спершу те, що в налаштуваннях, потім відомі назви. */
+const R_HEAD = 'Day,Hour,Sub ID 5,Sub ID 1,Sub ID 2,Sub ID 3,Sub ID 4,Offer,Country,Referrer,UC (campaign),Conv.,Sales';
+const rrow = (site, ins, reg, dep) =>
+  `2026-10-01,12,123,Mbank_KG_10708-ex8g_09/10,,cr1,,[P] Pinco KG | Form | 50$,Kyrgyzstan,${site},${ins},${reg},${dep}`;
+
+const siteOf = (csv, map) => page.evaluate(([text, m]) => {
+  knownOffers = ['Pinco'];
+  mappingDB = { timezones: { '123': 3 }, agencies: {}, funnels: {}, funnelApp: {} };
+  trafficMode = 'pwa';
+  keitaroMap = { ...KM_DEFAULT, ...(m || {}) };
+  parseKeitaro(text);
+  const dk = Object.keys(keitaroAgg.byDailyLand)[0];
+  return Object.values(keitaroAgg.byDailyLand[dk]).map(c => c.site).sort();
+}, [csv, map]);
+
+ok('повна силка з Referrer стає хостом',
+  await page.evaluate(() => ktSite('https://mplay-games-kg.com/') === 'mplay-games-kg.com'));
+
+const fresh = await siteOf([R_HEAD,
+  rrow('https://mplay-games-kg.com/', 10, 5, 2),
+  rrow('https://mplay-games-kg.com/promo?a=1', 6, 3, 1)].join('\n'));
+ok('новий стовпець читається типовим мапінгом',
+  JSON.stringify(fresh) === JSON.stringify(['mplay-games-kg.com']), fresh);
+
+const oldMap = await siteOf([R_HEAD, rrow('https://mplay-games-kg.com/', 10, 5, 2)].join('\n'),
+  { site: 'Site' });
+ok('у кого в налаштуваннях лишилось «Site» — нова вигрузка все одно читається',
+  JSON.stringify(oldMap) === JSON.stringify(['mplay-games-kg.com']), oldMap);
+
+const oldFile = await siteOf([HEAD, row('https://mplay-kg.website/', 10, 5, 2)].join('\n'),
+  { site: 'Referrer' });
+ok('і навпаки: старий файл зі Site читається новим мапінгом',
+  JSON.stringify(oldFile) === JSON.stringify(['mplay-kg.website']), oldFile);
+
+/* Коли в шапці є обидва стовпці, вирішує НАЛАШТУВАННЯ — інакше
+   перебити вибір стало б неможливо. */
+const both = 'Day,Hour,Sub ID 5,Sub ID 1,Sub ID 2,Sub ID 3,Sub ID 4,Offer,Country,Site,Referrer,UC (campaign),Conv.,Sales';
+const bothRow = '2026-10-01,12,123,Mbank_KG_10708-ex8g_09/10,,cr1,,[P] Pinco KG | Form | 50$,Kyrgyzstan,'
+              + 'from-site.com,https://from-referrer.com/,10,5,2';
+ok('обидва стовпці в шапці — вирішує налаштування',
+  JSON.stringify(await siteOf([both, bothRow].join('\n'), { site: 'Site' })) === '["from-site.com"]'
+  && JSON.stringify(await siteOf([both, bothRow].join('\n'), { site: 'Referrer' })) === '["from-referrer.com"]');
+
+/* Referrer буває й не нашим: у частині рядків туди падає джерело
+   трафіку. Нормалізація його не фільтрує — і це навмисно: вирішувати,
+   який домен «наш», тут нічим. Але хост лишається хостом, а не
+   сміттям, і в списку доменів його видно. */
+ok('чужий referrer теж стає хостом, а не сміттям',
+  await page.evaluate(() => ktSite('https://l.facebook.com/l.php?u=x') === 'l.facebook.com'));
+ok('порожній referrer домену не вигадує',
+  await page.evaluate(() => ktSite('(direct)') === '' && ktSite('-') === ''));
 
 await done(browser, srv, errs);

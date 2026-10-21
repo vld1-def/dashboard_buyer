@@ -9076,6 +9076,139 @@ const AP_MACRO = { cid: '{creative}' };
 // Режими, яким не треба вписувати значення: воно береться саме.
 const AP_NOVAL = { app: 1, geo: 1, cid: 1 };
 
+/* ═══════════ САБКИ ПІДТЯГУЮТЬСЯ САМІ ═══════════
+
+   Шаблон під апку щоразу набирали руками: Sub 2 — апка, Sub 20 —
+   креатив, Sub 5 — кабінет. Те саме, у тому самому порядку, для
+   кожного нового шаблону. А помилитись тут дорого: сабка не з того
+   номера означає, що статистика за заливом не зійдеться з кампанією,
+   і видно це аж у звіті.
+
+   ЗВІДКИ БЕРЕМО — ТРИ ДЖЕРЕЛА, ПО СИЛІ ДОКАЗУ, і жодне не вигадане:
+
+     1. ЗБЕРЕЖЕНИЙ МАПІНГ KEITARO (Settings → Keitaro Mapping). Це те
+        саме місце, яким імпорт читає вигрузку: якщо там сказано, що
+        креатив лежить у Sub ID 20, то шаблон мусить писати його саме
+        в Sub 20. Одне джерело на обидва боки — інакше вони колись
+        розійдуться, і ніхто не скаже, котрий бік правий. Мапінг
+        заповнила команда руками, тож він головніший за все інше.
+
+     2. СУСІДНІЙ ШАБЛОН того самого постачальника. Мапінг не
+        заповнювали — але вже є шаблони, які працюють, і їхній набір
+        це свідчення САМОЇ команди. Воно точніше за будь-який наш
+        типовий набір.
+
+     3. ТИПОВИЙ НАБІР KEITARO — останній, і названий саме так. Це
+        стандартна розкладка (Sub 2 — воронка, Sub 20 — креатив
+        прілки, Sub 5 — кабінет), та сама, якою імпорт читає вигрузку
+        без налаштувань. Ставка розумна, але це ставка, і рядок під
+        набором каже це прямо.
+
+   Нічого не затираємо: підставляємо лише в НЕЗАЙМАНИЙ набір (один
+   порожній рядок, як у нового шаблону) або по натисканню кнопки. І
+   завжди кажемо, звідки взяли — підставлений набір, джерела якого не
+   видно, перевірити нічим. */
+
+/* Дзеркало KM_DEFAULT із Form.html — тих чотирьох полів, які потрібні
+   шаблону. Тримати тут увесь мапінг ні до чого: решта колонок про
+   вигрузку, а не про сабки. Розійтись вони можуть лише разом із
+   самим Keitaro, і тоді міняти доведеться обидва місця. */
+const AP_KM_DEF = { funnel: 'Sub ID 2', cr: 'Sub ID 3', crApp: 'Sub ID 20', acc: 'Sub ID 5' };
+let apKmCache = null;
+
+async function apKm() {
+  if (apKmCache) return apKmCache;
+  let saved = null;
+  try { saved = JSON.parse((await getTeamSetting('keitaro_map')) || 'null'); }
+  catch (e) { saved = null; }
+  /* _saved відрізняє «команда налаштувала» від «стоїть типове». Різниця
+     не формальна: у першому випадку ми повторюємо ЇХНЄ рішення, у
+     другому — пропонуємо стандарт, і сказати це треба різними
+     словами. */
+  apKmCache = { ...AP_KM_DEF, ...(saved || {}),
+                prov: (saved && saved.prov) || {},
+                _saved: !!(saved && Object.keys(saved).length) };
+  return apKmCache;
+}
+
+// «Sub ID 20» → 20. Не сабка (наприклад «Offer») — нічого.
+const apSubNum = v => {
+  const m = String(v == null ? '' : v).match(/(\d+)\s*$/);
+  const n = m ? Number(m[1]) : 0;
+  return /sub/i.test(String(v || '')) && n >= 1 && n <= AP_SUBS ? n : 0;
+};
+
+/* Набір сабок із мапінгу. Креатив береться за ПОСТАЧАЛЬНИКОМ: у
+   trident він в одному стовпці, у решти в іншому — рівно та перебивка,
+   яку імпорт уже читає (keitaroMap.prov). */
+function apSubsFromKm(km, provider) {
+  const pv = (km.prov || {})[String(provider || '').trim().toLowerCase()] || {};
+  /* Беремо ПЕРШЕ поле, яке справді вказує на сабку: перебивка
+     постачальника, потім креатив прілки, потім загальний. Те саме
+     робить імпорт, коли APP-колонки у звіті немає — відкочується на
+     загальну, а не лишається ні з чим. */
+  const crCol = [pv.cr, km.crApp, km.cr].find(v => apSubNum(v)) || '';
+  const out = [];
+  const put = (n, mode) => { if (n && !out.some(x => x.n === n)) out.push({ n, mode, value: '' }); };
+  put(apSubNum(km.funnel), 'app');     // воронка і є апка
+  put(apSubNum(crCol), 'cid');
+  put(apSubNum(km.acc), 'acc');
+  return out.sort((a, b) => a.n - b.n);
+}
+
+// Сусідній шаблон того самого постачальника: спершу з тим самим гео.
+function apSubsFromTwin(provider, geo, selfId) {
+  const p = String(provider || '').trim().toLowerCase();
+  if (!p) return [];
+  const g = String(geo || '').trim().toUpperCase();
+  const mine = apItems.filter(it => it.id !== selfId
+    && String(it.provider || '').trim().toLowerCase() === p
+    && (it.subs || []).length);
+  const twin = mine.find(it => String(it.geo || '').toUpperCase() === g) || mine[0];
+  return twin ? (twin.subs || []).map(x => ({ ...x })) : [];
+}
+
+// Набір «як у нового шаблону» — один порожній рядок. Саме в такий
+// можна підставляти без питань: втрачати там нічого.
+const apSubsUntouched = () => apSubsDraft.length === 0
+  || (apSubsDraft.length === 1 && apSubsDraft[0].mode === 'fixed' && !String(apSubsDraft[0].value || '').trim());
+
+async function apSubsPull(byHand) {
+  const prov = (document.getElementById('ap-f-prov')?.value || '').trim();
+  const geo = (document.getElementById('ap-f-geo')?.value || '').trim();
+  if (!byHand && !apSubsUntouched()) return;      // вписане руками не чіпаємо
+
+  const km = await apKm();
+  let subs = [], from = '';
+  if (km._saved) { subs = apSubsFromKm(km, prov); from = 'мапінгу Keitaro'; }
+  if (!subs.length) { subs = apSubsFromTwin(prov, geo, apEditId); from = 'сусіднього шаблону'; }
+  if (!subs.length) { subs = apSubsFromKm(km, prov); from = 'типового набору Keitaro'; }
+  if (!subs.length) {
+    if (byHand) toast('Підтягувати нізвідки: у мапінгу Keitaro жодне поле не вказує на сабку, '
+      + 'і шаблонів цього постачальника ще немає. Заповни Settings → Keitaro Mapping.', 'warn', 9000);
+    return;
+  }
+  /* Кнопкою — замінюємо набір цілком: саме цього від неї й чекають.
+     Само — лише в незайманий, тобто там, де заміняти нічого. */
+  apSubsDraft = subs;
+  apSubsRender();
+  apSubsNote(from, subs);
+  if (byHand) toast('Сабки з ' + from + ': ' + subs.map(x => 'Sub ' + x.n).join(', '), 'ok');
+}
+
+/* Звідки взялись — рядком під набором. Підставлений набір, джерела
+   якого не видно, перевірити нічим, а переписати сабку означає
+   зламати злиття статистики з кампанією. */
+function apSubsNote(from, subs) {
+  const el = document.getElementById('ap-subs-note');
+  if (!el) return;
+  if (!from) { el.textContent = ''; return; }
+  const what = { app: 'апка', cid: 'креатив', acc: 'кабінет', geo: 'гео', fixed: 'фіксована' };
+  el.innerHTML = 'Підставлено з <b class="text-emerald-300">' + apEsc(from) + '</b>: '
+    + subs.map(x => 'Sub ' + x.n + ' — ' + (what[x.mode] || x.mode)).join(' · ')
+    + '. Можна правити як завжди.';
+}
+
 /* ═══════════ ПІДСТАНОВКА ═══════════
 
    Запис — це ШАБЛОН неймінгу, а не прілка. Апка вибирається в момент
@@ -9737,7 +9870,8 @@ function apShowEditor(v) {
            відрізняє шаблони неймінг. -->
       <div class="grid grid-cols-2 gap-2">
         <input id="ap-f-geo" list="ap-dl-geo" value="${apEsc(v.geo)}" placeholder="Гео (UZ)" class="${inp} uppercase">
-        <input id="ap-f-prov" list="ap-dl-prov" value="${apEsc(v.provider)}" placeholder="Постачальник" class="${inp}">
+        <input id="ap-f-prov" list="ap-dl-prov" value="${apEsc(v.provider)}" placeholder="Постачальник"
+               oninput="apSubsPull(false)" class="${inp}">
       </div>
       ${dl('ap-dl-geo', apItems.map(i => (i.geo || '').toUpperCase()))}
       ${dl('ap-dl-prov', apItems.map(i => i.provider).concat(
@@ -9759,7 +9893,16 @@ function apShowEditor(v) {
         <p class="text-[9px] font-black uppercase tracking-widest text-emerald-300 mb-1.5">Сабки трекера</p>
         <p class="text-[10px] text-slate-500 font-bold mb-2">Фіксована — стала; вона сама підставиться в неймінг і діплінк замість {subN}. «Апка» бере KTID тієї, що вибрана над неймінгом. «Гео» — з поля «Гео» вище. «Акаунт» — номер кабінета зі списку. Креатив лишається плейсхолдером трекера.</p>
         <div id="ap-subs" class="space-y-1"></div>
-        <button onclick="apSubAdd()" class="mt-2 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 transition">+ сабка</button>
+        <p id="ap-subs-note" class="text-[10px] text-slate-500 font-bold mt-1.5 leading-relaxed"></p>
+        <div class="flex items-center gap-2 mt-2 flex-wrap">
+          <button onclick="apSubAdd()" class="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/15 text-slate-300 transition">+ сабка</button>
+          <!-- Набір сабок у постачальника той самий від шаблону до
+               шаблону, і набирати його щоразу руками — робота, якої
+               можна не робити. Беремо з мапінгу Keitaro, тобто звідти,
+               чим імпорт читає вигрузку. -->
+          <button onclick="apSubsPull(true)" title="Взяти набір сабок із мапінгу Keitaro, а якщо його немає — із сусіднього шаблону цього постачальника"
+            class="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/30 transition">↻ підтягнути сабки</button>
+        </div>
       </div>
 
       <div class="flex gap-2 pt-1">
@@ -9771,6 +9914,12 @@ function apShowEditor(v) {
   apSubsDraft = (v.subs || []).map(x => ({ ...x }));
   if (!apSubsDraft.length) apSubsDraft = [{ n: 1, mode: 'fixed', value: '' }];
   apSubsRender();
+  apSubsNote('', []);
+  /* Новий шаблон із уже відомим постачальником (його дало дерево) —
+     підтягуємо сабки відразу, не чекаючи, поки людина дійде до
+     кнопки. Набір незайманий, тобто втрачати нічого; хто вписав своє,
+     той нічого й не побачить (див. apSubsUntouched). */
+  if (apSubsUntouched()) apSubsPull(false);
   document.getElementById('ap-f-geo').focus();
 }
 
