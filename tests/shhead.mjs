@@ -139,7 +139,7 @@ const chips = await page.evaluate(() => {
   aqCall = async () => { window.__called++; throw new Error('модель не мусила знадобитись'); };
   rawData = []; window.creativesRawData = [];
   aqOpen();
-  return { names: [...document.querySelectorAll('#aq-thread .aq-chip')].map(c => c.textContent.trim()),
+  return { names: [...document.querySelectorAll('#aq-thread .aq-chip-n')].map(c => c.textContent.trim()),
            sub: document.getElementById('aq-sub').textContent,
            set: document.getElementById('aq-set').options[0].textContent };
 });
@@ -150,9 +150,12 @@ ok('і рядків у підписі стільки, скільки під за
   /4 рядк/.test(chips.sub), chips.sub);
 
 const peek = await page.evaluate(() => {
-  const all = [...document.querySelectorAll('#aq-thread .aq-chip')];
-  all.find(c => c.textContent.trim() === 'Spend').click();
-  all.find(c => c.textContent.trim() === 'Status').click();
+  // Вміст стовпця — кнопка «?» на чипі: сама назва вставляє її в питання.
+  const info = n => [...document.querySelectorAll('#aq-thread .aq-chip')]
+    .find(c => c.querySelector('.aq-chip-n').textContent.trim() === n)
+    .querySelector('.aq-chip-i');
+  info('Spend').click();
+  info('Status').click();
   const bots = [...document.querySelectorAll('#aq-thread .aq-msg.is-bot')];
   return { t: bots.slice(-2).map(b => b.textContent).join(' | '), called: window.__called };
 });

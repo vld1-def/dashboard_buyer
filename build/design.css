@@ -3267,17 +3267,60 @@ body.is-lead-only .admin-only { display: none; }
   display: inline-block; padding: 1px 6px; margin: 1px 0; border-radius: 6px;
   background: var(--surface-3); font-family: ui-monospace, Menlo, monospace; font-size: 10px;
 }
-/* Стовпці чипами — і кожен із них питання: клік показує, що в ньому.
-   Числові відрізняються кольором, бо саме їх сумують. */
+/* Стовпці чипами. Дві дії на один чип: назва вставляється в питання
+   (часте), «?» показує, що в стовпці (рідкісне) — той самий поділ, що
+   в силках PWA. Числові відрізняються кольором, бо саме їх сумують. */
 .aq-chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .aq-chip {
-  padding: 3px 8px; border-radius: 8px; cursor: pointer;
+  display: inline-flex; align-items: stretch; border-radius: 8px; overflow: hidden;
   background: var(--surface-3); border: 1px solid var(--border);
-  font-size: 10px; font-weight: 800; color: var(--text-main);
-  font-family: ui-monospace, Menlo, monospace; transition: background .15s, color .15s;
+  font-family: ui-monospace, Menlo, monospace;
 }
-.aq-chip:hover { background: var(--accent-soft); border-color: var(--accent-bd); }
-.aq-chip.is-num { color: var(--accent); }
+.aq-chip-n, .aq-chip-i {
+  background: transparent; border: none; cursor: pointer; padding: 3px 8px;
+  font: inherit; font-size: 10px; font-weight: 800; color: var(--text-main);
+  transition: background .15s, color .15s;
+}
+.aq-chip-i {
+  padding: 3px 7px; color: var(--text-muted);
+  border-left: 1px solid var(--border);
+}
+.aq-chip-n:hover { background: var(--accent-soft); }
+.aq-chip-i:hover { background: var(--accent-soft); color: var(--text-main); }
+.aq-chip:hover { border-color: var(--accent-bd); }
+.aq-chip.is-num .aq-chip-n { color: var(--accent); }
+
+/* Збережені питання — кнопки над полем. Підпис свій, питання повністю
+   лежить у title: кнопка з довгим рядком тексту перестає бути кнопкою. */
+.aq-pins {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  width: 100%; margin-bottom: 8px;
+}
+.aq-pins.hidden { display: none; }
+.aq-pin {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  padding: 4px 6px 4px 9px; border-radius: 9px;
+  background: var(--accent-soft); border: 1px solid var(--accent-bd);
+  font-size: 10px; font-weight: 800; color: var(--text-main);
+  transition: background .15s;
+}
+.aq-pin:hover { background: rgba(139,92,246,.26); }
+.aq-pin-x {
+  background: transparent; border: none; cursor: pointer; padding: 0 2px;
+  font-size: 12px; line-height: 1; color: var(--text-muted);
+}
+.aq-pin-x:hover { color: var(--bad); }
+
+/* Зірка біля відправки: зберегти питання кнопкою. Не акцентна — вона
+   поруч із головною дією, і дві яскраві кнопки сперечались би. */
+.aq-star {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 12px; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--surface-3); border: 1px solid var(--border);
+  color: var(--text-muted); transition: color .15s, background .15s;
+}
+.aq-star svg { width: 16px; height: 16px; }
+.aq-star:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-bd); }
 .aq-tbl { width: 100%; border-collapse: collapse; }
 .aq-tbl th, .aq-tbl td {
   padding: 5px 8px; border-bottom: 1px solid var(--border);
@@ -3293,7 +3336,7 @@ body.is-lead-only .admin-only { display: none; }
 /* Поле питання. Росте під текст скриптом, але й ріжок лишається: на
    довгому питанні вирішувати, скільки місця йому дати, краще людині. */
 .aq-foot {
-  display: flex; gap: 8px; align-items: flex-end;
+  display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;
   padding: 12px 14px; border-top: 1px solid var(--border); background: var(--surface-2);
 }
 .aq-in {
