@@ -24,9 +24,10 @@ function gmDestroy() {
 }
 
 function renderGeoCostTab(geo) {
-  gmDestroy();
   const host = document.getElementById('geo-cost-list');
   if (!host) return;
+  if (!cfWait(host, () => renderGeoCostTab(geo))) return;
+  gmDestroy();
 
   const G = String(geo || '').toUpperCase();
   const month = currentMonthFilter;

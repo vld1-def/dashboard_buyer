@@ -925,6 +925,22 @@ rest = sub(rest,
     if (picked) currentTeam = picked;
   }
 
+  /* ═══ ДАНІ СТАРТУЮТЬ ТУТ, А НЕ ПІСЛЯ РОЛІ ═══
+
+     Команда вже відома — отже найважчий запит можна відправити
+     ЗАРАЗ, паралельно з роллю й доступами. Доти він чекав, поки
+     доїдуть роль, свій рядок, імена й налаштування доступів: чотири
+     кругосвітки, від яких він не залежить ніяк.
+
+     Promise.resolve навколо білдера не прикраса: supabase-js шле
+     запит лише коли в нього попросять результат (це thenable), тож
+     без обгортки рядок нічого б не відправив. */
+  if (typeof sb !== 'undefined') {
+    window.dailyReady = Promise.resolve(sb.from('daily_stats').select('*')
+      .eq('team_name', currentTeam).order('date', { ascending: false }));
+    if (typeof refreshPayoutsFromSQL === 'function') window.payoutsReady = refreshPayoutsFromSQL();
+  }
+
   // Роль і вкладки за роллю — після того, як відома команда: звідти
   // читається role_access.
   if (typeof roleBoot === 'function') await roleBoot();""",

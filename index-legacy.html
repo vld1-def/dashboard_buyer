@@ -2077,7 +2077,73 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   const iconLoading = `<svg class="w-4 h-4 animate-spin-status text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
   const iconSuccess = `<svg class="w-4 h-4 text-green-500 animate-pop-check" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>`;
 
-  Chart.register(ChartDataLabels);
+/* ═══════════ ГРАФІКИ — НА ВИМОГУ ═══════════
+
+   Chart.js і плагін підписів разом важать близько 250 КБ, і стояли
+   вони в <head> синхронно: парсер спинявся на них ДО розмітки, а
+   перший запит по дані йшов аж після того, як обидва файли доїхали й
+   виконались. Жоден графік при цьому не потрібен, щоб показати
+   сторінку: спершу людина бачить числа, картки й таблицю.
+
+   Тепер бібліотеку тягне cfLib() — її кличе кожне місце, яке малює
+   графік, і тягнеться вона один раз.
+
+   ЧОМУ ЦЕ НЕ ЛИШЕ ПРО ШВИДКІСТЬ. Доти закритий CDN означав, що
+   `Chart.register(...)` падав на верхньому рівні script-блока — і
+   УСІ `const` цього блока лишались у вічному TDZ, тобто пів дашборда
+   не працювало взагалі, без жодного слова на екрані. Тепер падіння
+   локальне: графік каже, що бібліотека не доїхала, решта працює.
+
+   Порядок обов'язковий: плагін реєструє себе в Chart, якого без
+   першого файлу просто немає. */
+const CF_LIB = ['https://cdn.jsdelivr.net/npm/chart.js',
+                'https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0'];
+let cfLibP = null, cfLibOk = false;
+
+function cfScript(src) {
+  return new Promise((ok, no) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.onload = () => ok(true);
+    el.onerror = () => no(new Error('не завантажився ' + src));
+    document.head.appendChild(el);
+  });
+}
+
+window.cfLib = function () {
+  if (cfLibOk) return Promise.resolve(true);
+  if (cfLibP) return cfLibP;
+  cfLibP = (async () => {
+    for (const src of CF_LIB) await cfScript(src);
+    Chart.register(ChartDataLabels);
+    cfLibOk = true;
+    return true;
+  })();
+  /* Невдачу не кешуємо: мережа могла просто мигнути, і наступний
+     графік має право спробувати ще раз. */
+  cfLibP.catch(() => { cfLibP = null; });
+  return cfLibP;
+};
+
+/* Сказати на місці графіка, чому його немає. Порожня рамка читається
+   як «даних немає», а це зовсім інша новина. */
+window.cfLibFail = function (el, e) {
+  const box = el && (el.parentElement || el);
+  if (box) box.innerHTML = '<div class="h-full flex items-center justify-center text-center '
+    + 'text-[10px] uppercase font-black opacity-40 px-3">Графік не намалювався:<br>'
+    + 'бібліотека не завантажилась</div>';
+  console.warn('Chart.js:', e && e.message);
+};
+
+/* Зручність для місць, які малюють графік: один рядок замість
+   чотирьох. Повертає true, якщо малювати можна ВЖЕ ЗАРАЗ; інакше сама
+   доганяє бібліотеку й кличе малювання повторно. */
+window.cfWait = function (el, again) {
+  if (cfLibOk) return true;
+  cfLib().then(again).catch(e => cfLibFail(el, e));
+  return false;
+};
+
 
   // --- ІНІЦІАЛІЗАЦІЯ ПРИ ЗАВАНТАЖЕННІ ---
 window.onload = async () => {
@@ -2092,22 +2158,34 @@ window.onload = async () => {
   if (!authed) return;
 
   try {
-    // 1. Спочатку завантажуємо базові налаштування (таргет, видимість)
+    /* ═══ ЧОМУ ТУТ PROMISE, А НЕ ЧЕРГА AWAIT ═══
+
+       Було так: налаштування → виплати → список команд → дані. Чотири
+       запити один за одним, кожен чекає, поки доїде попередній, хоча
+       жоден не залежить від решти. На мобільному це чотири повні
+       кругосвітки замість однієї.
+
+       Тепер усі три запити стартують РАЗОМ, а чекаємо лише на те, без
+       чого не можна малювати:
+         • виплати — без ставки KPI покажуть нуль замість виручки,
+           тому на них чекаємо ДО першого рендеру (всередині loadData);
+         • список команд — потрібен лише випадайці «TEAM», тому
+           чекати на нього нема чого взагалі: доїде й перемалює меню. */
     window.bootStep?.('Settings', 22);
     loadSettings();
-    
-    // 2. Отримуємо виплати (важливо для KPI)
-    window.bootStep?.('Payouts', 34);
-    await refreshPayoutsFromSQL();
-    
-    // 3. Завантажуємо список команд (щоб працювало меню)
-    window.bootStep?.('Teams', 46);
-    await refreshTeamsList();
-    
-    // 4. ОСНОВНЕ ЗАВАНТАЖЕННЯ ДАНИХ
-    window.bootStep?.('Loading data', 58);
+
+    window.bootStep?.('Loading data', 40);
+    /* Виплати тримаємо обіцянкою: loadData дочекається саме перед тим,
+       як рахувати картки. Відмову не глушимо — вона й так пише в
+       консоль усередині самої функції. */
+    // Могло вже стартувати раніше (разом із роллю) — тоді не повторюємо.
+    window.payoutsReady = window.payoutsReady || refreshPayoutsFromSQL();
+    // Ярлики команди — з localStorage, без запиту. Самий список назв
+    // тягнеться, коли відкривають випадайку «TEAM».
+    paintTeamLabels();
+
     await loadData();
-    
+
     // 5. Завантажуємо додаткові модулі
     window.bootStep?.('Tasks and reports', 88);
     refreshTasks();
@@ -2143,7 +2221,51 @@ window.onload = async () => {
 
   // --- 5. КЕРУВАННЯ КОМАНДАМИ (SQL) ---
   // 2. Оновлення списку команд із бази даних Supabase
+/* Ярлики команди НЕ треба питати в базі: назва вже в localStorage, і
+   саме вона визначає, що ми завантажуємо. Доти шапка стояла порожня,
+   поки доїде весь стовпець team_name з усієї таблиці. */
+function paintTeamList(teams) {
+  const box = document.getElementById('team-list');
+  if (!box) return;
+  box.innerHTML = (teams || []).map(t => {
+    const isActive = (t === currentTeam);
+    return `
+      <button onclick="switchTeam('${t}')"
+              class="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center justify-between
+              ${isActive ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:bg-white/5 hover:text-white'}">
+        <span>${t}</span>
+        ${isActive ? '<span class="text-[8px]">●</span>' : ''}
+      </button>`;
+  }).join('');
+}
+
+function paintTeamLabels() {
+  const label = document.getElementById('active-team-label');
+  if (label) label.innerText = "TEAM: " + String(currentTeam || '').toUpperCase();
+  const mainTitle = document.getElementById('main-title');
+  if (mainTitle) mainTitle.innerHTML = `${currentTeam || ''} <span class="text-blue-500 text-xl font-normal">CRM</span>`;
+  /* Порожня випадайка читається як «команд немає». Своя там є завжди —
+     її назва й так відома, питати базу про неї нема про що. */
+  const box = document.getElementById('team-list');
+  if (box && !box.children.length && currentTeam) paintTeamList([currentTeam]);
+}
+
+/* ═══ СПИСОК КОМАНД — ЛИШЕ КОЛИ ЙОГО ВІДКРИВАЮТЬ ═══
+
+   Цей запит тягне стовпець team_name з УСІЄЇ daily_stats — по всіх
+   командах, за всі дні, — щоб вивести кілька унікальних назв. І стояв
+   він на шляху до екрана: дані по команді не починали завантажуватись,
+   поки цей список не доїде.
+
+   Назви потрібні рівно одній випадайці, тому тягнемо їх, коли її
+   відкривають, і рівно один раз за сеанс. Своя команда в меню є
+   відразу — вона й так відома. */
+let teamsLoaded = false;
+
 async function refreshTeamsList() {
+  paintTeamLabels();
+  if (teamsLoaded) return;
+  teamsLoaded = true;
   try {
     // Отримуємо унікальні імена команд із таблиці daily_stats
     const { data, error } = await sb.from('daily_stats').select('team_name');
@@ -2161,30 +2283,12 @@ async function refreshTeamsList() {
       teams.push(currentTeam);
     }
     
-    const listContainer = document.getElementById('team-list');
-    if (listContainer) {
-      listContainer.innerHTML = teams.map(t => {
-        const isActive = (t === currentTeam);
-        return `
-          <button onclick="switchTeam('${t}')" 
-                  class="w-full text-left px-3 py-2 rounded-xl text-[11px] font-bold transition flex items-center justify-between
-                  ${isActive ? 'text-emerald-400 bg-emerald-500/10' : 'text-slate-400 hover:bg-white/5 hover:text-white'}">
-            <span>${t}</span>
-            ${isActive ? '<span class="text-[8px]">●</span>' : ''}
-          </button>
-        `;
-      }).join('');
-    }
+    paintTeamList(teams);
     
-    // Оновлюємо ярлики в інтерфейсі
-    const label = document.getElementById('active-team-label');
-    if (label) label.innerText = "TEAM: " + currentTeam.toUpperCase();
-
-    // Оновлюємо головний заголовок (опціонально)
-    const mainTitle = document.getElementById('main-title');
-    if (mainTitle) mainTitle.innerHTML = `${currentTeam} <span class="text-blue-500 text-xl font-normal">CRM</span>`;
-
   } catch (err) {
+    /* Не змогли — наступне відкриття меню спробує ще раз: список із
+       однієї своєї команди виглядає точно як «інших немає». */
+    teamsLoaded = false;
     console.error("Помилка при завантаженні списку команд:", err);
   }
 }
@@ -2217,12 +2321,16 @@ function switchTeam(teamName) {
   updateSyncStatus('loading');
   console.log("📥 Початок завантаження даних для команди:", currentTeam);
 
-  // 1. Отримуємо дані з Supabase
-  const { data: stats, error } = await sb
+  /* 1. Отримуємо дані з Supabase. Запит міг бути відправлений раніше —
+     одразу, як стала відома команда, паралельно з роллю й доступами.
+     Тоді тут лишається тільки дочекатись відповіді. */
+  const sent = window.dailyReady;
+  window.dailyReady = null;         // наступний виклик — свіжий запит
+  const { data: stats, error } = await (sent || sb
     .from('daily_stats')
     .select('*')
     .eq('team_name', currentTeam)
-    .order('date', { ascending: false });
+    .order('date', { ascending: false }));
 
   // 2. Обробка помилки (замість if !error використовуємо ранній вихід)
   if (error) {
@@ -2259,8 +2367,11 @@ function switchTeam(teamName) {
   document.getElementById('dashboard-content')?.classList.remove('hidden');
   applyTeamLeadSections();
 
-  // 7. Завантажуємо таргет ДО рендеру, щоб milestone одразу показав правильне значення
-  await loadMonthlyTarget();
+  /* 7. Таргет і виплати — ОБА потрібні до першого рендеру, але один
+     одного не чекають: таргет знає місяць (його щойно визначили вище),
+     виплати стартували ще в onload. Тому обидва разом. Без ставки KPI
+     показали б нуль замість виручки, а це не «нема даних», а неправда. */
+  await Promise.all([loadMonthlyTarget(), window.payoutsReady].filter(Boolean));
 
   // 8. ЗАПУСКАЄМО ГОЛОВНИЙ ФІЛЬТР ТА РЕНДЕР КАРТОК
   applyGlobalFilter();
@@ -2313,10 +2424,16 @@ async function sbFetchAll(table, build) {
   creativesRawData = crData || [];
   window.creativesRawData = creativesRawData;
 
-  await loadCreativeStars();
-  await loadCreativeTags();
-  await loadCreativeFormats();
-  await loadReportTags();
+  /* Зірки, теги, формати й мітки звіту лежали в чотирьох окремих
+     запитах один за одним — чотири кругосвітки по одному рядку.
+     Ключі відомі заздалегідь, тому беремо їх одним запитом. */
+  const st = await getTeamSettings(['creative_stars', 'creative_tags',
+                                    'creative_format', 'report_tags']);
+  const parse = (v, def) => { try { return JSON.parse(v || '') || def; } catch (e) { return def; } };
+  crStars = new Set(parse(st.creative_stars, []));
+  crTags  = parse(st.creative_tags, {});
+  crFmt   = parse(st.creative_format, {});
+  rpTags  = parse(st.report_tags, {});
   crPopulateTagFilter();
 
   if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
@@ -4792,6 +4909,23 @@ async function saveTeamLeadPassword() {
 }
 
 // ===== TEAM SETTINGS (Supabase) =====
+/* ОДИН ЗАПИТ НА КІЛЬКА КЛЮЧІВ. Чотири getTeamSetting підряд — це
+   чотири кругосвітки по рядку кожна, і всі про ту саму таблицю. Там,
+   де ключі відомі заздалегідь, беремо їх разом.
+
+   Повертає мапу {key: value}; ключа, якого немає в базі, у мапі теж
+   немає — так само, як getTeamSetting віддає null. */
+async function getTeamSettings(keys) {
+  const out = {};
+  try {
+    const { data, error } = await sb.from('team_settings')
+      .select('key, value').eq('team_name', currentTeam).in('key', keys);
+    if (error) { console.warn('team_settings read:', error.message); return out; }
+    (data || []).forEach(r => { out[r.key] = r.value; });
+  } catch (e) { console.warn('team_settings read:', e.message); }
+  return out;
+}
+
 async function getTeamSetting(key) {
   try {
     const { data } = await sb.from('team_settings')
@@ -5528,6 +5662,10 @@ function toggleTeamMenu() {
   document.getElementById('month-menu')?.classList.add('hidden');
   
   menu.classList.toggle('hidden');
+  /* Список команд тягнемо саме тут: на завантаженні сторінки він
+     коштував повного стовпця team_name з усієї таблиці й стояв на
+     шляху до даних. Своя команда в меню вже є. */
+  if (!menu.classList.contains('hidden')) refreshTeamsList();
 }
 function toggleMonthMenu() { document.getElementById('month-menu').classList.toggle('hidden'); }
 function toggleReportModal() {
@@ -12659,7 +12797,10 @@ function dcRenderWarn(unlinked) {
     if (!dock || typeof sb === 'undefined') return;
     let me = null;
     try {
-      const { data: u } = await sb.auth.getUser();
+      /* Той самий «хто я», що вже питали на завантаженні: обіцянка
+         віддає відповідь без ще однієї кругосвітки. */
+      const { data: u } = typeof window.authUser === 'function'
+        ? await window.authUser() : await sb.auth.getUser();
       const uid = (u && u.user && u.user.id) || window.myUid || '';
       if (!uid) return;
       /* Одним запитом і роль, і список: двома вони могли б розійтись у
