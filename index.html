@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 21.10 08:19">
+  <meta name="build" content="build 21.10 14:01">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5680,7 +5680,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.10 08:19</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 21.10 14:01</div>
     </div>
   </aside>
 
@@ -18879,7 +18879,10 @@ window.txAi = async function () {
     fields: [
       { key: 'n', label: 'Скільки варіантів', type: 'number', value: '5' },
       { key: 'lang', label: 'Мова', value: lang || (base[0] && base[0].lang) || '',
-        placeholder: 'ua, ru, en' },
+        placeholder: 'ua, ru, en',
+        /* Мова тут головніша за все інше, і це варто сказати: доти
+           модель писала мовою зразків, а не замовленою. */
+        hint: 'Цією мовою й будуть тексти — навіть якщо зразки іншою.' },
       /* Багаторядкове й розтяжне: сюди вписують акцію, умови й тон —
          у рядок це не вміщається, а недописаний промпт і дає ті
          «не ті» тексти. */
@@ -18898,12 +18901,27 @@ window.txAi = async function () {
   txAiBusy = true; txAiNote = 'Думає…'; txAiItems = []; txAiPicked = [];
   txAiLang = String(v.lang || '').trim().toLowerCase();
   txAiPaint();
+  /* ЗРАЗКИ ПІД ЗАМОВЛЕНУ МОВУ — СПЕРШУ.
+
+     Модель писала мовою гео замість замовленої, і причина була не лише
+     в промті: у фільтрі «усі мови» першими в запит потрапляли тексти
+     тієї мови, якої в банку більше. Дванадцять киргизьких зразків і
+     рядок «пиши польською» — і вона слухалась того, що бачить.
+
+     Тому своя мова йде першою, і лише потім решта: тон команди однаковий
+     у всіх мовах, а мова прикладів тепер не тягне за собою мову
+     відповіді. */
+  const want = txAiLang;
+  const sameLang = t => String(t.lang || '').trim().toLowerCase() === want;
+  const pool = want ? [...base.filter(sameLang), ...base.filter(t => !sameLang(t))] : base;
+  const sent = pool.slice(0, 12);
+  const hit = want ? sent.filter(sameLang).length : sent.length;
   try {
     const j = await txAiCall({
       action: 'text', n: Number(v.n) || 5,
       geo: txGeo, cat: txCat, lang: String(v.lang || '').trim(),
       hint: String(v.hint || '').trim(),
-      examples: base.slice(0, 12).map(t => ({ title: t.title, text: t.text }))
+      examples: sent.map(t => ({ title: t.title, text: t.text }))
     });
     txAiItems = (j.items || []).map((x, i) => ({ i, title: x.title || '',
                                                  text: x.text || '', ua: x.ua || '' }));
@@ -18912,6 +18930,10 @@ window.txAi = async function () {
     txAiNote = txAiItems.length
       ? `${txAiItems.length} варіант(ів) · ${j.model || 'model'} · ~$${(j.cost_usd || 0).toFixed(5)}`
         + (j.left_today != null ? ` · лишилось сьогодні: ${j.left_today}` : '')
+        /* Скільки зразків було замовленою мовою. Нуль — не збій, але
+           знати про це треба: тон модель узяла з чужої мови, і якщо
+           вийшло не те, причина саме тут, а не в промті. */
+        + (want ? ` · зразків мовою ${want}: ${hit} з ${sent.length}` : '')
         + ((j.problems || []).length ? ' · ' + j.problems.join('; ') : '')
       /* Відмову або зауваження моделі показуємо ЇЇ СЛОВАМИ. «Розібрати
          нічого не вдалось» на місці сказаного відправляє шукати ваду в
