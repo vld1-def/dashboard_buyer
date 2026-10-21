@@ -35,6 +35,9 @@
 const AQ_OPS = ['eq', 'ne', 'contains', 'not_contains', 'gt', 'ge', 'lt', 'le', 'empty', 'not_empty'];
 const AQ_MET = ['sum', 'count', 'avg', 'min', 'max', 'per'];
 const AQ_LIMIT_MAX = 50;
+// Скільки показників показуємо поруч. Більше — це вже не відповідь на
+// питання, а вивантаження таблиці.
+const AQ_MET_MAX = 6;
 
 let aqBusy = false, aqLast = null;
 
@@ -182,21 +185,57 @@ function aqCheck(plan, sets) {
   const group2 = plan.group2 && group && String(plan.group2) !== group ? String(plan.group2) : '';
   if (group2 && !has(group2)) return bad(group2);
 
-  const m = plan.metric || {};
-  const op = String(m.op || 'count');
-  if (!AQ_MET.includes(op)) return { err: 'невідомий підрахунок «' + op + '»' };
-  const met = { op };
-  if (op === 'per') {
-    met.num = String(m.num || ''); met.den = String(m.den || '');
-    if (!has(met.num)) return bad(met.num);
-    if (!has(met.den)) return bad(met.den);
-  } else if (op !== 'count') {
-    met.col = String(m.col || '');
-    if (!has(met.col)) return bad(met.col);
+  /* Один показник був замалою мовою. «Яке крео найкраще, РОЗПИШИ
+     ЙОГО ДАНІ» — це не одне число, а картка: скільки витрачено,
+     скільки депів, по чому вийшов депозит. Модель це й зрозуміла
+     (вона так і написала в «say»), але сказати плану не могла — там
+     було місце рівно на одну цифру. Тому показників тепер набір;
+     перший лишається тим, ЗА ЧИМ сортуємо, решта просто показуються. */
+  const metOf = raw => {
+    const o = String((raw || {}).op || 'count');
+    if (!AQ_MET.includes(o)) return { err: 'невідомий підрахунок «' + o + '»' };
+    const out = { op: o };
+    if (o === 'per') {
+      out.num = String(raw.num || ''); out.den = String(raw.den || '');
+      if (!has(out.num)) return bad(out.num);
+      if (!has(out.den)) return bad(out.den);
+    } else if (o !== 'count') {
+      out.col = String(raw.col || '');
+      if (!has(out.col)) return bad(out.col);
+    }
+    return { met: out };
+  };
+
+  const first = metOf(plan.metric || {});
+  if (first.err) return first;
+  const met = first.met;
+
+  const more = [];
+  for (const raw of (Array.isArray(plan.metrics) ? plan.metrics : []).slice(0, AQ_MET_MAX)) {
+    const r = metOf(raw);
+    if (r.err) return r;
+    // Той самий показник двічі — просто зайвий стовпчик.
+    if (!more.some(x => JSON.stringify(x) === JSON.stringify(r.met))
+        && JSON.stringify(r.met) !== JSON.stringify(met)) more.push(r.met);
+  }
+
+  /* ПОРІГ НА ГРУПУ, А НЕ НА РЯДОК. «Найдешевший депозит, але не менше
+     десяти депів» через where не виразити: where ріже РЯДКИ, а десять
+     депів — це сума групи. Без цього «найкраще» завжди вигравало те,
+     де даних майже немає: вісім рядків і один депозит. */
+  let having = null;
+  if (plan.having && plan.having.col) {
+    const col = String(plan.having.col);
+    if (!has(col)) return bad(col);
+    const hop = String(plan.having.op || 'ge');
+    if (!['ge', 'gt', 'le', 'lt'].includes(hop))
+      return { err: 'невідомий поріг «' + hop + '»' };
+    const val = aqNum(plan.having.val);
+    if (Number.isFinite(val)) having = { col, op: hop, val };
   }
 
   const limit = Math.min(AQ_LIMIT_MAX, Math.max(1, Number(plan.limit) || 10));
-  return { spec: { set: set.id, where, group, group2, metric: met,
+  return { spec: { set: set.id, where, group, group2, metric: met, metrics: more, having,
                    sort: plan.sort === 'asc' ? 'asc' : 'desc', limit,
                    say: String(plan.say || '').slice(0, 300) }, set };
 }
@@ -280,10 +319,27 @@ function aqRun(spec, set) {
     if (!by.has(k)) by.set(k, []);
     by.get(k).push(r);
   });
-  const list = [...by.entries()].map(([k, rs]) => {
+  let list = [...by.entries()].map(([k, rs]) => {
     const p = k.split('\u0000');
-    return { k: p[0], k2: p[1] || '', ...aqAgg(set, rs, spec.metric), rows: rs.length };
+    return { k: p[0], k2: p[1] || '', ...aqAgg(set, rs, spec.metric), rows: rs.length,
+             /* Решта показників — поруч, тими самими правилами. Саме
+                вони й роблять із рядка таблиці картку: скільки
+                витрачено, скільки депів, по чому вийшов депозит. */
+             more: (spec.metrics || []).map(m => aqAgg(set, rs, m)) };
   });
+
+  /* Поріг рахуємо по СУМІ групи — те, чого не вміє where. Групу без
+     значення не судимо порогом: вона й так піде в хвіст. */
+  if (spec.having) {
+    const h = spec.having;
+    list = list.filter(g => {
+      const rs = by.get(g.k + (spec.group2 ? '\u0000' + g.k2 : ''));
+      let sum = 0;
+      (rs || []).forEach(r => { const x = aqNumOf(set, h.col, r[h.col]); if (Number.isFinite(x)) sum += x; });
+      return h.op === 'ge' ? sum >= h.val : h.op === 'gt' ? sum > h.val
+           : h.op === 'le' ? sum <= h.val : sum < h.val;
+    });
+  }
   /* Групи без значення — в хвіст, а не в початок: «найдешевший CPA»
      при сортуванні за зростанням інакше завжди вертав би групу, де
      депозитів нема зовсім, тобто де ціни немає. */
@@ -295,6 +351,14 @@ function aqRun(spec, set) {
   });
   return { rows: rows.length, total: set.rows.length, list: list.slice(0, spec.limit),
            groups: list.length };
+}
+
+/* Підпис показника — те саме, що й у заголовку стовпця. Один рядок на
+   два місця: інакше картка й таблиця називали б те саме по-різному. */
+function aqMetName(m) {
+  return m.op === 'count' ? 'рядків'
+       : m.op === 'per' ? m.num + ' / ' + m.den
+       : (AQ_MET_UA[m.op] || m.op) + ' ' + m.col;
 }
 
 /* ── ПЛАН СЛОВАМИ. Нашими, а не моделі: на екрані мусить стояти те,
@@ -321,6 +385,12 @@ function aqPlanWords(spec, set) {
     `${w.col} ${AQ_OP_UA[w.op]}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`).join(' і '));
   if (spec.group) bits.push('по ' + spec.group + (spec.group2 ? ' × ' + spec.group2 : '')
     + (spec.sort === 'asc' ? ', знизу вгору' : ', згори вниз'));
+  /* Поріг мусить бути в плані словами: він ВИКИДАЄ групи, і мовчазний
+     відсів виглядає як «цього креатива просто немає». */
+  if (spec.having) bits.push('лише де сума ' + spec.having.col + ' '
+    + (AQ_OP_UA[spec.having.op] || spec.having.op) + ' ' + spec.having.val);
+  if ((spec.metrics || []).length)
+    bits.push('поруч: ' + spec.metrics.map(aqMetName).join(', '));
   return bits.join(', ');
 }
 
@@ -728,15 +798,29 @@ window.aqAsk = async function () {
       + (vals.length ? `<p class="aq-meta">У «${aqEsc(w.col)}» зустрічається: ${
           vals.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
           }${vals.length === 12 ? ' …' : ''}</p>` : '');
+  } else if (spec.group && res.list.length === 1 && (spec.metrics || []).length) {
+    /* ОДИН — ЦЕ КАРТКА, А НЕ ТАБЛИЦЯ З ОДНОГО РЯДКА. Питали «яке
+       найкраще, розпиши його дані»: відповідь — назва й набір чисел
+       під нею, а не шапка з одним рядком, у якій ще треба відшукати
+       очима, де там що. */
+    const g = res.list[0];
+    const cell = (m, a) => `<div class="aq-kv"><span>${aqEsc(aqMetName(m))}</span><b>${
+      aqFmt(a.v)}</b>${m.op === 'per' && a.den
+        ? `<i>${aqFmt(a.num)} / ${aqFmt(a.den)}</i>` : ''}</div>`;
+    body = `<p class="aq-h">${aqEsc(g.k)}${g.k2 ? ' · ' + aqEsc(g.k2) : ''}</p>`
+      + `<div class="aq-card">${cell(spec.metric, g)}${
+          (spec.metrics || []).map((m, i) => cell(m, g.more[i] || {})).join('')}
+         <div class="aq-kv"><span>рядків</span><b>${g.rows}</b></div></div>`;
   } else if (spec.group) {
     const g2 = !!spec.group2;
+    const ms = spec.metrics || [];
     body = `<table class="aq-tbl"><thead><tr><th>${aqEsc(spec.group)}</th>${
-        g2 ? `<th>${aqEsc(spec.group2)}</th>` : ''}<th>${
-        aqEsc(spec.metric.op === 'count' ? 'рядків' : spec.metric.op === 'per'
-          ? spec.metric.num + '/' + spec.metric.den : spec.metric.col)}</th><th>рядків</th></tr></thead>
+        g2 ? `<th>${aqEsc(spec.group2)}</th>` : ''}<th>${aqEsc(aqMetName(spec.metric))}</th>${
+        ms.map(m => `<th>${aqEsc(aqMetName(m))}</th>`).join('')}<th>рядків</th></tr></thead>
        <tbody>${res.list.map(r => `<tr><td>${aqEsc(r.k)}</td>${
-         g2 ? `<td>${aqEsc(r.k2)}</td>` : ''}<td class="aq-n">${
-         aqFmt(r.v)}</td><td class="aq-n aq-dim">${r.rows}</td></tr>`).join('')}</tbody></table>`;
+         g2 ? `<td>${aqEsc(r.k2)}</td>` : ''}<td class="aq-n">${aqFmt(r.v)}</td>${
+         ms.map((m, i) => `<td class="aq-n">${aqFmt((r.more[i] || {}).v)}</td>`).join('')
+         }<td class="aq-n aq-dim">${r.rows}</td></tr>`).join('')}</tbody></table>`;
   } else {
     body = `<p class="aq-big">${aqFmt(res.one.v)}</p>`
       + (spec.metric.op === 'per'

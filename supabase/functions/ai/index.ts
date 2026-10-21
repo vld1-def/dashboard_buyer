@@ -332,6 +332,8 @@ const PLAN_SYSTEM = [
   '{"set":"<set id>","where":[{"col":"<column>","op":"eq|ne|contains|not_contains|gt|ge|lt|le|empty|not_empty","val":"<value>"}],',
   '"group":"<column or null>","group2":"<second column or null>",',
   '"metric":{"op":"sum|count|avg|min|max|per","col":"<column>","num":"<column>","den":"<column>"},',
+  '"metrics":[<up to 6 more metrics in the same shape, shown next to the first>],',
+  '"having":{"col":"<column>","op":"ge|gt|le|lt","val":<number>},',
   '"sort":"desc|asc","limit":<1..50>,"say":"<one short sentence in Ukrainian: what you understood>"}',
   'Rules: use ONLY column names given for the chosen set, spelled exactly as given.',
   'metric.col is for sum/avg/min/max; metric.num and metric.den are for "per" (a ratio',
@@ -355,6 +357,22 @@ const PLAN_SYSTEM = [
   'den=the conversion column (deposits first, then registrations, then installs), sort "asc".',
   'Without a spend column, rank by the conversion column itself with sum and sort "desc".',
   'Keep limit at 10 unless the question asks for more: a top is a top.',
+  /* ОДИН ПОКАЗНИК БУВ ЗАМАЛОЮ МОВОЮ. «Яке крео найкраще — розпиши
+     його дані» модель розуміла правильно (так і писала в say), але
+     плану не було чим це сказати: там було місце рівно на одну
+     цифру, і виходила таблиця топ-10 замість картки одного. */
+  'metric is what you RANK by. Put everything else the answer should show in metrics:',
+  'when the question asks to describe an item ("розпиши дані", "деталі", "покажи його цифри"),',
+  'fill metrics with the sums that matter — spend, each conversion column, and the cost per',
+  'conversion — so the answer is a full picture and not a single number.',
+  'When the question is about ONE item ("яке найкраще", "який креатив", "найдорожче гео"),',
+  'set limit 1: a top-10 is not an answer to "which one".',
+  /* ПОРІГ НА ГРУПУ. Без нього «найдешевший депозит» завжди вигравало
+     те, де даних майже немає — вісім рядків і один депозит. */
+  'having applies to the GROUP total, not to single rows: use it for "at least N deposits".',
+  'When ranking by a cost-per-conversion and the question does not give a minimum, still add',
+  'a modest having on the conversion column (for example ge 5): a group with one conversion',
+  'always wins such a ranking and tells nobody anything.',
   /* ДВА РОЗРІЗИ ОДНОЧАСНО. «Яка воронка найкраще працювала по днях на
      такому-то лендінгу» — це фільтр по лендінгу й пара день × воронка.
      Одним рівнем це не передати, і модель, яка має лише один, почне
