@@ -36,6 +36,7 @@ function gcAxisFmt(max) {
 }
 
 function renderGeoCostWidget(crData, el) {
+  if (!cfWait(el, () => renderGeoCostWidget(crData, el))) return;
   gcDestroy();
 
   const map = {};

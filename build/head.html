@@ -33,9 +33,18 @@
       }
     };
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+  <!-- ГРАФІКИ ТУТ БІЛЬШЕ НЕ ЗАВАНТАЖУЮТЬСЯ. Chart.js із плагіном — це
+       ~250 КБ, які стояли в <head> синхронно: парсер спинявся на них
+       ДО того, як браузер доходив до розмітки, і перший запит по дані
+       йшов аж після того, як обидва файли доїхали й виконались. А
+       жоден графік не потрібен, щоб показати сторінку.
+       Тепер їх тягне cfLib() — перед першим графіком. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- З'єднання з базою ставимо ЗАРАЗ, паралельно з розбором сторінки:
+       перший запит інакше починається з DNS, TLS і рукостискання, і це
+       видно секундою на мобільному. -->
+  <link rel="preconnect" href="https://zsfumuiajrytmeycbtnn.supabase.co" crossorigin>
+  <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
   <!-- ?v=2 не прикраса: браузери тримають favicon у кеші довго й уперто,
        і без зміни адреси стара іконка лишалась би на вкладці тижнями. -->
   <link rel="icon" type="image/png" href="icon.png?v=2">

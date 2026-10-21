@@ -136,13 +136,48 @@
   };
   window.onlyMine = function (rows) { return (rows || []).filter(window.isMyRow); };
 
+  /* ХТО Я — ОДИН ЗАПИТ НА СТОРІНКУ.
+     sb.auth.getUser() ходить у /auth/v1/user по мережі, і питали його
+     двічі підряд: cacheGuard і roleBoot. Тримаємо обіцянку: другий
+     охочий отримує той самий відповідь, не чекаючи ще одну
+     кругосвітку. */
+  let authUserP = null;
+  window.authUser = function () {
+    if (!authUserP) authUserP = sb.auth.getUser()
+      .catch(e => { authUserP = null; throw e; });
+    return authUserP;
+  };
+
+  /* ═══ РОЛЬ І ДОСТУПИ — ОДНИМ ЗАЛПОМ ═══
+
+     Було п'ять запитів один за одним: роль, хто я, свій рядок у
+     team_members, імена всіх, налаштування доступів. І всі вони стояли
+     ДО першого запиту за даними — тобто сторінка не починала
+     завантажувати те, по що її відкрили, поки не доїде п'ята
+     кругосвітка.
+
+     Жоден із них не залежить від решти, крім одного: свій рядок
+     заводиться по uid. Тому чотири йдуть разом, а запис рядка —
+     у фоні: його результат на цьому екрані не потрібен нікому, він
+     потрібен списку на Admin.html. */
   window.roleBoot = async function () {
-    try {
-      const { data, error } = await sb.rpc('my_role');
-      if (error) throw error;
-      window.myRole = String(data || 'buyer');
-    } catch (e) {
-      console.warn('ролі не налаштовані (my_role):', e.message || e);
+    /* Promise.resolve навколо запитів — не прикраса: PostgREST-білдер
+       supabase-js це thenable, а не повноцінна обіцянка, і .catch на
+       ньому може просто не існувати. Обгортка робить із нього
+       нормальну обіцянку, яку можна й зловити. */
+    const P = v => Promise.resolve(v).catch(e => ({ error: e }));
+    const [role, me, names, access] = await Promise.all([
+      P(sb.rpc('my_role')),
+      P(window.authUser()),
+      P(sb.from('team_members').select('user_id, name, team_name')),
+      P(getTeamSetting('role_access')).then(r => (r && r.error) ? null : r)
+    ]);
+
+    if (role && !role.error && role.data != null) {
+      window.myRole = String(role.data || 'buyer');
+    } else {
+      console.warn('ролі не налаштовані (my_role):',
+        (role && role.error && (role.error.message || role.error)) || 'немає відповіді');
       return;
     }
     // Позначка ролі на body. Пункту меню за нею більше немає — сторінка
@@ -165,21 +200,20 @@
        Тепер мовчимо РІВНО в одному випадку — рядок уже є (23505,
        дублікат первинного ключа). Це справді нормальний хід подій.
        Будь-яка інша відмова називається вголос разом із причиною. */
-    try {
-      const { data: u } = await sb.auth.getUser();
-      const uid = u && u.user && u.user.id;
-      window.myUid = uid || '';
-      if (uid) {
-        const { error } = await sb.from('team_members')
-          .insert({ user_id: uid, team_name: currentTeam, role: 'buyer' });
+    const uid = (me && me.data && me.data.user && me.data.user.id) || '';
+    window.myUid = uid;
+    /* У ФОНІ. Рядок потрібен списку на Admin.html, а не цьому екрану,
+       тож чекати на нього нема чого. Відмову все одно називаємо
+       вголос: мовчки незаведений рядок означає, що людини просто немає
+       в списку, і причину шукали б у політиках. */
+    if (uid) sb.from('team_members')
+      .insert({ user_id: uid, team_name: currentTeam, role: 'buyer' })
+      .then(({ error }) => {
         if (error && error.code !== '23505') console.warn(
           'team_members: свій рядок не завівся, тож у Admin.html вас не буде видно. '
           + 'Найімовірніше не виконано БЛОК 5 з ADMIN_ROLES.sql. '
           + (error.message || error.code || ''));
-      }
-    } catch (e) {
-      console.warn('team_members: свій рядок не завівся —', e.message || e);
-    }
+      }, e => console.warn('team_members: свій рядок не завівся —', e.message || e));
 
     /* ХТО ЗАЛИВ РЯДОК. Потрібно, щоб у Report Builder розріз по людях
        показував імена, а не uuid. Один запит на завантаження сторінки:
@@ -191,17 +225,16 @@
        ADMIN_ROLES.sql), мапа лишиться з одним собою — розріз просто не
        зʼявиться, бо ділити нема на кого. */
     window.whoName = window.whoName || {};
-    try {
-      const { data, error } = await sb.from('team_members').select('user_id, name, team_name');
-      if (error) throw error;
+    if (names && !names.error && names.data) {
       window.whoNameRow = {};
-      (data || []).forEach(m => {
+      names.data.forEach(m => {
         window.whoName[m.user_id] = String(m.name || '').trim() || m.user_id.slice(0, 8);
         window.whoNameRow[m.user_id] = m;
       });
-    } catch (e) {
+    } else {
       console.warn('team_members: імена не завантажились, розріз по людях буде без них —',
-                   e.message || e);
+        (names && (names.error && (names.error.message || names.error)
+                   || (names.data === null && 'немає відповіді'))) || '');
     }
 
     /* ЯРЛИК КОМАНДИ В БРАУЗЕРІ РОЗІЙШОВСЯ З ТИМ, ЩО ПОСТАВИВ АДМІН.
@@ -232,7 +265,7 @@
     if (window.myRole === 'admin') return;   // адміну не ховаємо нічого
 
     let acc = {};
-    try { acc = JSON.parse((await getTeamSetting('role_access')) || '{}') || {}; } catch (e) {}
+    try { acc = JSON.parse(access || '{}') || {}; } catch (e) {}
     const mine = acc[window.myRole];
     if (!mine) return;                       // для цієї ролі нічого не задано
 
@@ -375,7 +408,7 @@
   window.cacheGuard = async function () {
     let uid = '';
     try {
-      const { data } = await sb.auth.getUser();
+      const { data } = await window.authUser();
       uid = (data && data.user && data.user.id) || '';
     } catch (e) { return; }      // не знаємо, хто це — краще не чіпати нічого
     if (!uid) return;
@@ -437,9 +470,10 @@
         return true;
       };
 
-      /* ▸ 1. По uid — свій рядок у team_members. */
+      /* ▸ 1. По uid — свій рядок у team_members. «Хто я» беремо з
+         обіцянки: це той самий виклик, що вже зробив cacheGuard. */
       try {
-        const { data: u } = await sb.auth.getUser();
+        const { data: u } = await window.authUser();
         const uid = (u && u.user && u.user.id) || '';
         if (uid) {
           const { data, error } = await sb.from('team_members')

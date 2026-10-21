@@ -172,6 +172,9 @@ function cfTipRow(cells) {
 function renderTrend(data) {
   const el = document.getElementById('chart-trend');
   if (!el || !data.length) return;
+  /* Бібліотека графіків тягнеться на вимогу (див. cfLib): поки її
+     немає, домальовуємось після. Числа й картки вже на екрані. */
+  if (!cfWait(el, () => renderTrend(data))) return;
   if (window.chart1) window.chart1.destroy();
   const ctx = el.getContext('2d');
 

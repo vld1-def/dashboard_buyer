@@ -291,7 +291,8 @@ let tmChart = null;
 function tmDrawChart(people) {
   const wrap = document.getElementById('team-chart-wrap');
   const cv = document.getElementById('team-chart');
-  if (!wrap || !cv || typeof Chart === 'undefined') return;
+  if (!wrap || !cv) return;
+  if (!cfWait(cv, () => tmDrawChart(people))) return;
 
   const [a, b] = tmDates();
   const days = [...new Set(tmRows
