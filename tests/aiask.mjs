@@ -378,6 +378,74 @@ ok('невідомий поріг не виконується', /невідом�
 
 await page.evaluate(() => { window.__setup(); aqSetId = 'sheet'; aqOpen(); });
 
+/* ═══════════ ДВА ПІДСУМКИ З ОДНОГО НАБОРУ ═══════════
+
+   «Скільки з деклайном і скільки без, окремо по Владу й по Олегу» —
+   і модель відповідала чесно: «цей формат дозволяє один фільтр і одне
+   групування, розбийте на два запити». Стеля була не в ній, а в мові
+   плану: загальний where ріже рядки ОДИН раз, і два різні підсумки з
+   того самого набору з нього не дістати.
+
+   Тепер умова є в кожного показника окремо. */
+const TEAMWORK = [
+  { who: 'Vlad', status: 'Approved', spend: '100' },
+  { who: 'Vlad', status: 'Decline',  spend: '30'  },
+  { who: 'Oleh', status: 'Approved', spend: '200' },
+  { who: 'Oleh', status: 'Decline',  spend: '50'  },
+  { who: 'Oleh', status: 'Approved', spend: '20'  }
+];
+
+await page.evaluate(rows => {
+  window.__sent = [];
+  window.shDataset = () => ({
+    id: 'sheet', title: 'team.csv',
+    cols: [{ name: 'who', kind: 'text' }, { name: 'status', kind: 'text' },
+           { name: 'spend', kind: 'num' }],
+    rows: rows.map(r => ({ ...r })), num: null
+  });
+  rawData = []; window.creativesRawData = [];
+  aqCall = async body => {
+    window.__sent.push(body);
+    return { plan_raw: JSON.stringify(window.__plan), model: 'claude-haiku-5-5',
+             cost_usd: 0.0001, left_today: 9, problems: [] };
+  };
+  aqSetId = 'sheet';
+  aqOpen();
+}, TEAMWORK);
+
+const two = await askWith({ group: 'who', limit: 10, sort: 'desc',
+  metric: { op: 'sum', col: 'spend', where: [{ col: 'status', op: 'ne', val: 'Decline' }] },
+  metrics: [{ op: 'sum', col: 'spend', where: [{ col: 'status', op: 'eq', val: 'Decline' }] },
+            { op: 'sum', col: 'spend' }],
+  say: 'без декліну і лише декліном, по людях' },
+  'сума без декліну і окремо лише декліном, по Владу й Олегу');
+const flat = two.html.replace(/\s+/g, ' ');
+ok('дві умови дають два різні підсумки з одного набору',
+  /<td class="aq-n">220<\/td><td class="aq-n">50<\/td><td class="aq-n">270<\/td>/.test(flat)
+  && /<td class="aq-n">100<\/td><td class="aq-n">30<\/td><td class="aq-n">130<\/td>/.test(flat),
+  flat.slice(0, 500));
+ok('кожен стовпець названо разом зі своєю умовою — інакше два однакові підписи',
+  /сума spend · status ≠ Decline/.test(two.txt) && /сума spend · status = Decline/.test(two.txt),
+  two.txt.slice(0, 300));
+ok('а показник без умови лишається просто сумою',
+  /сума spend<\/th>/.test(flat.replace(/ /g, '')) || /сума spend</.test(two.html), two.html.slice(0, 400));
+ok('жоден рядок не загубився: загальний фільтр не звужувався',
+  /5 з 5 рядк\./.test(two.txt), two.txt.slice(0, 200));
+
+/* Умова показника перевіряється так само, як загальна: вигаданий
+   стовпець і невідома операція не виконуються. */
+const badw = await askWith({ group: 'who', metric: { op: 'count' },
+  metrics: [{ op: 'sum', col: 'spend', where: [{ col: 'нема', op: 'eq', val: 'x' }] }] }, 'щось');
+ok('вигаданий стовпець в умові показника не виконується',
+  /немає стовпця «нема»/.test(badw.txt), badw.txt.slice(0, 200));
+
+const bado = await askWith({ group: 'who', metric: { op: 'count' },
+  metrics: [{ op: 'sum', col: 'spend', where: [{ col: 'status', op: 'regex', val: 'x' }] }] }, 'щось');
+ok('невідома операція в умові показника не виконується',
+  /невідома умова/.test(bado.txt), bado.txt.slice(0, 200));
+
+await page.evaluate(() => { window.__setup(); aqSetId = 'sheet'; aqOpen(); });
+
 /* ─────────── чип: назва вставляється, «?» показує вміст ───────────
    Дві дії на один чип, як у силках PWA: часте — на самому чипі,
    рідкісне — окремою кнопкою. Набирати «Sub ID 5» руками означає

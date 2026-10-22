@@ -166,14 +166,24 @@ function aqCheck(plan, sets) {
   const bad = n => ({ err: 'у «' + set.title + '» немає стовпця «' + n + '». Є: '
     + names.slice(0, 24).join(', ') + (names.length > 24 ? ' …' : '') });
 
-  const where = (Array.isArray(plan.where) ? plan.where : []).slice(0, 8).map(w => ({
+  /* Умови розбираємо однаково і для питання загалом, і для окремого
+     показника: інакше «не містить» поводилось би в двох місцях
+     по-різному рівно доти, доки хтось цього не помітить. */
+  const whereOf = raw => (Array.isArray(raw) ? raw : []).slice(0, 8).map(w => ({
     col: String(w && w.col || ''), op: String(w && w.op || 'eq'),
     val: w && w.val != null ? String(w.val) : ''
   }));
-  for (const w of where) {
-    if (!has(w.col)) return bad(w.col);
-    if (!AQ_OPS.includes(w.op)) return { err: 'невідома умова «' + w.op + '»' };
-  }
+  const whereBad = ws => {
+    for (const w of ws) {
+      if (!has(w.col)) return bad(w.col);
+      if (!AQ_OPS.includes(w.op)) return { err: 'невідома умова «' + w.op + '»' };
+    }
+    return null;
+  };
+
+  const where = whereOf(plan.where);
+  const whereErr = whereBad(where);
+  if (whereErr) return whereErr;
 
   const group = plan.group ? String(plan.group) : '';
   if (group && !has(group)) return bad(group);
@@ -203,6 +213,15 @@ function aqCheck(plan, sets) {
       out.col = String(raw.col || '');
       if (!has(out.col)) return bad(out.col);
     }
+    /* СВОЯ УМОВА НА КОЖЕН ПОКАЗНИК. Без неї «скільки з деклайном і
+       скільки без» було неможливим питанням: загальний where ріже
+       рядки ОДИН раз, і два різні підсумки з того самого набору з
+       нього не дістати. Саме про це й сказала модель: «цей формат
+       дозволяє один фільтр». */
+    const w = whereOf(raw.where);
+    const e = whereBad(w);
+    if (e) return e;
+    if (w.length) out.where = w;
     return { met: out };
   };
 
@@ -281,6 +300,10 @@ function aqKeep(set, row, where) {
 }
 
 function aqAgg(set, rows, met) {
+  /* Своя умова показника звужує рядки ПЕРЕД підрахунком — і лише для
+     нього. Так «сума без деклайну» і «сума тільки деклайну» стоять
+     поруч, порахованi з того самого набору. */
+  if (met.where && met.where.length) rows = rows.filter(r => aqKeep(set, r, met.where));
   if (met.op === 'count') return { v: rows.length, n: rows.length };
   if (met.op === 'per') {
     /* Ціна події — це сума/сума, а не середнє з рядкових часток.
@@ -356,9 +379,15 @@ function aqRun(spec, set) {
 /* Підпис показника — те саме, що й у заголовку стовпця. Один рядок на
    два місця: інакше картка й таблиця називали б те саме по-різному. */
 function aqMetName(m) {
-  return m.op === 'count' ? 'рядків'
+  const base = m.op === 'count' ? 'рядків'
        : m.op === 'per' ? m.num + ' / ' + m.den
        : (AQ_MET_UA[m.op] || m.op) + ' ' + m.col;
+  /* Умову показника дописуємо до підпису, а не ховаємо: два стовпці
+     «сума spend» поруч без пояснення читаються як помилка. */
+  if (!m.where || !m.where.length) return base;
+  return base + ' · ' + m.where.map(w =>
+    `${w.col} ${AQ_OP_UA[w.op] || w.op}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`
+  ).join(' і ');
 }
 
 /* ── ПЛАН СЛОВАМИ. Нашими, а не моделі: на екрані мусить стояти те,

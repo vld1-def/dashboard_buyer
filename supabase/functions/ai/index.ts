@@ -332,7 +332,8 @@ const PLAN_SYSTEM = [
   '{"set":"<set id>","where":[{"col":"<column>","op":"eq|ne|contains|not_contains|gt|ge|lt|le|empty|not_empty","val":"<value>"}],',
   '"group":"<column or null>","group2":"<second column or null>",',
   '"metric":{"op":"sum|count|avg|min|max|per","col":"<column>","num":"<column>","den":"<column>"},',
-  '"metrics":[<up to 6 more metrics in the same shape, shown next to the first>],',
+  '"metrics":[<up to 6 more metrics in the same shape, shown next to the first;',
+  'each one may carry its own "where":[…] that applies to that metric only>],',
   '"having":{"col":"<column>","op":"ge|gt|le|lt","val":<number>},',
   '"sort":"desc|asc","limit":<1..50>,"say":"<one short sentence in Ukrainian: what you understood>"}',
   'Rules: use ONLY column names given for the chosen set, spelled exactly as given.',
@@ -370,6 +371,14 @@ const PLAN_SYSTEM = [
   /* ПОРІГ НА ГРУПУ. Без нього «найдешевший депозит» завжди вигравало
      те, де даних майже немає — вісім рядків і один депозит. */
   'having applies to the GROUP total, not to single rows: use it for "at least N deposits".',
+  /* ДВА ПІДСУМКИ З ОДНОГО НАБОРУ. Загальний where ріже рядки ОДИН
+     раз, тому «скільки з деклайном і скільки без» ним не сказати —
+     модель сама писала, що «формат дозволяє один фільтр». Тепер
+     умова є в кожного показника окремо. */
+  'The top-level where filters the rows once, for everything. When the question asks for two',
+  'different cuts side by side ("with X and without X", "by Oleh and by everyone else",',
+  '"declined and approved separately"), do NOT give up: put the condition inside each metric',
+  'as its own "where". Two metrics, two conditions, one answer — that is what it is for.',
   'When ranking by a cost-per-conversion and the question does not give a minimum, still add',
   'a modest having on the conversion column (for example ge 5): a group with one conversion',
   'always wins such a ranking and tells nobody anything.',
