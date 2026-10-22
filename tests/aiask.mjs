@@ -446,6 +446,92 @@ ok('невідома операція в умові показника не ви
 
 await page.evaluate(() => { window.__setup(); aqSetId = 'sheet'; aqOpen(); });
 
+/* ═══════════ ПЕРЕХРЕСНА ТАБЛИЦЯ: РЯДКИ ТЕЖ УМОВАМИ ═══════════
+
+   «Таблиця з двох рядків і двох стовпців: перший рядок — Original
+   amount без деклайну й без карток з Oleh, другий — те саме, але
+   ТІЛЬКИ картки з Oleh; другий стовпець — лише деклайн».
+
+   Стовпці вміє умова показника (її вже додали). А рядок тут — не
+   значення стовпця, а УМОВА: group дав би стільки рядків, скільки
+   різних карток, а треба рівно два, кожен описаний своїм правилом.
+   Тому рядок може бути умовою з назвою. */
+const CARDS = [
+  { card: 'Oleh Visa',  status: 'Approved', amt: '100' },
+  { card: 'Oleh Visa',  status: 'decline',  amt: '10'  },
+  { card: 'Vlad Visa',  status: 'Approved', amt: '200' },
+  { card: 'Vlad Visa',  status: 'Decline',  amt: '20'  },
+  { card: 'Ira Master', status: 'approved', amt: '300' }
+];
+
+await page.evaluate(rows => {
+  window.__sent = [];
+  window.shDataset = () => ({
+    id: 'sheet', title: 'cards.csv',
+    cols: [{ name: 'card', kind: 'text' }, { name: 'status', kind: 'text' },
+           { name: 'amt', kind: 'num' }],
+    rows: rows.map(r => ({ ...r })), num: null
+  });
+  rawData = []; window.creativesRawData = [];
+  aqCall = async body => {
+    window.__sent.push(body);
+    return { plan_raw: JSON.stringify(window.__plan), model: 'claude-haiku-5-5',
+             cost_usd: 0.0001, left_today: 9, problems: [] };
+  };
+  aqSetId = 'sheet';
+  aqOpen();
+}, CARDS);
+
+const cross = await askWith({
+  buckets: [{ name: 'Без Oleh', where: [{ col: 'card', op: 'not_contains', val: 'Oleh' }] },
+            { name: 'Тільки Oleh', where: [{ col: 'card', op: 'contains', val: 'Oleh' }] }],
+  metric: { op: 'sum', col: 'amt', where: [{ col: 'status', op: 'not_contains', val: 'decline' }] },
+  metrics: [{ op: 'sum', col: 'amt', where: [{ col: 'status', op: 'contains', val: 'decline' }] }],
+  say: 'дві умови рядками, дві стовпцями' },
+  'таблиця: без Oleh і тільки Oleh, без деклайну і лише деклайн');
+const xflat = cross.html.replace(/\s+/g, ' ');
+ok('рядки задані умовою, а не значенням стовпця',
+  /<td>Без Oleh<\/td>/.test(xflat) && /<td>Тільки Oleh<\/td>/.test(xflat), xflat.slice(0, 300));
+ok('рівно два рядки, а не по рядку на кожну картку',
+  (xflat.match(/<tr><td>/g) || []).length === 2, xflat.slice(0, 400));
+ok('перший рядок: 500 без деклайну і 20 деклайном',
+  /<td>Без Oleh<\/td><td class="aq-n">500<\/td><td class="aq-n">20<\/td>/.test(xflat), xflat.slice(0, 400));
+ok('другий рядок: 100 без деклайну і 10 деклайном',
+  /<td>Тільки Oleh<\/td><td class="aq-n">100<\/td><td class="aq-n">10<\/td>/.test(xflat), xflat.slice(0, 400));
+ok('порядок рядків той, який назвала людина',
+  xflat.indexOf('Без Oleh') < xflat.indexOf('Тільки Oleh'), xflat.slice(0, 300));
+ok('у плані названо, за яким правилом рядок став рядком',
+  /рядками: Без Oleh \(card не містить Oleh\)/.test(cross.txt), cross.txt.slice(0, 400));
+ok('регістр у статусі не ламає зріз: Decline і decline — те саме',
+  /20/.test(cross.txt), cross.txt.slice(0, 200));
+
+/* Рядок без умови — це «усі», і він має право бути: саме з ним
+   найчастіше й порівнюють. */
+const withAll = await askWith({
+  buckets: [{ name: 'Усі' }, { name: 'Oleh', where: [{ col: 'card', op: 'contains', val: 'Oleh' }] }],
+  metric: { op: 'sum', col: 'amt' } }, 'усі проти Oleh');
+const f2 = withAll.html.replace(/\s+/g, ' ');
+ok('рядок без умови рахує весь набір',
+  /<td>Усі<\/td><td class="aq-n">630<\/td>/.test(f2) && /<td>Oleh<\/td><td class="aq-n">110<\/td>/.test(f2),
+  f2.slice(0, 300));
+
+/* Межі ті самі, що й усюди: вигаданий стовпець в умові рядка не
+   виконується, а картка «одного» не перехоплює рядки-умови. */
+const badb = await askWith({
+  buckets: [{ name: 'x', where: [{ col: 'нема', op: 'eq', val: '1' }] }],
+  metric: { op: 'count' } }, 'щось');
+ok('вигаданий стовпець в умові рядка не виконується',
+  /немає стовпця «нема»/.test(badb.txt), badb.txt.slice(0, 200));
+
+const oneb = await askWith({
+  buckets: [{ name: 'Тільки Oleh', where: [{ col: 'card', op: 'contains', val: 'Oleh' }] }],
+  metric: { op: 'sum', col: 'amt' },
+  metrics: [{ op: 'count' }] }, 'один рядок-умова');
+ok('один рядок-умова лишається рядком таблиці, а не стає карткою',
+  /aq-tbl/.test(oneb.html) && !/aq-card/.test(oneb.html), oneb.html.slice(0, 200));
+
+await page.evaluate(() => { window.__setup(); aqSetId = 'sheet'; aqOpen(); });
+
 /* ─────────── чип: назва вставляється, «?» показує вміст ───────────
    Дві дії на один чип, як у силках PWA: часте — на самому чипі,
    рідкісне — окремою кнопкою. Набирати «Sub ID 5» руками означає
