@@ -1,0 +1,117 @@
+# ═══════════ РОЗГОРТАННЯ EDGE-ФУНКЦІЙ ═══════════
+#
+# ЧОМУ ЦЕ ТУТ. Половина роботи над асистентом живе не в сторінці, а в
+# Edge Function: промт, межі, ціни. Сторінка їде на GitHub Pages сама,
+# а функція — ні, і поки її не розгорнули, модель працює зі старим
+# промтом. Зовні це виглядає як «нічого не змінилось», і здогадатись
+# про причину неможливо.
+#
+# ЩО ТРЕБА ЗРОБИТИ ОДИН РАЗ:
+#   1. supabase.com → Account → Access Tokens → створити токен;
+#   2. GitHub → Settings → Secrets and variables → Actions →
+#      New repository secret → ім'я SUPABASE_ACCESS_TOKEN, значення — той токен.
+# Більше нічого: ref проєкту публічний, він і так стоїть у сторінці.
+#
+# Без секрету робота не падає, а каже, чого бракує: червоний значок на
+# кожному пуші швидко перестають помічати, і одного дня він буде
+# червоним по-справжньому.
+
+name: Deploy Edge Functions
+
+on:
+  # Руками — коли треба розгорнути без правок у коді.
+  workflow_dispatch:
+    inputs:
+      fn:
+        description: 'Яку функцію розгорнути'
+        required: true
+        default: 'ai'
+  # Само — коли код функції справді змінився.
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # Публічний ідентифікатор проєкту — той самий, що в SUPABASE_URL
+      # сторінки. Секретом він ніколи не був.
+      PROJECT_REF: zsfumuiajrytmeycbtnn
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Два коміти — щоб було з чим порівняти, які функції змінились.
+          fetch-depth: 2
+
+      - name: Чи є токен
+        id: gate
+        run: |
+          if [ -z "$TOKEN" ]; then
+            {
+              echo '### Функції не розгорнуто'
+              echo ''
+              echo 'Немає секрету `SUPABASE_ACCESS_TOKEN`. Створити токен:'
+              echo 'supabase.com → Account → Access Tokens, і покласти його в'
+              echo 'Settings → Secrets and variables → Actions.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo 'ok=no' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ok=yes' >> "$GITHUB_OUTPUT"
+          fi
+
+      # ЯКІ ФУНКЦІЇ ЧІПАЄМО — І ЧОМУ НЕ ВСІ ЗМІНЕНІ.
+      #
+      # fb-sync, fb-comments і решта розкладних функцій розгорталися
+      # руками, і частина з них — з --no-verify-jwt: їх кличе крон, а
+      # не людина з токеном. Розгорнути таку наново зі звичайними
+      # налаштуваннями означає мовчки зламати розклад. Тому само
+      # їде лише те, що в списку нижче; решту видно у звіті, і вона
+      # лишається на людину.
+      - name: Що розгортати
+        id: pick
+        run: |
+          AUTO="ai"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            LIST="${{ github.event.inputs.fn }}"
+          else
+            CHANGED=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" \
+              -- supabase/functions | cut -d/ -f3 | sort -u | tr '\n' ' ')
+            LIST=""
+            SKIP=""
+            for f in $CHANGED; do
+              case " $AUTO " in
+                *" $f "*) LIST="$LIST $f" ;;
+                *)        SKIP="$SKIP $f" ;;
+              esac
+            done
+            if [ -n "$SKIP" ]; then
+              {
+                echo "### Змінились, але не розгортаються самі:$SKIP"
+                echo ''
+                echo 'Ці функції розгортають руками: частина з них працює з крону'
+                echo 'і могла бути розгорнута з --no-verify-jwt.'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "list=$(echo $LIST | xargs)" >> "$GITHUB_OUTPUT"
+
+      - uses: supabase/setup-cli@v1
+        if: steps.gate.outputs.ok == 'yes' && steps.pick.outputs.list != ''
+        with:
+          version: latest
+
+      - name: Розгорнути
+        if: steps.gate.outputs.ok == 'yes' && steps.pick.outputs.list != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          for f in ${{ steps.pick.outputs.list }}; do
+            echo "::group::$f"
+            supabase functions deploy "$f" --project-ref "$PROJECT_REF"
+            echo "::endgroup::"
+            echo "- розгорнуто \`$f\`" >> "$GITHUB_STEP_SUMMARY"
+          done
