@@ -38,6 +38,9 @@ const AQ_LIMIT_MAX = 50;
 // Скільки показників показуємо поруч. Більше — це вже не відповідь на
 // питання, а вивантаження таблиці.
 const AQ_MET_MAX = 6;
+// Скільки рядків-умов приймаємо. Більше — це вже не перехресна
+// таблиця, а звіт, і його будують не питанням.
+const AQ_BUCKETS = 8;
 
 let aqBusy = false, aqLast = null;
 
@@ -185,6 +188,28 @@ function aqCheck(plan, sets) {
   const whereErr = whereBad(where);
   if (whereErr) return whereErr;
 
+  /* ═══ РЯДКИ, ЗАДАНІ УМОВОЮ ═══
+
+     «Таблиця з двох рядків: без Oleh і тільки Oleh, а в стовпцях —
+     без декліну і лише деклін» — це перехрестя двох НАБОРІВ УМОВ.
+     Групування тут не поміч: group ріже по значенню стовпця й дає
+     стільки рядків, скільки різних значень, а треба рівно два, і
+     кожен описаний своєю умовою.
+
+     Тому рядок може бути не значенням, а умовою з назвою. Стовпці
+     вже вміють своє (умова в показнику) — разом це звичайна
+     перехресна таблиця, яку й просили. */
+  const buckets = [];
+  for (const b of (Array.isArray(plan.buckets) ? plan.buckets : []).slice(0, AQ_BUCKETS)) {
+    const w = whereOf(b && b.where);
+    const e = whereBad(w);
+    if (e) return e;
+    const name = String((b && b.name) || '').trim();
+    // Рядок без умови — це «усі рядки», і він має право бути: часто
+    // саме з ним і порівнюють.
+    buckets.push({ name: name || (w.length ? aqWhereWords(w) : 'усі'), where: w });
+  }
+
   const group = plan.group ? String(plan.group) : '';
   if (group && !has(group)) return bad(group);
   /* ДРУГИЙ РІВЕНЬ. «Яка воронка найкраще працювала по днях» — це два
@@ -254,7 +279,7 @@ function aqCheck(plan, sets) {
   }
 
   const limit = Math.min(AQ_LIMIT_MAX, Math.max(1, Number(plan.limit) || 10));
-  return { spec: { set: set.id, where, group, group2, metric: met, metrics: more, having,
+  return { spec: { set: set.id, where, buckets, group, group2, metric: met, metrics: more, having,
                    sort: plan.sort === 'asc' ? 'asc' : 'desc', limit,
                    say: String(plan.say || '').slice(0, 300) }, set };
 }
@@ -329,6 +354,20 @@ function aqAgg(set, rows, met) {
 
 function aqRun(spec, set) {
   const rows = set.rows.filter(r => aqKeep(set, r, spec.where));
+  const cells = rs => ({ ...aqAgg(set, rs, spec.metric), rows: rs.length,
+                         more: (spec.metrics || []).map(m => aqAgg(set, rs, m)) });
+
+  /* Рядки-умови рахуємо ПЕРШИМИ й не сортуємо: порядок назвала
+     людина («перший рядок… для другого рядка…»), і переставити його
+     за нашим сортуванням означало б відповісти не на те питання. */
+  if ((spec.buckets || []).length) {
+    const list = spec.buckets.map(b => ({
+      k: b.name, k2: '',
+      ...cells(b.where.length ? rows.filter(r => aqKeep(set, r, b.where)) : rows)
+    }));
+    return { rows: rows.length, total: set.rows.length, list, groups: list.length };
+  }
+
   if (!spec.group) return { rows: rows.length, total: set.rows.length, one: aqAgg(set, rows, spec.metric) };
 
   /* Ключ групи — одна або дві частини. Складаємо їх через \u0000:
@@ -342,13 +381,12 @@ function aqRun(spec, set) {
     if (!by.has(k)) by.set(k, []);
     by.get(k).push(r);
   });
+  /* Та сама cells(), що й для рядків-умов: решта показників рахується
+     поруч тими самими правилами. Саме вони й роблять із рядка таблиці
+     картку: скільки витрачено, скільки депів, по чому вийшов депозит. */
   let list = [...by.entries()].map(([k, rs]) => {
     const p = k.split('\u0000');
-    return { k: p[0], k2: p[1] || '', ...aqAgg(set, rs, spec.metric), rows: rs.length,
-             /* Решта показників — поруч, тими самими правилами. Саме
-                вони й роблять із рядка таблиці картку: скільки
-                витрачено, скільки депів, по чому вийшов депозит. */
-             more: (spec.metrics || []).map(m => aqAgg(set, rs, m)) };
+    return { k: p[0], k2: p[1] || '', ...cells(rs) };
   });
 
   /* Поріг рахуємо по СУМІ групи — те, чого не вміє where. Групу без
@@ -385,9 +423,7 @@ function aqMetName(m) {
   /* Умову показника дописуємо до підпису, а не ховаємо: два стовпці
      «сума spend» поруч без пояснення читаються як помилка. */
   if (!m.where || !m.where.length) return base;
-  return base + ' · ' + m.where.map(w =>
-    `${w.col} ${AQ_OP_UA[w.op] || w.op}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`
-  ).join(' і ');
+  return base + ' · ' + aqWhereWords(m.where);
 }
 
 /* ── ПЛАН СЛОВАМИ. Нашими, а не моделі: на екрані мусить стояти те,
@@ -401,6 +437,14 @@ const AQ_OP_UA = { eq: '=', ne: '≠', contains: 'містить', not_contains:
 const AQ_MET_UA = { sum: 'сума', count: 'кількість рядків', avg: 'середнє',
                     min: 'мінімум', max: 'максимум', per: 'на одну подію' };
 
+/* Умови словами. Один опис на три місця: рядок плану, підпис
+   показника й назва рядка-умови, яку модель не дала сама. */
+function aqWhereWords(ws) {
+  return (ws || []).map(w =>
+    `${w.col} ${AQ_OP_UA[w.op] || w.op}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`
+  ).join(' і ');
+}
+
 function aqPlanWords(spec, set) {
   const m = spec.metric;
   const what = m.op === 'count' ? 'кількість рядків'
@@ -410,8 +454,12 @@ function aqPlanWords(spec, set) {
      вікна, і повторювати її в кожному рядку плану — рівно те зайве,
      від якого ми й ішли. */
   const bits = [what];
-  if (spec.where.length) bits.push('де ' + spec.where.map(w =>
-    `${w.col} ${AQ_OP_UA[w.op]}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`).join(' і '));
+  if (spec.where.length) bits.push('де ' + aqWhereWords(spec.where));
+  /* Рядки-умови називаємо в плані: інакше з таблиці не видно, за яким
+     правилом рядок став рядком, і два підсумки виглядають як магія. */
+  if ((spec.buckets || []).length) bits.push('рядками: '
+    + spec.buckets.map(b => b.name + (b.where.length ? ' (' + aqWhereWords(b.where) + ')' : ''))
+        .join('; '));
   if (spec.group) bits.push('по ' + spec.group + (spec.group2 ? ' × ' + spec.group2 : '')
     + (spec.sort === 'asc' ? ', знизу вгору' : ', згори вниз'));
   /* Поріг мусить бути в плані словами: він ВИКИДАЄ групи, і мовчазний
@@ -827,7 +875,8 @@ window.aqAsk = async function () {
       + (vals.length ? `<p class="aq-meta">У «${aqEsc(w.col)}» зустрічається: ${
           vals.map(v => `<span class="aq-v">${aqEsc(v)}</span>`).join(' ')
           }${vals.length === 12 ? ' …' : ''}</p>` : '');
-  } else if (spec.group && res.list.length === 1 && (spec.metrics || []).length) {
+  } else if (spec.group && !(spec.buckets || []).length
+             && res.list.length === 1 && (spec.metrics || []).length) {
     /* ОДИН — ЦЕ КАРТКА, А НЕ ТАБЛИЦЯ З ОДНОГО РЯДКА. Питали «яке
        найкраще, розпиши його дані»: відповідь — назва й набір чисел
        під нею, а не шапка з одним рядком, у якій ще треба відшукати
@@ -840,10 +889,11 @@ window.aqAsk = async function () {
       + `<div class="aq-card">${cell(spec.metric, g)}${
           (spec.metrics || []).map((m, i) => cell(m, g.more[i] || {})).join('')}
          <div class="aq-kv"><span>рядків</span><b>${g.rows}</b></div></div>`;
-  } else if (spec.group) {
-    const g2 = !!spec.group2;
+  } else if (spec.group || (spec.buckets || []).length) {
+    const g2 = !!spec.group2 && !(spec.buckets || []).length;
     const ms = spec.metrics || [];
-    body = `<table class="aq-tbl"><thead><tr><th>${aqEsc(spec.group)}</th>${
+    body = `<table class="aq-tbl"><thead><tr><th>${
+        aqEsc((spec.buckets || []).length ? 'рядок' : spec.group)}</th>${
         g2 ? `<th>${aqEsc(spec.group2)}</th>` : ''}<th>${aqEsc(aqMetName(spec.metric))}</th>${
         ms.map(m => `<th>${aqEsc(aqMetName(m))}</th>`).join('')}<th>рядків</th></tr></thead>
        <tbody>${res.list.map(r => `<tr><td>${aqEsc(r.k)}</td>${

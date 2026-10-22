@@ -335,6 +335,7 @@ const PLAN_SYSTEM = [
   '"metrics":[<up to 6 more metrics in the same shape, shown next to the first;',
   'each one may carry its own "where":[…] that applies to that metric only>],',
   '"having":{"col":"<column>","op":"ge|gt|le|lt","val":<number>},',
+  '"buckets":[{"name":"<row label>","where":[…]}, …up to 8 — rows defined by a CONDITION],',
   '"sort":"desc|asc","limit":<1..50>,"say":"<one short sentence in Ukrainian: what you understood>"}',
   'Rules: use ONLY column names given for the chosen set, spelled exactly as given.',
   'metric.col is for sum/avg/min/max; metric.num and metric.den are for "per" (a ratio',
@@ -379,6 +380,16 @@ const PLAN_SYSTEM = [
   'different cuts side by side ("with X and without X", "by Oleh and by everyone else",',
   '"declined and approved separately"), do NOT give up: put the condition inside each metric',
   'as its own "where". Two metrics, two conditions, one answer — that is what it is for.',
+  /* ПЕРЕХРЕСНА ТАБЛИЦЯ. Рядок може бути не значенням стовпця, а
+     УМОВОЮ: «без Oleh» і «тільки Oleh». Group такого не вміє — він
+     ріже по значенню й дає стільки рядків, скільки різних значень. */
+  'buckets are ROWS defined by a condition, not by a column value: use them when the question',
+  'describes the rows itself ("first row: without Oleh; second row: only Oleh"). Each bucket',
+  'gets a short name and its own where. Buckets and group are alternatives — pick one.',
+  'A table asked as "N rows by M columns" is buckets (the rows) plus metric + metrics (the',
+  'columns), each column with its own where. Never answer such a question with "split it into',
+  'two queries": one plan can say all of it.',
+  'Keep the buckets in the order the question names them: the person numbered the rows.',
   'When ranking by a cost-per-conversion and the question does not give a minimum, still add',
   'a modest having on the conversion column (for example ge 5): a group with one conversion',
   'always wins such a ranking and tells nobody anything.',
