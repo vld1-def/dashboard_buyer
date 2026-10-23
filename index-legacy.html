@@ -11843,16 +11843,18 @@ function txRender() {
     return;
   }
   el.innerHTML = list.map(t => `
-    <div class="bg-white/[0.03] border border-white/5 rounded-2xl p-3">
+    <div class="tx-card bg-white/[0.03] border border-white/5 rounded-2xl p-3"
+         tabindex="0" title="Клік копіює текст"
+         onclick="txCopy(event, this, '${t.id}')"
+         onkeydown="txCopyKey(event, this, '${t.id}')">
       <div class="flex items-center gap-2 mb-1.5 flex-wrap">
         <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">${txEsc(t.geo || '—')}</span>
         <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300">${txEsc(t.cat || '—')}</span>
         ${t.lang ? `<span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300">${txEsc(t.lang)}</span>` : ''}
         <span class="text-[11px] font-black text-white truncate flex-1">${txEsc(t.title)}</span>
-        <button onclick="txCopy('${t.id}')" title="Скопіювати текст"
-          class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-teal-600/70 hover:bg-teal-500 transition">Копі</button>
-        <button onclick="txEdit('${t.id}')" class="text-[10px] text-slate-500 hover:text-white px-1 transition">✎</button>
-        <button onclick="txDelete('${t.id}')" class="text-[10px] text-slate-600 hover:text-rose-400 px-1 transition">✕</button>
+        <span class="tx-card-hint">Клік копіює</span>
+        <button onclick="event.stopPropagation();txEdit('${t.id}')" class="text-[10px] text-slate-500 hover:text-white px-1 transition">✎</button>
+        <button onclick="event.stopPropagation();txDelete('${t.id}')" class="text-[10px] text-slate-600 hover:text-rose-400 px-1 transition">✕</button>
       </div>
       <p class="text-[12px] text-slate-300 whitespace-pre-wrap leading-relaxed">${txEsc(t.text)}</p>
       <!-- Підпис українською лишається з текстом: через місяць «про що
@@ -11862,10 +11864,43 @@ function txRender() {
     </div>`).join('');
 }
 
-function txCopy(id) {
+/* КОПІЮЄ САМА КАРТКА, А НЕ КНОПКА В НІЙ.
+
+   Досі збоку висіла кнопка «Копі» розміром у два слова, а клік по
+   самому тексту — перше, що роблять — не давав нічого. Тепер
+   клікабельна вся картка, а підтвердження такеж, як у ПВА і прілках:
+   рамка спалахує зеленим, сказане йде тостом. Поведінка одна на всі
+   три екрани.
+
+   Два винятки, без яких велика клікабельна площа більше шкодить,
+   ніж помагає: клік по кнопці (правка, видалення) не копіює, і не
+   копіює клік, яким закінчилось виділення частини тексту: людина
+   сама вирішила, що ій потрібен лише уривок. */
+async function txCopy(ev, el, id) {
+  if (ev) {
+    if (ev.target && ev.target.closest && ev.target.closest('button')) return;
+    ev.preventDefault(); ev.stopPropagation();
+  }
+  const sel = window.getSelection && window.getSelection();
+  if (sel && String(sel).trim() && sel.anchorNode && el && el.contains(sel.anchorNode)) return;
   const t = txItems.find(x => x.id === id);
-  if (!t) return;
-  navigator.clipboard.writeText(t.text || '');
+  if (!t || !t.text) return;
+  try { await navigator.clipboard.writeText(t.text); } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = t.text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } finally { ta.remove(); }
+  }
+  if (el) {
+    el.style.boxShadow = 'inset 0 0 0 1.5px #22C55E';
+    setTimeout(() => { el.style.boxShadow = ''; }, 900);
+  }
+  if (typeof toast === 'function') toast('Скопіювано', 'ok', 1400);
+}
+
+/* Картка в табуляції, тому Enter і пробіл робять те саме, що клік. */
+function txCopyKey(ev, el, id) {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  txCopy(ev, el, id);
 }
 
 // Форма додавання/редагування. Гео і категорія підставляються з обраної гілки —
