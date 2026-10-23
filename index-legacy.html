@@ -9470,12 +9470,18 @@ async function apAddFunnel(isApp) {
     alert('Воронку можна завести в Settings → Funnels.');
     return;
   }
-  // Постачальники — з квадратних дужок уже збережених назв: окремого
-  // списку, який колись розійдеться з назвами, не тримаємо.
-  const provs = [...new Set(apFunnels.map(f => {
-    const m = String(f.funnel_name || '').match(/\[([^\]]+)\]/);
-    return m ? m[1].trim() : '';
-  }).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
+  /* Постачальники — з того, що вже є: квадратні дужки збережених назв
+     воронок І поле «Постачальник» у шаблонах. Окремого списку, який
+     колись розійдеться з назвами, не тримаємо: тут не може з'явитись
+     постачальник, якого в команди немає, і не може зникнути той, з
+     яким вона працює. */
+  const provs = [...new Set([
+    ...apFunnels.map(f => {
+      const m = String(f.funnel_name || '').match(/\[([^\]]+)\]/);
+      return m ? m[1].trim() : '';
+    }),
+    ...apItems.map(i => String(i.provider || '').trim())
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
 
   const v = await ask({
     title: isApp ? 'Додати апку' : 'Додати воронку',
@@ -9486,8 +9492,14 @@ async function apAddFunnel(isApp) {
     ok: 'Додати', cancel: 'Скасувати',
     fields: [
       { key: 'name', label: 'Назва воронки', need: true, full: true,
-        placeholder: isApp ? 'Mostbet [satorapps]' : 'Mostbet',
-        hint: provs.length ? 'Відомі постачальники: ' + provs.join(', ') : '' },
+        placeholder: isApp ? 'Mostbet [satorapps]' : 'Mostbet' },
+      /* Теги постачальників — кнопками, а не рядком підказки. Доти
+         список лежав текстом під полем, і його перенабирали руками:
+         «satorapp» замість «satorapps» — і профіль розбору сабок уже
+         не знайдеться, а шаблон мовчки візьме не ті сабки. */
+      ...(provs.length ? [{ key: 'prov_tag', type: 'tags', into: 'name', opts: provs,
+        label: 'Постачальник', hint: 'Клік ставить його у квадратних дужках у кінець назви. '
+             + 'Нового можна вписати руками — там же, у дужках.' }] : []),
       { key: 'ktid', label: isApp ? 'Назва апки / KTID' : 'KTID', need: true,
         placeholder: 'як у Keitaro' },
       { key: 'geo', label: 'Гео', upper: true, placeholder: 'KG',

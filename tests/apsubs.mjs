@@ -167,4 +167,74 @@ const edit = await page.evaluate(async () => {
 ok('у збереженому шаблоні сабки лишаються як були',
   JSON.stringify(edit) === JSON.stringify([[6, 'fixed', 'як було']]), edit);
 
+/* ═══════════ ТЕГИ ПОСТАЧАЛЬНИКІВ: КЛІК ЗАМІСТЬ ДРУКУ ═══════════
+
+   Постачальник живе у квадратних дужках назви воронки — «Mostbet
+   [satorapps]», — і саме за ним підбирається профіль розбору сабок.
+   Доти список відомих лежав текстом у підказці, і його перенабирали
+   руками: «satorapp» замість «satorapps» — і профіль не знайдеться, а
+   шаблон мовчки візьме не ті сабки.
+
+   Тепер це кнопки. Стенд тримає те, на чому воно ламається:
+     • список береться з того, що вже є, а не з вигаданого переліку;
+     • клік ставить тег У ДУЖКАХ у кінець назви;
+     • другий клік ЗАМІНЮЄ тег, а не дописує другі дужки;
+     • вписати руками й далі можна. */
+await setup(KM, [{ id: 't1', geo: 'KG', provider: 'ownbrand', naming: 'n', subs: [] }]);
+
+const tags = await page.evaluate(async () => {
+  const p = apAddFunnel(true);
+  await new Promise(r => setTimeout(r, 80));
+  const names = [...document.querySelectorAll('.askwrap .ask-tag')].map(b => b.textContent.trim());
+  const into = [...document.querySelectorAll('.askwrap .ask-tag')].map(b => b.dataset.into);
+  window.__askP = p;
+  return { names, into };
+});
+ok('теги зібрані з уже наявних воронок і шаблонів',
+  JSON.stringify(tags.names) === JSON.stringify(['ownbrand', 'satorapps', 'trident']), tags.names);
+ok('і кожен знає, в яке поле писати', tags.into.every(x => x === 'name'), tags.into);
+
+const click1 = await page.evaluate(() => {
+  const w = document.querySelector('.askwrap');
+  const name = w.querySelector('[data-k="name"]');
+  name.value = 'Mostbet';
+  [...w.querySelectorAll('.ask-tag')].find(b => b.textContent.trim() === 'trident').click();
+  return { v: name.value, caret: name.selectionStart };
+});
+ok('клік ставить тег у дужках у кінець назви', click1.v === 'Mostbet [trident]', click1.v);
+ok('а курсор лишається перед дужками — далі дописують назву, не тег',
+  click1.caret === 'Mostbet'.length, click1);
+
+const click2 = await page.evaluate(() => {
+  const w = document.querySelector('.askwrap');
+  [...w.querySelectorAll('.ask-tag')].find(b => b.textContent.trim() === 'satorapps').click();
+  return w.querySelector('[data-k="name"]').value;
+});
+ok('другий клік замінює тег, а не дописує другі дужки',
+  click2 === 'Mostbet [satorapps]', click2);
+
+const typed = await page.evaluate(async () => {
+  const w = document.querySelector('.askwrap');
+  const name = w.querySelector('[data-k="name"]');
+  name.value = 'Pinco [новий-постач]';          // вписали руками
+  w.querySelector('[data-k="ktid"]').value = '555';
+  w.querySelector('.ask-no').click();           // скасували — нічого не зберігаємо
+  await window.__askP;
+  return { gone: !document.querySelector('.askwrap') };
+});
+ok('вписане руками не чіпається, а скасування нічого не зберігає', typed.gone, typed);
+
+/* Коли постачальників ще немає, поля з тегами теж немає: порожній
+   рядок кнопок виглядає як поламаний список. */
+await page.evaluate(() => { apFunnels = []; apItems = []; });
+const noTags = await page.evaluate(async () => {
+  const p = apAddFunnel(true);
+  await new Promise(r => setTimeout(r, 80));
+  const has = !!document.querySelector('.askwrap .ask-tag');
+  document.querySelector('.askwrap .ask-no').click();
+  await p;
+  return has;
+});
+ok('без відомих постачальників блоку тегів немає зовсім', !noTags, noTags);
+
 await done(browser, srv, errs);

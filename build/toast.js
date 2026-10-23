@@ -122,6 +122,22 @@ window.ask = function (opts) {
       <textarea class="ask-in is-area" data-k="${k}" rows="${Number(f.rows) || 3}"
         spellcheck="false" placeholder="${esc(f.placeholder || '')}">${
         esc(f.value == null ? '' : f.value)}</textarea>${hint}</label>`;
+    /* ТЕГИ: КЛІК ЗАМІСТЬ ДРУКУ.
+
+       Постачальника вписують у квадратних дужках назви — «Mostbet
+       [satorapps]», — і саме за ним потім підбирається профіль
+       розбору сабок. Набирати його руками означає рано чи пізно
+       написати «satorapp» чи «Satorapps», і тоді профіль не
+       знайдеться, а шаблон мовчки візьме не ті сабки.
+
+       Тому вже відомі теги стоять кнопками. Клік кладе тег у ДУЖКАХ
+       у кінець поля `into`; якщо там уже є дужки — замінює їх, а не
+       дописує другі. Вписати руками й далі можна: кнопки це
+       скорочення, а не обмеження. */
+    if (f.type === 'tags') return `<div class="ask-f is-full ask-tags">${lab}
+      <div class="ask-tagrow">${(f.opts || []).map(v =>
+        `<button type="button" class="ask-tag" data-v="${esc(v)}"
+           data-into="${esc(f.into || '')}">${esc(v)}</button>`).join('')}</div>${hint}</div>`;
     // Підказки з уже відомих значень: агента вписують той самий, що й
     // у решти кабінетів, і друкувати його щоразу наново — зайве.
     const dl = (f.list || []).length ? 'ask-dl-' + k : '';
@@ -206,6 +222,24 @@ window.ask = function (opts) {
       }
       else if (e.key === 'Enter') { e.preventDefault(); take(); }
     };
+
+    /* Клік по тегу править ЧУЖЕ поле, тож ловимо його на вікні: кнопок
+       може бути скільки завгодно, а слухач лишається один. */
+    wrap.querySelectorAll('.ask-tag').forEach(btn => {
+      btn.onclick = () => {
+        const el = wrap.querySelector(`[data-k="${btn.dataset.into}"]`);
+        if (!el) return;
+        const tag = '[' + btn.dataset.v + ']';
+        // Дужки в кінці — те саме місце, куди тег і ставлять.
+        const base = String(el.value || '').replace(/\s*\[[^\]]*\]\s*$/, '').trim();
+        el.value = base ? base + ' ' + tag : tag;
+        el.focus();
+        /* Курсор ставимо ПЕРЕД дужками: далі найчастіше дописують
+           назву, а не тег. Кінець рядка змусив би щоразу клікати. */
+        const pos = base.length;
+        try { el.setSelectionRange(pos, pos); } catch (e) {}
+      };
+    });
 
     wrap.querySelector('.ask-yes').onclick = take;
     const no = wrap.querySelector('.ask-no');

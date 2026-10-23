@@ -155,13 +155,15 @@ await page.waitForTimeout(80);
 const fdlg = await page.evaluate(() => ({
   keys: [...document.querySelectorAll('.askwrap [data-k]')].map(e => e.dataset.k),
   app: document.querySelector('.askwrap [data-k="is_app"]').checked,
-  hint: [...document.querySelectorAll('.askwrap .ask-f-hint')].map(e => e.textContent).join(' | ')
+  tags: [...document.querySelectorAll('.askwrap .ask-tag')].map(e => e.textContent.trim())
 }));
 ok('у вікні воронки ті самі поля, що й у Funnel Mapper',
   JSON.stringify(fdlg.keys) === JSON.stringify(['name', 'ktid', 'geo', 'is_app']), fdlg.keys);
 ok('з «+ Апка» позначка APP уже стоїть', fdlg.app);
-ok('постачальники підказані з дужок уже збережених назв',
-  /satorapps/.test(fdlg.hint), fdlg.hint);
+/* Постачальники були рядком підказки — і їх перенабирали руками.
+   Тепер це кнопки; детальніше їх тримає tests/apsubs.mjs. */
+ok('постачальники з дужок уже збережених назв стоять кнопками',
+  fdlg.tags.includes('satorapps'), fdlg.tags);
 
 await fill({ name: 'Mostbet [tridentapps]', ktid: 'k2', geo: 'kg', is_app: true });
 await page.evaluate(() => window.__p);
