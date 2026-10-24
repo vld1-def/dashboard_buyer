@@ -6,6 +6,48 @@
    збігалися б усередині інших слів."""
 
 LONG = {
+ "У файлі немає стовпця з розміщенням (Sub ID 4 / Placement) або немає даних за цей день":
+   "The file has no placement column (Sub ID 4 / Placement), or no data for this day",
+ "У файлі немає стовпця з креативом (Sub ID 3 / Ad name)":
+   "The file has no creative column (Sub ID 3 / Ad name)",
+ "У файлі немає стовпця з кампанією (Sub ID 1 / Campaign name)":
+   "The file has no campaign column (Sub ID 1 / Campaign name)",
+ "У файлі немає стовпця Source — ПВА від прілок не відрізнити":
+   "The file has no Source column — PWA cannot be told apart from apps",
+ "годин у файлі немає — день беремо як є, зсув TZ не застосовано":
+   "no hours in the file — the day is taken as is, no timezone shift applied",
+ "є години — день рахуємо в таймзоні кабінету":
+   "hours present — the day is counted in the account timezone",
+ "не знайдено стовпця з акаунтом": "no account column found",
+ "не знайдено стовпця з днем": "no day column found",
+ "у файлі немає рядків з даними": "the file has no data rows",
+ "Нічого не зійшлось: ": "Nothing matched: ",
+ ". Перемкни стовпці вище.": ". Switch the columns above.",
+ " рядків із файлу · ": " rows from the file · ",
+ " рядків без дня": " rows with no day",
+ " рядків без акаунта": " rows with no account",
+ "Прибрати цей стовпець": "Remove this column",
+ "Воронку видно лише там, де є Source — він і каже, що таке Sub ID 4":
+   "Funnels show up only where a Source column exists — it is what says what Sub ID 4 is",
+ "Жодне джерело не позначене як воронка": "No source is marked as a funnel",
+ "Funnels · ктід": "Funnels · ktid",
+ "розміщення": "placement",
+ "воронка": "funnel",
+ "Воронка": "Funnel",
+ "Sources · ПВА / прілки": "Sources · PWA / apps",
+ "— немає —": "— none —",
+ "+ стовпець": "+ column",
+ "Реєстрації": "Regs",
+ "Розміщення": "Placement",
+ "Депозити": "Deps",
+ "Кампанія": "Campaign",
+ "Пристрій": "Device",
+ "Джерело": "Source",
+ "Витрата": "Spend",
+ "Година": "Hour",
+ "Акаунт": "Account",
+ "Крео": "Creative",
+ "День": "Day",
  "Файл понад 120 МБ може не влізти в памʼять браузера — краще стиснути заздалегідь.":
    "Files over 120 MB may not fit in browser memory — better compress them first.",
  "Рівнями: перший вимір — батьківський рядок, решта розкриваються всередині. Вимкнено — усе одним плоским списком, як було.":
@@ -26,8 +68,6 @@ LONG = {
    "Spend model: revenue = spend × percent. Click to switch back to CPA",
  "Статус кабінетів · зберігається одразу · клік по плитці — фільтр":
    "Account status · saved instantly · click a tile to filter",
- "У файлі немає Sub ID 4 (розміщення) або немає даних за цей день":
-   "The file has no Sub ID 4 (placement), or no data for this day",
  "Можна виправити вручну — порожнє поле поверне значення з файлу":
    "You can fix it by hand — an empty field restores the value from the file",
  "Розгорнути на весь екран — графіки CPI/CPL/CPA і повна таблиця":
@@ -54,7 +94,6 @@ LONG = {
  "Назва має бути довшою за 2 символи.": "The name must be longer than 2 characters.",
  "Виконай у Supabase -> SQL Editor:": "Run this in Supabase -> SQL Editor:",
  "Зупиняю після поточного варіанта…": "Stopping after the current variant…",
- "У файлі немає Sub ID 3 (креатив)": "The file has no Sub ID 3 (creative)",
  "У файлі немає стовпця з девайсом": "The file has no device column",
  "По кабінетах — це каб чи рандом": "By account — is it the account or randomness",
  "Профіт нижчий за перший рівень": "Profit is below the first tier",
