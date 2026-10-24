@@ -7,6 +7,26 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="icon" type="image/png" href="icon.png">
   <style>
+    /* ЗВІТИ ПРО ІМПОРТ — ЗГОРНУТІ.
+
+       Три картки суцільного тексту стояли над таблицею і відтісняли
+       її вниз. Читають їх раз на сто імпортів, а бачать щоразу —
+       через це їх перестають бачити взагалі. Тепер це один рядок із
+       найважливішим числом, а решта розкривається кліком: нічого не
+       викинуто, просто не лізе в очі. */
+    .rep > summary {
+      cursor: pointer; list-style: none;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 800; color: #94A3B8;
+    }
+    .rep > summary::-webkit-details-marker { display: none; }
+    .rep > summary::before {
+      content: '▸'; font-size: 10px; opacity: .6; transition: transform .14s;
+    }
+    .rep[open] > summary::before { transform: rotate(90deg); }
+    .rep > summary:hover { color: #E2E8F0; }
+    .rep > summary b { color: #E2E8F0; }
+    .rep-body { margin-top: 10px; }
     /* Рядок, до якого Keitaro не доїхав. Дрібний і притлумлений: це не
        помилка імпорту, а чесне «цифри тут не з Keitaro». */
     .ds-nokt {
@@ -3095,11 +3115,27 @@ function parseKeitaro(content) {
         m.installs += ins; m.regs += reg; m.deps += dep;
       }
     }
-    if (offer) {
+    {
       const dk = mergeKey(localDay, acc, geo, ktid, rowMode);
-      /* Нерозпізнаний офер сюди не потрапляє — як і до лендінгів. Так
-         набір рядків лишається тим самим, лише дрібнішим. */
-      const land = raw || offer;
+      /* НЕВПІЗНАНИЙ ОФЕР БІЛЬШЕ НЕ ВИКИДАЄ СВОЇ ЦИФРИ.
+
+         Доти в групу потрапляли лише рядки, чий офер знайшовся в
+         Settings → Offers. Виглядало безпечно: «не знаємо офера —
+         не ділимо». Насправді ділення не просто не відбувалось —
+         splitByOffer бере цифри З ГРУПИ, а не з byDaily. Якщо в
+         кабінеті один лендінг упізнався, а решта ні, рядок діставав
+         цифри ОДНОГО впізнаного лендінга, а конверсії всіх інших
+         зникали з прев'ю, хоча в byDaily вони лежали правильні.
+
+         Рівно це й було видно: два рядки з лендінгом і нулями —
+         впізнаний офер без конверсій, — поки справжні 127 інсталів і
+         13 депозитів висіли на невпізнаних оферах того ж кабінета.
+
+         Тепер у групу йде КОЖЕН лендінг. Невпізнаному просто не
+         ставимо офер — його вибирають у списку рядка, як і доти. Так
+         сума розбитих рядків завжди дорівнює byDaily, а «не знаю
+         офера» перестало означати «загубив конверсії». */
+      const land = raw || offer || '—';
       /* КЛЮЧ — ПАРА (лендінг, домен), а не лендінг. Один лендінг
          крутиться на кількох доменах, і щоб показати спенд по домену,
          не збрехавши, ділити треба по парах. Суми по оферах і по
@@ -3109,7 +3145,7 @@ function parseKeitaro(content) {
       const grp = (byDailyLand[dk] = byDailyLand[dk] || {});
       const gk = site ? land + '\u0001' + site : land;
       const cell = (grp[gk] = grp[gk] || { installs: 0, regs: 0, deps: 0,
-                                           offer, landing: land, site });
+                                           offer: offer || '', landing: raw, site });
       cell.installs += ins;
       cell.regs += reg;
       cell.deps += dep;
@@ -3257,8 +3293,11 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
       if (names.length < 2) {                       // одна пара або жодної
         if (names.length === 1) {
           const o = offers[names[0]];
-          row.offer = o.offer || o.landing || names[0];
-          row.landing = o.landing || names[0];
+          /* Офер ставимо лише той, що справді впізнано. Доти сюди
+             падав текст лендінга — і в полі офера опинявся цілий
+             рядок із Keitaro, якого в списку оферів немає. */
+          if (o.offer) row.offer = o.offer;
+          if (o.landing) row.landing = o.landing;
           row.site = o.site || null;
         }
         out.push(row);
@@ -3278,8 +3317,8 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
         // Цифри оффера — теж на частку рядка в групі, інакше під APP
         // кожен рядок групи забрав би собі всі інсталли оффера.
         const w = weightOf ? (weightOf(row) || 1) : 1;
-        out.push({ ...row, offer: o.offer || o.landing || name,
-                   landing: o.landing || name, site: o.site || null, spend,
+        out.push({ ...row, offer: o.offer || '',
+                   landing: o.landing || '', site: o.site || null, spend,
                    installs: w === 1 ? o.installs : Math.round(o.installs * w),
                    regs:     w === 1 ? o.regs     : Math.round(o.regs * w),
                    deps:     w === 1 ? o.deps     : Math.round(o.deps * w) });
@@ -3314,6 +3353,12 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   return { daily: dRes.out, creatives: creativesOut };
 }
 
+/* Один рядок замість картки тексту. Підсумок — це те, заради чого
+   звіт узагалі відкривають; усе інше чекає кліку. */
+function repWrap(summary, html) {
+  return `<details class="rep"><summary>${summary}</summary><div class="rep-body">${html}</div></details>`;
+}
+
 // Видимий звіт про конвертацію — щоб перерахунок не був мовчазним
 // і ти міг спіймати дивний курс до того, як дані підуть у базу.
 function renderFxReport(used) {
@@ -3323,7 +3368,7 @@ function renderFxReport(used) {
   if (!curs.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
   const money = v => v.toLocaleString('en-US', { maximumFractionDigits: 2 });
   el.classList.remove('hidden');
-  el.innerHTML = curs.map(c => {
+  const fxHtml = curs.map(c => {
     const u = used[c];
     const rates = [...u.rates].sort((a, b) => a - b);
     const rateTxt = rates.length === 1
@@ -3334,6 +3379,7 @@ function renderFxReport(used) {
       <b>${money(u.from)} ${c}</b> → <b class="text-emerald-400">$${money(u.to)}</b>, ${rateTxt}.
       <span class="text-slate-500">Dollars are what goes into the database.</span></div></div>`;
   }).join('');
+  el.innerHTML = repWrap(`💱 Currency converted to dollars: <b>${curs.join(', ')}</b>`, fxHtml);
 }
 
 // Акаунти, у яких немає агента — інакше комісія по них просто не порахується,
@@ -3443,7 +3489,8 @@ function renderAgentReport(noAgent, hidden) {
     (${trafficMode === 'pwa' ? 'the funnel name' : 'the <b>{app}</b> token, then the funnel name'}) &mdash;
     only where exactly one of your offers matched.
     <span class="text-slate-500">Check the <b>Offer</b> column before importing; you can change any row.</span></div></div>`);
-  el.innerHTML = parts.join('');
+  el.innerHTML = repWrap(`📐 Naming and accounts: <b>${parts.length}</b> note(s)`,
+    parts.join(''));
   el.classList.remove('hidden');
 }
 
@@ -3569,19 +3616,27 @@ function renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives }) {
     const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
     const md = sum(miss.map(([, v]) => v), v => v.deps);
     parts.push(line('🏷️', 'text-amber-300 mt-2',
-      `<b>${miss.length}</b> offer name(s) from the file are not among your offers, so their rows ` +
-      `are not split by offer` + (md ? ` and <b>${md}</b> dep. end up on the neighbouring offer` : '') + `:<br>` +
+      `<b>${miss.length}</b> offer name(s) from the file are not among your offers, so those rows ` +
+      `are split by landing but their offer is left empty` + (md ? ` (<b>${md}</b> dep.)` : '') + `:<br>` +
       miss.slice(0, 8).map(([k, v]) =>
         `<span class="inline-block px-1.5 py-0.5 rounded bg-black/30 font-mono text-[10px] ml-1">${tx(k)}` +
         `<span class="opacity-40"> ${v.installs} ins · ${v.deps} dep</span></span>`).join('') +
       (miss.length > 8 ? `<span class="opacity-50"> …+${miss.length - 8} more</span>` : '') +
-      `<br><span class="opacity-60">Add them in Settings → Offers — until then the row keeps a single offer.</span>`));
+      `<br><span class="opacity-60">Pick the offer in the row, or add these names in Settings → Offers to have it filled in by itself. The numbers are counted either way.</span>`));
   }
   if (crDeps !== ktDeps) {
     parts.push(line('🔎', 'text-slate-500 mt-2',
       `Deposits by creative: <b>${crDeps}</b> in the import vs <b>${ktDeps}</b> in Keitaro (difference ${crDeps - ktDeps > 0 ? '+' : ''}${crDeps - ktDeps}).`));
   }
-  el.innerHTML = parts.join('');
+  /* У підсумку — те, заради чого звіт відкривають: скільки рядків
+     уточнено з Keitaro і чи щось не доїхало. */
+  const lost = Object.values((keitaroAgg.ktSkips || {}).noTz || {})
+    .reduce((a, v) => a + v.rows, 0);
+  el.innerHTML = repWrap(
+    `✅ Keitaro merge: <b>${hitD}</b> stat row(s) refined`
+    + (lost ? ` · <b class="text-amber-300">${lost}</b> row(s) skipped` : '')
+    + ` · <span class="opacity-60">${parts.length} note(s)</span>`,
+    parts.join(''));
   el.classList.remove('hidden');
 }
 
