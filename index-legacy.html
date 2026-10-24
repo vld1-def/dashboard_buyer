@@ -12815,6 +12815,36 @@ const ACC_STATUS = {
 };
 let accRows = [];
 let accHasStatusCol = true;
+
+/* ВЧОРАШНІЙ СПЕНД — ЩОБ ВИДНО БУЛО, ЯКИЙ КАБІНЕТ У РОБОТІ.
+
+   Статус каже, чи кабінет живий. Він не каже, чи ним користуються:
+   «Активний» однаково стоїть і на тому, що крутив учора сотню, і на
+   тому, що лежить третій тиждень. Різниця між ними — саме це число.
+
+   ВЧОРА — ЦЕ ВЧОРА, а не «останній день, який є в імпорті». Підставити
+   останній було б спокусливо (він завжди знайдеться), але це відповідь
+   на інше питання, і виглядала б вона так само переконливо.
+
+   Дня немає в імпорті — прочерк, а не нуль. Нуль читався б як «кабінет
+   стояв», хоча насправді ми просто не знаємо, — а саме за таким нулем
+   кабінет і вимикають. */
+function accYDay() {
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function accYSpend() {
+  const day = accYDay(), m = {};
+  const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : [];
+  daily.forEach(r => {
+    if (String(r.date || '').slice(0, 10) !== day) return;
+    const a = String(r.account || '').trim();
+    if (!a) return;
+    m[a] = (m[a] || 0) + (Number(r.spend) || 0);
+  });
+  return m;
+}
 // Фільтр по статусу живе прямо на плитках з лічильниками: цифра і кнопка —
 // це одне й те саме, тож не додаємо ще один селект у й без того щільну шапку.
 let accFilter = '';
@@ -13004,15 +13034,23 @@ function renderAccountsModal() {
       <span class="acc-tile-n" style="${cls}">${n}</span>
     </button>`;
 
+  /* «Крутив учора» — не статус, а факт із наших імпортів, тож плитка
+     стоїть ПІСЛЯ статусів, а не серед них: вона відповідає на інше
+     питання і перетинається з будь-яким із них. */
+  const ySp = accYSpend();
+  const yOf = r => { const v = ySp[String(r.account_id || '').trim()]; return v > 0 ? v : null; };
+  const yN = accRows.filter(r => yOf(r) != null).length;
+
   sumEl.innerHTML = `<div class="acc-tiles">
     ${tile('', 'Усі', '', accRows.length)}
     ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k])).join('')}
+    ${tile('yspend', 'Y. Spend', 'color:var(--accent)', yN)}
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
   const month = document.getElementById('acc-month')?.value || '';
   const rows = accRows.filter(r =>
-    (!accFilter || accStatusOf(r) === accFilter) &&
+    (!accFilter || (accFilter === 'yspend' ? yOf(r) != null : accStatusOf(r) === accFilter)) &&
     (!month || accMonthOf(r) === month) &&
     (!q ||
       String(r.account_id || '').toLowerCase().includes(q) ||
@@ -13022,6 +13060,7 @@ function renderAccountsModal() {
 
   if (!rows.length) {
     const why = month && !q && !accFilter ? 'У цьому місяці кабінетів не завели'
+             : accFilter === 'yspend' ? 'Учора не крутив жоден кабінет — або імпорт за вчора ще не залитий'
              : accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Нічого не знайдено';
     body.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     return;

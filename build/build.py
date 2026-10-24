@@ -804,10 +804,10 @@ rest = sub(rest,
   if (elCpa) elCpa.innerText = formatCurrency(totalD > 0 ? totalS / totalD : 0);""",
   'KPI без CPL/CPA')
 
-# Кабінети: колонка з датою додавання
+# Кабінети: колонки «Додано» і «Y. Spend»
 rest = sub(rest,
   "  const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 210px minmax(110px,1.3fr);';",
-  "  const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 84px 210px minmax(110px,1.3fr);';",
+  "  const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 84px 78px 210px minmax(110px,1.3fr);';",
   'ширини колонок кабінетів')
 
 COUNT = """${[`Account <span class="opacity-50">(${
@@ -816,14 +816,19 @@ COUNT = """${[`Account <span class="opacity-50">(${
 rest = sub(rest,
   """      """ + COUNT + """'Agent','Browser','TZ','Статус','Нотатка'].map(h =>
         `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' ? 'text-center' : ''}">${h}</span>`).join('')}""",
-  """      """ + COUNT + """'Agent','Browser','TZ','Додано','Статус','Нотатка'].map(h =>
-        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' || h === 'Додано' ? 'text-center' : ''}">${h}</span>`).join('')}""",
+  """      """ + COUNT + """'Agent','Browser','TZ','Додано','Y. Spend','Статус','Нотатка'].map(h =>
+        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${
+          h === 'TZ' || h === 'Додано' ? 'text-center' : h === 'Y. Spend' ? 'text-right' : ''
+        }"${h === 'Y. Spend' ? ' title="Учорашній спенд за нашими імпортами. Саме вчора \u2014 місяць у шапці його не змінює. Прочерк означає, що за вчора імпорту немає, а не що кабінет стояв."' : ''}>${h}</span>`).join('')}""",
   'заголовки кабінетів')
 
 rest = sub(rest,
   """          <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>""",
   """          <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>
-          <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Дата додавання кабінета">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>""",
+          <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Дата додавання кабінета">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>
+          ${(() => { const v = yOf(r); return v == null
+            ? '<span class="acc-y is-none">\u2014</span>'
+            : `<span class="acc-y">$${Math.round(v).toLocaleString('en-US')}</span>`; })()}""",
   'дата додавання кабінета')
 
 # Зріз KPI за моделлю виплат: фільтруємо на вході в renderDashboard,
