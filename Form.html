@@ -3099,7 +3099,11 @@ function parseKeitaro(content) {
       const pv = String(r[iPlc] || '').trim();
       if (pv && !pv.startsWith('{')) ktPlacements[crKey] = pv;
     }
-    add(byDaily,    mergeKey(localDay, acc, geo, ktid, rowMode), ins, reg, dep);
+    /* Разом із цифрами кладемо СКЛАДОВІ ключа. Без них ключ — це
+       рядок, і сказати, чим саме він розійшовся з фейсбучним, можна
+       хіба що очима. */
+    add(byDaily, mergeKey(localDay, acc, geo, ktid, rowMode), ins, reg, dep,
+        { acc, date: localDay, geo, ktid, mode: rowMode });
 
     // Офер і лендінг — теж зі стовпця цього постачальника, якщо він інший.
     const io = (pIdx && pIdx.offer >= 0) ? pIdx.offer : iOff;
@@ -3230,6 +3234,43 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     }
   });
 
+  /* ГРУПИ KEITARO, ЯКІ НЕ ЗНАЙШЛИ ЖОДНОГО РЯДКА FB.
+
+     Злиття йде ПО РЯДКАХ ФЕЙСБУКА: немає рядка — немає куди чіпляти,
+     хоч би скільки було в кейтаро. Доти про це не було ні слова, і
+     питання «в кейтаро по кабінету купа даних, чому нуль» не мало
+     відповіді ніде, крім читання коду.
+
+     Ключ мусить збігтись посимвольно, тож і причин розбіжності лише
+     кілька — і кожну видно, якщо тримати поруч складові ключа. */
+  const fbByAcc = {};
+  Object.values(dailyAgg).forEach(r => {
+    (fbByAcc[r.acc] = fbByAcc[r.acc] || []).push(r);
+  });
+  const ktMiss = [];
+  Object.entries(keitaroAgg.byDaily).forEach(([k, v]) => {
+    if (dGroups[k]) return;                                  // зійшлось
+    if (!v.installs && !v.regs && !v.deps) return;            // втрачати нема чого
+    const fbRows = fbByAcc[v.acc] || [];
+    let why;
+    if (!fbRows.length) {
+      why = 'this account has no rows in the FB report at all';
+    } else if (!fbRows.some(r => r.date === v.date)) {
+      const days = [...new Set(fbRows.map(r => r.date))].sort().slice(0, 4).join(', ');
+      why = `the FB report has this account on ${days} — the day differs (timezone shift)`;
+    } else if (!fbRows.some(r => r._mode === v.mode)) {
+      const m = [...new Set(fbRows.map(r => r._mode))].join('/');
+      why = `Keitaro reads these rows as ${v.mode.toUpperCase()}, FB as ${m.toUpperCase()}`
+          + ' — the keys have a different shape and can never meet';
+    } else {
+      const near = fbRows.filter(r => r.date === v.date && r._mode === v.mode)
+        .map(r => `${r.geo}|${r._ktid}`).slice(0, 3).join(', ');
+      why = `geo/ktid differ: Keitaro has ${v.geo}|${v.ktid}, FB has ${near || '—'}`;
+    }
+    ktMiss.push({ acc: v.acc, date: v.date, mode: v.mode,
+                  installs: v.installs, regs: v.regs, deps: v.deps, why });
+  });
+
   // Креативи: якщо на (день,акаунт,креатив) кілька рядків (девайси) — ділимо пропорційно кліками
   const groups = {};
   Object.values(creativeAgg).forEach(row => {
@@ -3345,7 +3386,7 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     .map(([, v]) => v);
 
   console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах і доменах: ${dRes.splits} daily`);
-  renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives: creativesOut });
+  renderKtMergeReport({ hitD, hitC, missFb, missKt, ktMiss, creatives: creativesOut });
   showStatus(dRes.splits
     ? `Keitaro: refined ${hitD} rows, split across landings/domains ${dRes.splits}`
     : `Keitaro: refined ${hitD} stat rows`);
@@ -3497,7 +3538,7 @@ function renderAgentReport(noAgent, hidden) {
 // Звіт про злиття: скільки зійшлось і — головне — що НЕ зійшлось.
 // Мовчазне розходження тут найдорожче: рядок з ФБ-івськими конверсіями виглядає
 // так само, як уточнений з Keitaro, і помилку помічаєш уже в звітах.
-function renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives }) {
+function renderKtMergeReport({ hitD, hitC, missFb, missKt, ktMiss, creatives }) {
   const el = document.getElementById('kt-merge-report');
   if (!el) return;
   const sum = (arr, f) => arr.reduce((a, x) => a + (f(x) || 0), 0);
@@ -3624,6 +3665,26 @@ function renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives }) {
       (miss.length > 8 ? `<span class="opacity-50"> …+${miss.length - 8} more</span>` : '') +
       `<br><span class="opacity-60">Pick the offer in the row, or add these names in Settings → Offers to have it filled in by itself. The numbers are counted either way.</span>`));
   }
+  /* ЧОМУ КАБІНЕТ ІЗ ДАНИМИ В KEITARO ДАВ НУЛЬ.
+
+     Це найчастіше питання до імпорту, і доти відповіді на нього не
+     було ніде. Показуємо кожну групу, яка не знайшла рядка FB, з її
+     цифрами і з причиною — не «не зійшлось», а чим саме. */
+  if (ktMiss && ktMiss.length) {
+    const t = ktMiss.reduce((a, m) => ({ i: a.i + m.installs, r: a.r + m.regs, d: a.d + m.deps }),
+                            { i: 0, r: 0, d: 0 });
+    parts.push(line('🚫', 'text-rose-300 mt-2',
+      `<b>${ktMiss.length}</b> Keitaro group(s) found no row in the FB report — `
+      + `<b>${t.i}</b> inst / <b>${t.r}</b> regs / <b>${t.d}</b> deps are not imported:`
+      + ktMiss.slice(0, 10).map(m =>
+          `<div class="mt-1"><span class="font-mono text-rose-200">${esc(m.acc)}</span>`
+          + `<span class="opacity-40"> ${esc(m.date)} · ${esc(m.mode)}</span>`
+          + `<span class="opacity-60"> — ${m.installs} inst / ${m.regs} regs / ${m.deps} deps</span>`
+          + `<div class="text-rose-300/80 text-[11px]">${esc(m.why)}</div></div>`).join('')
+      + (ktMiss.length > 10 ? `<div class="opacity-50">…+${ktMiss.length - 10} more</div>` : '')
+      + `<div class="opacity-60 mt-1">The merge walks FB rows: with no row there is nothing to attach the numbers to.</div>`));
+  }
+
   if (crDeps !== ktDeps) {
     parts.push(line('🔎', 'text-slate-500 mt-2',
       `Deposits by creative: <b>${crDeps}</b> in the import vs <b>${ktDeps}</b> in Keitaro (difference ${crDeps - ktDeps > 0 ? '+' : ''}${crDeps - ktDeps}).`));
