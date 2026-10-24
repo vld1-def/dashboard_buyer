@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 24.10 15:42">
+  <meta name="build" content="build 24.10 15:51">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4355,6 +4355,16 @@ body.is-lead-only .admin-only { display: none; }
   color: var(--text-muted); opacity: .8;
 }
 
+/* Учорашній спенд у списку кабінетів. Число праворуч, бо його
+   порівнюють між рядками; прочерк притлумлений, щоб «не знаємо» не
+   важило стільки ж, скільки сума. */
+.acc-y {
+  display: block; text-align: right;
+  font-size: 12px; font-weight: 900; color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+}
+.acc-y.is-none { color: var(--text-muted); opacity: .35; font-weight: 700; }
+
 /* ── DATA CHECK: КАРТА СТОВПЦІВ ──
    Догадка про те, який стовпець що означає, мусить бути на екрані, а не
    в консолі: саме через невидиму догадку інстали тихо читались із
@@ -5842,7 +5852,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.10 15:42</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 24.10 15:51</div>
     </div>
   </aside>
 
@@ -20938,6 +20948,36 @@ const ACC_STATUS = {
 let accRows = [];
 let accTeam = '';          // для якої команди лежить кеш
 let accHasStatusCol = true;
+
+/* ВЧОРАШНІЙ СПЕНД — ЩОБ ВИДНО БУЛО, ЯКИЙ КАБІНЕТ У РОБОТІ.
+
+   Status каже, чи кабінет живий. Він не каже, чи ним користуються:
+   «Active» однаково стоїть і на тому, що крутив учора сотню, і на
+   тому, що лежить третій тиждень. Різниця між ними — саме це число.
+
+   ВЧОРА — ЦЕ ВЧОРА, а не «останній day, який є в імпорті». Підставити
+   останній було б спокусливо (він завжди знайдеться), але це відповідь
+   на інше питання, і виглядала б вона так само переконливо.
+
+   Дня немає в імпорті — прочерк, а не нуль. Нуль читався б як «кабінет
+   стояв», хоча насправді ми просто не знаємо, — а саме за таким нулем
+   кабінет і вимикають. */
+function accYDay() {
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function accYSpend() {
+  const day = accYDay(), m = {};
+  const daily = (typeof rawData !== 'undefined' && rawData) ? rawData : [];
+  daily.forEach(r => {
+    if (String(r.date || '').slice(0, 10) !== day) return;
+    const a = String(r.account || '').trim();
+    if (!a) return;
+    m[a] = (m[a] || 0) + (Number(r.spend) || 0);
+  });
+  return m;
+}
 // Фільтр по статусу живе прямо на плитках з лічильниками: цифра і кнопка —
 // це одне й те саме, тож не додаємо ще один селект у й без того щільну шапку.
 // Типово стоїть «active»: кабінетів десятки, і серед мертвих губляться ті,
@@ -21140,15 +21180,23 @@ function renderAccountsModal() {
       <span class="acc-tile-n" style="${cls}">${n}</span>
     </button>`;
 
+  /* «Крутив учора» — не статус, а факт із наших імпортів, тож плитка
+     стоїть ПІСЛЯ статусів, а не серед них: вона відповідає на інше
+     питання і перетинається з будь-яким із них. */
+  const ySp = accYSpend();
+  const yOf = r => { const v = ySp[String(r.account_id || '').trim()]; return v > 0 ? v : null; };
+  const yN = accRows.filter(r => yOf(r) != null).length;
+
   sumEl.innerHTML = `<div class="acc-tiles">
     ${tile('', 'All', '', accRows.length)}
     ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k])).join('')}
+    ${tile('yspend', 'Y. Spend', 'color:var(--accent)', yN)}
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
   const month = document.getElementById('acc-month')?.value || '';
   const rows = accRows.filter(r =>
-    (!accFilter || accStatusOf(r) === accFilter) &&
+    (!accFilter || (accFilter === 'yspend' ? yOf(r) != null : accStatusOf(r) === accFilter)) &&
     (!month || accMonthOf(r) === month) &&
     (!q ||
       String(r.account_id || '').toLowerCase().includes(q) ||
@@ -21158,6 +21206,7 @@ function renderAccountsModal() {
 
   if (!rows.length) {
     const why = month && !q && !accFilter ? 'У цьому місяці кабінетів не завели'
+             : accFilter === 'yspend' ? 'Учора не крутив жоден кабінет — або імпорт за вчора ще не залитий'
              : accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Nothing found';
     body.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     return;
@@ -21168,7 +21217,7 @@ function renderAccountsModal() {
      «де цей кабінет відкривати» виникає разом із питанням «чий він»,
      і йти за цим у Form → Accounts означало б два вікна на один
      погляд. Колонка читальна: профіль міняють там, де його й задають. */
-  const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 84px 210px minmax(110px,1.3fr);';
+  const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 84px 78px 210px minmax(110px,1.3fr);';
   // проблемні — зверху, щоб не шукати їх у довгому списку
   const order = { ban: 0, problem: 1, active: 2 };
   rows.sort((a, b) => order[accStatusOf(a)] - order[accStatusOf(b)] ||
@@ -21178,8 +21227,10 @@ function renderAccountsModal() {
     <div class="${GRID} px-4 pb-2" style="${COLS}">
       ${[`Account <span class="opacity-50">(${
           rows.length < accRows.length ? rows.length + ' / ' + accRows.length : rows.length
-        })</span>`,'Agent','Browser','TZ','Added','Status','Note'].map(h =>
-        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${h === 'TZ' || h === 'Added' ? 'text-center' : ''}">${h}</span>`).join('')}
+        })</span>`,'Agent','Browser','TZ','Added','Y. Spend','Status','Note'].map(h =>
+        `<span class="text-[9px] text-slate-500 uppercase font-black tracking-widest ${
+          h === 'TZ' || h === 'Added' ? 'text-center' : h === 'Y. Spend' ? 'text-right' : ''
+        }"${h === 'Y. Spend' ? ' title="Учорашній спенд за нашими імпортами. Саме вчора — місяць у шапці його не змінює. Прочерк означає, що за вчора імпорту немає, а не що кабінет стояв."' : ''}>${h}</span>`).join('')}
     </div>
     <div class="space-y-1.5">
       ${rows.map(r => {
@@ -21190,6 +21241,9 @@ function renderAccountsModal() {
           <span class="text-[12px] font-bold text-violet-300 truncate" title="${(r.profile || '').replace(/"/g, '&quot;')}">${r.profile || '<span class="opacity-25">—</span>'}</span>
           <span class="text-[12px] font-black text-amber-300 text-center">${r.timezone === null || r.timezone === undefined ? '—' : (r.timezone > 0 ? '+' : '') + r.timezone}</span>
           <span class="text-[11px] font-bold text-slate-400 text-center font-mono" title="Date the account was added">${String(r.created_at || r.added_at || '').slice(0, 10) || '—'}</span>
+          ${(() => { const v = yOf(r); return v == null
+            ? '<span class="acc-y is-none">—</span>'
+            : `<span class="acc-y">$${Math.round(v).toLocaleString('en-US')}</span>`; })()}
           <div class="acc-sts">
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
               <button type="button" onclick="accSetStatus('${r.id}','${k}')"
@@ -23965,12 +24019,6 @@ const CAB_COLS = [
   { key: 'spark', label: '14d', ta: 'c', tip: 'Spend over the last 14 days, from our own imports. Always 14 days \u2014 the period above does not change it.',
     get: c => c.x.spend, tdCls: c => CAB_STATE[c.state].tone, tdStyle: 'height:1px',
     cell: (v, c) => cabSpark(c.x.byDay, c.x.last, 58, 16) },
-  /* Учорашній спенд стоїть ПЕРЕД спендом за період навмисно: саме по
-     ньому видно, чи кабінет у роботі, і шукати його серед колонок за
-     вибрані дати довелося б щоразу. */
-  { key: 'yspend', label: 'Y. Spend', ta: 'r',
-    tip: 'Yesterday\u2019s spend, from our own imports. Always yesterday \u2014 the period above does not change it. A dash means we have no import for that day, not that the account stood still.',
-    get: c => cabYSpend(c), cell: v => v == null ? null : cabMoney(v) },
   { key: 'spend', label: 'Our spend', ta: 'r',
     tip: 'Spend over the selected period, by our own imports \u2014 not what Facebook says',
     get: c => c.x.spend, cell: v => v > 0 ? cabMoney(v) : null },
@@ -24035,7 +24083,7 @@ const CAB_COLS = [
 /* За замовчуванням увімкнено те, на що дивляться щодня. Решта —
    кнопкою Columns. Порожня таблиця на першому заході виглядала б як
    поломка, тому «нічого не ввімкнено» тут не варіант. */
-const CAB_COLS_DEF = { camp: 1, sets: 1, ads: 1, ctr: 1, cpc: 1, spark: 1, yspend: 1 };
+const CAB_COLS_DEF = { camp: 1, sets: 1, ads: 1, ctr: 1, cpc: 1, spark: 1 };
 const cabColsOn = () => cabView.cols || CAB_COLS_DEF;
 const cabColOn = k => !!cabColsOn()[k];
 
@@ -24487,23 +24535,6 @@ function cabByStatus(by, skipActive) {
 const cabDayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
 
-/* ВЧОРА — ЦЕ ВЧОРА, А НЕ «ОСТАННІЙ ІМПОРТОВАНИЙ ДЕНЬ».
-
-   Питання, заради якого ця колонка є, звучить так: кабінет учора
-   працював чи стояв. Підставити замість учора останній day, який у
-   нас є, означало б відповісти на інше питання — і найгірше, що
-   відповідь виглядала б так само.
-
-   Дня немає в імпорті — колонка показує «—», а не нуль. Нуль тут
-   читався б як «стояв», хоча насправді ми просто не знаємо. */
-function cabYDay() {
-  const d = new Date(); d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-const cabYSpend = c => {
-  const v = c && c.x && c.x.byDay ? Number(c.x.byDay[cabYDay()]) : 0;
-  return v > 0 ? v : null;
-};
 const CAB_CUR = { USD: '$', EUR: '\u20AC', GBP: '\u00A3', UAH: '\u20B4' };
 /* Валюту беремо з кабінета, а не з дашборда: долар на євровому
    кабінеті — це не округлення, це інше число. */
@@ -25591,8 +25622,6 @@ function cabRender() {
     tiles.innerHTML = `<div class="flt-row flt-row-cab">
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
-      ${tile('yspend', 'Y. Spend', all.filter(c => cabYSpend(c) != null && c.state !== 'archived').length,
-          '#F59E0B', 'rgba(245,158,11,.14)', 'rgba(245,158,11,.30)')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
       ${tools}
     </div>`
@@ -25634,10 +25663,6 @@ function cabRender() {
        плитка була. Пускаємо його на 'running', а не ламаємо екран
        порожнім списком. */
     : cabFilter === 'working' ? c.state === 'running'
-    /* «Учора крутив» — не стан кабінета, а факт із наших імпортів, тож
-       і живе він окремо від станів. Архів сюди не пускаємо з тієї ж
-       причини, що й у All: його сховали навмисно. */
-    : cabFilter === 'yspend' ? cabYSpend(c) != null && c.state !== 'archived'
     : c.state === cabFilter;
   const inText = c => !q || [c.id, c.row.provider_name, c.row.status_note,
             c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,

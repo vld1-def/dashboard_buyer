@@ -302,12 +302,6 @@ const CAB_COLS = [
   { key: 'spark', label: '14d', ta: 'c', tip: 'Spend over the last 14 days, from our own imports. Always 14 days \u2014 the period above does not change it.',
     get: c => c.x.spend, tdCls: c => CAB_STATE[c.state].tone, tdStyle: 'height:1px',
     cell: (v, c) => cabSpark(c.x.byDay, c.x.last, 58, 16) },
-  /* Учорашній спенд стоїть ПЕРЕД спендом за період навмисно: саме по
-     ньому видно, чи кабінет у роботі, і шукати його серед колонок за
-     вибрані дати довелося б щоразу. */
-  { key: 'yspend', label: 'Y. Spend', ta: 'r',
-    tip: 'Yesterday\u2019s spend, from our own imports. Always yesterday \u2014 the period above does not change it. A dash means we have no import for that day, not that the account stood still.',
-    get: c => cabYSpend(c), cell: v => v == null ? null : cabMoney(v) },
   { key: 'spend', label: 'Our spend', ta: 'r',
     tip: 'Spend over the selected period, by our own imports \u2014 not what Facebook says',
     get: c => c.x.spend, cell: v => v > 0 ? cabMoney(v) : null },
@@ -372,7 +366,7 @@ const CAB_COLS = [
 /* За замовчуванням увімкнено те, на що дивляться щодня. Решта —
    кнопкою Columns. Порожня таблиця на першому заході виглядала б як
    поломка, тому «нічого не ввімкнено» тут не варіант. */
-const CAB_COLS_DEF = { camp: 1, sets: 1, ads: 1, ctr: 1, cpc: 1, spark: 1, yspend: 1 };
+const CAB_COLS_DEF = { camp: 1, sets: 1, ads: 1, ctr: 1, cpc: 1, spark: 1 };
 const cabColsOn = () => cabView.cols || CAB_COLS_DEF;
 const cabColOn = k => !!cabColsOn()[k];
 
@@ -824,23 +818,6 @@ function cabByStatus(by, skipActive) {
 const cabDayDiff = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 const cabMoney = n => '$' + Math.round(n).toLocaleString('en-US');
 
-/* ВЧОРА — ЦЕ ВЧОРА, А НЕ «ОСТАННІЙ ІМПОРТОВАНИЙ ДЕНЬ».
-
-   Питання, заради якого ця колонка є, звучить так: кабінет учора
-   працював чи стояв. Підставити замість учора останній день, який у
-   нас є, означало б відповісти на інше питання — і найгірше, що
-   відповідь виглядала б так само.
-
-   Дня немає в імпорті — колонка показує «—», а не нуль. Нуль тут
-   читався б як «стояв», хоча насправді ми просто не знаємо. */
-function cabYDay() {
-  const d = new Date(); d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-const cabYSpend = c => {
-  const v = c && c.x && c.x.byDay ? Number(c.x.byDay[cabYDay()]) : 0;
-  return v > 0 ? v : null;
-};
 const CAB_CUR = { USD: '$', EUR: '\u20AC', GBP: '\u00A3', UAH: '\u20B4' };
 /* Валюту беремо з кабінета, а не з дашборда: долар на євровому
    кабінеті — це не округлення, це інше число. */
@@ -1928,8 +1905,6 @@ function cabRender() {
     tiles.innerHTML = `<div class="flt-row flt-row-cab">
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
-      ${tile('yspend', 'Y. Spend', all.filter(c => cabYSpend(c) != null && c.state !== 'archived').length,
-          '#F59E0B', 'rgba(245,158,11,.14)', 'rgba(245,158,11,.30)')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
       ${tools}
     </div>`
@@ -1971,10 +1946,6 @@ function cabRender() {
        плитка була. Пускаємо його на 'running', а не ламаємо екран
        порожнім списком. */
     : cabFilter === 'working' ? c.state === 'running'
-    /* «Учора крутив» — не стан кабінета, а факт із наших імпортів, тож
-       і живе він окремо від станів. Архів сюди не пускаємо з тієї ж
-       причини, що й у All: його сховали навмисно. */
-    : cabFilter === 'yspend' ? cabYSpend(c) != null && c.state !== 'archived'
     : c.state === cabFilter;
   const inText = c => !q || [c.id, c.row.provider_name, c.row.status_note,
             c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,
