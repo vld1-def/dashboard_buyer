@@ -7,6 +7,15 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <link rel="icon" type="image/png" href="icon.png">
   <style>
+    /* Рядок, до якого Keitaro не доїхав. Дрібний і притлумлений: це не
+       помилка імпорту, а чесне «цифри тут не з Keitaro». */
+    .ds-nokt {
+      display: block; margin-top: 2px; width: fit-content;
+      padding: 1px 5px; border-radius: 6px;
+      background: rgba(251, 146, 60, .14); border: 1px solid rgba(251, 146, 60, .3);
+      color: #FDBA74; font-size: 9px; font-weight: 900;
+      text-transform: uppercase; letter-spacing: .08em; cursor: help;
+    }
     :root { 
       --bg-color: #020617; 
       --glass-bg: rgba(30, 41, 59, 0.4); 
@@ -2972,6 +2981,16 @@ function parseKeitaro(content) {
   const offerHits = new Set(), offerMisses = {};
   const ktPlacements = {};
   const days = new Set(), unlinked = new Set();
+  /* ВІДКИНУТІ РЯДКИ — З ЦИФРАМИ, А НЕ СПИСКОМ НАЗВ.
+
+     Доти про них казав один alert: «Accounts with no timezone». У
+     ньому поруч із номерами кабінетів спокійно стояло «TJ» — бо в
+     рядків одного постачальника в тому самому сабі лежить не кабінет,
+     а гео. Відрізнити одне від одного в тому списку було ніяк, а
+     скільки інсталів і депозитів поїхало разом із тими рядками — не
+     сказано взагалі. Тому рахуємо все: рядки, інстали, реєстрації,
+     депозити і з якого джерела вони прийшли. */
+  const ktSkips = { noAcc: {}, noDay: {}, noTz: {}, total: {} };
   const add = (obj, key, ins, reg, dep, extra) => {
     if (!obj[key]) obj[key] = { installs: 0, regs: 0, deps: 0, ...(extra || {}) };
     obj[key].installs += ins; obj[key].regs += reg; obj[key].deps += dep;
@@ -2979,11 +2998,28 @@ function parseKeitaro(content) {
 
   for (let i = 1; i < lines.length; i++) {
     const r = sp(lines[i]);
+    /* Цифри читаємо ДО перевірок: рядок, який ми відкидаємо, теж
+       мусить лягти в звіт зі своїми інсталами й депозитами — інакше
+       «відкинуто 6 рядків» нічого не каже про ціну втрати. */
+    const ins = parseInt(r[iIns], 10) || 0, reg = parseInt(r[iReg], 10) || 0, dep = parseInt(r[iDep], 10) || 0;
+    const skip = (why, key) => {
+      const b = ktSkips[why];
+      const m = b[key] || (b[key] = { rows: 0, installs: 0, regs: 0, deps: 0, src: [] });
+      m.rows++; m.installs += ins; m.regs += reg; m.deps += dep;
+      const sv = iSrc >= 0 ? String(r[iSrc] || '').trim() : '';
+      if (sv && !m.src.includes(sv)) m.src.push(sv);
+    };
     const acc = (r[iAcc] || '').trim();
-    if (!acc || acc.startsWith('{')) continue;
-    const day = (r[iDay] || '').trim(); if (!day) continue;
+    const day = (r[iDay] || '').trim();
+    /* Порожні і акаунт, і день — це ПІДСУМКОВИЙ рядок самої вигрузки.
+       Його теж не імпортуємо, але це не втрата, а підсумок: показати
+       його серед «не доїхало» означало б злякати людину числом, яке
+       насправді дорівнює сумі всього файлу. */
+    if (!acc && !day) { skip('total', '—'); continue; }
+    if (!acc || acc.startsWith('{')) { skip('noAcc', acc || '—'); continue; }
+    if (!day) { skip('noDay', acc); continue; }
     const tz = mappingDB.timezones ? mappingDB.timezones[acc] : undefined;
-    if (tz === undefined || tz === null) { unlinked.add(acc); continue; }
+    if (tz === undefined || tz === null) { unlinked.add(acc); skip('noTz', acc); continue; }
 
     // час файлу (fileTz) → локальний день акаунта
     const [y, m, d] = day.split('-').map(Number);
@@ -3027,7 +3063,6 @@ function parseKeitaro(content) {
     }
     const cr = (r[(pIdx && pIdx.cr >= 0) ? pIdx.cr : iCr] || '').trim();
     const funnel = apFunnelData(funRaw) || apFunnelData(ktid) || funRaw || '—';
-    const ins = parseInt(r[iIns], 10) || 0, reg = parseInt(r[iReg], 10) || 0, dep = parseInt(r[iDep], 10) || 0;
 
     add(byAccount,  `${localDay}|${acc}`, ins, reg, dep, { account: acc, date: localDay, tz: Number(tz) });
     add(byCampaign, `${localDay}|${acc}|${normCamp(campRaw)}|${funnel}`, ins, reg, dep,
@@ -3089,7 +3124,7 @@ function parseKeitaro(content) {
       + '" not found — geo of APP rows stays "??"');
   }
   keitaroAgg = { byAccount, byCampaign, byCreative, byDaily, byDailyLand, ktPlacements,
-                 days, unlinked, offerMisses, provSeen, ktSeen: { ...ktSeen },
+                 days, unlinked, ktSkips, offerMisses, provSeen, ktSeen: { ...ktSeen },
                  hasSrc: iSrc >= 0 };
 
   if (iOff >= 0) {
@@ -3136,7 +3171,14 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     rows.forEach(r => dWeight.set(r, rows.length === 1 ? 1
       : (tot > 0 ? (r.spend || 0) / tot : 1 / rows.length)));
     const kt = keitaroAgg.byDaily[k];
-    if (!kt) return;
+    /* KEITARO ДО ЦЬОГО РЯДКА НЕ ДОЇХАВ — І РЯДОК ПРО ЦЕ КАЖЕ.
+
+       Доти було просто `return`: рядок лишався з конверсіями самого
+       Facebook (а в app-звіті вони часто нульові) і виглядав рівно як
+       рядок, де Keitaro спрацював і показав чесні нулі. «Кампанія не
+       дала конверсій» і «даних по ній немає» — різні речі, і плутати
+       їх не можна: за першою кабінет вимикають. */
+    if (!kt) { rows.forEach(r => r._noKt = true); return; }
     hitD += rows.length;
     rows.forEach(r => {
       const w = dWeight.get(r);
@@ -3425,6 +3467,51 @@ function renderKtMergeReport({ hitD, hitC, missFb, missKt, creatives }) {
 
   const parts = [line('✅', 'text-slate-400',
     `Refined from Keitaro: <b class="text-emerald-400">${hitD}</b> stat rows, <b class="text-emerald-400">${hitC}</b> creative groups.`)];
+
+  /* ВІДКИНУТІ РЯДКИ KEITARO — ВИДИМО І З ЦІНОЮ.
+
+     Рядок, у якого немає таймзони, дня чи акаунта, просто не доходив
+     до злиття. Скільки інсталів і депозитів поїхало разом із ним —
+     не казав ніхто, а кабінет у звіті виглядав як такий, що нічого не
+     дав.
+
+     Окремо позначаємо значення, НЕ СХОЖЕ НА НОМЕР КАБІНЕТУ. Номер
+     кабінету — довге число; «TJ» чи «0000» ним бути не можуть. Таке
+     значення в колонці акаунта майже завжди означає, що в рядків
+     цього постачальника акаунт лежить в іншому сабі — і це вже
+     питання до перебивок у Settings, а не до таймзон. */
+  const looksAcc = v => /^\d{6,}$/.test(String(v || '').trim());
+  const skipRows = (bucket) => Object.entries((keitaroAgg.ktSkips || {})[bucket] || {});
+  const skipBlock = (bucket, title, tail) => {
+    const rows = skipRows(bucket);
+    if (!rows.length) return null;
+    const tot = rows.reduce((a, [, v]) => ({ r: a.r + v.rows, i: a.i + v.installs,
+      g: a.g + v.regs, d: a.d + v.deps }), { r: 0, i: 0, g: 0, d: 0 });
+    const body = rows.sort((a, b) => b[1].rows - a[1].rows).slice(0, 12).map(([k, v]) => {
+      const odd = !looksAcc(k);
+      return `<div class="mt-1"><span class="font-mono ${odd ? 'text-rose-300' : 'text-amber-200'}">${esc(k)}</span>`
+        + `<span class="opacity-60"> — ${v.rows} rows, ${v.installs} inst / ${v.regs} regs / ${v.deps} deps</span>`
+        + (v.src.length ? `<span class="opacity-50"> · ${v.src.map(esc).join(', ')}</span>` : '')
+        + (odd ? `<div class="text-rose-300/80 text-[11px]">Does not look like an account number — for this source the account is probably in a different sub. Settings &rarr; Keitaro Mapping.</div>` : '')
+        + `</div>`;
+    }).join('');
+    return line('⚠️', 'text-amber-300 mt-2',
+      `<b>${title}: ${tot.r} rows</b> <span class="opacity-70">(${tot.i} inst / ${tot.g} regs / ${tot.d} deps did not reach the import)</span>`
+      + body + (rows.length > 12 ? `<div class="opacity-50">…+${rows.length - 12} more</div>` : '')
+      + (tail ? `<div class="opacity-60 mt-1">${tail}</div>` : ''));
+  };
+  [skipBlock('noTz', 'Skipped — no timezone linked', 'Add a TZ in Settings &rarr; Link Cabinet.'),
+   skipBlock('noAcc', 'Skipped — empty account column', null),
+   skipBlock('noDay', 'Skipped — empty day column', null)]
+    .filter(Boolean).forEach(b => parts.push(b));
+
+  /* Підсумковий рядок файлу — окремо і спокійним тоном. Він не
+     втрачений, він просто підсумок; зате по ньому зручно звірити, чи
+     зійшлось усе інше. */
+  const totRow = Object.values((keitaroAgg.ktSkips || {}).total || {})[0];
+  if (totRow) parts.push(line('🧮', 'text-slate-500 mt-2',
+    `The export's own totals row is not imported: <b>${totRow.installs}</b> inst / <b>${totRow.regs}</b> regs / <b>${totRow.deps}</b> deps.`
+    + ` <span class="opacity-70">Use it to check the numbers above.</span>`));
 
   /* ЩО СКАЗАВ СТОВПЕЦЬ SOURCE.
 
@@ -3976,7 +4063,12 @@ function renderDualPreview() {
     return `
       <tr class="hover:bg-white/5 text-[13px]">
         <td class="p-4 opacity-50 font-mono">${r.date}</td>
-        <td class="p-4 font-bold text-blue-400">${r.acc}</td>
+        <!-- Прапорець під кабінетом, а не замість цифр: цифри тут
+             фейсбучні й справжні, просто вони НЕ підтверджені Keitaro.
+             Без цього нулі читаються як «конверсій не було». -->
+        <td class="p-4 font-bold text-blue-400">${r.acc}${r._noKt
+          ? '<span class="ds-nokt" title="No Keitaro rows for this account and day. The numbers in this row come from Facebook, not from Keitaro.">no Keitaro</span>'
+          : ''}</td>
         <td class="p-4">
           <div class="editable-cell uppercase border-b border-white/10" contenteditable="true" 
                onblur="datasetToImport[${i}].geo=this.innerText.trim().toUpperCase(); renderDualPreview();">${r.geo}</div>
