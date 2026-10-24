@@ -29,6 +29,15 @@
     .rep-body { margin-top: 10px; }
     /* Рядок, до якого Keitaro не доїхав. Дрібний і притлумлений: це не
        помилка імпорту, а чесне «цифри тут не з Keitaro». */
+    /* Гео лендінга, якого немає серед рядків FB. Помітно, але не
+       криком: це не помилка, а чесне «цей лендінг не з цього гео». */
+    .ds-geo {
+      display: inline-block; margin-top: 2px;
+      padding: 1px 5px; border-radius: 6px;
+      background: rgba(244, 114, 182, .14); border: 1px solid rgba(244, 114, 182, .3);
+      color: #F9A8D4; font-size: 9px; font-weight: 900;
+      text-transform: uppercase; letter-spacing: .08em; cursor: help;
+    }
     .ds-nokt {
       display: block; margin-top: 2px; width: fit-content;
       padding: 1px 5px; border-radius: 6px;
@@ -612,6 +621,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
               </tr>
             </thead>
             <tbody id="dataset-preview-body" class="divide-y divide-white/5"></tbody>
+            <!-- ПІДСУМОК. Скільки всього вийшло після розподілу — це
+                 перше, що звіряють із кабінетом, і рахувати його очима
+                 по сотні рядків не має сенсу. -->
+            <tfoot id="dataset-preview-foot" class="bg-black/40 border-t-2 border-white/10"></tfoot>
           </table>
         </div>
 
@@ -632,6 +645,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
               </tr>
             </thead>
             <tbody id="creatives-preview-body-inside" class="divide-y divide-white/5"></tbody>
+            <tfoot id="creatives-preview-foot" class="bg-black/40 border-t-2 border-white/10"></tfoot>
           </table>
         </div>
 
@@ -2711,11 +2725,44 @@ async function loadKnownOffers() {
   } catch (e) { console.warn('offers:', e.message); knownOffers = []; }
 }
 
+/* ХВІСТ У КВАДРАТНИХ ДУЖКАХ — НАША ПРИМІТКА, А НЕ ЧАСТИНА НАЗВИ.
+
+   У списку оферів лежить «Pin-Up[25]», «22bet[crash]» — у дужках наша
+   позначка (виплата, версія). У рядку Keitaro її немає й бути не може:
+   там просто «Pin-Up | Wheel Plus Girl TJ | 20$ | tjfb».
+
+   Збіг шукався входженням ПОВНОЇ назви зі списку, тож «pin-up[25]» у
+   тому рядку не знаходилось ніколи. Лендінг у прев'ю був, а офер
+   лишався порожнім — і його вибирали руками в кожному рядку, хоча він
+   у списку стоїть.
+
+   Тому кожен офер пробуємо двічі: як є і без хвоста. */
+const offBase = o => String(o == null ? '' : o).replace(/\s*\[[^\]]*\]\s*$/, '').trim();
+
+/* Виграє НАЙДОВШИЙ збіг, а не перший у списку. Доти «Pin-Up» перебивав
+   «Pin-Up[25]» лише тому, що стоїть вище — хоча сусідній коментар уже
+   обіцяв, що виграє довша назва.
+
+   Два РІЗНІ офери з однаково довгим збігом — не вибираємо жодного: два
+   кандидати це вибір, і зробити його за людину означало б тихо
+   приписати виручку не тому оферу. Різні версії одного офера
+   («22bet» і «22bet[crash]») суперниками не рахуються — це один бренд. */
 function matchOffer(raw) {
   const s = String(raw || '').toLowerCase();
   if (!s) return '';
-  for (const o of knownOffers) if (s.includes(o.toLowerCase())) return o;
-  return '';
+  const hits = [];
+  for (const o of knownOffers) {
+    const full = String(o).toLowerCase();
+    const base = offBase(o).toLowerCase();
+    if (full && s.includes(full)) hits.push({ o, len: full.length, exact: true });
+    else if (base && base !== full && s.includes(base)) hits.push({ o, len: base.length, exact: false });
+  }
+  if (!hits.length) return '';
+  hits.sort((a, b) => b.len - a.len || (b.exact - a.exact));
+  const top = hits[0];
+  const rival = hits.find(h => h.len === top.len
+    && offBase(h.o).toLowerCase() !== offBase(top.o).toLowerCase());
+  return rival ? '' : top.o;
 }
 
 /* ОФЕР ІЗ НАЗВИ — І ЧОМУ ЦЕ ПРАЦЮЄ ЛИШЕ ТАМ, ДЕ Є ТЕКСТ.
@@ -2853,6 +2900,11 @@ function parseKeitaro(content) {
       + '" not found — falling back to "' + keitaroMap.cr + '"');
   }
   const iFun = col(keitaroMap.funnel), iOff = col(keitaroMap.offer);
+  /* ГЕО APP-РЯДКА. Воно лежить першим токеном у стовпці крео для APP
+     («TJ_AB_592», «UZ_ojwq921») — тому читаємо саме його, а не той
+     стовпець, який зараз чинний для креатива: в auto креатив береться
+     з PWA-саба, і гео там немає. Стовпця немає — гео немає. */
+  const iGeoTok = col(keitaroMap.crApp);
   /* Плейсмент — тільно з PWA. Під APP його в Keitaro немає зовсім: у
      тій самій колонці (Sub ID 4) лежить апка — pfb10964, CW10995. Читати
      її як плейсмент означало б підставити назву апки в поле розміщення
@@ -3082,6 +3134,42 @@ function parseKeitaro(content) {
       geo = cp.geo; ktid = cp.ktid;
     }
     const cr = (r[(pIdx && pIdx.cr >= 0) ? pIdx.cr : iCr] || '').trim();
+    /* ГЕО ДЛЯ РОЗПОДІЛУ ЛЕНДІНГІВ — НЕ ЗІ СТОВПЦЯ COUNTRY.
+
+       У Country лежить країна ВІДВІДУВАЧА: на TJ-кампанії там
+       спокійно стоїть China чи France. Для питання «якого гео цей
+       лендінг» воно не годиться зовсім.
+
+       Гео кампанії лежить першим токеном назви креатива APP-рядка —
+       «TJ_AB_592», «UZ_ojwq921». Це той самий код, який на боці FB
+       дістається з назви кампанії, тож дві половинки нарешті про одне.
+       Не схоже на код країни — гео немає, і лендінг розійдеться по
+       всіх рядках, як і доти.
+
+       У PWA гео вже дістається маскою з назви кампанії — тією самою,
+       що й на боці FB, — тому там беремо його як є. */
+    /* У КОЖНОГО ПОСТАЧАЛЬНИКА СВОЄ МІСЦЕ. Тому пробуємо спершу його
+       власний стовпець крео (той, що вже перебито в налаштуваннях), а
+       потім загальний APP-ний. Перевірка сама себе страхує: беремо
+       лише те, що справді схоже на код країни, і жодного «гео» з
+       двох перших літер креатива звідси не вийде. */
+    const geoTok = v => {
+      const t = String(v == null ? '' : v).split(/[_\-\s]/)[0].trim().toUpperCase();
+      return /^[A-Z]{2}$/.test(t) ? t : '';
+    };
+    /* COUNTRY — ЗАПАСНИЙ, А НЕ ПЕРШИЙ. У ньому країна ВІДВІДУВАЧА, і
+       на 147 рядках справжньої вигрузки вона збіглася з гео кампанії
+       в 131, а в 16 — ні: Netherlands, United States, China на
+       TJ-кампанії. Це трафік через проксі, і саме ці рядки сіли б на
+       чуже гео.
+
+       Тому спершу токен гео кампанії (він із того самого місця, що й
+       гео на боці FB), а Country лишається для рядків, де токена
+       немає зовсім — у PWA-постачальників його і не буває, і там
+       Country якраз правильна. */
+    const landGeo = rowMode === 'app'
+      ? (geoTok(cr) || (iGeoTok >= 0 ? geoTok(r[iGeoTok]) : '') || (geo !== '??' ? geo : ''))
+      : geo;
     const funnel = apFunnelData(funRaw) || apFunnelData(ktid) || funRaw || '—';
 
     add(byAccount,  `${localDay}|${acc}`, ins, reg, dep, { account: acc, date: localDay, tz: Number(tz) });
@@ -3149,7 +3237,8 @@ function parseKeitaro(content) {
       const grp = (byDailyLand[dk] = byDailyLand[dk] || {});
       const gk = site ? land + '\u0001' + site : land;
       const cell = (grp[gk] = grp[gk] || { installs: 0, regs: 0, deps: 0,
-                                           offer: offer || '', landing: raw, site });
+                                           offer: offer || '', landing: raw, site,
+                                           geo: landGeo });
       cell.installs += ins;
       cell.regs += reg;
       cell.deps += dep;
@@ -3313,66 +3402,122 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
       }
     });
   });
-  /* ── Розподіл спенду між ЛЕНДІНГАМИ ──
+  /* ── Розподіл спенду між ЛЕНДІНГАМИ, І ТІЛЬКИ СВОГО ГЕО ──
 
      FB не знає ні оффера, ні лендінга — знає Keitaro. Один FB-рядок
-     розносимо пропорційно інсталам (= унікальним клікам) кожного
-     лендінга, а офер кожному рядку ставимо той, якому цей лендінг
-     належить.
+     розносимо пропорційно інсталам кожного лендінга, а офер ставимо
+     той, якому цей лендінг належить.
 
-     Чому ділимо саме по лендінгах, а не по оферах, як було: лендінг
-     дрібніший і належить одному оферу, тож суми по оферах не
-     змінюються — рядків стає більше, цифри ті самі. Якби розніс
-     лишився на рівні оффера, лендінг не можна було б показати, не
-     збрехавши: два лендінги одного оффера в одному рядку. */
-  const splitByOffer = (rows, offersOf, keyOf, weightOf) => {
+     ГЕО. Під APP гео навмисно немає в ключі злиття (див. mergeKey):
+     два боки читають його з різних місць і зійтись воно не могло. Але
+     ціна цього вилазила в прев'ю: кабінет, що крутив і UZ, і TJ, мав
+     один ключ на день, і до TJ-рядка чіплявся узбецький лендінг. «Такий
+     лендінг є, але це зовсім інше гео».
+
+     Тому гео лишається поза КЛЮЧЕМ (там воно ламало збіг), але працює
+     при РОЗПОДІЛІ: лендінг іде лише в ті рядки FB, у яких те саме гео.
+     Збіг від цього не псується, а рядок дістає своє.
+
+     Лендінг, чийого гео серед рядків FB немає взагалі (або гео в
+     Keitaro невідоме), розкидається по всіх рядках, як і доти, — інакше
+     його конверсії просто зникли б. Такий рядок позначається, щоб
+     чуже гео було видно, а не вгадувалось.
+
+     Залишок від округлення віддається останньому рядку КОЖНОГО
+     лендінга: так сума розбитих рядків лишається рівно такою, як у
+     byDaily. */
+  const geoNorm = g => String(g == null ? '' : g).trim().toUpperCase();
+  const splitDaily = (groups) => {
     const out = [];
     let splits = 0;
-    rows.forEach(row => {
-      const offers = offersOf(keyOf(row));
-      const names = offers ? Object.keys(offers) : [];
-      if (names.length < 2) {                       // одна пара або жодної
-        if (names.length === 1) {
-          const o = offers[names[0]];
-          /* Офер ставимо лише той, що справді впізнано. Доти сюди
-             падав текст лендінга — і в полі офера опинявся цілий
-             рядок із Keitaro, якого в списку оферів немає. */
-          if (o.offer) row.offer = o.offer;
-          if (o.landing) row.landing = o.landing;
-          row.site = o.site || null;
+    Object.entries(groups).forEach(([key, rows]) => {
+      const cells = (keitaroAgg.byDailyLand || {})[key];
+      const names = cells ? Object.keys(cells) : [];
+      if (!names.length) { rows.forEach(r => out.push(r)); return; }
+
+      const rowGeos = new Set(rows.map(r => geoNorm(r.geo)).filter(g => g && g !== '??'));
+      // кому належить кожен лендінг і якою часткою
+      const owners = {}, parts = {}, foreign = {};
+      names.forEach(name => {
+        const g = geoNorm(cells[name].geo);
+        const own = (g && g !== '??' && rowGeos.has(g)) ? rows.filter(r => geoNorm(r.geo) === g) : rows;
+        /* Чужим гео позначаємо лише тоді, коли НА БОЦІ FB гео взагалі
+           відоме. Якщо маска неймінгу його не дістала і в рядків стоїть
+           «??», порівнювати нема з чим — і кричати про чуже гео було б
+           брехнею про те, чого ми не знаємо. */
+        foreign[name] = (rowGeos.size && g && g !== '??' && !rowGeos.has(g)) ? g : '';
+        const tot = own.reduce((a, r) => a + (r.spend || 0), 0);
+        owners[name] = own;
+        parts[name] = own.map(r => own.length === 1 ? 1
+          : (tot > 0 ? (r.spend || 0) / tot : 1 / own.length));
+      });
+
+      // цілі числа по кожному лендінгу, залишок — останньому його рядку
+      const alloc = new Map();
+      rows.forEach((r, i) => { r._i = i; });
+      names.forEach(name => {
+        const c = cells[name];
+        let gi = 0, gr = 0, gd = 0;
+        owners[name].forEach((r, k) => {
+          const last = k === owners[name].length - 1;
+          const v = last
+            ? { i: c.installs - gi, r: c.regs - gr, d: c.deps - gd }
+            : { i: Math.round(c.installs * parts[name][k]),
+                r: Math.round(c.regs * parts[name][k]),
+                d: Math.round(c.deps * parts[name][k]) };
+          gi += v.i; gr += v.r; gd += v.d;
+          alloc.set(name + '\u0001' + r._i, v);
+        });
+      });
+
+      rows.forEach(row => {
+        const mine = names.filter(n => owners[n].includes(row));
+        if (!mine.length) { out.push(row); return; }   // свого гео не знайшлось
+        if (mine.length === 1) {
+          const c = cells[mine[0]], v = alloc.get(mine[0] + '\u0001' + row._i);
+          /* Офер ставимо лише той, що справді впізнано. Доти сюди падав
+             текст лендінга — і в полі офера опинявся цілий рядок із
+             Keitaro, якого в списку оферів немає. */
+          if (c.offer) row.offer = c.offer;
+          if (c.landing) row.landing = c.landing;
+          row.site = c.site || null;
+          if (foreign[mine[0]]) row._geoOther = foreign[mine[0]];
+          row.installs = v.i; row.regs = v.r; row.deps = v.d;
+          out.push(row);
+          return;
         }
-        out.push(row);
-        return;
-      }
-      splits++;
-      const totIns = names.reduce((a, n) => a + offers[n].installs, 0);
-      let spentSoFar = 0;
-      names.forEach((name, i) => {
-        const o = offers[name];
-        const share = totIns > 0 ? o.installs / totIns : 1 / names.length;
-        const last = i === names.length - 1;
-        // останньому віддаємо залишок, щоб сума спенду точно збіглася з FB
-        const spend = last ? +(row.spend - spentSoFar).toFixed(2)
-                           : +(row.spend * share).toFixed(2);
-        spentSoFar += spend;
-        // Цифри оффера — теж на частку рядка в групі, інакше під APP
-        // кожен рядок групи забрав би собі всі інсталли оффера.
-        const w = weightOf ? (weightOf(row) || 1) : 1;
-        out.push({ ...row, offer: o.offer || '',
-                   landing: o.landing || '', site: o.site || null, spend,
-                   installs: w === 1 ? o.installs : Math.round(o.installs * w),
-                   regs:     w === 1 ? o.regs     : Math.round(o.regs * w),
-                   deps:     w === 1 ? o.deps     : Math.round(o.deps * w) });
+        splits++;
+        const totIns = mine.reduce((a, n) => a + alloc.get(n + '\u0001' + row._i).i, 0);
+        let spentSoFar = 0;
+        mine.forEach((name, i) => {
+          const c = cells[name], v = alloc.get(name + '\u0001' + row._i);
+          const last = i === mine.length - 1;
+          // останньому віддаємо залишок, щоб сума спенду точно збіглася з FB
+          const spend = last ? +(row.spend - spentSoFar).toFixed(2)
+                             : +(row.spend * (totIns > 0 ? v.i / totIns : 1 / mine.length)).toFixed(2);
+          spentSoFar += spend;
+          out.push({ ...row, offer: c.offer || '', landing: c.landing || '',
+                     site: c.site || null, spend,
+                     _geoOther: foreign[name] || undefined,
+                     installs: v.i, regs: v.r, deps: v.d });
+        });
       });
     });
-    return { out, splits };
+    out.forEach(r => { delete r._i; });
+    /* РЯДОК, У ЯКОМУ НЕМАЄ НІЧОГО, — НЕ РЯДОК.
+
+       Після розподілу лишаються шматки з нульовим спендом і нулями по
+       всіх конверсіях: лендінг, якому при діленні не дісталось ні
+       цента, ні інсталу. Везти їх у базу означає плодити записи, які
+       нічого не кажуть, і захаращувати прев'ю. Нуль у спенді ПРИ
+       наявних конверсіях лишаємо — це не порожнеча, це безкоштовний
+       трафік. */
+    const kept = out.filter(r => (r.spend || 0) !== 0
+      || (r.installs || 0) || (r.regs || 0) || (r.deps || 0));
+    return { out: kept, splits, dropped: out.length - kept.length };
   };
 
-  // Кампанії (daily) ділимо по офферах — там спенд справді треба рознести.
-  const dRes = splitByOffer(Object.values(dailyAgg),
-    k => keitaroAgg.byDailyLand?.[k],
-    r => mergeKey(r.date, r.acc, r.geo, r._ktid, r._mode),
-    r => dWeight.get(r));
+  const dRes = splitDaily(dGroups);
 
   // Креативи по офферах НЕ розбиваємо і оффер їм не проставляємо:
   // один CID має кілька рядків (девайс × плейсмент), і будь-який розподіл там
@@ -3385,8 +3530,8 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
     .filter(([k, v]) => !usedKt.has(k) && (v.installs || v.regs || v.deps))
     .map(([, v]) => v);
 
-  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах і доменах: ${dRes.splits} daily`);
-  renderKtMergeReport({ hitD, hitC, missFb, missKt, ktMiss, creatives: creativesOut });
+  console.log(`Keitaro: ${hitD} daily-рядків, ${hitC} креатив-груп, спліт по лендінгах і доменах: ${dRes.splits} daily, порожніх відкинуто: ${dRes.dropped}`);
+  renderKtMergeReport({ hitD, hitC, missFb, missKt, ktMiss, dropped: dRes.dropped, creatives: creativesOut });
   showStatus(dRes.splits
     ? `Keitaro: refined ${hitD} rows, split across landings/domains ${dRes.splits}`
     : `Keitaro: refined ${hitD} stat rows`);
@@ -3538,7 +3683,7 @@ function renderAgentReport(noAgent, hidden) {
 // Звіт про злиття: скільки зійшлось і — головне — що НЕ зійшлось.
 // Мовчазне розходження тут найдорожче: рядок з ФБ-івськими конверсіями виглядає
 // так само, як уточнений з Keitaro, і помилку помічаєш уже в звітах.
-function renderKtMergeReport({ hitD, hitC, missFb, missKt, ktMiss, creatives }) {
+function renderKtMergeReport({ hitD, hitC, missFb, missKt, ktMiss, dropped, creatives }) {
   const el = document.getElementById('kt-merge-report');
   if (!el) return;
   const sum = (arr, f) => arr.reduce((a, x) => a + (f(x) || 0), 0);
@@ -3684,6 +3829,11 @@ function renderKtMergeReport({ hitD, hitC, missFb, missKt, ktMiss, creatives }) 
       + (ktMiss.length > 10 ? `<div class="opacity-50">…+${ktMiss.length - 10} more</div>` : '')
       + `<div class="opacity-60 mt-1">The merge walks FB rows: with no row there is nothing to attach the numbers to.</div>`));
   }
+
+  /* Відкинуті порожні — рядком у звіті, а не мовчки: зникла частина
+     рядків, і сказати про це коштує одного речення. */
+  if (dropped) parts.push(line('🧹', 'text-slate-500 mt-2',
+    `<b>${dropped}</b> row(s) with no spend and no conversions were dropped — nothing to import in them.`));
 
   if (crDeps !== ktDeps) {
     parts.push(line('🔎', 'text-slate-500 mt-2',
@@ -4204,6 +4354,12 @@ function renderDualPreview() {
           ${r.site
             ? `<span class="text-[10px] font-bold text-violet-300/90 block truncate font-mono" title="Домен із вигрузки">${r.site}</span>`
             : ''}
+          <!-- Лендінг чужого гео. Він сюди потрапив тому, що в звіті FB
+               немає жодного рядка його гео — інакше пішов би туди. Мовчати
+               про це не можна: «такий лендінг є, але це зовсім інше гео». -->
+          ${r._geoOther
+            ? `<span class="ds-geo" title="This landing comes from ${r._geoOther} rows in Keitaro, and the FB report has no rows with that geo — so it was spread across this account's rows.">${r._geoOther}</span>`
+            : ''}
         </td>
         <td class="p-4 italic">
           <div class="editable-cell border-b border-white/10" contenteditable="true" 
@@ -4227,6 +4383,25 @@ function renderDualPreview() {
         </td>
       </tr>`;
   }).join('');
+
+  /* ПІДСУМОК ПІД ТАБЛИЦЕЮ.
+
+     Після розподілу рядків стає більше, ніж було у звіті, і питання
+     «скільки ж усього вийшло» виникає одразу — його звіряють із
+     кабінетом. Рахувати це очима по сотні рядків немає сенсу, а
+     порахувати тут коштує одного проходу. */
+  const dsSum = (arr, f) => arr.reduce((a, x) => a + (Number(f(x)) || 0), 0);
+  const money = v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const num = v => v.toLocaleString('en-US');
+  const dFoot = document.getElementById('dataset-preview-foot');
+  if (dFoot) dFoot.innerHTML = datasetToImport.length ? `<tr class="text-[13px]">
+    <td class="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400" colspan="6">
+      Total · ${num(datasetToImport.length)} row(s)</td>
+    <td class="p-4 text-right font-black text-white">${money(dsSum(datasetToImport, r => r.spend))}</td>
+    <td class="p-4 text-center font-black text-orange-400">${num(dsSum(datasetToImport, r => r.installs))}</td>
+    <td class="p-4 text-center font-black text-blue-400">${num(dsSum(datasetToImport, r => r.regs))}</td>
+    <td class="p-4 text-center font-black text-green-500">${num(dsSum(datasetToImport, r => r.deps))}</td>
+  </tr>` : '';
 
   // Рендер Креативів (залиш як був)
   const creativeBody = document.getElementById('creatives-preview-body-inside');
@@ -4252,6 +4427,17 @@ function renderDualPreview() {
       <td class="p-4 text-center font-black text-green-500/80">${r.deps}</td>
     </tr>`;
   }).join('');
+
+  const cFoot = document.getElementById('creatives-preview-foot');
+  if (cFoot) cFoot.innerHTML = creativesToImport.length ? `<tr class="text-[13px]">
+    <td class="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400" colspan="5">
+      Total · ${num(creativesToImport.length)} row(s)</td>
+    <td class="p-4 text-right font-black text-white">${money(dsSum(creativesToImport, r => r.spend))}</td>
+    <td class="p-4 text-center font-black text-blue-300">${num(dsSum(creativesToImport, r => r.clicks))}</td>
+    <td class="p-4 text-center font-black text-orange-400">${num(dsSum(creativesToImport, r => r.installs))}</td>
+    <td class="p-4 text-center font-black text-blue-400">${num(dsSum(creativesToImport, r => r.regs))}</td>
+    <td class="p-4 text-center font-black text-green-500">${num(dsSum(creativesToImport, r => r.deps))}</td>
+  </tr>` : '';
 }
 function processCreativeData(map, lines) {
   creativesToImport = [];
