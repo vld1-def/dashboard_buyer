@@ -46,7 +46,8 @@ const KT = [
   'Kyrgyzstan;"PWA Partners";https://ex.test/;"Offer A | one | two";1001;MPlay_KG_001;Third;Instagram_Reels;;KG_1;2026-10-23;20;4;2;1',
   'Kyrgyzstan;"PWA Partners";;"Offer A | one | two";1001;MPlay_KG_001;Third;Instagram_Reels;;KG_1;2026-10-23;02;3;1;0',
   'Tajikistan;"Sator Android";;"Offer B | three";2002;cy638t;8wxg;VP11003;TJ_1;bGcT;2026-10-23;15;5;3;2',
-  ';;;;;;;;;;;;12;6;3'
+  'Tajikistan;Trident-media.agency;;"Offer C";2002;;8wxg;961962022289052;TJ_2;bGcT;2026-10-23;16;2;1;0',
+  ';;;;;;;;;;;;14;7;3'
 ].join('\n');
 
 const load = (csv, tz) => page.evaluate(([c, t]) => {
@@ -136,13 +137,13 @@ ok('денний файл не вимагає таймзони', await page.eval
 /* ─────────── 2. КЕЙТАРОВСЬКИЙ ЗВІТ: ЯК БУЛО ─────────── */
 const kt = await load(KT, { 1001: 6, 2002: 3 });
 
-ok('кейтаровський звіт читається як раніше', kt.rows === 3, kt.rows);
+ok('кейтаровський звіт читається як раніше', kt.rows === 4, kt.rows);
 ok('підсумковий рядок без акаунта відкидається', kt.skips.noAcc === 1, kt.skips);
 ok('інстали — рівно UC (campaign), без підмішування',
   JSON.stringify(kt.map.ins) === '["UC (campaign)"]', kt.map.ins);
-ok('сума інсталів дорівнює підсумку самого файлу', kt.sum.i === 12, kt.sum.i);
+ok('сума інсталів дорівнює підсумку самого файлу', kt.sum.i === 14, kt.sum.i);
 ok('реєстрації і депозити теж сходяться з підсумком',
-  kt.sum.r === 6 && kt.sum.d === 3, kt.sum);
+  kt.sum.r === 7 && kt.sum.d === 3, kt.sum);
 ok('години впізнано', kt.hasHour === true);
 ok('на екрані сказано, що день рахуємо в таймзоні кабінету',
   await page.evaluate(() => /account timezone/.test(document.querySelector('.dc-map-h').textContent)));
@@ -177,8 +178,37 @@ const splits = await page.evaluate(c => {
   return { src: cl('dc-source-table'), camp: cl('dc-campaign-table'), plc: cl('dc-placement-table') };
 }, KT);
 ok('ПВА і прілки видно окремо', /PWA Partners/.test(splits.src) && /Sator Android/.test(splits.src), splits.src);
+
+/* SUB ID 4 ОЗНАЧАЄ РІЗНЕ ЗАЛЕЖНО ВІД ДЖЕРЕЛА.
+   У ПВА там розміщення, у Sator — ктід воронки, і зсипати їх в один
+   список не можна. Trident лишається як був: його значення й далі
+   йде в розміщення, бо нічого іншого про нього ми не знаємо. */
+const roles = await page.evaluate(() => ({
+  pwa: dcSrcRoleOf('PWA Partners'),
+  sator: dcSrcRoleOf('Sator Android'),
+  trident: dcSrcRoleOf('Trident-media.agency'),
+  funnel: (document.getElementById('dc-funnel-table').textContent || '').replace(/\s+/g, ' '),
+  plc: (document.getElementById('dc-placement-table').textContent || '').replace(/\s+/g, ' ')
+}));
+ok('у ПВА Sub ID 4 — розміщення', roles.pwa === 'plc', roles.pwa);
+ok('у Sator Sub ID 4 — воронка', roles.sator === 'funnel', roles.sator);
+ok('у Trident нічого не змінилось — як було, розміщення', roles.trident === 'plc', roles.trident);
+ok('ктід воронки видно окремою карткою', /VP11003/.test(roles.funnel), roles.funnel);
+ok('і він НЕ лежить більше серед розміщень', !/VP11003/i.test(roles.plc), roles.plc);
+ok('ктід не псується капіталізацією', /VP11003/.test(roles.funnel) && !/Vp11003/.test(roles.funnel), roles.funnel);
+ok('тридентівське значення лишилось у розміщеннях', /961962022289052/.test(roles.plc), roles.plc);
+ok('розміщення ПВА теж лишилось у розміщеннях', /Instagram · Reels/.test(roles.plc), roles.plc);
+
+ok('роль джерела перемикається руками', await page.evaluate(() => {
+  dcSetSrcRole('PWA Partners', 'funnel');
+  const f = document.getElementById('dc-funnel-table').textContent;
+  const p = document.getElementById('dc-placement-table').textContent;
+  return /Instagram_Reels/.test(f) && !/Instagram · Reels/.test(p);
+}));
+ok('перемикач стоїть у картці джерел', await page.evaluate(() =>
+  document.querySelectorAll('#dc-source-table .dc-role').length >= 2));
 ok('кампанії видно окремо', /MPlay_KG_001/.test(splits.camp) && /cy638t/.test(splits.camp), splits.camp);
-ok('розміщення лишилось на місці', /Instagram · Reels/.test(splits.plc), splits.plc);
+
 
 /* ─────────── 3. ДОГАДКА ВИДИМА І ВИПРАВНА ─────────── */
 ok('кожен показник показує, з якого стовпця взятий', await page.evaluate(() =>

@@ -11433,6 +11433,13 @@ async function pwBulkApply() {
           </div>
           <div class="overflow-x-auto"><table id="dc-source-table" class="w-full border-collapse"></table></div>
         </div>
+        <div id="dc-card-funnels" class="card rounded-2xl p-4 border border-white/5">
+          <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
+            <p class="text-[11px] font-black uppercase tracking-[0.2em] text-lime-400">Funnels · ктід</p>
+            <button class="dc-shot" onclick="dcShot('dc-card-funnels','funnels',this)" title="Зберегти блок як PNG">PNG</button>
+          </div>
+          <div class="overflow-x-auto"><table id="dc-funnel-table" class="w-full border-collapse"></table></div>
+        </div>
         <div id="dc-card-placements" class="card rounded-2xl p-4 border border-white/5">
           <div class="flex justify-between items-center mb-3 border-b border-white/5 pb-2">
             <p class="text-[11px] font-black uppercase tracking-[0.2em] text-indigo-400">Placements</p>
@@ -11474,6 +11481,7 @@ let dcMap = {};            // ключ показника -> індекс сто
 let dcSkips = {};          // чому рядки відпали
 let dcHasCampaign = false; // чи є у файлі стовпець із кампанією
 let dcHasSource = false;   // чи є у файлі стовпець із джерелом (ПВА / прілка)
+let dcSrcRole = {};        // джерело -> що означає його Sub ID 4: 'plc' | 'funnel'
 
 async function openDataCheckModal() {
   document.getElementById('data-check-modal').classList.remove('hidden');
@@ -11602,10 +11610,30 @@ function dcAuto(headers, groups, multi) {
   return [];
 }
 
+/* SUB ID 4 ОЗНАЧАЄ РІЗНЕ ЗАЛЕЖНО ВІД ДЖЕРЕЛА.
+
+   У PWA Partners там справжнє розміщення — Instagram_Reels. У Sator там
+   воронка, і саме її ктід (VP11003, LCR11017) нею й розпізнається. Доти
+   все це зсипалось в один список Placements, і ктід воронки лежав там
+   як плейсмент, ще й зіпсований капіталізацією: «Vp11003».
+
+   Решта джерел лишаються як були — для них нічого не змінюється.
+   Догадка видима й перемикається в картці Sources: назву джерела колись
+   змінять, і правило мусить бути виправним, а не вшитим назавжди. */
+function dcSrcRoleOf(src) {
+  if (dcSrcRole[src]) return dcSrcRole[src];
+  const s = String(src || '').toLowerCase();
+  if (/pwa/.test(s)) return 'plc';
+  if (/sator/.test(s)) return 'funnel';
+  return 'plc';
+}
+
+function dcSetSrcRole(src, v) { dcSrcRole[src] = v; dcCompute(); }
+
 function dcParse(content) {
   const { rows } = dcCsv(content);
   dcRows = [];
-  dcBody = []; dcHeaders = []; dcMap = {}; dcSkips = {};
+  dcBody = []; dcHeaders = []; dcMap = {}; dcSkips = {}; dcSrcRole = {};
   dcUnitOverride = {};   // новий файл — ручні правки count більше не актуальні
   if (!rows.length) { dcRenderMap(); return; }
   dcHeaders = rows[0].map(h => String(h == null ? '' : h).trim());
@@ -11775,7 +11803,7 @@ function dcCompute() {
   const accStats = [];
   const unlinked = [];
   // Розбивки рахуємо з ТОГО САМОГО файлу і за те саме TZ-вікно
-  dcSplits = { placement: {}, device: {}, creative: {}, campaign: {}, source: {} };
+  dcSplits = { placement: {}, device: {}, creative: {}, campaign: {}, source: {}, funnel: {} };
   const bump = (bucket, key, r) => {
     if (!key) key = '—';
     const m = bucket[key] || (bucket[key] = { i: 0, r: 0, d: 0 });
@@ -11809,7 +11837,10 @@ function dcCompute() {
       }
       if (localDay === target) {
         ins += r.installs; reg += r.regs; dep += r.deps;
-        bump(dcSplits.placement, dcPlacementLabel(r.placementRaw), r);
+        // Ктід воронки — значення як є: dcPlacementLabel зробив би з
+        // «VP11003» — «Vp11003», тобто зіпсував би сам ідентифікатор.
+        if (dcHasSource && dcSrcRoleOf(r.source) === 'funnel') bump(dcSplits.funnel, r.placementRaw, r);
+        else bump(dcSplits.placement, dcPlacementLabel(r.placementRaw), r);
         if (dcHasDevice) bump(dcSplits.device, r.device, r);
         if (dcHasCreative) bump(dcSplits.creative, r.cid, r);
         if (dcHasCampaign) bump(dcSplits.campaign, r.campaign, r);
@@ -11827,6 +11858,7 @@ function dcCompute() {
   dcRenderSplit('device', 'dc-device-table');
   dcRenderSplit('placement', 'dc-placement-table');
   dcRenderSplit('source', 'dc-source-table');
+  dcRenderSplit('funnel', 'dc-funnel-table');
   dcRenderSplit('campaign', 'dc-campaign-table');
   dcRenderSplit('creative', 'dc-creative-table');
   dcRenderWarn(unlinked);
@@ -11965,13 +11997,18 @@ function dcRenderSplit(kind, tableId) {
                  : kind === 'creative' ? 'Креатив'
                  : kind === 'campaign' ? 'Кампанія'
                  : kind === 'source' ? 'Джерело'
+                 : kind === 'funnel' ? 'Воронка'
                  : 'Плейсмент';
+  // У картці джерел є ще один стовпець: що саме означає Sub ID 4 для
+  // цього джерела. Там, де це воронка, її ктід і йде в окрему картку.
+  const roleCol = kind === 'source';
   const head = `<thead><tr>
     <th class="${th} text-left">${firstCol}</th>
     <th class="${th} text-right">Інстали</th>
     <th class="${th} text-right">Реєстр.</th>
     <th class="${th} text-right">Депоз.</th>
     <th class="${th} text-right">Ins→Reg</th>
+    ${roleCol ? `<th class="${th} text-right">Sub ID 4</th>` : ''}
   </tr></thead>`;
   if (!list.length) {
     const msg = kind === 'device'
@@ -11986,8 +12023,11 @@ function dcRenderSplit(kind, tableId) {
       : kind === 'source'
       ? (dcHasSource ? 'Немає даних за цей день'
                      : 'У файлі немає стовпця Source — ПВА від прілок не відрізнити')
+      : kind === 'funnel'
+      ? (dcHasSource ? 'Жодне джерело не позначене як воронка'
+                     : 'Воронку видно лише там, де є Source — він і каже, що таке Sub ID 4')
       : 'У файлі немає стовпця з розміщенням (Sub ID 4 / Placement) або немає даних за цей день';
-    t.innerHTML = head + `<tbody><tr><td colspan="5" class="p-3 text-center text-[13px] opacity-40">${msg}</td></tr></tbody>`;
+    t.innerHTML = head + `<tbody><tr><td colspan="${roleCol ? 6 : 5}" class="p-3 text-center text-[13px] opacity-40">${msg}</td></tr></tbody>`;
     return;
   }
   const ratio = (a, b) => b ? '1 to ' + (Math.round(a / b * 10) / 10) : '—';
@@ -11997,6 +12037,10 @@ function dcRenderSplit(kind, tableId) {
     <td class="p-2 text-right text-[14px] font-bold text-blue-400">${m.r}</td>
     <td class="p-2 text-right text-[14px] font-bold text-green-500">${m.d}</td>
     <td class="p-2 text-right text-[12px] text-slate-400">${ratio(m.i, m.r)}</td>
+    ${roleCol ? `<td class="p-2 text-right"><select class="dc-role" onchange="dcSetSrcRole(${JSON.stringify(k)}, this.value)">
+      <option value="plc"${dcSrcRoleOf(k) === 'plc' ? ' selected' : ''}>розміщення</option>
+      <option value="funnel"${dcSrcRoleOf(k) === 'funnel' ? ' selected' : ''}>воронка</option>
+    </select></td>` : ''}
   </tr>`).join('');
   const tot = list.reduce((a, [, m]) => ({ i: a.i + m.i, r: a.r + m.r, d: a.d + m.d }), { i: 0, r: 0, d: 0 });
   const totRow = `<tr class="border-t-2 border-white/10 bg-white/[0.02]">
@@ -12004,7 +12048,7 @@ function dcRenderSplit(kind, tableId) {
     <td class="p-2 text-right text-[14px] font-black text-cyan-300">${tot.i}</td>
     <td class="p-2 text-right text-[14px] font-black text-blue-400">${tot.r}</td>
     <td class="p-2 text-right text-[14px] font-black text-green-500">${tot.d}</td>
-    <td class="p-2 text-right text-[12px] text-slate-400">${ratio(tot.i, tot.r)}</td></tr>`;
+    <td class="p-2 text-right text-[12px] text-slate-400">${ratio(tot.i, tot.r)}</td>${roleCol ? '<td></td>' : ''}</tr>`;
   t.innerHTML = head + '<tbody>' + body + totRow + '</tbody>';
 }
 

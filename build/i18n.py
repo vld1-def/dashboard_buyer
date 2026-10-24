@@ -27,6 +27,13 @@ LONG = {
  " рядків без дня": " rows with no day",
  " рядків без акаунта": " rows with no account",
  "Прибрати цей стовпець": "Remove this column",
+ "Воронку видно лише там, де є Source — він і каже, що таке Sub ID 4":
+   "Funnels show up only where a Source column exists — it is what says what Sub ID 4 is",
+ "Жодне джерело не позначене як воронка": "No source is marked as a funnel",
+ "Funnels · ктід": "Funnels · ktid",
+ "розміщення": "placement",
+ "воронка": "funnel",
+ "Воронка": "Funnel",
  "Sources · ПВА / прілки": "Sources · PWA / apps",
  "— немає —": "— none —",
  "+ стовпець": "+ column",
