@@ -111,6 +111,15 @@ ok('плитка Y. Spend стоїть останньою', tl[tl.length - 1].la
 ok('і рахує лише тих, хто крутив учора',
   tl[tl.length - 1].n === '1', tl[tl.length - 1]);
 
+/* П'ята плитка розірвала ряд навпіл: у стилях стояло рівно чотири
+   колонки. Число, яке мусить збігатися з кількістю кнопок у розмітці,
+   рано чи пізно з нею розходиться — тому перевіряємо сам факт. */
+ok('усі плитки стоять одним рядком', await page.evaluate(() => {
+  const t = [...document.querySelectorAll('.acc-tile')];
+  return t.length > 4 && t.every(x => x.offsetTop === t[0].offsetTop);
+}), await page.evaluate(() =>
+  [...document.querySelectorAll('.acc-tile')].map(x => x.offsetTop)));
+
 await draw('yspend');
 await page.waitForTimeout(150);
 const only = await table();
