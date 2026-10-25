@@ -4311,7 +4311,13 @@ body.is-lead-only .admin-only { display: none; }
    обрізається, навіть якщо --kh виявиться меншим за вміст.
    Згортання не анімується: вузол зникає разом з усім деревом, і
    анімувати те, чого вже немає в DOM, нічим. */
-.ap-kids { overflow: hidden; animation: ap-kids-in .18s ease-out; }
+/* Анімація — лише на .is-new, тобто на гілці, що відкрилась ЩОЙНО.
+   Доти правило стояло на самому .ap-kids, а дерево малюється через
+   innerHTML: вузол приходив новий на кожен клік, і список з'їжджав
+   заново від кліку по постачальнику, по кампанії, по булавці. Саме це
+   й читалось як крива анімація. */
+.ap-kids { overflow: hidden; }
+.ap-kids.is-new { animation: ap-kids-in .18s ease-out; }
 @keyframes ap-kids-in {
   from { max-height: 0; opacity: 0; transform: translateY(-4px); }
   to   { max-height: var(--kh, 480px); opacity: 1; transform: none; }
@@ -4327,7 +4333,7 @@ body.is-lead-only .admin-only { display: none; }
 
 /* Хто просив менше руху — тому список просто є, без виїзду. */
 @media (prefers-reduced-motion: reduce) {
-  .ap-kids { animation: none; }
+  .ap-kids.is-new { animation: none; }
   .ap-caret { transition: none; }
 }
 
@@ -16868,6 +16874,10 @@ async function apAddFunnel(isApp) {
 }
 
 /* ─────────── дерево гео → постачальник ─────────── */
+// Що було відкрито минулого разу — щоб анімація грала лише на тому, що
+// відкрилось щойно, а не на кожному перемальовуванні. Те саме, що в PWA.
+let apOpenWas = '';
+
 function apRenderTree() {
   const el = document.getElementById('ap-tree');
   if (!el) return;
@@ -16877,20 +16887,47 @@ function apRenderTree() {
     (byGeo[g] = byGeo[g] || new Set()).add(it.provider || '—');
   });
   const geos = Object.keys(byGeo).sort();
-  const btn = (label, active, onclick, pad, count) =>
-    apTreeBtn(label, active, onclick, pad, count, 'bg-emerald-600');
-  let html = btn('Усі', !apGeo && !apProv, "apPick('','')", 8, apItems.length);
+  const btn = (label, active, onclick, pad, count, caret, attr) =>
+    apTreeBtn(label, active, onclick, pad, count, 'bg-emerald-600', null, caret, attr);
+  /* Гео й постачальник їдуть АТРИБУТАМИ рядка, а не в тексті onclick:
+     зібраний рядком apPick('KG','Olly's apps') ламався на апострофі в
+     назві постачальника — рівно так, як це вже ловилось у PWA. */
+  const at = (g, p) => `data-g="${apEsc(g)}" data-p="${apEsc(p || '')}"`;
+  let html = btn('Усі', !apGeo && !apProv, 'apPickKey(this)', 8, apItems.length, '', at('', ''));
+  const animGeo = apOpenWas !== apGeo;
+
   geos.forEach(g => {
     const n = apItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
-    html += btn(g, apGeo === g && !apProv, `apPick('${apEsc(g)}','')`, 8, n);
-    if (apGeo === g) [...byGeo[g]].sort().forEach(p => {
-      const np = apItems.filter(i => (i.geo || '—').toUpperCase() === g && (i.provider || '—') === p).length;
-      html += btn(p, apProv === p, `apPick('${apEsc(g)}','${apEsc(p)}')`, 22, np);
-    });
+    const open = apGeo === g;
+    html += btn(g, open && !apProv, 'apPickKey(this)', 8, n,
+      open ? 'open' : 'shut', at(g, ''));
+    if (!open) return;
+    const kids = [...byGeo[g]].sort((a, b) => a.localeCompare(b, 'uk'));
+    html += `<div class="ap-kids${animGeo ? ' is-new' : ''}" style="--kh:${kids.length * 44 + 12}px">`
+      + kids.map(p => {
+          const np = apItems.filter(i => (i.geo || '—').toUpperCase() === g
+                                      && (i.provider || '—') === p).length;
+          return btn(p, apProv === p, 'apPickKey(this)', 22, np, '', at(g, p));
+        }).join('')
+      + '</div>';
   });
   el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
+  apOpenWas = apGeo;
 }
-function apPick(g, p) { apGeo = g; apProv = p; apRenderTree(); apRender(); }
+
+window.apPickKey = function (el) {
+  apPick(el.getAttribute('data-g') || '', el.getAttribute('data-p') || '');
+};
+
+function apPick(g, p) {
+  // Повторний клік по відкритій гілці закриває її — по одному рівню.
+  if (g && g === apGeo && p === apProv) {
+    if (p) apProv = ''; else apGeo = '';
+  } else {
+    apGeo = g; apProv = p;
+  }
+  apRenderTree(); apRender();
+}
 
 /* Рядок дерева. Один на оба режими: відрізняється лише колір
    виділеного, і заводити під це другу копію розмітки означало б, що
@@ -16909,9 +16946,9 @@ const AP_CARET_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   + ' stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
   + '<path d="m9 6 6 6-6 6"/></svg>';
 
-function apTreeBtn(label, active, onclick, pad, count, accent, pin, caret) {
+function apTreeBtn(label, active, onclick, pad, count, accent, pin, caret, attr) {
   return `
-    <div onclick="${onclick}" class="ap-row flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
+    <div onclick="${onclick}" ${attr || ''} title="${apEsc(label)}" class="ap-row flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
          ${active ? (accent || 'bg-emerald-600') + ' text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
       <span class="flex items-center gap-1 min-w-0">
         ${caret ? `<span class="ap-caret${caret === 'open' ? ' is-open' : ''}">${AP_CARET_SVG}</span>` : ''}
@@ -17462,6 +17499,21 @@ async function apDelete(id) {
    правка прілок не могла зачепити силки, і навпаки.                 */
 let pwItems = [], pwGeo = '', pwProv = '', pwEditId = null, pwOnlyBad = false;
 
+/* Вибрана ОДНА кампанія — третій рівень дерева. Окремо від pwGeo і
+   pwProv: вона уточнює їх, а не заміняє, і знімається сама, щойно
+   вибрали іншу гілку. */
+let pwOne = '';
+
+/* ЩО БУЛО ВІДКРИТО НА МИНУЛОМУ МАЛЮВАННІ.
+
+   Дерево малюється через innerHTML, тобто .ap-kids приїжджає НОВИМ
+   вузлом щоразу — і браузер щоразу проганяє на ньому анімацію
+   розгортання. Через це список з'їжджав заново від кліку по
+   постачальнику, по кампанії, по булавці, від будь-чого: саме це й
+   читалось як крива анімація. Анімуємо лише те, що відкрилось
+   ЩОЙНО. */
+let pwOpenWas = { geo: '', prov: '' };
+
 /* ДРУГИЙ РІВЕНЬ ДЕРЕВА — ПОСТАЧАЛЬНИК, А НЕ ОФФЕР.
 
    Оффер вгадується з назви й у PWA його майже ніколи немає: друга
@@ -17954,8 +18006,8 @@ function pwRenderTree() {
   const nGeo = g => pwItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
   const nProv = (g, p) => pwItems.filter(i =>
     (i.geo || '—').toUpperCase() === g && pwProvOf(i) === p).length;
-  const btn = (label, active, onclick, pad, count, pin, caret) =>
-    apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600', pin, caret);
+  const btn = (label, active, onclick, pad, count, pin, caret, attr) =>
+    apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600', pin, caret, attr);
 
   const pins = pwPinsGet();
   let html = btn('Усі', !pwGeo && !pwProv && !pwOnlyBad, "pwPick('','')", 8, pwItems.length);
@@ -17977,26 +18029,58 @@ function pwRenderTree() {
     html += '<p class="ap-tree-sep"></p>';
   }
 
+  /* Обгортка розгортання. Анімація вішається КЛАСОМ is-new і лише
+     коли гілка відкрилась щойно — інакше вона грала б на кожному
+     перемальовуванні дерева. Висота (--kh) оцінюється згори: під час
+     анімації важливо тільки не обрізати вміст, а після неї обмеження
+     знімається (fill-mode у правилі навмисно немає). */
+  const kidsBox = (rows, n, fresh) =>
+    `<div class="ap-kids${fresh ? ' is-new' : ''}" style="--kh:${n * 44 + 12}px">`
+    + rows + '</div>';
+  const animGeo = pwOpenWas.geo !== pwGeo;
+
   Object.keys(byGeo).sort().forEach(g => {
     const kids = [...byGeo[g]].sort((a, b) => a.localeCompare(b, 'uk'));
     const open = pwGeo === g;
     html += btn(g, open && !pwProv, `pwPickKey(this)`, 8, nGeo(g),
       { key: pwPinKey(g, ''), on: pins.has(pwPinKey(g, '')) },
       open ? 'open' : 'shut');
-    /* Постачальники їдуть ОКРЕМИМ блоком, а не просто наступними
-       рядками: на ньому й тримається розгортання. innerHTML малює
-       дерево заново, тому .ap-kids щоразу зʼявляється новим вузлом —
-       і браузер проганяє на ньому анімацію сам. Без обгортки
-       анімувати було б нічого: рядки просто виникали б. Висота
-       оцінюється згори (--kh), бо під час анімації важливо лише не
-       обрізати вміст, а після неї обмеження знімається. */
-    if (open) html += `<div class="ap-kids" style="--kh:${kids.length * 40 + 8}px">`
-      + kids.map(p => btn(pwProvLabel(p), pwProv === p, `pwPickKey(this)`, 22, nProv(g, p),
-          { key: pwPinKey(g, p), on: pins.has(pwPinKey(g, p)) })).join('')
-      + '</div>';
+    if (!open) return;
+
+    let lvl2 = '';
+    kids.forEach(p => {
+      const openP = pwProv === p;
+      lvl2 += btn(pwProvLabel(p), openP, `pwPickKey(this)`, 22, nProv(g, p),
+        { key: pwPinKey(g, p), on: pins.has(pwPinKey(g, p)) },
+        openP ? 'open' : 'shut');
+      if (!openP) return;
+      /* ТРЕТІЙ РІВЕНЬ — САМІ КАМПАНІЇ. «після постачальників пва».
+         Праворуч вони й так відфільтровані, але коли постачальник
+         один (а зараз у старих записах він один — «без
+         постачальника»), клік по ньому не міняв на екрані НІЧОГО, і
+         виглядало це так, ніби рівень не відкривається. Назву
+         показуємо вже з підставленою датою — як на картці. */
+      const mine = pwItems.filter(i =>
+        (i.geo || '—').toUpperCase() === g && pwProvOf(i) === p);
+      lvl2 += kidsBox(mine.map(it => btn(pwName(it), pwOne === it.id,
+        `pwPickOne(this)`, 36, (it.links || []).length, null, '',
+        `data-id="${apEsc(it.id)}"`)).join(''), mine.length,
+        animGeo || pwOpenWas.prov !== pwProv);
+    });
+    html += kidsBox(lvl2, kids.length, animGeo);
   });
   el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
+  pwOpenWas = { geo: pwGeo, prov: pwProv };
 }
+
+/* Клік по самій кампанії. Повторний — знімає вибір: інакше з третього
+   рівня не було б вороття, крім кліку по сусідній гілці. */
+window.pwPickOne = function (el) {
+  const id = String(el.getAttribute('data-id') || '');
+  if (!id) return;
+  pwOne = (pwOne === id) ? '' : id;
+  pwRenderTree(); pwRender();
+};
 
 /* Гео й постачальника беремо з ключа булавки того ж рядка: зібраний
    рядком pwPick('KG','Mbank's app') ламався б на апострофі в назві. */
@@ -18007,7 +18091,18 @@ window.pwPickKey = function (el) {
   pwPick(p[1], p[2] || '');
 };
 function pwPick(g, p) {
-  pwGeo = g; pwProv = p; pwOnlyBad = false;
+  /* ПОВТОРНИЙ КЛІК ЗАКРИВАЄ. Доти клік по вже відкритому гео не робив
+     нічого — гілка лишалась розгорнутою, і дерево виглядало так, ніби
+     розгортання застрягло. Закриваємо по одному рівню за клік:
+     постачальник згортається в гео, гео — в себе. */
+  if (g && g === pwGeo && p === pwProv) {
+    if (p) pwProv = ''; else pwGeo = '';
+  } else {
+    pwGeo = g; pwProv = p;
+  }
+  // Вибрана кампанія уточнювала ІНШУ гілку — тримати її далі нічого.
+  pwOne = '';
+  pwOnlyBad = false;
   /* Підпис вікна тримає кнопку «під увагою», і її стан мусить
      гаснути разом із фільтром: інакше вона світилась би ввімкненою
      над списком, який уже не фільтрований. */
@@ -18018,7 +18113,7 @@ function pwPick(g, p) {
    знімаються: «⚠ у KG» лишало б питання, чи решта чиста, чи просто
    відфільтрована. */
 function pwPickBad() {
-  pwOnlyBad = !pwOnlyBad; pwGeo = ''; pwProv = '';
+  pwOnlyBad = !pwOnlyBad; pwGeo = ''; pwProv = ''; pwOne = '';
   apSubPaint();
   pwRenderTree(); pwRender();
 }
@@ -18030,6 +18125,7 @@ function pwRender() {
   const q = (document.getElementById('ap-search')?.value || '').toLowerCase().trim();
   const rows = pwItems.filter(it =>
     (!pwOnlyBad || pwBadLinks(it).length) &&
+    (!pwOne || it.id === pwOne) &&
     (!pwGeo || (it.geo || '—').toUpperCase() === pwGeo) &&
     (!pwProv || pwProvOf(it) === pwProv) &&
     /* Шукаємо і по тому, що ЗБЕРЕЖЕНО, і по тому, що ВИДНО: назву з

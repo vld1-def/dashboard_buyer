@@ -10,6 +10,11 @@
      • хто без постачальника — видимий окремою гілкою, а не загублений;
      • гілка з дітьми має шеврон, і він повернутий лише коли відкрита;
      • діти їдуть у .ap-kids — вузол, на якому й тримається анімація;
+     • анімація грає ЛИШЕ на тому, що відкрилось щойно (.is-new), а не
+       на кожному перемальовуванні дерева;
+     • повторний клік ЗАКРИВАЄ гілку — по одному рівню за клік;
+     • третій рівень — самі кампанії, і клік по кампанії лишає в
+       списку тільки її;
      • поле в редакторі — СПИСОК: datalist із «Pwa Partners» і
        «SkakApp» плюс ті, що вже заведені, але вписати свого можна;
      • збережене їде в запис і одразу зʼявляється в дереві;
@@ -107,12 +112,90 @@ const caret = await page.evaluate(() => {
 });
 ok('у відкритого гео шеврон повернутий', caret.kgOpen, caret);
 ok('у закритого шеврон є, але не повернутий', caret.tjCaret && !caret.tjOpen, caret);
-ok('у постачальників шеврона немає — глибше нічого не розгортається',
-  caret.kidsCarets === 0, caret);
-ok('діти в .ap-kids, і на ньому заведена анімація розгортання',
-  caret.anim === 'ap-kids-in' && caret.hidden === 'hidden', caret);
+ok('у постачальників теж шеврон — глибше розгортаються самі кампанії',
+  caret.kidsCarets === 3, caret);
+ok('діти в .ap-kids, і він обрізає вміст на час виїзду',
+  caret.hidden === 'hidden', caret);
+
+/* Анімація — лише на ЩОЙНО відкритій гілці. Беремо свіже гео: на вже
+   відкритому її не має бути, інакше список з'їжджав би від кожного
+   кліку (саме це й виглядало як крива анімація). */
+const fresh = await page.evaluate(() => {
+  const was = document.querySelector('#ap-tree .ap-kids');
+  const stale = was ? getComputedStyle(was).animationName : 'НЕМА';
+  [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => r.textContent.trim().startsWith('TJ')).click();
+  const now = document.querySelector('#ap-tree .ap-kids');
+  return { stale, fresh: now ? getComputedStyle(now).animationName : 'НЕМА' };
+});
+ok('на щойно відкритій гілці анімація грає', fresh.fresh === 'ap-kids-in', fresh);
+ok('а на вже відкритій — ні', fresh.stale === 'none', fresh);
 ok('висота для анімації порахована з кількості дітей',
   /^\d+px$/.test(caret.kh) && parseInt(caret.kh, 10) >= 120, caret);
+
+/* ─────────── третій рівень: самі кампанії ─────────── */
+const lvl3 = await page.evaluate(() => {
+  // Попередня перевірка пішла в TJ — вертаємось у KG, там постачальники.
+  pwPick('KG', '');
+  const row = [...document.querySelectorAll('#ap-tree .ap-kids .ap-row')]
+    .find(r => /PWA PARTNERS/i.test(r.textContent));
+  row.click();
+  const rows = [...document.querySelectorAll('#ap-tree .ap-row')]
+    .map(r => (r.style.paddingLeft || '') + '|' + r.textContent.trim().replace(/\s+/g, ' '));
+  return { rows, prov: pwProv,
+           boxes: [...document.querySelectorAll('#ap-tree .ap-kids')].map(k => k.className),
+           carets: document.querySelectorAll('#ap-tree .ap-kids .ap-kids .ap-caret').length };
+});
+ok('клік по постачальнику розгортає його кампанії', lvl3.prov === 'Pwa Partners'
+  && lvl3.rows.some(r => /^36px\|Mbank_KG_1/.test(r)), lvl3.rows);
+ok('обидві кампанії цього постачальника, і чужих немає',
+  lvl3.rows.filter(r => r.startsWith('36px')).length === 2
+  && !lvl3.rows.some(r => /36px\|Olly/.test(r)), lvl3.rows);
+ok('біля кампанії — кількість силок, а не кампаній',
+  lvl3.rows.some(r => /^36px\|Mbank_KG_1_09\/10 1$/.test(r)), lvl3.rows);
+ok('у кампаній шеврона немає — глибше нічого немає',
+  lvl3.carets === 0, lvl3);
+ok('анімація стоїть на новому вузлі', lvl3.boxes.some(c => /is-new/.test(c)), lvl3.boxes);
+
+const pickOne = await page.evaluate(() => {
+  const row = [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => /Mbank_KG_2/.test(r.textContent));
+  row.click();
+  return { one: pwOne, cards: document.querySelectorAll('#ap-list > div').length,
+           list: document.getElementById('ap-list').textContent.replace(/\s+/g, ' '),
+           boxes: [...document.querySelectorAll('#ap-tree .ap-kids')].map(k => k.className) };
+});
+ok('клік по кампанії лишає в списку тільку її',
+  pickOne.one === 'p2' && pickOne.cards === 1 && /Mbank_KG_2/.test(pickOne.list), pickOne);
+ok('і дерево НЕ переграє анімацію — рівні вже були відкриті',
+  !pickOne.boxes.some(c => /is-new/.test(c)), pickOne.boxes);
+
+const unpick = await page.evaluate(() => {
+  [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => /Mbank_KG_2/.test(r.textContent)).click();
+  return { one: pwOne, cards: document.querySelectorAll('#ap-list > div').length };
+});
+ok('повторний клік по кампанії знімає вибір', unpick.one === '' && unpick.cards === 2, unpick);
+
+/* ─────────── закриття по одному рівню ─────────── */
+const closeP = await page.evaluate(() => {
+  [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => /PWA PARTNERS/i.test(r.textContent)).click();
+  return { geo: pwGeo, prov: pwProv,
+           lvl3: [...document.querySelectorAll('#ap-tree .ap-row')]
+             .filter(r => r.style.paddingLeft === '36px').length };
+});
+ok('повторний клік по постачальнику згортає його кампанії',
+  closeP.prov === '' && closeP.geo === 'KG' && closeP.lvl3 === 0, closeP);
+
+const closeG = await page.evaluate(() => {
+  [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => r.textContent.trim().startsWith('KG')).click();
+  return { geo: pwGeo, rows: document.querySelectorAll('#ap-tree .ap-row').length,
+           kids: document.querySelectorAll('#ap-tree .ap-kids').length };
+});
+ok('повторний клік по гео закриває гілку', closeG.geo === '' && closeG.kids === 0, closeG);
+ok('і в дереві лишаються самі гео', closeG.rows === 3, closeG);
 
 /* ─────────── поле постачальника в редакторі ─────────── */
 const ed = await page.evaluate(() => {
@@ -217,17 +300,47 @@ const bulkOff = await page.evaluate(() => {
 ok('а без вибраної гілки — каже, що постачальника не впише',
   /не вписується/.test(bulkOff), bulkOff.slice(0, 300));
 
-/* ─────────── прілки не зачеплені ─────────── */
+/* ─────────── прілки: те саме розгортання ─────────── */
 const app = await page.evaluate(() => {
   apMode = 'app';
-  apItems = [{ id: 'a1', geo: 'KG', provider: 'Satorapps', naming: 'x', note: '' }];
-  apGeo = ''; apProv = '';
+  apItems = [
+    { id: 'a1', geo: 'KG', provider: 'Satorapps', naming: 'x', note: '' },
+    { id: 'a2', geo: 'KG', provider: "Olly's apps", naming: 'y', note: '' },
+    { id: 'a3', geo: 'TJ', provider: 'Satorapps', naming: 'z', note: '' }
+  ];
+  apGeo = ''; apProv = ''; apOpenWas = '';
   apModePaint(); apRenderMode();
-  const rows = [...document.querySelectorAll('#ap-tree .ap-row')].map(r => r.textContent.trim());
-  return { rows, kids: document.querySelectorAll('#ap-tree .ap-kids').length };
+  const geoRow = () => [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => r.textContent.trim().startsWith('KG'));
+  const shut = !!geoRow().querySelector('.ap-caret') && !geoRow().querySelector('.ap-caret.is-open');
+  geoRow().click();
+  const openBox = document.querySelector('#ap-tree .ap-kids');
+  return {
+    shut, open: !!geoRow().querySelector('.ap-caret.is-open'),
+    box: openBox ? openBox.className : '',
+    kids: [...document.querySelectorAll('#ap-tree .ap-kids .ap-row')].map(r => r.textContent.trim()),
+    geo: apGeo
+  };
 });
-ok('у прілках дерево гео → постачальник як було', app.rows.some(t => /KG/.test(t)), app.rows);
-ok('і розгортання туди не поїхало — там інший довідник',
-  app.kids === 0, app);
+ok('у прілках гілка теж має шеврон', app.shut, app);
+ok('клік розгортає постачальників з анімацією',
+  app.open && /is-new/.test(app.box) && app.kids.length === 2, app);
+
+const appApos = await page.evaluate(() => {
+  [...document.querySelectorAll('#ap-tree .ap-kids .ap-row')]
+    .find(r => /Olly/.test(r.textContent)).click();
+  return { prov: apProv, list: document.getElementById('ap-list').textContent };
+});
+ok('апостроф у назві постачальника не ламає клік у прілках',
+  appApos.prov === "Olly's apps", appApos);
+
+const appClose = await page.evaluate(() => {
+  [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => r.textContent.trim().startsWith('KG')).click();   // назад до гео
+  [...document.querySelectorAll('#ap-tree .ap-row')]
+    .find(r => r.textContent.trim().startsWith('KG')).click();   // і закрити
+  return { geo: apGeo, kids: document.querySelectorAll('#ap-tree .ap-kids').length };
+});
+ok('і повторний клік закриває гілку', appClose.geo === '' && appClose.kids === 0, appClose);
 
 await done(browser, srv, errs);
