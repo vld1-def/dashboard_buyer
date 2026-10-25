@@ -1,11 +1,11 @@
 /* ═══════════ МЕНЮ PWA: ЗАКРІПЛЕНЕ ЗВЕРХУ, «ПІД УВАГОЮ» ГЕТЬ ═══════════
 
-   Меню — це гео й оффери, тобто те, ЧИМ ШУКАЮТЬ. Рядок «⚠ Під увагою»
+   Меню — це гео й постачальники, тобто те, ЧИМ ШУКАЮТЬ. Рядок «⚠ Під увагою»
    там був станом перевірки, а не способом пошуку, і займав місце
    зверху щодня. Він пішов із меню — але не з вікна: число в підписі
    й є той самий фільтр.
 
-   Закріплення: гео й офферів набирається десятками, а щодня працюють
+   Закріплення: гео й постачальників набирається десятками, а щодня працюють
    із трьома. Стенд тримає межі:
      • закріплене стоїть ЗВЕРХУ окремим блоком і клікається;
      • воно ж лишається у своєму гео — там його й відкріплюють;
@@ -22,18 +22,18 @@ const srv = await serve(PORT);
 const { browser, page, errs } = await open(PORT);
 
 const ITEMS = [
-  { id: 'p1', name: 'Mbank_KG_1_09/10', geo: 'KG', offer: 'Mbank', links: ['https://a.site'] },
-  { id: 'p2', name: 'Mbank_KG_2_09/10', geo: 'KG', offer: 'Mbank', links: ['https://b.site'] },
-  { id: 'p3', name: "Olly_KG_3_09/10",  geo: 'KG', offer: "Olly's app", links: ['https://c.site'] },
-  { id: 'p4', name: 'Pinco_TJ_4_09/10', geo: 'TJ', offer: 'Pinco', links: ['https://d.site'] },
-  { id: 'p5', name: 'Aviator_UZ_09/10', geo: 'UZ', offer: 'Aviator', links: ['https://e.site'] }
+  { id: 'p1', name: 'Mbank_KG_1_09/10', geo: 'KG', provider: 'Pwa Partners', links: ['https://a.site'] },
+  { id: 'p2', name: 'Mbank_KG_2_09/10', geo: 'KG', provider: 'Pwa Partners', links: ['https://b.site'] },
+  { id: 'p3', name: "Olly_KG_3_09/10",  geo: 'KG', provider: "Olly's pwa", links: ['https://c.site'] },
+  { id: 'p4', name: 'Pinco_TJ_4_09/10', geo: 'TJ', provider: 'SkakApp', links: ['https://d.site'] },
+  { id: 'p5', name: 'Aviator_UZ_09/10', geo: 'UZ', provider: 'SkakApp', links: ['https://e.site'] }
 ];
 
 const setup = (team = 'TEAM') => page.evaluate(([items, t]) => {
   currentTeam = t;
   apMode = 'pwa';
   pwItems = items.map(x => ({ ...x }));
-  pwGeo = ''; pwOffer = ''; pwOnlyBad = false; pwDomErr = '';
+  pwGeo = ''; pwProv = ''; pwOnlyBad = false; pwDomErr = '';
   pwPins = null;                       // перечитати з localStorage
   window.__wrote = [];
   sb.from = () => ({ upsert: async row => { window.__wrote.push(row); return { error: null }; } });
@@ -96,37 +96,37 @@ ok('зберіглось під ключем команди', /TJ/.test(pinned.s
 const jump = await page.evaluate(() => {
   const rows = [...document.querySelectorAll('#ap-tree .ap-row')];
   rows[1].click();
-  return { geo: pwGeo, offer: pwOffer, list: document.getElementById('ap-list').textContent };
+  return { geo: pwGeo, prov: pwProv, list: document.getElementById('ap-list').textContent };
 });
 ok('клік по закріпленому вибирає його гео',
-  jump.geo === 'TJ' && !jump.offer && /Pinco/.test(jump.list), jump);
+  jump.geo === 'TJ' && !jump.prov && /Pinco/.test(jump.list), jump);
 
-/* ─────────── закріплення оффера, і апостроф у назві ─────────── */
+/* ─────────── закріплення постачальника, і апостроф у назві ─────────── */
 const offPin = await page.evaluate(() => {
   pwPick('KG', '');
   const rows = [...document.querySelectorAll('#ap-tree .ap-row')];
-  const olly = rows.find(r => r.textContent.includes("Olly's app"));
+  const olly = rows.find(r => r.textContent.includes("Olly's pwa"));
   olly.querySelector('.ap-pin').click();
   const after = [...document.querySelectorAll('#ap-tree .ap-row')].map(r => r.textContent.trim());
   return { all: after, top: after.slice(1, 3) };
 });
-ok('закріплений оффер показується з гео, щоб його було видно з будь-якого місця',
-  offPin.top.some(t => /KG · Olly's app/.test(t)), offPin.top);
+ok('закріплений постачальник показується з гео, щоб його було видно з будь-якого місця',
+  offPin.top.some(t => /KG · Olly's pwa/.test(t)), offPin.top);
 
 const offJump = await page.evaluate(() => {
   pwPick('UZ', '');                 // пішли в інше гео
   const rows = [...document.querySelectorAll('#ap-tree .ap-row')];
-  const pinRow = rows.find(r => /Olly's app/.test(r.textContent));
+  const pinRow = rows.find(r => /Olly's pwa/.test(r.textContent));
   pinRow.click();
-  return { geo: pwGeo, offer: pwOffer, list: document.getElementById('ap-list').textContent };
+  return { geo: pwGeo, prov: pwProv, list: document.getElementById('ap-list').textContent };
 });
-ok('апостроф у назві не ламає клік — оффер вибрався',
-  offJump.geo === 'KG' && offJump.offer === "Olly's app" && /Olly_KG_3/.test(offJump.list), offJump);
+ok('апостроф у назві не ламає клік — постачальник вибрався',
+  offJump.geo === 'KG' && offJump.prov === "Olly's pwa" && /Olly_KG_3/.test(offJump.list), offJump);
 
 /* ─────────── переживає нове відкриття вікна ─────────── */
 const again = await page.evaluate(() => {
   pwPins = null;                   // як після перезавантаження сторінки
-  pwGeo = ''; pwOffer = '';
+  pwGeo = ''; pwProv = '';
   pwRenderTree();
   return [...document.querySelectorAll('#ap-tree .ap-row')].map(r => r.textContent.trim());
 });
@@ -157,13 +157,20 @@ ok('інша команда — свої закріплення, а не чуж�
 /* ─────────── закріплене на гео, якого вже немає ─────────── */
 const gone = await page.evaluate(() => {
   currentTeam = 'TEAM';
-  try { localStorage.setItem('pw_pins:TEAM', JSON.stringify(['g\nZZ', 'o\nKG\nMbank'])); } catch (e) {}
+  /* Третій ключ — СТАРОГО вигляду, з оффера ('o'). Таких у людей
+     повно в localStorage, і вони не мають прикидатись постачальником:
+     рядок «KG · Mbank» знизу нічого не фільтрував би. */
+  try { localStorage.setItem('pw_pins:TEAM',
+    JSON.stringify(['g\nZZ', 'p\nKG\nPwa Partners', 'o\nKG\nMbank'])); } catch (e) {}
   pwPins = null;
   pwRenderTree();
   const rows = [...document.querySelectorAll('#ap-tree .ap-row')].map(r => r.textContent.trim());
-  return { rows, zz: rows.some(t => t.startsWith('ZZ')) };
+  return { rows, zz: rows.some(t => t.startsWith('ZZ')),
+           mbank: rows.some(t => /KG · Mbank/.test(t)) };
 });
 ok('закріплене на гео, якого вже немає, не малює порожнього рядка',
-  !gone.zz && gone.rows.slice(1, 2).some(t => /KG · Mbank/.test(t)), gone.rows);
+  !gone.zz && gone.rows.slice(1, 2).some(t => /KG · Pwa Partners/.test(t)), gone.rows);
+ok('старе закріплення на оффер тихо зникло, а не стало постачальником',
+  !gone.mbank, gone.rows);
 
 await done(browser, srv, errs);

@@ -9505,7 +9505,7 @@ function apSubPaint() {
      пошук      чиститься — запит «satorapps» у PWA дасть порожній
                 список, і це виглядало б як «силок немає», а не як
                 «фільтр не з цього екрана»;
-     фільтри    у кожного режиму свої (apGeo/apProv і pwGeo/pwOffer),
+     фільтри    у кожного режиму свої (apGeo/apProv і pwGeo/pwProv),
                 тож дерево не переносить чуже гео на інший довідник. */
 function apSetMode(m) {
   apMode = (m === 'pwa') ? 'pwa' : 'app';
@@ -9687,11 +9687,21 @@ const AP_PIN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
   + ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
   + '<path d="M12 17v5M9 3h6l-1 6 3 3v2H7v-2l3-3-1-6z"/></svg>';
 
-function apTreeBtn(label, active, onclick, pad, count, accent, pin) {
+/* Шеврон. Він не тільки крутиться під анімацію — він ще й каже, що
+   рядок РОЗГОРТАЄТЬСЯ. Без нього гілка з дітьми й гілка без них
+   виглядали однаково, і доводилось тикати, щоб дізнатись. */
+const AP_CARET_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+  + ' stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<path d="m9 6 6 6-6 6"/></svg>';
+
+function apTreeBtn(label, active, onclick, pad, count, accent, pin, caret) {
   return `
     <div onclick="${onclick}" class="ap-row flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
          ${active ? (accent || 'bg-emerald-600') + ' text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
-      <span class="text-[11px] font-black uppercase truncate">${apEsc(label)}</span>
+      <span class="flex items-center gap-1 min-w-0">
+        ${caret ? `<span class="ap-caret${caret === 'open' ? ' is-open' : ''}">${AP_CARET_SVG}</span>` : ''}
+        <span class="text-[11px] font-black uppercase truncate">${apEsc(label)}</span>
+      </span>
       <span class="flex items-center gap-1 shrink-0">
         ${pin ? `<button type="button" class="ap-pin${pin.on ? ' is-on' : ''}" data-k="${apEsc(pin.key)}"
           onclick="pwPinToggle(event, this)"
@@ -10235,7 +10245,31 @@ async function apDelete(id) {
    ЗБЕРІГАННЯ. team_settings, ключ pwa_links, тим самим JSON і тією ж
    парою (created_by, key), що й app_links. Окремий ключ навмисно: щоб
    правка прілок не могла зачепити силки, і навпаки.                 */
-let pwItems = [], pwGeo = '', pwOffer = '', pwEditId = null, pwOnlyBad = false;
+let pwItems = [], pwGeo = '', pwProv = '', pwEditId = null, pwOnlyBad = false;
+
+/* ДРУГИЙ РІВЕНЬ ДЕРЕВА — ПОСТАЧАЛЬНИК, А НЕ ОФФЕР.
+
+   Оффер вгадується з назви й у PWA його майже ніколи немає: друга
+   гілка дерева стояла порожньою і відповідала на питання, якого тут
+   не ставлять. Шукають же навпаки: «де ця силка взята» — тобто в
+   кого з постачальників. Тому оффер лишається полем на картці
+   (під ним же підбираються домени), а в дерево став постачальник.
+
+   СПИСОК, АЛЕ НЕ ЗАМОК. «Pwa Partners», «pwa partners» і «ПВА
+   партнерс» — той самий постачальник, а в дереві вони стали б трьома
+   гілками, тому поле підказує datalist-ом. Але вписати свого можна
+   тут же: замкнутий select вимагав би правки коду на кожного нового,
+   а це той бік, де новий зʼявляється посеред дня.                 */
+const PW_PROVIDERS = ['Pwa Partners', 'SkakApp'];
+
+/* '—' означає «не вписано» і це НЕ те саме, що порожній фільтр:
+   порожній pwProv — «усі», а '—' — конкретна гілка з тими, у кого
+   поле лишилось пустим. Інакше їх не було б видно взагалі. */
+const pwProvOf = it => String(it.provider || '').trim() || '—';
+const pwProvLabel = p => p === '—' ? 'без постачальника' : p;
+const pwProvList = () => [...new Set(PW_PROVIDERS.concat(
+    pwItems.map(i => String(i.provider || '').trim()).filter(Boolean)))]
+  .sort((a, b) => a.localeCompare(b, 'uk'));
 
 /* ПИТАННЯ Й ДОВГІ ПОВІДОМЛЕННЯ. ask() і tell() малюють своє вікно
    замість системного «dashboard.github.io каже:», яке поруч зі
@@ -10671,9 +10705,11 @@ function pwPinsGet() {
   return pwPins;
 }
 
-// Ключ рядка. Гео й оффер розділені \n: у назвах буває що завгодно,
-// але не перенос рядка.
-const pwPinKey = (g, o) => (o ? 'o' : 'g') + '\n' + g + (o ? '\n' + o : '');
+// Ключ рядка. Гео й постачальник розділені \n: у назвах буває що
+// завгодно, але не перенос рядка. Префікс 'p' замість колишнього 'o'
+// від оффера — щоб старі закріплення на оффери не прикидались
+// постачальниками: вони просто не знайдуться й тихо зникнуть.
+const pwPinKey = (g, p) => (p ? 'p' : 'g') + '\n' + g + (p ? '\n' + p : '');
 
 window.pwPinToggle = function (ev, btn) {
   ev.stopPropagation();
@@ -10698,64 +10734,76 @@ function pwRenderTree() {
   const byGeo = {};
   pwItems.forEach(it => {
     const g = (it.geo || '—').toUpperCase();
-    (byGeo[g] = byGeo[g] || new Set()).add(it.offer || '—');
+    (byGeo[g] = byGeo[g] || new Set()).add(pwProvOf(it));
   });
   const nGeo = g => pwItems.filter(i => (i.geo || '—').toUpperCase() === g).length;
-  const nOff = (g, o) => pwItems.filter(i =>
-    (i.geo || '—').toUpperCase() === g && (i.offer || '—') === o).length;
-  const btn = (label, active, onclick, pad, count, pin) =>
-    apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600', pin);
+  const nProv = (g, p) => pwItems.filter(i =>
+    (i.geo || '—').toUpperCase() === g && pwProvOf(i) === p).length;
+  const btn = (label, active, onclick, pad, count, pin, caret) =>
+    apTreeBtn(label, active, onclick, pad, count, 'bg-sky-600', pin, caret);
 
   const pins = pwPinsGet();
-  let html = btn('Усі', !pwGeo && !pwOffer && !pwOnlyBad, "pwPick('','')", 8, pwItems.length);
+  let html = btn('Усі', !pwGeo && !pwProv && !pwOnlyBad, "pwPick('','')", 8, pwItems.length);
 
   /* Блок зверху — тільки коли є що закріплене. Порожній заголовок
      «Закріплені» щодня питав би, чи не загубились закріплення. */
   const pinned = [...pins].map(k => k.split('\n'))
-    .filter(p => p[0] === 'g' ? byGeo[p[1]] : (byGeo[p[1]] && byGeo[p[1]].has(p[2])))
+    .filter(p => p[0] === 'g' ? byGeo[p[1]]
+                              : (p[0] === 'p' && byGeo[p[1]] && byGeo[p[1]].has(p[2])))
     .sort((a, b) => (a[1] + (a[2] || '')).localeCompare(b[1] + (b[2] || ''), 'uk'));
   if (pinned.length) {
     html += '<p class="ap-tree-cap">закріплені</p>';
-    pinned.forEach(([kind, g, o]) => {
-      const key = pwPinKey(g, o);
-      html += btn(o ? g + ' · ' + o : g,
-        o ? (pwGeo === g && pwOffer === o) : (pwGeo === g && !pwOffer),
-        `pwPickKey(this)`, 8, o ? nOff(g, o) : nGeo(g), { key, on: true });
+    pinned.forEach(([kind, g, p]) => {
+      const key = pwPinKey(g, p);
+      html += btn(p ? g + ' · ' + pwProvLabel(p) : g,
+        p ? (pwGeo === g && pwProv === p) : (pwGeo === g && !pwProv),
+        `pwPickKey(this)`, 8, p ? nProv(g, p) : nGeo(g), { key, on: true });
     });
     html += '<p class="ap-tree-sep"></p>';
   }
 
   Object.keys(byGeo).sort().forEach(g => {
-    html += btn(g, pwGeo === g && !pwOffer, `pwPickKey(this)`, 8, nGeo(g),
-      { key: pwPinKey(g, ''), on: pins.has(pwPinKey(g, '')) });
-    if (pwGeo === g) [...byGeo[g]].sort().forEach(o => {
-      html += btn(o, pwOffer === o, `pwPickKey(this)`, 22, nOff(g, o),
-        { key: pwPinKey(g, o), on: pins.has(pwPinKey(g, o)) });
-    });
+    const kids = [...byGeo[g]].sort((a, b) => a.localeCompare(b, 'uk'));
+    const open = pwGeo === g;
+    html += btn(g, open && !pwProv, `pwPickKey(this)`, 8, nGeo(g),
+      { key: pwPinKey(g, ''), on: pins.has(pwPinKey(g, '')) },
+      open ? 'open' : 'shut');
+    /* Постачальники їдуть ОКРЕМИМ блоком, а не просто наступними
+       рядками: на ньому й тримається розгортання. innerHTML малює
+       дерево заново, тому .ap-kids щоразу зʼявляється новим вузлом —
+       і браузер проганяє на ньому анімацію сам. Без обгортки
+       анімувати було б нічого: рядки просто виникали б. Висота
+       оцінюється згори (--kh), бо під час анімації важливо лише не
+       обрізати вміст, а після неї обмеження знімається. */
+    if (open) html += `<div class="ap-kids" style="--kh:${kids.length * 40 + 8}px">`
+      + kids.map(p => btn(pwProvLabel(p), pwProv === p, `pwPickKey(this)`, 22, nProv(g, p),
+          { key: pwPinKey(g, p), on: pins.has(pwPinKey(g, p)) })).join('')
+      + '</div>';
   });
   el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
 }
 
-/* Гео й оффер беремо з ключа булавки того ж рядка: зібраний рядком
-   pwPick('KG','Mbank's app') ламався б на апострофі в назві. */
+/* Гео й постачальника беремо з ключа булавки того ж рядка: зібраний
+   рядком pwPick('KG','Mbank's app') ламався б на апострофі в назві. */
 window.pwPickKey = function (el) {
   const b = el.querySelector('.ap-pin');
   const p = String(b && b.getAttribute('data-k') || '').split('\n');
   if (p.length < 2) return;
   pwPick(p[1], p[2] || '');
 };
-function pwPick(g, o) {
-  pwGeo = g; pwOffer = o; pwOnlyBad = false;
+function pwPick(g, p) {
+  pwGeo = g; pwProv = p; pwOnlyBad = false;
   /* Підпис вікна тримає кнопку «під увагою», і її стан мусить
      гаснути разом із фільтром: інакше вона світилась би ввімкненою
      над списком, який уже не фільтрований. */
   apSubPaint();
   pwRenderTree(); pwRender();
 }
-/* Під увагою — це не гео й не оффер, тому інші фільтри знімаються:
-   «⚠ у KG» лишало б питання, чи решта чиста, чи просто відфільтрована. */
+/* Під увагою — це не гео й не постачальник, тому інші фільтри
+   знімаються: «⚠ у KG» лишало б питання, чи решта чиста, чи просто
+   відфільтрована. */
 function pwPickBad() {
-  pwOnlyBad = !pwOnlyBad; pwGeo = ''; pwOffer = '';
+  pwOnlyBad = !pwOnlyBad; pwGeo = ''; pwProv = '';
   apSubPaint();
   pwRenderTree(); pwRender();
 }
@@ -10768,10 +10816,10 @@ function pwRender() {
   const rows = pwItems.filter(it =>
     (!pwOnlyBad || pwBadLinks(it).length) &&
     (!pwGeo || (it.geo || '—').toUpperCase() === pwGeo) &&
-    (!pwOffer || (it.offer || '—') === pwOffer) &&
+    (!pwProv || pwProvOf(it) === pwProv) &&
     /* Шукаємо і по тому, що ЗБЕРЕЖЕНО, і по тому, що ВИДНО: назву з
        {date} шукають за сьогоднішньою датою, а не за макросом. */
-    (!q || [it.geo, it.offer, it.name, pwName(it), it.note].concat(it.links || [])
+    (!q || [it.geo, it.provider, it.offer, it.name, pwName(it), it.note].concat(it.links || [])
             .some(v => String(v || '').toLowerCase().includes(q))));
 
   if (!rows.length) {
@@ -10796,7 +10844,8 @@ function pwRender() {
       <div class="flex items-start justify-between gap-2 flex-wrap">
         <p class="text-[12px] font-black text-white truncate min-w-0">
           <span class="text-sky-300">${apEsc((it.geo || '—').toUpperCase())}</span>
-          ${it.offer ? `<span class="text-slate-400 ml-1.5">· ${apEsc(it.offer)}</span>` : ''}
+          ${it.provider ? `<span class="text-slate-400 ml-1.5">· ${apEsc(it.provider)}</span>` : ''}
+          ${it.offer ? `<span class="text-slate-600 ml-1.5">· ${apEsc(it.offer)}</span>` : ''}
           <span class="text-slate-600 ml-1.5">· ${links.length} ${links.length === 1 ? 'силка' : 'силок'}</span>
           ${nBad ? `<span class="text-rose-400 ml-1.5">· ${nBad} під увагою</span>` : ''}
         </p>
@@ -10872,7 +10921,7 @@ function pwNew() {
   // Нова кампанія: назву щойно взяли з кабінета, дата в ній — дата заливу.
   pwDateAuto = true;
   pwShowEditor({ name: '', geo: pwGeo === '—' ? '' : pwGeo,
-                 offer: pwOffer === '—' ? '' : pwOffer, links: [], note: '' });
+                 provider: pwProv === '—' ? '' : pwProv, links: [], note: '' });
 }
 function pwEdit(id) {
   const it = pwItems.find(x => x.id === id);
@@ -10912,10 +10961,17 @@ function pwShowEditor(v) {
         <button id="pw-datebtn" onclick="pwDateBtn()" type="button"
           class="hidden shrink-0 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition"></button>
       </div>
-      <div class="grid grid-cols-2 gap-2">
+      <!-- Постачальник стоїть ПЕРЕД оффером, бо саме ним тепер
+           розгортається дерево, а оффер лишився для підбору доменів.
+           Поле зі списком (datalist), а не select: підказує наявних,
+           але не замикає — нового вписують тут же. -->
+      <div class="grid grid-cols-3 gap-2">
         <input id="pw-f-geo" value="${apEsc(v.geo || '')}" oninput="pwPoolPaint()" class="${inp} uppercase" placeholder="Гео">
+        <input id="pw-f-prov" value="${apEsc(v.provider || '')}" list="pw-prov-list" class="${inp}" placeholder="Постачальник">
         <input id="pw-f-offer" value="${apEsc(v.offer || '')}" oninput="pwPoolPaint()" class="${inp}" placeholder="Оффер">
       </div>
+      <datalist id="pw-prov-list">${pwProvList()
+        .map(p => `<option value="${apEsc(p)}"></option>`).join('')}</datalist>
       <textarea id="pw-f-links" rows="4" oninput="pwPoolPaint()" class="${inp} w-full font-mono leading-relaxed"
         placeholder="Силки — по одній на рядок:&#10;https://mplay-kg-games.website">${apEsc((v.links || []).join('\n'))}</textarea>
       <!-- Домени зі списку, які вже підписані цим PWA. Стоять ПІД
@@ -11038,6 +11094,9 @@ async function pwSubmit() {
   const rec = {
     name,
     geo: (val('pw-f-geo') || g.geo).toUpperCase(),
+    /* Постачальника не вгадуємо: у назві кампанії його немає, а
+       підставлений навмання розвів би дерево по чужих гілках. */
+    provider: val('pw-f-prov'),
     offer: val('pw-f-offer') || g.offer,
     // Дубль силки в одній кампанії — завжди недогляд копіпасти.
     links: [...new Set(raw)],
@@ -11198,6 +11257,12 @@ function pwBulkParse() {
     r.dupLinks ? line(`Силок уже було — пропущу: ${r.dupLinks}`, 'text-slate-500') : '',
     r.noLinks ? line(`Кампаній без жодної силки: ${r.noLinks} — збережу з назвою, силки долучиш потім`, 'text-amber-400/90') : '',
     r.dated ? line(`Дату зробимо автоматичною в назвах: ${r.dated} — сьогодні вони будуть із ${apEsc(pwDateRender('DD/MM'))}`, 'text-slate-400') : '',
+    /* Постачальника беремо з вибраної гілки дерева — але кажемо про
+       це ДО вставки, а не після: мовчки проставлений чужий
+       постачальник знайшовся б уже в дереві, рядків на двадцять. */
+    (pwProv && pwProv !== '—')
+      ? line(`Постачальник у нових: ${apEsc(pwProv)} — бо ця гілка вибрана в дереві. Не той — зніми фільтр і вставляй знову.`, 'text-slate-400')
+      : line('Постачальник у нових не вписується — гілка в дереві не вибрана. Проставиш у «змінити» або вибери гілку й вставляй знову.', 'text-slate-500'),
     r.bad.length ? line(`Не розібрав ${r.bad.length} рядк. — силка без назви над нею:<br><code class="font-mono text-[10px]">${r.bad.map(apEsc).join('<br>')}</code>`, 'text-amber-400') : '',
     `<div class="mt-2 max-h-48 overflow-y-auto custom-scrollbar space-y-1">${r.plan.map(x => {
       const g = pwGuess(x.name);
@@ -11234,7 +11299,8 @@ async function pwBulkApply() {
     const g = pwGuess(x.name);
     pwItems.unshift({
       id: 'p' + Date.now().toString(36) + i + Math.random().toString(36).slice(2, 6),
-      name: x.name, geo: g.geo, offer: g.offer, links: x.fresh, note: ''
+      name: x.name, geo: g.geo, provider: (pwProv === '—' ? '' : pwProv),
+      offer: g.offer, links: x.fresh, note: ''
     });
     added++;
   });

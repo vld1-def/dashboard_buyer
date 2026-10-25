@@ -3185,8 +3185,36 @@ body.is-lead-only .admin-only { display: none; }
 .ap-pin.is-on { opacity: 1; color: var(--accent); }
 .ap-pin.is-on svg { fill: currentColor; }
 
+/* ── ДЕРЕВО: РОЗГОРТАННЯ ──
+   Діти гілки приходять у .ap-kids, і цей вузол щоразу НОВИЙ (дерево
+   малюється через innerHTML) — тому анімація заводиться сама, без
+   жодного класу з JS. fill-mode навмисно немає: щойно анімація
+   добігла, max-height повертається до «без обмеження», і нічого не
+   обрізається, навіть якщо --kh виявиться меншим за вміст.
+   Згортання не анімується: вузол зникає разом з усім деревом, і
+   анімувати те, чого вже немає в DOM, нічим. */
+.ap-kids { overflow: hidden; animation: ap-kids-in .18s ease-out; }
+@keyframes ap-kids-in {
+  from { max-height: 0; opacity: 0; transform: translateY(-4px); }
+  to   { max-height: var(--kh, 480px); opacity: 1; transform: none; }
+}
+/* Шеврон: повертається на 90°, коли гілка відкрита. Він же й ознака,
+   що рядок взагалі розгортається. */
+.ap-caret {
+  display: inline-flex; flex-shrink: 0; opacity: .4;
+  transition: transform .18s ease, opacity .18s ease;
+}
+.ap-caret svg { width: 11px; height: 11px; }
+.ap-caret.is-open { opacity: .9; transform: rotate(90deg); }
+
+/* Хто просив менше руху — тому список просто є, без виїзду. */
+@media (prefers-reduced-motion: reduce) {
+  .ap-kids { animation: none; }
+  .ap-caret { transition: none; }
+}
+
 /* «Під увагою» живе в підписі вікна, а не рядком у меню: меню — це
-   гео й оффери, тобто те, чим шукають. */
+   гео й постачальники, тобто те, чим шукають. */
 .ap-sub-bad {
   margin-left: 2px; padding: 1px 7px; border-radius: 7px; cursor: pointer;
   background: rgba(239,68,68,.14); border: 1px solid rgba(239,68,68,.30);
