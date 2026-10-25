@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.10 11:59">
+  <meta name="build" content="build 25.10 12:22">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5933,7 +5933,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 11:59</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:22</div>
     </div>
   </aside>
 
@@ -8480,11 +8480,28 @@ function renderTrend(data) {
   function calculateDeltas(data) {
     const setEmpty = () => {
       window._kpiTotPrev = null;
+      // Інакше в підказці лишились би дати від попереднього зрізу.
+      window._kpiTotWhen = null;
       if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
     };
     if (!Array.isArray(data) || !data.length) return setEmpty();
 
-    const dates = [...new Set(data.map(i => i.date))].filter(Boolean).sort();
+    /* ДЕНЬ, ЗА ЯКИЙ ЩЕ НІЧОГО НЕ ЗАЛИТО, — ЦЕ НЕ РІВНИЙ ДЕНЬ.
+
+       Рядок у daily_stats зʼявляється раніше, ніж у ньому зʼявляються
+       гроші: імпорт за сьогодні часто приходить із нулями. Такий day
+       ставав останнім, різниця виходила рівно 0, і стрілка писала «=»
+       — тобто «тотал не рухався», хоча насправді ми просто порівнювали
+       з порожнім днем, а справжній рух за попередній day не показали
+       взагалі. Тому day без спенду й без депів у порівняння не беремо:
+       він нічого не додав до тотала, і прирівнювати до нього нічого. */
+    const live = {};
+    data.forEach(r => {
+      const d = String(r.date || '');
+      if (!d) return;
+      if (!live[d]) live[d] = (Number(r.spend) || 0) !== 0 || (Number(r.deposits ?? r.deps) || 0) !== 0;
+    });
+    const dates = Object.keys(live).filter(d => live[d]).sort();
     if (dates.length < 2) return setEmpty();          // немає з чим порівнювати
     const dLast = dates[dates.length - 1], dPrev = dates[dates.length - 2];
 
@@ -8522,7 +8539,7 @@ function renderTrend(data) {
     if (Math.abs(diff) < 0.5) {
       el.innerText = '=';
       el.className = 'kpi-delta is-flat';
-      el.setAttribute('title', 'No change · ' + tip);
+      el.setAttribute('title', 'No change · ' + tip + '\n(дні без спенду й депів у порівняння не беруться)');
       return;
     }
     const arrow = diff > 0 ? '▲' : '▼';
