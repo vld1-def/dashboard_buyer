@@ -71,8 +71,13 @@ const flat = await setup([
   { date: D(2), geo: 'KG', offer: 'X', spend: 200, deposits: 5 },
   { date: D(3), geo: 'KG', offer: 'X', spend: 100, deposits: 1 }
 ]);
+/* «=» САМЕ ПО СОБІ нічого не каже: питання приходило саме в такому
+   вигляді — «пропали дані, просто пише =». Тому поруч стоять ті два
+   дні, які порівняно. */
 ok('рівний день усе ще дає «=» — це відповідь, а не поломка',
-  flat.delta === '=' && /is-flat/.test(flat.cls), flat);
+  /^=/.test(flat.delta) && /is-flat/.test(flat.cls), flat);
+ok('і «=» називає ті два дні, які порівняно',
+  flat.delta === '= 02→03', flat.delta);
 ok('і «=» каже в підказці, що порожні дні не рахуються',
   /не беруться/.test(flat.tip), flat.tip);
 ok('підказка «=» називає дні 2 → 3', flat.when
@@ -84,8 +89,12 @@ const one = await setup([
   { date: D(2), geo: 'KG', offer: 'X', spend: 0, deposits: 0 },
   { date: D(3), geo: 'KG', offer: 'X', spend: 0, deposits: 0 }
 ]);
-ok('один день із грішми — стрілки немає, бо порівнювати ні з чим',
-  one.delta === '' && one.prev === null, one);
+/* Порожнє місце читається як поломка — прочерк ні: це наш знак
+   «не знаємо», і підказка каже, чому. */
+ok('один день із грішми — прочерк, а не порожнє місце',
+  one.delta === '—' && one.prev === null, one);
+ok('і підказка каже, чому його немає',
+  /fewer than two days/.test(one.tip), one.tip);
 ok('і підписів періоду теж немає — щоб не лишились від іншого зрізу',
   one.when === null, one.when);
 ok('але сам тотал показаний', one.profit === '$100.00', one);

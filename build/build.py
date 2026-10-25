@@ -25,9 +25,9 @@ def sub(hay, old, new, what):
 def read(f):
     return open(f, encoding='utf-8').read().rstrip('\n')
 
-head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, geocostjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs = (read(f) for f in
+head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs = (read(f) for f in
     ('head.html', 'design.css', 'shell.html', 'widgets.js', 'trend.js', 'settings.html',
-     'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js', 'geocost.js',
+     'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js',
      'fresh.js', 'geomodal.js', 'cabinets.html', 'cabinets.js', 'tg.js', 'events.js',
      'domains.html', 'domains.js', 'fbtok.js', 'fbrep.js', 'fbcom.js', 'fbpages.js',
      'uniq.html', 'uniq.js', 'rules.html', 'rules.js', 'pages.html', 'pages.js',
@@ -113,13 +113,6 @@ toolbar = sub(toolbar,
 shell = shell.replace('<!--TOOLBAR-->', toolbar)
 
 mid = S[i_weekly:i_shut + len('<!-- ═══════════ END REPORT BUILDER ═══════════ -->')]
-
-# ── Geo Breakdown: третя вкладка ──────────────────────────────────────
-mid = sub(mid,
-  """<button id="dg-tab-placement" onclick="dgSetMode('placement')" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">Placements</button>""",
-  """<button id="dg-tab-placement" onclick="dgSetMode('placement')" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">Placements</button>
-            <button id="dg-tab-cost" onclick="dgSetMode('cost')" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">Costs</button>""",
-  'ціни по гео: кнопка вкладки')
 
 # ── Календарі без кнопок: дата вибрана — дані вже перерахувались ───────
 # Три латки на фільтри «Live Data Feed» стояли тут і зникли разом із самим
@@ -575,7 +568,7 @@ rest = sub(rest,
 # ── Дельти KPI: останній день проти попереднього ───────────────────────
 rest = sub(rest,
   '  function calculateDeltas(data) {\n    const dates = [...new Set(data.map(i => i.date))].sort();\n    if (dates.length < 2) return;\n    const maxDate = dates[dates.length - 1];\n    const curS = data.reduce((a, b) => a + b.spend, 0), curR = data.reduce((a, b) => a + b.regs, 0), curD = data.reduce((a, b) => a + b.deposits, 0);\n    const prevD = data.filter(i => i.date < maxDate);\n    const pS = prevD.reduce((a, b) => a + b.spend, 0), pR = prevD.reduce((a, b) => a + b.regs, 0), pDep = prevD.reduce((a, b) => a + b.deposits, 0);\n\n    const cCPL = curR > 0 ? curS / curR : 0, pCPL = pR > 0 ? pS / pR : 0;\n    const cCPA = curD > 0 ? curS / curD : 0, pCPA = pDep > 0 ? pS / pDep : 0;\n    const cR2D = curR > 0 ? (curD / curR * 100) : 0, pR2D = pR > 0 ? (pDep / pR * 100) : 0;\n\n    const up = (id, c, p, isP) => {\n      const el = document.getElementById(\'delta-\' + id);\n      if (!el || p === 0) return;\n      const diff = c - p;\n      if (Math.abs(diff) < 0.01) { el.innerText = ""; return; }\n      const isB = isP ? diff < 0 : diff > 0;\n      el.innerText = `(${(diff > 0 ? \'▲\' : \'▼\')} ${diff > 0 ? \'+\' : \'-\'}${isP ? \'$\' : \'\'}${Math.abs(diff).toFixed(1)}${isP ? \'\' : \'%\'})`;\n      el.className = `text-[12px] font-black ml-1.5 ${isB ? \'text-green-500\' : \'text-red-500\'}`;\n    };\n    up(\'cpl\', cCPL, pCPL, true); up(\'cpa\', cCPA, pCPA, true); up(\'r2d\', cR2D, pR2D, false);\n  }',
-  "  // Стрілка біля Net Profit показує рух САМОГО ТОТАЛА на картці: яким він\n  // був станом на попередній день зрізу і яким став із останнім. Раніше тут\n  // стояв профіт одного дня проти профіту іншого — число на картці за весь\n  // період, а стрілка описувала добу, і разом вони не читались.\n  function calculateDeltas(data) {\n    const setEmpty = () => {\n      window._kpiTotPrev = null;\n      // Інакше в підказці лишились би дати від попереднього зрізу.\n      window._kpiTotWhen = null;\n      if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();\n    };\n    if (!Array.isArray(data) || !data.length) return setEmpty();\n\n    /* ДЕНЬ, ЗА ЯКИЙ ЩЕ НІЧОГО НЕ ЗАЛИТО, — ЦЕ НЕ РІВНИЙ ДЕНЬ.\n\n       Рядок у daily_stats зʼявляється раніше, ніж у ньому зʼявляються\n       гроші: імпорт за сьогодні часто приходить із нулями. Такий день\n       ставав останнім, різниця виходила рівно 0, і стрілка писала «=»\n       — тобто «тотал не рухався», хоча насправді ми просто порівнювали\n       з порожнім днем, а справжній рух за попередній день не показали\n       взагалі. Тому день без спенду й без депів у порівняння не беремо:\n       він нічого не додав до тотала, і прирівнювати до нього нічого. */\n    const live = {};\n    data.forEach(r => {\n      const d = String(r.date || '');\n      if (!d) return;\n      if (!live[d]) live[d] = (Number(r.spend) || 0) !== 0 || (Number(r.deposits ?? r.deps) || 0) !== 0;\n    });\n    const dates = Object.keys(live).filter(d => live[d]).sort();\n    if (dates.length < 2) return setEmpty();          // немає з чим порівнювати\n    const dLast = dates[dates.length - 1], dPrev = dates[dates.length - 2];\n\n    // Тотал «станом на попередній день» — той самий зріз без останнього дня.\n    // Витрати сюди не входять: вони однакові для обох тоталів і на різницю\n    // не впливають, а перемикач Gross/Net віднімає їх уже при малюванні.\n    let prev = 0;\n    data.forEach(row => {\n      if (row.date === dLast) return;\n      prev += (typeof revenueOf === 'function' ? revenueOf(row) : 0) - (Number(row.spend) || 0);\n    });\n    window._kpiTotPrev = prev;\n    window._kpiTotWhen = { prev: dPrev, cur: dLast };\n    if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();\n  }\n\n  // Малювання окремо від підрахунку: перемикач Gross/Net міняє число на\n  // картці, і підказка має називати ті самі гроші, що там показані.\n  window.kpiDeltaPaint = function () {\n    const el = document.getElementById('delta-profit');\n    if (!el) return;\n    const clear = () => { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); };\n    const prev = window._kpiTotPrev, cur = window._kpiGross;\n    if (typeof prev !== 'number' || typeof cur !== 'number') return clear();\n\n    // У режимі Net тотали теж мають бути чистими — інакше підказка\n    // називала б інші гроші, ніж число на картці.\n    const off = (localStorage.getItem('kpi_net') === 'net')\n      ? (Number(window._kpiFeesVal) || 0) + (Number(window._kpiExpensesVal) || 0) : 0;\n    const w = window._kpiTotWhen || {};\n    const money = v => (typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Number(v).toFixed(2));\n    const tip = `Total: ${money(prev - off)} (${w.prev}) → ${money(cur - off)} (${w.cur})`;\n    const diff = cur - prev;\n\n    if (Math.abs(diff) < 0.5) {\n      el.innerText = '=';\n      el.className = 'kpi-delta is-flat';\n      el.setAttribute('title', 'No change · ' + tip + '\\n(дні без спенду й депів у порівняння не беруться)');\n      return;\n    }\n    const arrow = diff > 0 ? '▲' : '▼';\n    const abs = money(Math.abs(diff)).replace(/^-/, '');\n    // Відсоток — від учорашнього тотала і лише коли той додатний: від нуля\n    // чи від мінуса він нічого не означає.\n    const base = prev - off;\n    const rel = base > 0 ? ` · ${Math.round(Math.abs(diff) / base * 100)}%` : '';\n    el.innerText = `${arrow} ${abs}${rel}`;\n    el.className = `kpi-delta ${diff > 0 ? 'is-up' : 'is-down'}`;\n    el.setAttribute('title', tip);\n  };",
+  "  // Стрілка біля Net Profit показує рух САМОГО ТОТАЛА на картці: яким він\n  // був станом на попередній день зрізу і яким став із останнім. Раніше тут\n  // стояв профіт одного дня проти профіту іншого — число на картці за весь\n  // період, а стрілка описувала добу, і разом вони не читались.\n  function calculateDeltas(data) {\n    const setEmpty = () => {\n      window._kpiTotPrev = null;\n      // Інакше в підказці лишились би дати від попереднього зрізу.\n      window._kpiTotWhen = null;\n      if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();\n    };\n    if (!Array.isArray(data) || !data.length) return setEmpty();\n\n    /* ДЕНЬ, ЗА ЯКИЙ ЩЕ НІЧОГО НЕ ЗАЛИТО, — ЦЕ НЕ РІВНИЙ ДЕНЬ.\n\n       Рядок у daily_stats зʼявляється раніше, ніж у ньому зʼявляються\n       гроші: імпорт за сьогодні часто приходить із нулями. Такий день\n       ставав останнім, різниця виходила рівно 0, і стрілка писала «=»\n       — тобто «тотал не рухався», хоча насправді ми просто порівнювали\n       з порожнім днем, а справжній рух за попередній день не показали\n       взагалі. Тому день без спенду й без депів у порівняння не беремо:\n       він нічого не додав до тотала, і прирівнювати до нього нічого. */\n    const live = {};\n    data.forEach(r => {\n      const d = String(r.date || '');\n      if (!d) return;\n      if (!live[d]) live[d] = (Number(r.spend) || 0) !== 0 || (Number(r.deposits ?? r.deps) || 0) !== 0;\n    });\n    const dates = Object.keys(live).filter(d => live[d]).sort();\n    if (dates.length < 2) return setEmpty();          // немає з чим порівнювати\n    const dLast = dates[dates.length - 1], dPrev = dates[dates.length - 2];\n\n    // Тотал «станом на попередній день» — той самий зріз без останнього дня.\n    // Витрати сюди не входять: вони однакові для обох тоталів і на різницю\n    // не впливають, а перемикач Gross/Net віднімає їх уже при малюванні.\n    let prev = 0;\n    data.forEach(row => {\n      if (row.date === dLast) return;\n      prev += (typeof revenueOf === 'function' ? revenueOf(row) : 0) - (Number(row.spend) || 0);\n    });\n    window._kpiTotPrev = prev;\n    window._kpiTotWhen = { prev: dPrev, cur: dLast };\n    if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();\n  }\n\n  // Малювання окремо від підрахунку: перемикач Gross/Net міняє число на\n  // картці, і підказка має називати ті самі гроші, що там показані.\n  window.kpiDeltaPaint = function () {\n    const el = document.getElementById('delta-profit');\n    if (!el) return;\n    const clear = () => { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); };\n    const prev = window._kpiTotPrev, cur = window._kpiGross;\n    /* Порожнє місце читається як поломка. Прочерк — ні: це наш знак\n       «не знаємо», і підказка каже, чому саме. Різниці без двох днів\n       із грішми не буває, і це нормальний стан першого дня місяця. */\n    if (typeof cur !== 'number') return clear();\n    if (typeof prev !== 'number') {\n      el.innerText = '—';\n      el.className = 'kpi-delta is-flat';\n      el.setAttribute('title', 'Nothing to compare yet: this period has fewer than two days '\n        + 'with spend or deposits.');\n      return;\n    }\n\n    // У режимі Net тотали теж мають бути чистими — інакше підказка\n    // називала б інші гроші, ніж число на картці.\n    const off = (localStorage.getItem('kpi_net') === 'net')\n      ? (Number(window._kpiFeesVal) || 0) + (Number(window._kpiExpensesVal) || 0) : 0;\n    const w = window._kpiTotWhen || {};\n    const money = v => (typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Number(v).toFixed(2));\n    const tip = `Total: ${money(prev - off)} (${w.prev}) → ${money(cur - off)} (${w.cur})`;\n    const diff = cur - prev;\n\n    /* «=» САМЕ ПО СОБІ НІЧОГО НЕ КАЖЕ. Людина бачить, що число поруч\n       із сумою зникло, і не знає: тотал не рухався, чи воно зламалось.\n       Питання приходило саме в такому вигляді («пропали дані, просто\n       пише =»). Тому поруч стоять ті два дні, які порівняно: якщо\n       останній день справді вийшов у нуль, це видно відразу, і видно\n       який саме день. */\n    const dd = v => String(v || '').slice(8) || '?';\n    if (Math.abs(diff) < 0.5) {\n      el.innerText = '= ' + dd(w.prev) + '\\u2192' + dd(w.cur);\n      el.className = 'kpi-delta is-flat';\n      el.setAttribute('title', 'No change · ' + tip + '\\n(дні без спенду й депів у порівняння не беруться)');\n      return;\n    }\n    const arrow = diff > 0 ? '▲' : '▼';\n    const abs = money(Math.abs(diff)).replace(/^-/, '');\n    // Відсоток — від учорашнього тотала і лише коли той додатний: від нуля\n    // чи від мінуса він нічого не означає.\n    const base = prev - off;\n    const rel = base > 0 ? ` · ${Math.round(Math.abs(diff) / base * 100)}%` : '';\n    el.innerText = `${arrow} ${abs}${rel}`;\n    el.className = `kpi-delta ${diff > 0 ? 'is-up' : 'is-down'}`;\n    el.setAttribute('title', tip);\n  };",
   'calculateDeltas: тотал учора проти тотала сьогодні')
 
 # Функція існувала, але її ніхто не викликав — чіпляємо до рендера KPI.
@@ -870,8 +863,8 @@ rest = sub(rest,
 # вікно, а список тут «заборонено за замовчуванням» — тож вони були
 # приховані від тімліда назавжди, без жодного способу відкрити.
 rest = sub(rest,
-  """  const keys = ['kpi','chart','geo','creatives','heatmap','device-geo','report','placements'];""",
-  """  const keys = ['kpi','chart','geo','creatives','heatmap','device-geo','report','cabinets','domains','expenses'];""",
+  """  const keys = ['kpi','chart','geo','creatives','heatmap','report','placements'];""",
+  """  const keys = ['kpi','chart','geo','creatives','heatmap','report','cabinets','domains','expenses'];""",
   'доступи тімліда: ключі')
 
 rest = sub(rest,
@@ -1153,11 +1146,12 @@ rest = sub(rest,
   """  <div class="card w-full max-w-[1500px] rounded-[2rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/10 bg-[#0f172a]/95 backdrop-blur-xl">""",
   'модалка гео: ширше вікно')
 
-# Costs стоїть ПЕРШОЮ вкладкою: вікно відкривається одразу на графіках.
+# Money стоїть ПЕРШОЮ вкладкою: вікно відкривається одразу на графіках.
+# Називається Money, а не Costs, бо в ній тепер і профіт — а він не витрата.
 # Активний клас теж переїжджає з Funnels на неї.
 rest = sub(rest,
   """<button onclick="switchGeoTab('funnels')" id="geo-tab-funnels" class="geo-tab-btn active-geo-tab px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Funnels</button>""",
-  """<button onclick="switchGeoTab('costs')" id="geo-tab-costs" class="geo-tab-btn active-geo-tab px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Costs</button>
+  """<button onclick="switchGeoTab('costs')" id="geo-tab-costs" class="geo-tab-btn active-geo-tab px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Money</button>
       <button onclick="switchGeoTab('funnels')" id="geo-tab-funnels" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Funnels</button>""",
   'модалка гео: кнопка вкладки')
 
@@ -1214,52 +1208,9 @@ rest = sub(rest,
   'модалка гео: відкривається на Costs')
 
 rest = sub(rest,
-  '// ===== Geo × Placement (вкладка в Geo Breakdown) =====',
-  geomodaljs.strip() + '\n\n// ===== Geo × Placement (вкладка в Geo Breakdown) =====',
+  '// ===== Feature 5: DB Logs =====',
+  geomodaljs.strip() + '\n\n// ===== Feature 5: DB Logs =====',
   'модалка гео: скрипт')
-
-# ── Geo Breakdown: вкладка Costs ──────────────────────────────────────
-# Картка тримає 420px зі скролом — графікам цього мало, тому в режимі
-# Costs вішаємо на контейнер клас, який цю межу знімає (правило в design.css).
-rest = sub(rest,
-  """let dgMode = 'device';   // 'device' | 'placement'
-function dgSetMode(m){
-  dgMode = m;
-  ['device','placement'].forEach(x=>{""",
-  """let dgMode = 'device';   // 'device' | 'placement' | 'cost'
-function dgSetMode(m){
-  dgMode = m;
-  const dgBox = document.getElementById('device-geo-content');
-  if (dgBox) {
-    dgBox.classList.toggle('dg-cost', m === 'cost');
-    dgBox.classList.toggle('dg-plc', m === 'placement');
-  }
-  // Полотна зникнуть разом із innerHTML, а самі Chart-и лишаться живими
-  // в Chart.instances і будуть смикатись на кожному resize — гасимо їх тут.
-  if (m !== 'cost' && typeof gcDestroy === 'function') gcDestroy();
-  ['device','placement','cost'].forEach(x=>{""",
-  'ціни по гео: перемикач вкладки')
-
-# Гілку ставимо до перевірки на порожні дані: у режимі Costs порожнечу
-# розбирає власний рендер, і повідомлення в ньому точніше.
-rest = sub(rest,
-  """  if (!crData.length) {
-    el.innerHTML = '<div class="col-span-3 text-center py-8 opacity-30 text-xs uppercase font-black">No data in creatives_stats for this month</div>';""",
-  """  if (dgMode === 'cost') { renderGeoCostWidget(crData, el); return; }
-
-  if (!crData.length) {
-    // Сама назва таблиці нічого не пояснює тому, хто просто відкрив
-    // сторінку і бачить порожнечу — кажемо ще й що з цим робити.
-    el.innerHTML = '<div class="col-span-3 text-center py-16 text-xs font-black uppercase tracking-widest" style="color:var(--text-muted)">'
-      + '<div class="opacity-45">No creative data for this month</div>'
-      + '<div class="mt-2 opacity-30 normal-case tracking-normal font-bold">This page is built from creatives_stats. Upload a report in Data Hub &rarr; Campaigns.</div>'
-      + '</div>';""",
-  'ціни по гео: гілка рендера')
-
-rest = sub(rest,
-  '// ===== Geo × Placement (вкладка в Geo Breakdown) =====',
-  geocostjs.strip() + '\n\n// ===== Geo × Placement (вкладка в Geo Breakdown) =====',
-  'ціни по гео: скрипт')
 
 # ── Report Builder: рядок Total у <tfoot>, щоб липнув до низу ──────────
 # У <tbody> він просто їхав за останнім рядком і при довгому списку зникав
@@ -2410,9 +2361,11 @@ rest = sub(rest,
 # Гачків два, і форма виклику в них різна, тож і якір окремий для кожного.
 _cab_tail = ("\n  if (typeof cabRefresh === 'function') cabRefresh();"
              "\n  if (typeof evBoot === 'function') evBoot();")
-_anchor_1 = "  if (typeof renderDeviceGeoWidget === 'function') renderDeviceGeoWidget();"
-_anchor_2 = ("  if (typeof renderDeviceGeoWidget === 'function') {\n"
-             "    renderDeviceGeoWidget();\n  }")
+# Якорями були виклики renderDeviceGeoWidget — вони пішли разом із
+# блоком Geo Breakdown. Беремо сусідні рядки тих самих двох місць.
+_anchor_1 = '  if (typeof renderCreativeSidebar === \'function\') renderCreativeSidebar("");'
+_anchor_2 = "  updateMilestones(filteredDataCache);\n"
+
 rest = sub(rest, _anchor_1, _anchor_1 + _cab_tail, 'кабінети: гачок перемальовки 1')
 rest = sub(rest, _anchor_2, _anchor_2 + _cab_tail, 'кабінети: гачок перемальовки 2')
 

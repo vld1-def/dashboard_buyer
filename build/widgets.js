@@ -15,7 +15,6 @@
     '':           { dash: true },
     'heatmap':    { section: 'weekly-analysis-section' },
     'creatives':  { section: 'creative-analyzer-section' },
-    'geo':        { section: 'device-geo-section' },
     'cabinets':   { section: 'cabinets-section' },
     'domains':    { section: 'domains-section' },
     'team':       { section: 'team-section' },
@@ -1760,7 +1759,6 @@
     ['Dashboard',      'nav:',                      'Page'],
     ['Heatmap',        'nav:heatmap',    'Page'],
     ['Creatives',      'nav:creatives',  'Page'],
-    ['Geo Breakdown',  'nav:geo',         'Page'],
     ['Cabinets',       'nav:cabinets',   'Page'],
     ['Domains',        'nav:domains',    'Page'],
     ['Report Builder', 'nav:reports',     'Page'],
@@ -1853,8 +1851,8 @@
       cmdShown = cmdBase();
     } else {
       const hit = c => c[0].toLowerCase().includes(s) || c[2].toLowerCase().includes(s);
-      // Точний збіг завжди перший: на «BR» потрібне гео BR, а не сторінка
-      // «Geo Breakdown», у назві якої той самий «br» сидить усередині слова.
+      // Точний збіг завжди перший: на «DO» потрібне гео DO, а не сторінка
+      // «Domains», у назві якої той самий «do» сидить усередині слова.
       // Далі — початок слова, далі — решта. Усередині однакового рангу
       // порядок лишається вихідним, тобто сторінки перед даними.
       const rank = c => {
