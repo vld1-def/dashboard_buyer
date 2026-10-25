@@ -41,7 +41,9 @@ const DAILY = [
    cfWait відмовляється малювати і вертає false. Підміняємо: стенд
    перевіряє, ЯКІ дані й кольори йдуть у графік, а не те, як Chart.js
    їх малює. */
-const draw = (daily, payouts) => page.evaluate(([rows, pay, month]) => {
+const draw = (daily, payouts, style) => page.evaluate(([rows, pay, month, st]) => {
+  try { if (st) localStorage.setItem('chart_style', st);
+        else localStorage.removeItem('chart_style'); } catch (e) {}
   cfLibOk = true;
   window.Chart = function (ctx, cfg) { this.config = cfg; this.destroy = function () {}; };
   currentMonthFilter = month;
@@ -63,8 +65,14 @@ const draw = (daily, payouts) => page.evaluate(([rows, pay, month]) => {
     colors: c.config.data.datasets[0].backgroundColor,
     labels: c.config.data.labels
   }));
-  return { cards, ch };
-}, [daily, payouts, M]);
+  const g = (window.gmCharts || [])[0];
+  const p = (window.gmCharts || [])[1];
+  const zg = g && g.config.options.scales.y.grid.color;
+  return { cards, ch,
+    fillSpend: !!(g && g.config.data.datasets[0].fill),
+    lineProfit: p && p.config.data.datasets[0].borderColor,
+    zeroGrid: typeof zg === 'function' ? zg({ tick: { value: 0 } }) : zg };
+}, [daily, payouts, M, style || '']);
 
 // CPA $100 за деп: 1-го виручка $200 при спенді $100 → +$100;
 //                  2-го виручка $100 при спенді $250 → −$150.
@@ -129,6 +137,44 @@ const none = await page.evaluate(() => {
 });
 ok('гео без даних — одне повідомлення, а не шість порожніх карток',
   /No data for ZZ this month/.test(none), none.slice(0, 120));
+
+/* ─────────── вигляд графіка береться з налаштувань ───────────
+   «чому ці графіки що ми додали вони в стилі bar, якщо в
+   налаштуваннях вказано інший стиль графіка». Доти стовпчики стояли
+   намертво, і при вибраній лінії ці два лишались єдиними стовпчиками
+   на екрані. */
+const asLine = await draw(DAILY, CPA, 'line');
+ok('вибрано лінію — спенд і профіт малюються лінією',
+  asLine.ch[0].type === 'line' && asLine.ch[1].type === 'line', asLine.ch.map(c => c.type));
+/* Полотен п'ять, а не шість: CPC рахується з creatives_stats, а їх
+   у цьому стенді немає — замість графіка там «No clicks». Саме так і
+   має бути: ділити на нуль нічого. */
+ok('цінові графіки лініями й лишились', asLine.ch.length === 5
+  && asLine.ch.slice(2).every(c => c.type === 'line'), asLine.ch.map(c => c.type));
+
+const asArea = await draw(DAILY, CPA, 'area');
+ok('вибрано область — лінія з заливкою', asArea.ch[0].type === 'line' && asArea.fillSpend, asArea);
+
+const asBars = await draw(DAILY, CPA, 'bars');
+ok('вибрано стовпчики — як і було', asBars.ch[0].type === 'bar', asBars.ch[0].type);
+ok('і мінусовий день на них фарбується окремо',
+  /244,63,94/.test(String(asBars.ch[1].colors[1])), asBars.ch[1].colors);
+ok('на лінії профіту колір за знаком тотала — мінус червоний',
+  /F43F5E/i.test(String(asLine.lineProfit)), asLine.lineProfit);
+ok('нуль на сітці підсвічений яскравіше за решту',
+  asLine.zeroGrid === 'rgba(255,255,255,.26)', asLine.zeroGrid);
+
+/* ─────────── стрілка з картки Net Profit прибрана ───────────
+   «= 23→24 що це? кароче видали цю штуку з карточки». */
+const noDelta = await page.evaluate(() => ({
+  el: !!document.getElementById('delta-profit'),
+  paint: typeof window.kpiDeltaPaint,
+  prev: typeof window._kpiTotPrev,
+  profit: !!document.getElementById('kpi-profit')
+}));
+ok('елемента стрілки в картці немає', !noDelta.el, noDelta);
+ok('і код, що її малював, теж пішов', noDelta.paint === 'undefined', noDelta);
+ok('сама сума профіту на місці', noDelta.profit, noDelta);
 
 /* ─────────── блока Geo Breakdown більше немає ───────────
    «взагалі таке як гео брейкдаун видали типу з меню». Прибрано разом

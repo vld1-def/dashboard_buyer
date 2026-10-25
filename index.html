@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.10 12:59">
+  <meta name="build" content="build 25.10 13:08">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1368,11 +1368,6 @@ body.sb-compact .sb-search .tb-kbd {
   font-size: 25px; font-weight: 800; letter-spacing: -.03em; margin-top: 7px;
   font-variant-numeric: tabular-nums; line-height: 1.1;
 }
-.kpi-delta { font-size: 11px; font-weight: 800; margin-left: 6px; white-space: nowrap; }
-.kpi-delta.is-up { color: var(--ok); } .kpi-delta.is-down { color: var(--bad); }
-.kpi-delta.is-flat { color: var(--text-muted); opacity: .6; }
-/* Стрілка має тулитись до числа, а не тягнути картку вшир */
-.kpi-delta { flex: 0 0 auto; }
 .kpi-foot { margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
 .kpi-foot b { font-weight: 800; }
 .kpi-card:hover { z-index: 60; }
@@ -2770,14 +2765,15 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    тож її власні 90vh дають на екрані лише 81 %. max-height перебиваємо
    теж — інакше клас max-h-[90vh] з розмітки зріже цю висоту назад. */
 #geo-details-modal > .card {
-  /* 710px — це рівно та висота, яку вкладка Costs брала собі сама, коли
-     картка ще росла під вміст (640 px на екрані: 710 × zoom .9). Беремо її
-     за еталон, бо Costs відкривається першою.
+  /* Висоту підняли з 710 до 860: графіків у вкладці Money шість, і на
+     710 px кожен лишався смужкою на 120 px. Шапку вікна при цьому
+     зробили нижчою (py-2.5 замість p-5 і менший заголовок) — це
+     віддало графікам ще десяток пікселів, які в ній простоювали.
      min() зі 90vh — щоб на низькому екрані вікно не вилазило за межі:
      ділення на --zoom тут з тієї ж причини, що й у height (картка живе
      всередині body { zoom: .9 }, її власні 90vh дали б лише 81 % екрана). */
-  height: min(710px, calc(90vh / var(--zoom)));
-  max-height: min(710px, calc(90vh / var(--zoom)));
+  height: min(860px, calc(92vh / var(--zoom)));
+  max-height: min(860px, calc(92vh / var(--zoom)));
 }
 
 /* Вкладка Costs заповнює вікно по висоті. Без цього під чотирма графіками
@@ -5867,7 +5863,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:59</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 13:08</div>
     </div>
   </aside>
 
@@ -6216,7 +6212,7 @@ input.ui-in[type="range"] { padding: 0; }
               <span class="kpi-label">Net Profit</span>
               <span id="kpi-net-tag" class="kpi-lens">Gross</span>
             </div>
-            <p class="flex items-baseline"><span id="kpi-profit" class="kpi-value text-emerald-400">$0.00</span><span id="delta-profit" class="kpi-delta"></span></p>
+            <p><span id="kpi-profit" class="kpi-value text-emerald-400">$0.00</span></p>
             <p class="kpi-foot">
               <span id="kpi-roi">ROI: 0%</span><br>
               <span id="kpi-profit-total" title="Total revenue">Revenue: $0.00</span>
@@ -7127,9 +7123,9 @@ input.ui-in[type="range"] { padding: 0; }
 <div id="geo-details-modal" class="hidden fixed inset-0 z-[100] modal-overlay flex items-center justify-center p-4">
   <div class="card w-full max-w-[1500px] rounded-[2rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white/10 bg-[#0f172a]/95 backdrop-blur-xl">
     <!-- Header -->
-    <div class="p-5 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5 flex-shrink-0">
+    <div class="px-5 py-2.5 border-b border-gray-500/10 flex justify-between items-center bg-gray-500/5 flex-shrink-0">
       <div>
-        <h2 id="geo-details-title" class="text-2xl font-black uppercase italic text-blue-500 tracking-tighter">UA Details</h2>
+        <h2 id="geo-details-title" class="text-lg font-black uppercase italic text-blue-500 tracking-tighter">UA Details</h2>
         <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Geo Breakdown</p>
       </div>
       <button onclick="closeGeoModal()" class="text-slate-400 hover:text-red-500 transition-colors">
@@ -7137,7 +7133,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
     </div>
     <!-- Tabs -->
-    <div class="flex gap-1 px-5 pt-4 border-b border-white/5 flex-shrink-0 overflow-x-auto" id="geo-tabs">
+    <div class="flex gap-1 px-5 pt-2 border-b border-white/5 flex-shrink-0 overflow-x-auto" id="geo-tabs">
       <button onclick="switchGeoTab('costs')" id="geo-tab-costs" class="geo-tab-btn active-geo-tab px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Money</button>
       <button onclick="switchGeoTab('funnels')" id="geo-tab-funnels" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Funnels</button>
       <button onclick="switchGeoTab('offers')" id="geo-tab-offers" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Offers</button>
@@ -7914,7 +7910,6 @@ function monthRange() {
     .sort((a, b) => b.fee - a.fee);
   updateTotalProfit();
   if (typeof kpiNetPaint === 'function') kpiNetPaint();
-  calculateDeltas(data);
 
   // Оновлення списку агентств у тултіпі
   const breakdownList = document.getElementById('spend-breakdown-list');
@@ -8389,97 +8384,28 @@ function renderTrend(data) {
 }
 
   function calculateDeltas(data) {
-    const setEmpty = () => {
-      window._kpiTotPrev = null;
-      // Інакше в підказці лишились би дати від попереднього зрізу.
-      window._kpiTotWhen = null;
-      if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
+    const dates = [...new Set(data.map(i => i.date))].sort();
+    if (dates.length < 2) return;
+    const maxDate = dates[dates.length - 1];
+    const curS = data.reduce((a, b) => a + b.spend, 0), curR = data.reduce((a, b) => a + b.regs, 0), curD = data.reduce((a, b) => a + b.deposits, 0);
+    const prevD = data.filter(i => i.date < maxDate);
+    const pS = prevD.reduce((a, b) => a + b.spend, 0), pR = prevD.reduce((a, b) => a + b.regs, 0), pDep = prevD.reduce((a, b) => a + b.deposits, 0);
+
+    const cCPL = curR > 0 ? curS / curR : 0, pCPL = pR > 0 ? pS / pR : 0;
+    const cCPA = curD > 0 ? curS / curD : 0, pCPA = pDep > 0 ? pS / pDep : 0;
+    const cR2D = curR > 0 ? (curD / curR * 100) : 0, pR2D = pR > 0 ? (pDep / pR * 100) : 0;
+
+    const up = (id, c, p, isP) => {
+      const el = document.getElementById('delta-' + id);
+      if (!el || p === 0) return;
+      const diff = c - p;
+      if (Math.abs(diff) < 0.01) { el.innerText = ""; return; }
+      const isB = isP ? diff < 0 : diff > 0;
+      el.innerText = `(${(diff > 0 ? '▲' : '▼')} ${diff > 0 ? '+' : '-'}${isP ? '$' : ''}${Math.abs(diff).toFixed(1)}${isP ? '' : '%'})`;
+      el.className = `text-[12px] font-black ml-1.5 ${isB ? 'text-green-500' : 'text-red-500'}`;
     };
-    if (!Array.isArray(data) || !data.length) return setEmpty();
-
-    /* ДЕНЬ, ЗА ЯКИЙ ЩЕ НІЧОГО НЕ ЗАЛИТО, — ЦЕ НЕ РІВНИЙ ДЕНЬ.
-
-       Рядок у daily_stats зʼявляється раніше, ніж у ньому зʼявляються
-       гроші: імпорт за сьогодні часто приходить із нулями. Такий day
-       ставав останнім, різниця виходила рівно 0, і стрілка писала «=»
-       — тобто «тотал не рухався», хоча насправді ми просто порівнювали
-       з порожнім днем, а справжній рух за попередній day не показали
-       взагалі. Тому day без спенду й без депів у порівняння не беремо:
-       він нічого не додав до тотала, і прирівнювати до нього нічого. */
-    const live = {};
-    data.forEach(r => {
-      const d = String(r.date || '');
-      if (!d) return;
-      if (!live[d]) live[d] = (Number(r.spend) || 0) !== 0 || (Number(r.deposits ?? r.deps) || 0) !== 0;
-    });
-    const dates = Object.keys(live).filter(d => live[d]).sort();
-    if (dates.length < 2) return setEmpty();          // немає з чим порівнювати
-    const dLast = dates[dates.length - 1], dPrev = dates[dates.length - 2];
-
-    // Тотал «станом на попередній day» — той самий зріз без останнього дня.
-    // Витрати сюди не входять: вони однакові для обох тоталів і на різницю
-    // не впливають, а перемикач Gross/Net віднімає їх уже при малюванні.
-    let prev = 0;
-    data.forEach(row => {
-      if (row.date === dLast) return;
-      prev += (typeof revenueOf === 'function' ? revenueOf(row) : 0) - (Number(row.spend) || 0);
-    });
-    window._kpiTotPrev = prev;
-    window._kpiTotWhen = { prev: dPrev, cur: dLast };
-    if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
+    up('cpl', cCPL, pCPL, true); up('cpa', cCPA, pCPA, true); up('r2d', cR2D, pR2D, false);
   }
-
-  // Малювання окремо від підрахунку: перемикач Gross/Net міняє число на
-  // картці, і підказка має називати ті самі гроші, що там показані.
-  window.kpiDeltaPaint = function () {
-    const el = document.getElementById('delta-profit');
-    if (!el) return;
-    const clear = () => { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); };
-    const prev = window._kpiTotPrev, cur = window._kpiGross;
-    /* Порожнє місце читається як поломка. Прочерк — ні: це наш знак
-       «не знаємо», і підказка каже, чому саме. Різниці без двох днів
-       із грішми не буває, і це нормальний стан першого дня місяця. */
-    if (typeof cur !== 'number') return clear();
-    if (typeof prev !== 'number') {
-      el.innerText = '—';
-      el.className = 'kpi-delta is-flat';
-      el.setAttribute('title', 'Nothing to compare yet: this period has fewer than two days '
-        + 'with spend or deposits.');
-      return;
-    }
-
-    // У режимі Net тотали теж мають бути чистими — інакше підказка
-    // називала б інші гроші, ніж число на картці.
-    const off = (localStorage.getItem('kpi_net') === 'net')
-      ? (Number(window._kpiFeesVal) || 0) + (Number(window._kpiExpensesVal) || 0) : 0;
-    const w = window._kpiTotWhen || {};
-    const money = v => (typeof formatCurrency === 'function' ? formatCurrency(v) : '$' + Number(v).toFixed(2));
-    const tip = `Total: ${money(prev - off)} (${w.prev}) → ${money(cur - off)} (${w.cur})`;
-    const diff = cur - prev;
-
-    /* «=» САМЕ ПО СОБІ НІЧОГО НЕ КАЖЕ. Людина бачить, що число поруч
-       із сумою зникло, і не знає: тотал не рухався, чи воно зламалось.
-       Питання приходило саме в такому вигляді («пропали дані, просто
-       пише =»). Тому поруч стоять ті два дні, які порівняно: якщо
-       останній day справді вийшов у нуль, це видно відразу, і видно
-       який саме day. */
-    const dd = v => String(v || '').slice(8) || '?';
-    if (Math.abs(diff) < 0.5) {
-      el.innerText = '= ' + dd(w.prev) + '\u2192' + dd(w.cur);
-      el.className = 'kpi-delta is-flat';
-      el.setAttribute('title', 'No change · ' + tip + '\n(дні без спенду й депів у порівняння не беруться)');
-      return;
-    }
-    const arrow = diff > 0 ? '▲' : '▼';
-    const abs = money(Math.abs(diff)).replace(/^-/, '');
-    // Відсоток — від учорашнього тотала і лише коли той додатний: від нуля
-    // чи від мінуса він нічого не означає.
-    const base = prev - off;
-    const rel = base > 0 ? ` · ${Math.round(Math.abs(diff) / base * 100)}%` : '';
-    el.innerText = `${arrow} ${abs}${rel}`;
-    el.className = `kpi-delta ${diff > 0 ? 'is-up' : 'is-down'}`;
-    el.setAttribute('title', tip);
-  };
 
   function renderGeoList(data) {
 const m = {};
@@ -13280,21 +13206,38 @@ function renderGeoCostTab(geo) {
     }
 
     const pos = cfAlpha(m.color, 0.75), neg = 'rgba(244,63,94,.75)';
+
+    /* ВИГЛЯД БЕРЕМО З НАЛАШТУВАНЬ (Settings → General → Chart).
+       Доти тут стояли стовпчики намертво — і коли в налаштуваннях
+       вибрано лінію, ці два графіки лишались єдиними стовпчиками на
+       екрані. Питання прийшло саме так: «чому ці графіки в стилі bar,
+       якщо в налаштуваннях вказано інший стиль».
+
+       Ціни нижче (CPC/CPI/CPR/CPD) лишаються лініями завжди: вони
+       показують ЦІНУ, а не обсяг, і нуля в них не буває. */
+    const st = (typeof cfStyle === 'function') ? cfStyle() : 'bars';
+    const bars = st === 'bars';
+    /* Мінусовий day на стовпчиках фарбуємо окремо: на профіті це
+       головне, що треба побачити. На лінії такого вибору немає —
+       вона одна на весь ряд, тому колір беремо за ЗНАКОМ ТОТАЛА, а
+       сам нуль підсвічуємо на сітці (нижче в scales.y). */
+    const lineCol = (m.key === 'profit' && sum < 0) ? '#F43F5E' : m.color;
+    const ds = bars
+      ? { data: vals, backgroundColor: vals.map(v => v < 0 ? neg : pos),
+          borderRadius: 3, borderSkipped: false }
+      : { data: vals,
+          borderColor: lineCol,
+          backgroundColor: st === 'area' ? cfAlpha(lineCol, 0.14) : 'transparent',
+          borderWidth: 2,
+          fill: st === 'area',
+          tension: st === 'line' ? 0.3 : 0,
+          spanGaps: true,
+          pointRadius: 2, pointHoverRadius: 4, pointBackgroundColor: lineCol };
+
     window.gmCharts.push(new Chart(cv.getContext('2d'), {
-      type: 'bar',
+      type: bars ? 'bar' : 'line',
       plugins: window.cfCrosshair ? [window.cfCrosshair] : [],
-      data: {
-        labels,
-        datasets: [{
-          data: vals,
-          // Мінусовий day фарбуємо окремо: на профіті це головне, що
-          // треба побачити, і однаковий колір у плюса й мінуса
-          // примушував би читати напрямок стовпчика.
-          backgroundColor: vals.map(v => v < 0 ? neg : pos),
-          borderRadius: 3,
-          borderSkipped: false
-        }]
-      },
+      data: { labels, datasets: [ds] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -13320,7 +13263,11 @@ function renderGeoCostTab(geo) {
         scales: {
           x: { grid: { display: false }, ticks: { color: textMain, font: { size: 9 }, maxTicksLimit: 10 } },
           y: {
-            grid: { color: gridCol },
+            /* Нуль яскравіший за решту сітки: на профіті перетин нуля —
+               це межа між заробив і втратив, і на лінії без неї
+               мінусовий хвіст читається як просто нижча точка. */
+            grid: { color: c => (c.tick && c.tick.value === 0)
+                      ? 'rgba(255,255,255,.26)' : gridCol },
             ticks: { color: textMain, font: { size: 9 }, maxTicksLimit: 4, callback: gmMoney }
           }
         }
@@ -15198,7 +15145,7 @@ document.addEventListener('keydown', e => {
 
           <div class="set-group">
             <h3 class="set-gtitle">Chart</h3>
-            <p class="set-gsub">How the main Cashflow Overview chart is drawn.</p>
+            <p class="set-gsub">How Cashflow Overview and the Spend / Profit charts in the geo window are drawn.</p>
             <div class="set-row" data-setting="chart style графік стиль bars line area">
               <label class="set-label" for="chart-style">Style</label>
               <select id="chart-style" onchange="setChartStyle(this.value)" class="set-input w-44">
@@ -35041,10 +34988,6 @@ window.aqAsk = async function () {
     const roiEl = document.getElementById('kpi-roi');
     const spend = Number(window._kpiSpendVal) || 0;
     if (roiEl) roiEl.innerText = `ROI: ${spend > 0 ? Math.round(val / spend * 100) : 0}%`;
-
-    // Стрілка поруч живе з того самого тотала — перемалювати її треба
-    // разом із числом, інакше підказка лишиться від іншого режиму.
-    if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
   };
 
   window.kpiNetCycle = function () {
@@ -35060,6 +35003,12 @@ window.aqAsk = async function () {
     localStorage.setItem('chart_style', v);
     // applyChartFilter перемальовує з поточними фільтрами дат і режимом
     if (typeof applyChartFilter === 'function') applyChartFilter();
+    /* Вікно гео малюється окремо й про зміну не дізнається. Якщо воно
+       відкрите — перемальовуємо: налаштування, яке не видно відразу,
+       виглядає як таке, що не працює. */
+    const gm = document.getElementById('geo-details-modal');
+    if (gm && !gm.classList.contains('hidden') && typeof renderGeoCostTab === 'function')
+      renderGeoCostTab(window.__geoModalGeo || '');
   };
 
   (function initChartStyle() {
