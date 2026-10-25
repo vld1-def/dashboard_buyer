@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.10 12:51">
+  <meta name="build" content="build 25.10 12:59">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5867,7 +5867,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:51</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:59</div>
     </div>
   </aside>
 
@@ -8436,7 +8436,17 @@ function renderTrend(data) {
     if (!el) return;
     const clear = () => { el.innerText = ''; el.className = 'kpi-delta'; el.removeAttribute('title'); };
     const prev = window._kpiTotPrev, cur = window._kpiGross;
-    if (typeof prev !== 'number' || typeof cur !== 'number') return clear();
+    /* Порожнє місце читається як поломка. Прочерк — ні: це наш знак
+       «не знаємо», і підказка каже, чому саме. Різниці без двох днів
+       із грішми не буває, і це нормальний стан першого дня місяця. */
+    if (typeof cur !== 'number') return clear();
+    if (typeof prev !== 'number') {
+      el.innerText = '—';
+      el.className = 'kpi-delta is-flat';
+      el.setAttribute('title', 'Nothing to compare yet: this period has fewer than two days '
+        + 'with spend or deposits.');
+      return;
+    }
 
     // У режимі Net тотали теж мають бути чистими — інакше підказка
     // називала б інші гроші, ніж число на картці.
@@ -8447,8 +8457,15 @@ function renderTrend(data) {
     const tip = `Total: ${money(prev - off)} (${w.prev}) → ${money(cur - off)} (${w.cur})`;
     const diff = cur - prev;
 
+    /* «=» САМЕ ПО СОБІ НІЧОГО НЕ КАЖЕ. Людина бачить, що число поруч
+       із сумою зникло, і не знає: тотал не рухався, чи воно зламалось.
+       Питання приходило саме в такому вигляді («пропали дані, просто
+       пише =»). Тому поруч стоять ті два дні, які порівняно: якщо
+       останній day справді вийшов у нуль, це видно відразу, і видно
+       який саме day. */
+    const dd = v => String(v || '').slice(8) || '?';
     if (Math.abs(diff) < 0.5) {
-      el.innerText = '=';
+      el.innerText = '= ' + dd(w.prev) + '\u2192' + dd(w.cur);
       el.className = 'kpi-delta is-flat';
       el.setAttribute('title', 'No change · ' + tip + '\n(дні без спенду й депів у порівняння не беруться)');
       return;
