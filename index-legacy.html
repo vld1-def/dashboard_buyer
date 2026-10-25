@@ -7316,6 +7316,10 @@ function renderGeoPlacementsTab(rows) {
    падіння в нуль означало б показати провал, якого не було. Якщо ж
    день є, а в цього гео по ньому рядка немає — ось це справді нуль:
    інші гео того дня крутились, а це ні. */
+/* Гео приходить із даних, тож у розмітку йде лише екранованим. */
+const apEscSafe = v => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
 function dgMoneyByGeo() {
   const rows = (typeof rawData !== 'undefined' && rawData ? rawData : [])
     .filter(r => String(r.date || '').startsWith(currentMonthFilter));
@@ -7358,9 +7362,24 @@ function dgSpark(values, kind) {
       vector-effect="non-scaling-stroke"/></svg>`;
 }
 
+/* БЛОК НЕ ЗНИКАЄ МОВЧКИ.
+
+   Доти, коли по цьому гео в daily_stats нічого не було, функція
+   повертала порожній рядок — і графіків просто не ставало. З боку це
+   виглядає як «не зробили», хоча насправді «нема з чого»: таблиця
+   росте з creatives_stats, а гроші з daily_stats, і ці дві таблиці
+   заливають окремо.
+
+   Тому порожнеча тепер named: сказано, чого саме бракує і де це
+   взяти. Мовчазна відсутність блока коштувала рівно одного питання
+   «а де графіки» — і правильно коштувала. */
 function dgMoneyBlock(geo, money) {
   const o = (money.byGeo || {})[String(geo).toUpperCase()];
-  if (!o) return '';
+  const why = !money.days.length
+    ? `daily_stats за ${currentMonthFilter} порожня — залий імпорт по днях у Data Hub`
+    : (!o ? `по ${apEscSafe(geo)} у daily_stats за ${currentMonthFilter} рядків немає`
+          : '');
+  if (why) return `<div class="dg-money is-none"><span>Spend / Profit</span><p>${why}</p></div>`;
   const sArr = money.days.map(d => o.s[d] || 0);
   const pArr = money.days.map(d => o.p[d] || 0);
   const totS = sArr.reduce((a, v) => a + v, 0);
