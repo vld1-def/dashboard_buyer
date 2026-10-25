@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.10 12:22">
+  <meta name="build" content="build 25.10 12:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -974,16 +974,6 @@ header h1 span { font-size: .85rem !important; }
 .dk-more-wrap:hover .dk-more svg { transform: translateY(-2px); }
 .dk-more svg { transition: transform .16s; }
 
-/* Geo Breakdown — фіксована висота зі скролом */
-#device-geo-content {
-  max-height: 420px; overflow-y: auto; padding-right: 6px;
-}
-/* Placementи — та сама біда, що колись була в Costs: плиток більше,
-   ніж влазить у 420px, і решта ховається під внутрішній скрол. Скрол
-   усередині картки, яка й сама стоїть на сторінці зі скролом — тобто
-   два вкладені один в одного, і про другий ніхто не здогадується.
-   Тому тут теж знімаємо стелю: блок росте під вміст. */
-#device-geo-content.dg-plc { max-height: none; overflow: visible; }
 /* Report Builder — випадайка стовпчиків не має обрізатись карткою */
 #report-builder-section { overflow: visible !important; }
 #rb-cols-menu { max-height: 60vh; overflow-y: auto; }
@@ -2654,20 +2644,6 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
 @keyframes toast-out { to   { opacity: 0; transform: translateX(16px); } }
 @media (max-width: 760px) {
   #toast-wrap { right: 10px; left: 10px; bottom: 92px; max-width: none; }
-}
-
-/* Geo Breakdown → Costs.
-   Базова картка тримає 420px зі скролом — це правильно для таблиць, але
-   чотири графіки в таку висоту не влазять і ховаються під внутрішній скрол.
-   Селектор id+class навмисне сильніший за Tailwind-класи grid-cols-* на
-   тому самому елементі, тому порядок підключення CDN нічого не вирішує. */
-#device-geo-content.dg-cost {
-  max-height: none;
-  overflow: visible;
-  grid-template-columns: minmax(0, 1fr);
-}
-@media (min-width: 1280px) {
-  #device-geo-content.dg-cost { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* Штамп збірки в підвалі сайдбара. Має бути помітно менш яскравим за
@@ -4399,50 +4375,6 @@ body.is-lead-only .admin-only { display: none; }
 }
 .acc-y.is-none { color: var(--text-muted); opacity: .35; font-weight: 700; }
 
-/* ── ГРОШІ В КАРТЦІ ГЕО ──
-   Два графіки поруч, рівної ширини: їх читають разом, і різна ширина
-   читалася б як різна важливість. Число над графіком, а не під ним —
-   спершу «скільки», потім «як ішло». */
-.dg-money {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  margin: 0 0 10px; padding: 8px 9px 6px;
-  border-radius: 12px; background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.dg-money-c { min-width: 0; }
-/* Грошей немає — блок лишається і каже, чого бракує. Мовчазна
-   відсутність читається як «не зробили». */
-.dg-money.is-none {
-  grid-template-columns: 1fr; gap: 2px;
-  border-style: dashed;
-}
-.dg-money.is-none > span {
-  font-size: 9px; font-weight: 900; text-transform: uppercase;
-  letter-spacing: .1em; color: var(--text-muted);
-}
-.dg-money.is-none > p {
-  margin: 0; font-size: 10px; font-weight: 700; line-height: 1.4;
-  color: var(--text-muted); opacity: .75;
-}
-.dg-money-h {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
-  font-size: 9px; font-weight: 900; text-transform: uppercase;
-  letter-spacing: .1em; color: var(--text-muted);
-}
-.dg-money-h b {
-  font-size: 12px; letter-spacing: 0; color: var(--text-main);
-  font-variant-numeric: tabular-nums;
-}
-.dg-money-h b.is-up { color: var(--ok); }
-.dg-money-h b.is-down { color: var(--bad); }
-.dg-spark { display: block; width: 100%; height: 26px; margin-top: 3px; color: var(--text-muted); }
-/* Даних на графік не вистачає — краще прочерк, ніж пряма лінія:
-   пряма читається як «рівно йшло», а насправді малювати нічого. */
-.dg-spark-none {
-  display: block; height: 26px; line-height: 26px; margin-top: 3px;
-  font-size: 11px; font-weight: 800; color: var(--text-muted); opacity: .35;
-}
-
 /* ── DATA CHECK: КАРТА СТОВПЦІВ ──
    Догадка про те, який стовпець що означає, мусить бути на екрані, а не
    в консолі: саме через невидиму догадку інстали тихо читались із
@@ -5868,10 +5800,6 @@ input.ui-in[type="range"] { padding: 0; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z"/></svg>
         <span class="sb-lbl">Creatives</span>
       </button>
-      <button class="sb-item" data-nav="geo" onclick="navGo('geo')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"/></svg>
-        <span class="sb-lbl">Geo Breakdown</span>
-      </button>
       <button class="sb-item" data-nav="cabinets" onclick="navGo('cabinets')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M2 12h20"/></svg>
         <span class="sb-lbl">Cabinets</span>
@@ -5939,7 +5867,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:22</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:32</div>
     </div>
   </aside>
 
@@ -6678,22 +6606,6 @@ input.ui-in[type="range"] { padding: 0; }
         <div id="creative-placeholder" class="py-12 text-center opacity-20 italic text-sm text-dynamic">Loading creative database...</div>
       </div>
       
-      <!-- Feature 8: Device × Geo Breakdown Widget -->
-      <div id="device-geo-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-emerald-500 mb-6">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-          <div>
-            <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Geo Breakdown</h2>
-            <p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest">Where, on what, how much</p>
-          </div>
-          <div class="flex bg-black/20 p-1 rounded-xl border border-white/5">
-            <button id="dg-tab-device" onclick="dgSetMode('device')" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition bg-emerald-600 text-white">Devices</button>
-            <button id="dg-tab-placement" onclick="dgSetMode('placement')" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">Placements</button>
-            <button id="dg-tab-cost" onclick="dgSetMode('cost')" class="px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white">Costs</button>
-          </div>
-        </div>
-        <div id="device-geo-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-      </div>
-
 <div id="report-builder-section" class="card rounded-3xl overflow-hidden shadow-2xl border border-white/5 mt-8">
   <div class="p-5 border-b border-white/5 bg-white/[0.02]">
     <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
@@ -7226,7 +7138,7 @@ input.ui-in[type="range"] { padding: 0; }
     </div>
     <!-- Tabs -->
     <div class="flex gap-1 px-5 pt-4 border-b border-white/5 flex-shrink-0 overflow-x-auto" id="geo-tabs">
-      <button onclick="switchGeoTab('costs')" id="geo-tab-costs" class="geo-tab-btn active-geo-tab px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Costs</button>
+      <button onclick="switchGeoTab('costs')" id="geo-tab-costs" class="geo-tab-btn active-geo-tab px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Money</button>
       <button onclick="switchGeoTab('funnels')" id="geo-tab-funnels" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Funnels</button>
       <button onclick="switchGeoTab('offers')" id="geo-tab-offers" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Offers</button>
       <button onclick="switchGeoTab('landings')" id="geo-tab-landings" class="geo-tab-btn px-4 py-2 rounded-t-xl text-[10px] font-black uppercase tracking-widest transition-all">Landings</button>
@@ -7807,10 +7719,8 @@ async function sbFetchAll(table, build) {
 
   if (typeof populateCreativeGeoFilter === 'function') populateCreativeGeoFilter();
   if (typeof renderCreativeSidebar === 'function') renderCreativeSidebar("");
-  if (typeof renderDeviceGeoWidget === 'function') renderDeviceGeoWidget();
   if (typeof cabRefresh === 'function') cabRefresh();
   if (typeof evBoot === 'function') evBoot();
-
   document.getElementById('creative-placeholder')?.classList.add('hidden');
 }
 
@@ -7899,13 +7809,8 @@ function monthRange() {
   renderDashboard(filteredDataCache);
   updateMilestones(filteredDataCache);
 
-  // Feature 8: render device × geo widget
-  if (typeof renderDeviceGeoWidget === 'function') {
-    renderDeviceGeoWidget();
-  }
   if (typeof cabRefresh === 'function') cabRefresh();
   if (typeof evBoot === 'function') evBoot();
-
   // Окремо запускаємо теплову карту, щоб вона врахувала нові дати
   if (typeof applyWeeklyFilter === 'function') {
     applyWeeklyFilter();
@@ -10117,7 +10022,7 @@ async function loadTeamLeadToggles() {
   const fresh = await getTeamSetting('tl_access');
   if (fresh) { try { acc = JSON.parse(fresh); } catch (e) {} }
   // Дозволено лише те, що явно === true (нові блоки не вмикаються самі)
-  ['kpi','chart','geo','creatives','heatmap','device-geo','report'].forEach(k => {
+  ['kpi','chart','geo','creatives','heatmap','report'].forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
     if (el) el.checked = acc[k] === true;
   });
@@ -10905,7 +10810,7 @@ async function siteLogout() {
 
 // ===== TEAMLEAD ACCESS =====
 async function saveTeamLeadAccess() {
-  const keys = ['kpi','chart','geo','creatives','heatmap','device-geo','report','cabinets','domains','expenses'];
+  const keys = ['kpi','chart','geo','creatives','heatmap','report','cabinets','domains','expenses'];
   const acc = {};
   keys.forEach(k => {
     const el = document.getElementById(`tl-show-${k}`);
@@ -10973,7 +10878,6 @@ async function initTeamLeadMode() {
     'geo':        'geo-sidebar-col',
     'creatives':  'creative-analyzer-section',
     'heatmap':    'weekly-analysis-section',
-    'device-geo': 'device-geo-section',
     'report':     'report-builder-section',
     'cabinets':   'cabinets-section',
     'domains':    'domains-section',
@@ -11035,7 +10939,6 @@ async function loadSettings() {
   // Мапа: ID чекбокса -> ID секції в DOM (Feature 8 added, Feature 10 removed ai)
   const config = {
     'toggle-creatives': 'creative-analyzer-section',
-    'toggle-device-geo': 'device-geo-section',
     'toggle-heatmap': 'weekly-analysis-section',
     'toggle-report': 'report-builder-section',
     'toggle-cabinets': 'cabinets-section',
@@ -13203,6 +13106,22 @@ function renderGeoPlacementsTab(rows) {
 // єдина лінія з creatives_stats. Якщо креативів не залито, три лінії
 // однаково працюють.
 
+/* ГРОШІ ПЕРЕД ЦІНАМИ.
+
+   «додай ще два міні графіки, спенд і профіт». Спершу вони поїхали в
+   блок Geo Breakdown на дашборді — не туди: тим блоком ніхто не
+   користується, а відкривають саме це вікно, кліком по гео. Тому
+   спенд і профіт стоять тут, і стоять ПЕРШИМИ: питання «скільки
+   вклали і скільки знялось» передує питанню «скільки коштував деп».
+
+   Bars, а не лінії: профіт переходить нуль, і на стовпчиках це
+   видно кольором та напрямком, без окремої осі. Ціни нижче лишаються
+   лініями — вони нуль не переходять. */
+const GM_MONEY = [
+  { key: 'spend',  short: 'Spend',  label: 'Spend per day',   color: '#F43F5E' },
+  { key: 'profit', short: 'Profit', label: 'Revenue − spend', color: '#10B981' }
+];
+
 const GM_METRICS = [
   { key: 'cl', short: 'CPC', label: 'Cost per Click',   unit: 'clicks',   color: '#94A3B8', src: 'cr' },
   { key: 'i',  short: 'CPI', label: 'Cost per Install', unit: 'installs', color: '#22C55E', src: 'daily' },
@@ -13210,12 +13129,36 @@ const GM_METRICS = [
   { key: 'd',  short: 'CPD', label: 'Cost per Deposit', unit: 'deps',     color: '#F59E0B', src: 'daily' }
 ];
 
+/* Два форматувальники переїхали сюди з geocost.js — того віджета вже
+   немає (блок Geo Breakdown на дашборді прибраний), а формати
+   лишились потрібні саме тут. */
+
+// CPC і CPD різняться на три порядки, тому одного формату на всіх мало:
+// $0.42 без копійок було б нулем, $340.00 — сміттям у два знаки.
+function gcMoney(v) {
+  if (!isFinite(v)) return '—';
+  if (v >= 100) return '$' + Math.round(v);
+  if (v >= 10)  return '$' + v.toFixed(1).replace(/\.0$/, '');
+  return '$' + v.toFixed(2);
+}
+
+// Підписи осі мають бути однакові між собою, інакше в одному ряду стоять
+// «$5.00» і «$10.0». Тому точність беремо одну на всю вісь — з її максимуму.
+function gcAxisFmt(max) {
+  const d = max >= 50 ? 0 : max >= 5 ? 1 : 2;
+  return v => '$' + (d ? Number(v).toFixed(d).replace(/\.0$/, '') : Math.round(v));
+}
+
 window.gmCharts = [];
 
 function gmDestroy() {
   (window.gmCharts || []).forEach(c => { try { c.destroy(); } catch (e) {} });
   window.gmCharts = [];
 }
+
+/* gcMoney не знає знака: −$1200 виходило «$-1200.00». Профіт мінусовий
+   буває частіше, ніж хотілось би, тому формат окремий. */
+const gmMoney = v => (!isFinite(v) ? '—' : (v < 0 ? '−' : '') + gcMoney(Math.abs(v)));
 
 function renderGeoCostTab(geo) {
   const host = document.getElementById('geo-cost-list');
@@ -13231,7 +13174,7 @@ function renderGeoCostTab(geo) {
   // day -> суми. spend тримаємо окремо для кожного джерела: у
   // creatives_stats він свій і з daily_stats не збігається.
   const day = {};
-  const at = d => (day[d] || (day[d] = { s: 0, i: 0, r: 0, d: 0, cs: 0, cl: 0 }));
+  const at = d => (day[d] || (day[d] = { s: 0, i: 0, r: 0, d: 0, cs: 0, cl: 0, rev: 0 }));
 
   // rawData — лексичний let у тому ж блоці; window.rawData тримається
   // синхронно з ним (loadData), але не був там завжди. Беремо через typeof, щоб код не
@@ -13247,6 +13190,10 @@ function renderGeoCostTab(geo) {
     m.i += Number(x.installs) || 0;
     m.r += Number(x.regs)     || 0;
     m.d += Number(x.deposits) || 0;
+    /* Виручку беремо тією САМОЮ функцією, що й KPI-картка: модель
+       виплат (CPA чи % від спенду) живе в ній одній, і другий
+       підрахунок тут розійшовся б із профітом на дашборді. */
+    m.rev += (typeof revenueOf === 'function' ? revenueOf(x) : 0);
   });
   crea.forEach(c => {
     if (!inMonth(c.date) || !same(c.geo)) return;
@@ -13262,19 +13209,107 @@ function renderGeoCostTab(geo) {
     return;
   }
 
-  host.innerHTML = GM_METRICS.map(m => `
+  const card = (m, pre) => `
     <div class="gm-card bg-white/[0.02] border border-white/5 rounded-2xl p-4">
       <div class="flex items-baseline justify-between mb-3">
         <span class="text-[12px] font-black uppercase tracking-widest" style="color:${m.color}">${m.short}</span>
         <span class="text-[9px] text-slate-500 uppercase tracking-widest">${m.label}</span>
       </div>
-      <div class="gm-canvas-box"><canvas id="gm-${m.key}"></canvas></div>
-      <div id="gm-note-${m.key}" class="text-[9px] text-slate-600 font-bold mt-2 min-h-[12px]"></div>
-    </div>`).join('');
+      <div class="gm-canvas-box"><canvas id="${pre}-${m.key}"></canvas></div>
+      <div id="${pre}-note-${m.key}" class="text-[9px] text-slate-600 font-bold mt-2 min-h-[12px]"></div>
+    </div>`;
+
+  host.innerHTML = GM_MONEY.map(m => card(m, 'gmm')).join('')
+                 + GM_METRICS.map(m => card(m, 'gm')).join('');
 
   const textMain = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#E9E9EC';
   const gridCol  = 'rgba(255,255,255,.06)';
   const labels   = days.map(d => d.slice(8));   // тільки число місяця
+
+  /* ─────────── спенд і профіт по днях ─────────── */
+  GM_MONEY.forEach(m => {
+    const vals = days.map(d => m.key === 'spend' ? day[d].s : day[d].rev - day[d].s);
+    const live = vals.filter(v => v !== 0);
+    const note = document.getElementById('gmm-note-' + m.key);
+    const sum  = vals.reduce((a, b) => a + b, 0);
+    if (note) {
+      /* Підпис називає ТОТАЛ, а не кількість днів: на спенді й профіті
+         перше питання саме «скільки всього», і без нього довелось би
+         складати стовпчики очима. Для профіту ще й звідки він узявся —
+         інакше «−$300» виглядає як помилка, а не як мінус. */
+      const rev = days.reduce((a, d) => a + day[d].rev, 0);
+      const spd = days.reduce((a, d) => a + day[d].s, 0);
+      /* ВИРУЧКА В НУЛІ ПРИ ЖИВОМУ СПЕНДІ — майже завжди незаведена
+         виплата, а не провал. Без цього рядка графік показує мінус на
+         весь спенд, і виглядає це як катастрофа, хоча насправді
+         бракує одного числа в налаштуваннях. */
+      const noPay = rev === 0 && spd > 0;
+      note.textContent = m.key === 'spend'
+        ? gmMoney(sum) + ' total · ' + live.length + ' of ' + days.length + ' days with spend'
+        : gmMoney(sum) + ' total · revenue ' + gmMoney(rev) + ' − spend ' + gmMoney(spd)
+          + (noPay ? ' · revenue is zero: set the payout for ' + G + ' in Settings' : '');
+    }
+    const cv = document.getElementById('gmm-' + m.key);
+    if (!cv) return;
+    /* Нуль на всіх днях — це не графік, а порожнє полотно з віссю.
+       Для профіту нуль буває й законний (виплати не заведені), тому
+       кажемо, ЧОГО бракує, а не просто «немає даних». */
+    if (!live.length) {
+      cv.parentElement.innerHTML = '<div class="h-full flex items-center justify-center text-center px-3'
+        + ' text-[10px] uppercase font-black opacity-25">'
+        + (m.key === 'spend' ? 'No spend this month' : 'Zero every day: revenue equals spend')
+        + '</div>';
+      return;
+    }
+
+    const pos = cfAlpha(m.color, 0.75), neg = 'rgba(244,63,94,.75)';
+    window.gmCharts.push(new Chart(cv.getContext('2d'), {
+      type: 'bar',
+      plugins: window.cfCrosshair ? [window.cfCrosshair] : [],
+      data: {
+        labels,
+        datasets: [{
+          data: vals,
+          // Мінусовий day фарбуємо окремо: на профіті це головне, що
+          // треба побачити, і однаковий колір у плюса й мінуса
+          // примушував би читати напрямок стовпчика.
+          backgroundColor: vals.map(v => v < 0 ? neg : pos),
+          borderRadius: 3,
+          borderSkipped: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 260 },
+        layout: { padding: { top: 6 } },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          datalabels: { display: false },
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              title: c => month + '-' + c[0].label,
+              label: c => {
+                const v = day[days[c.dataIndex]];
+                return m.key === 'spend'
+                  ? gmMoney(v.s)
+                  : gmMoney(v.rev - v.s) + '   (' + gmMoney(v.rev) + ' − ' + gmMoney(v.s) + ')';
+              }
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: textMain, font: { size: 9 }, maxTicksLimit: 10 } },
+          y: {
+            grid: { color: gridCol },
+            ticks: { color: textMain, font: { size: 9 }, maxTicksLimit: 4, callback: gmMoney }
+          }
+        }
+      }
+    }));
+  });
 
   GM_METRICS.forEach(m => {
     const vals = days.map(d => {
@@ -13360,471 +13395,6 @@ function renderGeoCostTab(geo) {
       }
     }));
   });
-}
-
-// ===== Geo Breakdown → вкладка Costs ==================================
-// Чотири графіки: скільки коштує клік, інстал, рега і деп у кожному гео.
-// Рахуємо з creatives_stats — тільки там є clicks.
-//
-// Гео з нулем у знаменнику не малюємо: «немає депів» — це не «деп коштує
-// $0», і нуль у стовпчику збрехав би. Такі гео виписуємо під графіком.
-
-const GC_METRICS = [
-  { key: 'cl', short: 'CPC', label: 'Cost per Click',   unit: 'clicks',   color: '#94A3B8' },
-  { key: 'i',  short: 'CPI', label: 'Cost per Install', unit: 'installs', color: '#22C55E' },
-  { key: 'r',  short: 'CPR', label: 'Cost per Reg',     unit: 'regs',     color: '#3B82F6' },
-  { key: 'd',  short: 'CPD', label: 'Cost per Deposit', unit: 'deps',     color: '#F59E0B' }
-];
-
-window.gcCharts = [];
-
-function gcDestroy() {
-  (window.gcCharts || []).forEach(c => { try { c.destroy(); } catch (e) {} });
-  window.gcCharts = [];
-}
-
-// CPC і CPD різняться на три порядки, тому одного формату на всіх мало:
-// $0.42 без копійок було б нулем, $340.00 — сміттям у два знаки.
-function gcMoney(v) {
-  if (!isFinite(v)) return '—';
-  if (v >= 100) return '$' + Math.round(v);
-  if (v >= 10)  return '$' + v.toFixed(1).replace(/\.0$/, '');
-  return '$' + v.toFixed(2);
-}
-
-// Підписи осі мають бути однакові між собою, інакше в одному ряду стоять
-// «$5.00» і «$10.0». Тому точність беремо одну на всю вісь — з її максимуму.
-function gcAxisFmt(max) {
-  const d = max >= 50 ? 0 : max >= 5 ? 1 : 2;
-  return v => '$' + (d ? Number(v).toFixed(d).replace(/\.0$/, '') : Math.round(v));
-}
-
-function renderGeoCostWidget(crData, el) {
-  if (!cfWait(el, () => renderGeoCostWidget(crData, el))) return;
-  gcDestroy();
-
-  const map = {};
-  crData.forEach(c => {
-    const g = (c.geo || '??').toUpperCase();
-    if (!map[g]) map[g] = { cl: 0, i: 0, r: 0, d: 0, s: 0 };
-    map[g].cl += Number(c.clicks)   || 0;
-    map[g].i  += Number(c.installs) || 0;
-    map[g].r  += Number(c.regs)     || 0;
-    map[g].d  += Number(c.deps)     || 0;
-    map[g].s  += Number(c.spend)    || 0;
-  });
-
-  // Довгий хвіст дрібних гео робить стовпчики нечитабельними, а оптимізувати
-  // там нічого — лишаємо десятку за спендом.
-  const top = Object.entries(map)
-    .filter(([, m]) => m.s > 0)
-    .sort((a, b) => b[1].s - a[1].s)
-    .slice(0, 10);
-
-  if (!top.length) {
-    el.innerHTML = '<div class="col-span-2 text-center py-8 opacity-30 text-xs uppercase font-black">No spend in creatives_stats for this month</div>';
-    return;
-  }
-
-  el.innerHTML = GC_METRICS.map(m => `
-    <div class="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
-      <div class="flex items-baseline justify-between mb-3">
-        <span class="text-[12px] font-black uppercase tracking-widest" style="color:${m.color}">${m.short}</span>
-        <span class="text-[9px] text-slate-500 uppercase tracking-widest">${m.label}</span>
-      </div>
-      <div style="height:${top.length * 28 + 34}px"><canvas id="gc-${m.key}"></canvas></div>
-      <div id="gc-none-${m.key}" class="text-[9px] text-slate-600 font-bold mt-2 min-h-[12px]"></div>
-    </div>`).join('');
-
-  const textMain = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#E9E9EC';
-  const gridCol  = 'rgba(255,255,255,.06)';
-
-  GC_METRICS.forEach(m => {
-    // Дешевше — вище: перший рядок графіка це найкраща ціна в місяці.
-    const rows = top
-      .filter(([, v]) => v[m.key] > 0)
-      .map(([geo, v]) => [geo, v.s / v[m.key]])
-      .sort((a, b) => a[1] - b[1]);
-
-    const skipped = top.filter(([, v]) => !(v[m.key] > 0)).map(([g]) => g);
-    const note = document.getElementById('gc-none-' + m.key);
-    if (note) note.textContent = skipped.length ? 'No ' + m.unit + ': ' + skipped.join(', ') : '';
-
-    const barCol = m.color;
-    const cv = document.getElementById('gc-' + m.key);
-    if (!cv) return;
-    if (!rows.length) {
-      cv.parentElement.innerHTML = '<div class="h-full flex items-center justify-center text-[10px] uppercase font-black opacity-25">No ' + m.unit + ' this month</div>';
-      return;
-    }
-
-    window.gcCharts.push(new Chart(cv.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: rows.map(r => r[0]),
-        datasets: [{
-          data: rows.map(r => r[1]),
-          // На білому тлі ті самі кольори блякнуть до ледь помітних —
-          // у світлій темі підводимо їх до темного і ллємо щільніше.
-          backgroundColor: cfAlpha(barCol, 0.5),
-          borderColor: barCol,
-          borderWidth: 1,
-          borderRadius: 4,
-          barThickness: 13
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 260 },
-        // Підпис стоїть за кінцем стовпця — без цього поля його з'їдає край.
-        layout: { padding: { right: 46 } },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            displayColors: false,
-            callbacks: {
-              label: c => {
-                const v = map[c.label] || {};
-                return gcMoney(c.parsed.x) + '   ($' + Math.round(v.s).toLocaleString()
-                     + ' / ' + Number(v[m.key]).toLocaleString() + ' ' + m.unit + ')';
-              }
-            }
-          },
-          datalabels: {
-            anchor: 'end', align: 'right', offset: 4, clamp: true,
-            color: textMain, font: { weight: '700', size: 10 },
-            formatter: gcMoney
-          }
-        },
-        scales: {
-          x: {
-            beginAtZero: true,
-            grid: { color: gridCol, drawBorder: false },
-            ticks: { color: textMain, font: { size: 9 }, maxTicksLimit: 5,
-                     callback: gcAxisFmt(rows[rows.length - 1][1]) }
-          },
-          y: {
-            grid: { display: false, drawBorder: false },
-            ticks: { color: textMain, font: { size: 10, weight: '700' } }
-          }
-        }
-      }
-    }));
-  });
-}
-
-// ===== Geo × Placement (вкладка в Geo Breakdown) =====
-/* ═════ ГРОШІ ПО ГЕО, ДВОМА ГРАФІКАМИ ═════
-
-   У картці гео досі була лише таблиця: девайси (або плейсменти) й
-   конверсії. На питання «а як воно йшло по днях» вона не відповідала
-   взагалі, і за ним ішли в Report Builder — тобто на інший екран, щоб
-   подивитись на те саме гео.
-
-   ДЖЕРЕЛО НЕ ТЕ САМЕ, ЩО В ТАБЛИЦІ, І ЦЕ НАВМИСНО. Таблиця росте з
-   creatives_stats — там девайс і плейсмент. Гроші живуть у daily_stats:
-   там спенд, депозити й офер, без якого виручку не порахувати. Тому
-   графіки беруться звідти, і підпис під ними це каже.
-
-   ДНІ БЕРЕМО ТІ, ЩО Є В ІМПОРТІ, а не всі дні місяця. Day, якого в
-   базі немає, — це «не залито», а не «нуль»; намалювати по ньому
-   падіння в нуль означало б показати провал, якого не було. Якщо ж
-   day є, а в цього гео по ньому рядка немає — ось це справді нуль:
-   інші гео того дня крутились, а це ні. */
-/* Гео приходить із даних, тож у розмітку йде лише екранованим. */
-const apEscSafe = v => String(v == null ? '' : v)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-
-function dgMoneyByGeo() {
-  const rows = (typeof rawData !== 'undefined' && rawData ? rawData : [])
-    .filter(r => String(r.date || '').startsWith(currentMonthFilter));
-  const days = [...new Set(rows.map(r => String(r.date).slice(0, 10)))].sort();
-  const byGeo = {};
-  rows.forEach(r => {
-    const g = String(r.geo || '??').toUpperCase();
-    const d = String(r.date).slice(0, 10);
-    const o = byGeo[g] || (byGeo[g] = { s: {}, p: {} });
-    const sp = Number(r.spend) || 0;
-    const rev = typeof revenueOf === 'function' ? revenueOf(r) : 0;
-    o.s[d] = (o.s[d] || 0) + sp;
-    o.p[d] = (o.p[d] || 0) + (rev - sp);
-  });
-  return { days, byGeo };
-}
-
-/* Міні-графік. Нуль тут не декорація: профіт буває відʼємним, і лінія
-   без осі нуля однаково «гарно» йде і в плюсі, і в мінусі. Тому там,
-   де ряд перетинає нуль, малюємо саму вісь, а колір беремо за
-   підсумком — зелений у плюс, червоний у мінус. */
-function dgSpark(values, kind) {
-  const vals = (values || []).map(v => Number(v) || 0);
-  if (vals.length < 2 || vals.every(v => v === 0))
-    return '<span class="dg-spark-none">—</span>';
-  const W = 100, H = 26;
-  const max = Math.max(...vals), min = Math.min(...vals);
-  const hi = Math.max(max, 0), lo = Math.min(min, 0);
-  const range = (hi - lo) || 1;
-  const y = v => H - ((v - lo) / range) * H;
-  const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * W},${y(v).toFixed(2)}`).join(' ');
-  const tot = vals.reduce((a, v) => a + v, 0);
-  const col = kind === 'profit' ? (tot >= 0 ? '#22C55E' : '#EF4444') : '#38BDF8';
-  const zero = (lo < 0 && hi > 0)
-    ? `<line x1="0" y1="${y(0).toFixed(2)}" x2="${W}" y2="${y(0).toFixed(2)}"
-         stroke="currentColor" stroke-width="1" opacity=".25" stroke-dasharray="2 2"/>` : '';
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="dg-spark" aria-hidden="true">
-    ${zero}<polyline fill="none" stroke="${col}" stroke-width="2"
-      stroke-linecap="round" stroke-linejoin="round" points="${pts}"
-      vector-effect="non-scaling-stroke"/></svg>`;
-}
-
-/* БЛОК НЕ ЗНИКАЄ МОВЧКИ.
-
-   Доти, коли по цьому гео в daily_stats нічого не було, функція
-   повертала порожній рядок — і графіків просто не ставало. З боку це
-   виглядає як «не зробили», хоча насправді «нема з чого»: таблиця
-   росте з creatives_stats, а гроші з daily_stats, і ці дві таблиці
-   заливають окремо.
-
-   Тому порожнеча тепер named: сказано, чого саме бракує і де це
-   взяти. Мовчазна відсутність блока коштувала рівно одного питання
-   «а де графіки» — і правильно коштувала. */
-function dgMoneyBlock(geo, money) {
-  const o = (money.byGeo || {})[String(geo).toUpperCase()];
-  const why = !money.days.length
-    ? `daily_stats за ${currentMonthFilter} порожня — залий імпорт по днях у Data Hub`
-    : (!o ? `по ${apEscSafe(geo)} у daily_stats за ${currentMonthFilter} рядків немає`
-          : '');
-  if (why) return `<div class="dg-money is-none"><span>Spend / Profit</span><p>${why}</p></div>`;
-  const sArr = money.days.map(d => o.s[d] || 0);
-  const pArr = money.days.map(d => o.p[d] || 0);
-  const totS = sArr.reduce((a, v) => a + v, 0);
-  const totP = pArr.reduce((a, v) => a + v, 0);
-  const money$ = v => (v < 0 ? '-$' : '$') + Math.round(Math.abs(v)).toLocaleString('en-US');
-  return `<div class="dg-money" title="З імпортів daily_stats за ${currentMonthFilter}, по днях, які є в базі">
-    <div class="dg-money-c">
-      <div class="dg-money-h"><span>Spend</span><b>${money$(totS)}</b></div>
-      ${dgSpark(sArr, 'spend')}
-    </div>
-    <div class="dg-money-c">
-      <div class="dg-money-h"><span>Profit</span><b class="${totP >= 0 ? 'is-up' : 'is-down'}">${money$(totP)}</b></div>
-      ${dgSpark(pArr, 'profit')}
-    </div>
-  </div>`;
-}
-
-function renderGeoPlacementWidget(crData, el) {
-  const has = crData.some(c => (c.placement && String(c.placement).trim()) || (c.platform && String(c.platform).trim()));
-  if (!has) {
-    el.innerHTML = `<div class="col-span-3 text-center py-8 opacity-30 text-xs uppercase font-black">
-      No data — add Platform and Placement columns to the FB report and upload via Data Hub</div>`;
-    return;
-  }
-  const map = {};
-  crData.forEach(c => {
-    const g = (c.geo||'??').toUpperCase();
-    const p = placementLabel(c);
-    if (!map[g]) map[g] = {};
-    if (!map[g][p]) map[g][p] = {cl:0,i:0,r:0,d:0,s:0};
-    map[g][p].cl += Number(c.clicks)||0;
-    map[g][p].i  += Number(c.installs)||0;
-    map[g][p].r  += Number(c.regs)||0;
-    map[g][p].d  += Number(c.deps)||0;
-    map[g][p].s  += Number(c.spend)||0;
-  });
-  const fmt = n => n ? Number(n).toLocaleString() : '—';
-  const dgMoney = dgMoneyByGeo();
-  el.innerHTML = Object.keys(map).sort().map(geo => {
-    const rows = Object.entries(map[geo]).sort((a,b)=>b[1].s-a[1].s);
-    const tot = rows.reduce((a,[,m])=>({cl:a.cl+m.cl,i:a.i+m.i,r:a.r+m.r,d:a.d+m.d,s:a.s+m.s}),{cl:0,i:0,r:0,d:0,s:0});
-    return `<div class="bg-black/20 rounded-2xl p-4 border border-white/5">
-      <div class="flex items-center justify-between mb-3 pb-2 border-b border-white/5">
-        <div class="flex items-center gap-2">
-          <img src="https://flagcdn.com/w40/${geo.toLowerCase()}.png" class="w-5 h-3.5 rounded object-cover" onerror="this.style.display='none'">
-          <span class="text-sm font-black text-white">${geo}</span>
-        </div>
-        <span class="text-[11px] font-black text-emerald-400">$${Math.round(tot.s).toLocaleString()}</span>
-      </div>
-      ${dgMoneyBlock(geo, dgMoney)}
-      <div class="grid grid-cols-5 gap-1 text-[9px] uppercase tracking-widest text-slate-600 font-black pb-1 border-b border-white/5 mb-2">
-        <span>Placement</span><span class="text-center">Clicks</span><span class="text-center">Inst</span>
-        <span class="text-center">Regs</span><span class="text-center text-amber-600/70">Deps</span>
-      </div>
-      ${rows.map(([p,m])=>`
-        <div class="grid grid-cols-5 gap-1 text-[10px] py-1 items-center hover:bg-white/[0.03] rounded">
-          <span class="font-bold text-slate-300 truncate" title="${p}">${p}</span>
-          <span class="text-center text-slate-400 font-mono">${fmt(m.cl)}</span>
-          <span class="text-center text-cyan-300 font-mono">${fmt(m.i)}</span>
-          <span class="text-center text-blue-400 font-mono">${fmt(m.r)}</span>
-          <span class="text-center text-green-500 font-mono font-black">${fmt(m.d)}</span>
-        </div>`).join('')}
-      <div class="grid grid-cols-5 gap-1 text-[10px] pt-2 mt-1 border-t border-white/5 font-black">
-        <span class="text-slate-500 uppercase text-[9px]">Total</span>
-        <span class="text-center text-white font-mono">${fmt(tot.cl)}</span>
-        <span class="text-center text-cyan-300 font-mono">${fmt(tot.i)}</span>
-        <span class="text-center text-blue-400 font-mono">${fmt(tot.r)}</span>
-        <span class="text-center text-green-500 font-mono">${fmt(tot.d)}</span>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function toggleDayHeatmap(dayIndex) {
-  const rows = document.querySelectorAll(`.heat-geo-details-${dayIndex}`);
-  const arrow = document.getElementById(`heat-arrow-${dayIndex}`);
-
-  rows.forEach(row => {
-    row.classList.toggle('hidden');
-  });
-
-  if (arrow) {
-    const isHidden = rows[0].classList.contains('hidden');
-    arrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(90deg)';
-    arrow.style.color = isHidden ? '' : '#3b82f6';
-  }
-}
-
-// ===== Feature 8: Device × Geo Widget =====
-let dgMode = 'device';   // 'device' | 'placement' | 'cost'
-function dgSetMode(m){
-  dgMode = m;
-  const dgBox = document.getElementById('device-geo-content');
-  if (dgBox) {
-    dgBox.classList.toggle('dg-cost', m === 'cost');
-    dgBox.classList.toggle('dg-plc', m === 'placement');
-  }
-  // Полотна зникнуть разом із innerHTML, а самі Chart-и лишаться живими
-  // в Chart.instances і будуть смикатись на кожному resize — гасимо їх тут.
-  if (m !== 'cost' && typeof gcDestroy === 'function') gcDestroy();
-  ['device','placement','cost'].forEach(x=>{
-    const b=document.getElementById('dg-tab-'+x);
-    if(b) b.className = x===m
-      ? 'px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition bg-emerald-600 text-white'
-      : 'px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition text-slate-400 hover:text-white';
-  });
-  renderDeviceGeoWidget();
-}
-
-function renderDeviceGeoWidget() {
-  const el = document.getElementById('device-geo-content');
-  if (!el) return;
-
-  const crData = (window.creativesRawData||[]).filter(c =>
-    c.date && c.date.startsWith(currentMonthFilter)
-  );
-
-  if (dgMode === 'cost') { renderGeoCostWidget(crData, el); return; }
-
-  if (!crData.length) {
-    // Сама назва таблиці нічого не пояснює тому, хто просто відкрив
-    // сторінку і бачить порожнечу — кажемо ще й що з цим робити.
-    el.innerHTML = '<div class="col-span-3 text-center py-16 text-xs font-black uppercase tracking-widest" style="color:var(--text-muted)">'
-      + '<div class="opacity-45">No creative data for this month</div>'
-      + '<div class="mt-2 opacity-30 normal-case tracking-normal font-bold">This page is built from creatives_stats. Upload a report in Data Hub &rarr; Campaigns.</div>'
-      + '</div>';
-    return;
-  }
-
-  if (dgMode === 'placement') { renderGeoPlacementWidget(crData, el); return; }
-
-  const hasDeviceData = crData.some(c => c.device && c.device.trim() !== '');
-  if (!hasDeviceData) {
-    el.innerHTML = '<div class="col-span-3 text-center py-8 opacity-30 text-xs uppercase font-black">No device data in creatives_stats</div>';
-    return;
-  }
-
-  // Build geo → device → metrics map
-  const geoDevMap = {};
-  crData.forEach(c => {
-    const g = (c.geo||'??').toUpperCase();
-    const dev = normalizeDevice(c.device||'');
-    if (!geoDevMap[g]) geoDevMap[g] = {};
-    if (!geoDevMap[g][dev]) geoDevMap[g][dev] = {cl:0, i:0, r:0, d:0, s:0};
-    geoDevMap[g][dev].cl += Number(c.clicks)||0;
-    geoDevMap[g][dev].i  += Number(c.installs)||0;
-    geoDevMap[g][dev].r  += Number(c.regs)||0;
-    geoDevMap[g][dev].d  += Number(c.deps)||0;
-    geoDevMap[g][dev].s  += Number(c.spend)||0;
-  });
-
-  const groupIcons  = { Apple:'🍎', Android:'🤖', Desktop:'🖥️' };
-  const groupColors = { Apple:'text-blue-400', Android:'text-green-400', Desktop:'text-slate-300' };
-
-  const fmt = n => n ? Number(n).toLocaleString() : '—';
-  const pct = (a, b) => b ? (a/b*100).toFixed(1)+'%' : '—';
-
-  const header = `<div class="grid grid-cols-5 gap-1 text-[9px] uppercase tracking-widest text-slate-600 font-black pb-1 border-b border-white/5 mb-2">
-    <span>Device</span>
-    <span class="text-center">Clicks</span>
-    <span class="text-center">Installs</span>
-    <span class="text-center">Regs</span>
-    <span class="text-center text-amber-600/70">Deps</span>
-  </div>`;
-
-  const geos = Object.keys(geoDevMap).sort();
-  const dgMoney = dgMoneyByGeo();
-
-  el.innerHTML = geos.map(geo => {
-    const devMap = geoDevMap[geo];
-
-    const groupRows = Object.entries(DEVICE_GROUPS).map(([groupName, keys]) => {
-      const tot = keys.reduce((a,k) => {
-        const m = devMap[k]||{};
-        return {cl:a.cl+(m.cl||0), i:a.i+(m.i||0), r:a.r+(m.r||0), d:a.d+(m.d||0), s:a.s+(m.s||0)};
-      }, {cl:0,i:0,r:0,d:0,s:0});
-
-      if (!tot.cl && !tot.i && !tot.r && !tot.d) return '';
-
-      const subRows = keys.filter(k => devMap[k] && (devMap[k].cl||devMap[k].i||devMap[k].r||devMap[k].d)).map(k => {
-        const m = devMap[k];
-        return `<div class="grid grid-cols-5 gap-1 text-[10px] py-0.5 pl-4 text-slate-500">
-          <span class="truncate">${DEVICE_LABELS[k]||k}</span>
-          <span class="text-center">${fmt(m.cl)}</span>
-          <span class="text-center">${fmt(m.i)}</span>
-          <span class="text-center">${fmt(m.r)}</span>
-          <span class="text-center text-amber-500/70">${fmt(m.d)}</span>
-        </div>`;
-      }).join('');
-
-      const cti = pct(tot.i, tot.cl);
-      const i2r = pct(tot.r, tot.i);
-      const r2d = pct(tot.d, tot.r);
-
-      return `<div class="mb-2">
-        <div class="grid grid-cols-5 gap-1 items-center py-1 rounded-lg bg-white/[0.02]">
-          <span class="text-[11px] font-black ${groupColors[groupName]||'text-white'} pl-1">${groupIcons[groupName]||''} ${groupName}</span>
-          <span class="text-center text-[11px] font-bold text-white">${fmt(tot.cl)}</span>
-          <span class="text-center text-[11px] font-bold text-emerald-400">${fmt(tot.i)}</span>
-          <span class="text-center text-[11px] font-bold text-blue-300">${fmt(tot.r)}</span>
-          <span class="text-center text-[11px] font-bold text-amber-400">${fmt(tot.d)}</span>
-        </div>
-        <div class="flex gap-2 pl-1 mt-0.5 mb-1">
-          <span class="text-[9px] text-slate-600">CTI: ${cti}</span>
-          <span class="text-[9px] text-slate-600">I→R: ${i2r}</span>
-          <span class="text-[9px] text-slate-600">R→D: ${r2d}</span>
-        </div>
-        ${subRows}
-      </div>`;
-    }).join('');
-
-    if (!groupRows.replace(/<[^>]*>/g,'').trim()) return '';
-
-    return `<div class="bg-white/[0.02] border border-white/5 rounded-2xl p-4 cursor-pointer hover:border-white/20 hover:bg-white/[0.04] transition-all" onclick="showGeoDetails('${geo}'); setTimeout(()=>switchGeoTab('devices'),50)">
-      <div class="flex items-center gap-2 mb-3">
-        <img src="https://flagcdn.com/w40/${geo.toLowerCase()}.png" class="w-6 h-4 object-cover rounded-sm" onerror="this.style.display='none'">
-        <span class="text-sm font-black text-white uppercase">${geo}</span>
-        <span class="ml-auto text-[9px] text-slate-600 uppercase tracking-widest">click for details →</span>
-      </div>
-      ${dgMoneyBlock(geo, dgMoney)}
-      ${header}
-      ${groupRows}
-    </div>`;
-  }).filter(Boolean).join('');
-
-  if (!el.innerHTML.trim()) {
-    el.innerHTML = '<div class="col-span-3 text-center py-8 opacity-30 text-xs uppercase font-black">No device data for this period</div>';
-  }
 }
 
 // ===== Feature 5: DB Logs =====
@@ -15646,10 +15216,6 @@ document.addEventListener('keydown', e => {
                 <span class="set-label"><span class="set-ico">&#127912;</span>Creatives</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-creatives" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій">
-                <span class="set-label"><span class="set-ico">&#128241;</span>Geo Breakdown</span>
-                <span class="toggle-switch"><input type="checkbox" id="toggle-device-geo" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
-              </label>
               <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк">
                 <span class="set-label"><span class="set-ico">&#128452;</span>Cabinets</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-cabinets" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
@@ -15806,8 +15372,6 @@ document.addEventListener('keydown', e => {
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-heatmap" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="creatives creative analyzer креатив"><span class="set-label">Creatives</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="geo breakdown device гео пристрій"><span class="set-label">Geo Breakdown</span>
-                <span class="toggle-switch"><input type="checkbox" id="tl-show-device-geo" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-cabinets" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="domains домени"><span class="set-label">Domains</span>
@@ -33710,7 +33274,6 @@ window.aqAsk = async function () {
     '':           { dash: true },
     'heatmap':    { section: 'weekly-analysis-section' },
     'creatives':  { section: 'creative-analyzer-section' },
-    'geo':        { section: 'device-geo-section' },
     'cabinets':   { section: 'cabinets-section' },
     'domains':    { section: 'domains-section' },
     'team':       { section: 'team-section' },
@@ -35455,7 +35018,6 @@ window.aqAsk = async function () {
     ['Dashboard',      'nav:',                      'Page'],
     ['Heatmap',        'nav:heatmap',    'Page'],
     ['Creatives',      'nav:creatives',  'Page'],
-    ['Geo Breakdown',  'nav:geo',         'Page'],
     ['Cabinets',       'nav:cabinets',   'Page'],
     ['Domains',        'nav:domains',    'Page'],
     ['Report Builder', 'nav:reports',     'Page'],
@@ -35548,8 +35110,8 @@ window.aqAsk = async function () {
       cmdShown = cmdBase();
     } else {
       const hit = c => c[0].toLowerCase().includes(s) || c[2].toLowerCase().includes(s);
-      // Точний збіг завжди перший: на «BR» потрібне гео BR, а не сторінка
-      // «Geo Breakdown», у назві якої той самий «br» сидить усередині слова.
+      // Точний збіг завжди перший: на «DO» потрібне гео DO, а не сторінка
+      // «Domains», у назві якої той самий «do» сидить усередині слова.
       // Далі — початок слова, далі — решта. Усередині однакового рангу
       // порядок лишається вихідним, тобто сторінки перед даними.
       const rank = c => {
