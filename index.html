@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.10 13:08">
+  <meta name="build" content="build 25.10 16:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1016,7 +1016,21 @@ header h1 span { font-size: .85rem !important; }
    означає «не менше», тож при потребі вона все одно розсунеться і прокрутиться). */
 #rb-table.rb-wide { width: 100%; }
 #rb-table th:not(:first-child), #rb-table td:not(:first-child) { min-width: 88px; }
+/* ПЕРШИЙ СТОВПЕЦЬ — РОЗРІЗ, І В НЬОМУ БУВАЄ ЛЕНДІНГ.
+   Стеля 340px лишається (без неї таблиця розсувається на пів екрана від
+   одного довгого рядка), але текст тепер ПЕРЕНОСИТЬСЯ, а не вилазить
+   поверх сусідніх чисел. Доти стояв whitespace-nowrap без обрізання:
+   рядок ішов за межі клітинки й накривав спенд із профітом.
+   break-word, а не break-all: рвемо по межі слова, поки вона є, і лише
+   довгий шматок без пробілів ріжемо посередині — у лендінгах це
+   нормальна ситуація. */
 #rb-table th:first-child, #rb-table td:first-child { max-width: 340px; }
+#rb-table td:first-child {
+  white-space: normal !important;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.35;
+}
 body { padding-bottom: 100px !important; padding-top: 14px !important; }
 @media (max-width: 640px) {
   #app-dock { bottom: 8px; gap: 2px; padding: 6px 7px; }
@@ -4290,6 +4304,14 @@ body.is-lead-only .admin-only { display: none; }
    й читалось як крива анімація. */
 .ap-kids { overflow: hidden; }
 .ap-kids.is-new { animation: ap-kids-in .18s ease-out; }
+/* Закриття. forwards обовʼязкове: блок мусить лишитись згорнутим до
+   того моменту, як дерево перемалюється — інакше він блимне назад у
+   повну висоту між кінцем анімації й новим рендером. */
+.ap-kids.is-out { animation: ap-kids-out .16s ease-in forwards; }
+@keyframes ap-kids-out {
+  from { max-height: var(--kh, 480px); opacity: 1; transform: none; }
+  to   { max-height: 0; opacity: 0; transform: translateY(-4px); }
+}
 @keyframes ap-kids-in {
   from { max-height: 0; opacity: 0; transform: translateY(-4px); }
   to   { max-height: var(--kh, 480px); opacity: 1; transform: none; }
@@ -4305,7 +4327,7 @@ body.is-lead-only .admin-only { display: none; }
 
 /* Хто просив менше руху — тому список просто є, без виїзду. */
 @media (prefers-reduced-motion: reduce) {
-  .ap-kids.is-new { animation: none; }
+  .ap-kids.is-new, .ap-kids.is-out { animation: none; }
   .ap-caret { transition: none; }
 }
 
@@ -5863,7 +5885,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 13:08</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 16:32</div>
     </div>
   </aside>
 
@@ -13225,12 +13247,20 @@ function renderGeoCostTab(geo) {
     const ds = bars
       ? { data: vals, backgroundColor: vals.map(v => v < 0 ? neg : pos),
           borderRadius: 3, borderSkipped: false }
+      /* Згладжування знімає ЛИШЕ «sharp» — так само, як на головному
+         графіку (trend.js). Доти тут стояло `st === 'line' ? 0.3 : 0`,
+         тому «Filled area» малювалась ламаною і виглядала як sharp
+         line: заливка була, а згладження ні. Заливка теж та сама —
+         градієнт cfGradient, а не рівна напівпрозора пляма. */
       : { data: vals,
           borderColor: lineCol,
-          backgroundColor: st === 'area' ? cfAlpha(lineCol, 0.14) : 'transparent',
+          backgroundColor: st === 'area'
+            ? (c => (typeof cfGradient === 'function'
+                      ? cfGradient(c.chart, lineCol) : cfAlpha(lineCol, 0.18)))
+            : cfAlpha(lineCol, 0.18),
           borderWidth: 2,
           fill: st === 'area',
-          tension: st === 'line' ? 0.3 : 0,
+          tension: st === 'sharp' ? 0 : 0.3,
           spanGaps: true,
           pointRadius: 2, pointHoverRadius: 4, pointBackgroundColor: lineCol };
 
@@ -14197,7 +14227,7 @@ function rbRender(){
         const dm=String(r.k).match(/\d{4}-\d{2}-\d{2}/);
         const band=dm ? RB_DATE_TINTS[(rbDateIdx[dm[0]]||0) % RB_DATE_TINTS.length] : (i%2?'bg-white/[0.02]':'');
         return `<tr class="hover:bg-white/[0.07] transition ${band}">
-        <td class="p-3 text-xs font-bold text-white border-b border-white/5 whitespace-nowrap">${r.k}</td>
+        <td class="p-3 text-xs font-bold text-white border-b border-white/5" title="${apEsc(String(r.k))}">${r.k}</td>
         ${cols.map(c=>{
           const v=rbValOf(r.a,c);
           const color=c.key==='profit'||c.key==='roi' ? (v>=0?'text-emerald-400':'text-red-400')
@@ -16450,10 +16480,13 @@ window.apPickKey = function (el) {
 function apPick(g, p) {
   // Повторний клік по відкритій гілці закриває її — по одному рівню.
   if (g && g === apGeo && p === apProv) {
-    if (p) apProv = ''; else apGeo = '';
-  } else {
-    apGeo = g; apProv = p;
+    // У прілках рівень один, тож і блок один — зовнішній.
+    return apKidsClose(document.querySelector('#ap-tree > .ap-kids'), () => {
+      if (p) apProv = ''; else apGeo = '';
+      apRenderTree(); apRender();
+    });
   }
+  apGeo = g; apProv = p;
   apRenderTree(); apRender();
 }
 
@@ -17283,12 +17316,23 @@ const pwKey = s => String(s || '').trim().toLowerCase();
 /* Домени зі списку, які належать цій кампанії й ще не стоять у ній
    силками. Без оффера не шукаємо зовсім: «усі домени команди» — це не
    пропозиція, а список доменів, він уже є в своєму вікні. */
-function pwDomPool(offer, geo, links) {
+function pwDomPool(offer, geo, links, name) {
   const off = pwKey(offer);
   if (!off) return [];
   const g = pwKey(geo);
+  const camp = pwKey(name);
   const have = new Set((links || []).map(u => pwHost(u)).filter(Boolean));
   return Object.values(pwDom)
+    /* ДОМЕН, ЯКИЙ НАЗВАВ СВОЮ КАМПАНІЮ, НАЛЕЖИТЬ ТІЛЬКИ ЇЙ.
+       Доти підбір ішов лише по pwa+geo — а кампаній з тим самим
+       оффером у тому ж гео буває кілька, і домен однієї з них
+       пропонувався решті.
+
+       Коли питає хтось БЕЗ назви, такий домен теж не пропонуємо: ми не
+       знаємо, та це кампанія чи ні, а він уже підписаний — чужий. Рядок
+       БЕЗ campaign лишається підказкою для всіх: порожнє поле — це
+       невідомість, а не чужість. */
+    .filter(r => { const rc = pwKey(r.campaign); return !rc || rc === camp; })
     .filter(r => pwKey(r.pwa) === off)
     .filter(r => { const rg = pwKey(r.geo); return !rg || !g || rg === g; })
     .map(r => String(r.domain || '').trim().toLowerCase())
@@ -17296,7 +17340,7 @@ function pwDomPool(offer, geo, links) {
     .filter((d, i, a) => a.indexOf(d) === i)
     .sort();
 }
-const pwPoolOf = it => pwDomPool(it.offer, it.geo, it.links);
+const pwPoolOf = it => pwDomPool(it.offer, it.geo, it.links, pwName(it));
 
 /* Підставити всі знайдені домени в кампанію одним натисканням. Схему
    не вигадуємо: у списку доменів лежить ХОСТ, і https:// перед ним —
@@ -17334,7 +17378,9 @@ function pwPoolPaint() {
   const geo = val('pw-f-geo') || g.geo;
   const links = (document.getElementById('pw-f-links')?.value || '')
     .split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-  const pool = pwDomPool(offer, geo, links);
+  /* Назву передаємо теж: домен, підписаний ІНШОЮ кампанією, не має
+     підказуватись у цій — навіть якщо оффер і гео ті самі. */
+  const pool = pwDomPool(offer, geo, links, pwName({ name: val('pw-f-name') }));
   if (!pool.length) {
     /* Порожньо з двох різних причин, і сказати, з якої саме, важливіше
        за сам факт: без оффера шукати НІ ЗА ЧИМ, а з оффером — просто
@@ -17370,7 +17416,8 @@ function pwPoolAdd(d) {
   const g = pwGuess(val('pw-f-name'));
   const have = ta.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   const add = (d === '*'
-    ? pwDomPool(val('pw-f-offer') || g.offer, val('pw-f-geo') || g.geo, have)
+    ? pwDomPool(val('pw-f-offer') || g.offer, val('pw-f-geo') || g.geo, have,
+                pwName({ name: val('pw-f-name') }))
     : [d]).map(x => 'https://' + x);
   ta.value = [...new Set(have.concat(add))].join('\n');
   pwPoolPaint();
@@ -17415,7 +17462,11 @@ async function pwDomLoad(quiet) {
       /* pwa й geo тут не для показу, а щоб ЗНАТИ, якій кампанії домен
          належить: без цих двох стовпців список доменів і довідник PWA
          лежали б поруч і ніколи не зустрічались. */
-      .select('domain, status, flagged_by, checked_at, source, pwa, geo')
+      /* campaign і ktid читаємо теж: саме вони кажуть, якій КАМПАНІЇ
+         належить домен. Без них підбір ішов лише по pwa+geo, і домен
+         однієї кампанії пропонувався сусідній із тим самим оффером у
+         тому ж гео — «домени, які не повʼязані з цією компанією». */
+      .select('domain, status, flagged_by, checked_at, source, pwa, geo, campaign, ktid')
       .eq('team_name', currentTeam);
     if (error) throw error;
     pwDom = {}; pwDomErr = '';
@@ -17626,6 +17677,31 @@ function pwRenderTree() {
   pwOpenWas = { geo: pwGeo, prov: pwProv };
 }
 
+/* ЗАКРИТТЯ ТЕЖ МУСИТЬ БУТИ ВИДИМИМ.
+
+   Відкриття анімується саме тим, що .ap-kids приїжджає НОВИМ вузлом:
+   браузер проганяє на ньому keyframes сам. Із закриттям так не
+   виходить — вузол просто зникає разом із перемальованим деревом, і
+   список обривався стрибком. Тому спершу згортаємо наявний блок, і
+   лише коли анімація добігла, міняємо стан і малюємо дерево заново.
+
+   Висоту задаємо від вмісту: анімація відкриття знімає max-height
+   (fill-mode у неї навмисне немає), тобто згортати було б нічого. */
+function apKidsClose(box, after) {
+  const skip = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!box || skip) return after();
+  box.style.setProperty('--kh', box.scrollHeight + 'px');
+  box.classList.remove('is-new');
+  box.classList.add('is-out');
+  let done = false;
+  const go = () => { if (done) return; done = true; after(); };
+  box.addEventListener('animationend', go, { once: true });
+  // Якщо анімація не запустилась (інший рендер, прихований блок) —
+  // стан мусить змінитись однаково, інакше клік просто нічого не зробив.
+  setTimeout(go, 280);
+}
+
 /* Чим різняться кампанії одного оффера в одному гео. Дату відкидаємо
    навмисне: вона однакова в усьому, що залито того дня. */
 function pwNamePart(it, off) {
@@ -17661,10 +17737,18 @@ function pwPick(g, p) {
      розгортання застрягло. Закриваємо по одному рівню за клік:
      постачальник згортається в гео, гео — в себе. */
   if (g && g === pwGeo && p === pwProv) {
-    if (p) pwProv = ''; else pwGeo = '';
-  } else {
-    pwGeo = g; pwProv = p;
+    /* Згортаємо саме той блок, що закривається: постачальник — це
+       вкладений .ap-kids (третій рівень), гео — зовнішній. */
+    const box = document.querySelector(p ? '#ap-tree .ap-kids .ap-kids'
+                                         : '#ap-tree > .ap-kids');
+    return apKidsClose(box, () => {
+      if (p) pwProv = ''; else pwGeo = '';
+      pwOne = ''; pwOnlyBad = false;
+      apSubPaint();
+      pwRenderTree(); pwRender();
+    });
   }
+  pwGeo = g; pwProv = p;
   // Вибрана кампанія уточнювала ІНШУ гілку — тримати її далі нічого.
   pwOne = '';
   pwOnlyBad = false;
