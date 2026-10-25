@@ -143,23 +143,41 @@ const lvl3 = await page.evaluate(() => {
   const rows = [...document.querySelectorAll('#ap-tree .ap-row')]
     .map(r => (r.style.paddingLeft || '') + '|' + r.textContent.trim().replace(/\s+/g, ' '));
   return { rows, prov: pwProv,
+           titles: [...document.querySelectorAll('#ap-tree .ap-row')]
+             .map(r => r.getAttribute('title') || ''),
            boxes: [...document.querySelectorAll('#ap-tree .ap-kids')].map(k => k.className),
            carets: document.querySelectorAll('#ap-tree .ap-kids .ap-kids .ap-caret').length };
 });
 ok('клік по постачальнику розгортає його кампанії', lvl3.prov === 'Pwa Partners'
-  && lvl3.rows.some(r => /^36px\|Mbank_KG_1/.test(r)), lvl3.rows);
+  && lvl3.rows.some(r => r.startsWith('36px')), lvl3.rows);
 ok('обидві кампанії цього постачальника, і чужих немає',
   lvl3.rows.filter(r => r.startsWith('36px')).length === 2
   && !lvl3.rows.some(r => /36px\|Olly/.test(r)), lvl3.rows);
+/* ПІДПИС — ОФФЕР, А НЕ ПОВНА НАЗВА: «піставляй в список назва оффера
+   а не цілу назву компанії». Повна назва нікуди не дівається —
+   лишається в підказці рядка. */
+ok('підпис рядка — оффер, а не повна назва кампанії',
+  !lvl3.rows.some(r => /36px\|Mbank_KG_1_09/.test(r))
+  && lvl3.rows.some(r => /^36px\|Mbank/.test(r)), lvl3.rows);
+/* Хвіст — те, чим кампанії РІЗНЯТЬСЯ. Дата не годиться: у двох
+   кампаніях одного дня вона однакова, і рядки лишились би
+   нерозрізненними. */
+ok('однаковий оффер у двох кампаніях розрізняється куском назви',
+  lvl3.rows.some(r => /^36px\|Mbank · 1\b/.test(r))
+  && lvl3.rows.some(r => /^36px\|Mbank · 2\b/.test(r)), lvl3.rows);
+ok('і це не дата заливу — вона в обох та сама',
+  !lvl3.rows.some(r => /^36px\|Mbank · 09\/10/.test(r)), lvl3.rows);
+ok('повна назва лишилась у підказці рядка',
+  lvl3.titles.some(t => /Mbank_KG_1_09\/10/.test(t)), lvl3.titles);
 ok('біля кампанії — кількість силок, а не кампаній',
-  lvl3.rows.some(r => /^36px\|Mbank_KG_1_09\/10 1$/.test(r)), lvl3.rows);
+  lvl3.rows.some(r => /^36px\|Mbank · 1 1$/.test(r)), lvl3.rows);
 ok('у кампаній шеврона немає — глибше нічого немає',
   lvl3.carets === 0, lvl3);
 ok('анімація стоїть на новому вузлі', lvl3.boxes.some(c => /is-new/.test(c)), lvl3.boxes);
 
 const pickOne = await page.evaluate(() => {
   const row = [...document.querySelectorAll('#ap-tree .ap-row')]
-    .find(r => /Mbank_KG_2/.test(r.textContent));
+    .find(r => (r.getAttribute('title') || '').includes('Mbank_KG_2'));
   row.click();
   return { one: pwOne, cards: document.querySelectorAll('#ap-list > div').length,
            list: document.getElementById('ap-list').textContent.replace(/\s+/g, ' '),
@@ -172,7 +190,7 @@ ok('і дерево НЕ переграє анімацію — рівні вже
 
 const unpick = await page.evaluate(() => {
   [...document.querySelectorAll('#ap-tree .ap-row')]
-    .find(r => /Mbank_KG_2/.test(r.textContent)).click();
+    .find(r => (r.getAttribute('title') || '').includes('Mbank_KG_2')).click();
   return { one: pwOne, cards: document.querySelectorAll('#ap-list > div').length };
 });
 ok('повторний клік по кампанії знімає вибір', unpick.one === '' && unpick.cards === 2, unpick);

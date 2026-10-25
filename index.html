@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.10 12:43">
+  <meta name="build" content="build 25.10 12:51">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5867,7 +5867,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:43</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 12:51</div>
     </div>
   </aside>
 
@@ -16511,8 +16511,15 @@ const AP_CARET_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   + '<path d="m9 6 6 6-6 6"/></svg>';
 
 function apTreeBtn(label, active, onclick, pad, count, accent, pin, caret, attr) {
+  /* Типова підказка — сам підпис: він обрізається в вузькій колонці, і
+     без неї повну назву ніде не прочитати. Але якщо рядок приніс свій
+     title (у дереві PWA це повна назва кампанії, а підпис — оффер),
+     лишаємо його: два однакових атрибути в розмітці — це той випадок,
+     коли виграє перший, і правило «свій перебиває» має бути видимим
+     тут, а не вгадуватись із порядку. */
+  const ttl = /\btitle=/.test(attr || '') ? '' : ` title="${apEsc(label)}"`;
   return `
-    <div onclick="${onclick}" ${attr || ''} title="${apEsc(label)}" class="ap-row flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
+    <div onclick="${onclick}" ${attr || ''}${ttl} class="ap-row flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition
          ${active ? (accent || 'bg-emerald-600') + ' text-white' : 'hover:bg-white/5 text-slate-400'}" style="padding-left:${pad}px">
       <span class="flex items-center gap-1 min-w-0">
         ${caret ? `<span class="ap-caret${caret === 'open' ? ' is-open' : ''}">${AP_CARET_SVG}</span>` : ''}
@@ -17626,15 +17633,45 @@ function pwRenderTree() {
          показуємо вже з підставленою датою — як на картці. */
       const mine = pwItems.filter(i =>
         (i.geo || '—').toUpperCase() === g && pwProvOf(i) === p);
-      lvl2 += kidsBox(mine.map(it => btn(pwName(it), pwOne === it.id,
-        `pwPickOne(this)`, 36, (it.links || []).length, null, '',
-        `data-id="${apEsc(it.id)}"`)).join(''), mine.length,
-        animGeo || pwOpenWas.prov !== pwProv);
+      /* ПІДПИС — ОФФЕР, А НЕ ПОВНА НАЗВА КАМПАНІЇ.
+         Mbank_KG_10708-ex8g_09/10 у колонці на 240px обрізається
+         приблизно на «Mbank_KG_107…», тобто рядки виглядають
+         однаково й не читаються. Оффер — те, чим їх називають
+         вголос. Повна назва лишається в підказці рядка і на картці
+         праворуч, тож ніде не пропадає. */
+      const lab = it => String(it.offer || pwGuess(it.name || '').offer || '').trim();
+      const seen = {};
+      mine.forEach(it => { const l = lab(it) || '?'; seen[l] = (seen[l] || 0) + 1; });
+      lvl2 += kidsBox(mine.map(it => {
+        const l = lab(it);
+        /* Один оффер у кількох кампаніях — дописуємо те, чим вони
+           СПРАВДІ різняться: кусок назви, який не оффер, не гео і не
+           дата (у Mbank_KG_10708-ex8g_09/10 це 10708-ex8g). Спершу
+           тут стояв останній кусок — але це дата заливу, і в двох
+           кампаніях одного дня вона однакова, тобто рядки лишались
+           нерозрізненними. */
+        const tail = (l && seen[l] > 1) ? ' · ' + pwNamePart(it, l) : '';
+        return btn((l || pwName(it)) + tail, pwOne === it.id,
+          `pwPickOne(this)`, 36, (it.links || []).length, null, '',
+          `data-id="${apEsc(it.id)}" title="${apEsc(pwName(it))}"`);
+      }).join(''), mine.length, animGeo || pwOpenWas.prov !== pwProv);
     });
     html += kidsBox(lvl2, kids.length, animGeo);
   });
   el.innerHTML = html || '<p class="text-[11px] opacity-40 px-2 py-3">Поки порожньо</p>';
   pwOpenWas = { geo: pwGeo, prov: pwProv };
+}
+
+/* Чим різняться кампанії одного оффера в одному гео. Дату відкидаємо
+   навмисне: вона однакова в усьому, що залито того дня. */
+function pwNamePart(it, off) {
+  const g = String(it.geo || '').toUpperCase();
+  const o = String(off || '').toLowerCase();
+  const parts = String(pwName(it)).trim().split(/[_\s]+/).filter(Boolean);
+  const rest = parts.filter(x => x.toLowerCase() !== o && x.toUpperCase() !== g
+    && !/^\d{1,4}([./-]\d{1,4})+$/.test(x));
+  // Нічого не лишилось — тоді вже хоч дата, ніж порожнє місце.
+  return (rest.length ? rest : parts.slice(-1)).join('_');
 }
 
 /* Клік по самій кампанії. Повторний — знімає вибір: інакше з третього
