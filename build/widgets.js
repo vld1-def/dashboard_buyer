@@ -1728,10 +1728,6 @@
     const roiEl = document.getElementById('kpi-roi');
     const spend = Number(window._kpiSpendVal) || 0;
     if (roiEl) roiEl.innerText = `ROI: ${spend > 0 ? Math.round(val / spend * 100) : 0}%`;
-
-    // Стрілка поруч живе з того самого тотала — перемалювати її треба
-    // разом із числом, інакше підказка лишиться від іншого режиму.
-    if (typeof kpiDeltaPaint === 'function') kpiDeltaPaint();
   };
 
   window.kpiNetCycle = function () {
@@ -1747,6 +1743,12 @@
     localStorage.setItem('chart_style', v);
     // applyChartFilter перемальовує з поточними фільтрами дат і режимом
     if (typeof applyChartFilter === 'function') applyChartFilter();
+    /* Вікно гео малюється окремо й про зміну не дізнається. Якщо воно
+       відкрите — перемальовуємо: налаштування, яке не видно відразу,
+       виглядає як таке, що не працює. */
+    const gm = document.getElementById('geo-details-modal');
+    if (gm && !gm.classList.contains('hidden') && typeof renderGeoCostTab === 'function')
+      renderGeoCostTab(window.__geoModalGeo || '');
   };
 
   (function initChartStyle() {

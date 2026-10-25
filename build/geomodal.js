@@ -166,21 +166,38 @@ function renderGeoCostTab(geo) {
     }
 
     const pos = cfAlpha(m.color, 0.75), neg = 'rgba(244,63,94,.75)';
+
+    /* ВИГЛЯД БЕРЕМО З НАЛАШТУВАНЬ (Settings → General → Chart).
+       Доти тут стояли стовпчики намертво — і коли в налаштуваннях
+       вибрано лінію, ці два графіки лишались єдиними стовпчиками на
+       екрані. Питання прийшло саме так: «чому ці графіки в стилі bar,
+       якщо в налаштуваннях вказано інший стиль».
+
+       Ціни нижче (CPC/CPI/CPR/CPD) лишаються лініями завжди: вони
+       показують ЦІНУ, а не обсяг, і нуля в них не буває. */
+    const st = (typeof cfStyle === 'function') ? cfStyle() : 'bars';
+    const bars = st === 'bars';
+    /* Мінусовий день на стовпчиках фарбуємо окремо: на профіті це
+       головне, що треба побачити. На лінії такого вибору немає —
+       вона одна на весь ряд, тому колір беремо за ЗНАКОМ ТОТАЛА, а
+       сам нуль підсвічуємо на сітці (нижче в scales.y). */
+    const lineCol = (m.key === 'profit' && sum < 0) ? '#F43F5E' : m.color;
+    const ds = bars
+      ? { data: vals, backgroundColor: vals.map(v => v < 0 ? neg : pos),
+          borderRadius: 3, borderSkipped: false }
+      : { data: vals,
+          borderColor: lineCol,
+          backgroundColor: st === 'area' ? cfAlpha(lineCol, 0.14) : 'transparent',
+          borderWidth: 2,
+          fill: st === 'area',
+          tension: st === 'line' ? 0.3 : 0,
+          spanGaps: true,
+          pointRadius: 2, pointHoverRadius: 4, pointBackgroundColor: lineCol };
+
     window.gmCharts.push(new Chart(cv.getContext('2d'), {
-      type: 'bar',
+      type: bars ? 'bar' : 'line',
       plugins: window.cfCrosshair ? [window.cfCrosshair] : [],
-      data: {
-        labels,
-        datasets: [{
-          data: vals,
-          // Мінусовий день фарбуємо окремо: на профіті це головне, що
-          // треба побачити, і однаковий колір у плюса й мінуса
-          // примушував би читати напрямок стовпчика.
-          backgroundColor: vals.map(v => v < 0 ? neg : pos),
-          borderRadius: 3,
-          borderSkipped: false
-        }]
-      },
+      data: { labels, datasets: [ds] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -206,7 +223,11 @@ function renderGeoCostTab(geo) {
         scales: {
           x: { grid: { display: false }, ticks: { color: textMain, font: { size: 9 }, maxTicksLimit: 10 } },
           y: {
-            grid: { color: gridCol },
+            /* Нуль яскравіший за решту сітки: на профіті перетин нуля —
+               це межа між заробив і втратив, і на лінії без неї
+               мінусовий хвіст читається як просто нижча точка. */
+            grid: { color: c => (c.tick && c.tick.value === 0)
+                      ? 'rgba(255,255,255,.26)' : gridCol },
             ticks: { color: textMain, font: { size: 9 }, maxTicksLimit: 4, callback: gmMoney }
           }
         }
