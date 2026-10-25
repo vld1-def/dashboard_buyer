@@ -196,22 +196,30 @@ const unpick = await page.evaluate(() => {
 ok('повторний клік по кампанії знімає вибір', unpick.one === '' && unpick.cards === 2, unpick);
 
 /* ─────────── закриття по одному рівню ─────────── */
-const closeP = await page.evaluate(() => {
+/* Закриття тепер АНІМОВАНЕ: спершу згортається блок, і лише потім
+   міняється стан. Тому між кліком і перевіркою — пауза. */
+await page.evaluate(() => {
   [...document.querySelectorAll('#ap-tree .ap-row')]
     .find(r => /PWA PARTNERS/i.test(r.textContent)).click();
-  return { geo: pwGeo, prov: pwProv,
-           lvl3: [...document.querySelectorAll('#ap-tree .ap-row')]
-             .filter(r => r.style.paddingLeft === '36px').length };
 });
+const closing = await page.evaluate(() =>
+  !!document.querySelector('#ap-tree .ap-kids.is-out'));
+ok('на закритті блок згортається, а не зникає стрибком', closing);
+await page.waitForTimeout(320);
+const closeP = await page.evaluate(() => ({ geo: pwGeo, prov: pwProv,
+  lvl3: [...document.querySelectorAll('#ap-tree .ap-row')]
+    .filter(r => r.style.paddingLeft === '36px').length }));
 ok('повторний клік по постачальнику згортає його кампанії',
   closeP.prov === '' && closeP.geo === 'KG' && closeP.lvl3 === 0, closeP);
 
-const closeG = await page.evaluate(() => {
+await page.evaluate(() => {
   [...document.querySelectorAll('#ap-tree .ap-row')]
     .find(r => r.textContent.trim().startsWith('KG')).click();
-  return { geo: pwGeo, rows: document.querySelectorAll('#ap-tree .ap-row').length,
-           kids: document.querySelectorAll('#ap-tree .ap-kids').length };
 });
+await page.waitForTimeout(320);
+const closeG = await page.evaluate(() => ({ geo: pwGeo,
+  rows: document.querySelectorAll('#ap-tree .ap-row').length,
+  kids: document.querySelectorAll('#ap-tree .ap-kids').length }));
 ok('повторний клік по гео закриває гілку', closeG.geo === '' && closeG.kids === 0, closeG);
 ok('і в дереві лишаються самі гео', closeG.rows === 3, closeG);
 
@@ -352,13 +360,17 @@ const appApos = await page.evaluate(() => {
 ok('апостроф у назві постачальника не ламає клік у прілках',
   appApos.prov === "Olly's apps", appApos);
 
-const appClose = await page.evaluate(() => {
+await page.evaluate(() => {
   [...document.querySelectorAll('#ap-tree .ap-row')]
     .find(r => r.textContent.trim().startsWith('KG')).click();   // назад до гео
+});
+await page.evaluate(() => {
   [...document.querySelectorAll('#ap-tree .ap-row')]
     .find(r => r.textContent.trim().startsWith('KG')).click();   // і закрити
-  return { geo: apGeo, kids: document.querySelectorAll('#ap-tree .ap-kids').length };
 });
+await page.waitForTimeout(320);
+const appClose = await page.evaluate(() => ({ geo: apGeo,
+  kids: document.querySelectorAll('#ap-tree .ap-kids').length }));
 ok('і повторний клік закриває гілку', appClose.geo === '' && appClose.kids === 0, appClose);
 
 await done(browser, srv, errs);

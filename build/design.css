@@ -3182,6 +3182,14 @@ body.is-lead-only .admin-only { display: none; }
    й читалось як крива анімація. */
 .ap-kids { overflow: hidden; }
 .ap-kids.is-new { animation: ap-kids-in .18s ease-out; }
+/* Закриття. forwards обовʼязкове: блок мусить лишитись згорнутим до
+   того моменту, як дерево перемалюється — інакше він блимне назад у
+   повну висоту між кінцем анімації й новим рендером. */
+.ap-kids.is-out { animation: ap-kids-out .16s ease-in forwards; }
+@keyframes ap-kids-out {
+  from { max-height: var(--kh, 480px); opacity: 1; transform: none; }
+  to   { max-height: 0; opacity: 0; transform: translateY(-4px); }
+}
 @keyframes ap-kids-in {
   from { max-height: 0; opacity: 0; transform: translateY(-4px); }
   to   { max-height: var(--kh, 480px); opacity: 1; transform: none; }
@@ -3197,7 +3205,7 @@ body.is-lead-only .admin-only { display: none; }
 
 /* Хто просив менше руху — тому список просто є, без виїзду. */
 @media (prefers-reduced-motion: reduce) {
-  .ap-kids.is-new { animation: none; }
+  .ap-kids.is-new, .ap-kids.is-out { animation: none; }
   .ap-caret { transition: none; }
 }
 

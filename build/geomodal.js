@@ -185,12 +185,20 @@ function renderGeoCostTab(geo) {
     const ds = bars
       ? { data: vals, backgroundColor: vals.map(v => v < 0 ? neg : pos),
           borderRadius: 3, borderSkipped: false }
+      /* Згладжування знімає ЛИШЕ «sharp» — так само, як на головному
+         графіку (trend.js). Доти тут стояло `st === 'line' ? 0.3 : 0`,
+         тому «Filled area» малювалась ламаною і виглядала як sharp
+         line: заливка була, а згладження ні. Заливка теж та сама —
+         градієнт cfGradient, а не рівна напівпрозора пляма. */
       : { data: vals,
           borderColor: lineCol,
-          backgroundColor: st === 'area' ? cfAlpha(lineCol, 0.14) : 'transparent',
+          backgroundColor: st === 'area'
+            ? (c => (typeof cfGradient === 'function'
+                      ? cfGradient(c.chart, lineCol) : cfAlpha(lineCol, 0.18)))
+            : cfAlpha(lineCol, 0.18),
           borderWidth: 2,
           fill: st === 'area',
-          tension: st === 'line' ? 0.3 : 0,
+          tension: st === 'sharp' ? 0 : 0.3,
           spanGaps: true,
           pointRadius: 2, pointHoverRadius: 4, pointBackgroundColor: lineCol };
 

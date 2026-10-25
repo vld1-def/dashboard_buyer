@@ -5,7 +5,10 @@
    домени заводять першими, у шаблоні PWA вони не з'являлись.
 
    Межі, за якими підстановка не стає вгадуванням:
-     • збіг по парі PWA + гео, і лише по ній;
+     • збіг по парі PWA + гео;
+     • домен, що НАЗВАВ свою кампанію, належить тільки їй: кампаній з
+       тим самим оффером у тому ж гео буває кілька, і домен однієї з
+       них не має пропонуватись решті;
      • порожнє гео домена — невідомість, а не розбіжність;
      • різні гео — не підходить;
      • без оффера не шукаємо нічого;
@@ -21,11 +24,12 @@ const { ok, done } = checks();
 const srv = await serve(PORT);
 const { browser, page, errs } = await open(PORT);
 
-/* Без цих двох стовпців зв'язок неможливий у принципі: саме ними
-   домен підписаний у своєму списку. */
+/* Без цих стовпців зв'язок неможливий у принципі: саме ними домен
+   підписаний у своєму списку. campaign і ktid додались пізніше —
+   вони кажуть, якій саме КАМПАНІЇ він належить. */
 const SRC = readFileSync('/home/user/dashboard_buyer/index.html', 'utf8');
-ok('pwDomLoad читає з доменів pwa і geo',
-  /\.select\('domain, status, flagged_by, checked_at, source, pwa, geo'\)/.test(SRC));
+ok('pwDomLoad читає з доменів pwa, geo і campaign',
+  /\.select\('domain, status, flagged_by, checked_at, source, pwa, geo, campaign, ktid'\)/.test(SRC));
 
 const DOM = [
   // той самий домен, що вже стоїть силкою — тільки написаний інакше
@@ -38,7 +42,12 @@ const DOM = [
   // чужа PWA
   { domain: 'pinco-tj.website', pwa: 'Pinco', geo: 'TJ', status: 'ok' },
   // домен без PWA — його ні до чого прикласти
-  { domain: 'nobody.website', pwa: '', geo: '', status: 'unknown' }
+  { domain: 'nobody.website', pwa: '', geo: '', status: 'unknown' },
+  /* Той самий оффер і те саме гео, але домен ПІДПИСАНИЙ іншою
+     кампанією: саме з цього й виходили «домени, не повʼязані з цією
+     компанією». */
+  { domain: 'mplay-kg-9.website', pwa: 'Mbank', geo: 'KG', status: 'ok',
+    campaign: 'Mbank_KG_99999-zzzz_09/10' }
 ];
 
 const setup = () => page.evaluate(d => {
@@ -50,7 +59,9 @@ const setup = () => page.evaluate(d => {
   pwItems = [
     { id: 'p1', name: 'Mbank_KG_10708-ex8g_09/10', geo: 'KG', offer: 'Mbank',
       links: ['https://www.mplay-kg.website/promo?a=1'] },
-    { id: 'p2', name: 'Pinco_TJ_11003_09/10', geo: 'TJ', offer: 'Pinco', links: [] }
+    { id: 'p2', name: 'Pinco_TJ_11003_09/10', geo: 'TJ', offer: 'Pinco', links: [] },
+    // Третя кампанія — той самий оффер і гео, що в першої.
+    { id: 'p3', name: 'Mbank_KG_99999-zzzz_09/10', geo: 'KG', offer: 'Mbank', links: [] }
   ];
   pwGeo = ''; pwOffer = ''; pwOnlyBad = false; pwDomErr = '';
   sb.from = () => ({ upsert: async row => {
@@ -72,6 +83,19 @@ const pool = await page.evaluate(() => ({
 ok('підтягує домени своєї PWA і свого гео',
   JSON.stringify(pool.mbank) === JSON.stringify(['mplay-kg-2.website', 'mplay-kg-3.website']),
   pool.mbank);
+
+/* ─────────── домен, підписаний чужою кампанією ─────────── */
+const camp = await page.evaluate(() => ({
+  mine: pwPoolOf(pwItems[2]),                 // Mbank_KG_99999-zzzz
+  other: pwPoolOf(pwItems[0])                 // Mbank_KG_10708-ex8g
+}));
+ok('домен із чужою кампанією не лізе в сусідню з тим самим оффером',
+  !camp.other.includes('mplay-kg-9.website'), camp.other);
+ok('а своїй кампанії він пропонується',
+  camp.mine.includes('mplay-kg-9.website'), camp.mine);
+ok('домени без campaign лишаються підказкою обом',
+  camp.mine.includes('mplay-kg-3.website') && camp.other.includes('mplay-kg-3.website'),
+  camp);
 ok('силка, що вже стоїть, не пропонується вдруге — навіть з www і хвостом',
   !pool.mbank.includes('mplay-kg.website'), pool.mbank);
 ok('інше гео тієї ж PWA не підходить', !pool.mbank.includes('mplay-uz.website'), pool.mbank);

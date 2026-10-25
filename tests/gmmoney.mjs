@@ -68,8 +68,11 @@ const draw = (daily, payouts, style) => page.evaluate(([rows, pay, month, st]) =
   const g = (window.gmCharts || [])[0];
   const p = (window.gmCharts || [])[1];
   const zg = g && g.config.options.scales.y.grid.color;
+  const d0 = g && g.config.data.datasets[0];
   return { cards, ch,
-    fillSpend: !!(g && g.config.data.datasets[0].fill),
+    fillSpend: !!(d0 && d0.fill),
+    tension: d0 && d0.tension,
+    bgIsFn: typeof (d0 && d0.backgroundColor) === 'function',
     lineProfit: p && p.config.data.datasets[0].borderColor,
     zeroGrid: typeof zg === 'function' ? zg({ tick: { value: 0 } }) : zg };
 }, [daily, payouts, M, style || '']);
@@ -154,6 +157,17 @@ ok('цінові графіки лініями й лишились', asLine.ch.l
 
 const asArea = await draw(DAILY, CPA, 'area');
 ok('вибрано область — лінія з заливкою', asArea.ch[0].type === 'line' && asArea.fillSpend, asArea);
+/* «Filled area» виглядала як sharp line: заливка була, а згладження
+   ні. Згладжування знімає ЛИШЕ sharp — так само, як на головному
+   графіку. */
+ok('і вона ЗГЛАДЖЕНА, а не ламана', asArea.tension === 0.3, asArea.tension);
+ok('заливка — градієнт, а не рівна пляма', asArea.bgIsFn, asArea);
+
+const asSharp = await draw(DAILY, CPA, 'sharp');
+ok('а «sharp line» — ламана без заливки',
+  asSharp.tension === 0 && !asSharp.fillSpend, asSharp);
+ok('і згладжена лінія теж згладжена',
+  (await draw(DAILY, CPA, 'line')).tension === 0.3);
 
 const asBars = await draw(DAILY, CPA, 'bars');
 ok('вибрано стовпчики — як і було', asBars.ch[0].type === 'bar', asBars.ch[0].type);
