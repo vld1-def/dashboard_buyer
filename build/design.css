@@ -3193,7 +3193,13 @@ body.is-lead-only .admin-only { display: none; }
    обрізається, навіть якщо --kh виявиться меншим за вміст.
    Згортання не анімується: вузол зникає разом з усім деревом, і
    анімувати те, чого вже немає в DOM, нічим. */
-.ap-kids { overflow: hidden; animation: ap-kids-in .18s ease-out; }
+/* Анімація — лише на .is-new, тобто на гілці, що відкрилась ЩОЙНО.
+   Доти правило стояло на самому .ap-kids, а дерево малюється через
+   innerHTML: вузол приходив новий на кожен клік, і список з'їжджав
+   заново від кліку по постачальнику, по кампанії, по булавці. Саме це
+   й читалось як крива анімація. */
+.ap-kids { overflow: hidden; }
+.ap-kids.is-new { animation: ap-kids-in .18s ease-out; }
 @keyframes ap-kids-in {
   from { max-height: 0; opacity: 0; transform: translateY(-4px); }
   to   { max-height: var(--kh, 480px); opacity: 1; transform: none; }
@@ -3209,7 +3215,7 @@ body.is-lead-only .admin-only { display: none; }
 
 /* Хто просив менше руху — тому список просто є, без виїзду. */
 @media (prefers-reduced-motion: reduce) {
-  .ap-kids { animation: none; }
+  .ap-kids.is-new { animation: none; }
   .ap-caret { transition: none; }
 }
 
