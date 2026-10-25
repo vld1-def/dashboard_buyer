@@ -131,14 +131,40 @@ ok('у вкладці Placements графіки теж є', await page.evaluate(
 /* ─────────── 8. БЕЗ ГРОШЕЙ ВЗАГАЛІ ─────────── */
 /* daily_stats порожня, creatives_stats ні: таблиця мусить лишитись, а
    блоку з грошима просто не буде — вигадувати нулі нема з чого. */
-ok('немає daily_stats — картка лишається, грошей просто немає',
-  await page.evaluate(() => {
-    rawData = [];
-    dgMode = 'device';
-    renderDeviceGeoWidget();
-    const el = document.getElementById('device-geo-content');
-    return el.querySelectorAll('.dg-money').length === 0
-        && el.querySelectorAll('.grid-cols-5').length > 0;
-  }));
+/* Доти блок просто зникав, і це читалось як «не зробили». Тепер він
+   лишається і каже, чого бракує: таблицю й гроші заливають окремо, і
+   без цього речення питання «а де графіки» неминуче. */
+const empty = await page.evaluate(() => {
+  rawData = [];
+  dgMode = 'device';
+  renderDeviceGeoWidget();
+  const el = document.getElementById('device-geo-content');
+  return { none: el.querySelectorAll('.dg-money.is-none').length,
+           sparks: el.querySelectorAll('.dg-spark').length,
+           table: el.querySelectorAll('.grid-cols-5').length,
+           txt: (el.querySelector('.dg-money.is-none p') || {}).textContent || '' };
+});
+ok('немає daily_stats — блок лишається і називає причину',
+  empty.none > 0 && empty.sparks === 0, empty);
+ok('і каже саме про daily_stats, а не «немає даних»',
+  /daily_stats/.test(empty.txt), empty.txt);
+ok('таблиця з creatives_stats при цьому на місці', empty.table > 0, empty);
+
+/* Гео, по якому в daily_stats рядків немає, теж мусить це сказати —
+   а не зникнути поруч із сусідами, у яких графіки є. */
+ok('гео без грошей каже про себе окремо', await page.evaluate(([daily, m]) => {
+  // UA у daily є, KZ немає зовсім
+  rawData = daily.filter(r => r.geo === 'UA');
+  currentMonthFilter = m;
+  dgMode = 'device';
+  renderDeviceGeoWidget();
+  const cards = [...document.querySelectorAll('#device-geo-content > div')];
+  const kz = cards.find(c => /KZ/.test(c.textContent));
+  const ua = cards.find(c => /UA/.test(c.textContent));
+  return !!kz && !!ua
+    && kz.querySelectorAll('.dg-money.is-none').length === 1
+    && ua.querySelectorAll('.dg-spark').length === 2
+    && /KZ/.test(kz.querySelector('.dg-money.is-none p').textContent);
+}, [DAILY, M]));
 
 await done(browser, srv, errs);
