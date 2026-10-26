@@ -25,9 +25,9 @@ def sub(hay, old, new, what):
 def read(f):
     return open(f, encoding='utf-8').read().rstrip('\n')
 
-head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs = (read(f) for f in
+head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, creatabjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs = (read(f) for f in
     ('head.html', 'design.css', 'shell.html', 'widgets.js', 'trend.js', 'settings.html',
-     'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js',
+     'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js', 'creatab.js',
      'fresh.js', 'geomodal.js', 'cabinets.html', 'cabinets.js', 'tg.js', 'events.js',
      'domains.html', 'domains.js', 'fbtok.js', 'fbrep.js', 'fbcom.js', 'fbpages.js',
      'uniq.html', 'uniq.js', 'rules.html', 'rules.js', 'pages.html', 'pages.js',
@@ -1206,7 +1206,7 @@ rest = sub(rest,
 
 rest = sub(rest,
   '// ===== Feature 5: DB Logs =====',
-  geomodaljs.strip() + '\n\n// ===== Feature 5: DB Logs =====',
+  geomodaljs.strip() + '\n\n' + creatabjs.strip() + '\n\n// ===== Feature 5: DB Logs =====',
   'модалка гео: скрипт')
 
 # ── Report Builder: рядок Total у <tfoot>, щоб липнув до низу ──────────

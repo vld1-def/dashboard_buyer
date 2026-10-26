@@ -976,6 +976,17 @@
   }
 
   window.sheetsPick = function (i) {
+    /* Таблиця креативів — наша, а не зовнішнє посилання, тому її
+       немає в списку sheets (він зберігається на команду). Приходить
+       окремим значенням, і перехоплюємо його ДО Number(): Number('cre')
+       це NaN, і вибір падав би на першу Google-таблицю. */
+    if (String(i) === 'cre') {
+      if (typeof shCloseFile === 'function' && shFile) shCloseFile();
+      sheetsIdx = -1;
+      if (typeof ctShow === 'function') ctShow();
+      return;
+    }
+    if (typeof ctHide === 'function') ctHide();
     sheetsIdx = Number(i) || 0;
     /* Вибрали таблицю Google — відкритий файл закриваємо: два джерела
        в одній рамці означали б, що видно не те, що вибрали. */
@@ -1030,9 +1041,17 @@
        згортало б таблицю, яку щойно відкрили. */
     if (shFile) return;
 
-    sel.innerHTML = sheets.map((s, i) =>
+    sel.innerHTML = `<option value="cre"${sheetsIdx < 0 ? ' selected' : ''}>Creatives</option>`
+      + sheets.map((s, i) =>
       `<option value="${i}" ${i === sheetsIdx ? 'selected' : ''}>${String(s.name).replace(/</g, '&lt;')}</option>`).join('');
 
+    /* Вибрана наша таблиця — решту цієї функції пропускаємо цілком:
+       нижче вона ховає рамку й малює порожній стан, тобто затерла б
+       те, що ctShow() щойно показав. */
+    if (sheetsIdx < 0) {
+      if (typeof ctShow === 'function') ctShow();
+      return;
+    }
     const cur = sheets[sheetsIdx];
     if (!cur) {
       frame.classList.add('hidden');
