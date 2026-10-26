@@ -15,7 +15,11 @@
      • підписані адреси зіставляються за ПОЛЕМ path, а не за порядком:
        переплутані адреси показали б чужий дизайн;
      • силки звужуються на ширину превю, а не лізуть під нього;
-     • на весь екран відкривається поверх вікна, а не замість нього. */
+     • на весь екран відкривається поверх вікна, а не замість нього;
+     • кадрів на воронку може бути кілька: у колонці слайдшоу, на весь
+       екран — усі одразу сіткою;
+     • старі одиночні скріни (ім'я без «__») групуються так само: їх
+       не треба переливати. */
 import { serve, open, checks } from './_harness.mjs';
 
 const PORT = 8157;
@@ -79,6 +83,9 @@ const keys = await page.evaluate(() => ({
   short: pwKtid('Melbet'),
   two: pwKtid('Mbank_KG'),
   path: pwShotPath('10708-ex8g'),
+  group: pwShotKey('10708-ex8g__1700000000000'),
+  // Старий одиночний скрін лежить без суфікса взагалі.
+  groupOld: pwShotKey('10708-ex8g'),
   // Те саме правило, що й у списку доменів: інакше скрін є, а на
   // картці його немає.
   same: typeof dmHeadInfo === 'function'
@@ -88,7 +95,11 @@ ok('KTID — третій кусок назви', keys.full === '10708-ex8g', ke
 ok('те саме правило, що в списку доменів',
   keys.same === null || keys.same === keys.full, keys);
 ok('назва без трьох кусків не дає KTID', keys.short === '' && keys.two === '', keys);
-ok('шлях у бакеті — команда/ktid', keys.path === 'TEAM/10708-ex8g', keys.path);
+/* Ім'я з часом заливу — тобто кожен залив ДОДАЄ кадр, а не заміняє. */
+ok('шлях у бакеті — команда/ktid__час',
+  /^TEAM\/10708-ex8g__\d{10,}$/.test(keys.path), keys.path);
+ok('ключ групування знімає суфікс часу',
+  keys.group === '10708-ex8g' && keys.groupOld === '10708-ex8g', keys);
 
 /* ─────────── превю на картці ─────────── */
 const cards = await page.evaluate(() => [...document.querySelectorAll('#ap-list > div')].map(c => {
@@ -120,6 +131,109 @@ ok('картка без дизайну показує кнопку заливу 
   !c3.src && /\+ дизайн/.test(c3.add) && /22222-zzzz/.test(c3.add), c3);
 ok('назва без KTID не отримує ні превю, ні кнопки',
   !c4.src && !c4.add && c4.shotW === 0, c4);
+
+/* ─────────── кілька кадрів на одну воронку ─────────── */
+/* Три кадри: один старого вигляду (без суфікса) і два нових. Усі три
+   мусять лягти в одну воронку. */
+await setup(['10708-ex8g', '10708-ex8g__1700000000001', '10708-ex8g__1700000000002'], false);
+
+const slide = await page.evaluate(() => {
+  const box = document.querySelector('.pw-shot');
+  return {
+    kadrs: pwShotsOf('10708-ex8g').length,
+    n: (box.querySelector('.pw-shot-n') || {}).textContent || '',
+    dots: box.querySelectorAll('.pw-shot-dots i').length,
+    on: [...box.querySelectorAll('.pw-shot-dots i')].findIndex(i => i.classList.contains('is-on')),
+    navs: box.querySelectorAll('.pw-shot-nav').length,
+    src: box.querySelector('img').getAttribute('src')
+  };
+});
+ok('три файли однієї воронки — три кадри', slide.kadrs === 3, slide);
+ok('старий скрін без суфікса потрапив у ту саму воронку',
+  /10708-ex8g\.jpg/.test(slide.src), slide.src);
+ok('у колонці видно, який кадр із скількох', slide.n === '1/3', slide);
+ok('крапок стільком ж, скільки кадрів, і горить перша',
+  slide.dots === 3 && slide.on === 0, slide);
+ok('стрілки є — туди й назад', slide.navs === 2, slide);
+
+const flip = await page.evaluate(() => {
+  const before = document.querySelector('#ap-list').innerHTML.length;
+  document.querySelector('.pw-shot-nav.is-next').click();
+  const box = document.querySelector('.pw-shot');
+  return { i: box.getAttribute('data-i'),
+           n: box.querySelector('.pw-shot-n').textContent,
+           src: box.querySelector('img').getAttribute('src'),
+           on: [...box.querySelectorAll('.pw-shot-dots i')].findIndex(i => i.classList.contains('is-on')),
+           idx: pwShotIdx['10708-ex8g'],
+           sameLen: document.querySelector('#ap-list').innerHTML.length === before };
+});
+ok('стрілка перемикає кадр', flip.n === '2/3' && flip.i === '1' && flip.on === 1, flip);
+ok('і запам\'ятовує його на наступний рендер', flip.idx === 1, flip);
+
+const wrapAround = await page.evaluate(() => {
+  document.querySelector('.pw-shot-nav.is-prev').click();
+  document.querySelector('.pw-shot-nav.is-prev').click();
+  const box = document.querySelector('.pw-shot');
+  return box.querySelector('.pw-shot-n').textContent;
+});
+ok('із першого кадру назад — на останній', wrapAround === '3/3', wrapAround);
+
+/* ─────────── усі на одному екрані ─────────── */
+const grid = await page.evaluate(() => {
+  document.querySelector('.pw-shot img').click();
+  const l = document.querySelector('.pw-shot-full');
+  return {
+    cells: l ? l.querySelectorAll('.pw-full-c img').length : 0,
+    head: l ? (l.querySelector('.pw-full-n') || {}).textContent : '',
+    kt: l ? (l.querySelector('.pw-full-kt') || {}).textContent : '',
+    dels: l ? l.querySelectorAll('.pw-full-del').length : 0,
+    apps: !document.getElementById('apps-modal').classList.contains('hidden')
+  };
+});
+ok('на весь екран — ВСІ кадри сіткою', grid.cells === 3, grid);
+ok('у шапці шару — воронка й кількість кадрів',
+  grid.kt === '10708-ex8g' && /3 кадр/.test(grid.head), grid);
+ok('у кожного кадру є кнопка видалення', grid.dels === 3, grid);
+ok('вікно шаблонів при цьому не закривається', grid.apps, grid);
+
+const big = await page.evaluate(() => {
+  const c = document.querySelector('.pw-full-c');
+  c.click();
+  const on = c.classList.contains('is-big');
+  c.click();
+  return { on, off: !c.classList.contains('is-big') };
+});
+ok('клік по кадру розгортає його й повертає назад', big.on && big.off, big);
+
+const stay = await page.evaluate(() => {
+  document.querySelector('.pw-full-grid').click();   // клік ПО СІТЦІ
+  return !!document.querySelector('.pw-shot-full');
+});
+ok('клік по сітці шар не закриває — там і дивляться', stay);
+
+const gone = await page.evaluate(() => {
+  document.querySelector('.pw-shot-full').click();   // клік повз сітку
+  return !document.querySelector('.pw-shot-full');
+});
+ok('клік повз сітку закриває', gone);
+
+/* ─────────── видалення кадру ─────────── */
+const del = await page.evaluate(async () => {
+  window.__rm = [];
+  const base = sb.storage.from();
+  sb.storage = { from: () => ({
+    list: base.list, createSignedUrls: base.createSignedUrls, upload: base.upload,
+    remove: async paths => { window.__rm.push(...paths); return { error: null }; }
+  }) };
+  window.ask = async () => true;                     // підтвердження
+  document.querySelector('.pw-shot img').click();
+  document.querySelector('.pw-full-del').click();
+  await new Promise(r => setTimeout(r, 80));
+  return { rm: window.__rm, open: !!document.querySelector('.pw-shot-full') };
+});
+ok('видалення прибирає саме той кадр', del.rm.length === 1
+  && /10708-ex8g/.test(del.rm[0]), del);
+ok('шар при цьому лишається відкритим', del.open, del);
 
 /* ─────────── службова картка PARAMETERS ─────────── */
 const prm = cards.find(c => /Mbank_PARAMETERS/.test(c.name));
@@ -161,8 +275,8 @@ const up = await page.evaluate(async () => {
   await pwShotUpload('22222-zzzz', blob, null);
   return window.__up;
 });
-ok('залив кладе файл під шлях команда/ktid',
-  up.length === 1 && up[0].path === 'TEAM/22222-zzzz', up);
+ok('залив кладе файл під шлях команда/ktid__час',
+  up.length === 1 && /^TEAM\/22222-zzzz__\d{10,}$/.test(up[0].path), up);
 ok('і перезаписує як jpeg', up[0].type === 'image/jpeg', up);
 
 /* ─────────── бакета ще немає ─────────── */
