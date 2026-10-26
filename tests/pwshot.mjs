@@ -196,14 +196,30 @@ ok('у шапці шару — воронка й кількість кадрів
 ok('у кожного кадру є кнопка видалення', grid.dels === 3, grid);
 ok('вікно шаблонів при цьому не закривається', grid.apps, grid);
 
+/* «Зближення коли кадри відкритті погано працює, дозволяй тільки одне
+   зближення відкривати на повний екран»: доти кожен кадр перемикався
+   сам по собі, і два розгорнутих ділили ту саму ширину. */
 const big = await page.evaluate(() => {
-  const c = document.querySelector('.pw-full-c');
-  c.click();
-  const on = c.classList.contains('is-big');
-  c.click();
-  return { on, off: !c.classList.contains('is-big') };
+  const cs = [...document.querySelectorAll('.pw-full-c')];
+  cs[0].click();
+  const first = { big: cs[0].classList.contains('is-big'),
+                  hid: getComputedStyle(cs[1]).display,
+                  grid: document.querySelector('.pw-full-grid').classList.contains('has-big') };
+  cs[1].click();                      // другий — поки перший розгорнутий
+  const second = { only: document.querySelectorAll('.pw-full-c.is-big').length,
+                   who: cs[1].classList.contains('is-big') && !cs[0].classList.contains('is-big') };
+  cs[1].click();                      // той самий ще раз — назад у сітку
+  const back = { big: document.querySelectorAll('.pw-full-c.is-big').length,
+                 grid: document.querySelector('.pw-full-grid').classList.contains('has-big'),
+                 shown: getComputedStyle(cs[0]).display };
+  return { first, second, back };
 });
-ok('клік по кадру розгортає його й повертає назад', big.on && big.off, big);
+ok('клік по кадру розгортає його', big.first.big && big.first.grid, big.first);
+ok('решта кадрів на час зближення ховається', big.first.hid === 'none', big.first);
+ok('розгорнутий ЛИШЕ ОДИН — новий знімає попередній',
+  big.second.only === 1 && big.second.who, big.second);
+ok('повторний клік повертає сітку',
+  big.back.big === 0 && !big.back.grid && big.back.shown !== 'none', big.back);
 
 const stay = await page.evaluate(() => {
   document.querySelector('.pw-full-grid').click();   // клік ПО СІТЦІ

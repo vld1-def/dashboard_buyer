@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.10 15:53">
+  <meta name="build" content="build 26.10 16:03">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4402,10 +4402,21 @@ body.is-lead-only .admin-only { display: none; }
   background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
 }
 .pw-full-c img { width: 100%; height: auto; display: block; }
-/* Expandй кадр забирає всю ширину сітки й обмежений висотою шару,
-   щоб не доводилось гортати один скрін. */
-.pw-full-c.is-big { grid-column: 1 / -1; cursor: zoom-out; }
-.pw-full-c.is-big img { max-height: 78vh; width: auto; margin: 0 auto; }
+/* РОЗГОРНУТИЙ КАДР — ОДИН І НА ВЕСЬ ШАР.
+   Доти він лише розтягувався на всю ширину сітки, а сусіди лишались
+   під ним: два розгорнутих ділили ту саму ширину, і виходило ні
+   сітка, ні повний екран. Тепер сітка на time зближення стає однією
+   колонкою, а нерозгорнуті кадри ховаються — лишається рівно той, по
+   який заходили. */
+.pw-full-grid.has-big { grid-template-columns: 1fr; }
+.pw-full-grid.has-big > .pw-full-c:not(.is-big) { display: none; }
+.pw-full-c.is-big { cursor: zoom-out; background: none; border-color: transparent; }
+/* 110px — шапка шару плюс його відступи: кадр мусить влазити цілком,
+   інакше «на весь екран» перетворюється на гортання одного скріна. */
+.pw-full-c.is-big img {
+  max-height: calc(100vh - 110px); width: auto; margin: 0 auto;
+  border-radius: 12px;
+}
 .pw-full-del {
   position: absolute; top: 6px; right: 6px;
   width: 24px; height: 24px; border: 0; border-radius: 8px; cursor: pointer;
@@ -6011,7 +6022,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.10 15:53</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.10 16:03</div>
     </div>
   </aside>
 
@@ -17746,7 +17757,13 @@ async function pwShotUploadMany(ktid, files, btn) {
    Сітка, а не один кадр зі стрілками: порівнювати екрани однієї пви
    треба поруч, а не по черзі. Клік по кадру розгортає саме його на
    весь шар і повертає назад — коли в сітці їх шість, дрібниці на
-   одному не видно. */
+   одному не видно.
+
+   РОЗГОРНУТИЙ ЛИШЕ ОДИН. Доти кожен кадр перемикався сам по собі, і
+   два розгорнутих ділили ту саму ширину — виходило ні сітка, ні
+   повний екран. Тепер новий знімає попередній, а решта кадрів на час
+   зближення ховається: один кадр на весь шар і є те, по що в нього
+   заходять. */
 function pwShotLayer(ktid) {
   const arr = pwShotsOf(ktid);
   let wrap = document.querySelector('.pw-shot-full');
@@ -17766,7 +17783,7 @@ function pwShotLayer(ktid) {
       <button type="button" class="pw-full-x" title="Закрити (Esc)">&times;</button>
     </div>
     <div class="pw-full-grid" onclick="event.stopPropagation()">
-      ${arr.map(sh => `<div class="pw-full-c" onclick="this.classList.toggle('is-big')">
+      ${arr.map(sh => `<div class="pw-full-c" onclick="pwShotBig(this)">
           <img src="${apEsc(sh.url)}" alt="" loading="lazy">
           <button type="button" class="pw-full-del" data-p="${apEsc(sh.path)}" data-k="${apEsc(ktid)}"
             onclick="pwShotDel(event, this)" title="Видалити цей кадр">&times;</button>
@@ -17775,6 +17792,18 @@ function pwShotLayer(ktid) {
   wrap.querySelector('.pw-full-x').onclick = () => pwShotClose();
   return wrap;
 }
+
+/* Зближення. Клік по розгорнутому повертає сітку — тим самим кліком,
+   яким його й відкрили: шукати окрему кнопку «назад» у шарі, де все
+   клікається, нікому не спадає на думку. */
+window.pwShotBig = function (el) {
+  const grid = el.closest('.pw-full-grid');
+  if (!grid) return;
+  const on = !el.classList.contains('is-big');
+  grid.querySelectorAll('.pw-full-c.is-big').forEach(c => c.classList.remove('is-big'));
+  if (on) el.classList.add('is-big');
+  grid.classList.toggle('has-big', on);
+};
 
 function pwShotClose() {
   const wrap = document.querySelector('.pw-shot-full');

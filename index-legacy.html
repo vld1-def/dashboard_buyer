@@ -10509,7 +10509,13 @@ async function pwShotUploadMany(ktid, files, btn) {
    Сітка, а не один кадр зі стрілками: порівнювати екрани однієї пви
    треба поруч, а не по черзі. Клік по кадру розгортає саме його на
    весь шар і повертає назад — коли в сітці їх шість, дрібниці на
-   одному не видно. */
+   одному не видно.
+
+   РОЗГОРНУТИЙ ЛИШЕ ОДИН. Доти кожен кадр перемикався сам по собі, і
+   два розгорнутих ділили ту саму ширину — виходило ні сітка, ні
+   повний екран. Тепер новий знімає попередній, а решта кадрів на час
+   зближення ховається: один кадр на весь шар і є те, по що в нього
+   заходять. */
 function pwShotLayer(ktid) {
   const arr = pwShotsOf(ktid);
   let wrap = document.querySelector('.pw-shot-full');
@@ -10529,7 +10535,7 @@ function pwShotLayer(ktid) {
       <button type="button" class="pw-full-x" title="Закрити (Esc)">&times;</button>
     </div>
     <div class="pw-full-grid" onclick="event.stopPropagation()">
-      ${arr.map(sh => `<div class="pw-full-c" onclick="this.classList.toggle('is-big')">
+      ${arr.map(sh => `<div class="pw-full-c" onclick="pwShotBig(this)">
           <img src="${apEsc(sh.url)}" alt="" loading="lazy">
           <button type="button" class="pw-full-del" data-p="${apEsc(sh.path)}" data-k="${apEsc(ktid)}"
             onclick="pwShotDel(event, this)" title="Видалити цей кадр">&times;</button>
@@ -10538,6 +10544,18 @@ function pwShotLayer(ktid) {
   wrap.querySelector('.pw-full-x').onclick = () => pwShotClose();
   return wrap;
 }
+
+/* Зближення. Клік по розгорнутому повертає сітку — тим самим кліком,
+   яким його й відкрили: шукати окрему кнопку «назад» у шарі, де все
+   клікається, нікому не спадає на думку. */
+window.pwShotBig = function (el) {
+  const grid = el.closest('.pw-full-grid');
+  if (!grid) return;
+  const on = !el.classList.contains('is-big');
+  grid.querySelectorAll('.pw-full-c.is-big').forEach(c => c.classList.remove('is-big'));
+  if (on) el.classList.add('is-big');
+  grid.classList.toggle('has-big', on);
+};
 
 function pwShotClose() {
   const wrap = document.querySelector('.pw-shot-full');
