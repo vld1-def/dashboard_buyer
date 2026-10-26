@@ -33,7 +33,17 @@ const ITEMS = [
   { id: 'p3', name: 'Pinco_TJ_22222-zzzz_09/10', geo: 'TJ', offer: 'Pinco',
     provider: 'SkakApp', links: ['https://c.site'] },
   // назва без KTID — одним словом
-  { id: 'p4', name: 'Melbet', geo: 'UZ', offer: 'Melbet', links: ['https://d.site'] }
+  { id: 'p4', name: 'Melbet', geo: 'UZ', offer: 'Melbet', links: ['https://d.site'] },
+  /* Службова картка: «PARAMETERS» у гео. KTID у назві є, тобто без
+     окремого правила вона отримала б і кнопку, і превю. */
+  { id: 'p5', name: 'Mbank_PARAMETERS_10708-ex8g_09/10', geo: 'PARAMETERS',
+    offer: 'Mbank', links: ['https://e.site'] },
+  // те саме слово, перенесене в назву
+  { id: 'p6', name: 'PARAMETERS_KG_33333-yyyy_09/10', geo: 'KG',
+    offer: 'Mbank', links: ['https://f.site'] },
+  /* А ось це НЕ службова картка: слово лише схоже. Превю мусить бути. */
+  { id: 'p7', name: 'Parametrix_KG_44444-wwww_09/10', geo: 'KG',
+    offer: 'Parametrix', links: ['https://g.site'] }
 ];
 
 const setup = (shots, order) => page.evaluate(([items, have, shuffle]) => {
@@ -110,6 +120,18 @@ ok('картка без дизайну показує кнопку заливу 
   !c3.src && /\+ дизайн/.test(c3.add) && /22222-zzzz/.test(c3.add), c3);
 ok('назва без KTID не отримує ні превю, ні кнопки',
   !c4.src && !c4.add && c4.shotW === 0, c4);
+
+/* ─────────── службова картка PARAMETERS ─────────── */
+const prm = cards.find(c => /Mbank_PARAMETERS/.test(c.name));
+const prm2 = cards.find(c => /^PARAMETERS_KG/.test(c.name));
+const near = cards.find(c => /Parametrix/.test(c.name));
+ok('картка з PARAMETERS у гео не отримує ні превю, ні кнопки',
+  prm && !prm.src && !prm.add && prm.shotW === 0, prm);
+ok('те саме слово в назві — так само',
+  prm2 && !prm2.src && !prm2.add && prm2.shotW === 0, prm2);
+ok('і силки на ній лишаються на всю ширину', prm.mainW === 0, prm);
+ok('схоже слово (Parametrix) превю НЕ втрачає',
+  near && (near.src || near.add) && near.shotW > 0, near);
 
 /* ─────────── силки звузились ─────────── */
 ok('превю стоїть вузькою колонкою (~120px)', c1.shotW >= 110 && c1.shotW <= 130, c1);
