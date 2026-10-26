@@ -3212,17 +3212,86 @@ body.is-lead-only .admin-only { display: none; }
   opacity: .5; max-width: 100%; padding: 0 6px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* На весь екран. Клік будь-де закриває — відкривали, щоб подивитись,
-   а не щоб потім шукати хрестик. */
+/* ── СЛАЙДШОУ В КОЛОНЦІ ──
+   Кадр міняють стрілками, і вони з'являються на наведенні: у спокої
+   це дизайн, а не пульт. Крапки знизу кажуть, скільки кадрів узагалі
+   є — без них друга картинка існувала б лише для того, хто вгадав, що
+   стрілки там є. */
+.pw-shot-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 30px; border: 0; cursor: pointer;
+  background: rgba(0,0,0,.55); color: #fff;
+  font-size: 16px; line-height: 1; padding: 0;
+  opacity: 0; transition: opacity .15s, background .15s;
+}
+.pw-shot-nav.is-prev { left: 0; border-radius: 0 8px 8px 0; }
+.pw-shot-nav.is-next { right: 0; border-radius: 8px 0 0 8px; }
+.pw-shot:hover .pw-shot-nav { opacity: .9; }
+.pw-shot-nav:hover { background: rgba(0,0,0,.85); }
+.pw-shot-n {
+  position: absolute; top: 4px; right: 4px;
+  padding: 1px 5px; border-radius: 6px;
+  background: rgba(0,0,0,.6); color: #fff;
+  font-size: 9px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.pw-shot-dots {
+  position: absolute; left: 0; right: 0; bottom: 22px;
+  display: flex; gap: 3px; justify-content: center;
+}
+.pw-shot-dots i {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: rgba(255,255,255,.4);
+}
+.pw-shot-dots i.is-on { background: #fff; }
+
+/* ── ВСІ КАДРИ НА ОДНОМУ ЕКРАНІ ──
+   Сітка, а не один кадр зі стрілками: екрани однієї пви порівнюють
+   поруч, а не по черзі. Клік по кадру розгортає саме його — у сітці з
+   шести дрібниці не видно. */
 .pw-shot-full {
   position: fixed; inset: 0; z-index: 200; cursor: zoom-out;
-  display: flex; align-items: center; justify-content: center; padding: 24px;
-  background: rgba(0,0,0,.86); backdrop-filter: blur(4px);
+  display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 18px;
+  background: rgba(0,0,0,.88); backdrop-filter: blur(4px);
 }
-.pw-shot-full img {
-  max-width: 100%; max-height: 100%; border-radius: 14px;
-  box-shadow: 0 24px 80px rgba(0,0,0,.6);
+.pw-full-head {
+  display: flex; align-items: center; gap: 10px; cursor: default; flex: 0 0 auto;
 }
+.pw-full-kt {
+  font-size: 12px; font-weight: 900; letter-spacing: .04em; color: #fff;
+}
+.pw-full-n { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.55); }
+.pw-full-add, .pw-full-x {
+  border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.08);
+  color: #fff; cursor: pointer; border-radius: 9px;
+}
+.pw-full-add {
+  margin-left: auto; padding: 4px 10px;
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+}
+.pw-full-x { width: 28px; height: 28px; font-size: 18px; line-height: 1; }
+.pw-full-add:hover, .pw-full-x:hover { background: rgba(255,255,255,.18); }
+.pw-full-grid {
+  flex: 1 1 auto; min-height: 0; overflow: auto; cursor: default;
+  display: grid; gap: 10px; align-content: start;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+}
+.pw-full-c {
+  position: relative; cursor: zoom-in; border-radius: 12px; overflow: hidden;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+}
+.pw-full-c img { width: 100%; height: auto; display: block; }
+/* Розгорнутий кадр забирає всю ширину сітки й обмежений висотою шару,
+   щоб не доводилось гортати один скрін. */
+.pw-full-c.is-big { grid-column: 1 / -1; cursor: zoom-out; }
+.pw-full-c.is-big img { max-height: 78vh; width: auto; margin: 0 auto; }
+.pw-full-del {
+  position: absolute; top: 6px; right: 6px;
+  width: 24px; height: 24px; border: 0; border-radius: 8px; cursor: pointer;
+  background: rgba(0,0,0,.6); color: #fff; font-size: 15px; line-height: 1;
+  opacity: 0; transition: opacity .15s, background .15s;
+}
+.pw-full-c:hover .pw-full-del { opacity: 1; }
+.pw-full-del:hover { background: var(--bad, #EF4444); }
 
 /* ── ДЕРЕВО: РОЗГОРТАННЯ ──
    Діти гілки приходять у .ap-kids, і цей вузол щоразу НОВИЙ (дерево

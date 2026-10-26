@@ -10345,14 +10345,32 @@ function pwPoolAdd(d) {
    скріном видно і оффер, і підхід, тому віддавати його кожному, хто
    вгадав шлях, не варто. */
 const PW_SHOT_BUCKET = 'pwa-shots';
-let pwShots = {};            // ktid → підписана адреса
+let pwShots = {};            // ktid → [{ path, url }], найстаріший перший
+let pwShotIdx = {};          // ktid → який кадр показано в колонці
 let pwShotErr = '';
 
 const pwKtid = name => {
   const p = String(name || '').trim().split('_');
   return p.length < 3 ? '' : String(p[2] || '').trim();
 };
-const pwShotPath = ktid => String(currentTeam || '') + '/' + ktid;
+
+/* КІЛЬКА КАРТИНОК НА ОДНУ ВОРОНКУ.
+
+   «до картинок бажано щоб можна було грузити декілька, і типу як
+   слайдшоу».
+
+   Склад лишається ПЛОСКИМ: ім'я файла — «<ktid>__<час заливу>», і
+   всі скріни команди однаково приходять одним list. Папка на кожну
+   воронку виглядала б рідніше, але давала б запит на кожну: двадцять
+   карток — двадцять запитів на відкриття вікна.
+
+   «__» розділювачем безпечний: KTID — це третій кусок назви через
+   «_», тобто підкреслення в ньому не буває за побудовою. Старі
+   одиночні скріни лежать без суфікса взагалі — split('__')[0] дає
+   той самий KTID, і вони працюють далі без переливання. */
+const pwShotPath = ktid => String(currentTeam || '') + '/' + ktid + '__' + Date.now();
+const pwShotKey = fileName => String(fileName || '').split('__')[0];
+const pwShotsOf = ktid => pwShots[ktid] || [];
 
 /* Список + підписи одним заходом. Два запити на відкриття вікна, і
    жодного на картку: інакше двадцять карток дали б двадцять запитів. */
@@ -10363,18 +10381,30 @@ async function pwShotLoad(quiet) {
       .list(String(currentTeam || ''), { limit: 500 });
     if (error) throw error;
     const names = (data || []).map(f => String(f && f.name || ''))
-      .filter(n => n && n !== '.emptyFolderPlaceholder');
+      .filter(n => n && n !== '.emptyFolderPlaceholder')
+      /* Порядок кадрів — за іменем, тобто за часом заливу: у слайдшоу
+         він мусить бути той самий і сьогодні, і завтра. */
+      .sort((a, b) => a.localeCompare(b));
     if (names.length) {
+      const dir = String(currentTeam || '') + '/';
       const sg = await sb.storage.from(PW_SHOT_BUCKET)
-        .createSignedUrls(names.map(pwShotPath), 1800);
+        .createSignedUrls(names.map(n => dir + n), 1800);
       if (sg.error) throw sg.error;
       /* Зіставляємо за ПОЛЕМ path у відповіді, а не за порядком:
          порядок ніхто не обіцяв, а переплутані адреси показали б
          чужий дизайн — найгірший із можливих результатів тут. */
+      const byName = {};
       (sg.data || []).forEach(r => {
         if (!r || !r.signedUrl) return;
-        const k = String(r.path || '').split('/').pop();
-        if (k) pwShots[k] = r.signedUrl;
+        const n = String(r.path || '').split('/').pop();
+        if (n) byName[n] = r.signedUrl;
+      });
+      names.forEach(n => {
+        const url = byName[n];
+        if (!url) return;
+        const k = pwShotKey(n);
+        if (!k) return;
+        (pwShots[k] = pwShots[k] || []).push({ path: dir + n, url });
       });
     }
   } catch (e) {
@@ -10422,7 +10452,8 @@ window.pwShotPick = function (ev, btn) {
   const inp = document.createElement('input');
   inp.type = 'file';
   inp.accept = 'image/*';
-  inp.onchange = () => { if (inp.files && inp.files[0]) pwShotUpload(ktid, inp.files[0], btn); };
+  inp.multiple = true;
+  inp.onchange = () => { if (inp.files && inp.files.length) pwShotUploadMany(ktid, inp.files, btn); };
   inp.click();
 };
 
@@ -10430,6 +10461,10 @@ async function pwShotUpload(ktid, file, btn) {
   const was = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   const blob = await pwShotShrink(file);
+  /* Ім'я з часом заливу — тобто кожен залив ДОДАЄ кадр, а не заміняє
+     попередній. Заміну робить видалення зайвого у вікні на весь
+     екран: «перезалив поверх» не давав би способу тримати два
+     екрани однієї пви, а саме це й попросили. */
   const { error } = await sb.storage.from(PW_SHOT_BUCKET)
     .upload(pwShotPath(ktid), blob, { upsert: true, contentType: 'image/jpeg' });
   if (btn) { btn.disabled = false; btn.textContent = was; }
@@ -10445,27 +10480,108 @@ async function pwShotUpload(ktid, file, btn) {
   }
   await pwShotLoad(true);
   pwRender();
-  if (typeof toast === 'function') toast('Дизайн для ' + ktid + ' залито', 'ok');
+  /* Відкритий шар теж мусить побачити новий кадр: інакше людина
+     заливає з нього і не розуміє, чи залилось. */
+  if (document.querySelector('.pw-shot-full')) pwShotLayer(ktid);
+  if (typeof toast === 'function')
+    toast('Дизайн для ' + ktid + ' залито · кадрів: ' + pwShotsOf(ktid).length, 'ok');
 }
 
-/* На весь екран. Окремий шар, а не вікно зі списку SOLO: він стоїть
-   ПОВЕРХ шаблонів, і закривати їх заради картинки — безглуздо. */
+/* Кілька кадрів можна залити одним вибором — саме так їх і знімають:
+   три екрани підряд. Заливаємо по черзі, щоб порядок імен (а отже й
+   слайдшоу) відповідав порядку вибору. */
+async function pwShotUploadMany(ktid, files, btn) {
+  const list = [...files];
+  for (let i = 0; i < list.length; i++) {
+    await pwShotUpload(ktid, list[i], i === 0 ? btn : null);
+    // Імена різняться часом заливу, тому два файли в одну мілісекунду
+    // дали б одне ім'я й другий перезаписав би перший.
+    await new Promise(r => setTimeout(r, 2));
+  }
+}
+
+/* ВСІ НА ОДНОМУ ЕКРАНІ. «щоб була можливість дивитись всі, можна
+   коли зближуємо от щоб всі на одному екрані були».
+
+   Шар окремий, а не вікно зі списку SOLO: він стоїть ПОВЕРХ
+   шаблонів, і закривати їх заради картинки безглуздо.
+
+   Сітка, а не один кадр зі стрілками: порівнювати екрани однієї пви
+   треба поруч, а не по черзі. Клік по кадру розгортає саме його на
+   весь шар і повертає назад — коли в сітці їх шість, дрібниці на
+   одному не видно. */
+function pwShotLayer(ktid) {
+  const arr = pwShotsOf(ktid);
+  let wrap = document.querySelector('.pw-shot-full');
+  if (!arr.length) { if (wrap) wrap.remove(); return; }
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.className = 'pw-shot-full';
+    document.body.appendChild(wrap);
+  }
+  wrap.setAttribute('data-k', ktid);
+  wrap.innerHTML = `
+    <div class="pw-full-head" onclick="event.stopPropagation()">
+      <span class="pw-full-kt">${apEsc(ktid)}</span>
+      <span class="pw-full-n">${arr.length} ${arr.length === 1 ? 'кадр' : 'кадрів'}</span>
+      <button type="button" class="pw-full-add" data-k="${apEsc(ktid)}"
+        onclick="pwShotPick(event, this)">+ ще</button>
+      <button type="button" class="pw-full-x" title="Закрити (Esc)">&times;</button>
+    </div>
+    <div class="pw-full-grid" onclick="event.stopPropagation()">
+      ${arr.map(sh => `<div class="pw-full-c" onclick="this.classList.toggle('is-big')">
+          <img src="${apEsc(sh.url)}" alt="" loading="lazy">
+          <button type="button" class="pw-full-del" data-p="${apEsc(sh.path)}" data-k="${apEsc(ktid)}"
+            onclick="pwShotDel(event, this)" title="Видалити цей кадр">&times;</button>
+        </div>`).join('')}
+    </div>`;
+  wrap.querySelector('.pw-full-x').onclick = () => pwShotClose();
+  return wrap;
+}
+
+function pwShotClose() {
+  const wrap = document.querySelector('.pw-shot-full');
+  if (wrap) wrap.remove();
+  document.removeEventListener('keydown', pwShotEsc, true);
+}
+function pwShotEsc(e) { if (e.key === 'Escape') { e.preventDefault(); pwShotClose(); } }
+
 window.pwShotOpen = function (ev, el) {
   ev.stopPropagation();
-  const src = el.getAttribute('data-src') || (el.querySelector('img') || {}).src;
-  if (!src) return;
-  const wrap = document.createElement('div');
-  wrap.className = 'pw-shot-full';
-  wrap.innerHTML = '<img alt="">';
-  wrap.querySelector('img').src = src;
-  const close = () => {
-    wrap.remove();
-    document.removeEventListener('keydown', key, true);
-  };
-  const key = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
-  wrap.onclick = close;
-  document.addEventListener('keydown', key, true);
-  document.body.appendChild(wrap);
+  const ktid = el.getAttribute('data-k') || '';
+  if (!pwShotsOf(ktid).length) return;
+  const wrap = pwShotLayer(ktid);
+  if (!wrap) return;
+  // Клік по самому шару (повз сітку й шапку) закриває.
+  wrap.onclick = () => pwShotClose();
+  document.addEventListener('keydown', pwShotEsc, true);
+};
+
+/* Видалення кадру. Питаємо: кадр лежить у базі, і відновити його
+   можна лише новим заливом того самого скріна — якщо він ще є. */
+window.pwShotDel = async function (ev, btn) {
+  ev.stopPropagation();
+  const path = btn.getAttribute('data-p') || '';
+  const ktid = btn.getAttribute('data-k') || '';
+  if (!path) return;
+  const go = typeof ask === 'function'
+    ? await ask({ title: 'Видалити кадр?',
+        body: 'Він зникне з усіх кампаній воронки ' + ktid
+            + '. Повернути можна тільки новим заливом того самого скріна.',
+        ok: 'Видалити', cancel: 'Скасувати', danger: true })
+    : confirm('Видалити кадр?');
+  if (!go) return;
+  const { error } = await sb.storage.from(PW_SHOT_BUCKET).remove([path]);
+  if (error) {
+    const msg = 'Кадр не видалився: ' + (error.message || error.statusCode || '');
+    if (typeof toast === 'function') toast(msg, 'error', 10000); else alert(msg);
+    return;
+  }
+  pwShotIdx[ktid] = 0;
+  await pwShotLoad(true);
+  pwRender();
+  pwShotLayer(ktid);          // сам шар теж оновлюємо, не закриваючи
+  if (typeof toast === 'function') toast('Кадр видалено', 'ok');
 };
 
 /* Колонка праворуч на картці. Є скрін — показуємо; немає — кнопка
@@ -10494,17 +10610,53 @@ function pwShotCol(it) {
   if (pwIsParams(it)) return '';
   const ktid = pwKtid(it.name);
   if (!ktid) return '';
-  const src = pwShots[ktid];
-  if (src) return `<div class="pw-shot" data-src="${apEsc(src)}" onclick="pwShotOpen(event, this)"
-      title="${apEsc(ktid)} — клік, щоб відкрити на весь екран">
-      <img src="${apEsc(src)}" alt="" loading="lazy">
-      <button type="button" class="pw-shot-re" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
-        title="Замінити дизайн">замінити</button>
-    </div>`;
-  return `<button type="button" class="pw-shot-add" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
-      title="Залити скрін дизайну для воронки ${apEsc(ktid)}">
+  const arr = pwShotsOf(ktid);
+  if (!arr.length) return `<button type="button" class="pw-shot-add" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
+      title="Залити скріни дизайну для воронки ${apEsc(ktid)} — можна кілька одразу">
       <span>+ дизайн</span><span class="pw-shot-kt">${apEsc(ktid)}</span></button>`;
+
+  /* СЛАЙДШОУ, А НЕ КАРУСЕЛЬ САМА ПО СОБІ. Карток у списку десятки, і
+     двадцять картинок, що крутяться самі, — це двадцять речей, які
+     тягнуть око від того, що читаєш. Кадр міняють стрілками, а всі
+     разом дивляться на весь екран: саме про це й просили. */
+  const i = Math.min(Math.max(0, pwShotIdx[ktid] | 0), arr.length - 1);
+  const many = arr.length > 1;
+  return `<div class="pw-shot" data-k="${apEsc(ktid)}" data-i="${i}" onclick="pwShotOpen(event, this)"
+      title="${apEsc(ktid)} — клік, щоб побачити всі ${arr.length} на одному екрані">
+      <img src="${apEsc(arr[i].url)}" alt="" loading="lazy">
+      ${many ? `<button type="button" class="pw-shot-nav is-prev" data-d="-1"
+          onclick="pwShotFlip(event, this)" title="Попередній кадр">‹</button>
+        <button type="button" class="pw-shot-nav is-next" data-d="1"
+          onclick="pwShotFlip(event, this)" title="Наступний кадр">›</button>
+        <span class="pw-shot-n">${i + 1}/${arr.length}</span>
+        <span class="pw-shot-dots">${arr.map((_, j) =>
+          `<i class="${j === i ? 'is-on' : ''}"></i>`).join('')}</span>` : ''}
+      <button type="button" class="pw-shot-re" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
+        title="Залити ще кадр">+ ще</button>
+    </div>`;
 }
+
+/* Перемикання кадру МІСЦЕМ, без перемальовування списку: інакше від
+   кліку по стрілці смикались би всі двадцять карток, а список
+   стрибнув би на початок. */
+window.pwShotFlip = function (ev, btn) {
+  ev.stopPropagation();
+  const box = btn.closest('.pw-shot');
+  if (!box) return;
+  const ktid = box.getAttribute('data-k') || '';
+  const arr = pwShotsOf(ktid);
+  if (arr.length < 2) return;
+  const d = Number(btn.getAttribute('data-d')) || 1;
+  const i = ((Number(box.getAttribute('data-i')) || 0) + d + arr.length) % arr.length;
+  box.setAttribute('data-i', i);
+  pwShotIdx[ktid] = i;     // щоб наступний рендер лишив той самий кадр
+  const img = box.querySelector('img');
+  if (img) img.src = arr[i].url;
+  const n = box.querySelector('.pw-shot-n');
+  if (n) n.textContent = (i + 1) + '/' + arr.length;
+  box.querySelectorAll('.pw-shot-dots i')
+    .forEach((el, j) => el.className = j === i ? 'is-on' : '');
+};
 
 /* ═══════════ КЛІК = КОПІЯ ═══════════
 
