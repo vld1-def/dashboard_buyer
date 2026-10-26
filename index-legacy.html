@@ -10473,7 +10473,25 @@ window.pwShotOpen = function (ev, el) {
    його взагалі можна додати. Назва без KTID (а такі бувають —
    «Melbet» одним словом) не отримує ні того, ні іншого: прив'язувати
    нічим. */
+/* СЛУЖБОВА КАРТКА — НЕ ПВА.
+
+   «якщо він має назву PARAMETERS (зараз я це в гео вписав), то не
+   показуй превю пва». Це запис із параметрами, а не воронка: дизайну
+   в нього не буває, і кнопка «+ дизайн» на ньому відповідала б на
+   питання, якого немає.
+
+   Слово шукаємо і в гео (зараз воно вписане саме там), і в назві —
+   щоб перенос його в інше поле не повертав превю назад. Шукаємо
+   ОКРЕМИМ словом, а не підрядком: оффер «Parametrix» не має через це
+   втрачати дизайн. */
+const PW_NOSHOT = 'PARAMETERS';
+const pwIsParams = it => {
+  const hit = v => String(v || '').toUpperCase().split(/[^A-Z]+/).includes(PW_NOSHOT);
+  return hit(it && it.geo) || hit(it && it.name);
+};
+
 function pwShotCol(it) {
+  if (pwIsParams(it)) return '';
   const ktid = pwKtid(it.name);
   if (!ktid) return '';
   const src = pwShots[ktid];

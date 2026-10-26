@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.10 15:26">
+  <meta name="build" content="build 26.10 15:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5942,7 +5942,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.10 15:26</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.10 15:46</div>
     </div>
   </aside>
 
@@ -17641,7 +17641,25 @@ window.pwShotOpen = function (ev, el) {
    його взагалі можна додати. Назва без KTID (а такі бувають —
    «Melbet» одним словом) не отримує ні того, ні іншого: прив'язувати
    нічим. */
+/* СЛУЖБОВА КАРТКА — НЕ ПВА.
+
+   «якщо він має назву PARAMETERS (зараз я це в гео вписав), то не
+   показуй превю пва». Це запис із параметрами, а не воронка: дизайну
+   в нього не буває, і кнопка «+ дизайн» на ньому відповідала б на
+   питання, якого немає.
+
+   Слово шукаємо і в гео (зараз воно вписане саме там), і в назві —
+   щоб перенос його в інше поле не повертав превю назад. Шукаємо
+   ОКРЕМИМ словом, а не підрядком: оффер «Parametrix» не має через це
+   втрачати дизайн. */
+const PW_NOSHOT = 'PARAMETERS';
+const pwIsParams = it => {
+  const hit = v => String(v || '').toUpperCase().split(/[^A-Z]+/).includes(PW_NOSHOT);
+  return hit(it && it.geo) || hit(it && it.name);
+};
+
 function pwShotCol(it) {
+  if (pwIsParams(it)) return '';
   const ktid = pwKtid(it.name);
   if (!ktid) return '';
   const src = pwShots[ktid];
