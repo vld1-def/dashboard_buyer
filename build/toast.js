@@ -244,8 +244,15 @@ window.ask = function (opts) {
     wrap.querySelector('.ask-yes').onclick = take;
     const no = wrap.querySelector('.ask-no');
     if (no) no.onclick = () => close(false);
-    // Клік повз вікно = відмова. Для питання це безпечний бік.
-    wrap.onclick = e => { if (e.target === wrap) close(false); };
+    /* КЛІК ПОВЗ ВІКНО. Для питання це безпечний бік: нічого не
+       введено, нічого й не втрачається.
+
+       Але там, де є ПОЛЯ, втрачається все набране — а набирають у них
+       account ID, проксі, промпт. Один промах мишею повз вікно, і
+       вписане зникає без слова. Тому форму закривають тільки кнопкою
+       (і Escape — це вже свідоме натискання, а не промах). */
+    const formish = F.length || o.input;
+    if (!formish) wrap.onclick = e => { if (e.target === wrap) close(false); };
     document.addEventListener('keydown', key, true);
 
     document.body.appendChild(wrap);

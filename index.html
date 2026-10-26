@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.10 16:32">
+  <meta name="build" content="build 26.10 15:26">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4289,6 +4289,63 @@ body.is-lead-only .admin-only { display: none; }
 .ap-pin.is-on { opacity: 1; color: var(--accent); }
 .ap-pin.is-on svg { fill: currentColor; }
 
+/* ── ДИЗАЙН PWA НА КАРТЦІ ──
+   Превю стоїть праворуч вузькою колонкою, силки звужуються на її
+   ширину. Чому не смугою на всю ширину: карток у списку десятки, і
+   кожна виросла б удвічі — гортати довелось би вдвічі довше за те
+   саме. Чому не іконкою 28px: з неї не видно, ЯК воно виглядає, а
+   питання було саме таке.
+
+   Пропорція 9:16 задана жорстко: це скрін телефона, і картинка іншої
+   форми мусить обрізатись по центру, а не ламати висоту картки. */
+.pw-card-shot { display: flex; gap: 10px; align-items: stretch; }
+.pw-card-main { flex: 1 1 auto; min-width: 0; }
+.pw-shot, .pw-shot-add {
+  flex: 0 0 120px; width: 120px; align-self: flex-start;
+  border-radius: 12px; overflow: hidden; position: relative;
+  border: 1px solid var(--border); background: var(--surface-2);
+  aspect-ratio: 9 / 16;
+}
+.pw-shot { cursor: zoom-in; }
+.pw-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* «Замінити» з'являється на наведенні: у спокої картка — це дизайн, а
+   не набір кнопок. */
+.pw-shot-re {
+  position: absolute; left: 4px; right: 4px; bottom: 4px;
+  border: 0; border-radius: 8px; padding: 3px 0; cursor: pointer;
+  background: rgba(0,0,0,.66); color: #fff;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  opacity: 0; transition: opacity .15s;
+}
+.pw-shot:hover .pw-shot-re { opacity: 1; }
+.pw-shot-re:hover { background: rgba(0,0,0,.85); }
+/* Немає скріна — кнопка СТОЇТЬ НА ТОМУ Ж МІСЦІ: інакше колонка
+   стрибала б від картки до картки, і було б незрозуміло, де дизайн
+   узагалі можна додати. */
+.pw-shot-add {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; cursor: pointer; border-style: dashed;
+  color: var(--text-muted);
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+}
+.pw-shot-add:hover { color: var(--text-main); border-color: var(--border-2); }
+.pw-shot-kt {
+  font-size: 9px; font-weight: 700; letter-spacing: 0; text-transform: none;
+  opacity: .5; max-width: 100%; padding: 0 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* На весь екран. Клік будь-де закриває — відкривали, щоб подивитись,
+   а не щоб потім шукати хрестик. */
+.pw-shot-full {
+  position: fixed; inset: 0; z-index: 200; cursor: zoom-out;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0,0,0,.86); backdrop-filter: blur(4px);
+}
+.pw-shot-full img {
+  max-width: 100%; max-height: 100%; border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6);
+}
+
 /* ── ДЕРЕВО: РОЗГОРТАННЯ ──
    Діти гілки приходять у .ap-kids, і цей вузол щоразу НОВИЙ (дерево
    малюється через innerHTML) — тому анімація заводиться сама, без
@@ -5885,7 +5942,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.10 16:32</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.10 15:26</div>
     </div>
   </aside>
 
@@ -14612,8 +14669,15 @@ window.ask = function (opts) {
     wrap.querySelector('.ask-yes').onclick = take;
     const no = wrap.querySelector('.ask-no');
     if (no) no.onclick = () => close(false);
-    // Клік повз вікно = відмова. Для питання це безпечний бік.
-    wrap.onclick = e => { if (e.target === wrap) close(false); };
+    /* КЛІК ПОВЗ ВІКНО. Для питання це безпечний бік: нічого не
+       введено, нічого й не втрачається.
+
+       Але там, де є ПОЛЯ, втрачається все набране — а набирають у них
+       account ID, проксі, промпт. Один промах мишею повз вікно, і
+       вписане зникає без слова. Тому форму закривають тільки кнопкою
+       (і Escape — це вже свідоме натискання, а не промах). */
+    const formish = F.length || o.input;
+    if (!formish) wrap.onclick = e => { if (e.target === wrap) close(false); };
     document.addEventListener('keydown', key, true);
 
     document.body.appendChild(wrap);
@@ -16191,7 +16255,12 @@ async function apLoad() {
          Секретних стовпців у funnels_mapping немає, тож беремо як є. */
       sb.from('funnels_mapping').select('*').eq('team_name', currentTeam),
       sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam),
-      pwDomLoad(true)
+      pwDomLoad(true),
+      /* Дизайни їдуть тим самим заходом, що й стан доменів: обидва
+         малюються на картці, і окремий крок після показав би картки
+         спершу без превю, а потім із ним. Свою помилку pwShotLoad
+         ловить сам, тому Promise.all на ньому не падає. */
+      pwShotLoad(true)
     ]);
     if (ts.error) throw ts.error;
     /* Кожен ключ розбираємо окремо: зламаний JSON в одному не має
@@ -17423,6 +17492,170 @@ function pwPoolAdd(d) {
   pwPoolPaint();
 }
 
+/* ═══════════ ДИЗАЙН PWA ═══════════
+
+   «можна б було б додати дизайн нашої пва, щоб знати сразу як вона
+   виглядає… можна загрузити в базу наші картинки і дати їм айдішки
+   такі як в нас в назві компанії (ктайді)»
+
+   КЛЮЧ — KTID, А НЕ КАМПАНІЯ. Назва кампанії щодня інша: у ній дата
+   заливу. Воронка та сама — 10708-ex8g. Прив'язка до назви означала б
+   заливати той самий скрін щоранку наново; прив'язка до KTID означає
+   «залив один раз — видно в усіх кампаніях цієї воронки, включно з
+   тими, які заведуть завтра».
+
+   KTID беремо ТИМ САМИМ правилом, що й список доменів (dmHeadInfo):
+   третій кусок назви через «_». Два різні правила на один ключ рано
+   чи пізно дають дві різні відповіді — і тоді скрін є, а на картці
+   його немає.
+
+   БАКЕТ ЗАКРИТИЙ, адреси підписані на пів години (PWASHOTS.sql). За
+   скріном видно і оффер, і підхід, тому віддавати його кожному, хто
+   вгадав шлях, не варто. */
+const PW_SHOT_BUCKET = 'pwa-shots';
+let pwShots = {};            // ktid → підписана адреса
+let pwShotErr = '';
+
+const pwKtid = name => {
+  const p = String(name || '').trim().split('_');
+  return p.length < 3 ? '' : String(p[2] || '').trim();
+};
+const pwShotPath = ktid => String(currentTeam || '') + '/' + ktid;
+
+/* Список + підписи одним заходом. Два запити на відкриття вікна, і
+   жодного на картку: інакше двадцять карток дали б двадцять запитів. */
+async function pwShotLoad(quiet) {
+  pwShots = {}; pwShotErr = '';
+  try {
+    const { data, error } = await sb.storage.from(PW_SHOT_BUCKET)
+      .list(String(currentTeam || ''), { limit: 500 });
+    if (error) throw error;
+    const names = (data || []).map(f => String(f && f.name || ''))
+      .filter(n => n && n !== '.emptyFolderPlaceholder');
+    if (names.length) {
+      const sg = await sb.storage.from(PW_SHOT_BUCKET)
+        .createSignedUrls(names.map(pwShotPath), 1800);
+      if (sg.error) throw sg.error;
+      /* Зіставляємо за ПОЛЕМ path у відповіді, а не за порядком:
+         порядок ніхто не обіцяв, а переплутані адреси показали б
+         чужий дизайн — найгірший із можливих результатів тут. */
+      (sg.data || []).forEach(r => {
+        if (!r || !r.signedUrl) return;
+        const k = String(r.path || '').split('/').pop();
+        if (k) pwShots[k] = r.signedUrl;
+      });
+    }
+  } catch (e) {
+    pwShotErr = e.message || e.code || String(e);
+    console.warn('дизайни PWA:', pwShotErr);
+  }
+  if (!quiet && apMode === 'pwa') pwRender();
+}
+
+/* ЗМЕНШУЄМО ПЕРЕД ЗАЛИВОМ. Скрін телефона — це 1–2 МБ, а в колонці
+   на 120px від них видно ровно стільки ж, скільки від 900. Заливати
+   оригінал означає тягнути ті мегабайти щоразу, коли відкривають
+   вікно. Якщо canvas чомусь не впорався — заливаємо як є: краще
+   важкий скрін, ніж жодного. */
+function pwShotShrink(file) {
+  return new Promise(resolve => {
+    try {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        try {
+          const max = 900;
+          const k = Math.min(1, max / Math.max(img.width, img.height));
+          const cv = document.createElement('canvas');
+          cv.width = Math.round(img.width * k);
+          cv.height = Math.round(img.height * k);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          cv.toBlob(b => { URL.revokeObjectURL(url); resolve(b || file); },
+                    'image/jpeg', 0.82);
+        } catch (e) { URL.revokeObjectURL(url); resolve(file); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    } catch (e) { resolve(file); }
+  });
+}
+
+/* Вибір файла. Input створюємо на місці: постійний у розмітці тримав
+   би останній вибраний файл, і повторний залив того самого скріна
+   нічого не робив би (change не стріляє на те саме значення). */
+window.pwShotPick = function (ev, btn) {
+  ev.stopPropagation();
+  const ktid = btn.getAttribute('data-k') || '';
+  if (!ktid) return;
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.onchange = () => { if (inp.files && inp.files[0]) pwShotUpload(ktid, inp.files[0], btn); };
+  inp.click();
+};
+
+async function pwShotUpload(ktid, file, btn) {
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  const blob = await pwShotShrink(file);
+  const { error } = await sb.storage.from(PW_SHOT_BUCKET)
+    .upload(pwShotPath(ktid), blob, { upsert: true, contentType: 'image/jpeg' });
+  if (btn) { btn.disabled = false; btn.textContent = was; }
+  if (error) {
+    /* Бакета ще немає — це не «не вийшло», а «не налаштовано», і
+       відповідь на це інша: виконати PWASHOTS.sql. */
+    const miss = /bucket/i.test(error.message || '') && /not found|does not exist/i.test(error.message || '');
+    const msg = miss
+      ? 'Бакета pwa-shots ще немає — виконай PWASHOTS.sql у Supabase.'
+      : 'Дизайн не залився: ' + (error.message || error.statusCode || '');
+    if (typeof toast === 'function') toast(msg, 'error', 12000); else alert(msg);
+    return;
+  }
+  await pwShotLoad(true);
+  pwRender();
+  if (typeof toast === 'function') toast('Дизайн для ' + ktid + ' залито', 'ok');
+}
+
+/* На весь екран. Окремий шар, а не вікно зі списку SOLO: він стоїть
+   ПОВЕРХ шаблонів, і закривати їх заради картинки — безглуздо. */
+window.pwShotOpen = function (ev, el) {
+  ev.stopPropagation();
+  const src = el.getAttribute('data-src') || (el.querySelector('img') || {}).src;
+  if (!src) return;
+  const wrap = document.createElement('div');
+  wrap.className = 'pw-shot-full';
+  wrap.innerHTML = '<img alt="">';
+  wrap.querySelector('img').src = src;
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', key, true);
+  };
+  const key = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  wrap.onclick = close;
+  document.addEventListener('keydown', key, true);
+  document.body.appendChild(wrap);
+};
+
+/* Колонка праворуч на картці. Є скрін — показуємо; немає — кнопка
+   заливу на тому ж місці, щоб колонка не стрибала й було видно, де
+   його взагалі можна додати. Назва без KTID (а такі бувають —
+   «Melbet» одним словом) не отримує ні того, ні іншого: прив'язувати
+   нічим. */
+function pwShotCol(it) {
+  const ktid = pwKtid(it.name);
+  if (!ktid) return '';
+  const src = pwShots[ktid];
+  if (src) return `<div class="pw-shot" data-src="${apEsc(src)}" onclick="pwShotOpen(event, this)"
+      title="${apEsc(ktid)} — клік, щоб відкрити на весь екран">
+      <img src="${apEsc(src)}" alt="" loading="lazy">
+      <button type="button" class="pw-shot-re" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
+        title="Замінити дизайн">замінити</button>
+    </div>`;
+  return `<button type="button" class="pw-shot-add" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
+      title="Залити скрін дизайну для воронки ${apEsc(ktid)}">
+      <span>+ дизайн</span><span class="pw-shot-kt">${apEsc(ktid)}</span></button>`;
+}
+
 /* ═══════════ КЛІК = КОПІЯ ═══════════
 
    І силку, і назву кампанії вставляють у кабінет десятки разів на
@@ -17799,8 +18032,12 @@ function pwRender() {
     const links = (it.links || []).filter(Boolean);
     const shown = pwName(it);              // назва з уже підставленою датою
     const nBad = pwBadLinks(it).length;
+    /* Силки звузились на ширину превю: вони й так обрізаються по
+       середині, а дизайн видно відразу — саме про це й просили. */
+    const shot = pwShotCol(it);
     return `
-    <div class="bg-black/20 border border-white/5 rounded-2xl p-3">
+    <div class="bg-black/20 border border-white/5 rounded-2xl p-3${shot ? ' pw-card-shot' : ''}">
+      ${shot ? '<div class="pw-card-main">' : ''}
       <div class="flex items-start justify-between gap-2 flex-wrap">
         <p class="text-[12px] font-black text-white truncate min-w-0">
           <span class="text-sky-300">${apEsc((it.geo || '—').toUpperCase())}</span>
@@ -17871,6 +18108,7 @@ function pwRender() {
         Стан доменів не прочитався (${apEsc(pwDomErr)}) — якщо списку доменів ще немає, виконай DOMAINS.sql.</p>` : ''}
 
       ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
+      ${shot ? '</div>' + shot : ''}
     </div>`;
   }).join('');
 }
@@ -35099,6 +35337,70 @@ window.aqAsk = async function () {
     const sel = document.getElementById('chart-style');
     if (sel) sel.value = localStorage.getItem('chart_style') || 'bars';
   })();
+
+  /* ═══════════ ОДНЕ ВІКНО ЗА РАЗ ═══════════
+
+     «відкриваю після того як вже якесь відкрите, і те що мені потрібне
+     воно ховається за іншим модальним вікном».
+
+     Кожне вікно відкривається своєю функцією, і жодна з них не знала
+     про решту. Складати в кожну по п'ятнадцять закривачів — це
+     п'ятнадцять місць, яких одного дня стане шістнадцять, і нове
+     вікно знову вилізе поверх чужого.
+
+     Тому перехоплюємо не ВІДКРИТТЯ, а сам факт появи: спостерігач
+     ловить зняття класу hidden і закриває решту зі списку. Список
+     перелічений руками навмисно — у ньому лише ВЕРХНІ вікна, ті, що
+     відкривають з меню. Діалоги, які законно стоять ПОВЕРХ іншого
+     вікна (деталі задачі, перегляд скріншота, питання ask()), сюди не
+     входять: вони не конкурують, а доповнюють.
+
+     Закриваємо власною функцією вікна, коли вона є: вона гасить
+     графіки й чистить стан — дописаний hidden лишив би це висіти. */
+  const SOLO = {
+    'settings-modal':    'closeSettingsModal',
+    'apps-modal':        'closeAppsModal',
+    'accounts-modal':    'closeAccountsModal',
+    'uniq-modal':        'closeUniqModal',
+    'texts-modal':       'closeTextsModal',
+    'data-check-modal':  'closeDataCheckModal',
+    'dblogs-modal':      'closeDbLogsModal',
+    'geo-compare-modal': 'closeGeoCompareModal',
+    'geo-details-modal': 'closeGeoModal',
+    'bonus-modal':       'closeBonusModal',
+    'task-modal':        'toggleTaskModal',
+    'report-modal':      'toggleReportModal',
+    'gallery-modal':     'toggleGalleryModal',
+    'changelog-modal':   'toggleChangeLogModal',
+    'files-modal':       null,
+    'close-modal':       null,
+    'cr-trend-modal':    null
+  };
+
+  const soloShut = id => {
+    const el = document.getElementById(id);
+    if (!el || el.classList.contains('hidden')) return;
+    const fn = SOLO[id];
+    /* Перемикачі (toggle*) кличемо лише на ВИДИМОМУ вікні — інакше
+       вони б його відкрили. Умова вище це й гарантує. */
+    if (fn && typeof window[fn] === 'function') { try { window[fn](); } catch (e) {} }
+    el.classList.add('hidden');
+  };
+
+  function soloInit() {
+    const ids = Object.keys(SOLO).filter(id => document.getElementById(id));
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      new MutationObserver(() => {
+        // Нас цікавить лише поява: зникнення — нічия справа.
+        if (el.classList.contains('hidden')) return;
+        ids.forEach(other => { if (other !== id) soloShut(other); });
+      }).observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+  }
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', soloInit);
+  else soloInit();
 
   /* ─────────── Командна панель ⌘K ─────────── */
   const CMDS = [

@@ -3167,6 +3167,63 @@ body.is-lead-only .admin-only { display: none; }
 .ap-pin.is-on { opacity: 1; color: var(--accent); }
 .ap-pin.is-on svg { fill: currentColor; }
 
+/* ── ДИЗАЙН PWA НА КАРТЦІ ──
+   Превю стоїть праворуч вузькою колонкою, силки звужуються на її
+   ширину. Чому не смугою на всю ширину: карток у списку десятки, і
+   кожна виросла б удвічі — гортати довелось би вдвічі довше за те
+   саме. Чому не іконкою 28px: з неї не видно, ЯК воно виглядає, а
+   питання було саме таке.
+
+   Пропорція 9:16 задана жорстко: це скрін телефона, і картинка іншої
+   форми мусить обрізатись по центру, а не ламати висоту картки. */
+.pw-card-shot { display: flex; gap: 10px; align-items: stretch; }
+.pw-card-main { flex: 1 1 auto; min-width: 0; }
+.pw-shot, .pw-shot-add {
+  flex: 0 0 120px; width: 120px; align-self: flex-start;
+  border-radius: 12px; overflow: hidden; position: relative;
+  border: 1px solid var(--border); background: var(--surface-2);
+  aspect-ratio: 9 / 16;
+}
+.pw-shot { cursor: zoom-in; }
+.pw-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* «Замінити» з'являється на наведенні: у спокої картка — це дизайн, а
+   не набір кнопок. */
+.pw-shot-re {
+  position: absolute; left: 4px; right: 4px; bottom: 4px;
+  border: 0; border-radius: 8px; padding: 3px 0; cursor: pointer;
+  background: rgba(0,0,0,.66); color: #fff;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em;
+  opacity: 0; transition: opacity .15s;
+}
+.pw-shot:hover .pw-shot-re { opacity: 1; }
+.pw-shot-re:hover { background: rgba(0,0,0,.85); }
+/* Немає скріна — кнопка СТОЇТЬ НА ТОМУ Ж МІСЦІ: інакше колонка
+   стрибала б від картки до картки, і було б незрозуміло, де дизайн
+   узагалі можна додати. */
+.pw-shot-add {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; cursor: pointer; border-style: dashed;
+  color: var(--text-muted);
+  font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+}
+.pw-shot-add:hover { color: var(--text-main); border-color: var(--border-2); }
+.pw-shot-kt {
+  font-size: 9px; font-weight: 700; letter-spacing: 0; text-transform: none;
+  opacity: .5; max-width: 100%; padding: 0 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* На весь екран. Клік будь-де закриває — відкривали, щоб подивитись,
+   а не щоб потім шукати хрестик. */
+.pw-shot-full {
+  position: fixed; inset: 0; z-index: 200; cursor: zoom-out;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0,0,0,.86); backdrop-filter: blur(4px);
+}
+.pw-shot-full img {
+  max-width: 100%; max-height: 100%; border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.6);
+}
+
 /* ── ДЕРЕВО: РОЗГОРТАННЯ ──
    Діти гілки приходять у .ap-kids, і цей вузол щоразу НОВИЙ (дерево
    малюється через innerHTML) — тому анімація заводиться сама, без

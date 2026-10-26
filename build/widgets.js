@@ -1756,6 +1756,70 @@
     if (sel) sel.value = localStorage.getItem('chart_style') || 'bars';
   })();
 
+  /* ═══════════ ОДНЕ ВІКНО ЗА РАЗ ═══════════
+
+     «відкриваю після того як вже якесь відкрите, і те що мені потрібне
+     воно ховається за іншим модальним вікном».
+
+     Кожне вікно відкривається своєю функцією, і жодна з них не знала
+     про решту. Складати в кожну по п'ятнадцять закривачів — це
+     п'ятнадцять місць, яких одного дня стане шістнадцять, і нове
+     вікно знову вилізе поверх чужого.
+
+     Тому перехоплюємо не ВІДКРИТТЯ, а сам факт появи: спостерігач
+     ловить зняття класу hidden і закриває решту зі списку. Список
+     перелічений руками навмисно — у ньому лише ВЕРХНІ вікна, ті, що
+     відкривають з меню. Діалоги, які законно стоять ПОВЕРХ іншого
+     вікна (деталі задачі, перегляд скріншота, питання ask()), сюди не
+     входять: вони не конкурують, а доповнюють.
+
+     Закриваємо власною функцією вікна, коли вона є: вона гасить
+     графіки й чистить стан — дописаний hidden лишив би це висіти. */
+  const SOLO = {
+    'settings-modal':    'closeSettingsModal',
+    'apps-modal':        'closeAppsModal',
+    'accounts-modal':    'closeAccountsModal',
+    'uniq-modal':        'closeUniqModal',
+    'texts-modal':       'closeTextsModal',
+    'data-check-modal':  'closeDataCheckModal',
+    'dblogs-modal':      'closeDbLogsModal',
+    'geo-compare-modal': 'closeGeoCompareModal',
+    'geo-details-modal': 'closeGeoModal',
+    'bonus-modal':       'closeBonusModal',
+    'task-modal':        'toggleTaskModal',
+    'report-modal':      'toggleReportModal',
+    'gallery-modal':     'toggleGalleryModal',
+    'changelog-modal':   'toggleChangeLogModal',
+    'files-modal':       null,
+    'close-modal':       null,
+    'cr-trend-modal':    null
+  };
+
+  const soloShut = id => {
+    const el = document.getElementById(id);
+    if (!el || el.classList.contains('hidden')) return;
+    const fn = SOLO[id];
+    /* Перемикачі (toggle*) кличемо лише на ВИДИМОМУ вікні — інакше
+       вони б його відкрили. Умова вище це й гарантує. */
+    if (fn && typeof window[fn] === 'function') { try { window[fn](); } catch (e) {} }
+    el.classList.add('hidden');
+  };
+
+  function soloInit() {
+    const ids = Object.keys(SOLO).filter(id => document.getElementById(id));
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      new MutationObserver(() => {
+        // Нас цікавить лише поява: зникнення — нічия справа.
+        if (el.classList.contains('hidden')) return;
+        ids.forEach(other => { if (other !== id) soloShut(other); });
+      }).observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+  }
+  if (document.readyState === 'loading')
+    document.addEventListener('DOMContentLoaded', soloInit);
+  else soloInit();
+
   /* ─────────── Командна панель ⌘K ─────────── */
   const CMDS = [
     ['Dashboard',      'nav:',                      'Page'],
