@@ -3280,10 +3280,21 @@ body.is-lead-only .admin-only { display: none; }
   background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
 }
 .pw-full-c img { width: 100%; height: auto; display: block; }
-/* Розгорнутий кадр забирає всю ширину сітки й обмежений висотою шару,
-   щоб не доводилось гортати один скрін. */
-.pw-full-c.is-big { grid-column: 1 / -1; cursor: zoom-out; }
-.pw-full-c.is-big img { max-height: 78vh; width: auto; margin: 0 auto; }
+/* РОЗГОРНУТИЙ КАДР — ОДИН І НА ВЕСЬ ШАР.
+   Доти він лише розтягувався на всю ширину сітки, а сусіди лишались
+   під ним: два розгорнутих ділили ту саму ширину, і виходило ні
+   сітка, ні повний екран. Тепер сітка на час зближення стає однією
+   колонкою, а нерозгорнуті кадри ховаються — лишається рівно той, по
+   який заходили. */
+.pw-full-grid.has-big { grid-template-columns: 1fr; }
+.pw-full-grid.has-big > .pw-full-c:not(.is-big) { display: none; }
+.pw-full-c.is-big { cursor: zoom-out; background: none; border-color: transparent; }
+/* 110px — шапка шару плюс його відступи: кадр мусить влазити цілком,
+   інакше «на весь екран» перетворюється на гортання одного скріна. */
+.pw-full-c.is-big img {
+  max-height: calc(100vh - 110px); width: auto; margin: 0 auto;
+  border-radius: 12px;
+}
 .pw-full-del {
   position: absolute; top: 6px; right: 6px;
   width: 24px; height: 24px; border: 0; border-radius: 8px; cursor: pointer;
