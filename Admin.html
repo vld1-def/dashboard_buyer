@@ -72,6 +72,17 @@
     .hint { font-size: 10px; font-weight: 700; line-height: 1.5; color: #64748b; }
     .warn { color: #fca5a5; }
     .ok   { color: #86efac; }
+    /* НЕЗБЕРЕЖЕНИЙ РЯДОК.
+
+       Галочка в меню міняла тільно пам'ять, а підпис над нею одразу
+       ставав «прибрано 1» — тобто виглядало збереженим. Людина
+       закривала сторінку, у дашборді нічого не мінялось, і причину
+       шукали в дашборді. Тепер незбережений рядок видно. */
+    tr.is-dirty > td { background: rgba(251,191,36,.07); }
+    tr.is-dirty > td:first-child { box-shadow: inset 3px 0 0 #fbbf24; }
+    tr.is-dirty .btn.go { background: #fbbf24; border-color: #fbbf24; color: #1b1f24; }
+    #am-dirty { color: #fbbf24; font-weight: 700; }
+    #am-dirty:empty { display: none; }
     .sw { display: flex; align-items: center; gap: .4rem; font-size: 11px; font-weight: 700; }
     .sw input { width: auto; }
   </style>
@@ -144,6 +155,7 @@
           <tbody id="am-body"></tbody>
         </table>
       </div>
+      <p id="am-dirty" class="hint mt-3"></p>
       <p id="am-msg" class="hint mt-3"></p>
     </section>
 
@@ -281,6 +293,7 @@ window.amLoad = async function () {
   amRows = (data || []).slice().sort((a, b) =>
     (rank[a.role] || 9) - (rank[b.role] || 9) ||
     String(a.name || '').localeCompare(String(b.name || '')));
+  amFresh = true;                 // рядки щойно з бази, правок у них немає
   amRender();
 };
 
@@ -292,6 +305,9 @@ function amRender() {
   }
   // Начальником може бути тільно баєр — те саме правило, що в тригері.
   const buyers = amRows.filter(r => r.role === 'buyer');
+  /* Таблицю щойно перечитали з бази — незбережених правок більше не
+     існує. Чистимо саме тут, у єдиному місці, де рядки й народжуються. */
+  if (amFresh) { amDirtyRows.clear(); amFresh = false; }
   body.innerHTML = amRows.map((r, i) => {
     const isMe = r.user_id === myUid;
     const asst = r.role === 'assistant';
@@ -323,6 +339,9 @@ function amRender() {
       </td>
     </tr>`;
   }).join('');
+  // Підсвітку незбережених ставить саме той, хто малює рядки: інакше
+  // кожен виклик amRender мусив би не забути її поруч.
+  amDirtyPaint();
 }
 
 /* ─────────── НИЖНЄ МЕНЮ ПО ЛЮДИНІ ───────────
@@ -391,12 +410,15 @@ window.amDockSet = function (i, title, visible) {
     .filter(t => String(t).toLowerCase() !== String(title).toLowerCase());
   if (!visible) list.push(title);
   r.dock_hidden = list;
+  amDirtyMark(i);
   // Не перемальовуємо весь рядок: інакше <details> згортався б на
   // кожній галочці, а ставлять їх по кілька за раз.
   const sum = document.querySelector(`#am-body tr[data-i="${i}"] summary`);
   if (sum) {
-    sum.textContent = list.length ? 'прибрано ' + list.length : 'усі пункти';
-    sum.className = list.length ? 'warn' : 'hint';
+    /* «прибрано N» саме по собі читалось як «зроблено». Доки рядок не
+       збережений, так і пишемо. */
+    sum.textContent = (list.length ? 'прибрано ' + list.length : 'усі пункти') + ' · не збережено';
+    sum.className = 'warn';
   }
 };
 
@@ -432,9 +454,42 @@ window.amAdd = async function () {
   amLoad();
 };
 
+/* ЩО ЗМІНЕНО, АЛЕ НЕ ЗБЕРЕЖЕНО.
+
+   Усі поля цієї таблиці правлять ПАМ'ЯТЬ, а в базу їх відправляє
+   кнопка Save свого рядка. Доти це виглядало збереженим: підпис у
+   меню одразу ставав «прибрано 1», поле імені показувало нове ім'я —
+   і далі людина закривала сторінку. У дашборді не мінялось нічого, а
+   причину шукали в дашборді.
+
+   Тримаємо номери змінених рядків і кажемо про них трьома способами:
+   підсвіткою рядка, кнопкою Save і лічильником над таблицею. */
+let amDirtyRows = new Set();
+let amFresh = false;            // рядки тільно з бази — правок у них нема
+
+function amDirtyPaint() {
+  const el = document.getElementById('am-dirty');
+  if (el) el.textContent = amDirtyRows.size
+    ? '● Не збережено: ' + amDirtyRows.size
+      + (amDirtyRows.size === 1 ? ' рядок' : ' рядки') + '. Натисніть Save у кожному.'
+    : '';
+  document.querySelectorAll('#am-body tr[data-i]').forEach(tr =>
+    tr.classList.toggle('is-dirty', amDirtyRows.has(Number(tr.dataset.i))));
+}
+
+function amDirtyMark(i) { amDirtyRows.add(Number(i)); amDirtyPaint(); }
+
+/* Закриття сторінки з незбереженим — питаємо. Браузер показує свій
+   текст, наш тут ні до чого; важливо саме не дати піти молча. */
+window.addEventListener('beforeunload', e => {
+  if (!amDirtyRows.size) return;
+  e.preventDefault(); e.returnValue = '';
+});
+
 window.amEdit = function (i, field, value) {
   if (!amRows[i]) return;
   amRows[i][field] = field === 'parent_id' ? (value || null) : value;
+  amDirtyMark(i);
   // Роль змінили — перемалювати, щоб з'явився або зник вибір начальника.
   if (field === 'role') amRender();
 };
@@ -494,7 +549,11 @@ window.amSave = async function (i) {
   }
   msg.className = 'hint ok mt-3';
   msg.textContent = 'Збережено: ' + (patch.name || r.user_id.slice(0, 8));
-  amLoad();
+  amDirtyRows.delete(Number(i));
+  /* amLoad перечитує таблицю з бази — разом із нею зникли б правки в
+     ІНШИХ рядках, які ще не збережені. Доки такі є, перемальовуємо
+     лише те, що вже в пам'яті. */
+  if (amDirtyRows.size) amRender(); else amLoad();
 };
 
 /* ─────────── БЛОК 2: вкладки за роллю ─────────── */

@@ -258,9 +258,12 @@ window.fbPaint = function () {
       <div class="fb-meta">
         ${accs} ad account(s) · ${fbEsc(exp)}
         ${r.status_note ? ' · ' + fbEsc(r.status_note) : ''}
+        ${fbAgo(r.checked_at)}
       </div>
       ${fbProxyLine(r)}
       <div class="fb-acts">
+        <button type="button" class="set-btn fb-chk" onclick="fbCheck(${r.id})"
+          title="Спитати Facebook прямо зараз: чи приймає він цей токен і що він бачить">Check</button>
         <button type="button" class="set-btn" onclick="fbShow(${r.id})">Accounts</button>
         <button type="button" class="set-btn" onclick="fbRename(${r.id})">Rename</button>
         <button type="button" class="set-btn" onclick="fbProxySet(${r.id})">Proxy</button>
@@ -652,6 +655,92 @@ let fbSyncing = false;
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
 const FB_FN_WANT = '';
+
+/* ЧИ ЖИВИЙ ТОКЕН — ОКРЕМОЮ КНОПКОЮ.
+
+   Стан токена писав тільно Sync now: щоб дізнатись, що токен мертвий,
+   треба було синхронізувати весь парк кабінетів — хвилину чекання і
+   ліміт Facebook на кожен кабінет. А прогін має дедлайн, тож хвіст
+   списку лишався з тим станом, який йому виставили тижні тому: у
+   списку стояли зелені кружечки на кабінетах, яких давно немає.
+
+   Перевірка питає два запити на токен і не чіпає нічого, крім
+   діагностики самого токена. Кнопка є і в рядку (цей), і над списком
+   (усі): «цей протух?» і «які з двадцяти ще живі?» — різні питання.
+
+   ПІДСУМОК ГОВОРИТЬ ПРО ЗЛАМАНЕ. «Перевірено 20» не відповідає на те,
+   заради чого натискали: потрібні імена тих, що не працюють. */
+let fbChecking = false;
+
+/* Коли перевіряли. Без цього зелений кружечок не відрізнити від
+   зеленого кружечка тижневої давності — а це й була вся біда. */
+function fbAgo(iso) {
+  if (!iso) return ' · <b style="color:var(--warn)">never checked</b>';
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  const h = Math.floor(ms / 3600000), d = Math.floor(h / 24);
+  const when = d > 0 ? d + 'd ago' : h > 0 ? h + 'h ago' : 'just now';
+  // Тиждень без перевірки — це вже не «коли», а «невідомо»
+  return ' · checked ' + (d >= 7 ? '<b style="color:var(--warn)">' + when + '</b>' : when);
+}
+
+window.fbCheck = async function (id) {
+  if (fbChecking) return null;
+  const box = document.getElementById('fb-check-status');
+  const tell = (t, c) => { if (box) { box.innerHTML = t; box.style.color = c || ''; } };
+  fbChecking = true;
+  document.querySelectorAll('.fb-chk').forEach(b => { b.disabled = true; });
+  tell(id ? 'Asking Facebook about this token\u2026' : 'Asking Facebook about every token\u2026');
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const jwt = sess && sess.session && sess.session.access_token;
+    if (!jwt) throw new Error('not signed in');
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-sync', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + jwt, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify(id ? { check: true, token_id: id } : { check: true })
+    });
+    if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+
+    /* СТАРА ФУНКЦІЯ ЦЬОГО РЕЖИМУ НЕ ЗНАЄ — і мовчки робить повний
+       прогін. Тобто натиснув «Check», а воно пішло синхронізувати
+       парк. Сказати про це треба прямо: інакше людина читає підсумок
+       синку як відповідь на своє питання. */
+    if (j.check !== true) {
+      await fbLoad();
+      tell('The deployed fb-sync is older than this page and does not know the check mode'
+        + (j.fn ? ' (it says ' + fbEsc(j.fn) + ', the page expects ' + fbEsc(FB_FN_WANT) + ')' : '')
+        + ' \u2014 it ran a full sync instead. Deploy it: '
+        + '<span class="font-mono">supabase functions deploy fb-sync</span>', 'var(--warn)');
+      return j;
+    }
+
+    await fbLoad();
+    const list = Array.isArray(j.tokens) ? j.tokens : [];
+    if (!list.length) { tell('Nothing to check.', 'var(--warn)'); return j; }
+    const bad = list.filter(t => t.status !== 'ok');
+    const tail = j.not_reached ? ' \u00b7 ' + j.not_reached + ' not reached yet, press Check again' : '';
+    tell(bad.length
+      ? '<b>' + bad.length + ' of ' + list.length + ' not working:</b> '
+        + bad.map(t => fbEsc(t.label) + ' \u2014 ' + fbEsc(t.status)
+            + (t.note ? ' (' + fbEsc(t.note) + ')' : '')).join('; ') + tail
+      : 'All ' + list.length + ' token(s) work.' + tail,
+      bad.length ? 'var(--bad)' : 'var(--ok)');
+    return j;
+  } catch (e) {
+    tell((e.code === 'missing' || /failed to fetch|networkerror|load failed/i.test(e.message || ''))
+      ? 'The fb-sync function did not answer \u2014 deploy it first: '
+        + '<span class="font-mono">supabase functions deploy fb-sync</span>'
+      : 'Could not check: ' + fbEsc(e.message), 'var(--bad)');
+    return null;
+  } finally {
+    fbChecking = false;
+    document.querySelectorAll('.fb-chk').forEach(b => { b.disabled = false; });
+  }
+};
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;

@@ -198,12 +198,27 @@ body.sb-compact .sb-search .tb-kbd {
 #milestone-container {
   margin: 0 0 16px !important;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px 16px !important;
+  border-radius: var(--radius); padding: 9px 16px !important;
 }
+/* Підпис, число й залишок в один рядок. Центр тримають крайні 1fr:
+   вони однакові, тож середня колонка стоїть по центру блока. */
+.ms-row {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 12px; margin-bottom: 6px;
+}
+.ms-row > #monthly-spend-label { justify-self: start; }
+.ms-row > #next-rank-info { justify-self: end; }
 #milestone-container .ms-cap {
-  display: block; text-align: center; margin-bottom: 7px;
+  display: block; text-align: center; margin: 0;
   font-size: 9px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
   color: var(--text-muted);
+}
+/* На телефоні три колонки не вміщаються — підпис повертається своїм
+   рядком НАД числами, як і був. Тісніше за це робити нечесно: підпис
+   обрізався б, а він і є те, що пояснює цифри. */
+@media (max-width: 640px) {
+  .ms-row { grid-template-columns: 1fr auto; gap: 8px; }
+  .ms-row > .ms-cap { grid-column: 1 / -1; order: -1; margin-bottom: 2px; }
 }
 #monthly-spend-label { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
 #milestone-container .relative.w-full { background: var(--surface-3) !important; border-color: var(--border) !important; height: 6px !important; }
@@ -1128,6 +1143,75 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 /* Список офферів більше не має власного скролу: вкладений скрол усередині
    панелі, яка й сама прокручується, — найгірший варіант із можливих. */
 .set-list { margin-top: 10px; }
+
+/* ─────────── Виплати: блок на гео ───────────
+   Плоский список повторював гео в кожному рядку й тягнув його на всю
+   ширину панелі майже порожнім. Блок називає гео раз, а рядок
+   коротшає до того, що в ньому справді різне. */
+.pay-grid {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+}
+.pay-card {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 7px 8px 8px;
+}
+/* Усі офери гео вимкнені — виручка по ньому нуль. Найтихіша поломка з
+   можливих, тож блок це й показує. */
+.pay-card.is-off { border-color: rgba(239, 68, 68, .28); }
+.pay-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 6px; padding: 0 2px 6px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.pay-head b {
+  font-size: 13px; font-weight: 900; letter-spacing: .04em;
+  color: var(--accent); font-family: ui-monospace, Menlo, monospace;
+}
+.pay-n { font-size: 9px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--text-muted); }
+.pay-card.is-off .pay-n { color: #f87171; cursor: help; }
+
+.pay-row { display: flex; align-items: center; gap: 6px; padding: 3px 2px; border-radius: 7px; }
+.pay-row:hover { background: var(--surface-3); }
+.pay-row.is-off { opacity: .45; }
+.pay-row.is-off .pay-off { text-decoration: line-through; }
+
+.pay-tog {
+  flex: 0 0 auto; width: 24px; height: 14px; border-radius: 999px; position: relative;
+  background: var(--surface-3); border: 1px solid var(--border); cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.pay-tog.is-on { background: rgba(16, 185, 129, .55); border-color: rgba(16, 185, 129, .5); }
+.pay-tog > span {
+  position: absolute; top: 1px; left: 1px; width: 10px; height: 10px;
+  border-radius: 999px; background: #fff; transition: left .15s;
+}
+.pay-tog.is-on > span { left: 11px; }
+
+.pay-off {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 11px; font-weight: 700; color: var(--text-main);
+}
+.pay-mod {
+  flex: 0 0 auto; font-size: 8px; font-weight: 900; text-transform: uppercase;
+  padding: 1px 4px; border-radius: 4px; cursor: pointer;
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
+}
+.pay-mod:hover { color: var(--text-main); }
+.pay-mod.is-pct { background: rgba(251,191,36,.18); border-color: rgba(251,191,36,.3); color: #fbbf24; }
+.pay-val {
+  flex: 0 0 auto; min-width: 44px; text-align: right;
+  font-size: 11px; font-weight: 800; color: var(--text-main);
+  font-family: ui-monospace, Menlo, monospace;
+}
+/* Видалення показується на навідку: натискають його рідко, а стоїть
+   воно поруч із туглом, який натискають часто. */
+.pay-del {
+  flex: 0 0 auto; padding: 0 2px; color: #f87171; cursor: pointer;
+  opacity: 0; transition: opacity .15s;
+}
+.pay-row:hover .pay-del, .pay-del:focus-visible { opacity: 1; }
 .set-hint { font-size: 10px; color: var(--text-muted); line-height: 1.55; margin-top: 7px; }
 .set-empty {
   text-align: center; padding: 40px 0; font-size: 12px;
@@ -3583,6 +3667,13 @@ body.is-lead-only .admin-only { display: none; }
   display: inline-block; padding: 1px 6px; margin: 1px 0; border-radius: 6px;
   background: var(--surface-3); font-family: ui-monospace, Menlo, monospace; font-size: 10px;
 }
+/* Те саме значення, але натискається: клік ставить його в питання.
+   Полагодити мертву умову має бути швидше, ніж переписати питання. */
+button.aq-v-pick {
+  border: 1px solid var(--border); color: var(--text-main); cursor: pointer;
+  font-weight: 700; line-height: 1.5;
+}
+button.aq-v-pick:hover { border-color: var(--accent); color: var(--accent); }
 /* Стовпці чипами. Дві дії на один чип: назва вставляється в питання
    (часте), «?» показує, що в стовпці (рідкісне) — той самий поділ, що
    в силках PWA. Числові відрізняються кольором, бо саме їх сумують. */

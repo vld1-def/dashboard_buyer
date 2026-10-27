@@ -5588,43 +5588,79 @@ async function saveDetailedTask() {
   }
 }
     // --- 4. СПИСОК ВИПЛАТ У НАЛАШТУВАННЯХ ---
+/* ВИПЛАТИ — КАРТКАМИ ПО ГЕО, А НЕ РЯДКАМИ.
+
+   Був плоский список: рядок на кожну пару гео+оффер, гео повторювалось
+   у кожному рядку, а сам рядок тягнувся на всю ширину панелі й стояв
+   майже порожній. При двадцяти оферах це двадцять рядків, у яких
+   однакове треба відрізняти очима.
+
+   Тепер один блок — одне гео, а всередині його офери. Гео названо раз,
+   рядок коротшає до того, що в ньому справді різне (оффер, модель,
+   ставка), і блоки стають поруч, а не один під одним.
+
+   Усі дії лишились ті самі: тугл «активний», перемикач моделі,
+   видалення. Нічого не поїхало в підменю: виплати правлять рідко, але
+   коли правлять — шукати кнопку не мають.
+
+   ГЕО, В ЯКОМУ ВСЕ ВИМКНЕНО, позначене. Виручка такого гео — нуль, і
+   це найтихіша з можливих поломок: дані є, оффер у списку є, просто
+   ставки для розрахунку немає. */
 function renderGeoPayoutSettings(data) {
   const container = document.getElementById('geo-payouts-list');
   if (!container) return;
 
   if (!data || data.length === 0) {
-    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center text-slate-500">No payouts set in SQL</p>';
+    container.innerHTML = '<p class="set-empty">Виплат ще немає. Додайте гео, оффер і ставку рядком вище — без них виручка й Net Profit рахуються нулем.</p>';
     return;
   }
 
-  // Сортуємо по ГЕО для зручності в налаштуваннях
-  const sortedData = [...data].sort((a, b) => a.geo.localeCompare(b.geo));
+  const esc = v => String(v == null ? '' : v)
+    .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Колонки active могло ще не бути — тоді оффер вважається активним
+  const isOn = p => p.active !== false;
 
-  container.innerHTML = sortedData.map(p => {
-    const on = p.active !== false;      // колонки може ще не бути — тоді вважаємо активним
-    return `
-    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group ${on ? '' : 'opacity-45'}">
-      <button onclick="togglePayoutActive('${p.id}', ${!on})"
-              title="${on ? 'Вимкнути оффер — не підтягуватиметься при імпорті' : 'Увімкнути оффер назад'}"
-              class="w-7 h-4 rounded-full shrink-0 relative transition-colors ${on ? 'bg-emerald-500/70' : 'bg-slate-600/60'}">
-        <span class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-3.5' : 'left-0.5'}"></span>
-      </button>
-      <span class="font-black text-blue-400 uppercase w-7 shrink-0">${p.geo}</span>
-      <span class="text-slate-400 font-bold truncate flex-1 opacity-70 ${on ? '' : 'line-through'}">${p.offer || 'DEFAULT'}</span>
-      <button onclick="togglePayoutModel('${p.id}', '${p.model === 'spend' ? 'cpa' : 'spend'}')"
-              title="${p.model === 'spend'
-                ? 'Спенд-модель: виручка = спенд × відсоток. Клік — повернути на CPA'
-                : 'CPA: виручка = депозити × ставка. Клік — перевести на % від спенду'}"
-              class="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded transition ${p.model === 'spend'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                : 'bg-white/5 text-slate-500 border border-white/10 hover:text-white'}">${p.model === 'spend' ? '%' : 'CPA'}</button>
-      <span class="font-bold text-white text-left w-12 shrink-0">${p.model === 'spend' ? p.value + '%' : '$' + p.value}</span>
-      <button onclick="deletePayoutFromSQL('${p.id}')"
-              class="text-red-500 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        ✕
-      </button>
+  const byGeo = new Map();
+  [...data].forEach(p => {
+    const g = String(p.geo || '—').toUpperCase();
+    if (!byGeo.has(g)) byGeo.set(g, []);
+    byGeo.get(g).push(p);
+  });
+
+  container.innerHTML = `<div class="pay-grid">` + [...byGeo.keys()].sort().map(g => {
+    /* DEFAULT — перший: він ставка «на все інше в цьому гео», і
+       читається як заголовок решти, а не як ще один оффер. */
+    const rows = byGeo.get(g).slice().sort((a, b) => {
+      const da = !a.offer || a.offer === 'DEFAULT', db = !b.offer || b.offer === 'DEFAULT';
+      return (db - da) || String(a.offer || '').localeCompare(String(b.offer || ''), 'uk');
+    });
+    const live = rows.filter(isOn).length;
+    const allOff = !live;
+    return `<div class="pay-card${allOff ? ' is-off' : ''}">
+      <div class="pay-head">
+        <b>${esc(g)}</b>
+        <span class="pay-n"${allOff
+          ? ' title="Усі офери цього гео вимкнені — виручка по ньому рахується нулем"'
+          : ''}>${allOff ? 'усі вимкнені' : live + (live === rows.length ? '' : ' з ' + rows.length)}</span>
+      </div>
+      ${rows.map(p => {
+        const on = isOn(p);
+        const spend = p.model === 'spend';
+        return `<div class="pay-row${on ? '' : ' is-off'}">
+          <button class="pay-tog${on ? ' is-on' : ''}" onclick="togglePayoutActive('${p.id}', ${!on})"
+            title="${on ? 'Вимкнути оффер — не підтягуватиметься при імпорті й не дасть ставки для виручки' : 'Увімкнути оффер назад'}"><span></span></button>
+          <span class="pay-off" title="${esc(p.offer || 'DEFAULT')}">${esc(p.offer || 'DEFAULT')}</span>
+          <button class="pay-mod${spend ? ' is-pct' : ''}"
+            onclick="togglePayoutModel('${p.id}', '${spend ? 'cpa' : 'spend'}')"
+            title="${spend
+              ? 'Спенд-модель: виручка = спенд × відсоток. Клік — повернути на CPA'
+              : 'CPA: виручка = депозити × ставка. Клік — перевести на % від спенду'}">${spend ? '%' : 'CPA'}</button>
+          <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
+          <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
+        </div>`;
+      }).join('')}
     </div>`;
-  }).join('');
+  }).join('') + `</div>`;
 }
 
 // Вимкнений оффер лишається в базі (історичні рядки з ним нікуди не діваються),
@@ -13785,11 +13821,32 @@ function dcRenderWarn(unlinked) {
 
     const hide = new Set((me.dock_hidden || []).map(t => dockRename(t).toLowerCase()));
     if (hide.size) {
-      dockButtons()
-        .filter(x => hide.has(x.title.trim().toLowerCase()))
-        .map(x => dockUnit(x.el, dock))
-        .filter(Boolean)
-        .forEach(u => u.remove());
+      const gone = dockButtons().filter(x => hide.has(x.title.trim().toLowerCase()));
+
+      /* ПАЛІТРА ⌘K — ЦЕ ТЕЖ МЕНЮ, і цього разу про неї таки забули.
+
+         Кнопку з дока ми прибирали, а ⌘K лишалась із повним списком:
+         «DB Logs» відкривались звідти так само, як і раніше. Ховати
+         вхід, лишаючи двері поруч, сенсу не має.
+
+         Зіставляємо не за підписом, а за ФУНКЦІЄЮ з onclick: підписи в
+         доці й у палітрі різні («Bonus Calculator» проти «Bonuses»), і
+         за ними два списки тихо розійшлись би на першому ж
+         перейменуванні. Функція — те саме, що справді відкривається. */
+      window.navHiddenFns = new Set(gone.map(x => {
+        const m = /([A-Za-z_$][\w$]*)\s*\(/.exec(x.el.getAttribute('onclick') || '');
+        return m ? m[1] : '';
+      }).filter(Boolean));
+      window.navHiddenTitles = new Set([...hide]);
+
+      gone.forEach(x => {
+        const u = dockUnit(x.el, dock);
+        /* Кнопка, яку людина сама засунула під «Ще», лежить У СПЛИВАЙЦІ,
+           і її «одиниця в доці» — уся обгортка «Ще». Прибрати її
+           означало б знести разом із нею решту схованих кнопок. */
+        if (!u || u.classList.contains('dk-more-wrap')) x.el.remove();
+        else u.remove();
+      });
       // Роздільники й підпис «Ще N» перерахувати після прибирання.
       applyDockHidden();
     }

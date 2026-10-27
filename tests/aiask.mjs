@@ -152,12 +152,19 @@ const r4 = await askWith({ set: 'sheet', where: [{ col: 'Amount', op: 'gt', val:
 ok('«$1,200.50» більше за 150, а «$100» — ні', r4.big === '3', r4.big);
 
 /* ─────────── нуль рядків ≠ нуль суми ─────────── */
-const r5 = await askWith({ set: 'sheet', where: [{ col: 'Status', op: 'eq', val: 'Declined' }],
-  metric: { op: 'sum', col: 'Amount' } }, 'сума по Declined');
+/* Значення, якого в стовпці немає ЗОВСІМ. Схоже написання («Declined»
+   проти «Decline») сюди вже не потрапляє: його звіряє aqResolve, і
+   про це є свій розділ у хвості стенда. */
+const r5 = await askWith({ set: 'sheet', where: [{ col: 'Status', op: 'eq', val: 'Chargeback' }],
+  metric: { op: 'sum', col: 'Amount' } }, 'сума по chargeback');
 ok('нічого не знайшлось — кажемо це, а не показуємо нуль',
   /Жодного рядка/.test(r5.txt) && !/aq-big/.test(r5.html), r5.txt.slice(0, 260));
 ok('і показуємо, що справді лежить у стовпці',
   /Decline/.test(r5.txt) && /Hold/.test(r5.txt) && /Approved/.test(r5.txt), r5.txt.slice(0, 300));
+ok('майже вгадане значення тепер не «жодного рядка», а звірка',
+  await askWith({ set: 'sheet', where: [{ col: 'Status', op: 'eq', val: 'Declined' }],
+    metric: { op: 'sum', col: 'Amount' } }, 'сума по Declined')
+    .then(r => r.big === '900'));
 
 /* ─────────── план перевіряється, а не виконується на слово ─────────── */
 const r6 = await askWith({ set: 'sheet', metric: { op: 'sum', col: 'Revenue' } }, 'сума Revenue');
@@ -501,7 +508,8 @@ ok('другий рядок: 100 без деклайну і 10 деклайно�
 ok('порядок рядків той, який назвала людина',
   xflat.indexOf('Без Oleh') < xflat.indexOf('Тільки Oleh'), xflat.slice(0, 300));
 ok('у плані названо, за яким правилом рядок став рядком',
-  /рядками: Без Oleh \(card не містить Oleh\)/.test(cross.txt), cross.txt.slice(0, 400));
+  /рядками: Без Oleh \(card не містить Oleh \(Oleh Visa\)\)/.test(cross.txt),
+  cross.txt.slice(0, 400));
 ok('регістр у статусі не ламає зріз: Decline і decline — те саме',
   /20/.test(cross.txt), cross.txt.slice(0, 200));
 
@@ -645,6 +653,96 @@ ok('без відкритих даних асистент не вдає, що щ
   const t = document.getElementById('aq-thread').textContent;
   const sel = document.getElementById('aq-set');
   return /Немає чого питати/.test(t) && /Google-таблицю в рамці/.test(t) && sel.disabled;
+}));
+
+/* ═══════════ ЗНАЧЕННЯ З ПИТАННЯ → ЗНАЧЕННЯ З ФАЙЛУ ═══════════
+
+   Реальний випадок, що коштував довіри: «сума Original amount без
+   статусу деклайн, карти з OLEH». Модель написала `Status ≠ decline`,
+   у файлі стоїть «Declined». Порівняння точне, отже умова правдива
+   для КОЖНОГО рядка — жоден деклайн не викинувся, і сума 101.63
+   показалась як 152.78.
+
+   Модель значень не бачить і не побачить (за межі браузера йдуть лише
+   назви стовпців), тож звіряємо значення тут, локально, зі справжнім
+   вмістом стовпця. */
+await page.evaluate(() => {
+  window.__rows = [
+    { Status: 'In progress', Type: 'Spend', 'Original amount': '2.21', 'Card Name': 'OLEH-3971' },
+    { Status: 'In progress', Type: 'Spend', 'Original amount': '2.21', 'Card Name': 'OLEH-3971' },
+    { Status: 'Declined',    Type: 'Spend', 'Original amount': '2.21', 'Card Name': 'OLEH-3971' },
+    { Status: 'Executed',    Type: 'Fee',   'Original amount': '0.40', 'Card Name': 'OLEH-3870' },
+    { Status: 'Declined',    Type: 'Spend', 'Original amount': '5.00', 'Card Name': '[2993] 1423271423250266' }
+  ];
+  window.shDataset = () => ({
+    id: 'sheet', title: 'transactions.xlsx',
+    cols: [{ name: 'Status', kind: 'text' }, { name: 'Type', kind: 'text' },
+           { name: 'Original amount', kind: 'num' }, { name: 'Card Name', kind: 'text' }],
+    rows: window.__rows.map(r => ({ ...r })), num: null
+  });
+  rawData = []; window.creativesRawData = [];
+  aqCall = async body => {
+    window.__sent.push(body);
+    return { plan_raw: JSON.stringify(window.__plan), model: 'claude-haiku-5-5',
+             cost_usd: 0.0001, left_today: 9, problems: [] };
+  };
+  aqOpen();
+});
+
+const DEC = { set: 'sheet', metric: { op: 'sum', col: 'Original amount' },
+  where: [{ col: 'Card Name', op: 'contains', val: 'OLEH' },
+          { col: 'Status', op: 'ne', val: 'decline' }] };
+
+const dec = await askWith(DEC, 'сума Original amount без деклайну, карти OLEH');
+ok('«≠ decline» прибирає «Declined»: 2.21+2.21+0.40 = 4.82',
+  dec.big.replace(/\s/g, '') === '4.82', dec.big);
+ok('у плані видно, на що звірилось значення',
+  /не містить decline \(Declined\)/.test(dec.txt), dec.txt.slice(0, 260));
+ok('рядків лишилось три з п\'яти', /3 з 5 рядк/.test(dec.txt), dec.txt.slice(-200));
+ok('без звірки вийшло б 7.03 — старе число в відповідь не потрапило',
+  !/7\.03/.test(dec.big), dec.big);
+
+/* Те саме, але модель написала ДОВШЕ, ніж у файлі. Тоді підставляємо
+   значення з файлу, а не розширюємо умову. */
+const sup = await askWith({ set: 'sheet', metric: { op: 'count' },
+  where: [{ col: 'Status', op: 'eq', val: 'Declined transaction' }] },
+  'скільки деклайнів');
+ok('значення довше за те, що у файлі, звіряється на нього',
+  sup.big.replace(/\s/g, '') === '2' && /Status = Declined \(Declined\)/.test(sup.txt),
+  [sup.big, sup.txt.slice(0, 200)]);
+
+/* Звірити ні на що — умова МЕРТВА. Число показуємо, але над ним стоїть
+   те, чого коштувала тиша. */
+const dead = await askWith({ set: 'sheet', metric: { op: 'sum', col: 'Original amount' },
+  where: [{ col: 'Status', op: 'ne', val: 'refund' }] },
+  'сума без рефандів');
+ok('мертва умова названа вголос', /не відсіяла жодного рядка/.test(dead.txt), dead.txt.slice(0, 300));
+ok('і сказано, що число порахувалось без неї',
+  /порахувалось БЕЗ неї/.test(dead.txt), dead.txt.slice(0, 300));
+ok('у плані вона позначена', /немає такого значення/.test(dead.txt), dead.txt.slice(0, 300));
+ok('справжні значення стовпця показані кнопками',
+  /data-v="Declined"/.test(dead.html) && /aqVal\(this\)/.test(dead.html), dead.html.slice(0, 400));
+ok('число все одно є: 2.21+2.21+2.21+0.40+5.00 = 12.03',
+  dead.big.replace(/\s/g, '') === '12.03', dead.big);
+
+ok('клік по значенню ставить його в питання', await page.evaluate(() => {
+  const inp = document.getElementById('aq-q');
+  inp.value = 'сума без';
+  document.querySelector('#aq-thread .aq-v-pick[data-v="Declined"]').click();
+  return inp.value;
+}) === 'сума без «Declined»');
+
+/* Точне попадання не чіпаємо: інакше «= Executed» тихо почало б
+   ловити й «Executed later», якби таке значення колись з'явилось. */
+const exact = await askWith({ set: 'sheet', metric: { op: 'count' },
+  where: [{ col: 'Status', op: 'eq', val: 'Executed' }] }, 'скільки executed');
+ok('точне значення лишається точним',
+  exact.big.replace(/\s/g, '') === '1' && !/\(Executed\)/.test(exact.txt),
+  [exact.big, exact.txt.slice(0, 200)]);
+
+ok('значення так само не їдуть у модель', await page.evaluate(() => {
+  const s = JSON.stringify(window.__sent);
+  return !/OLEH-3971|Declined|In progress|2\.21/.test(s);
 }));
 
 await done(browser, srv, errs);

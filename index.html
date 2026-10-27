@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 27.10 12:28">
+  <meta name="build" content="build 27.10 21:03">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1320,12 +1320,27 @@ body.sb-compact .sb-search .tb-kbd {
 #milestone-container {
   margin: 0 0 16px !important;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px 16px !important;
+  border-radius: var(--radius); padding: 9px 16px !important;
 }
+/* Підпис, число й залишок в один рядок. Центр тримають крайні 1fr:
+   вони однакові, тож середня колонка стоїть по центру блока. */
+.ms-row {
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 12px; margin-bottom: 6px;
+}
+.ms-row > #monthly-spend-label { justify-self: start; }
+.ms-row > #next-rank-info { justify-self: end; }
 #milestone-container .ms-cap {
-  display: block; text-align: center; margin-bottom: 7px;
+  display: block; text-align: center; margin: 0;
   font-size: 9px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase;
   color: var(--text-muted);
+}
+/* На телефоні три колонки не вміщаються — підпис повертається своїм
+   рядком НАД числами, як і був. Тісніше за це робити нечесно: підпис
+   обрізався б, а він і є те, що пояснює цифри. */
+@media (max-width: 640px) {
+  .ms-row { grid-template-columns: 1fr auto; gap: 8px; }
+  .ms-row > .ms-cap { grid-column: 1 / -1; order: -1; margin-bottom: 2px; }
 }
 #monthly-spend-label { font-size: 16px; font-weight: 800; letter-spacing: -.02em; }
 #milestone-container .relative.w-full { background: var(--surface-3) !important; border-color: var(--border) !important; height: 6px !important; }
@@ -2250,6 +2265,75 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 /* Список офферів більше не має власного скролу: вкладений скрол усередині
    панелі, яка й сама прокручується, — найгірший варіант із можливих. */
 .set-list { margin-top: 10px; }
+
+/* ─────────── Виплати: блок на гео ───────────
+   Плоский список повторював гео в кожному рядку й тягнув його на всю
+   ширину панелі майже порожнім. Блок називає гео раз, а рядок
+   коротшає до того, що в ньому справді різне. */
+.pay-grid {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+}
+.pay-card {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 7px 8px 8px;
+}
+/* All офери гео вимкнені — виручка по ньому нуль. Найтихіша поломка з
+   можливих, тож блок це й показує. */
+.pay-card.is-off { border-color: rgba(239, 68, 68, .28); }
+.pay-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 6px; padding: 0 2px 6px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.pay-head b {
+  font-size: 13px; font-weight: 900; letter-spacing: .04em;
+  color: var(--accent); font-family: ui-monospace, Menlo, monospace;
+}
+.pay-n { font-size: 9px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--text-muted); }
+.pay-card.is-off .pay-n { color: #f87171; cursor: help; }
+
+.pay-row { display: flex; align-items: center; gap: 6px; padding: 3px 2px; border-radius: 7px; }
+.pay-row:hover { background: var(--surface-3); }
+.pay-row.is-off { opacity: .45; }
+.pay-row.is-off .pay-off { text-decoration: line-through; }
+
+.pay-tog {
+  flex: 0 0 auto; width: 24px; height: 14px; border-radius: 999px; position: relative;
+  background: var(--surface-3); border: 1px solid var(--border); cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.pay-tog.is-on { background: rgba(16, 185, 129, .55); border-color: rgba(16, 185, 129, .5); }
+.pay-tog > span {
+  position: absolute; top: 1px; left: 1px; width: 10px; height: 10px;
+  border-radius: 999px; background: #fff; transition: left .15s;
+}
+.pay-tog.is-on > span { left: 11px; }
+
+.pay-off {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 11px; font-weight: 700; color: var(--text-main);
+}
+.pay-mod {
+  flex: 0 0 auto; font-size: 8px; font-weight: 900; text-transform: uppercase;
+  padding: 1px 4px; border-radius: 4px; cursor: pointer;
+  background: var(--surface-3); border: 1px solid var(--border); color: var(--text-muted);
+}
+.pay-mod:hover { color: var(--text-main); }
+.pay-mod.is-pct { background: rgba(251,191,36,.18); border-color: rgba(251,191,36,.3); color: #fbbf24; }
+.pay-val {
+  flex: 0 0 auto; min-width: 44px; text-align: right;
+  font-size: 11px; font-weight: 800; color: var(--text-main);
+  font-family: ui-monospace, Menlo, monospace;
+}
+/* Видалення показується на навідку: натискають його рідко, а стоїть
+   воно поруч із туглом, який натискають часто. */
+.pay-del {
+  flex: 0 0 auto; padding: 0 2px; color: #f87171; cursor: pointer;
+  opacity: 0; transition: opacity .15s;
+}
+.pay-row:hover .pay-del, .pay-del:focus-visible { opacity: 1; }
 .set-hint { font-size: 10px; color: var(--text-muted); line-height: 1.55; margin-top: 7px; }
 .set-empty {
   text-align: center; padding: 40px 0; font-size: 12px;
@@ -4705,6 +4789,13 @@ body.is-lead-only .admin-only { display: none; }
   display: inline-block; padding: 1px 6px; margin: 1px 0; border-radius: 6px;
   background: var(--surface-3); font-family: ui-monospace, Menlo, monospace; font-size: 10px;
 }
+/* Те саме значення, але натискається: клік ставить його в питання.
+   Полагодити мертву умову має бути швидше, ніж переписати питання. */
+button.aq-v-pick {
+  border: 1px solid var(--border); color: var(--text-main); cursor: pointer;
+  font-weight: 700; line-height: 1.5;
+}
+button.aq-v-pick:hover { border-color: var(--accent); color: var(--accent); }
 /* Стовпці чипами. Дві дії на один чип: назва вставляється в питання
    (часте), «?» показує, що в стовпці (рідкісне) — той самий поділ, що
    в силках PWA. Числові відрізняються кольором, бо саме їх сумують. */
@@ -6088,7 +6179,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.10 12:28</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.10 21:03</div>
     </div>
   </aside>
 
@@ -6359,11 +6450,17 @@ input.ui-in[type="range"] { padding: 0; }
 
       <!-- Місячний таргет -->
       <div id="milestone-container">
-        <p class="ms-cap">Monthly Spend Target <span id="header-month-display"></span></p>
-        <!-- mb-1 замість mb-2: рівно чотири пікселі менше, і зняті вони
-             з порожнечі між числом і смугою, а не з самого тексту. -->
-        <div class="flex justify-between items-end gap-3 mb-1">
+        <!-- Підпис, число й залишок — ОДНИМ рядком. Окремий рядок під
+             підпис коштував шістнадцять пікселів висоти на самому
+             верху екрана, де їх і бракує найбільше.
+
+             Три колонки, а не flex із justify-between: підпис мусить
+             стояти в центрі БЛОКА, а не посередині між сусідами. При
+             1fr auto 1fr він там і лишається, навіть коли «Left:
+             $40,000» довше за саме число. -->
+        <div class="ms-row">
           <h3 id="monthly-spend-label">$0 / $40,000</h3>
+          <p class="ms-cap">Monthly Spend Target <span id="header-month-display"></span></p>
           <span id="next-rank-info" class="text-[10px] font-bold text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1 rounded-lg border border-blue-500/20">Left: $40,000</span>
         </div>
         <div class="relative w-full h-1.5 bg-slate-800/60 rounded-full overflow-hidden border border-white/5">
@@ -11575,43 +11672,79 @@ async function saveDetailedTask() {
   }
 }
     // --- 4. СПИСОК ВИПЛАТ У НАЛАШТУВАННЯХ ---
+/* ВИПЛАТИ — КАРТКАМИ ПО ГЕО, А НЕ РЯДКАМИ.
+
+   Був плоский список: рядок на кожну пару гео+оффер, гео повторювалось
+   у кожному рядку, а сам рядок тягнувся на всю ширину панелі й стояв
+   майже порожній. При двадцяти оферах це двадцять рядків, у яких
+   однакове треба відрізняти очима.
+
+   Тепер один блок — одне гео, а всередині його офери. Гео названо раз,
+   рядок коротшає до того, що в ньому справді різне (оффер, модель,
+   ставка), і блоки стають поруч, а не один під одним.
+
+   All дії лишились ті самі: тугл «активний», перемикач моделі,
+   видалення. Нічого не поїхало в підменю: виплати правлять рідко, але
+   коли правлять — шукати кнопку не мають.
+
+   ГЕО, В ЯКОМУ ВСЕ ВИМКНЕНО, позначене. Виручка такого гео — нуль, і
+   це найтихіша з можливих поломок: дані є, оффер у списку є, просто
+   ставки для розрахунку немає. */
 function renderGeoPayoutSettings(data) {
   const container = document.getElementById('geo-payouts-list');
   if (!container) return;
 
   if (!data || data.length === 0) {
-    container.innerHTML = '<p class="text-[9px] opacity-30 italic p-2 text-center text-slate-500">No payouts set in SQL</p>';
+    container.innerHTML = '<p class="set-empty">Виплат ще немає. Додайте гео, оффер і ставку рядком вище — без них виручка й Net Profit рахуються нулем.</p>';
     return;
   }
 
-  // Сортуємо по ГЕО для зручності в налаштуваннях
-  const sortedData = [...data].sort((a, b) => a.geo.localeCompare(b.geo));
+  const esc = v => String(v == null ? '' : v)
+    .replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Колонки active могло ще не бути — тоді оффер вважається активним
+  const isOn = p => p.active !== false;
 
-  container.innerHTML = sortedData.map(p => {
-    const on = p.active !== false;      // колонки може ще не бути — тоді вважаємо активним
-    return `
-    <div class="flex items-center bg-white/5 p-1.5 rounded-lg border border-white/5 text-[10px] mb-1 gap-2 group ${on ? '' : 'opacity-45'}">
-      <button onclick="togglePayoutActive('${p.id}', ${!on})"
-              title="${on ? 'Disable the offer — it will not be pulled on import' : 'Enable the offer again'}"
-              class="w-7 h-4 rounded-full shrink-0 relative transition-colors ${on ? 'bg-emerald-500/70' : 'bg-slate-600/60'}">
-        <span class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${on ? 'left-3.5' : 'left-0.5'}"></span>
-      </button>
-      <span class="font-black text-blue-400 uppercase w-7 shrink-0">${p.geo}</span>
-      <span class="text-slate-400 font-bold truncate flex-1 opacity-70 ${on ? '' : 'line-through'}">${p.offer || 'DEFAULT'}</span>
-      <button onclick="togglePayoutModel('${p.id}', '${p.model === 'spend' ? 'cpa' : 'spend'}')"
-              title="${p.model === 'spend'
-                ? 'Spend model: revenue = spend × percent. Click to switch back to CPA'
-                : 'CPA: revenue = deposits × rate. Click to switch to % of spend'}"
-              class="shrink-0 text-[8px] font-black uppercase px-1.5 py-0.5 rounded transition ${p.model === 'spend'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                : 'bg-white/5 text-slate-500 border border-white/10 hover:text-white'}">${p.model === 'spend' ? '%' : 'CPA'}</button>
-      <span class="font-bold text-white text-left w-12 shrink-0">${p.model === 'spend' ? p.value + '%' : '$' + p.value}</span>
-      <button onclick="deletePayoutFromSQL('${p.id}')"
-              class="text-red-500 hover:text-red-400 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        ✕
-      </button>
+  const byGeo = new Map();
+  [...data].forEach(p => {
+    const g = String(p.geo || '—').toUpperCase();
+    if (!byGeo.has(g)) byGeo.set(g, []);
+    byGeo.get(g).push(p);
+  });
+
+  container.innerHTML = `<div class="pay-grid">` + [...byGeo.keys()].sort().map(g => {
+    /* DEFAULT — перший: він ставка «на все інше в цьому гео», і
+       читається як заголовок решти, а не як ще один оффер. */
+    const rows = byGeo.get(g).slice().sort((a, b) => {
+      const da = !a.offer || a.offer === 'DEFAULT', db = !b.offer || b.offer === 'DEFAULT';
+      return (db - da) || String(a.offer || '').localeCompare(String(b.offer || ''), 'uk');
+    });
+    const live = rows.filter(isOn).length;
+    const allOff = !live;
+    return `<div class="pay-card${allOff ? ' is-off' : ''}">
+      <div class="pay-head">
+        <b>${esc(g)}</b>
+        <span class="pay-n"${allOff
+          ? ' title="All офери цього гео вимкнені — виручка по ньому рахується нулем"'
+          : ''}>${allOff ? 'усі вимкнені' : live + (live === rows.length ? '' : ' з ' + rows.length)}</span>
+      </div>
+      ${rows.map(p => {
+        const on = isOn(p);
+        const spend = p.model === 'spend';
+        return `<div class="pay-row${on ? '' : ' is-off'}">
+          <button class="pay-tog${on ? ' is-on' : ''}" onclick="togglePayoutActive('${p.id}', ${!on})"
+            title="${on ? 'Disable the offer — it will not be pulled on import й не дасть ставки для виручки' : 'Enable the offer again'}"><span></span></button>
+          <span class="pay-off" title="${esc(p.offer || 'DEFAULT')}">${esc(p.offer || 'DEFAULT')}</span>
+          <button class="pay-mod${spend ? ' is-pct' : ''}"
+            onclick="togglePayoutModel('${p.id}', '${spend ? 'cpa' : 'spend'}')"
+            title="${spend
+              ? 'Spend model: revenue = spend × percent. Click to switch back to CPA'
+              : 'CPA: revenue = deposits × rate. Click to switch to % of spend'}">${spend ? '%' : 'CPA'}</button>
+          <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
+          <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
+        </div>`;
+      }).join('')}
     </div>`;
-  }).join('');
+  }).join('') + `</div>`;
 }
 
 // Вимкнений оффер лишається в базі (історичні рядки з ним нікуди не діваються),
@@ -15902,6 +16035,15 @@ document.addEventListener('keydown', e => {
 
             <div id="fb-filter-wrap" class="set-addrow mt-2 hidden">
               <input type="text" id="fb-filter" oninput="fbPaint()" placeholder="Filter by name, BM or account id" class="set-input" style="flex:1 1 auto;min-width:0">
+            </div>
+            <!-- «Чи живі вони взагалі» — питання до всього списку, тож і
+                 кнопка стоїть над списком, а не в рядку. У рядку є своя:
+                 «цей протух?» і «які з двадцяти ще живі?» — різні
+                 питання, і одна кнопка на обидва не відповідає. -->
+            <div class="set-addrow mt-2">
+              <button type="button" class="set-btn fb-chk" onclick="fbCheck(0)"
+                title="Спитати Facebook про кожен токен: два запити на токен, кабінети не синхронізуються">Check all tokens</button>
+              <p id="fb-check-status" class="set-hint" style="flex:1 1 auto;min-width:0;margin:0"></p>
             </div>
             <div id="fb-list" class="fb-list mt-2"></div>
 
@@ -22413,11 +22555,32 @@ function dcRenderWarn(unlinked) {
 
     const hide = new Set((me.dock_hidden || []).map(t => dockRename(t).toLowerCase()));
     if (hide.size) {
-      dockButtons()
-        .filter(x => hide.has(x.title.trim().toLowerCase()))
-        .map(x => dockUnit(x.el, dock))
-        .filter(Boolean)
-        .forEach(u => u.remove());
+      const gone = dockButtons().filter(x => hide.has(x.title.trim().toLowerCase()));
+
+      /* ПАЛІТРА ⌘K — ЦЕ ТЕЖ МЕНЮ, і цього разу про неї таки забули.
+
+         Кнопку з дока ми прибирали, а ⌘K лишалась із повним списком:
+         «DB Logs» відкривались звідти так само, як і раніше. Ховати
+         вхід, лишаючи двері поруч, сенсу не має.
+
+         Зіставляємо не за підписом, а за ФУНКЦІЄЮ з onclick: підписи в
+         доці й у палітрі різні («Bonus Calculator» проти «Bonuses»), і
+         за ними два списки тихо розійшлись би на першому ж
+         перейменуванні. Функція — те саме, що справді відкривається. */
+      window.navHiddenFns = new Set(gone.map(x => {
+        const m = /([A-Za-z_$][\w$]*)\s*\(/.exec(x.el.getAttribute('onclick') || '');
+        return m ? m[1] : '';
+      }).filter(Boolean));
+      window.navHiddenTitles = new Set([...hide]);
+
+      gone.forEach(x => {
+        const u = dockUnit(x.el, dock);
+        /* Кнопка, яку людина сама засунула під «More», лежить У СПЛИВАЙЦІ,
+           і її «одиниця в доці» — уся обгортка «More». Прибрати її
+           означало б знести разом із нею решту схованих кнопок. */
+        if (!u || u.classList.contains('dk-more-wrap')) x.el.remove();
+        else u.remove();
+      });
       // Роздільники й підпис «More N» перерахувати після прибирання.
       applyDockHidden();
     }
@@ -23106,9 +23269,12 @@ window.fbPaint = function () {
       <div class="fb-meta">
         ${accs} ad account(s) · ${fbEsc(exp)}
         ${r.status_note ? ' · ' + fbEsc(r.status_note) : ''}
+        ${fbAgo(r.checked_at)}
       </div>
       ${fbProxyLine(r)}
       <div class="fb-acts">
+        <button type="button" class="set-btn fb-chk" onclick="fbCheck(${r.id})"
+          title="Спитати Facebook прямо зараз: чи приймає він цей токен і що він бачить">Check</button>
         <button type="button" class="set-btn" onclick="fbShow(${r.id})">Accounts</button>
         <button type="button" class="set-btn" onclick="fbRename(${r.id})">Rename</button>
         <button type="button" class="set-btn" onclick="fbProxySet(${r.id})">Proxy</button>
@@ -23499,7 +23665,93 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-10-06.2';
+const FB_FN_WANT = '2026-10-27.1';
+
+/* ЧИ ЖИВИЙ ТОКЕН — ОКРЕМОЮ КНОПКОЮ.
+
+   Стан токена писав тільно Sync now: щоб дізнатись, що токен мертвий,
+   треба було синхронізувати весь парк кабінетів — хвилину чекання і
+   ліміт Facebook на кожен кабінет. А прогін має дедлайн, тож хвіст
+   списку лишався з тим станом, який йому виставили тижні тому: у
+   списку стояли зелені кружечки на кабінетах, яких давно немає.
+
+   Перевірка питає два запити на токен і не чіпає нічого, крім
+   діагностики самого токена. Кнопка є і в рядку (цей), і над списком
+   (усі): «цей протух?» і «які з двадцяти ще живі?» — різні питання.
+
+   ПІДСУМОК ГОВОРИТЬ ПРО ЗЛАМАНЕ. «Перевірено 20» не відповідає на те,
+   заради чого натискали: потрібні імена тих, що не працюють. */
+let fbChecking = false;
+
+/* Коли перевіряли. Без цього зелений кружечок не відрізнити від
+   зеленого кружечка тижневої давності — а це й була вся біда. */
+function fbAgo(iso) {
+  if (!iso) return ' · <b style="color:var(--warn)">never checked</b>';
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  const h = Math.floor(ms / 3600000), d = Math.floor(h / 24);
+  const when = d > 0 ? d + 'd ago' : h > 0 ? h + 'h ago' : 'just now';
+  // Тиждень без перевірки — це вже не «коли», а «невідомо»
+  return ' · checked ' + (d >= 7 ? '<b style="color:var(--warn)">' + when + '</b>' : when);
+}
+
+window.fbCheck = async function (id) {
+  if (fbChecking) return null;
+  const box = document.getElementById('fb-check-status');
+  const tell = (t, c) => { if (box) { box.innerHTML = t; box.style.color = c || ''; } };
+  fbChecking = true;
+  document.querySelectorAll('.fb-chk').forEach(b => { b.disabled = true; });
+  tell(id ? 'Asking Facebook about this token\u2026' : 'Asking Facebook about every token\u2026');
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const jwt = sess && sess.session && sess.session.access_token;
+    if (!jwt) throw new Error('not signed in');
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-sync', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + jwt, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify(id ? { check: true, token_id: id } : { check: true })
+    });
+    if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
+
+    /* СТАРА ФУНКЦІЯ ЦЬОГО РЕЖИМУ НЕ ЗНАЄ — і мовчки робить повний
+       прогін. Тобто натиснув «Check», а воно пішло синхронізувати
+       парк. Сказати про це треба прямо: інакше людина читає підсумок
+       синку як відповідь на своє питання. */
+    if (j.check !== true) {
+      await fbLoad();
+      tell('The deployed fb-sync is older than this page and does not know the check mode'
+        + (j.fn ? ' (it says ' + fbEsc(j.fn) + ', the page expects ' + fbEsc(FB_FN_WANT) + ')' : '')
+        + ' \u2014 it ran a full sync instead. Deploy it: '
+        + '<span class="font-mono">supabase functions deploy fb-sync</span>', 'var(--warn)');
+      return j;
+    }
+
+    await fbLoad();
+    const list = Array.isArray(j.tokens) ? j.tokens : [];
+    if (!list.length) { tell('Nothing to check.', 'var(--warn)'); return j; }
+    const bad = list.filter(t => t.status !== 'ok');
+    const tail = j.not_reached ? ' \u00b7 ' + j.not_reached + ' not reached yet, press Check again' : '';
+    tell(bad.length
+      ? '<b>' + bad.length + ' of ' + list.length + ' not working:</b> '
+        + bad.map(t => fbEsc(t.label) + ' \u2014 ' + fbEsc(t.status)
+            + (t.note ? ' (' + fbEsc(t.note) + ')' : '')).join('; ') + tail
+      : 'All ' + list.length + ' token(s) work.' + tail,
+      bad.length ? 'var(--bad)' : 'var(--ok)');
+    return j;
+  } catch (e) {
+    tell((e.code === 'missing' || /failed to fetch|networkerror|load failed/i.test(e.message || ''))
+      ? 'The fb-sync function did not answer \u2014 deploy it first: '
+        + '<span class="font-mono">supabase functions deploy fb-sync</span>'
+      : 'Could not check: ' + fbEsc(e.message), 'var(--bad)');
+    return null;
+  } finally {
+    fbChecking = false;
+    document.querySelectorAll('.fb-chk').forEach(b => { b.disabled = false; });
+  }
+};
 
 window.fbSync = async function (say, body) {
   if (fbSyncing) return null;
@@ -33561,9 +33813,13 @@ function aqCheck(plan, sets) {
   }
 
   const limit = Math.min(AQ_LIMIT_MAX, Math.max(1, Number(plan.limit) || 10));
-  return { spec: { set: set.id, where, buckets, group, group2, metric: met, metrics: more, having,
-                   sort: plan.sort === 'asc' ? 'asc' : 'desc', limit,
-                   say: String(plan.say || '').slice(0, 300) }, set };
+  const spec = { set: set.id, where, buckets, group, group2, metric: met, metrics: more, having,
+                 sort: plan.sort === 'asc' ? 'asc' : 'desc', limit,
+                 say: String(plan.say || '').slice(0, 300) };
+  /* Звірка значень — ПІСЛЯ перевірки стовпців і до підрахунку: раніше
+     ми ще не знаємо, що стовпець існує, а пізніше число вже вийшло. */
+  aqResolve(set, spec);
+  return { spec, set };
 }
 
 /* ── ПІДРАХУНОК. ТУТ І ТІЛЬКИ ТУТ ── */
@@ -33571,6 +33827,96 @@ function aqNumOf(set, col, v) {
   // У файлі Таблиць парсер свій — він вирішує по стовпчику цілком.
   if (set.num) { const x = set.num(col, v); if (x != null) return x; }
   return aqNum(v);
+}
+
+/* ── ЗНАЧЕННЯ З ПИТАННЯ → ЗНАЧЕННЯ З ФАЙЛУ ──
+
+   Модель значень не бачить — і це свідомо. Але тоді вона пише те, що
+   сказала людина: «без деклайну» → `Status ≠ decline`. А в файлі
+   стоїть «Declined». Порівняння точне, «Declined» ≠ «decline» —
+   умова правдива для КОЖНОГО рядка, і жоден деклайн не викинувся.
+   Так сума 101.63 перетворилась на 152.78, і з цим числом людина
+   пішла до команди.
+
+   Полагодити це можна було двома способами. Відправити моделі самі
+   значення — тоді вона напише «Declined» точно, але значення поїдуть
+   із браузера, а в цих стовпцях сидять назви карт, мерчанти й люди.
+   Або звірити значення ТУТ, локально, зі справжнім вмістом стовпця —
+   рівно те, що зробила б людина, яка відкрила файл очима.
+
+   Беремо друге. Нічого не виїжджає, і результат звірки видно в плані:
+   «Status не містить decline (Declined)» — його можна прочитати й
+   сказати «не те».
+
+   Правила звірки, у такому порядку:
+     • значення є в стовпці точно — нічого не чіпаємо;
+     • значення стовпця МІСТЯТЬ наше («decline» → «Declined») —
+       `=` стає «містить», `≠` стає «не містить»;
+     • наше значення містить значення стовпця (модель написала довше,
+       ніж у файлі) і таке одне — підставляємо значення з файлу;
+     • не підійшло нічого — умова МЕРТВА. Вона не відсіє жодного
+       рядка, тож мовчати про неї не можна: саме про це й була історія
+       з 152.78. */
+const AQ_FUZZ = ['eq', 'ne', 'contains', 'not_contains'];
+
+/* Кеш живе РІВНО ОДНУ відповідь, і скидає його aqResolve.
+
+   Ключувати набором не можна: id файлу Таблиць завжди 'sheet', а
+   однакова кількість рядків у двох різних файлах — звичайна річ.
+   Значення одного файлу приїхали б до другого, і звірка брехала б
+   саме там, де мусить ловити. */
+let aqValCache = new Map();
+function aqColVals(set, col) {
+  const key = col;
+  if (aqValCache.has(key)) return aqValCache.get(key);
+  const seen = new Map();                 // нижній регістр → як написано у файлі
+  const rows = set.rows;
+  for (let i = 0; i < rows.length && i < AQ_PEEK_ROWS; i++) {
+    const v = String(rows[i][col] == null ? '' : rows[i][col]).trim();
+    if (v && !seen.has(v.toLowerCase())) seen.set(v.toLowerCase(), v);
+  }
+  aqValCache.set(key, seen);
+  return seen;
+}
+
+/* Звіряємо умову з вмістом стовпця. Міняємо w НА МІСЦІ й дописуємо
+   `to` (на що звірилось) або `dead` (ні на що) — обидва потім видно
+   в плані. */
+function aqResolveOne(set, w) {
+  if (!AQ_FUZZ.includes(w.op)) return;
+  const vl = String(w.val || '').trim().toLowerCase();
+  if (!vl) return;
+  const vals = aqColVals(set, w.col);
+  if (!vals.size) return;                  // стовпець порожній — це інша розмова
+  if (vals.has(vl)) return;                // точне попадання
+
+  const keys = [...vals.keys()];
+  const sub = keys.filter(k => k.includes(vl));
+  if (sub.length) {
+    if (w.op === 'eq') w.op = 'contains';
+    else if (w.op === 'ne') w.op = 'not_contains';
+    w.to = sub.map(k => vals.get(k));
+    return;
+  }
+  /* Довше за те, що у файлі. Беремо лише значення від трьох знаків:
+     однолітерні збіглися б із будь-чим. */
+  const sup = keys.filter(k => k.length >= 3 && vl.includes(k));
+  if (sup.length === 1) {
+    w.val = vals.get(sup[0]);
+    w.to = [w.val];
+    return;
+  }
+  w.dead = true;
+}
+
+function aqResolve(set, spec) {
+  aqValCache.clear();
+  const all = [...(spec.where || [])];
+  (spec.buckets || []).forEach(b => all.push(...(b.where || [])));
+  [spec.metric, ...(spec.metrics || [])].forEach(m => all.push(...((m && m.where) || [])));
+  all.forEach(w => aqResolveOne(set, w));
+  spec.dead = all.filter(w => w.dead);
+  spec.fixed = all.filter(w => w.to && !w.dead);
 }
 
 function aqKeep(set, row, where) {
@@ -33722,9 +34068,21 @@ const AQ_MET_UA = { sum: 'сума', count: 'кількість рядків', a
 /* Умови словами. Один опис на три місця: рядок плану, підпис
    показника й назва рядка-умови, яку модель не дала сама. */
 function aqWhereWords(ws) {
-  return (ws || []).map(w =>
-    `${w.col} ${AQ_OP_UA[w.op] || w.op}${['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`
-  ).join(' і ');
+  return (ws || []).map(w => {
+    const base = `${w.col} ${AQ_OP_UA[w.op] || w.op}${
+      ['empty', 'not_empty'].includes(w.op) ? '' : ' ' + w.val}`;
+    /* На що звірилось — у самому плані. Без цього звірка була б другою
+       тихою здогадкою замість першої: «не містить decline» однаково
+       не видно, чи воно взагалі знайшло «Declined». */
+    if (w.dead) return base + ' ‹немає такого значення›';
+    if (!w.to) return base;
+    /* Збігів може бути багато («містить FACEBK» — шістдесят мерчантів).
+       Увесь список у рядку плану не читається, тож перші чотири й
+       скільки всього. */
+    const show = w.to.slice(0, 4).join(', ')
+      + (w.to.length > 4 ? ' … та ще ' + (w.to.length - 4) : '');
+    return base + ' (' + show + ')';
+  }).join(' і ');
 }
 
 function aqPlanWords(spec, set) {
@@ -33872,13 +34230,11 @@ function aqChips(set) {
    посередині («сума ___ без Decline»), і дописування в хвіст змусило б
    переставляти слова руками. У лапках — щоб назва з пробілами читалась
    як одне ціле і моделлю, і очима. */
-window.aqPut = function (btn) {
-  const set = aqSetNow();
+/* Вставка в питання — одна на всіх. Охочих двоє: чип стовпця і
+   справжнє значення зі стовпця в попередженні про мертву умову. */
+function aqInsert(txt) {
   const inp = document.getElementById('aq-q');
-  if (!set || !inp) return;
-  const c = set.cols[Number(btn.getAttribute('data-c'))];
-  if (!c) return;
-  const txt = '«' + c.name + '»';
+  if (!inp || !txt) return;
   const a = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
   const b = inp.selectionEnd == null ? a : inp.selectionEnd;
   const before = inp.value.slice(0, a), after = inp.value.slice(b);
@@ -33889,6 +34245,20 @@ window.aqPut = function (btn) {
   inp.focus();
   try { inp.setSelectionRange(pos, pos); } catch (e) { /* старий браузер */ }
   aqGrow(inp);
+}
+
+window.aqPut = function (btn) {
+  const set = aqSetNow();
+  if (!set) return;
+  const c = set.cols[Number(btn.getAttribute('data-c'))];
+  if (c) aqInsert('«' + c.name + '»');
+};
+
+/* Справжнє значення стовпця — у питання. Лапки ті самі, що й у назв
+   стовпців: модель по них і бачить, що це дослівна цитата з файлу, а
+   не слово з розмови. */
+window.aqVal = function (btn) {
+  aqInsert('«' + String(btn.getAttribute('data-v') || '') + '»');
 };
 
 window.aqCol = function (btn) {
@@ -34189,10 +34559,31 @@ window.aqAsk = async function () {
               aqEsc(spec.metric.den)} ${aqFmt(res.one.den)}</p>` : '');
   }
 
+  /* МЕРТВА УМОВА — НАД ЧИСЛОМ, А НЕ ПІД НИМ.
+
+     Умова, під яку не підпадає жодне значення стовпця, нічого не
+     відсіює — і число виходить таке, ніби її не писали. Саме так
+     «сума без деклайну» порахувалась разом із деклайном.
+
+     Число все одно показуємо: воно може бути й потрібним. Але над ним
+     стоїть червоний рядок із тим, що в тому стовпці справді лежить,
+     і поруч кнопка підставити справжнє значення в питання — щоб
+     полагодити це було швидше, ніж переписати питання руками. */
+  const warn = (spec.dead || []).map(w => {
+    const vals = [...aqColVals(set, w.col).values()].slice(0, 12);
+    return `<p class="aq-val is-bad">Умова «${aqEsc(w.col)} ${
+      aqEsc(AQ_OP_UA[w.op] || w.op)} ${aqEsc(w.val)}» не відсіяла жодного рядка —
+      такого значення в «${aqEsc(w.col)}» немає. Число нижче порахувалось БЕЗ неї.</p>`
+      + (vals.length ? `<p class="aq-meta">У «${aqEsc(w.col)}» стоїть: ${vals.map(v =>
+          `<button type="button" class="aq-v aq-v-pick" data-v="${aqEsc(v)}"
+             onclick="aqVal(this)" title="Підставити це значення в питання">${aqEsc(v)}</button>`)
+          .join(' ')}${vals.length === 12 ? ' …' : ''}</p>` : '');
+  }).join('');
+
   /* ПЛАН ОДНИМ РЯДКОМ — але він є завжди. Число без плану перевірити
      нічим; «як я зрозумів питання» своїми словами моделі лишаємо
      поруч, бо саме воно ловить неправильно зрозуміле питання. */
-  fin(body
+  fin(warn + body
     + `<p class="aq-meta"><b>${aqEsc(aqPlanWords(spec, set))}</b> · ${res.rows} з ${res.total} рядк.${
         spec.group ? ' · груп: ' + res.groups : ''}</p>`
     + (spec.say ? `<p class="aq-meta">${aqEsc(spec.say)}</p>` : '')
@@ -36084,9 +36475,27 @@ window.aqAsk = async function () {
 
      Пункт Team, навпаки, з'явився: у палітрі його не було взагалі. */
   const cmdLead = () => document.body.classList.contains('is-lead-only');
-  const cmdBase = () => cmdLead()
+  /* Пункти, прибрані адміном у Admin.html, із палітри теж зникають.
+     Набір складає док (dockRoleApply) із onclick тих кнопок, які він
+     справді видалив, — тож розійтись цим двом спискам нічим.
+
+     Читаємо його на КОЖНОМУ малюванні, а не раз: док питає базу
+     асинхронно, і палітру могли відкрити раніше, ніж приїхала
+     відповідь. Так наступне ж малювання само себе виправляє. */
+  const cmdOff = () => {
+    const fns = window.navHiddenFns;
+    return (fns && fns.size) ? fns : null;
+  };
+  const cmdAllowed = c => {
+    const off = cmdOff();
+    if (!off) return true;
+    const m = /^fn:(.+)$/.exec(c[1]);
+    return !(m && off.has(m[1]));
+  };
+  const cmdBase = () => (cmdLead()
     ? CMDS.filter(c => c[1] === 'nav:team')
-    : CMDS.filter(c => c[1] !== 'nav:team' || document.body.classList.contains('is-lead'));
+    : CMDS.filter(c => c[1] !== 'nav:team' || document.body.classList.contains('is-lead'))
+    ).filter(cmdAllowed);
 
   let cmdSel = 0, cmdShown = cmdBase();
 
