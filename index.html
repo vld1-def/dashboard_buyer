@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 27.10 21:03">
+  <meta name="build" content="build 27.10 21:21">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6179,7 +6179,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.10 21:03</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.10 21:21</div>
     </div>
   </aside>
 
@@ -22531,27 +22531,84 @@ function dcRenderWarn(unlinked) {
 
      Це про порядок у меню, а не про захист даних: що кому віддавати,
      вирішує RLS, і док на це не впливає ніяк. */
+  /* ХТО Я — З ОЧІКУВАННЯМ, А НЕ З ОДНІЄЇ СПРОБИ.
+
+     Тут стояло `if (!uid) return`, і саме на цьому все й ламалось:
+     адмін прибирав людині пункт, той лишався на екрані назавжди, і
+     причину шукали в Admin.html.
+
+     buildDock кличеться на DOMContentLoaded, а supabase-js на той
+     момент сесію ще відновлює: getUser віддає null. Другої спроби не
+     було — отже запит у team_members не йшов УЗАГАЛІ.
+
+     Гірше за саму ваду була тиша: ні слова в консолі, ні позначки на
+     екрані. Обидва рядки console.warn нижче — про це.
+
+     ЧОМУ НЕ authUser(). Вона запамʼятовує свою обіцянку, і якщо першим
+     її покликав хтось раніше за сесію, то всі наступні отримують той
+     самий null — скільки б разів не питали. Тому перша спроба через
+     неї (вона вже є і безкоштовна), а повтори — напряму. */
+  async function dockUid() {
+    const take = o => (o && o.data && o.data.user && o.data.user.id) || '';
+    if (window.myUid) return window.myUid;
+    try {
+      if (typeof window.authUser === 'function') {
+        const got = take(await window.authUser());
+        if (got) return got;
+      }
+    } catch (e) { /* нижче спробуємо напряму */ }
+    /* Вісім секунд — із запасом на холодний старт і повільну мережу.
+       Нескінченно чекати нема сенсу: якщо сесії немає, то людина не
+       ввійшла, і меню їй однаково не потрібне. */
+    for (let i = 0; i < 32; i++) {
+      await new Promise(r => setTimeout(r, 250));
+      if (window.myUid) return window.myUid;
+      try {
+        const { data } = await sb.auth.getSession();
+        const uid = data && data.session && data.session.user && data.session.user.id;
+        if (uid) return uid;
+      } catch (e) { /* ще не time */ }
+    }
+    return '';
+  }
+
+  let dockRoleBusy = false;
   async function dockRoleApply() {
     const dock = document.getElementById('app-dock');
-    if (!dock || typeof sb === 'undefined') return;
+    if (!dock || typeof sb === 'undefined' || dockRoleBusy) return;
+    dockRoleBusy = true;
     let me = null;
     try {
-      /* Той самий «хто я», що вже питали на завантаженні: обіцянка
-         віддає відповідь без ще однієї кругосвітки. */
-      const { data: u } = typeof window.authUser === 'function'
-        ? await window.authUser() : await sb.auth.getUser();
-      const uid = (u && u.user && u.user.id) || window.myUid || '';
-      if (!uid) return;
+      const uid = await dockUid();
+      if (!uid) {
+        console.warn('меню: не дочекались сесії, тож приховані адміном пункти '
+          + 'НЕ застосовані. Перезавантажте сторінку.');
+        return;
+      }
       /* Одним запитом і роль, і список: двома вони могли б розійтись у
          часі, а каталог нижче пише саме адмін. */
       const { data, error } = await sb.from('team_members')
         .select('role,dock_hidden').eq('user_id', uid).limit(1);
-      // Колонки ще немає (DOCK_MENU.sql не виконаний) — меню лишається
-      // таким, яким було. Падати через ненастроєне не варто.
-      if (error) return;
+      /* Колонки ще немає (DOCK_MENU.sql не виконаний) — меню лишається
+         таким, яким було. Падати через ненастроєне не варто, але й
+         мовчати про це не можна: саме так «я приховав, а воно є»
+         виглядає з боку людини. */
+      if (error) {
+        console.warn('меню: не прочитали team_members, тож приховані адміном '
+          + 'пункти НЕ застосовані — ' + (error.message || error.code || '')
+          + (/dock_hidden/i.test(error.message || '') ? ' (виконайте DOCK_MENU.sql)' : ''));
+        return;
+      }
       me = (data || [])[0] || null;
-    } catch (e) { return; }
-    if (!me) return;
+    } catch (e) {
+      console.warn('меню: не прочитали team_members —', e && e.message || e);
+      return;
+    } finally { dockRoleBusy = false; }
+    if (!me) {
+      console.warn('меню: вашого рядка в team_members немає, тож приховані '
+        + 'адміном пункти НЕ застосовані.');
+      return;
+    }
 
     const hide = new Set((me.dock_hidden || []).map(t => dockRename(t).toLowerCase()));
     if (hide.size) {
@@ -22586,6 +22643,17 @@ function dcRenderWarn(unlinked) {
     }
     if (me.role === 'admin') dockPublishItems();
   }
+
+  /* СЕСІЯ МОГЛА ПРИЇХАТИ ПІЗНІШЕ ЗА ДОК — тоді пробуємо ще раз.
+     dockRoleApply лише ПРИБИРАЄ кнопки, тож другий прохід безпечний:
+     прибирати вже нічого. */
+  try {
+    sb.auth.onAuthStateChange((ev) => {
+      if (ev === 'SIGNED_OUT') return;
+      if (!document.getElementById('app-dock')) return;
+      dockRoleApply();
+    });
+  } catch (e) { /* без події лишається очікування в dockUid */ }
 
   /* Каталог пунктів для Admin.html. Пише ЛИШЕ адмін: у баєра частини
      кнопок немає зовсім (admin-only), і його список обрізав би вибір

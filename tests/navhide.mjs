@@ -77,6 +77,100 @@ const asBuyer = hidden => ({
   if (errs.length) ok('сторінка без помилок (прибрані пункти)', false, errs);
 }
 
+/* ─────────── 1b. СЕСІЯ ПРИЇХАЛА ПІЗНІШЕ ЗА ДОК ───────────
+
+   Те, на чому все й ламалось, і чого попередній стенд не торкнувся: він
+   підставляв готову сесію. buildDock кличеться на DOMContentLoaded, а
+   supabase-js на той момент сесію ще відновлює — getUser віддає null.
+   Стояло `if (!uid) return`, другої спроби не було, і запит у
+   team_members не йшов УЗАГАЛІ. Пункт лишався на екрані назавжди. */
+{
+  const { browser, page, errs } = await open(PORT, { init: () => {
+    const mk = window.supabase.createClient;
+    window.supabase.createClient = (...a) => {
+      const c = mk(...a);
+      const user = { id: 'u1' };
+      let ready = false;
+      setTimeout(() => { ready = true; }, 600);
+      c.auth.getUser = async () => ({ data: { user: ready ? user : null } });
+      c.auth.getSession = async () => ({ data: { session: ready ? { user } : null } });
+      const real = c.from;
+      c.from = t => {
+        if (t !== 'team_members') return real(t);
+        window.__asked = (window.__asked || 0) + 1;
+        const res = { data: [{ role: 'buyer', dock_hidden: ['DB Logs'] }], error: null };
+        const o = new Proxy(function () {}, {
+          get: (x, k) => k === 'then' ? (f => Promise.resolve(res).then(f)) : (() => o),
+          apply: () => o });
+        return o;
+      };
+      return c;
+    };
+  }});
+  await page.waitForTimeout(2200);
+  const late = await page.evaluate(() => ({
+    db: !!document.querySelector('#app-dock [onclick*="openDbLogsModal"]'),
+    asked: window.__asked || 0,
+    fns: [...(window.navHiddenFns || [])]
+  }));
+  ok('сесія приїхала пізніше — запит усе одно пішов', late.asked >= 1, late);
+  ok('і пункт прибрано', !late.db, late);
+  ok('палітра теж його не знає', late.fns.includes('openDbLogsModal'), late.fns);
+  await browser.close();
+  if (errs.length) ok('сторінка без помилок (пізня сесія)', false, errs);
+}
+
+/* ─────────── 1c. НЕ ВИЙШЛО — КАЖЕМО ВГОЛОС ───────────
+
+   Мовчазна відмова тут і коштувала нам раунду: людина бачить пункт,
+   який прибрала, і шукає причину в Admin.html. */
+/* console.warn перехоплюємо В СТОРІНЦІ, а не через page.on: open()
+   повертається вже після завантаження, і попередження, сказані по
+   дорозі, слухач би не почув. */
+const warnsFor = async init => {
+  const { browser, page } = await open(PORT, { init: new Function('f', `return () => {
+    window.__warns = [];
+    const w = console.warn;
+    console.warn = (...a) => { window.__warns.push(a.join(' ')); w.apply(console, a); };
+    (${init.toString()})();
+  }`)(init) });
+  await page.waitForTimeout(1400);
+  const said = (await page.evaluate(() => window.__warns || [])).join(' | ');
+  await browser.close();
+  return said;
+};
+
+ok('немає рядка в team_members — сказано, що пункти НЕ застосовані',
+  /рядка в team_members немає/.test(await warnsFor(() => {
+    const mk = window.supabase.createClient;
+    window.supabase.createClient = (...a) => {
+      const c = mk(...a);
+      c.auth.getUser = async () => ({ data: { user: { id: 'u1' } } });
+      c.auth.getSession = async () => ({ data: { session: { user: { id: 'u1' } } } });
+      return c;                       // from() віддає порожнє — рядка немає
+    };
+  })));
+
+ok('колонки dock_hidden немає — сказано, який файл виконати',
+  /DOCK_MENU\.sql/.test(await warnsFor(() => {
+    const mk = window.supabase.createClient;
+    window.supabase.createClient = (...a) => {
+      const c = mk(...a);
+      c.auth.getUser = async () => ({ data: { user: { id: 'u1' } } });
+      c.auth.getSession = async () => ({ data: { session: { user: { id: 'u1' } } } });
+      const real = c.from;
+      c.from = t => {
+        if (t !== 'team_members') return real(t);
+        const res = { data: null, error: { message: 'column team_members.dock_hidden does not exist' } };
+        const o = new Proxy(function () {}, {
+          get: (x, k) => k === 'then' ? (f => Promise.resolve(res).then(f)) : (() => o),
+          apply: () => o });
+        return o;
+      };
+      return c;
+    };
+  })));
+
 /* ─────────── 2. пункт із-під «Ще» не забирає сусідів ─────────── */
 {
   const { browser, page, errs } = await open(PORT, {
