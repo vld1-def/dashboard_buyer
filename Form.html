@@ -226,6 +226,13 @@ select {
 .rec-list:hover { background-color: rgba(59,130,246,.15) !important; }
 .rec-list:focus { background-color: rgba(59,130,246,.25) !important; outline: 1px solid #3b82f6; }
 .rec-list.saved { animation: recFlash .8s ease; }
+/* Офер не того гео. Значення не чіпаємо — лише кажемо вголос: виплати
+   для цього гео немає, отже виручка рядка порахується нулем. */
+.rec-neq {
+  font-size: 8.5px; font-weight: 900; padding: 1px 5px; border-radius: 5px;
+  background: rgba(244,63,94,.14); color: #fb7185; border: 1px solid rgba(244,63,94,.28);
+  margin-left: 4px; white-space: nowrap; cursor: help; flex-shrink: 0;
+}
 /* Мітка таймзони біля акаунта */
 /* Чекбокси вибору рядків у «Базі» */
 .ag-chk { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; padding: 0 !important;
@@ -5393,8 +5400,17 @@ let recRows = [];                       // сирі рядки з бази
 let recSort = { key: 'date', dir: -1 }; // -1 = новіші зверху
 let recInited = false;
 
-function recInit() {
-  if (!recInited) { recInited = true; recLoad(); }
+async function recInit() {
+  if (recInited) return;
+  recInited = true;
+  /* Список гео й фільтр оферів живуть у payouts. Вкладку відкривають із
+     дашборда одразу після load, а onload цієї сторінки доходить до
+     loadAvailableOffers пізніше — без цього довантаження гео вперше
+     показалось би порожнім списком. */
+  if (!(globalOffersCache || []).length) {
+    try { await loadAvailableOffers(); } catch (e) { console.warn('payouts:', e); }
+  }
+  recLoad();
 }
 
 async function recLoad() {
@@ -5677,6 +5693,165 @@ function recFunnelOptions(rowGeo) {
                     || a.v.localeCompare(b.v, 'uk'));
 }
 
+/* ГЕО — СПИСОК, А НЕ ВІЛЬНИЙ РЯДОК.
+
+   Тут стояла звичайна клітинка, у яку друкують. Цього виявилось
+   достатньо, щоб у рядку опинилось гео KG і офер від UZ: офери в
+   сусідній клітинці показувались ВСІ, без огляду на гео, і помилку не
+   тримало ніщо. Тепер гео вибирають зі списку, а список оферів
+   залежить від вибраного гео.
+
+   Звідки список: гео, на які в payouts є виплата, плюс гео, що вже
+   стоять у рядках. Друге джерело обов'язкове — інакше рядок із гео,
+   на яке виплату ще не завели, показав би «—», і його гео тихо
+   зникло б при наступному збереженні.
+
+   «+ new» лишається навмисно: довідник виплат наповнює людина, і нове
+   гео заводять саме того дня, коли на нього починають лити. Але це
+   окремий видимий крок, а не побічний ефект друку в клітинці. */
+const recUp = v => String(v ?? '').trim().toUpperCase();
+const REC_GEO_NEW = '__NEW_GEO__';
+
+function recGeoValues() {
+  const pay = (globalOffersCache || []).map(o => recUp(o.geo));
+  const rows = recRows.map(r => recUp(r.geo));
+  return [...new Set([...pay, ...rows].filter(Boolean))].sort();
+}
+
+function recGeoCell(r) {
+  const cur = recUp(r.geo);
+  const all = recGeoValues();
+  // Гео рядка завжди в списку — навіть якщо виплати на нього немає
+  const list = (!cur || all.includes(cur)) ? all : [cur, ...all];
+  return `<td class="p-1"><select class="rec-select rec-geo" data-id="${r.id}" data-col="geo"
+      data-orig="${cur}" title="GEO of this row — the offer list follows it">
+    <option value=""${cur ? '' : ' selected'}>—</option>
+    ${list.map(g => `<option value="${g}"${g === cur ? ' selected' : ''}>${g}</option>`).join('')}
+    <option value="${REC_GEO_NEW}">+ new…</option>
+  </select></td>`;
+}
+
+/* ОФЕР → ГЕО.
+
+   Фільтруємо ТІЛЬКИ за довідником payouts: саме там написано, за яке
+   гео цей офер платить. Гео з самих рядків у фільтр не беремо
+   свідомо — рядок із помилкою (гео KG, офер UZ) інакше навчив би
+   список, що цей офер «буває» і в KG, і та сама помилка проходила б
+   далі безперешкодно.
+
+   Самі рядки потрібні для іншого: офер, який приїхав із Keitaro і
+   виплати ще не має, у списку все одно мусить бути — інакше він зник
+   би з клітинки, щойно ту перемалюють.
+
+   Кеш по (таблиця, рядків, оферів у довіднику) — тією самою міркою,
+   що й recFunnelGeos. */
+let recOffGeoCache = { table: '', n: -1, pay: -1, map: null };
+function recOfferGeos() {
+  const c = recOffGeoCache;
+  if (c.map && c.table === recCurrentTable && c.n === recRows.length
+      && c.pay === (globalOffersCache || []).length) return c.map;
+  const map = new Map();                 // ОФЕР капсом → { v, geos:Set(гео виплат), pay }
+  const add = (name, geo, pay) => {
+    const v = String(name ?? '').trim();
+    if (!v) return;
+    const k = v.toUpperCase();
+    if (!map.has(k)) map.set(k, { v, geos: new Set(), pay: false });
+    const e = map.get(k);
+    if (pay) { e.pay = true; if (recUp(geo)) e.geos.add(recUp(geo)); }
+  };
+  (globalOffersCache || []).forEach(o => add(o.offer, o.geo, true));
+  recRows.forEach(r => add(r.offer, '', false));
+  recOffGeoCache = { table: recCurrentTable, n: recRows.length,
+                     pay: (globalOffersCache || []).length, map };
+  return map;
+}
+
+/* Чому саме цей рядок рахується нулем — текстом, а не на здогад.
+   Порожнє гео не чіпаємо: поки гео не вибране, судити офер нема за чим. */
+function recOfferWhy(r) {
+  const g = recUp(r.geo), cur = String(r.offer ?? '').trim();
+  if (!g || !cur) return '';
+  const e = recOfferGeos().get(cur.toUpperCase());
+  if (!e) return '';
+  if (!e.geos.size) return cur + ' has no payout at all — revenue of this row counts as zero.'
+    + ' Add it in Settings → Payouts';
+  if (e.geos.has(g)) return '';
+  return cur + ' has a payout for ' + [...e.geos].sort().join(', ') + ', not for ' + g
+    + ' — revenue of this row counts as zero';
+}
+
+function recOfferBadge(r) {
+  const why = recOfferWhy(r);
+  return why ? `<span class="rec-neq" title="${String(why).replace(/"/g, '&quot;')}">≠</span>` : '';
+}
+
+function recOfferCell(r) {
+  const at = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const g = recUp(r.geo);
+  const cur = String(r.offer ?? '').trim(), curK = cur.toUpperCase();
+  const mine = [], other = [];
+  [...recOfferGeos().values()].forEach(o => {
+    const geos = [...o.geos].sort();
+    (g && geos.includes(g) ? mine : other).push({ v: o.v, geos });
+  });
+  const byName = (a, b) => a.v.localeCompare(b.v, 'uk');
+  // Решта — згрупована за своїм гео, а без виплати взагалі — у самому кінці
+  const byGeo = (a, b) => (a.geos[0] || 'zzzz').localeCompare(b.geos[0] || 'zzzz') || byName(a, b);
+  mine.sort(byName); other.sort(byGeo);
+  const hint = o => o.geos.length ? o.geos.join(', ') : 'no payout';
+  const opt = (o, withHint) => `<option value="${at(o.v)}"${o.v.toUpperCase() === curK ? ' selected' : ''}`
+    + `>${tx(o.v)}${withHint ? ' · ' + tx(hint(o)) : ''}</option>`;
+
+  const groups = [];
+  // Офер, якого немає в довіднику, лишається в списку — значення не губимо
+  if (cur && ![...mine, ...other].some(o => o.v.toUpperCase() === curK))
+    groups.push(['in this row', [{ v: cur, geos: [] }], true, '']);
+  if (!g) {
+    // Без гео фільтрувати нема за чим — кажемо це, а не показуємо порожньо
+    groups.push(['pick GEO first — the list follows it', [...mine, ...other].sort(byGeo), true, '']);
+  } else {
+    groups.push([g, mine, false, 'no offer has a payout for ' + g + ' — add one in Settings → Payouts']);
+    groups.push(['other geos', other, true, 'nothing else in the directory']);
+  }
+
+  return `<td class="p-1 rec-offer-td"><div class="flex items-center">
+    <select class="rec-select flex-1" data-id="${r.id}" data-col="offer" data-orig="${at(cur)}">
+      <option value=""${cur ? '' : ' selected'}>—</option>
+      ${groups.map(([lab, list, withHint, empty]) => `<optgroup label="${at(lab)}">`
+        + (list.length ? list.map(o => opt(o, withHint)).join('')
+                       : `<option disabled>${tx(empty)}</option>`)
+        + `</optgroup>`).join('')}
+    </select><span class="rec-neq-box">${recOfferBadge(r)}</span>
+  </div></td>`;
+}
+
+/* Гео рядка змінилось — мапи, що залежать від гео, більше не дійсні.
+   Їхній ключ — кількість рядків, а вона від правки гео не змінюється,
+   тож самі вони несвіжість не помітять. */
+function recGeoChanged() { recFunGeoCache.map = null; recOffGeoCache.map = null; }
+
+// Клітинка оффера залежить від гео свого рядка — перемальовуємо її одну,
+// щоб не збивати фокус і підсвітку збереження в решті таблиці.
+function recOfferRepaint(id) {
+  const tr = document.querySelector(`#rec-tbody tr[data-id="${id}"]`);
+  const row = recRows.find(r => String(r.id) === String(id));
+  if (!tr || !row) return;
+  const fun = tr.querySelector('.rec-list[data-col="funnel"]');
+  if (fun) fun.dataset.geo = String(row.geo ?? '');
+  const td = tr.querySelector('td.rec-offer-td');
+  if (td) td.outerHTML = recOfferCell(row);
+}
+
+// Мітка «не те гео» після зміни оффера — без перемальовування самого списку,
+// інакше зникла б підсвітка збереження на ньому ж.
+function recOfferBadgeRepaint(id) {
+  const tr = document.querySelector(`#rec-tbody tr[data-id="${id}"]`);
+  const row = recRows.find(r => String(r.id) === String(id));
+  const box = tr && tr.querySelector('.rec-neq-box');
+  if (box && row) box.innerHTML = recOfferBadge(row);
+}
+
 // Мітка таймзони поряд з акаунтом — видно, за яким днем рахується рядок
 function recTzBadge(acc) {
   const tz = (mappingDB.timezones || {})[String(acc || '').trim()];
@@ -5718,6 +5893,13 @@ function recRender() {
         if (c.type === 'money') v = (v == null || v === '') ? '' : '$' + (parseFloat(v) || 0).toFixed(2);
         else if (v == null) v = '';
         const align = (c.type === 'money' || c.type === 'int') ? 'text-right' : '';
+
+        /* Гео й офер — пара: список оферів фільтрується за гео цього
+           ж рядка, тож обидві клітинки малює своя функція. Вони стоять
+           ДО загальної гілки c.list, бо офер її теж має в схемі (вона
+           ще потрібна масовій правці). */
+        if (c.key === 'geo')   return recGeoCell(r);
+        if (c.key === 'offer') return recOfferCell(r);
 
         /* Воронка — окремо від оффера й агента: список довгий, і саме
            в ньому потрібен пошук. Значення можна й вписати: воронку,
@@ -5819,6 +6001,16 @@ function recBulkColChanged() {
   const key = document.getElementById('rec-bulk-col')?.value;
   const col = REC_SCHEMA[recCurrentTable].find(c => c.key === key);
   if (!wrap || !col) return;
+  /* Гео масово — теж зі списку. Вписати «KG» руками у двісті рядків і
+     розійтись з оферами так само легко, як і в одній клітинці. */
+  if (col.key === 'geo') {
+    wrap.innerHTML = `<input id="rec-bulk-value" list="rec-bulk-dl" placeholder="pick a geo or type it"
+        class="!w-36 !py-1.5 !text-[11px] !font-bold">
+      <datalist id="rec-bulk-dl">
+        ${recGeoValues().map(g => `<option value="${g}"></option>`).join('')}
+      </datalist>`;
+    return;
+  }
   if (col.list) {
     // datalist, а не select: підказує відомі значення, але дозволяє вписати нове —
     // інакше воронку, якої ще немає в списку, масово не проставиш
@@ -5827,9 +6019,15 @@ function recBulkColChanged() {
     /* Для воронки — той самий порядок і ті самі підписи гео, що й у
        клітинці. Рядка тут немає, тож «гео цього рядка» теж немає:
        лишається групування за власним гео воронки. */
+    /* Для оффера підпис — гео його виплати: рядка тут немає, тож
+       фільтрувати нема за чим, але видно, за яке гео платить кожен. */
     const opts = col.key === 'funnel'
       ? recFunnelOptions('')
-      : recListValues(col.list, col.key).map(v => ({ v, hint: '' }));
+      : col.key === 'offer'
+        ? [...recOfferGeos().values()]
+            .map(o => ({ v: o.v, hint: [...o.geos].sort().join(', ') || 'no payout' }))
+            .sort((a, b) => a.hint.localeCompare(b.hint) || a.v.localeCompare(b.v, 'uk'))
+        : recListValues(col.list, col.key).map(v => ({ v, hint: '' }));
     wrap.innerHTML = `<input id="rec-bulk-value" list="rec-bulk-dl" placeholder="pick one or type it"
         class="!w-44 !py-1.5 !text-[11px] !font-bold">
       <datalist id="rec-bulk-dl">
@@ -5930,6 +6128,23 @@ document.addEventListener('change', async (e) => {
   if (!sel) return;
   const { id, col } = sel.dataset;
   const value = String(sel.value ?? '').trim();
+
+  /* «+ new» — не значення, а запит на гео, якого ще немає ні у
+     виплатах, ні в рядках. Питаємо, зберігаємо й перемальовуємо всю
+     таблицю: нове гео має стати в списку кожного рядка, а не лишитись
+     в одній клітинці. */
+  if (col === 'geo' && value === REC_GEO_NEW) {
+    const prev = String(sel.dataset.orig ?? '');
+    const v = recUp(prompt('New GEO code:', prev) || '');
+    if (!v || v === prev) { recRender(); return; }
+    const { error } = await sb.from(recCurrentTable).update({ geo: v }).eq('id', id);
+    if (error) { alert('Could not save: ' + error.message); recRender(); return; }
+    const row = recRows.find(r => String(r.id) === String(id));
+    if (row) row.geo = v;
+    recGeoChanged();
+    recRender();
+    return;
+  }
   // Для клітинки з пошуком change прилітає й тоді, коли значення
   // зрештою те саме (набрав і повернув назад) — писати нема чого.
   if (sel.dataset.orig !== undefined && String(sel.dataset.orig) === value) return;
@@ -5940,6 +6155,10 @@ document.addEventListener('change', async (e) => {
   if (sel.dataset.orig !== undefined) sel.dataset.orig = value;
   sel.classList.add('saved');
   setTimeout(() => sel.classList.remove('saved'), 800);
+  // Гео змінилось — у цього рядка інший список оферів; офер змінився —
+  // інша мітка. Решту таблиці не чіпаємо.
+  if (col === 'geo') { recGeoChanged(); recOfferRepaint(id); }
+  if (col === 'offer') recOfferBadgeRepaint(id);
   recRefreshTotals();
 });
 
@@ -6023,6 +6242,15 @@ async function recAddRow() {
     base[col] = cols.find(c => c.key === col)?.upper ? orig.toUpperCase() : orig;
     applied.push(`${cols.find(c => c.key === col)?.label || col}: ${base[col]}`);
   });
+
+  /* Офер підставляється сам, коли для цього гео він один — те саме
+     правило, що й у прев'ю імпорту. Два однаково можливі офери — це
+     вибір, і зробити його за людину означало б тихо приписати виручку
+     не тому оферу. */
+  if (recCurrentTable === 'daily_stats' && base.geo) {
+    const one = [...recOfferGeos().values()].filter(o => o.geos.has(recUp(base.geo)));
+    if (one.length === 1) { base.offer = one[0].v; applied.push(`Offer: ${one[0].v}`); }
+  }
 
   const { data, error } = await sb.from(recCurrentTable).insert([base]).select();
   if (error) { alert('Could not add the record: ' + error.message); return; }
