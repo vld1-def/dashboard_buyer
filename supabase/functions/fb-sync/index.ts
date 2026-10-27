@@ -86,6 +86,10 @@ const HISTORY_DAYS = 30;
 // Edge Function не працює вічно. Упершись у дедлайн, чесно віддаємо
 // «є ще» замість того, щоб обірватись, нічого не записавши.
 const DEADLINE_MS = 110_000;
+/* Права, без яких токен не зробить нічого потрібного. Той самий список,
+   що й на сторінці (build/fbtok.js): інакше один токен називався б
+   придатним у браузері й непридатним тут. */
+const FB_NEED = ['ads_read'];
 
 type Json = Record<string, any>;
 
@@ -161,7 +165,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-10-06.2';
+const FN_VERSION = '2026-10-27.1';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1840,11 +1844,13 @@ async function handle(req: Request): Promise<Response> {
   }
 
   let wantTest = false;
+  let wantCheck = false;
   let onDemand = false;
   let askOwner = '';
   try {
     const body = await req.json();
     onlyToken = Number(body?.token_id || 0) || 0;
+    wantCheck = body?.check === true;
     /* Номери кабінетів — лише цифри. Чистимо тут, а не нижче: у запит
        вони підуть як частина фільтра, і що завгодно інше там зайве. */
     onlyAccounts = new Set((Array.isArray(body?.accounts) ? body.accounts : [])
@@ -1949,6 +1955,100 @@ async function handle(req: Request): Promise<Response> {
 
   if (!tokens.length) return reply({ cron, tokens: 0, accounts: 0, changed: 0,
     note: 'no tokens to sync' });
+
+  /* ═══ ЧИ ЖИВИЙ ТОКЕН — І БІЛЬШЕ НІЧОГО ═══
+
+     Стан токена писав лише повний прогін: щоб дізнатись, що токен
+     мертвий, треба було синхронізувати всі його кабінети. А прогін має
+     свій дедлайн і ламається на ліміті Facebook, тож хвіст списку
+     лишався з тим станом, який йому виставили тижні тому — у списку
+     стояли зелені кружечки на кабінетах, яких давно немає.
+
+     Перевірка коштує два запити на токен (debug_token і список
+     кабінетів) і НЕ пише нічого, крім діагностики самого токена: ні
+     знімків, ні історії, ні рядків кабінетів.
+
+     Класифікація та сама, що й при додаванні токена на сторінці:
+     інакше один токен називався б по-різному залежно від того, звідки
+     на нього подивитись.
+
+     СПОВІЩЕНЬ ЗВІДСИ НЕ СЛАЄМО. markToken умів би, але людина саме
+     зараз дивиться на цей список — надсилати їй у Telegram те, що вона
+     читає з екрана, означає привчити вимикати бота. Зміни стану
+     розсилає прогін, і це його робота.
+
+     З розкладу цього входу немає: питання «чи живий» має адресата лише
+     тоді, коли його хтось поставив. */
+  if (wantCheck) {
+    if (cron) return reply({ error: 'the check is for a person, not for the schedule' }, 400);
+    const checked: Json[] = [];
+    const until = Date.now() + DEADLINE_MS;
+    for (const t of tokens) {
+      if (Date.now() > until) break;
+      let status = 'error', note = '', scopes: string[] = [];
+      let expires: string | null = null;
+      let accs: Json[] = [];
+      try {
+        const dbg = await graph('/debug_token', t.token, { input_token: t.token });
+        const d = (dbg && dbg.data) || {};
+        scopes = Array.isArray(d.scopes) ? d.scopes : [];
+        expires = d.expires_at ? new Date(d.expires_at * 1000).toISOString() : null;
+        /* Кабінети питаємо навіть у токена без потрібних прав: «права є,
+           а кабінетів не видно» і «прав немає» — різні біди з різними
+           ліками, і відрізнити їх можна лише спитавши. */
+        try {
+          const a = await graph('/me/adaccounts', t.token,
+            { fields: 'id,name,account_status', limit: 200 });
+          accs = (Array.isArray(a.data) ? a.data : []).map((x: Json) => ({
+            id: x.id, name: x.name || '',
+            status: x.account_status === 1 ? 'active' : 'inactive'
+          }));
+        } catch (_e) { /* не видно нічого — це теж діагноз, нижче */ }
+        const missing = FB_NEED.filter(s => !scopes.includes(s));
+        status = !d.is_valid ? 'error'
+          : (expires && Date.parse(expires) < Date.now()) ? 'expired'
+          : missing.length ? 'no-scopes'
+          : !accs.length ? 'no-accounts'
+          : 'ok';
+        note = status === 'error' ? 'Facebook says this token is not valid'
+          : status === 'expired' ? 'Expired'
+          : status === 'no-scopes' ? 'Missing permissions: ' + missing.join(', ')
+          : status === 'no-accounts'
+            ? 'Permissions are fine, but no ad account is visible — check Add Assets on the system user'
+            : 'Sees ' + accs.length + ' ad account(s)';
+      } catch (e) {
+        const g = e as GraphError;
+        /* 190 — відкликаний або протухлий токен. Решта кодів це вже не
+           про токен, а про запит, і називати їх «expired» означало б
+           відправити людину перевипускати робочий токен. */
+        status = g.code === 190 ? 'expired' : 'error';
+        note = g.message || 'Facebook did not answer';
+      }
+      await markToken(base, hdr, t, status, note);
+      /* Решту діагностики пише саме перевірка: markToken тримає лише
+         стан, а права, строк і кабінети стоять поруч із ним на екрані й
+         мусять бути з того самого погляду. */
+      try {
+        await fetch(base + '/rest/v1/fb_tokens?id=eq.' + t.id, {
+          method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
+          body: JSON.stringify({ scopes, expires_at: expires, accounts: accs })
+        });
+      } catch (_e) { /* стан уже записаний — відповідь однаково чесна */ }
+      checked.push({ id: t.id, label: t.label, status, note,
+                     accounts: accs.length, expires_at: expires });
+    }
+    const left = tokens.length - checked.length;
+    return reply({ fn: FN_VERSION, check: true, tokens: checked,
+      /* Не дійшли — кажемо скільки. Мовчазний хвіст тут був би тією
+         самою бідою, від якої ця перевірка й зʼявилась. Порядок у
+         списку — «найдавніше перевірений перший», тож наступне
+         натискання добере решту. */
+      not_reached: left > 0 ? left : 0,
+      note: left > 0
+        ? 'Checked ' + checked.length + ' of ' + tokens.length
+          + ' — ran out of time. Press Check again for the rest: the ones waiting longest go first.'
+        : 'Checked ' + checked.length + ' token(s)' });
+  }
 
   const deadline = Date.now() + DEADLINE_MS;
   const alerts: Alert[] = [];
