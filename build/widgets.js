@@ -1882,9 +1882,27 @@
 
      Пункт Team, навпаки, з'явився: у палітрі його не було взагалі. */
   const cmdLead = () => document.body.classList.contains('is-lead-only');
-  const cmdBase = () => cmdLead()
+  /* Пункти, прибрані адміном у Admin.html, із палітри теж зникають.
+     Набір складає док (dockRoleApply) із onclick тих кнопок, які він
+     справді видалив, — тож розійтись цим двом спискам нічим.
+
+     Читаємо його на КОЖНОМУ малюванні, а не раз: док питає базу
+     асинхронно, і палітру могли відкрити раніше, ніж приїхала
+     відповідь. Так наступне ж малювання само себе виправляє. */
+  const cmdOff = () => {
+    const fns = window.navHiddenFns;
+    return (fns && fns.size) ? fns : null;
+  };
+  const cmdAllowed = c => {
+    const off = cmdOff();
+    if (!off) return true;
+    const m = /^fn:(.+)$/.exec(c[1]);
+    return !(m && off.has(m[1]));
+  };
+  const cmdBase = () => (cmdLead()
     ? CMDS.filter(c => c[1] === 'nav:team')
-    : CMDS.filter(c => c[1] !== 'nav:team' || document.body.classList.contains('is-lead'));
+    : CMDS.filter(c => c[1] !== 'nav:team' || document.body.classList.contains('is-lead'))
+    ).filter(cmdAllowed);
 
   let cmdSel = 0, cmdShown = cmdBase();
 
