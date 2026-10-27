@@ -7,8 +7,9 @@
    Стенд тримає рівно те, що цьому заважає:
      • гео — випадайка з відомих гео (виплати + те, що вже в рядках),
        і гео рядка нікуди не зникає, навіть якщо виплати на нього немає;
-     • офери свого гео стоять окремою групою першими, решта — нижче й
-       з підписом свого гео, тож чужий вибір видно, а не вгадують;
+     • у списку ТІЛЬКИ офери свого гео — чужих там немає взагалі;
+     • офер, що вже стоїть у рядку, зі списку не зникає, навіть якщо
+       він чужого гео: інакше значення тихо замінилось би на «—»;
      • гео без жодної виплати не дає порожнього списку, а називає причину;
      • офер не того гео позначений — разом із тим, чого це коштує;
      • змінив гео — список оферів цього рядка перемалювався відразу;
@@ -79,13 +80,13 @@ ok('гео, на яке виплати немає, зі списку не зни
 
 /* ─────────── офер: фільтр за гео ─────────── */
 const o1 = await cell(1, 'offer');
-ok('офери свого гео — перша група', o1.grp[0].lab === 'KG'
-  && JSON.stringify(o1.grp[0].opts) === JSON.stringify(['Melbet']), o1.grp[0]);
-ok('решта — нижче й з підписом свого гео',
-  o1.grp[1].lab === 'other geos'
-  && o1.grp[1].opts.includes('Boostwin · UZ') && o1.grp[1].opts.includes('1xBet · PL'), o1.grp[1]);
-ok('офер із рядка, якого немає у виплатах, у списку лишається',
-  o1.grp[1].opts.includes('Keitaro1 · no payout'), o1.grp[1].opts);
+ok('у списку тільки офери свого гео, інших гео в ньому немає',
+  o1.grp.some(g => g.lab === 'KG' && JSON.stringify(g.opts) === JSON.stringify(['Melbet']))
+  && !o1.grp.some(g => g.lab === 'other geos')
+  && !o1.all.includes('1xBet') && !o1.all.includes('Mostbet'), o1.grp);
+ok('офер, що вже стоїть у рядку, лишається — своєю групою й зі своїм гео',
+  o1.grp[0].lab === 'in this row'
+  && JSON.stringify(o1.grp[0].opts) === JSON.stringify(['Boostwin · UZ']), o1.grp[0]);
 ok('вибраний офер — той, що в рядку, навіть коли він чужого гео',
   o1.val === 'Boostwin', o1.val);
 ok('і це видно міткою, з ціною помилки',
@@ -93,19 +94,24 @@ ok('і це видно міткою, з ціною помилки',
 
 const o2 = await cell(2, 'offer');
 ok('свій офер свого гео мітки не має', o2.neq === '' && o2.val === 'Mostbet', o2);
-ok('у групі гео стоять усі офери цього гео',
-  JSON.stringify(o2.grp[0].opts) === JSON.stringify(['Boostwin', 'Mostbet']), o2.grp[0]);
+ok('свій офер зайвої групи не створює — лишається тільки гео',
+  o2.grp.length === 1 && o2.grp[0].lab === 'UZ'
+  && JSON.stringify(o2.grp[0].opts) === JSON.stringify(['Boostwin', 'Mostbet']), o2.grp);
 
 const o3 = await cell(3, 'offer');
+const tj = o3.grp.find(g => g.lab === 'TJ');
 ok('гео без жодної виплати не дає порожнього списку, а називає причину',
-  o3.grp[0].lab === 'TJ' && o3.grp[0].off === 1
-  && /no offer has a payout for TJ/.test(o3.grp[0].opts[0]), o3.grp[0]);
+  tj && tj.off === 1 && /no offer has a payout for TJ/.test(tj.opts[0]), o3.grp);
+ok('офер із Keitaro, якого у виплатах немає, у списку лишається',
+  o3.grp[0].lab === 'in this row'
+  && JSON.stringify(o3.grp[0].opts) === JSON.stringify(['Keitaro1 · no payout']), o3.grp[0]);
 ok('офер без виплати позначений, і сказано, що це нуль виручки',
   /no payout at all/.test(o3.neq) && /counts as zero/.test(o3.neq), o3.neq);
 
 const o4 = await cell(4, 'offer');
-ok('без гео фільтрувати нема за чим — список про це й каже',
-  /pick GEO first/.test(o4.grp[0].lab), o4.grp.map(g => g.lab));
+ok('без гео фільтрувати нема за чим — список про це й каже, а не показує все',
+  /pick GEO first/.test(o4.grp[0].lab) && o4.grp[0].off === 1
+  && JSON.stringify(o4.all) === JSON.stringify(['', '']), o4);
 ok('порожнє гео мітку не ставить: судити офер ще нема за чим', o4.neq === '', o4.neq);
 
 /* ─────────── змінив гео — інший список оферів ─────────── */
@@ -116,8 +122,9 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(150);
 const after = await cell(1, 'offer');
-ok('гео змінилось — група оферів цього рядка стала іншою',
-  after.grp[0].lab === 'UZ' && after.grp[0].opts.includes('Boostwin'), after.grp[0]);
+ok('гео змінилось — список оферів цього рядка став іншим',
+  after.grp.length === 1 && after.grp[0].lab === 'UZ'
+  && JSON.stringify(after.grp[0].opts) === JSON.stringify(['Boostwin', 'Mostbet']), after.grp);
 ok('мітка зникла сама: офер і гео тепер збігаються', after.neq === '', after.neq);
 ok('воронка теж бачить нове гео рядка', await page.evaluate(() =>
   document.querySelector('#rec-tbody tr[data-id="1"] .rec-list[data-col="funnel"]').dataset.geo === 'UZ'));

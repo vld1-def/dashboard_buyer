@@ -5785,42 +5785,46 @@ function recOfferBadge(r) {
   return why ? `<span class="rec-neq" title="${String(why).replace(/"/g, '&quot;')}">≠</span>` : '';
 }
 
+/* У списку — ТІЛЬКИ офери свого гео.
+
+   Спершу офери чужих гео стояли окремою групою нижче, з підписом свого
+   гео. Але це все одно вибір, який можна зробити помилково, і сам
+   довгий список щоразу треба прогортати. Чужих гео в списку немає.
+
+   Єдиний виняток — офер, який УЖЕ стоїть у рядку. Він лишається
+   окремою групою «in this row»: прибрати його зі списку означало б
+   тихо замінити значення на «—» при першому ж перемалюванні. Він
+   підписаний своїм гео й позначений міткою ≠ — видно і те, що він
+   чужий, і чого це коштує. */
 function recOfferCell(r) {
   const at = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const g = recUp(r.geo);
   const cur = String(r.offer ?? '').trim(), curK = cur.toUpperCase();
-  const mine = [], other = [];
-  [...recOfferGeos().values()].forEach(o => {
-    const geos = [...o.geos].sort();
-    (g && geos.includes(g) ? mine : other).push({ v: o.v, geos });
-  });
-  const byName = (a, b) => a.v.localeCompare(b.v, 'uk');
-  // Решта — згрупована за своїм гео, а без виплати взагалі — у самому кінці
-  const byGeo = (a, b) => (a.geos[0] || 'zzzz').localeCompare(b.geos[0] || 'zzzz') || byName(a, b);
-  mine.sort(byName); other.sort(byGeo);
-  const hint = o => o.geos.length ? o.geos.join(', ') : 'no payout';
+  const all = [...recOfferGeos().values()].map(o => ({ v: o.v, geos: [...o.geos].sort() }));
+  const mine = all.filter(o => g && o.geos.includes(g)).sort((a, b) => a.v.localeCompare(b.v, 'uk'));
+  const hint = o => o.geos.join(', ') || 'no payout';
   const opt = (o, withHint) => `<option value="${at(o.v)}"${o.v.toUpperCase() === curK ? ' selected' : ''}`
     + `>${tx(o.v)}${withHint ? ' · ' + tx(hint(o)) : ''}</option>`;
 
   const groups = [];
-  // Офер, якого немає в довіднику, лишається в списку — значення не губимо
-  if (cur && ![...mine, ...other].some(o => o.v.toUpperCase() === curK))
-    groups.push(['in this row', [{ v: cur, geos: [] }], true, '']);
-  if (!g) {
-    // Без гео фільтрувати нема за чим — кажемо це, а не показуємо порожньо
-    groups.push(['pick GEO first — the list follows it', [...mine, ...other].sort(byGeo), true, '']);
-  } else {
-    groups.push([g, mine, false, 'no offer has a payout for ' + g + ' — add one in Settings → Payouts']);
-    groups.push(['other geos', other, true, 'nothing else in the directory']);
+  /* Офер рядка, якого немає серед оферів цього гео. Сюди ж потрапляє й
+     той, якого немає у виплатах узагалі (приїхав з Keitaro). */
+  if (cur && !mine.some(o => o.v.toUpperCase() === curK)) {
+    const was = all.find(o => o.v.toUpperCase() === curK) || { v: cur, geos: [] };
+    groups.push(['in this row', [was], true, '']);
   }
+  groups.push(g
+    ? [g, mine, false, 'no offer has a payout for ' + g + ' — add one in Settings → Payouts']
+    // Без гео фільтрувати нема за чим — кажемо це, а не показуємо все підряд
+    : ['pick GEO first — the list follows it', [], false, 'the list follows the GEO of this row']);
 
   return `<td class="p-1 rec-offer-td"><div class="flex items-center">
     <select class="rec-select flex-1" data-id="${r.id}" data-col="offer" data-orig="${at(cur)}">
       <option value=""${cur ? '' : ' selected'}>—</option>
       ${groups.map(([lab, list, withHint, empty]) => `<optgroup label="${at(lab)}">`
         + (list.length ? list.map(o => opt(o, withHint)).join('')
-                       : `<option disabled>${tx(empty)}</option>`)
+                       : `<option value="" disabled>${tx(empty)}</option>`)
         + `</optgroup>`).join('')}
     </select><span class="rec-neq-box">${recOfferBadge(r)}</span>
   </div></td>`;
