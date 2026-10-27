@@ -3912,21 +3912,33 @@ function crRenderFunnelsPanel() {
   const maxS = Math.max(...list.map(([,m]) => m.s), 1);
   const best = list.filter(([,m]) => m.d > 0).sort((a,b) => (a[1].s/a[1].d) - (b[1].s/b[1].d))[0];
   const cost = (s,n) => n ? '$' + (s/n).toFixed(2) : '—';
+  /* CPC — окремим форматом. Клік коштує центи, і два знаки округлили б
+     півкопійки до «$0.00» — тобто до «безкоштовно». Нижче копійки
+     кажемо «<$0.01»: дрібніше цього число все одно не про ціну кліка, а
+     про те, що кліків нарахувалось більше, ніж їх було. */
+  const cpc = (s,n) => !n ? '—' : (s/n < 0.005 ? '<$0.01' : '$' + (s/n).toFixed(2));
+  // Колонки кліків узагалі немає у звіті — тоді нулі тут не факт, а дірка
+  const noClicks = list.every(([,m]) => !m.cl);
   el.innerHTML = `
-    <div class="grid grid-cols-7 gap-1 text-[11px] uppercase tracking-widest text-slate-500 font-black pb-1.5 border-b border-white/5 mb-1">
+    <div class="grid grid-cols-8 gap-1 text-[11px] uppercase tracking-widest text-slate-500 font-black pb-1.5 border-b border-white/5 mb-1">
       <span class="col-span-2">Funnel</span><span class="text-right">Днів</span><span class="text-right">Spend</span>
+      <span class="text-right">Clicks / CPC</span>
       <span class="text-right">Inst / CPI</span><span class="text-right">Reg / CPL</span><span class="text-right">Dep / CPA</span>
     </div>
     ${list.map(([k,m]) => `
-      <div class="grid grid-cols-7 gap-1 text-[13px] py-1.5 items-center relative">
+      <div class="grid grid-cols-8 gap-1 text-[13px] py-1.5 items-center relative">
         <div class="absolute inset-y-0 left-0 rounded bg-teal-500/10" style="width:${m.s/maxS*100}%"></div>
         <span class="col-span-2 relative font-bold text-slate-200 truncate" title="${String(k).replace(/"/g,'&quot;')}">${k}</span>
         <span class="relative text-right font-mono text-slate-500">${m.days.size}</span>
         <span class="relative text-right font-black text-white font-mono">$${Math.round(m.s).toLocaleString()}</span>
+        <span class="relative text-right font-mono"><b class="${m.cl?'text-violet-300':'text-slate-600'}">${m.cl.toLocaleString()}</b> <span class="text-slate-500">${cpc(m.s,m.cl)}</span></span>
         <span class="relative text-right font-mono"><b class="text-cyan-300">${m.i}</b> <span class="text-slate-500">${cost(m.s,m.i)}</span></span>
         <span class="relative text-right font-mono"><b class="text-blue-400">${m.r}</b> <span class="text-slate-500">${cost(m.s,m.r)}</span></span>
         <span class="relative text-right font-mono"><b class="${m.d?'text-green-500':'text-slate-600'}">${m.d}</b> <span class="text-slate-500">${cost(m.s,m.d)}</span></span>
       </div>`).join('')}
+    ${noClicks ? `<p class="text-[12px] opacity-40 mt-2.5 pt-2 border-t border-white/5">
+        Кліків у даних немає — у звіті креативів не було колонки Link clicks.
+        Тому тут нулі, а CPC «—».</p>` : ''}
     ${best && list.length > 1 ? `<p class="text-[12px] font-bold text-emerald-400 mt-2.5 pt-2 border-t border-white/5">
         Найдешевший депозит: <b>${best[0]}</b> — CPA ${cost(best[1].s, best[1].d)}</p>` : ''}`;
 }
