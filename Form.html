@@ -4835,7 +4835,7 @@ async function addFunnelMapping() {
     if (appId) {
       const { data: back } = await sb.from('funnels_mapping')
         .select('id').eq('team_name', currentTeam).eq('ktid', ktid).limit(1);
-      if (back && back[0]) await funAppIcon(back[0].id);
+      if (back && back[0]) await funAppCheck(back[0].id);
     }
     document.getElementById('fun-name').value = '';
     document.getElementById('fun-ktid').value = '';
@@ -4945,6 +4945,21 @@ function funProvSync() {
   hint.classList.toggle('hidden', !msg);
 }
 
+/* ЕКРАНУВАННЯ ДЛЯ ЦІЄЇ ТАБЛИЦІ.
+
+   Тут був виклик esc() — а esc у цьому файлі живе лише ВСЕРЕДИНІ двох
+   інших функцій, тобто звідси його не видно. Колонка Play app id
+   кидала ReferenceError, уся renderFunnelsTable падала на першому ж
+   рядку, і таблиця лишалась із попереднього малюнка: половина воронок
+   є, решти немає, і жодного слова про те, чому.
+
+   Своє ім'я, а не esc: два наявні esc роблять різне (один ріже лапки,
+   другий екранує для регулярки), і третій із тим самим іменем колись
+   підмінив би котрийсь із них. */
+const funEsc = v => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 function renderFunnelsTable(data) {
   const body = document.getElementById('funnels-list-body');
   if (!body) return console.error("❌ Не знайдено funnels-list-body");
@@ -4966,19 +4981,15 @@ function renderFunnelsTable(data) {
           r.geo ? String(r.geo).toUpperCase() : '—'}</span></td>
       <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
       <!-- Ід апки правиться тут же, як і гео: воронку перезаносити не
-           треба. Іконка поруч — та, що привіз обхід; своєї в нас немає
-           й не буде, малюємо лише зміряне. -->
+           треба. -->
       <td class="p-3">
         <div class="flex items-center gap-2">
-          ${r.app_icon ? `<img src="${esc(r.app_icon)}" alt="" loading="lazy" decoding="async"
-            onerror="this.remove()" title="Іконка з Play"
-            style="width:24px;height:24px;border-radius:6px;flex:0 0 auto;object-fit:cover;border:1px solid rgba(255,255,255,.1)">` : ''}
           <span contenteditable="true" onblur="updateFunnelApp('${r.id}', this.innerText)"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
                 class="inline-block min-w-[120px] px-2 py-0.5 rounded bg-white/5 font-mono text-[11px] text-sky-300 outline-none focus:bg-white/10 cursor-text"
                 title="Google Play app id. Клік — вписати або змінити. Можна вставити цілу адресу Play">${
-            r.app_id ? esc(r.app_id) : '—'}</span>
-          ${r.app_id && r.app_checked_at ? `<span title="${esc(r.app_note || '')}"
+            r.app_id ? funEsc(r.app_id) : '—'}</span>
+          ${r.app_id && r.app_checked_at ? `<span title="${funEsc(r.app_note || '')}"
             class="text-[9px] font-black uppercase tracking-wider ${
               r.app_gone_since ? 'text-amber-400' : 'text-emerald-400/70'}">${
             r.app_gone_since ? 'не відповідає' : 'ok'}</span>` : ''}
@@ -5086,21 +5097,16 @@ async function updateFunnelGeo(id, val) {
 /* Ід апки з таблиці. Порожній рядок і «—» означають «прибрати»:
    людина стирає поле саме для цього, і записувати замість нього
    порожній рядок означало б лишити воронку в черзі обходу назавжди. */
-/* ЗАБРАТИ ІКОНКУ ОДРАЗУ, А НЕ ЧЕКАТИ НОЧІ.
+/* СПИТАТИ PLAY ПРО ЦЮ АПКУ ЗАРАЗ.
 
-   Адресу іконки з самого посилання вивести неможливо: вона на
-   play-lh.googleusercontent.com/<хеш>, і хеш лежить у HTML сторінки
-   Play. Прочитати той HTML із браузера теж не можна — Play не віддає
-   CORS-заголовків, тож чужа відповідь для сторінки просто не існує.
-
-   Тому ходить сервер: та сама функція check-apps, але входом для
-   живої людини — одна воронка, нашим токеном, без банів. Бан коштує
+   Та сама функція check-apps, але входом для живої людини — одна
+   воронка, нашим токеном. Банів звідси не ставимо: бан коштує
    зникнення воронки зі списку прілок, і приймати таке рішення має
    обхід, який бачить дві перевірки поспіль, а не один клік.
 
-   Мовчки не падаємо: функції може не бути задеплоєно, і тоді людина
-   мусить знати, чому картинки немає. */
-async function funAppIcon(id) {
+   Мовчки не падаємо: функції може бути не задеплоєно, і тоді людина
+   мусить знати, чому стан не оновився. */
+async function funAppCheck(id) {
   try {
     const { data: sess } = await sb.auth.getSession();
     const jwt = sess && sess.session && sess.session.access_token;
@@ -5111,10 +5117,6 @@ async function funAppIcon(id) {
                  'content-type': 'application/json' },
       body: JSON.stringify({ funnel_id: id })
     });
-    if (res.status === 404 && !res.headers.get('content-type')) {
-      showStatus('Icon: deploy the function first — supabase functions deploy check-apps');
-      return;
-    }
     const j = await res.json().catch(() => ({}));
     /* «bad or missing x-cron-key» на ЦЕЙ запит означає не те, що
        написано. Ми шлемо funnel_id і свій токен — вхід для живої
@@ -5123,15 +5125,14 @@ async function funAppIcon(id) {
        за сторінку. Переказувати помилку дослівно означало б
        відправити людину шукати ключ, якого вона не загубила. */
     if (!res.ok && /x-cron-key/i.test(String(j.error || ''))) {
-      showStatus('Icon: the deployed check-apps is older than this page — '
+      showStatus('The deployed check-apps is older than this page — '
         + 'supabase functions deploy check-apps');
       return;
     }
-    if (!res.ok) { showStatus('Icon: ' + (j.error || 'HTTP ' + res.status)); return; }
-    showStatus(j.icon ? 'Checked Play — icon saved'
-                      : 'Checked Play — ' + (j.note || 'no icon'));
+    if (!res.ok) { showStatus('Check: ' + (j.error || 'HTTP ' + res.status)); return; }
+    showStatus('Play: ' + (j.note || j.state || 'checked'));
   } catch (e) {
-    showStatus('Icon: the check-apps function did not answer — '
+    showStatus('The check-apps function did not answer — '
       + 'supabase functions deploy check-apps');
   }
 }
@@ -5146,7 +5147,7 @@ async function funAppIcon(id) {
    Та сама функція, той самий вхід — просто названий кнопкою. */
 window.funAppRecheck = async function (id) {
   showStatus('Asking Play…');
-  await funAppIcon(id);
+  await funAppCheck(id);
   await refreshFunnelsTable();
 };
 
@@ -5162,7 +5163,7 @@ async function updateFunnelApp(id, val) {
   /* Разом із ідом стирається й усе, що обхід про нього знав: інакше
      нова апка успадкувала б іконку й стан попередньої. */
   const patch = { app_id };
-  if (!app_id) Object.assign(patch, { app_icon: null, app_checked_at: null,
+  if (!app_id) Object.assign(patch, { app_checked_at: null,
                                       app_gone_since: null, app_note: null });
   const { error } = await sb.from('funnels_mapping').update(patch).eq('id', id);
   if (error) {
@@ -5173,7 +5174,7 @@ async function updateFunnelApp(id, val) {
          : ''));
   } else if (app_id) {
     showStatus('App id saved — asking Play…');
-    await funAppIcon(id);
+    await funAppCheck(id);
   } else showStatus('App id cleared');
   await refreshFunnelsTable();
 }

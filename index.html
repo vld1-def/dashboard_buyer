@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.10 15:42">
+  <meta name="build" content="build 28.10 15:49">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2276,29 +2276,6 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
   font-variant-ligatures: none;
 }
 
-/* ІКОНКА АПКИ БІЛЯ НЕЙМІНГА.
-
-   Розмір прибитий до висоти самого рядка неймінгу (code: 12px текст +
-   padding 6px зверху й знизу ≈ 28px). Саме тому блок не став вищим —
-   іконка стоїть У рядку, а не під ним.
-
-   Віддає її CDN Google, у нас не лежить нічого: ні байта трафіку, ні
-   бакета. Не завантажилась — img прибирає себе сам (onerror), і на
-   місці іконки просто нічого, а не рамка з хрестиком. */
-.ap-ico {
-  width: 28px; height: 28px; flex: 0 0 auto;
-  border-radius: 7px; object-fit: cover;
-  border: 1px solid var(--border); background: var(--surface-3);
-}
-/* Іконки ще немає — місце лишається, але підписане. Порожнє місце без
-   підпису читалось би як поломка, а причин тут рівно чотири, і всі
-   вони різні: не виконаний SQL, не вписане посилання, обхід ще не
-   дійшов, Play не віддав. Підказка називає ту, що справді є. */
-.ap-ico.is-none {
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 900; color: var(--text-muted);
-  cursor: help; border-style: dashed;
-}
 
 .set-list { margin-top: 10px; }
 
@@ -6215,7 +6192,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.10 15:42</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.10 15:49</div>
     </div>
   </aside>
 
@@ -16862,39 +16839,6 @@ function apAppId(raw) {
   return /^[a-zA-Z][\w]*(\.[a-zA-Z0-9][\w]*)+$/.test(cand) ? cand : '';
 }
 
-/* ІКОНКА АПКИ — та, що привіз обхід із Play. Своєї в нас немає й не
-   буде: малюємо лише зміряне, а не здогад.
-
-   А доти її НЕМАЄ — і мовчати про це не можна. Шлях від «вписав
-   посилання» до «з'явилась іконка» має три кроки, і жоден не
-   миттєвий: виконати APP_LINK.sql, задеплоїти check-apps, дочекатись
-   першого обходу. Поки хоч один не зроблено, картинки не буде —
-   і без підпису це читається як «зламалось».
-
-   Тому віддаємо не лише адресу, а й ПРИЧИНУ, коли адреси немає. */
-function apIconState(ktid) {
-  const f = apFunnels.find(x => String(x.ktid) === String(ktid));
-  if (!f) return { icon: '', why: '' };
-  // can: чи є сенс питати Play — тобто чи вписане посилання
-  const can = !!String(f.app_id || '').trim();
-  if (f.app_icon) return { icon: String(f.app_icon), why: '', can };
-  /* Колонки ще немає в базі — отже APP_LINK.sql не виконаний. Питаємо
-     весь довідник, а не цей рядок: PostgREST віддає однакові поля для
-     всіх, тож одного рядка досить, щоб знати про всіх. */
-  if (!apFunnels.some(x => 'app_id' in x))
-    return { icon: '', can: false,
-             why: 'Перевірка апок ще не налаштована — виконайте APP_LINK.sql' };
-  if (!can)
-    return { icon: '', can: false,
-             why: 'У цієї апки не вписане посилання на Play — '
-                + 'додайте його в Form → Settings → Funnels' };
-  if (!f.app_checked_at)
-    return { icon: '', can,
-             why: 'Посилання вписане, але Play ще не питали — ↻ поруч питає зараз' };
-  return { icon: '', can,
-           why: 'Play не віддав іконку' + (f.app_note ? ': ' + f.app_note : '')
-              + ' · ↻ поруч питає ще раз' };
-}
 
 async function openAppsModal() {
   document.getElementById('apps-modal').classList.remove('hidden');
@@ -17167,9 +17111,7 @@ async function apAddFunnel(isApp) {
      апку стало б неможливо через необов'язкове поле. */
   const appId = apAppId(v.app_id);
   if (appId && apFunnels.some(f => 'app_id' in f)) row.app_id = appId;
-  /* .select('id') не прикраса: у щойно заведеної воронки id є лише в
-     базі, а без нього не попросиш перевірити саме її. */
-  const { data: saved, error } = await sb.from('funnels_mapping').upsert(row).select('id');
+  const { error } = await sb.from('funnels_mapping').upsert(row);
   if (error) {
     const m = String(error.message || error.code || '');
     toast('Не вдалось зберегти воронку: ' + m
@@ -17184,10 +17126,7 @@ async function apAddFunnel(isApp) {
      опинилась на своєму місці. */
   const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app,
                  status: row.status || (was && was.status) || 'active',
-                 app_id: row.app_id || (was && was.app_id) || '',
-                 app_icon: (was && was.app_icon) || '',
-                 // id потрібен, щоб попросити перевірку саме цього рядка
-                 id: (saved && saved[0] && saved[0].id) || (was && was.id) };
+                 app_id: row.app_id || (was && was.app_id) || '' };
   if (was) Object.assign(was, kept); else apFunnels.push(kept);
   apFunnels.sort((a, b) => String(a.funnel_name || '')
     .localeCompare(String(b.funnel_name || ''), 'uk'));
@@ -17196,60 +17135,6 @@ async function apAddFunnel(isApp) {
   toast((row.is_app ? 'Апку «' : 'Воронку «') + name + '» '
       + (was ? 'перезаписано' : 'додано'), 'ok');
 
-  /* ІКОНКА — ОДРАЗУ, А НЕ ПІСЛЯ НІЧНОГО ОБХОДУ.
-
-     Адресу іконки з посилання не вивести: вона на
-     play-lh.googleusercontent.com/<хеш>, а хеш лежить у HTML сторінки
-     Play, якого браузеру не прочитати (Play не віддає CORS). Ходить
-     сервер — та сама check-apps, входом для живої людини: одна
-     воронка, нашим токеном, без банів.
-
-     У фоні: людина вже отримала «додано», і чекати на Play їй нема
-     чого. Прийде відповідь — перемалюємо. */
-  if (appId) apIconFetch(ktid);
-}
-
-async function apIconFetch(ktid) {
-  const f = apFunnels.find(x => String(x.ktid) === String(ktid));
-  if (!f || !f.id) return;
-  if (!String(f.app_id || '').trim()) {
-    toast('У цієї апки не вписане посилання на Play — додай його в Form → Settings → Funnels',
-      'warn', 9000);
-    return;
-  }
-  try {
-    const { data: sess } = await sb.auth.getSession();
-    const jwt = sess && sess.session && sess.session.access_token;
-    if (!jwt) return;
-    const res = await fetch(SUPABASE_URL + '/functions/v1/check-apps', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + jwt, 'apikey': SUPABASE_KEY,
-                 'content-type': 'application/json' },
-      body: JSON.stringify({ funnel_id: f.id })
-    });
-    const j = await res.json().catch(() => ({}));
-    /* «bad or missing x-cron-key» на ЦЕЙ запит означає не те, що
-       написано. Ми шлемо funnel_id і свій токен — вхід для живої
-       людини; ключа розкладу в нас немає й бути не може. Отже
-       задеплоєна функція про цей вхід ще не знає, тобто вона старіша
-       за сторінку. Переказувати помилку дослівно означало б відправити
-       людину шукати ключ, якого вона не загубила. */
-    if (!res.ok && /x-cron-key/i.test(String(j.error || ''))) {
-      toast('Іконка: задеплоєна check-apps старіша за сторінку — розгорни її наново: '
-          + 'supabase functions deploy check-apps', 'warn', 12000);
-      return;
-    }
-    if (!res.ok) {
-      toast('Іконка: ' + (j.error || 'функція check-apps не відповіла'), 'warn', 9000);
-      return;
-    }
-    f.app_checked_at = new Date().toISOString();
-    f.app_note = j.note || '';
-    if (j.icon) { f.app_icon = j.icon; apRenderMode(); }
-  } catch (e) {
-    toast('Іконка: функція check-apps не відповіла — спершу розгорни її: '
-        + 'supabase functions deploy check-apps', 'warn', 9000);
-  }
 }
 
 /* ─────────── дерево гео → постачальник ─────────── */
@@ -17435,19 +17320,7 @@ function apRender() {
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Неймінг</span>
         <code onclick="apCopy(event, this)" data-v="${apEsc(r.naming)}"
           title="Клік — скопіювати: ${apEsc(r.naming)}"
-          class="ap-copy text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.naming)}</code>
-        ${(st => st.icon
-            ? `<img class="ap-ico" src="${apEsc(st.icon)}" alt="" loading="lazy" decoding="async"
-                 title="Іконка апки з Play" onerror="this.remove()">`
-            /* Місце під іконку лишаємо порожнім, але підписаним: інакше
-               «чому іконки немає» лишається питанням без адресата. */
-            : st.why ? `<span class="ap-ico is-none" title="${apEsc(st.why)}">?</span>` : ''
-          )(apIconState(ktid))}${ktid && apIconState(ktid).can
-            /* Перевірити цю апку зараз. Доти позапланова перевірка була
-               лише на весь парк, запитом у SQL. */
-            ? `<button onclick="apIconFetch('${apEsc(ktid)}')" title="Спитати Play про цю апку зараз"
-                 class="text-[11px] text-slate-500 hover:text-white px-1 shrink-0 transition">↻</button>`
-            : ''}</div>` : ''}
+          class="ap-copy text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.naming)}</code></div>` : ''}
 
       ${it.deeplink ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Діплінк</span>

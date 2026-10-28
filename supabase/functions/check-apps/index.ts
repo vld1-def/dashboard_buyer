@@ -60,7 +60,7 @@ const BATCH = 120;
 const PAUSE_MS = 350;
 const DEADLINE_MS = 110_000;
 
-const FN_VERSION = '2026-10-28.2';
+const FN_VERSION = '2026-10-28.3';
 
 /* Вхід людини йде з браузера, отже потрібні CORS-заголовки — і на
    самій відповіді, і на preflight. Без них браузер не покаже навіть
@@ -75,7 +75,7 @@ type Json = Record<string, any>;
 type Row = {
   id: number; funnel_name: string | null; app_id: string | null;
   geo: string | null; status: string | null; app_gone_since: string | null;
-  app_banned_by: string | null; app_icon: string | null;
+  app_banned_by: string | null;
 };
 
 function reply(body: Json, status = 200): Response {
@@ -117,6 +117,9 @@ function reply(body: Json, status = 200): Response {
    чесно відповість «недоступна у вашій країні». Тому питаємо З ГЕО
    САМОЇ ВОРОНКИ, а якщо все одно натрапили на цю відповідь — кажемо
    «unknown», а не «gone». */
+/* icon лишається в розборі, але нікуди не пишеться: саму картинку
+   прибрали з дашборда, а от її НАЯВНІСТЬ на сторінці — доказ того, що
+   сторінка справді показує апку, і цим доказом ми й міряємо. */
 type Verdict = { state: 'live' | 'gone' | 'unknown'; code: number | null;
                  icon: string; note: string };
 
@@ -224,7 +227,7 @@ Deno.serve(async (req) => {
     let row: Row | null = null;
     try {
       const res = await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + one
-        + '&select=id,funnel_name,app_id,geo,status,app_gone_since,app_banned_by,app_icon'
+        + '&select=id,funnel_name,app_id,geo,status,app_gone_since,app_banned_by'
         + '&limit=1', { headers: mine });
       if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
       row = (await res.json())[0] || null;
@@ -240,14 +243,13 @@ Deno.serve(async (req) => {
 
     const v = await probe(appId, String(row.geo || ''));
     const patch: Json = { app_checked_at: new Date().toISOString(), app_note: v.note };
-    if (v.state === 'live') { patch.app_gone_since = null; if (v.icon) patch.app_icon = v.icon; }
+    if (v.state === 'live') patch.app_gone_since = null;
     try {
       await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + one, {
         method: 'PATCH', headers: { ...mine, Prefer: 'return=minimal' },
         body: JSON.stringify(patch) });
     } catch (_e) { /* не записали — відповідь усе одно чесна */ }
-    return reply({ fn: FN_VERSION, one: true, state: v.state,
-                   icon: v.icon || '', note: v.note });
+    return reply({ fn: FN_VERSION, one: true, state: v.state, note: v.note });
   }
 
   /* ═══ ВХІД РОЗКЛАДУ ═══ */
@@ -273,7 +275,7 @@ Deno.serve(async (req) => {
        по-різному залежно від версії, і одного дня такий фільтр почав
        би мовчки пропускати все. */
     const q = 'funnels_mapping?select=id,funnel_name,app_id,geo,status,'
-            + 'app_gone_since,app_banned_by,app_icon'
+            + 'app_gone_since,app_banned_by'
             + '&app_id=not.is.null'
             + '&order=app_checked_at.asc.nullsfirst,id.asc'
             + '&limit=' + BATCH;
@@ -304,7 +306,6 @@ Deno.serve(async (req) => {
     if (v.state === 'live') {
       live++;
       patch.app_gone_since = null;
-      if (v.icon) patch.app_icon = v.icon;
       /* Знімаємо лише СВІЙ бан. Людина могла забанити апку з причини,
          якої в Play не видно, і повертати її до життя за неї — значить
          одного ранку залити на те, що свідомо зупинили. */

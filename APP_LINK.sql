@@ -34,9 +34,12 @@
 --  ▶ БЛОК 1 — колонки
 -- ════════════════════════════════════════════════════════════
 
+--  app_icon тут більше немає: картинку з дашборда прибрали, і колонка
+--  під те, чого ніхто не показує, лише вводила б в оману. Якщо ви вже
+--  виконували ранню версію цього файлу — колонка лишилась і нікому не
+--  заважає; прибирати її не обов'язково.
 alter table public.funnels_mapping
   add column if not exists app_id         text,
-  add column if not exists app_icon       text,
   add column if not exists app_checked_at timestamptz,
   add column if not exists app_gone_since timestamptz,
   add column if not exists app_note       text,
