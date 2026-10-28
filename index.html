@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 28.10 15:49">
+  <meta name="build" content="build 28.10 18:58">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6192,7 +6192,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.10 15:49</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.10 18:58</div>
     </div>
   </aside>
 
@@ -20884,18 +20884,19 @@ async function txDelete(id) {
 // тягнеться з CDN при першому запуску і далі кешується браузером.
 const UQ_PARAMS = [
   { key:'crop',   label:'Crop',      unit:'%',  hint:'crops the edges and scales back', min:1,  max:12, step:0.5 },
-  { key:'rotate', label:'Rotation',   unit:'°',  hint:'slight frame tilt',                      min:0.2, max:4, step:0.1 },
+  { key:'shift',  label:'Frame shift',unit:'%',  hint:'crops off-centre — shifts the pixel grid', min:0.5, max:6, step:0.5 },
   { key:'color',  label:'Colour',     unit:'%',  hint:'gamma, saturation, contrast, hue', min:1,  max:12, step:0.5 },
   { key:'fps',    label:'Frames',     unit:'fps',hint:'frame rate change',             min:1,  max:6,  step:1 },
   { key:'volume', label:'Volume',  unit:'dB', hint:'audio level shift',                 min:0.3, max:6, step:0.1 },
   { key:'trim',   label:'Length',   unit:'с',  hint:'trim from the head and the tail',       min:0.1, max:3, step:0.1 },
   { key:'size',   label:'Frame size', unit:'%', hint:'slightly different output resolution', min:1, max:10, step:0.5 },
   { key:'noise',  label:'Grain',     unit:'',   hint:'faint grain, different on every frame', min:2, max:24, step:1 },
+  { key:'rotate', label:'Rotation',   unit:'°',  hint:'the strongest trick, but three times slower', min:0.2, max:4, step:0.1, off:true },
 ];
 const UQ_PRESETS = {
-  low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5, noise:4 },
-  mid:  { crop:5, rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6, size:3,   noise:8 },
-  high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2, size:6,   noise:15 },
+  low:  { crop:3, shift:1,   rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5, noise:4 },
+  mid:  { crop:5, shift:2,   rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6, size:3,   noise:8 },
+  high: { crop:8, shift:3.5, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2, size:6,   noise:15 },
 };
 let uqFiles = [], uqFF = null, uqBusy = false, uqStop = false;
 let uqDone = new Set(), uqCurrent = -1, uqQueueDirty = false;
@@ -20911,7 +20912,7 @@ function uqRenderParams() {
   document.getElementById('uq-params').innerHTML = UQ_PARAMS.map(p => `
     <div class="bg-black/25 border border-white/5 rounded-xl px-3 py-2 flex items-center gap-3">
       <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-        <input type="checkbox" id="uq-on-${p.key}" checked class="uq-chk">
+        <input type="checkbox" id="uq-on-${p.key}" ${p.off ? '' : 'checked'} class="uq-chk">
         <span class="text-[12px] font-black text-slate-200">${p.label}</span>
         <span class="text-[10px] text-slate-500 truncate">${p.hint}</span>
       </label>
@@ -21294,10 +21295,12 @@ const uqSign = () => Math.random() < 0.5 ? -1 : 1;
 // Випадкові значення в межах, які ти виставив. Кожен варіант отримує свої,
 // тому 10 копій одного файлу відрізняються між собою, а не однаково зміщені.
 function uqPickParams() {
-  const on = k => document.getElementById('uq-on-' + k).checked;
-  const amt = k => parseFloat(document.getElementById('uq-v-' + k).value) || 0;
+  const on = k => !!document.getElementById('uq-on-' + k)?.checked;
+  const amt = k => parseFloat(document.getElementById('uq-v-' + k)?.value) || 0;
   const p = {};
   if (on('crop'))   p.crop   = +uqRand(amt('crop') * 0.4, amt('crop')).toFixed(2);
+  if (on('shift'))  p.shift  = { x: +(uqSign() * uqRand(amt('shift') * 0.4, amt('shift'))).toFixed(2),
+                                 y: +(uqSign() * uqRand(amt('shift') * 0.4, amt('shift'))).toFixed(2) };
   if (on('rotate')) p.rotate = +(uqSign() * uqRand(amt('rotate') * 0.4, amt('rotate'))).toFixed(2);
   if (on('color'))  p.color  = { gamma: +uqRand(-amt('color'), amt('color')).toFixed(2),
                                  sat:   +uqRand(-amt('color'), amt('color')).toFixed(2),
@@ -21306,7 +21309,8 @@ function uqPickParams() {
   if (on('fps'))    p.fps    = Math.round(uqSign() * uqRand(1, amt('fps')));
   if (on('volume')) p.volume = +(uqSign() * uqRand(amt('volume') * 0.3, amt('volume'))).toFixed(2);
   if (on('trim'))   p.trim   = { head: +uqRand(0, amt('trim')).toFixed(2), tail: +uqRand(0, amt('trim')).toFixed(2) };
-  if (on('size'))   p.size   = +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2);
+  if (on('size'))   p.size   = { x: +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2),
+                                 y: +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2) };
   if (on('noise'))  p.noise  = Math.max(1, Math.round(uqRand(amt('noise') * 0.45, amt('noise'))));
   return p;
 }
@@ -21347,9 +21351,9 @@ function uqFakeMeta() {
    невідомий: ні браузер, ні ffmpeg його не назвали. */
 function uqOutFrame(p, meta) {
   if (!meta.w || !meta.h) return null;
-  const k = 1 + (p.size || 0) / 100;
-  const even = n => Math.max(2, Math.round(n * k / 2) * 2);
-  return { w: even(meta.w), h: even(meta.h) };
+  const sz = p.size || { x: 0, y: 0 };
+  const even = (n, v) => Math.max(2, Math.round(n * (1 + v / 100) / 2) * 2);
+  return { w: even(meta.w, sz.x), h: even(meta.h, sz.y) };
 }
 
 function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
@@ -21373,8 +21377,15 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
   if (cover) args.push('-i', cover.file || ('cover.' + cover.ext));
   if (!concatMode && trimLeft > 1) args.push('-t', String(+trimLeft.toFixed(2)));
   if (p.rotate) vf.push(`rotate=${p.rotate}*PI/180:fillcolor=black`);
-  const cropF = 1 - ((p.crop || 0) + (p.rotate ? Math.min(4, Math.abs(p.rotate) * 2) : 0)) / 100;
-  if (cropF < 1) vf.push(`crop=iw*${cropF.toFixed(4)}:ih*${cropF.toFixed(4)}`);
+  const sh = p.shift || { x: 0, y: 0 };
+  const cropF = 1 - Math.min(90, Math.max(
+    (p.crop || 0) + (p.rotate ? Math.min(4, Math.abs(p.rotate) * 2) : 0),
+    (Math.abs(sh.x) + Math.abs(sh.y)) * 2)) / 100;
+  if (cropF < 1) {
+    const cw = `iw*${cropF.toFixed(4)}`, ch = `ih*${cropF.toFixed(4)}`;
+    const off = (d, v) => v ? `${v > 0 ? '+' : '-'}${d}*${(Math.abs(v) / 100).toFixed(4)}` : '';
+    vf.push(`crop=${cw}:${ch}:(iw-${cw})/2${off('iw', sh.x)}:(ih-${ch})/2${off('ih', sh.y)}`);
+  }
   if (p.color) {
     const c = p.color;
     vf.push(`eq=gamma=${(1 + c.gamma / 100).toFixed(4)}:saturation=${(1 + c.sat / 100).toFixed(4)}:contrast=${(1 + c.con / 100).toFixed(4)}`);
@@ -21387,7 +21398,7 @@ function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {
     // Масштаб додаємо лише коли він справді щось міняє. scale=w:h у той самий
     // розмір — це повний прохід swscale по кожному кадру задарма.
     // Після кропу чи повороту кадр уже інший, там масштаб потрібен завжди.
-    if (out.w !== meta.w || out.h !== meta.h || p.crop || p.rotate) vf.push(`scale=${out.w}:${out.h}`);
+    if (out.w !== meta.w || out.h !== meta.h || p.crop || p.shift || p.rotate) vf.push(`scale=${out.w}:${out.h}`);
   }
   // ОСТАННІЙ ЗАПОБІЖНИК ПРО ПАРНІСТЬ СТОРІН.
   //
@@ -21575,7 +21586,8 @@ function uqDescribe(p, plan) {
   if (p.fps)    bits.push(`fps ${p.fps > 0 ? '+' : ''}${p.fps}`);
   if (p.volume) bits.push(`звук ${p.volume > 0 ? '+' : ''}${p.volume} dB`);
   if (p.trim)   bits.push(`обріз ${p.trim.head}с / ${p.trim.tail}с`);
-  if (p.size)   bits.push(`розмір ${p.size > 0 ? '+' : ''}${p.size}%`);
+  if (p.shift)  bits.push(`зсув ${p.shift.x > 0 ? '+' : ''}${p.shift.x}/${p.shift.y > 0 ? '+' : ''}${p.shift.y}%`);
+  if (p.size)   bits.push(`розмір ${p.size.x > 0 ? '+' : ''}${p.size.x}/${p.size.y > 0 ? '+' : ''}${p.size.y}%`);
   if (p.noise)  bits.push(`зерно ${p.noise}`);
   return bits.join(' · ');
 }

@@ -565,6 +565,94 @@ rest = sub(rest,
   "            await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset));",
   'унікалізатор: виклик із metaMode')
 
+# ── Унікалізатор: поворот стає опцією, замість нього зсув кадру ────────
+# ЗАМІР (ffmpeg в один потік, як ядро в браузері; 15 с, 1080×1920).
+# Один варіант виходив 24.1 с, і розклад по ланках такий:
+#   rotate 17.8 · декод 3.3 · кодування 3.0 · колір 1.5 · звук 1.1 · кроп 0.2
+# Тобто сам поворот — 74 % роботи, утричі більше за всю решту разом.
+#
+# А те, за чим ми ним ганялись — щоб перцептивний хеш не збігся — дає й
+# зсунутий кроп разом з ледь неоднаковим масштабом: він так само зміщує
+# всю сітку пікселів, тільки коштує 0 с (кроп 0.2 с, масштаб ~0). PSNR до
+# оригіналу: 20.7 проти 19.1 у повороту — кадр «відʼїжджає» практично
+# однаково. Поворот нікуди не дівається, це просто галочка: кому потрібен
+# справжній нахил — вмикає і свідомо платить за нього часом.
+rest = sub(rest,
+  "  { key:'rotate', label:'Поворот',   unit:'°',  hint:'нахил кадру',                      min:0.2, max:4, step:0.1 },\n",
+  "  { key:'shift',  label:'Зсув кадру',unit:'%',  hint:'зріже не по центру — зсуває сітку пікселів', min:0.5, max:6, step:0.5 },\n",
+  'унікалізатор: зсув кадру замість повороту')
+
+rest = sub(rest,
+  "  { key:'noise',  label:'Зерно',     unit:'',   hint:'ледь помітний шум, свій на кожен кадр', min:2, max:24, step:1 },\n];",
+  "  { key:'noise',  label:'Зерно',     unit:'',   hint:'ледь помітний шум, свій на кожен кадр', min:2, max:24, step:1 },\n"
+  "  { key:'rotate', label:'Поворот',   unit:'°',  hint:'нахил кадру — найсильніший прийом, але втричі довше', min:0.2, max:4, step:0.1, off:true },\n];",
+  'унікалізатор: поворот останнім і виключений')
+
+rest = sub(rest,
+  """  low:  { crop:3, rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5, noise:4 },
+  mid:  { crop:5, rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6, size:3,   noise:8 },
+  high: { crop:8, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2, size:6,   noise:15 },""",
+  """  low:  { crop:3, shift:1,   rotate:0.6, color:3,  fps:1, volume:1,   trim:0.3, size:1.5, noise:4 },
+  mid:  { crop:5, shift:2,   rotate:1.2, color:5,  fps:2, volume:2,   trim:0.6, size:3,   noise:8 },
+  high: { crop:8, shift:3.5, rotate:2.2, color:9,  fps:4, volume:3.5, trim:1.2, size:6,   noise:15 },""",
+  'унікалізатор: зсув у пресетах')
+
+# Галочка читає off із самого параметра — щоб «виключений за замовчуванням»
+# стояло поруч із тим, що вмикається, а не в окремому списку винятків.
+rest = sub(rest,
+  """        <input type="checkbox" id="uq-on-${p.key}" checked class="uq-chk">""",
+  """        <input type="checkbox" id="uq-on-${p.key}" ${p.off ? '' : 'checked'} class="uq-chk">""",
+  'унікалізатор: параметр може бути виключений')
+
+# ?. — щоб перейменований або прибраний параметр не валив прогін на
+# першому ж варіанті, а просто лічився вимкненим.
+rest = sub(rest,
+  """  const on = k => document.getElementById('uq-on-' + k).checked;
+  const amt = k => parseFloat(document.getElementById('uq-v-' + k).value) || 0;""",
+  """  const on = k => !!document.getElementById('uq-on-' + k)?.checked;
+  const amt = k => parseFloat(document.getElementById('uq-v-' + k)?.value) || 0;""",
+  'унікалізатор: зниклий параметр не валить pickParams')
+
+rest = sub(rest,
+  "  if (on('crop'))   p.crop   = +uqRand(amt('crop') * 0.4, amt('crop')).toFixed(2);\n",
+  "  if (on('crop'))   p.crop   = +uqRand(amt('crop') * 0.4, amt('crop')).toFixed(2);\n"
+  "  if (on('shift'))  p.shift  = { x: +(uqSign() * uqRand(amt('shift') * 0.4, amt('shift'))).toFixed(2),\n"
+  "                                 y: +(uqSign() * uqRand(amt('shift') * 0.4, amt('shift'))).toFixed(2) };\n",
+  'унікалізатор: зсув у pickParams')
+
+# Сторони незалежно: однаковий коефіцієнт лишає ту саму пропорцію, а різний
+# ще й ледь розтягує кадр — і робить це безкоштовно, масштаб тут ~0 с.
+rest = sub(rest,
+  "  if (on('size'))   p.size   = +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2);\n",
+  "  if (on('size'))   p.size   = { x: +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2),\n"
+  "                                 y: +(uqSign() * uqRand(amt('size') * 0.4, amt('size'))).toFixed(2) };\n",
+  'унікалізатор: сторони розміру незалежно')
+
+# Кроп тепер робить дві роботи: зрізає чорні кути після повороту і дає
+# запас, у межах якого вікно можна зсунути з центру. Якщо ввімкнений лише
+# зсув, запас однаково потрібен — звідси Math.max. Запас рахується як
+# подвійна сума зсувів: половина йде в один бік, половина лишається в інший.
+rest = sub(rest,
+  """  const cropF = 1 - ((p.crop || 0) + (p.rotate ? Math.min(4, Math.abs(p.rotate) * 2) : 0)) / 100;
+  if (cropF < 1) vf.push(`crop=iw*${cropF.toFixed(4)}:ih*${cropF.toFixed(4)}`);""",
+  """  const sh = p.shift || { x: 0, y: 0 };
+  const cropF = 1 - Math.min(90, Math.max(
+    (p.crop || 0) + (p.rotate ? Math.min(4, Math.abs(p.rotate) * 2) : 0),
+    (Math.abs(sh.x) + Math.abs(sh.y)) * 2)) / 100;
+  if (cropF < 1) {
+    const cw = `iw*${cropF.toFixed(4)}`, ch = `ih*${cropF.toFixed(4)}`;
+    const off = (d, v) => v ? `${v > 0 ? '+' : '-'}${d}*${(Math.abs(v) / 100).toFixed(4)}` : '';
+    vf.push(`crop=${cw}:${ch}:(iw-${cw})/2${off('iw', sh.x)}:(ih-${ch})/2${off('ih', sh.y)}`);
+  }""",
+  'унікалізатор: кроп зі зсувом з центру')
+
+rest = sub(rest,
+  "  if (p.size)   bits.push(`розмір ${p.size > 0 ? '+' : ''}${p.size}%`);\n",
+  "  if (p.shift)  bits.push(`зсув ${p.shift.x > 0 ? '+' : ''}${p.shift.x}/${p.shift.y > 0 ? '+' : ''}${p.shift.y}%`);\n"
+  "  if (p.size)   bits.push(`розмір ${p.size.x > 0 ? '+' : ''}${p.size.x}/${p.size.y > 0 ? '+' : ''}${p.size.y}%`);\n",
+  'унікалізатор: зсув і розмір в описі')
+
+
 # ── Дельти KPI: останній день проти попереднього ───────────────────────
 # ── Стрілка біля Net Profit прибрана ──────────────────────────────────
 # Вона показувала рух тотала (учора проти сьогодні) і відповідала на
@@ -2072,9 +2160,9 @@ rest = sub(rest,
    невідомий: ні браузер, ні ffmpeg його не назвали. */
 function uqOutFrame(p, meta) {
   if (!meta.w || !meta.h) return null;
-  const k = 1 + (p.size || 0) / 100;
-  const even = n => Math.max(2, Math.round(n * k / 2) * 2);
-  return { w: even(meta.w), h: even(meta.h) };
+  const sz = p.size || { x: 0, y: 0 };
+  const even = (n, v) => Math.max(2, Math.round(n * (1 + v / 100) / 2) * 2);
+  return { w: even(meta.w, sz.x), h: even(meta.h, sz.y) };
 }
 
 function uqBuildArgs(p, meta, quality, metaMode, preset, cover) {""",
@@ -2108,7 +2196,7 @@ rest = sub(rest,
     // Масштаб додаємо лише коли він справді щось міняє. scale=w:h у той самий
     // розмір — це повний прохід swscale по кожному кадру задарма.
     // Після кропу чи повороту кадр уже інший, там масштаб потрібен завжди.
-    if (out.w !== meta.w || out.h !== meta.h || p.crop || p.rotate) vf.push(`scale=${out.w}:${out.h}`);
+    if (out.w !== meta.w || out.h !== meta.h || p.crop || p.shift || p.rotate) vf.push(`scale=${out.w}:${out.h}`);
   }""",
   'кадр: масштаб із out')
 
