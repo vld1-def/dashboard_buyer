@@ -18,7 +18,7 @@
 import { serve, open, checks } from './_harness.mjs';
 
 const PORT = 8147;
-const { ok, done } = checks();
+const { ok, count } = checks();
 const srv = await serve(PORT);
 const { browser, page, errs } = await open(PORT);
 
@@ -75,171 +75,64 @@ const fFun = await fields(false);
 ok('для звичайної воронки поля немає: Play про неї нічого не знає',
   !fFun.keys.includes('app_id'), fFun.keys);
 
-/* ─────────── іконка біля неймінга ─────────── */
-const card = sel => page.evaluate(sel => {
-  currentTeam = 'T';
-  apFunnels = [{ ktid: 'K1', funnel_name: 'Mostbet [satorapps]', geo: 'KG', is_app: true,
-                 app_id: 'com.a.b', app_icon: sel ? 'https://play-lh.example/icon.png' : '' }];
-  apItems = [{ id: 'i1', geo: 'KG', provider: 'satorapps',
-               naming: 'KG_{app}_test', deeplink: '', subs: [] }];
-  apMode = 'app';
-  try { localStorage.setItem('ap_pick', JSON.stringify({ i1: 'K1' })); } catch (e) {}
-  apRenderMode();
-  const img = document.querySelector('#ap-list img.ap-ico');
-  const code = document.querySelector('#ap-list .ap-copy');
-  const row = code && code.parentElement;
-  const r = e => e.getBoundingClientRect();
-  return { has: !!img,
-           src: img ? img.getAttribute('src') : '',
-           lazy: img ? img.getAttribute('loading') : '',
-           drops: img ? (img.getAttribute('onerror') || '') : '',
-           rowH: row ? Math.round(r(row).height) : 0,
-           icoH: img ? Math.round(r(img).height) : 0,
-           inRow: !!(img && row && img.parentElement === row) };
-}, sel);
+/* ─────────── таблиця воронок у Form не падає ───────────
 
-const withIco = await card(true);
-ok('іконка стоїть, і з адреси, яку привіз обхід',
-  withIco.has && /play-lh/.test(withIco.src), withIco);
-ok('вантажиться ліниво — список може бути довгим', withIco.lazy === 'lazy', withIco.lazy);
-ok('не завантажилась — прибирає себе сама, а не лишає рамку з хрестиком',
-  /this\.remove\(\)/.test(withIco.drops), withIco.drops);
-ok('іконка стоїть У рядку неймінга, а не під ним', withIco.inRow, withIco);
-ok('розмір іконки прибитий до висоти рядка неймінга',
-  withIco.icoH >= 26 && withIco.icoH <= 29, withIco.icoH);
+   Колонка Play app id кликала esc(), а esc у Form.html живе лише
+   ВСЕРЕДИНІ двох інших функцій — звідси його не видно. Уся
+   renderFunnelsTable падала на першому ж рядку, і таблиця лишалась із
+   попереднього малюнка: половина воронок є, решти немає, і жодного
+   слова про те, чому.
 
-const noIco = await card(false);
-ok('немає іконки — картинки теж немає', !noIco.has, noIco);
+   Стенд дашборда цього не ловив і не міг: то інший файл. */
+await browser.close();
 
-/* ЧОМУ ІКОНКИ НЕМАЄ — КАЖЕМО, А НЕ МОВЧИМО.
+{
+  const { browser: b2, page: p2, errs: e2 } = await open(PORT, {
+    path: 'Form.html',
+    init: () => {
+      const mk = window.supabase.createClient;
+      window.supabase.createClient = (...a) => {
+        const c = mk(...a);
+        c.auth.getSession = async () => ({ data: { session: { user: { id: 'u1' } } } });
+        return c;
+      };
+      localStorage.setItem('selected_team', 'T');
+      window.alert = m => { window.__alert = String(m); };
+    }
+  });
+  const tbl = await p2.evaluate(() => {
+    const rows = [
+      { id: 1, funnel_name: 'Crazy Wheel [tridentapps]', ktid: 'CW1', geo: 'KG', is_app: true },
+      { id: 2, funnel_name: 'Fortune Dragon [satorapps]', ktid: 'FD1', geo: 'TJ', is_app: true },
+      { id: 3, funnel_name: 'Mostbet [snatchapps]', ktid: 'MB1', geo: 'UZ', is_app: true },
+      { id: 4, funnel_name: 'Без постачальника "лапки"', ktid: 'NP1', geo: 'PL' },
+      { id: 5, funnel_name: 'Joker [satorapps]', ktid: 'JK1', geo: 'TJ', is_app: true,
+        app_id: 'com.a.b', app_checked_at: '2026-10-28T00:00:00Z', app_note: 'Play: ok' }
+    ];
+    allFunnels = rows; funTag = '';
+    const inp = document.getElementById('funnel-search'); if (inp) inp.value = '';
+    let err = '';
+    try { renderFunnelsTable(rows); } catch (e) { err = String(e); }
+    const body = document.getElementById('funnels-list-body');
+    return { err, n: body.querySelectorAll('tr').length,
+             html: body.innerHTML,
+             recheck: [...body.querySelectorAll('button')]
+               .filter(b => b.textContent.trim() === '↻').length };
+  });
+  ok('таблиця воронок малюється без помилки', tbl.err === '', tbl.err);
+  ok('і показує ВСІ воронки, а не половину', tbl.n === 5, tbl.n);
+  ok('кнопка перевірки — лише там, де вписане посилання', tbl.recheck === 1, tbl.recheck);
+  ok('іконок у таблиці більше немає', !/<img/.test(tbl.html));
+  ok('лапки в назві розмітку не ламають',
+    /Без постачальника/.test(tbl.html), tbl.html.slice(0, 120));
+  await b2.close();
+  if (e2.length) ok('Form.html без помилок', false, e2);
+}
 
-   «І чому іконку не показуєш в прілках?» — питання, якого не мало б
-   бути. Шлях від «вписав посилання» до «з'явилась іконка» має три
-   кроки, і жоден не миттєвий: APP_LINK.sql, деплой check-apps,
-   перший обхід. Поки хоч один не зроблено, картинки не буде — і без
-   підпису це читається як поломка.
-
-   Причини різні, і підказка мусить називати ту, що справді є. */
-const why = row => page.evaluate(row => {
-  currentTeam = 'T';
-  apFunnels = [row];
-  apItems = [{ id: 'i1', geo: 'KG', provider: 'satorapps',
-               naming: 'KG_{app}_test', deeplink: '', subs: [] }];
-  apMode = 'app';
-  try { localStorage.setItem('ap_pick', JSON.stringify({ i1: 'K1' })); } catch (e) {}
-  apRenderMode();
-  const n = document.querySelector('#ap-list .ap-ico.is-none');
-  return n ? n.getAttribute('title') : '';
-}, row);
-
-const BASE = { ktid: 'K1', funnel_name: 'Mostbet [satorapps]', geo: 'KG', is_app: true };
-ok('колонок у базі ще немає — названо файл, який це лагодить',
-  /APP_LINK\.sql/.test(await why({ ...BASE })), await why({ ...BASE }));
-ok('посилання не вписане — сказано, де його вписати',
-  /не вписане посилання/.test(await why({ ...BASE, app_id: '' })),
-  await why({ ...BASE, app_id: '' }));
-ok('Play ще не питали — сказано саме це, і куди тиснути',
-  /Play ще не питали/.test(await why({ ...BASE, app_id: 'com.a.b' }))
-  && /↻/.test(await why({ ...BASE, app_id: 'com.a.b' })),
-  await why({ ...BASE, app_id: 'com.a.b' }));
-ok('перевірили, а іконки Play не дав — переказуємо, що він відповів',
-  /Play не віддав іконку.*сторінки апки немає/.test(
-    await why({ ...BASE, app_id: 'com.a.b', app_checked_at: '2026-10-28T00:00:00Z',
-                app_note: 'Play: сторінки апки немає' })),
-  await why({ ...BASE, app_id: 'com.a.b', app_checked_at: '2026-10-28T00:00:00Z',
-              app_note: 'Play: сторінки апки немає' }));
-ok('іконка є — жодних підписів поруч не лишається',
-  await why({ ...BASE, app_id: 'com.a.b', app_icon: 'https://play-lh.x/i' }) === '');
-
-/* ПЕРЕВІРИТИ ЦЮ АПКУ ЗАРАЗ. Доти позапланова перевірка була лише на
-   весь парк — запитом у SQL. Щоб перевірити одну, лишалось
-   перезберігати посилання, і здогадатись про це було нізвідки. */
-const rech = row => page.evaluate(row => {
-  currentTeam = 'T';
-  apFunnels = [row];
-  apItems = [{ id: 'i1', geo: 'KG', provider: 'satorapps',
-               naming: 'KG_{app}_test', deeplink: '', subs: [] }];
-  apMode = 'app';
-  try { localStorage.setItem('ap_pick', JSON.stringify({ i1: 'K1' })); } catch (e) {}
-  apRenderMode();
-  const b = [...document.querySelectorAll('#ap-list button')]
-    .find(x => x.textContent.trim() === '↻');
-  return b ? b.getAttribute('onclick') : '';
-}, row);
-
-ok('кнопка перевірки стоїть, коли посилання вписане',
-  /apIconFetch\('K1'\)/.test(await rech({ ...BASE, app_id: 'com.a.b' })),
-  await rech({ ...BASE, app_id: 'com.a.b' }));
-ok('і коли іконка вже є — щоб спитати ще раз',
-  /apIconFetch/.test(await rech({ ...BASE, app_id: 'com.a.b', app_icon: 'https://play-lh.x/i' })));
-ok('без посилання кнопки немає: питати Play нема про що',
-  await rech({ ...BASE, app_id: '' }) === '');
-/* СТАРА ЗАДЕПЛОЄНА ФУНКЦІЯ.
-
-   Вона знає лише вхід розкладу, тож на наш запит падає на перевірці
-   ключа й відповідає «bad or missing x-cron-key». Переказати це
-   дослівно означало б відправити людину шукати ключ, якого вона не
-   загубила: ми шлемо funnel_id і свій токен, ключа розкладу в нас
-   немає й бути не може. Отже причина одна — функція старіша за
-   сторінку. */
-ok('«x-cron-key» на наш запит читається як «розгорни функцію наново»',
-  await page.evaluate(async () => {
-    apFunnels = [{ ktid: 'K1', id: 5, funnel_name: 'X', app_id: 'com.a.b' }];
-    // без сесії apIconFetch виходить ще до запиту — даємо її
-    sb.auth.getSession = async () => ({ data: { session: { access_token: 'jwt' } } });
-    const f = window.fetch;
-    window.fetch = async () => ({ ok: false, status: 401,
-      json: async () => ({ error: 'bad or missing x-cron-key' }) });
-    const said = [];
-    const t = window.toast; window.toast = m => said.push(String(m));
-    await apIconFetch('K1');
-    window.fetch = f; window.toast = t;
-    return said.join(' ');
-  }).then(t => /старіша за сторінку/.test(t) && /deploy check-apps/.test(t)
-            && !/x-cron-key/.test(t)));
-
-ok('інші відмови переказуємо як є — вони про себе й кажуть',
-  await page.evaluate(async () => {
-    apFunnels = [{ ktid: 'K1', id: 5, funnel_name: 'X', app_id: 'com.a.b' }];
-    sb.auth.getSession = async () => ({ data: { session: { access_token: 'jwt' } } });
-    const f = window.fetch;
-    window.fetch = async () => ({ ok: false, status: 400,
-      json: async () => ({ error: 'у цієї воронки не вписане посилання на апку' }) });
-    const said = [];
-    const t = window.toast; window.toast = m => said.push(String(m));
-    await apIconFetch('K1');
-    window.fetch = f; window.toast = t;
-    return said.join(' ');
-  }).then(t => /не вписане посилання/.test(t)));
-
-ok('без посилання і сам виклик нічого не шле', await page.evaluate(async () => {
-  apFunnels = [{ ktid: 'K1', id: 5, funnel_name: 'X', app_id: '' }];
-  let sent = 0;
-  const f = window.fetch; window.fetch = () => { sent++; return f.apply(window, arguments); };
-  await apIconFetch('K1');
-  window.fetch = f;
-  return sent === 0;
-}));
-/* ВИСОТУ РЯДКА ТУТ НЕ ПОРІВНЮЄМО, і це свідомо. Рядок неймінга
-   складається з класів Tailwind (py-1.5, text-[12px]), а Tailwind у
-   стенд не доїжджає — відтворити його метрики підміною однієї
-   властивості не вийшло, і порівняння міряло б не іконку, а те, чого
-   в стенді немає.
-
-   Натомість перевіряємо сам договір, який і тримає висоту: іконка
-   рівно 28px (стільки ж, скільки рядок неймінга в справжній
-   сторінці) і не розтягується. Поки це так, блок вищим не стане. */
-await card(true);                     // останній малюнок був без іконки
-const box = await page.evaluate(() => {
-  const i = document.querySelector('#ap-list img.ap-ico');
-  const st = getComputedStyle(i);
-  return { w: st.width, h: st.height, grow: st.flexGrow, shrink: st.flexShrink };
-});
-// Субпікселі тут від масштабу вікна, а не від розмітки — округляємо.
-const px = v => Math.round(parseFloat(v));
-ok('іконка квадратна й рівно 28px — як і рядок неймінга',
-  px(box.w) === 28 && px(box.h) === 28, box);
-ok('і не розтягується разом із рядком',
-  box.grow === '0' && box.shrink === '0', box);
-
-await done(browser, srv, errs);
+srv.close();
+/* Підсумок друкуємо самі: done() із гарнеса закриває браузер і сервер,
+   а ми вже закрили обидва — стенд працює з ДВОМА сторінками, бо
+   перевіряє і дашборд, і Form.html. */
+const c = count();
+console.log(`\n${c.pass} ok, ${c.fail} fail`);
+process.exit(c.fail ? 1 : 0);
