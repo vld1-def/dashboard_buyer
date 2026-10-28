@@ -4829,6 +4829,14 @@ async function addFunnelMapping() {
   }
   if (!error) {
     showStatus("Funnel Mapped!");
+    /* Щойно заведену воронку питаємо одразу — але лише коли посилання
+       справді вписали: інакше це запит у нікуди. id беремо з бази,
+       бо upsert міг і перезаписати наявний рядок. */
+    if (appId) {
+      const { data: back } = await sb.from('funnels_mapping')
+        .select('id').eq('team_name', currentTeam).eq('ktid', ktid).limit(1);
+      if (back && back[0]) await funAppIcon(back[0].id);
+    }
     document.getElementById('fun-name').value = '';
     document.getElementById('fun-ktid').value = '';
     const g = document.getElementById('fun-geo'); if (g) g.value = '';
@@ -5072,6 +5080,45 @@ async function updateFunnelGeo(id, val) {
 /* Ід апки з таблиці. Порожній рядок і «—» означають «прибрати»:
    людина стирає поле саме для цього, і записувати замість нього
    порожній рядок означало б лишити воронку в черзі обходу назавжди. */
+/* ЗАБРАТИ ІКОНКУ ОДРАЗУ, А НЕ ЧЕКАТИ НОЧІ.
+
+   Адресу іконки з самого посилання вивести неможливо: вона на
+   play-lh.googleusercontent.com/<хеш>, і хеш лежить у HTML сторінки
+   Play. Прочитати той HTML із браузера теж не можна — Play не віддає
+   CORS-заголовків, тож чужа відповідь для сторінки просто не існує.
+
+   Тому ходить сервер: та сама функція check-apps, але входом для
+   живої людини — одна воронка, нашим токеном, без банів. Бан коштує
+   зникнення воронки зі списку прілок, і приймати таке рішення має
+   обхід, який бачить дві перевірки поспіль, а не один клік.
+
+   Мовчки не падаємо: функції може не бути задеплоєно, і тоді людина
+   мусить знати, чому картинки немає. */
+async function funAppIcon(id) {
+  try {
+    const { data: sess } = await sb.auth.getSession();
+    const jwt = sess && sess.session && sess.session.access_token;
+    if (!jwt) return;
+    const res = await fetch(SUPABASE_URL + '/functions/v1/check-apps', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + jwt, 'apikey': SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ funnel_id: id })
+    });
+    if (res.status === 404 && !res.headers.get('content-type')) {
+      showStatus('Icon: deploy the function first — supabase functions deploy check-apps');
+      return;
+    }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { showStatus('Icon: ' + (j.error || 'HTTP ' + res.status)); return; }
+    showStatus(j.icon ? 'Checked Play — icon saved'
+                      : 'Checked Play — ' + (j.note || 'no icon'));
+  } catch (e) {
+    showStatus('Icon: the check-apps function did not answer — '
+      + 'supabase functions deploy check-apps');
+  }
+}
+
 async function updateFunnelApp(id, val) {
   const raw = String(val || '').replace(/\u00a0/g, ' ').trim();
   const app_id = (raw === '' || raw === '—') ? null : funAppId(raw);
@@ -5093,7 +5140,10 @@ async function updateFunnelApp(id, val) {
       + (/(does not exist|schema cache)/i.test(m)
          ? '\n\nУ funnels_mapping ще немає колонок апки. Виконай APP_LINK.sql, тоді Ctrl+Shift+R.'
          : ''));
-  } else showStatus(app_id ? 'App id saved — it will be checked daily' : 'App id cleared');
+  } else if (app_id) {
+    showStatus('App id saved — asking Play…');
+    await funAppIcon(id);
+  } else showStatus('App id cleared');
   await refreshFunnelsTable();
 }
 

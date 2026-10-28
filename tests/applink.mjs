@@ -85,7 +85,7 @@ const card = sel => page.evaluate(sel => {
   apMode = 'app';
   try { localStorage.setItem('ap_pick', JSON.stringify({ i1: 'K1' })); } catch (e) {}
   apRenderMode();
-  const img = document.querySelector('#ap-list .ap-ico');
+  const img = document.querySelector('#ap-list img.ap-ico');
   const code = document.querySelector('#ap-list .ap-copy');
   const row = code && code.parentElement;
   const r = e => e.getBoundingClientRect();
@@ -109,7 +109,46 @@ ok('розмір іконки прибитий до висоти рядка не
   withIco.icoH >= 26 && withIco.icoH <= 29, withIco.icoH);
 
 const noIco = await card(false);
-ok('немає іконки — немає й місця під неї', !noIco.has, noIco);
+ok('немає іконки — картинки теж немає', !noIco.has, noIco);
+
+/* ЧОМУ ІКОНКИ НЕМАЄ — КАЖЕМО, А НЕ МОВЧИМО.
+
+   «І чому іконку не показуєш в прілках?» — питання, якого не мало б
+   бути. Шлях від «вписав посилання» до «з'явилась іконка» має три
+   кроки, і жоден не миттєвий: APP_LINK.sql, деплой check-apps,
+   перший обхід. Поки хоч один не зроблено, картинки не буде — і без
+   підпису це читається як поломка.
+
+   Причини різні, і підказка мусить називати ту, що справді є. */
+const why = row => page.evaluate(row => {
+  currentTeam = 'T';
+  apFunnels = [row];
+  apItems = [{ id: 'i1', geo: 'KG', provider: 'satorapps',
+               naming: 'KG_{app}_test', deeplink: '', subs: [] }];
+  apMode = 'app';
+  try { localStorage.setItem('ap_pick', JSON.stringify({ i1: 'K1' })); } catch (e) {}
+  apRenderMode();
+  const n = document.querySelector('#ap-list .ap-ico.is-none');
+  return n ? n.getAttribute('title') : '';
+}, row);
+
+const BASE = { ktid: 'K1', funnel_name: 'Mostbet [satorapps]', geo: 'KG', is_app: true };
+ok('колонок у базі ще немає — названо файл, який це лагодить',
+  /APP_LINK\.sql/.test(await why({ ...BASE })), await why({ ...BASE }));
+ok('посилання не вписане — сказано, де його вписати',
+  /не вписане посилання/.test(await why({ ...BASE, app_id: '' })),
+  await why({ ...BASE, app_id: '' }));
+ok('обхід ще не дійшов — сказано саме це, а не «зламалось»',
+  /обхід до неї ще не дійшов/.test(await why({ ...BASE, app_id: 'com.a.b' })),
+  await why({ ...BASE, app_id: 'com.a.b' }));
+ok('перевірили, а іконки Play не дав — переказуємо, що він відповів',
+  /Play не віддав іконку.*сторінки апки немає/.test(
+    await why({ ...BASE, app_id: 'com.a.b', app_checked_at: '2026-10-28T00:00:00Z',
+                app_note: 'Play: сторінки апки немає' })),
+  await why({ ...BASE, app_id: 'com.a.b', app_checked_at: '2026-10-28T00:00:00Z',
+              app_note: 'Play: сторінки апки немає' }));
+ok('іконка є — жодних підписів поруч не лишається',
+  await why({ ...BASE, app_id: 'com.a.b', app_icon: 'https://play-lh.x/i' }) === '');
 /* ВИСОТУ РЯДКА ТУТ НЕ ПОРІВНЮЄМО, і це свідомо. Рядок неймінга
    складається з класів Tailwind (py-1.5, text-[12px]), а Tailwind у
    стенд не доїжджає — відтворити його метрики підміною однієї
@@ -121,7 +160,7 @@ ok('немає іконки — немає й місця під неї', !noIco.
    сторінці) і не розтягується. Поки це так, блок вищим не стане. */
 await card(true);                     // останній малюнок був без іконки
 const box = await page.evaluate(() => {
-  const i = document.querySelector('#ap-list .ap-ico');
+  const i = document.querySelector('#ap-list img.ap-ico');
   const st = getComputedStyle(i);
   return { w: st.width, h: st.height, grow: st.flexGrow, shrink: st.flexShrink };
 });
