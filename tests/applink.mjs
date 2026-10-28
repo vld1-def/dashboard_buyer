@@ -138,8 +138,9 @@ ok('колонок у базі ще немає — названо файл, як
 ok('посилання не вписане — сказано, де його вписати',
   /не вписане посилання/.test(await why({ ...BASE, app_id: '' })),
   await why({ ...BASE, app_id: '' }));
-ok('обхід ще не дійшов — сказано саме це, а не «зламалось»',
-  /обхід до неї ще не дійшов/.test(await why({ ...BASE, app_id: 'com.a.b' })),
+ok('Play ще не питали — сказано саме це, і куди тиснути',
+  /Play ще не питали/.test(await why({ ...BASE, app_id: 'com.a.b' }))
+  && /↻/.test(await why({ ...BASE, app_id: 'com.a.b' })),
   await why({ ...BASE, app_id: 'com.a.b' }));
 ok('перевірили, а іконки Play не дав — переказуємо, що він відповів',
   /Play не віддав іконку.*сторінки апки немає/.test(
@@ -149,6 +150,76 @@ ok('перевірили, а іконки Play не дав — переказу�
               app_note: 'Play: сторінки апки немає' }));
 ok('іконка є — жодних підписів поруч не лишається',
   await why({ ...BASE, app_id: 'com.a.b', app_icon: 'https://play-lh.x/i' }) === '');
+
+/* ПЕРЕВІРИТИ ЦЮ АПКУ ЗАРАЗ. Доти позапланова перевірка була лише на
+   весь парк — запитом у SQL. Щоб перевірити одну, лишалось
+   перезберігати посилання, і здогадатись про це було нізвідки. */
+const rech = row => page.evaluate(row => {
+  currentTeam = 'T';
+  apFunnels = [row];
+  apItems = [{ id: 'i1', geo: 'KG', provider: 'satorapps',
+               naming: 'KG_{app}_test', deeplink: '', subs: [] }];
+  apMode = 'app';
+  try { localStorage.setItem('ap_pick', JSON.stringify({ i1: 'K1' })); } catch (e) {}
+  apRenderMode();
+  const b = [...document.querySelectorAll('#ap-list button')]
+    .find(x => x.textContent.trim() === '↻');
+  return b ? b.getAttribute('onclick') : '';
+}, row);
+
+ok('кнопка перевірки стоїть, коли посилання вписане',
+  /apIconFetch\('K1'\)/.test(await rech({ ...BASE, app_id: 'com.a.b' })),
+  await rech({ ...BASE, app_id: 'com.a.b' }));
+ok('і коли іконка вже є — щоб спитати ще раз',
+  /apIconFetch/.test(await rech({ ...BASE, app_id: 'com.a.b', app_icon: 'https://play-lh.x/i' })));
+ok('без посилання кнопки немає: питати Play нема про що',
+  await rech({ ...BASE, app_id: '' }) === '');
+/* СТАРА ЗАДЕПЛОЄНА ФУНКЦІЯ.
+
+   Вона знає лише вхід розкладу, тож на наш запит падає на перевірці
+   ключа й відповідає «bad or missing x-cron-key». Переказати це
+   дослівно означало б відправити людину шукати ключ, якого вона не
+   загубила: ми шлемо funnel_id і свій токен, ключа розкладу в нас
+   немає й бути не може. Отже причина одна — функція старіша за
+   сторінку. */
+ok('«x-cron-key» на наш запит читається як «розгорни функцію наново»',
+  await page.evaluate(async () => {
+    apFunnels = [{ ktid: 'K1', id: 5, funnel_name: 'X', app_id: 'com.a.b' }];
+    // без сесії apIconFetch виходить ще до запиту — даємо її
+    sb.auth.getSession = async () => ({ data: { session: { access_token: 'jwt' } } });
+    const f = window.fetch;
+    window.fetch = async () => ({ ok: false, status: 401,
+      json: async () => ({ error: 'bad or missing x-cron-key' }) });
+    const said = [];
+    const t = window.toast; window.toast = m => said.push(String(m));
+    await apIconFetch('K1');
+    window.fetch = f; window.toast = t;
+    return said.join(' ');
+  }).then(t => /старіша за сторінку/.test(t) && /deploy check-apps/.test(t)
+            && !/x-cron-key/.test(t)));
+
+ok('інші відмови переказуємо як є — вони про себе й кажуть',
+  await page.evaluate(async () => {
+    apFunnels = [{ ktid: 'K1', id: 5, funnel_name: 'X', app_id: 'com.a.b' }];
+    sb.auth.getSession = async () => ({ data: { session: { access_token: 'jwt' } } });
+    const f = window.fetch;
+    window.fetch = async () => ({ ok: false, status: 400,
+      json: async () => ({ error: 'у цієї воронки не вписане посилання на апку' }) });
+    const said = [];
+    const t = window.toast; window.toast = m => said.push(String(m));
+    await apIconFetch('K1');
+    window.fetch = f; window.toast = t;
+    return said.join(' ');
+  }).then(t => /не вписане посилання/.test(t)));
+
+ok('без посилання і сам виклик нічого не шле', await page.evaluate(async () => {
+  apFunnels = [{ ktid: 'K1', id: 5, funnel_name: 'X', app_id: '' }];
+  let sent = 0;
+  const f = window.fetch; window.fetch = () => { sent++; return f.apply(window, arguments); };
+  await apIconFetch('K1');
+  window.fetch = f;
+  return sent === 0;
+}));
 /* ВИСОТУ РЯДКА ТУТ НЕ ПОРІВНЮЄМО, і це свідомо. Рядок неймінга
    складається з класів Tailwind (py-1.5, text-[12px]), а Tailwind у
    стенд не доїжджає — відтворити його метрики підміною однієї

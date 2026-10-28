@@ -4985,6 +4985,12 @@ function renderFunnelsTable(data) {
           ${r.app_id && !r.app_checked_at ? `<span
             class="text-[9px] font-black uppercase tracking-wider text-slate-500"
             title="Обхід ще не доходив до цієї апки">ще не перевіряли</span>` : ''}
+          <!-- Позапланова перевірка саме цієї апки. Без неї лишалось
+               хіба перезберігати посилання, і здогадатись про це було
+               нізвідки. -->
+          ${r.app_id ? `<button onclick="funAppRecheck('${r.id}')"
+            title="Спитати Play про цю апку зараз, не чекаючи щоденного обходу"
+            class="text-[11px] text-slate-500 hover:text-white px-1 transition">↻</button>` : ''}
         </div>
       </td>
       <!-- Бан — це стан, а не видалення: на KTID тримається вся залита
@@ -5110,6 +5116,17 @@ async function funAppIcon(id) {
       return;
     }
     const j = await res.json().catch(() => ({}));
+    /* «bad or missing x-cron-key» на ЦЕЙ запит означає не те, що
+       написано. Ми шлемо funnel_id і свій токен — вхід для живої
+       людини; ключа розкладу в нас немає й бути не може. Отже
+       задеплоєна функція про цей вхід ще не знає, тобто вона старіша
+       за сторінку. Переказувати помилку дослівно означало б
+       відправити людину шукати ключ, якого вона не загубила. */
+    if (!res.ok && /x-cron-key/i.test(String(j.error || ''))) {
+      showStatus('Icon: the deployed check-apps is older than this page — '
+        + 'supabase functions deploy check-apps');
+      return;
+    }
     if (!res.ok) { showStatus('Icon: ' + (j.error || 'HTTP ' + res.status)); return; }
     showStatus(j.icon ? 'Checked Play — icon saved'
                       : 'Checked Play — ' + (j.note || 'no icon'));
@@ -5118,6 +5135,20 @@ async function funAppIcon(id) {
       + 'supabase functions deploy check-apps');
   }
 }
+
+/* ПЕРЕВІРИТИ ЦЮ АПКУ ЗАРАЗ.
+
+   Доти позапланова перевірка була лише на весь парк — запитом із
+   БЛОКУ 4 у APP_LINK.sql. Щоб перевірити ОДНУ апку, доводилось
+   перезберігати посилання: воно тягло перевірку побічно, і здогадатись
+   про це було нізвідки.
+
+   Та сама функція, той самий вхід — просто названий кнопкою. */
+window.funAppRecheck = async function (id) {
+  showStatus('Asking Play…');
+  await funAppIcon(id);
+  await refreshFunnelsTable();
+};
 
 async function updateFunnelApp(id, val) {
   const raw = String(val || '').replace(/\u00a0/g, ' ').trim();

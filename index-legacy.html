@@ -9152,19 +9152,25 @@ function apAppId(raw) {
 function apIconState(ktid) {
   const f = apFunnels.find(x => String(x.ktid) === String(ktid));
   if (!f) return { icon: '', why: '' };
-  if (f.app_icon) return { icon: String(f.app_icon), why: '' };
+  // can: чи є сенс питати Play — тобто чи вписане посилання
+  const can = !!String(f.app_id || '').trim();
+  if (f.app_icon) return { icon: String(f.app_icon), why: '', can };
   /* Колонки ще немає в базі — отже APP_LINK.sql не виконаний. Питаємо
      весь довідник, а не цей рядок: PostgREST віддає однакові поля для
      всіх, тож одного рядка досить, щоб знати про всіх. */
   if (!apFunnels.some(x => 'app_id' in x))
-    return { icon: '', why: 'Перевірка апок ще не налаштована — виконайте APP_LINK.sql' };
-  if (!String(f.app_id || '').trim())
-    return { icon: '', why: 'У цієї апки не вписане посилання на Play — '
-                          + 'додайте його в Form → Settings → Funnels' };
+    return { icon: '', can: false,
+             why: 'Перевірка апок ще не налаштована — виконайте APP_LINK.sql' };
+  if (!can)
+    return { icon: '', can: false,
+             why: 'У цієї апки не вписане посилання на Play — '
+                + 'додайте його в Form → Settings → Funnels' };
   if (!f.app_checked_at)
-    return { icon: '', why: 'Посилання вписане, але обхід до неї ще не дійшов — '
-                          + 'іконка з\'явиться після першої перевірки' };
-  return { icon: '', why: 'Play не віддав іконку' + (f.app_note ? ': ' + f.app_note : '') };
+    return { icon: '', can,
+             why: 'Посилання вписане, але Play ще не питали — ↻ поруч питає зараз' };
+  return { icon: '', can,
+           why: 'Play не віддав іконку' + (f.app_note ? ': ' + f.app_note : '')
+              + ' · ↻ поруч питає ще раз' };
 }
 
 async function openAppsModal() {
@@ -9483,6 +9489,11 @@ async function apAddFunnel(isApp) {
 async function apIconFetch(ktid) {
   const f = apFunnels.find(x => String(x.ktid) === String(ktid));
   if (!f || !f.id) return;
+  if (!String(f.app_id || '').trim()) {
+    toast('У цієї апки не вписане посилання на Play — додай його в Form → Settings → Funnels',
+      'warn', 9000);
+    return;
+  }
   try {
     const { data: sess } = await sb.auth.getSession();
     const jwt = sess && sess.session && sess.session.access_token;
@@ -9494,6 +9505,17 @@ async function apIconFetch(ktid) {
       body: JSON.stringify({ funnel_id: f.id })
     });
     const j = await res.json().catch(() => ({}));
+    /* «bad or missing x-cron-key» на ЦЕЙ запит означає не те, що
+       написано. Ми шлемо funnel_id і свій токен — вхід для живої
+       людини; ключа розкладу в нас немає й бути не може. Отже
+       задеплоєна функція про цей вхід ще не знає, тобто вона старіша
+       за сторінку. Переказувати помилку дослівно означало б відправити
+       людину шукати ключ, якого вона не загубила. */
+    if (!res.ok && /x-cron-key/i.test(String(j.error || ''))) {
+      toast('Іконка: задеплоєна check-apps старіша за сторінку — розгорни її наново: '
+          + 'supabase functions deploy check-apps', 'warn', 12000);
+      return;
+    }
     if (!res.ok) {
       toast('Іконка: ' + (j.error || 'функція check-apps не відповіла'), 'warn', 9000);
       return;
@@ -9697,7 +9719,12 @@ function apRender() {
             /* Місце під іконку лишаємо порожнім, але підписаним: інакше
                «чому іконки немає» лишається питанням без адресата. */
             : st.why ? `<span class="ap-ico is-none" title="${apEsc(st.why)}">?</span>` : ''
-          )(apIconState(ktid))}</div>` : ''}
+          )(apIconState(ktid))}${ktid && apIconState(ktid).can
+            /* Перевірити цю апку зараз. Доти позапланова перевірка була
+               лише на весь парк, запитом у SQL. */
+            ? `<button onclick="apIconFetch('${apEsc(ktid)}')" title="Спитати Play про цю апку зараз"
+                 class="text-[11px] text-slate-500 hover:text-white px-1 shrink-0 transition">↻</button>`
+            : ''}</div>` : ''}
 
       ${it.deeplink ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Діплінк</span>
