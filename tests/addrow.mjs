@@ -148,7 +148,12 @@ await page.evaluate(() => {
   apFunnels = [{ ktid: 'k1', funnel_name: 'Crazy Wheel [satorapps]', geo: 'KG', is_app: true }];
   apItems = []; pwItems = []; apMode = 'app';
   window.__up = [];
-  sb.from = t => ({ upsert: row => Promise.resolve((window.__up.push([t, row]), { error: null })) });
+  /* upsert тепер завершується .select('id'): щойно заведеній воронці
+     потрібен її id, щоб попросити перевірку саме її. Підміна мусить
+     повторювати форму, інакше стенд падає на тому, чого в коді немає. */
+  sb.from = t => ({ upsert: row => ({
+    select: async () => (window.__up.push([t, row]), { data: [{ id: 7 }], error: null })
+  }) });
 });
 await page.evaluate(() => { window.__p = apAddFunnel(true); });
 await page.waitForTimeout(80);

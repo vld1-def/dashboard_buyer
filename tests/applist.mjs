@@ -65,7 +65,42 @@ ok('апка без постачальника лишає KTID у своєму �
   atOf(lab.rows[4], 'X1') === atOf(lab.rows[0], 'FD11003'),
   [lab.rows[0], lab.rows[4]]);
 ok('хвостових пробілів немає: в <option> їх ріжуть по-різному',
-  lab.rows.every(r => r === r.replace(/\s+$/, '')), lab.rows);
+  lab.rows.every(r => r === r.replace(/[\s\u00a0]+$/, '')), lab.rows);
+
+/* ВИРІВНЮВАННЯ МУСИТЬ ДОЖИТИ ДО ЕКРАНА.
+
+   Тут стенд уже раз збрехав. Він перевіряв САМ РЯДОК — і проходив,
+   тоді як на екрані стовпців не було зовсім: HTML стискає підряд
+   ідучі звичайні пробіли в один, і все вирівнювання зникало при
+   показі. Вийшло гірше, ніж до правки: роздільники прибрані, стовпці
+   не з'явились.
+
+   Тому перевіряємо не рядок, а те, що з нього лишається в DOM. */
+const DOM = await page.evaluate(list => {
+  const box = document.createElement('div');
+  const pad = apFunnelPad(list);
+  box.innerHTML = '<select>' + list.map(f =>
+    '<option>' + apFunnelLabel(f, pad) + '</option>').join('') + '</select>';
+  document.body.appendChild(box);
+  const out = [...box.querySelectorAll('option')].map(o => o.textContent);
+  box.remove();
+  return out;
+}, L);
+
+ok('доповнення нерозривними: звичайні пробіли HTML стиснув би',
+  DOM.every(t => /\u00a0/.test(t)) && DOM.some(t => /\u00a0\u00a0/.test(t)),
+  DOM.map(t => t.replace(/\u00a0/g, '·')));
+
+/* Головне: у РОЗМІТЦІ значення стоять на тих самих місцях. Знаки тут
+   усі однакової ширини (список моноширинний), тож однаковий номер
+   знака і є одна колонка. */
+const domAt = (i, val) => DOM[i].indexOf(val);
+ok('у розмітці KTID стоїть на тому самому місці в кожному рядку',
+  [...new Set(L.map((f, i) => domAt(i, f.ktid)))].length === 1,
+  L.map((f, i) => domAt(i, f.ktid)));
+ok('і назва теж',
+  [...new Set(L.map((f, i) => domAt(i, apNames[i])))].length === 1,
+  L.map((f, i) => domAt(i, apNames[i])));
 
 ok('довга назва ріжеться, щоб список не був ширший за вікно',
   await page.evaluate(() => {
@@ -122,5 +157,28 @@ ok('обгортка не малює своєї картки: ні заливк�
 ok('…ні рамки', cr.border === '0px', cr.border);
 ok('своїх відступів теж немає', /\bp-0\b/.test(cr.cls), cr.cls);
 ok('список доходить до низу обгортки', cr.fills, cr);
+
+/* ВИСОТА САМОЇ ОБГОРТКИ — не вимірюється тут, і це треба сказати
+   вголос, бо саме на цьому стенд один раз і збрехав: він перевіряв,
+   що список заповнює обгортку, і проходив — тоді як обгортка стояла
+   на 500px, і «не на повну висоту блока» лишалось правдою.
+
+   Зміряти її в стенді неможливо: уся розкладка тримається на класах
+   Tailwind (grid, lg:col-span-*, lg:min-h-*), а Tailwind сюди не
+   доїжджає — #creative-result-area тут display:block, тобто сітки
+   немає зовсім. Підміняти її власним CSS означало б міряти підміну.
+
+   Тому перевіряємо договір у розмітці: поки картки праворуч немає
+   (вона display:none до вибору креатива), висоту рядка задає ця
+   колонка, і на широкому екрані вона мусить бути від 75vh. */
+const floor = await page.evaluate(() => {
+  const w = document.getElementById('creative-list-sidebar')
+    .closest('[class*="col-span-3"]');
+  return w.className;
+});
+ok('на широкому екрані колонка має межу у висоту екрана, а не 500px',
+  /\blg:min-h-\[75vh\]/.test(floor), floor);
+ok('а для вузьких лишається 500px: там колонки стають одна під одною',
+  /\bmin-h-\[500px\]/.test(floor), floor);
 
 await done(browser, srv, errs);

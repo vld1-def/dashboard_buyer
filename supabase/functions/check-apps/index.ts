@@ -22,11 +22,24 @@
    зняти сама, коли апка знову відкрилась. Бан, поставлений людиною, —
    не має: вона могла забанити апку з причини, якої в Play не видно.
 
-   ВХІД ОДИН — ЗА СПІЛЬНИМ СЕКРЕТОМ (x-cron-key). Людина цю функцію не
-   кличе: перевіряти свої апки руками щодня ніхто не буде, а відкритий
-   вхід означав би ще одне місце, звідки можна ходити по чужих рядках.
-   Кнопка «перевірити зараз» на сторінці теж іде сюди ж, але через
-   розклад — див. БЛОК 3 у APP_LINK.sql.
+   ДВА ВХОДИ, І ВОНИ РІЗНІ НЕ ЛИШЕ КЛЮЧЕМ.
+
+   1. РОЗКЛАД — заголовок x-cron-key зі спільним секретом. Ходить без
+      людини, обходить увесь парк, ставить і знімає бани. Читає й пише
+      ключем сервісної ролі, бо робить це за всіх одразу.
+
+   2. ЛЮДИНА — звичайний Authorization зі своїм токеном і поле
+      funnel_id у тілі. Одна воронка, без банів: лише подивитись, що
+      зараз на сторінці, і забрати іконку.
+
+      Ключ сервісної ролі тут НЕ береться СВІДОМО — так само, як у
+      check-domains. Читаємо й пишемо токеном того, хто покликав, і
+      межі ставить RLS: чужий рядок просто не прийде. Інакше цей вхід
+      став би способом правити будь-яку воронку в базі.
+
+   Навіщо другий вхід узагалі: іконка висіла до першого нічного
+   обходу. Людина вписала посилання — і дивиться на порожнє місце, не
+   знаючи, чи це поломка. Тепер картинка з'являється одразу.
 
    ЖОДНИХ ІМПОРТІВ — з тієї ж причини, що й у решті функцій: якщо
    імпорт не розвʼяжеться, функція падає ще до запуску, і ззовні це не
@@ -47,7 +60,16 @@ const BATCH = 120;
 const PAUSE_MS = 350;
 const DEADLINE_MS = 110_000;
 
-const FN_VERSION = '2026-10-28.1';
+const FN_VERSION = '2026-10-28.2';
+
+/* Вхід людини йде з браузера, отже потрібні CORS-заголовки — і на
+   самій відповіді, і на preflight. Без них браузер не покаже навіть
+   чесну помилку: відповідь без них для нього просто не існує. */
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
 
 type Json = Record<string, any>;
 type Row = {
@@ -58,7 +80,7 @@ type Row = {
 
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify(body),
-    { status, headers: { 'content-type': 'application/json' } });
+    { status, headers: { ...CORS, 'content-type': 'application/json' } });
 }
 
 /* Що Play сказав про цю апку.
@@ -173,18 +195,68 @@ async function probe(appId: string, geo: string): Promise<Verdict> {
 }
 
 Deno.serve(async (req) => {
+  /* Preflight іде ЗАВЖДИ без Authorization — відповідати на нього
+     треба до будь-яких перевірок, інакше браузер не дійде й до запиту. */
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return reply({ error: 'POST only' }, 405);
 
   const base = Deno.env.get('SUPABASE_URL') || '';
+  const anon = Deno.env.get('SUPABASE_ANON_KEY') || '';
   const svc = Deno.env.get('SERVICE_ROLE_KEY')
     || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (!base) return reply({ error: 'function is not configured' }, 500);
+
+  let body: Json = {};
+  try { body = await req.json(); } catch (_e) { /* тіла може не бути */ }
+  const one = Number(body?.funnel_id || 0) || 0;
+
+  /* ═══ ВХІД ЛЮДИНИ: ОДНА ВОРОНКА, БЕЗ БАНІВ ═══
+
+     Токеном того, хто покликав: межі ставить RLS, чужий рядок просто
+     не прийде. Банів звідси не ставимо — рішення «апки більше немає»
+     коштує зникнення воронки зі списку прілок, і приймати його має
+     обхід, який бачить ДВІ перевірки поспіль, а не один клік. */
+  if (one) {
+    const auth = req.headers.get('Authorization') || '';
+    if (!auth) return reply({ error: 'no authorization header' }, 401);
+    const mine = { apikey: anon || svc, Authorization: auth,
+                   'content-type': 'application/json' };
+    let row: Row | null = null;
+    try {
+      const res = await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + one
+        + '&select=id,funnel_name,app_id,geo,status,app_gone_since,app_banned_by,app_icon'
+        + '&limit=1', { headers: mine });
+      if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
+      row = (await res.json())[0] || null;
+    } catch (e) {
+      const msg = String((e as Error).message);
+      return reply({ error: /app_id|column/i.test(msg)
+        ? 'у funnels_mapping ще немає колонок апки — виконайте APP_LINK.sql'
+        : msg }, 500);
+    }
+    if (!row) return reply({ error: 'воронки не знайдено' }, 404);
+    const appId = String(row.app_id || '').trim();
+    if (!appId) return reply({ error: 'у цієї воронки не вписане посилання на апку' }, 400);
+
+    const v = await probe(appId, String(row.geo || ''));
+    const patch: Json = { app_checked_at: new Date().toISOString(), app_note: v.note };
+    if (v.state === 'live') { patch.app_gone_since = null; if (v.icon) patch.app_icon = v.icon; }
+    try {
+      await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + one, {
+        method: 'PATCH', headers: { ...mine, Prefer: 'return=minimal' },
+        body: JSON.stringify(patch) });
+    } catch (_e) { /* не записали — відповідь усе одно чесна */ }
+    return reply({ fn: FN_VERSION, one: true, state: v.state,
+                   icon: v.icon || '', note: v.note });
+  }
+
+  /* ═══ ВХІД РОЗКЛАДУ ═══ */
   const want = Deno.env.get('CHECK_APPS_CRON_KEY') || '';
-  if (!base || !svc) return reply({ error: 'function is not configured' }, 500);
+  if (!svc) return reply({ error: 'function is not configured' }, 500);
   if (!want) return reply({
     error: 'CHECK_APPS_CRON_KEY is not set in the function secrets' }, 400);
-
-  /* Єдиний вхід. Порівнюємо повністю, а не починаючи з початку: рівність
-     рядків тут і є вся перевірка. */
+  /* Порівнюємо повністю, а не починаючи з початку: рівність рядків тут
+     і є вся перевірка. */
   const key = req.headers.get('x-cron-key') || '';
   if (key !== want) return reply({ error: 'bad or missing x-cron-key' }, 401);
 
