@@ -897,6 +897,13 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <input type="text" id="fun-geo" placeholder="GEO" maxlength="4"
                        title="Під яке гео ця воронка. Потрібно, щоб у Прілках список апок звужувався за гео" class="!w-20 text-center uppercase">
                 <input type="text" id="fun-ktid" placeholder="KTID / app name" class="w-1/4 text-center">
+                <!-- Посилання на Play — НЕОБОВ'ЯЗКОВЕ. Без нього апка живе
+                     як жила, просто бан по ній ніхто не помітить раніше за
+                     людину. Із ним щоденний обхід сам ставить ban, коли
+                     сторінка перестала відкриватись двічі поспіль. -->
+                <input type="text" id="fun-app" placeholder="com.example.app (optional)"
+                       title="Google Play app id — те, що стоїть у адресі після id=. Можна вставити й цілу адресу. Якщо вписати, щодня перевірятиметься, чи апку не забанили"
+                       class="w-1/4 font-mono text-[12px]">
                 <label class="flex items-center gap-1.5 cursor-pointer shrink-0 px-2" title="Mark as APP — then KTID holds the app name">
                   <input type="checkbox" id="fun-is-app" onchange="funProvSync()" class="!w-4 !h-4 !p-0 accent-orange-500">
                   <span class="text-[10px] font-black uppercase text-orange-400">APP</span>
@@ -927,7 +934,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
              <div class="max-h-[500px] overflow-y-auto custom-scrollbar">
                 <table class="w-full text-[13px] text-left">
                   <thead class="sticky top-0 bg-slate-800/95 backdrop-blur-md text-slate-500 uppercase font-black">
-                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-center">GEO</th><th class="p-3 text-right">KTID</th><th class="p-3 text-center">State</th><th class="p-3"></th></tr>
+                    <tr><th class="p-3">Funnel Name</th><th class="p-3 text-center">GEO</th><th class="p-3 text-right">KTID</th><th class="p-3">Play app id</th><th class="p-3 text-center">State</th><th class="p-3"></th></tr>
                   </thead>
                   <tbody id="funnels-list-body" class="divide-y divide-white/5">
                     <!-- JS Rows -->
@@ -4755,6 +4762,30 @@ async function updateAccountTz(id, val) {
   else { showStatus("TZ updated"); await loadMappings(); }
 }
 
+/* ІД АПКИ З ТОГО, ЩО ВСТАВИЛИ.
+
+   Просять «com.fortunedra.gontrheb», а вставляють що завгодно: цілу
+   адресу Play, адресу з хвостом &hl=uk. Вимагати саме пакет означало б
+   відмовляти там, де ми й самі все бачимо — ід стоїть у кожному з цих
+   рядків.
+
+   Чого НЕ робимо: не вигадуємо ід, якого в рядку немає. Не схоже на
+   пакет — віддаємо порожнє, і поле лишається незаповненим, а не
+   заповненим сміттям, за яким обхід щодня ходив би в нікуди.
+
+   Те саме правило стоїть і в дашборді (apAppId): один ід мусить
+   розбиратись однаково з обох місць, інакше та сама апка заводилась
+   би по-різному залежно від того, де її завели. */
+function funAppId(raw) {
+  const v = String(raw ?? '').trim();
+  if (!v) return '';
+  const m = /[?&]id=([^&#\s]+)/.exec(v);
+  let cand = m ? m[1] : v;
+  try { cand = decodeURIComponent(cand); } catch (e) { /* лишаємо як є */ }
+  cand = cand.trim();
+  return /^[a-zA-Z][\w]*(\.[a-zA-Z0-9][\w]*)+$/.test(cand) ? cand : '';
+}
+
 async function addFunnelMapping() {
   const name = document.getElementById('fun-name').value;
   const ktid = document.getElementById('fun-ktid').value;
@@ -4762,9 +4793,23 @@ async function addFunnelMapping() {
 
   const isApp = !!document.getElementById('fun-is-app')?.checked;
   const geo = (document.getElementById('fun-geo')?.value || '').trim().toUpperCase();
-  const { error } = await sb.from('funnels_mapping').upsert({
-    ktid: ktid, funnel_name: name, team_name: currentTeam, is_app: isApp, geo: geo
-  });
+  const rawApp = (document.getElementById('fun-app')?.value || '').trim();
+  const appId = funAppId(rawApp);
+  /* Вписали щось, а пакета в ньому немає — кажемо, а не ковтаємо.
+     Мовчки збережена воронка без app_id виглядала б так само, як
+     збережена з ним, і обхід її просто не бачив би. */
+  if (rawApp && !appId) {
+    return alert('Це не схоже на id апки: ' + rawApp
+      + '\n\nПотрібен пакет на кшталт com.fortunedra.gontrheb — або ціла адреса Play, '
+      + 'у якій він стоїть після id=.');
+  }
+  const row = { ktid: ktid, funnel_name: name, team_name: currentTeam,
+                is_app: isApp, geo: geo };
+  /* Поки APP_LINK.sql не виконаний, колонки немає — і upsert із її
+     іменем відмовив би ЦІЛКОМ. Через необов'язкове поле воронку
+     завести стало б неможливо, тож шлемо його лише коли є що слати. */
+  if (appId) row.app_id = appId;
+  const { error } = await sb.from('funnels_mapping').upsert(row);
 
   if (error) {
     /* Колонки geo може ще не бути — тоді PostgREST каже «column … does
@@ -4772,9 +4817,13 @@ async function addFunnelMapping() {
        cache». Називаємо файл, який це лагодить, замість сирої помилки:
        з неї не видно, що робити. */
     const m = String(error.message || '');
+    const miss = /(does not exist|schema cache)/i.test(m);
     alert('Could not save the funnel: ' + m
-      + (/geo/i.test(m) && /(does not exist|schema cache)/i.test(m)
+      + (/geo/i.test(m) && miss
          ? '\n\nУ funnels_mapping ще немає колонки geo. Виконай FUNNEL_GEO.sql, тоді Ctrl+Shift+R.'
+         : '')
+      + (/app_id/i.test(m) && miss
+         ? '\n\nУ funnels_mapping ще немає колонки app_id. Виконай APP_LINK.sql, тоді Ctrl+Shift+R.'
          : ''));
     return;
   }
@@ -4783,6 +4832,7 @@ async function addFunnelMapping() {
     document.getElementById('fun-name').value = '';
     document.getElementById('fun-ktid').value = '';
     const g = document.getElementById('fun-geo'); if (g) g.value = '';
+    const a = document.getElementById('fun-app'); if (a) a.value = '';
     const ap = document.getElementById('fun-is-app'); if (ap) ap.checked = false;
     await refreshFunnelsTable(); 
     await loadMappings(); 
@@ -4892,7 +4942,7 @@ function renderFunnelsTable(data) {
   if (!body) return console.error("❌ Не знайдено funnels-list-body");
 
   if (!data || data.length === 0) {
-    body.innerHTML = '<tr><td colspan="5" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" class="p-4 text-center opacity-40 italic">No funnels mapped yet</td></tr>';
     return;
   }
 
@@ -4907,6 +4957,28 @@ function renderFunnelsTable(data) {
               title="Клік — вписати або змінити гео. Воронку перезаносити не треба">${
           r.geo ? String(r.geo).toUpperCase() : '—'}</span></td>
       <td class="p-3 text-right font-mono text-white font-black">${r.ktid || '—'}</td>
+      <!-- Ід апки правиться тут же, як і гео: воронку перезаносити не
+           треба. Іконка поруч — та, що привіз обхід; своєї в нас немає
+           й не буде, малюємо лише зміряне. -->
+      <td class="p-3">
+        <div class="flex items-center gap-2">
+          ${r.app_icon ? `<img src="${esc(r.app_icon)}" alt="" loading="lazy" decoding="async"
+            onerror="this.remove()" title="Іконка з Play"
+            style="width:24px;height:24px;border-radius:6px;flex:0 0 auto;object-fit:cover;border:1px solid rgba(255,255,255,.1)">` : ''}
+          <span contenteditable="true" onblur="updateFunnelApp('${r.id}', this.innerText)"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+                class="inline-block min-w-[120px] px-2 py-0.5 rounded bg-white/5 font-mono text-[11px] text-sky-300 outline-none focus:bg-white/10 cursor-text"
+                title="Google Play app id. Клік — вписати або змінити. Можна вставити цілу адресу Play">${
+            r.app_id ? esc(r.app_id) : '—'}</span>
+          ${r.app_id && r.app_checked_at ? `<span title="${esc(r.app_note || '')}"
+            class="text-[9px] font-black uppercase tracking-wider ${
+              r.app_gone_since ? 'text-amber-400' : 'text-emerald-400/70'}">${
+            r.app_gone_since ? 'не відповідає' : 'ok'}</span>` : ''}
+          ${r.app_id && !r.app_checked_at ? `<span
+            class="text-[9px] font-black uppercase tracking-wider text-slate-500"
+            title="Обхід ще не доходив до цієї апки">ще не перевіряли</span>` : ''}
+        </div>
+      </td>
       <!-- Бан — це стан, а не видалення: на KTID тримається вся залита
            статистика, і без рядка вона стає «Unknown (CS11003)» у
            кожному звіті за минулі місяці. Забанена воронка лишається
@@ -4995,6 +5067,34 @@ async function updateFunnelGeo(id, val) {
   // Довідник тримає імпорт і список апок у Прілках — перечитуємо обидва.
   await refreshFunnelsTable();
   await loadMappings();
+}
+
+/* Ід апки з таблиці. Порожній рядок і «—» означають «прибрати»:
+   людина стирає поле саме для цього, і записувати замість нього
+   порожній рядок означало б лишити воронку в черзі обходу назавжди. */
+async function updateFunnelApp(id, val) {
+  const raw = String(val || '').replace(/\u00a0/g, ' ').trim();
+  const app_id = (raw === '' || raw === '—') ? null : funAppId(raw);
+  if (raw && raw !== '—' && !app_id) {
+    alert('Це не схоже на id апки: ' + raw
+      + '\n\nПотрібен пакет на кшталт com.fortunedra.gontrheb — або ціла адреса Play.');
+    await refreshFunnelsTable();
+    return;
+  }
+  /* Разом із ідом стирається й усе, що обхід про нього знав: інакше
+     нова апка успадкувала б іконку й стан попередньої. */
+  const patch = { app_id };
+  if (!app_id) Object.assign(patch, { app_icon: null, app_checked_at: null,
+                                      app_gone_since: null, app_note: null });
+  const { error } = await sb.from('funnels_mapping').update(patch).eq('id', id);
+  if (error) {
+    const m = String(error.message || '');
+    alert('Could not save the app id: ' + m
+      + (/(does not exist|schema cache)/i.test(m)
+         ? '\n\nУ funnels_mapping ще немає колонок апки. Виконай APP_LINK.sql, тоді Ctrl+Shift+R.'
+         : ''));
+  } else showStatus(app_id ? 'App id saved — it will be checked daily' : 'App id cleared');
+  await refreshFunnelsTable();
 }
 
 async function deleteFunnelMapping(id) {

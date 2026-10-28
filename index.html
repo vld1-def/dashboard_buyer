@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 27.10 21:21">
+  <meta name="build" content="build 28.10 13:54">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -736,8 +736,11 @@ input[type="date"]::-webkit-datetime-edit-year-field {
   #geo-sidebar-col { max-height: 360px; }
   #geo-list { max-height: 260px !important; }
 
-  /* Creative sidebar — менша висота */
-  #creative-list-sidebar { max-height: 260px !important; }
+  /* Creative sidebar на телефоні: картка праворуч стоїть ПІД списком,
+     тож тягнутись нема за чим — висоту задаємо самі. 260px лишали
+     видимими три рядки з двадцяти; 60vh дає подивитись список, не
+     відбираючи весь екран у того, що під ним. */
+  #creative-list-sidebar { max-height: 60vh !important; }
 
   /* Creative stats — повна ширина */
   #creative-stats-card { border-radius: 1.5rem !important; }
@@ -2264,6 +2267,30 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 .set-btn-amber:hover { filter: brightness(1.12); }
 /* Список офферів більше не має власного скролу: вкладений скрол усередині
    панелі, яка й сама прокручується, — найгірший варіант із можливих. */
+/* Список апок вирівняний пробілами — отже шрифт мусить бути
+   моноширинним, інакше стовпці розповзуться. Ставимо і на сам select,
+   і на його пункти: Chrome бере шрифт пунктів із select, Firefox —
+   з option. */
+.ap-pick, .ap-pick option {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-ligatures: none;
+}
+
+/* ІКОНКА АПКИ БІЛЯ НЕЙМІНГА.
+
+   Розмір прибитий до висоти самого рядка неймінгу (code: 12px текст +
+   padding 6px зверху й знизу ≈ 28px). Саме тому блок не став вищим —
+   іконка стоїть У рядку, а не під ним.
+
+   Віддає її CDN Google, у нас не лежить нічого: ні байта трафіку, ні
+   бакета. Не завантажилась — img прибирає себе сам (onerror), і на
+   місці іконки просто нічого, а не рамка з хрестиком. */
+.ap-ico {
+  width: 28px; height: 28px; flex: 0 0 auto;
+  border-radius: 7px; object-fit: cover;
+  border: 1px solid var(--border); background: var(--surface-3);
+}
+
 .set-list { margin-top: 10px; }
 
 /* ─────────── Виплати: блок на гео ───────────
@@ -6179,7 +6206,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.10 21:21</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 28.10 13:54</div>
     </div>
   </aside>
 
@@ -6784,10 +6811,17 @@ input.ui-in[type="range"] { padding: 0; }
         </div>
         <div id="creative-result-area" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
   <!-- Колонна 1: Список креативів (col-span-3) -->
-  <div class="lg:col-span-3 bg-gray-500/5 p-4 rounded-3xl border border-gray-500/10 flex flex-col min-h-[500px]">
+  <!-- Обгортки більше не видно: своя заливка й рамка малювали ДРУГУ
+       картку поруч із карткою справа, хоч це той самий блок. Лишаються
+       лише підпис і сам список.
+
+       Висота: картка праворуч задає висоту рядка сітки, обгортка
+       тягнеться за нею (align-items: stretch), а список усередині
+       стоїть absolute — тому кількість креативів на висоту блока не
+       впливає й ніколи не впливала. min-h лишається на той випадок,
+       коли картки праворуч ще немає (її ховають до вибору). -->
+  <div class="lg:col-span-3 p-0 flex flex-col min-h-[500px]">
      <p class="text-[9px] font-black text-muted-dynamic uppercase mb-3 opacity-50">Creatives:</p>
-     <!-- Обгортка тягнеться на висоту картки праворуч, а сам список позиціонований
-          absolute — тому кількість креативів НЕ впливає на висоту блоку. -->
      <div class="relative flex-1 min-h-0">
        <div id="creative-list-sidebar" class="absolute inset-0 space-y-2 overflow-y-auto pr-1 custom-scrollbar"></div>
      </div>
@@ -7178,10 +7212,6 @@ input.ui-in[type="range"] { padding: 0; }
           class="w-3.5 h-3.5 accent-rose-500">
         <span>Auto-pause</span>
       </label>
-      <button onclick="dmCheckHelp()"
-        title="What the check needs, and what to do when the server does not answer"
-        class="px-2 py-2 rounded-xl text-[10px] font-black transition text-muted-dynamic hover:text-white"
-        style="border:1px solid var(--border)">?</button>
       <!-- Залишок квоти Web Risk більше не стоїть окремим написом:
            це число не дія і не стан списку, а ціна кнопки Check — тож
            воно й дописується в її підказку. -->
@@ -16793,6 +16823,32 @@ function apPickSet(id, ktid) {
 const apEsc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
                                   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/* ІД АПКИ З ТОГО, ЩО ВСТАВИЛИ.
+
+   Просять «com.fortunedra.gontrheb», а вставляють що завгодно: цілу
+   адресу Play, адресу з хвостом &hl=uk, адресу з APKPure. Вимагати
+   саме пакет означало б відмовляти людині там, де ми й самі все
+   бачимо — ід пакета стоїть у кожному з цих рядків.
+
+   Чого НЕ робимо: не вигадуємо ід, якого в рядку немає. Якщо він
+   не схожий на пакет — віддаємо порожнє, і поле лишається незаповненим,
+   а не заповненим сміттям, за яким обхід щодня ходив би в нікуди. */
+function apAppId(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  const m = /[?&]id=([^&#\s]+)/.exec(s);
+  const cand = decodeURIComponent(m ? m[1] : s).trim();
+  // Пакет — це хоча б дві частини через крапку, літерами й цифрами.
+  return /^[a-zA-Z][\w]*(\.[a-zA-Z0-9][\w]*)+$/.test(cand) ? cand : '';
+}
+
+/* Іконка апки — та, що прийшла з Play під час обходу. Своєї в нас
+   немає й не буде: малюємо лише те, що зміряно, а не здогад. */
+function apIconOf(ktid) {
+  const f = apFunnels.find(x => String(x.ktid) === String(ktid));
+  return (f && f.app_icon) ? String(f.app_icon) : '';
+}
+
 async function openAppsModal() {
   document.getElementById('apps-modal').classList.remove('hidden');
   if (!apLoaded) { apLoaded = true; await apLoad(); }
@@ -17028,6 +17084,15 @@ async function apAddFunnel(isApp) {
         placeholder: 'як у Keitaro' },
       { key: 'geo', label: 'Гео', upper: true, placeholder: 'KG',
         hint: 'Без гео список апок у прілках не звузиться.' },
+      /* Посилання на Play — НЕОБОВ'ЯЗКОВЕ, і це не формальність: без
+         нього апка живе як жила, просто бан по ній ніхто не помітить
+         раніше за людину. Із ним щоденний обхід сам ставить ban, коли
+         сторінка перестала відкриватись двічі поспіль. */
+      ...(isApp ? [{ key: 'app_id', label: 'Апка в Play', full: true,
+        placeholder: 'com.fortunedra.gontrheb',
+        hint: 'Не обов\'язково. Те, що стоїть у адресі Play після id=. '
+            + 'Якщо вписати — щодня перевірятиметься, чи апку не забанили, '
+            + 'і поруч з неймінгом стане її іконка.' }] : []),
       { key: 'is_app', label: 'Це APP (апка)', type: 'checkbox', value: !!isApp, full: true }
     ]
   });
@@ -17050,6 +17115,11 @@ async function apAddFunnel(isApp) {
      інакше upsert із невідомим полем відмовить цілком, і завести
      воронку стало б неможливо до міграції. */
   if (apFunnels.some(f => 'status' in f)) row.status = 'active';
+  /* Так само обережно, як зі status: поки APP_LINK.sql не виконаний,
+     колонки немає, і upsert із її іменем відмовив би ЦІЛКОМ — завести
+     апку стало б неможливо через необов'язкове поле. */
+  const appId = apAppId(v.app_id);
+  if (appId && apFunnels.some(f => 'app_id' in f)) row.app_id = appId;
   const { error } = await sb.from('funnels_mapping').upsert(row);
   if (error) {
     const m = String(error.message || error.code || '');
@@ -17064,7 +17134,9 @@ async function apAddFunnel(isApp) {
      стрибнула б у кінець списку, а після перезавантаження вікна
      опинилась на своєму місці. */
   const kept = { ktid, funnel_name: name, geo: row.geo, is_app: row.is_app,
-                 status: row.status || (was && was.status) || 'active' };
+                 status: row.status || (was && was.status) || 'active',
+                 app_id: row.app_id || (was && was.app_id) || '',
+                 app_icon: (was && was.app_icon) || '' };
   if (was) Object.assign(was, kept); else apFunnels.push(kept);
   apFunnels.sort((a, b) => String(a.funnel_name || '')
     .localeCompare(String(b.funnel_name || ''), 'uk'));
@@ -17232,10 +17304,11 @@ function apRender() {
       <div class="flex items-center gap-2 mt-2">
         <span class="text-[9px] font-black uppercase tracking-widest text-emerald-300 shrink-0 w-16">Апка</span>
         <select onchange="apPickSet('${it.id}', this.value)"
-          class="flex-1 min-w-0 bg-black/30 border border-emerald-500/30 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-emerald-500">
+          class="ap-pick flex-1 min-w-0 bg-black/30 border border-emerald-500/30 rounded-lg px-2 py-1.5 text-[12px] font-bold text-white outline-none focus:border-emerald-500">
           <option value="">— вибери апку —</option>
-          ${ff.list.map(f => `<option value="${apEsc(f.ktid)}"${
-            String(f.ktid) === String(ktid) ? ' selected' : ''}>${apEsc(apFunnelLabel(f))}</option>`).join('')}
+          ${(pad => ff.list.map(f => `<option value="${apEsc(f.ktid)}"${
+            String(f.ktid) === String(ktid) ? ' selected' : ''}>${apEsc(apFunnelLabel(f, pad))}</option>`).join('')
+           )(apFunnelPad(ff.list))}
         </select>
         ${ktid ? `<code class="text-[11px] font-mono text-emerald-300 shrink-0">${apEsc(ktid)}</code>` : ''}
       </div>
@@ -17256,7 +17329,10 @@ function apRender() {
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Неймінг</span>
         <code onclick="apCopy(event, this)" data-v="${apEsc(r.naming)}"
           title="Клік — скопіювати: ${apEsc(r.naming)}"
-          class="ap-copy text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.naming)}</code></div>` : ''}
+          class="ap-copy text-[12px] font-mono text-white bg-black/40 rounded-lg px-2 py-1.5 flex-1 min-w-0 truncate cursor-pointer">${apEsc(r.naming)}</code>
+        ${(ic => ic ? `<img class="ap-ico" src="${apEsc(ic)}" alt="" loading="lazy" decoding="async"
+            title="Іконка апки з Play"
+            onerror="this.remove()">` : '')(apIconOf(ktid))}</div>` : ''}
 
       ${it.deeplink ? `<div class="flex items-center gap-2 mt-1.5">
         <span class="text-[9px] font-black uppercase tracking-widest text-slate-500 shrink-0 w-16">Діплінк</span>
@@ -17382,10 +17458,49 @@ function apFunnelsFor(it) {
 }
 // Підпис у списку: назва, гео й KTID — щоб число було видно відразу,
 // не відкриваючи нічого.
-function apFunnelLabel(f) {
+/* ПІДПИС АПКИ — СТОВПЦЯМИ, А НЕ РЯДКОМ.
+
+   Було «TJ · Fortune Dragon [satorapps] — FD11003»: усе в один рядок
+   через роздільники. Поки апок три — читається; на двадцяти око
+   щоразу шукає, де закінчується назва й починається KTID, бо вони в
+   кожному рядку на іншому місці.
+
+   Вирівнюємо пробілами під моноширинний шрифт самого списку (він
+   стоїть у CSS .ap-pick): у моноширинному всі знаки однакові, тож
+   доповнення пробілами дає справжні стовпці. Ширину назви рахуємо по
+   САМОМУ ДОВГОМУ в цьому списку, а не беремо зі стелі — інакше на
+   коротких назвах півсписку було б порожнечею.
+
+   Постачальник із дужок виноситься в свій стовпець: у назві він стоїть
+   у кінці й ліз у середину рядка.
+
+   padEnd на останньому стовпці не потрібен — хвостові пробіли нічого
+   не вирівнюють, а в <option> їх ще й по-різному ріжуть браузери. */
+const AP_NAME_MAX = 30;      // довші назви ріжемо: інакше список ширший за вікно
+
+function apFunnelParts(f) {
   const g = String(f.geo || '').trim().toUpperCase();
-  return (g ? g + ' · ' : '') + (f.funnel_name || f.ktid)
-       + (f.ktid ? '  —  ' + f.ktid : '');
+  let name = String(f.funnel_name || f.ktid || '').trim();
+  let prov = '';
+  const m = /^(.*?)\s*\[([^\]]+)\]\s*$/.exec(name);
+  if (m) { name = m[1].trim(); prov = m[2].trim(); }
+  if (name.length > AP_NAME_MAX) name = name.slice(0, AP_NAME_MAX - 1) + '…';
+  return { geo: g, name, prov, ktid: String(f.ktid || '').trim() };
+}
+
+function apFunnelLabel(f, pad) {
+  const p = apFunnelParts(f);
+  const w = pad || {};
+  const col = (v, n) => n ? String(v).padEnd(n, ' ') : String(v);
+  return [col(p.geo, w.geo), col(p.name, w.name), col(p.prov, w.prov), p.ktid]
+    .join('  ').replace(/\s+$/, '');
+}
+
+// Ширини стовпців для ОДНОГО списку: рахуються по ньому ж.
+function apFunnelPad(list) {
+  const all = (list || []).map(apFunnelParts);
+  const max = (k, min) => Math.max(min, ...all.map(p => p[k].length), 0);
+  return { geo: max('geo', 2), name: max('name', 4), prov: max('prov', 0) };
 }
 
 function apFunnelName(ktid) {
@@ -28640,6 +28755,10 @@ async function dmCheck() {
      можемо — не лишаємо людину з помилкою і без результату. */
   const swept = await dmSweep(shown, say);
   dmBusy = false; say('Check'); dmRender();
+  /* Кнопки «?» з поясненням більше немає — вона стояла в панелі
+     постійно, а потрібна була в одну мить на рік. Саме цю мить ми тут
+     і ловимо, тож пояснення переїхало в тост відмови: читають його
+     рівно тоді, коли воно знадобилось. */
   const head = srv.reason === 'missing'
     ? 'The check-domains function is not deployed, so this was a browser check only.'
     : srv.reason === 'auth'
@@ -28654,7 +28773,18 @@ async function dmCheck() {
       + '\n\nHTTP codes and Google flags need the server.'
     : `Nothing left to check: all ${swept.skipped} shown domain(s) are flagged, `
       + 'and only the server check can confirm or clear a flag.';
-  toast(`${head}\n\n${body}`, 'warn', 9000);
+  /* ЧОМУ серверної перевірки не було — тільки тоді, коли її не було.
+     Браузер причини не знає: відповідь без CORS-заголовків для нього
+     просто не існує, і три різні біди виглядають однаково. Тому не
+     гадаємо, а даємо порядок, у якому їх розрізняють. */
+  const why = srv.reason === 'auth' ? '' :
+    '\n\nWhere to look, in this order:\n'
+    + '1. Supabase → Edge Functions → check-domains → Logs. Empty right after Check = '
+    + 'the request never reached the function; an entry with an error = it crashed, and the reason is there.\n'
+    + '2. The function is deployed under exactly this name: check-domains.\n'
+    + '3. Settings → JWT Verification is off: the browser sends OPTIONS first, always '
+    + 'without Authorization, so Supabase rejects it before the function runs.';
+  toast(`${head}\n\n${body}${why}`, 'warn', 14000);
 }
 
 /* Серверна частина. Повертає {ok}, а не кидає: рішення, що робити
@@ -28741,7 +28871,8 @@ async function dmCheckServer(only, say) {
        CORS-заголовків для нього просто не існує. Три причини виглядають
        однаково: функції немає, функція падає на старті, увімкнена
        перевірка JWT (preflight OPTIONS іде без Authorization завжди).
-       Тому причину не називаємо — пояснення дає dmCheckHelp. */
+       Тому причину не називаємо: порядок, у якому їх розрізняють,
+       дописує сам тост відмови в dmCheck. */
     const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
     return { ok: false, reason: e.reason || (net ? 'net' : 'error'), error: e.message };
   }
@@ -28797,24 +28928,6 @@ async function dmSweep(shown, say) {
   } catch (e) { console.warn('domains update:', e.message); }
 
   return { total: targets.length, down: targets.filter(r => r.status === 'down').length, skipped };
-}
-
-/* Чому серверної перевірки може не бути — окремою кнопкою, а не в
-   тості: читати це треба один раз, а перевіряти щодня. */
-function dmCheckHelp() {
-  tell('Why the server check may be silent',
-    'The server check runs in a Supabase Edge Function. If it does not answer, '
-    + 'the browser cannot say why — a reply without CORS headers does not exist for it.\n\n'
-    + 'Check in this order:\n\n'
-    + '1. Supabase → Edge Functions → check-domains → Logs.\n'
-    + '   Empty right after pressing Check = the request never reached the function.\n'
-    + '   An entry with an error = it started and crashed, and the reason is right there.\n\n'
-    + '2. The function is deployed under exactly this name: check-domains.\n'
-    + '   Renaming it in the dashboard does not change its URL.\n\n'
-    + '3. Settings → JWT Verification is off. The browser sends an OPTIONS request first, '
-    + 'always without an Authorization header, so Supabase rejects it before the function runs.\n\n'
-    + 'Until it works, Check still runs in your browser: it can tell whether a domain answers, '
-    + 'but not its HTTP code and not whether Google flagged it.');
 }
 
 /* Перевірка одного рядка. Спершу пробуємо сервер: лише він бачить
@@ -29483,7 +29596,6 @@ async function dmAutoPauseSet(on) {
 
 window.dmInit = dmInit;
 window.dmCheck = dmCheck;
-window.dmCheckHelp = dmCheckHelp;
 window.dmAutoPauseSet = dmAutoPauseSet;
 </script>
 

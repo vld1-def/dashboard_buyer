@@ -157,8 +157,14 @@ const fdlg = await page.evaluate(() => ({
   app: document.querySelector('.askwrap [data-k="is_app"]').checked,
   tags: [...document.querySelectorAll('.askwrap .ask-tag')].map(e => e.textContent.trim())
 }));
+/* «Ті самі поля, що й у Funnel Mapper» — у цьому й суть перевірки:
+   воронку заводять у двох місцях, і вони не мають розходитись.
+   app_id з'явився в ОБОХ, тож список оновлено разом із ними. Саме поле
+   показується лише для апки — тут якраз apAddFunnel(true); що його
+   немає у звичайної воронки, тримає tests/applink.mjs. */
 ok('у вікні воронки ті самі поля, що й у Funnel Mapper',
-  JSON.stringify(fdlg.keys) === JSON.stringify(['name', 'ktid', 'geo', 'is_app']), fdlg.keys);
+  JSON.stringify(fdlg.keys) === JSON.stringify(['name', 'ktid', 'geo', 'app_id', 'is_app']),
+  fdlg.keys);
 ok('з «+ Апка» позначка APP уже стоїть', fdlg.app);
 /* Постачальники були рядком підказки — і їх перенабирали руками.
    Тепер це кнопки; детальніше їх тримає tests/apsubs.mjs. */

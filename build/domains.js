@@ -397,6 +397,10 @@ async function dmCheck() {
      можемо — не лишаємо людину з помилкою і без результату. */
   const swept = await dmSweep(shown, say);
   dmBusy = false; say('Check'); dmRender();
+  /* Кнопки «?» з поясненням більше немає — вона стояла в панелі
+     постійно, а потрібна була в одну мить на рік. Саме цю мить ми тут
+     і ловимо, тож пояснення переїхало в тост відмови: читають його
+     рівно тоді, коли воно знадобилось. */
   const head = srv.reason === 'missing'
     ? 'The check-domains function is not deployed, so this was a browser check only.'
     : srv.reason === 'auth'
@@ -411,7 +415,18 @@ async function dmCheck() {
       + '\n\nHTTP codes and Google flags need the server.'
     : `Nothing left to check: all ${swept.skipped} shown domain(s) are flagged, `
       + 'and only the server check can confirm or clear a flag.';
-  toast(`${head}\n\n${body}`, 'warn', 9000);
+  /* ЧОМУ серверної перевірки не було — тільки тоді, коли її не було.
+     Браузер причини не знає: відповідь без CORS-заголовків для нього
+     просто не існує, і три різні біди виглядають однаково. Тому не
+     гадаємо, а даємо порядок, у якому їх розрізняють. */
+  const why = srv.reason === 'auth' ? '' :
+    '\n\nWhere to look, in this order:\n'
+    + '1. Supabase → Edge Functions → check-domains → Logs. Empty right after Check = '
+    + 'the request never reached the function; an entry with an error = it crashed, and the reason is there.\n'
+    + '2. The function is deployed under exactly this name: check-domains.\n'
+    + '3. Settings → JWT Verification is off: the browser sends OPTIONS first, always '
+    + 'without Authorization, so Supabase rejects it before the function runs.';
+  toast(`${head}\n\n${body}${why}`, 'warn', 14000);
 }
 
 /* Серверна частина. Повертає {ok}, а не кидає: рішення, що робити
@@ -498,7 +513,8 @@ async function dmCheckServer(only, say) {
        CORS-заголовків для нього просто не існує. Три причини виглядають
        однаково: функції немає, функція падає на старті, увімкнена
        перевірка JWT (preflight OPTIONS іде без Authorization завжди).
-       Тому причину не називаємо — пояснення дає dmCheckHelp. */
+       Тому причину не називаємо: порядок, у якому їх розрізняють,
+       дописує сам тост відмови в dmCheck. */
     const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
     return { ok: false, reason: e.reason || (net ? 'net' : 'error'), error: e.message };
   }
@@ -554,24 +570,6 @@ async function dmSweep(shown, say) {
   } catch (e) { console.warn('domains update:', e.message); }
 
   return { total: targets.length, down: targets.filter(r => r.status === 'down').length, skipped };
-}
-
-/* Чому серверної перевірки може не бути — окремою кнопкою, а не в
-   тості: читати це треба один раз, а перевіряти щодня. */
-function dmCheckHelp() {
-  tell('Why the server check may be silent',
-    'The server check runs in a Supabase Edge Function. If it does not answer, '
-    + 'the browser cannot say why — a reply without CORS headers does not exist for it.\n\n'
-    + 'Check in this order:\n\n'
-    + '1. Supabase → Edge Functions → check-domains → Logs.\n'
-    + '   Empty right after pressing Check = the request never reached the function.\n'
-    + '   An entry with an error = it started and crashed, and the reason is right there.\n\n'
-    + '2. The function is deployed under exactly this name: check-domains.\n'
-    + '   Renaming it in the dashboard does not change its URL.\n\n'
-    + '3. Settings → JWT Verification is off. The browser sends an OPTIONS request first, '
-    + 'always without an Authorization header, so Supabase rejects it before the function runs.\n\n'
-    + 'Until it works, Check still runs in your browser: it can tell whether a domain answers, '
-    + 'but not its HTTP code and not whether Google flagged it.');
 }
 
 /* Перевірка одного рядка. Спершу пробуємо сервер: лише він бачить
@@ -1240,5 +1238,4 @@ async function dmAutoPauseSet(on) {
 
 window.dmInit = dmInit;
 window.dmCheck = dmCheck;
-window.dmCheckHelp = dmCheckHelp;
 window.dmAutoPauseSet = dmAutoPauseSet;
