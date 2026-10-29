@@ -5118,18 +5118,30 @@ async function funAppCheck(id) {
       body: JSON.stringify({ funnel_id: id })
     });
     const j = await res.json().catch(() => ({}));
-    /* «bad or missing x-cron-key» на ЦЕЙ запит означає не те, що
-       написано. Ми шлемо funnel_id і свій токен — вхід для живої
-       людини; ключа розкладу в нас немає й бути не може. Отже
-       задеплоєна функція про цей вхід ще не знає, тобто вона старіша
-       за сторінку. Переказувати помилку дослівно означало б
-       відправити людину шукати ключ, якого вона не загубила. */
+    /* «bad or missing x-cron-key» на ЦЕЙ запит означає одне: функція
+       не впізнала людський вхід. Ми шлемо funnel_id і свій токен,
+       ключа розкладу в нас немає й бути не може.
+
+       А ЧОМУ не впізнала — доти ми вгадували, і вгадували неправильно:
+       казали «задеплой функцію» тому, хто щойно її задеплоїв. Тепер
+       гадати не треба, бо відповідь сама себе називає. fn — версія
+       задеплоєної функції, і вона тепер є в КОЖНІЙ відповіді:
+         немає fn — деплой справді старіший за сторінку;
+         є fn     — функція свіжа, і справа не в деплої. */
     if (!res.ok && /x-cron-key/i.test(String(j.error || ''))) {
-      showStatus('The deployed check-apps is older than this page — '
-        + 'supabase functions deploy check-apps');
+      showStatus(j.fn
+        ? `check-apps v${j.fn} is deployed, but it did not accept funnel id "${id}"`
+        : 'The deployed check-apps is older than this page — '
+          + 'supabase functions deploy check-apps');
       return;
     }
-    if (!res.ok) { showStatus('Check: ' + (j.error || 'HTTP ' + res.status)); return; }
+    // Версію додаємо до будь-якої помилки: так наступна скарга вже
+    // приходить із номером того, що насправді крутиться на сервері.
+    if (!res.ok) {
+      showStatus('Check: ' + (j.error || 'HTTP ' + res.status)
+        + (j.fn ? ' (check-apps v' + j.fn + ')' : ''));
+      return;
+    }
     showStatus('Play: ' + (j.note || j.state || 'checked'));
   } catch (e) {
     showStatus('The check-apps function did not answer — '

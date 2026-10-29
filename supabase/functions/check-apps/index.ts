@@ -29,8 +29,9 @@
       ключем сервісної ролі, бо робить це за всіх одразу.
 
    2. ЛЮДИНА — звичайний Authorization зі своїм токеном і поле
-      funnel_id у тілі. Одна воронка, без банів: лише подивитись, що
-      зараз на сторінці, і забрати іконку.
+      funnel_id у тілі (будь-якого типу: число, uuid, текст — ми його
+      не рахуємо, лише передаємо). Одна воронка, без банів: лише
+      подивитись, що зараз на сторінці, і забрати іконку.
 
       Ключ сервісної ролі тут НЕ береться СВІДОМО — так само, як у
       check-domains. Читаємо й пишемо токеном того, хто покликав, і
@@ -60,7 +61,7 @@ const BATCH = 120;
 const PAUSE_MS = 350;
 const DEADLINE_MS = 110_000;
 
-const FN_VERSION = '2026-10-28.3';
+const FN_VERSION = '2026-10-29.1';
 
 /* Вхід людини йде з браузера, отже потрібні CORS-заголовки — і на
    самій відповіді, і на preflight. Без них браузер не покаже навіть
@@ -78,8 +79,16 @@ type Row = {
   app_banned_by: string | null;
 };
 
+/* ВЕРСІЯ ЇДЕ В КОЖНІЙ ВІДПОВІДІ, Й ОСОБЛИВО В ПОМИЛКАХ.
+
+   Доти її віддавала лише вдала відповідь людського входу. Через це
+   сторінка не могла відрізнити «задеплоєна функція стара» від
+   «функція свіжа, а не долетів funnel_id» — і здогадувалась. Здогад
+   був неправильний: людину відправляло деплоїти те, що вже
+   задеплоєно. Тепер цього здогаду не треба: немає fn у відповіді —
+   деплой справді старий; fn є — функція нова, і причина інша. */
 function reply(body: Json, status = 200): Response {
-  return new Response(JSON.stringify(body),
+  return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
     { status, headers: { ...CORS, 'content-type': 'application/json' } });
 }
 
@@ -211,7 +220,18 @@ Deno.serve(async (req) => {
 
   let body: Json = {};
   try { body = await req.json(); } catch (_e) { /* тіла може не бути */ }
-  const one = Number(body?.funnel_id || 0) || 0;
+  /* ВХІД ОБИРАЄТЬСЯ ЗА НАЯВНІСТЮ funnel_id, А НЕ ЗА ЙОГО ТИПОМ.
+
+     Доти тут стояло Number(...) || 0. Для id-рядка, який не є числом
+     (uuid, текстовий ключ), це давало 0 — і запит людини тихо
+     провалювався у вхід розкладу, де його зустрічала відмова «bad or
+     missing x-cron-key». Тобто кнопка «перевірити цю апку» вимагала
+     ключ розкладу, якого в людини немає й бути не може, і сторінка
+     робила з цього висновок, що функція стара.
+
+     Тип id цієї таблиці нас не обходить: ми його не рахуємо, а лише
+     передаємо далі — тому рядок, і тому encodeURIComponent. */
+  const one = String(body?.funnel_id ?? '').trim();
 
   /* ═══ ВХІД ЛЮДИНИ: ОДНА ВОРОНКА, БЕЗ БАНІВ ═══
 
@@ -226,7 +246,8 @@ Deno.serve(async (req) => {
                    'content-type': 'application/json' };
     let row: Row | null = null;
     try {
-      const res = await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + one
+      const res = await fetch(base + '/rest/v1/funnels_mapping?id=eq.'
+        + encodeURIComponent(one)
         + '&select=id,funnel_name,app_id,geo,status,app_gone_since,app_banned_by'
         + '&limit=1', { headers: mine });
       if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
@@ -245,11 +266,11 @@ Deno.serve(async (req) => {
     const patch: Json = { app_checked_at: new Date().toISOString(), app_note: v.note };
     if (v.state === 'live') patch.app_gone_since = null;
     try {
-      await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + one, {
+      await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + encodeURIComponent(one), {
         method: 'PATCH', headers: { ...mine, Prefer: 'return=minimal' },
         body: JSON.stringify(patch) });
     } catch (_e) { /* не записали — відповідь усе одно чесна */ }
-    return reply({ fn: FN_VERSION, one: true, state: v.state, note: v.note });
+    return reply({ one: true, state: v.state, note: v.note });
   }
 
   /* ═══ ВХІД РОЗКЛАДУ ═══ */
