@@ -66,8 +66,6 @@ LONG = {
    "Save the table as PNG — exactly the rows and columns shown now",
  "Спенд-модель: виручка = спенд × відсоток. Клік — повернути на CPA":
    "Spend model: revenue = spend × percent. Click to switch back to CPA",
- "Статус кабінетів · зберігається одразу · клік по плитці — фільтр":
-   "Account status · saved instantly · click a tile to filter",
  "Можна виправити вручну — порожнє поле поверне значення з файлу":
    "You can fix it by hand — an empty field restores the value from the file",
  "Розгорнути на весь екран — графіки CPI/CPL/CPA і повна таблиця":

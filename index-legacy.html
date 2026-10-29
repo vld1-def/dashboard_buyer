@@ -1580,7 +1580,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 
   <!-- Колонна 2: Total Stats (col-span-9) -->
   <!-- Колонна 2: Total Stats (col-span-9) -->
-<div id="creative-stats-card" class="lg:col-span-9 bg-blue-600/5 p-6 rounded-[2.5rem] border border-blue-500/10 hidden flex flex-col">
+<!-- Без власного тла й рамки: це той самий блок, що й список креативів
+     ліворуч, а не друга картка поверх материнської. Радіус разом із
+     тлом теж пішов — закругляти нічого. -->
+<div id="creative-stats-card" class="lg:col-span-9 p-6 hidden flex flex-col">
   <!-- Верхній ряд: зліва заголовок + метрики, справа прев'ю креатива -->
   <div class="flex flex-col xl:flex-row gap-5 mb-8">
    <div class="flex-1 min-w-0">
@@ -1781,30 +1784,36 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   <!-- MODALS -->
   <div id="screenshot-modal" class="hidden fixed inset-0 z-[60] modal-overlay flex items-center justify-center p-4 text-dynamic">
     <div class="relative flex flex-col items-center">
-      <button onclick="closeScreenshotModal()" class="absolute -top-10 right-0 text-white hover:text-red-500 transition font-black uppercase text-[9px] flex items-center gap-1 bg-black/20 px-2.5 py-1 rounded-full border border-white/10 backdrop-blur-md text-white">Close <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg></button>
-      <div id="capture-card" class="w-[414px] bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/10 text-center relative overflow-hidden">
-        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-yellow-500"></div>
-        <p class="text-[9px] font-black uppercase tracking-[0.4em] text-blue-500 mb-1 font-sans text-dynamic">Performance Summary</p>
-        <p id="ss-date-range" class="text-[10px] text-muted-dynamic font-bold uppercase mb-5 opacity-50 text-dynamic">...</p>
-        <!-- Spend + Profit row -->
-        <div class="grid grid-cols-2 gap-3 mb-5">
-          <div><p class="text-[9px] font-black text-muted-dynamic uppercase tracking-widest mb-1 opacity-40">Total Spend</p><h2 id="ss-total-spend" class="text-3xl font-black text-white tracking-tighter">$0.00</h2></div>
-          <div><p class="text-[9px] font-black text-muted-dynamic uppercase tracking-widest mb-1 opacity-40">Net Profit</p><h2 id="ss-total-profit" class="text-3xl font-black tracking-tighter text-green-400">$0.00</h2></div>
+      <button onclick="closeScreenshotModal()" class="mw-x" title="Закрити"
+        style="position:absolute;top:-40px;right:0">&times;</button>
+      <!-- КАРТКА ДЛЯ ЗНІМКА. Єдине місце в проєкті, яке живе поза
+           вікном як окремий об'єкт: її фотографують і відправляють.
+           Саме тому вона й відстала — поки все навколо переїхало на
+           токени, тут лишались #0f172a, райдужна смужка зверху і
+           тривідсоткові радіуси. Тепер класи .ss-* у design.css, тобто
+           наступна зміна дизайну дійде й сюди. -->
+      <div id="capture-card" class="ss-card">
+        <div class="ss-head">
+          <div class="min-w-0">
+            <h3>Performance Summary</h3>
+            <p class="ss-cap" id="ss-date-range">...</p>
+          </div>
         </div>
-        <!-- CPL / CPA -->
-        <div class="grid grid-cols-2 gap-3 mb-5 text-dynamic">
-          <div class="p-3 bg-white/5 rounded-[1.5rem] border border-white/5"><p class="text-[8px] font-black text-muted-dynamic uppercase mb-1 opacity-40">Total CPL</p><p id="ss-cpl" class="text-xl font-black text-purple-400">$0.00</p></div>
-          <div class="p-3 bg-white/5 rounded-[1.5rem] border border-white/5"><p class="text-[8px] font-black text-muted-dynamic uppercase mb-1 opacity-40">Total CPA</p><p id="ss-cpa" class="text-xl font-black text-green-400">$0.00</p></div>
+        <div class="ss-grid">
+          <div class="ss-tile"><p class="ss-cap">Total Spend</p><p id="ss-total-spend" class="ss-num">$0.00</p></div>
+          <div class="ss-tile"><p class="ss-cap">Net Profit</p><p id="ss-total-profit" class="ss-num is-ok">$0.00</p></div>
         </div>
-        <!-- Geo breakdown -->
-        <div class="space-y-1.5 mb-5 text-dynamic">
-          <p class="text-[9px] font-black text-muted-dynamic uppercase tracking-widest mb-2 opacity-40 text-center">Geo Performance</p>
-          <div id="ss-geo-list" class="space-y-1.5 text-dynamic"></div>
+        <div class="ss-grid">
+          <div class="ss-tile"><p class="ss-cap">Total CPL</p><p id="ss-cpl" class="ss-num is-sm">$0.00</p></div>
+          <div class="ss-tile"><p class="ss-cap">Total CPA</p><p id="ss-cpa" class="ss-num is-sm">$0.00</p></div>
         </div>
-        <!-- Footer: date -->
-        <div class="pt-4 border-t border-white/5 flex justify-center items-center gap-2">
-          <div class="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
-          <p id="ss-footer-date" class="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">...</p>
+        <div class="ss-sec">
+          <p class="ss-cap">Geo Performance</p>
+          <div id="ss-geo-list"></div>
+        </div>
+        <div class="ss-foot">
+          <span class="ss-cap">Performance Summary</span>
+          <span class="ss-cap" id="ss-footer-date">...</span>
         </div>
       </div>
     </div>
@@ -4355,10 +4364,21 @@ function selectCreative(cid) {
     // ВАЖЛИВО: null у шаблоні став би рядком 'null' і фільтрував усе в нуль —
     // тому для зняття фільтра передаємо справжній null через окремий аргумент.
     document.getElementById('cr-geo-flags').innerHTML = Array.from(allGeos).sort().map(g => `<div onclick="showCreativeStats(undefined, ${activeCrGeo===g?'null':`'${g}'`})" class="flex items-center gap-1.5 px-2 py-1 rounded-lg border cursor-pointer transition-all ${activeCrGeo===g?'bg-blue-600 border-blue-400':'bg-white/5 border-white/5 hover:bg-white/10'}">${geoFlag(g, 'w-4 h-3')}<span class="text-[10px] font-black ${activeCrGeo===g?'text-white':'text-slate-400'}">${g}</span></div>`).join('');
-    document.getElementById('cr-account-list').innerHTML = [...new Set(filtered.map(x=>x.account))].sort().map(name => {
-      const nEsc = String(name).replace(/'/g,"\\'");
-      return `<button onclick="showCreativeStats(${activeCrAcc===name?'null':`'${nEsc}'`}, undefined)" class="px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all border ${activeCrAcc===name?'bg-blue-600 text-white border-blue-400 shadow-lg':'bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20'}">${name}</button>`;
-    }).join('');
+    /* ПОРЯДОК КАБІНЕТІВ — ЗА СПЕНДОМ, ВІД НАЙБІЛЬШОГО.
+       Доти був алфавіт, і зверху стояв той, чия назва ближча до «A» —
+       тобто порядок не відповідав на жодне питання, яке тут ставлять.
+       Спенд виписаний на самій кнопці: інакше сам порядок виглядав би
+       випадковим, і в нього довелось би вірити на слово. */
+    const accSpend = {};
+    filtered.forEach(x => { const k = x.account;
+      accSpend[k] = (accSpend[k] || 0) + (Number(x.spend) || 0); });
+    document.getElementById('cr-account-list').innerHTML = Object.keys(accSpend)
+      .sort((a, b) => accSpend[b] - accSpend[a] || String(a).localeCompare(String(b)))
+      .map(name => {
+        const nEsc = String(name).replace(/'/g,"\\'");
+        const sp = accSpend[name];
+        return `<button onclick="showCreativeStats(${activeCrAcc===name?'null':`'${nEsc}'`}, undefined)" class="flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase transition-all border ${activeCrAcc===name?'bg-blue-600 text-white border-blue-400 shadow-lg':'bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20'}"><span>${name}</span><span class="font-mono font-bold opacity-50 normal-case">${formatCurrency(sp)}</span></button>`;
+      }).join('');
     crSyncStarBtn();
     crRenderPanels();
     loadCreativePreview(currentCreativeID);
@@ -6161,27 +6181,22 @@ function openScreenshotModal() {
 
   const profitEl = document.getElementById('ss-total-profit');
   profitEl.innerText = formatCurrency(totalProfit);
-  profitEl.className = `text-3xl font-black tracking-tighter ${totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`;
+  profitEl.className = 'ss-num ' + (totalProfit >= 0 ? 'is-ok' : 'is-bad');
 
   const allGeos = Object.entries(geoMap).sort((a, b) => b[1].s - a[1].s);
 
   const ssG = document.getElementById('ss-geo-list');
   ssG.innerHTML = allGeos.map(([name, m]) => {
     const gProfit = m.rev - m.s;
-    const profitColor = gProfit >= 0 ? 'text-green-400' : 'text-red-400';
     return `
-    <div class="flex justify-between items-center bg-white/5 px-4 py-2.5 rounded-[1.2rem] border border-white/5">
-      <div class="flex items-center gap-2">
-        ${geoFlag(name, 'w-5 h-3.5')}
-        <span class="font-black text-white uppercase text-sm tracking-tighter">${name}</span>
-      </div>
-      <div class="flex flex-col items-end gap-0.5">
-        <span class="text-[11px] font-black text-blue-400 uppercase leading-none">${m.r} REG | ${m.d} DEP</span>
-        <div class="flex gap-2 items-center">
-          <span class="text-[10px] text-white/40">spend ${formatCurrency(m.s)}</span>
-          <span class="text-[10px] font-bold ${profitColor}">${gProfit >= 0 ? '+' : ''}${formatCurrency(gProfit)}</span>
-        </div>
-      </div>
+    <div class="ss-geo">
+      ${geoFlag(name, 'w-5 h-3.5')}
+      <span class="ss-geo-code">${name}</span>
+      <span class="ss-geo-right">
+        <span class="ss-geo-kv"><b>${m.r}</b> reg · <b>${m.d}</b> dep</span><br>
+        <span class="ss-geo-kv">${formatCurrency(m.s)}</span>
+        <span class="ss-geo-pf" style="color:${gProfit >= 0 ? 'var(--ok)' : 'var(--bad)'}">${gProfit >= 0 ? '+' : ''}${formatCurrency(gProfit)}</span>
+      </span>
     </div>`;
   }).join('');
 
@@ -11900,11 +11915,10 @@ async function pwBulkApply() {
 <!-- ===== ACCOUNTS · статуси кабінетів ===== -->
 <div id="accounts-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
      onclick="if(event.target===this) closeAccountsModal()">
-  <div class="card w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
+  <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
     <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
         <h2 class="mw-title">Accounts</h2>
-        <p class="mw-sub">Статус кабінетів · зберігається одразу · клік по плитці — фільтр</p>
       </div>
       <div class="mw-acts">
         <!-- «Скільки цього місяця завели» — питання, на яке досі
