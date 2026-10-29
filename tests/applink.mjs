@@ -16,6 +16,7 @@
      • іконка стоїть У рядку неймінга, тож висота блока не міняється;
      • іконки немає — немає й місця під неї. */
 import { serve, open, checks } from './_harness.mjs';
+import fs from 'node:fs';
 
 const PORT = 8147;
 const { ok, count } = checks();
@@ -93,7 +94,8 @@ await browser.close();
       const mk = window.supabase.createClient;
       window.supabase.createClient = (...a) => {
         const c = mk(...a);
-        c.auth.getSession = async () => ({ data: { session: { user: { id: 'u1' } } } });
+        c.auth.getSession = async () => ({ data: { session: { user: { id: 'u1' },
+          access_token: 'jwt-for-the-stand' } } });
         return c;
       };
       localStorage.setItem('selected_team', 'T');
@@ -125,8 +127,78 @@ await browser.close();
   ok('іконок у таблиці більше немає', !/<img/.test(tbl.html));
   ok('лапки в назві розмітку не ламають',
     /Без постачальника/.test(tbl.html), tbl.html.slice(0, 120));
+  /* ─────────── кнопка ↻ і відповідь функції ───────────
+
+     Кнопка писала «задеплой check-apps» тому, хто щойно її задеплоїв.
+     Причина була не в деплої: функція обирала вхід через
+     Number(funnel_id), і id, який не є числом, давав 0 — запит людини
+     тихо падав у вхід розкладу й отримував «bad or missing
+     x-cron-key». Сторінка робила з цього єдиний висновок, який уміла.
+
+     Тепер версія задеплоєної функції їде в КОЖНІЙ відповіді, і
+     сторінка більше не вгадує: немає fn — деплой старий, є fn —
+     деплой свіжий і причина інша. */
+  const call = await p2.evaluate(async () => {
+    const seen = { bodies: [], msgs: [] };
+    const realFetch = window.fetch;
+    window.showStatus = m => seen.msgs.push(String(m));
+    const answer = payload => async (url, opt) => {
+      seen.bodies.push({ url: String(url), body: JSON.parse(opt.body) });
+      return { ok: false, status: 401, json: async () => payload };
+    };
+    const out = {};
+    window.fetch = answer({ error: 'bad or missing x-cron-key' });
+    await funAppCheck('3f2b9c14-aa01-4d7e-9f10-77c0de5512ab');
+    out.old = seen.msgs.pop();
+    window.fetch = answer({ fn: '2026-10-29.1', error: 'bad or missing x-cron-key' });
+    await funAppCheck('3f2b9c14-aa01-4d7e-9f10-77c0de5512ab');
+    out.fresh = seen.msgs.pop();
+    window.fetch = answer({ fn: '2026-10-29.1', error: 'воронки не знайдено' });
+    await funAppCheck(5);
+    out.other = seen.msgs.pop();
+    window.fetch = realFetch;
+    out.bodies = seen.bodies;
+    return out;
+  });
+  ok('без версії у відповіді — кажемо, що деплой старий',
+    /older than this page/.test(call.old || ''), call.old);
+  ok('із версією — більше не женемо деплоїти',
+    !/older than this page/.test(call.fresh || ''), call.fresh);
+  ok('із версією — називаємо саму версію',
+    /2026-10-29\.1/.test(call.fresh || ''), call.fresh);
+  ok('із версією — називаємо id, який не прийняли',
+    /3f2b9c14-aa01-4d7e-9f10-77c0de5512ab/.test(call.fresh || ''), call.fresh);
+  ok('будь-яка інша помилка теж несе версію',
+    /воронки не знайдено/.test(call.other || '') && /2026-10-29\.1/.test(call.other || ''), call.other);
+  ok('id летить у тілі таким, яким його дали, а не числом',
+    call.bodies.length === 3
+    && call.bodies[0].body.funnel_id === '3f2b9c14-aa01-4d7e-9f10-77c0de5512ab'
+    && call.bodies[2].body.funnel_id === 5, call.bodies);
+  ok('запит іде саме у check-apps',
+    call.bodies.every(b => /\/functions\/v1\/check-apps$/.test(b.url)), call.bodies.map(b => b.url));
+
   await b2.close();
   if (e2.length) ok('Form.html без помилок', false, e2);
+}
+
+/* ─────────── правило живе у самій функції ───────────
+
+   Браузер її не запускає, тож перевіряємо те, від чого залежить
+   маршрут: вхід обирається за НАЯВНІСТЮ funnel_id, а не за тим, чи
+   він число. Саме Number(...) і відправляв людей деплоїти наново. */
+{
+  const FN = fs.readFileSync('supabase/functions/check-apps/index.ts', 'utf8');
+  ok('вхід людини більше не вимагає, щоб id був числом',
+    !/Number\(body\?\.funnel_id/.test(FN));
+  ok('id читається як рядок',
+    /const one = String\(body\?\.funnel_id \?\? ''\)\.trim\(\)/.test(FN));
+  ok('id екранується в обох запитах до funnels_mapping',
+    (FN.match(/id=eq\.'\s*\n?\s*\+ encodeURIComponent\(one\)|id=eq\.' \+ encodeURIComponent\(one\)/g) || []).length === 2,
+    (FN.match(/id=eq\.[^\n]*/g) || []));
+  ok('версія їде в кожній відповіді',
+    /JSON\.stringify\(\{ fn: FN_VERSION, \.\.\.body \}\)/.test(FN));
+  ok('версію більше не дублюють в окремій відповіді',
+    !/reply\(\{ fn: FN_VERSION, one: true/.test(FN));
 }
 
 srv.close();
