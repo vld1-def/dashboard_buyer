@@ -1484,9 +1484,13 @@ window.cdBudgetEdit = async function (id, nameEnc) {
   if (!cur) return;
   const per = cur.kind === 'daily' ? 'per day' : 'total';
 
-  const raw = prompt(`New ${cur.kind} budget for “${name}” (${per}), `
-    + `now ${cur.v.toFixed(2)}:`, String(cur.v));
-  if (raw === null) return;
+  const raw = await ask({
+    title: 'New ' + cur.kind + ' budget',
+    body: name + '\n\nNow ' + cur.v.toFixed(2) + ' ' + per + '.',
+    ok: 'Next', input: { value: String(cur.v), placeholder: cur.v.toFixed(2) } });
+  /* false — це скасування, а не порожнє поле: порожнє піде далі й
+     чесно впреться в «Not a budget», бо нуль тут теж відповідь. */
+  if (raw === false) return;
   const v = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
   if (!Number.isFinite(v) || v <= 0) {
     if (typeof toast === 'function') toast('Not a budget: ' + raw, 'error');

@@ -98,18 +98,35 @@ const pg = await page.evaluate(() => ({
   hint: document.getElementById('ps-page-hint').textContent,
   cls: document.getElementById('ps-page-hint').className
 }));
+/* У списку лише те, куди справді можна постити. Spin UZ не видано
+   системному користувачеві — її в списку немає зовсім, а не стоїть
+   позицією, яка не працює. */
 ok('одна Сторінка — одна позиція, хоч її видно з кількох кабінетів',
-  pg.opts.length === 2, pg.opts);
-ok('видана Сторінка підписана як придатна', /публікація можлива/i.test(pg.hint), pg.hint);
+  pg.opts.length === 1, pg.opts);
+ok('недоступної Сторінки в списку немає', !pg.opts.some(t => /Spin/.test(t)), pg.opts);
+/* Але зникати мовчки вона теж не має права: інакше Сторінка
+   «пропала» без причини, і шукати її підуть не там. */
+/* Формулювання не випадкове: рядок, що починався зі «Ще », словник
+   build/i18n.py робив «More 1 Сторінок приховано» — англійське слово
+   в українському реченні. Тому й перевіряємо текст ЗІБРАНОЇ сторінки,
+   а не те, що написано в джерелі. */
+ok('приховану рахують і кажуть про неї',
+  /Сторінок приховано: 1/.test(pg.hint) && !/More/.test(pg.hint), pg.hint);
 
-const bad = await page.evaluate(() => {
-  const s = document.getElementById('ps-page'); s.value = '2'; s.onchange();
-  return { hint: document.getElementById('ps-page-hint').textContent,
+/* Жодної доступної — найгірший випадок: список порожній, і сам по
+   собі він не відрізняє «Сторінок немає» від «є, але не видані». */
+const none = await page.evaluate(async () => {
+  window.__ps.tables.fb_cabinet_pages = { data: [
+    { page_id: '2', page_name: 'Spin UZ', can_moderate: false }], error: null };
+  await psLoad(false);
+  return { opts: [...document.getElementById('ps-page').options].map(o => o.text),
+           hint: document.getElementById('ps-page-hint').textContent,
            cls: document.getElementById('ps-page-hint').className };
 });
-ok('Сторінка без модерації попереджає ДО написання тексту',
-  /не видана системному/i.test(bad.hint), bad.hint);
-ok('і це помітно, а не дрібним сірим', /is-bad/.test(bad.cls), bad.cls);
+ok('порожній список називає саме свою причину',
+  /не видано системному користувачеві/i.test(none.hint), none.hint);
+ok('і кличе саме туди, де це лагодять', /Business Manager/.test(none.hint), none.hint);
+ok('і це помітно, а не дрібним сірим', /is-bad/.test(none.cls), none.cls);
 
 /* ─────────── 3. невиконана міграція ─────────── */
 await boot({ tables: {

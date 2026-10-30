@@ -15,6 +15,9 @@
    піде, і краще сказати про це ДО того, як людина написала текст. */
 
 let psPosts = [], psPages = [], psF = '', psBusy = false;
+/* Скільки Сторінок приховано як недоступні — щоб сказати це числом,
+   а не лишати людину гадати, куди поділась її Сторінка. */
+let psHidden = 0;
 
 /* КАРТИНКА: ФАЙЛ ЛЕЖИТЬ У НАС, FACEBOOK ОТРИМУЄ ТИМЧАСОВЕ ПОСИЛАННЯ.
 
@@ -174,7 +177,17 @@ window.psLoad = async function (loud) {
       const was = seen.get(k);
       if (!was || (!was.can_moderate && p.can_moderate)) seen.set(k, p);
     });
-    psPages = [...seen.values()].sort((a, b) =>
+    /* У СПИСКУ ЛИШЕ ТІ, КУДИ МОЖНА ПОСТИТИ.
+
+       Доти тут були всі Сторінки, які бачать кабінети, а недоступні
+       підписувались «пост не піде». Вибирати зі списку, де половина
+       позицій не працює, — це щоразу згадувати, яка з них яка. Тому
+       недоступні не показуємо зовсім, а скільки їх відсіяно — видно
+       під полем: мовчки вони зникати не мусять, інакше Сторінка
+       «пропала» без причини. */
+    const all = [...seen.values()];
+    psHidden = all.filter(p => !p.can_moderate).length;
+    psPages = all.filter(p => p.can_moderate).sort((a, b) =>
       String(a.page_name || a.page_id).localeCompare(String(b.page_name || b.page_id), 'uk'));
   } catch (e) {
     if (note) note.textContent = 'Не вдалось прочитати: ' + (e.message || e);
@@ -187,10 +200,21 @@ window.psLoad = async function (loud) {
 function psPaintPages() {
   const sel = document.getElementById('ps-page');
   if (!sel) return;
+  const hint = document.getElementById('ps-page-hint');
   if (!psPages.length) {
     sel.innerHTML = '<option value="">Сторінок не видно</option>';
-    document.getElementById('ps-page-hint').textContent =
-      'Жодної Сторінки не знайдено. Натисни Sync now на вкладці кабінетів — список Сторінок приходить звідти.';
+    /* Дві різні біди з однаковим екраном: Сторінок немає зовсім — і
+       Сторінки є, але жодну не видали системному користувачеві.
+       Перша лікується синхронізацією, друга — Business Manager. */
+    if (hint) {
+      hint.textContent = psHidden
+        ? 'Сторінки є (' + psHidden + '), але жодної не видано системному користувачеві. '
+          + 'У Business Manager додай Сторінку системному юзеру із задачею контенту — '
+          + 'без цього Facebook не дасть у неї постити.'
+        : 'Жодної Сторінки не знайдено. Натисни Sync now на вкладці кабінетів — '
+          + 'список Сторінок приходить звідти.';
+      hint.className = 'ps-hint is-bad';
+    }
     return;
   }
   sel.innerHTML = psPages.map(p =>
@@ -199,17 +223,17 @@ function psPaintPages() {
   psPageHint();
 }
 
-/* Сторінка без модерації видна, але постити в неї не вийде. Кажемо це
-   одразу, а не після того, як людина написала текст і натиснула. */
+/* У списку лишились тільки доступні, тож тут уже не попередження, а
+   рахунок: скільки Сторінок сховано й чому їх не видно. */
 function psPageHint() {
-  const id = document.getElementById('ps-page')?.value;
-  const p = psPages.find(x => String(x.page_id) === String(id));
   const el = document.getElementById('ps-page-hint');
-  if (!el || !p) return;
-  el.textContent = p.can_moderate
-    ? 'Сторінка видана системному користувачеві — публікація можлива.'
-    : 'Ця Сторінка не видана системному користувачеві. Пост не піде, поки її не додадуть у Business Manager із задачею контенту.';
-  el.className = 'ps-hint' + (p.can_moderate ? '' : ' is-bad');
+  if (!el) return;
+  /* Не починаємо зі «Ще »: словник build/i18n.py міняє це слово на
+     «More», і рядок їхав наполовину англійським. */
+  el.textContent = psHidden
+    ? 'Сторінок приховано: ' + psHidden + ' — їх не видано системному користувачеві.'
+    : '';
+  el.className = 'ps-hint';
 }
 
 function psPaint() {
@@ -318,7 +342,13 @@ window.psSend = async function (id) {
     psCount();
     await psLoad(false);
   } catch (e) {
-    psSay(String(e.message || e), true);
+    /* Рядок під кнопкою легко не помітити — особливо коли дивишся на
+       саму кнопку, а вона вже знову каже «Опублікувати». Тому відмова
+       йде ще й тостом: пост, який не пішов, мусить про це сказати
+       так само голосно, як той, що пішов. */
+    const m = String(e.message || e);
+    psSay(m, true);
+    if (typeof toast === 'function') toast(m, 'error', 9000);
     await psLoad(false);
   } finally {
     psBusy = false;
@@ -332,7 +362,8 @@ window.psSend = async function (id) {
 window.psDrop = async function (id) {
   const p = psPosts.find(x => String(x.id) === String(id));
   if (!p) return;
-  if (!confirm('Прибрати цей запис?')) return;
+  if (!await ask({ title: 'Прибрати цей запис?', ok: 'Прибрати', danger: true,
+      body: 'Зникне тільки рядок у черзі. У Facebook нічого не зміниться.' })) return;
   const { error } = await sb.from('fb_posts').delete().eq('id', id);
   if (error) { psSay('Не вийшло: ' + error.message, true); return; }
   await psLoad(false);
