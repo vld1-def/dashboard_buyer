@@ -771,17 +771,6 @@ const CAB_ST_WORD = {
   _more: 'not counted'
 };
 
-/* Статуси, які означають «саме це тебе й тримає»: їх видно окремим
-   рядком, бо пауза — твій вибір, а відхилення — ні. */
-const CAB_ST_BAD = ['DISAPPROVED', 'WITH_ISSUES', 'PENDING_BILLING_INFO'];
-
-/* А це не «не крутиться» — це історія. Архівоване вже прибрано зі
-   знаменника на боці імпорту, тож і в рядок «скільки не крутиться»
-   воно потрапляти не мусить: інакше те саме число рахувалось би двічі
-   по-різному. У підказці лишається — щоб було видно, куди поділась
-   решта з Ads Manager. */
-const CAB_ST_GONE = ['ARCHIVED', 'DELETED'];
-
 const cabStWord = k => CAB_ST_WORD[k] || String(k).toLowerCase().replace(/_/g, ' ');
 
 /* Скільки оголошень чекає на перевірці Facebook. Число тут потрібне
@@ -2402,35 +2391,19 @@ function cabTreeRepaint(shown) {
   if (typeof cdHide === 'function') cdHide();
 }
 
-/* «3 зі 180» — чесне число, яке нічого не пояснює. Цей рядок і є
-   пояснення: що саме тримає решту. Відхилені й «з помилками» виділені
-   кольором, бо пауза — твій вибір, а відхилення — ні. */
-/* Кампанії, які ввімкнені й нічого не показують. Окремим рядком і
-   червоним, бо це не «трохи менше, ніж здавалось» — це гроші, які ти
-   вважаєш робочими, а вони стоять. */
-function cabDead(fb) {
-  if (!fb) return '';
-  const n = Number(fb.campaigns_on) - Number(fb.campaigns_active);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  return `<p class="cab-fb-warn">${n} campaign(s) switched on but not delivering `
-    + '\u2014 nothing inside them is approved and running.</p>';
-}
+/* ДВА РЯДКИ ЗВІДСИ ПРИБРАНІ.
 
-function cabWhyNot(fb) {
-  const by = fb && fb.ads_by_status;
-  if (!by || typeof by !== 'object') return '';
-  const skip = k => k === 'ACTIVE' || CAB_ST_GONE.includes(k);
-  const rest = Object.entries(by)
-    .filter(([k, v]) => Number(v) > 0 && !skip(k))
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => v + ' ' + cabStWord(k))
-    .join(' \u00b7 ');
-  if (!rest) return '';
-  const n = Object.entries(by).reduce((a, [k, v]) => a + (skip(k) ? 0 : Number(v) || 0), 0);
-  if (!n) return '';
-  const bad = CAB_ST_BAD.some(k => Number(by[k]) > 0);
-  return `<p class="${bad ? 'cab-fb-warn' : 'cab-fb-note'}">${n} ad(s) not running: ${cabEsc(rest)}</p>`;
-}
+   Тут стояло «N campaign(s) switched on but not delivering» і «N ad(s)
+   not running: 17 rejected · 2 paused». Прибрані на прохання: у картці
+   кабінета вони стояли завжди й переважно повторювали те, що вже
+   сказано статусом кабінета й деревом під рядком, де ті самі
+   кампанії й оголошення видно поіменно — а не числом.
+
+   Те, що НЕ повторює нічого, лишилось на місці: disable_reason (чому
+   Facebook закрив кабінет) і sync_error (чому ми самі не змогли
+   забрати дані). Їх нижче в цій же картці видно й далі.
+
+   CAB_ST_BAD і CAB_ST_GONE жили тільки тут, тому пішли разом. */
 
 function cabDetail(c) {
   const box = document.getElementById('cab-detail');
@@ -2568,8 +2541,6 @@ function cabCardOld(fb) {
               + (c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : ''));
           })()}
       </div>
-      ${cabDead(c.fb)}
-      ${cabWhyNot(c.fb)}
       ${typeof fpForCab === 'function' ? fpForCab(c) : ''}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}

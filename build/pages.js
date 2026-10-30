@@ -283,6 +283,11 @@ function pgPaint() {
   const list = document.getElementById('pg-list');
   const note = document.getElementById('pg-note');
   if (!list) return;
+  /* Підпис ховається, коли Сторінки є (нижче). Повертаємо його на
+     початку КОЖНОЇ перемальовки: інакше перша ж помилка після
+     успішного списку лягла б у схований елемент і не з'явилась би
+     на екрані зовсім. */
+  if (note) note.style.display = '';
 
   if (pgRows === null) {
     if (note) { note.textContent = 'Asking Facebook which Pages your tokens have…'; note.className = 'rl-note'; }
@@ -300,17 +305,27 @@ function pgPaint() {
                                       || String(r.page_id).includes(q));
   const can = pgRows.filter(r => r.can_moderate).length;
 
+  /* НАД СПИСКОМ — НІЧОГО, ПОКИ СТОРІНКИ Є.
+
+     Тут стояв рядок «N Page(s) · N where comments can be moderated»
+     і під ним скарги токенів. Коли Сторінки на екрані, обидва
+     повторюють те, що й так видно: порахувати два рядки можна очима,
+     а право модерації стоїть міткою «read only» на самій Сторінці.
+
+     Коли ж Сторінок НЕМАЄ, лишається рівно навпаки: порожня панель
+     сама по собі не каже нічого, і тоді текст — єдине, що пояснює
+     причину. Скарги токенів тут і є причиною («токен не вміє читати
+     коментарі»), тому в цьому випадку вони лишаються. */
   if (note) {
-    /* Числа, а не слова: «скільки всього» і «на скількох можна
-       прибирати» — це перше, про що питають, і саме через різницю між
-       ними найчастіше й буває непорозуміння. */
-    note.className = 'rl-note' + (pgRows.length && !can ? ' is-warn' : '');
-    note.innerHTML = !pgRows.length
+    const empty = !pgRows.length;
+    note.className = 'rl-note';
+    note.innerHTML = empty
       ? 'No Pages: the tokens in Settings do not have any Page assigned to their system user.'
         + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '')
-      : `${pgRows.length} Page(s) · ${can} where comments can be moderated`
-        + (q && rows.length !== pgRows.length ? ` · ${rows.length} shown` : '')
-        + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '');
+      : '';
+    // Порожній <p> лишав би над списком свій відступ — саме той
+    // проміжок, через який текст і заважав.
+    if (!empty) note.style.display = 'none';
   }
 
   list.innerHTML = !rows.length

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 21:32">
+  <meta name="build" content="build 30.10 21:39">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6393,7 +6393,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 21:32</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 21:39</div>
     </div>
   </aside>
 
@@ -26231,17 +26231,6 @@ const CAB_ST_WORD = {
   _more: 'not counted'
 };
 
-/* Статуси, які означають «саме це тебе й тримає»: їх видно окремим
-   рядком, бо пауза — твій вибір, а відхилення — ні. */
-const CAB_ST_BAD = ['DISAPPROVED', 'WITH_ISSUES', 'PENDING_BILLING_INFO'];
-
-/* А це не «не крутиться» — це історія. Архівоване вже прибрано зі
-   знаменника на боці імпорту, тож і в рядок «скільки не крутиться»
-   воно потрапляти не мусить: інакше те саме число рахувалось би двічі
-   по-різному. У підказці лишається — щоб було видно, куди поділась
-   решта з Ads Manager. */
-const CAB_ST_GONE = ['ARCHIVED', 'DELETED'];
-
 const cabStWord = k => CAB_ST_WORD[k] || String(k).toLowerCase().replace(/_/g, ' ');
 
 /* Скільки оголошень чекає на перевірці Facebook. Число тут потрібне
@@ -27862,35 +27851,19 @@ function cabTreeRepaint(shown) {
   if (typeof cdHide === 'function') cdHide();
 }
 
-/* «3 зі 180» — чесне число, яке нічого не пояснює. Цей рядок і є
-   пояснення: що саме тримає решту. Відхилені й «з помилками» виділені
-   кольором, бо пауза — твій вибір, а відхилення — ні. */
-/* Кампанії, які ввімкнені й нічого не показують. Окремим рядком і
-   червоним, бо це не «трохи менше, ніж здавалось» — це гроші, які ти
-   вважаєш робочими, а вони стоять. */
-function cabDead(fb) {
-  if (!fb) return '';
-  const n = Number(fb.campaigns_on) - Number(fb.campaigns_active);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  return `<p class="cab-fb-warn">${n} campaign(s) switched on but not delivering `
-    + '\u2014 nothing inside them is approved and running.</p>';
-}
+/* ДВА РЯДКИ ЗВІДСИ ПРИБРАНІ.
 
-function cabWhyNot(fb) {
-  const by = fb && fb.ads_by_status;
-  if (!by || typeof by !== 'object') return '';
-  const skip = k => k === 'ACTIVE' || CAB_ST_GONE.includes(k);
-  const rest = Object.entries(by)
-    .filter(([k, v]) => Number(v) > 0 && !skip(k))
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => v + ' ' + cabStWord(k))
-    .join(' \u00b7 ');
-  if (!rest) return '';
-  const n = Object.entries(by).reduce((a, [k, v]) => a + (skip(k) ? 0 : Number(v) || 0), 0);
-  if (!n) return '';
-  const bad = CAB_ST_BAD.some(k => Number(by[k]) > 0);
-  return `<p class="${bad ? 'cab-fb-warn' : 'cab-fb-note'}">${n} ad(s) not running: ${cabEsc(rest)}</p>`;
-}
+   Тут стояло «N campaign(s) switched on but not delivering» і «N ad(s)
+   not running: 17 rejected · 2 paused». Прибрані на прохання: у картці
+   кабінета вони стояли завжди й переважно повторювали те, що вже
+   сказано статусом кабінета й деревом під рядком, де ті самі
+   кампанії й оголошення видно поіменно — а не числом.
+
+   Те, що НЕ повторює нічого, лишилось на місці: disable_reason (чому
+   Facebook закрив кабінет) і sync_error (чому ми самі не змогли
+   забрати дані). Їх нижче в цій же картці видно й далі.
+
+   CAB_ST_BAD і CAB_ST_GONE жили тільки тут, тому пішли разом. */
 
 function cabDetail(c) {
   const box = document.getElementById('cab-detail');
@@ -28028,8 +28001,6 @@ function cabCardOld(fb) {
               + (c.fb.currency ? 'This cabinet is billed in ' + c.fb.currency : ''));
           })()}
       </div>
-      ${cabDead(c.fb)}
-      ${cabWhyNot(c.fb)}
       ${typeof fpForCab === 'function' ? fpForCab(c) : ''}
       ${c.fb.disable_reason ? `<p class="cab-fb-note">${esc(c.fb.disable_reason)}</p>` : ''}
       ${c.fb.sync_error ? `<p class="cab-fb-warn">${esc(c.fb.sync_error)}</p>` : ''}
@@ -31181,6 +31152,11 @@ function pgPaint() {
   const list = document.getElementById('pg-list');
   const note = document.getElementById('pg-note');
   if (!list) return;
+  /* Підпис ховається, коли Сторінки є (нижче). Повертаємо його на
+     початку КОЖНОЇ перемальовки: інакше перша ж помилка після
+     успішного списку лягла б у схований елемент і не з'явилась би
+     на екрані зовсім. */
+  if (note) note.style.display = '';
 
   if (pgRows === null) {
     if (note) { note.textContent = 'Asking Facebook which Pages your tokens have…'; note.className = 'rl-note'; }
@@ -31198,17 +31174,27 @@ function pgPaint() {
                                       || String(r.page_id).includes(q));
   const can = pgRows.filter(r => r.can_moderate).length;
 
+  /* НАД СПИСКОМ — НІЧОГО, ПОКИ СТОРІНКИ Є.
+
+     Тут стояв рядок «N Page(s) · N where comments can be moderated»
+     і під ним скарги токенів. Коли Сторінки на екрані, обидва
+     повторюють те, що й так видно: порахувати два рядки можна очима,
+     а право модерації стоїть міткою «read only» на самій Сторінці.
+
+     Коли ж Сторінок НЕМАЄ, лишається рівно навпаки: порожня панель
+     сама по собі не каже нічого, і тоді текст — єдине, що пояснює
+     причину. Скарги токенів тут і є причиною («токен не вміє читати
+     коментарі»), тому в цьому випадку вони лишаються. */
   if (note) {
-    /* Числа, а не слова: «скільки всього» і «на скількох можна
-       прибирати» — це перше, про що питають, і саме через різницю між
-       ними найчастіше й буває непорозуміння. */
-    note.className = 'rl-note' + (pgRows.length && !can ? ' is-warn' : '');
-    note.innerHTML = !pgRows.length
+    const empty = !pgRows.length;
+    note.className = 'rl-note';
+    note.innerHTML = empty
       ? 'No Pages: the tokens in Settings do not have any Page assigned to their system user.'
         + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '')
-      : `${pgRows.length} Page(s) · ${can} where comments can be moderated`
-        + (q && rows.length !== pgRows.length ? ` · ${rows.length} shown` : '')
-        + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '');
+      : '';
+    // Порожній <p> лишав би над списком свій відступ — саме той
+    // проміжок, через який текст і заважав.
+    if (!empty) note.style.display = 'none';
   }
 
   list.innerHTML = !rows.length

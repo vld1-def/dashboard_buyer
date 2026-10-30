@@ -64,8 +64,15 @@ const opened = await page.evaluate(() => ({
 ok('панель відкривається з кнопки в шапці кабінетів', opened.shown && opened.btn, opened);
 ok('у списку всі Сторінки токенів',
   JSON.stringify(opened.names) === JSON.stringify(['Alpha', 'Beta']), opened.names);
-ok('у підписі видно, на скількох можна модерувати',
-  /2 Page\(s\)/.test(opened.note) && /1 where comments can be moderated/.test(opened.note), opened.note);
+/* Підпис «N Page(s) · N where comments can be moderated» прибраний
+   на прохання: коли Сторінки на екрані, він повторює те, що й так
+   видно — порахувати два рядки можна очима, а право модерації стоїть
+   міткою на самій Сторінці. Перевіряємо саме це: над списком порожньо
+   й місця він не займає. */
+ok('над списком Сторінок нічого не написано', opened.note.trim() === '', opened.note);
+ok('порожній підпис не лишає по собі відступу',
+  await page.evaluate(() => getComputedStyle(
+    document.getElementById('pg-note')).display === 'none'));
 ok('Сторінка без прав позначена read only', opened.readonly === 1, opened.readonly);
 
 /* ─────────── коментарі Сторінки ─────────── */
@@ -159,6 +166,20 @@ ok('стару версію функції називаємо прямо', await
   pgRows = null;
   await pgLoad(true);
   return /older than this page/.test(txt) && /functions deploy fb-comments/.test(txt);
+}));
+
+/* Підпис ховається, коли Сторінки є. Якщо після цього не повертати
+   його, перша ж помилка лягла б у схований елемент — текст у DOM є,
+   а на екрані нічого. Саме так непомітно й зникають повідомлення
+   про помилки. */
+ok('помилка після успішного списку таки видима', await page.evaluate(async () => {
+  pgRows = null; await pgLoad(true);                    // список є → підпис схований
+  const keep = pgCall;
+  pgCall = async () => { throw new Error('account_id is required'); };
+  pgRows = null; await pgLoad(true);
+  const seen = getComputedStyle(document.getElementById('pg-note')).display !== 'none';
+  pgCall = keep; pgRows = null; await pgLoad(true);
+  return seen;
 }));
 
 /* ─────────── праве місце одне ─────────── */
