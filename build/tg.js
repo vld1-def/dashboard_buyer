@@ -217,3 +217,81 @@ window.tgConnect = tgConnect;
 window.tgUnlink = tgUnlink;
 window.tgRefresh = tgRefresh;
 window.saveTelegramBot = saveTelegramBot;
+
+/* ═══════════ «ЩО НОВОГО» — РОЗСИЛКА ═══════════
+
+   Відправити не можна відкликати, і це визначає всю поведінку тут:
+
+     • «тільки собі» не питає нічого — це й є безпечний крок, яким
+       дивляться, як текст виглядає в чаті;
+     • «всім» спершу РАХУЄ отримувачів (dry) і показує число в
+       питанні. «Надіслати 14 людям?» і «надіслати всім?» — різні
+       питання, і друге нічого не важить;
+     • кнопки блокуються на час відправки: другий клік означав би
+       другу розсилку тим самим людям.
+
+   Сам список адресатів складає функція. Звідси йде лише текст — щоб
+   підсунути чужий chat_id не було куди. */
+let tgNewsBusy = false;
+
+async function tgNewsCall(body) {
+  const { data: s } = await sb.auth.getSession();
+  const jwt = s && s.session && s.session.access_token;
+  if (!jwt) throw new Error('Сесія скінчилась — зайди ще раз');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/tg-news', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + jwt, apikey: SUPABASE_KEY,
+               'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const j = await res.json().catch(() => ({}));
+  /* Незадеплоєна функція — це не «щось пішло не так», а невиконаний
+     крок розгортання, і сказати треба саме його. */
+  if (!res.ok) throw new Error(res.status === 404
+    ? 'Функція tg-news ще не задеплоєна: supabase functions deploy tg-news'
+    : (j.error || 'HTTP ' + res.status));
+  return j;
+}
+
+window.tgNews = async function (onlyMe) {
+  if (tgNewsBusy) return;
+  const el = document.getElementById('tg-news-text');
+  const out = document.getElementById('tg-news-status');
+  const say = (t, bad) => { if (out) { out.textContent = t || '';
+    out.style.color = bad ? 'var(--bad)' : 'var(--text-muted)'; } };
+  const text = String((el && el.value) || '').trim();
+  if (!text) { say('Спершу напиши текст', true); if (el) el.focus(); return; }
+
+  const btns = [...document.querySelectorAll('[onclick^="tgNews("]')];
+  try {
+    if (!onlyMe) {
+      /* Рахуємо ДО питання: число отримувачів — єдине, що робить це
+         питання осмисленим. */
+      const n = await tgNewsCall({ dry: true });
+      if (!n.total) { say('Жодного підключеного телеграма — нікому надсилати', true); return; }
+      const go = await ask({ title: 'Надіслати ' + n.total
+          + (n.total === 1 ? ' людині?' : ' людям?'),
+        ok: 'Надіслати', danger: true,
+        body: 'Повідомлення піде всім, у кого телеграм підключений. '
+            + 'Відкликати його не можна.\n\n' + text });
+      if (!go) { say(''); return; }
+    }
+    tgNewsBusy = true;
+    btns.forEach(b => b.disabled = true);
+    say(onlyMe ? 'Надсилаю тобі…' : 'Надсилаю…');
+    const j = await tgNewsCall({ text, test: !!onlyMe });
+    /* Заблокували бота — не збій розсилки, а стан світу, тож окремим
+       числом: інакше «5 з 20» читається як поломка. */
+    const tail = [j.blocked ? j.blocked + ' заблокували бота' : '',
+                  j.failed ? j.failed + ' не дійшло' : ''].filter(Boolean).join(' · ');
+    say(onlyMe
+      ? 'Надіслано тобі — подивись, як воно виглядає в чаті'
+      : 'Надіслано: ' + j.sent + ' з ' + j.total + (tail ? ' · ' + tail : ''));
+    if (typeof toast === 'function') toast(onlyMe ? 'Тестове надіслано' : 'Розіслано', 'ok');
+  } catch (e) {
+    say(String(e.message || e), true);
+  } finally {
+    tgNewsBusy = false;
+    btns.forEach(b => b.disabled = false);
+  }
+};

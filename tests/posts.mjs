@@ -237,7 +237,8 @@ const q = await page.evaluate(() => {
 });
 ok('у черзі всі чотири стани', q.all.length === 4, q.all);
 ok('кожен стан названий по-своєму',
-  q.all.map(r => r.tag).join('|') === 'чернетка|заплановано|вийшов|відмова', q.all);
+  /* «вийшов» читалось як «пішов геть», а не «він у стрічці». */
+  q.all.map(r => r.tag).join('|') === 'чернетка|заплановано|опубліковано|відмова', q.all);
 ok('причина відмови видна повністю',
   /pages_manage_posts/.test(q.all[3].err), q.all[3]);
 ok('опублікувати можна лише чернетку',
@@ -348,5 +349,57 @@ ok('немає бакета — сказано, що виконати', /POST_IM
   ok('брак ключа названий кроком розгортання, а не «помилкою»',
     /SERVICE_ROLE_KEY is not set/.test(FN));
 }
+
+/* ─────────── хід відправки видно ───────────
+
+   Facebook відповідає не миттєво, і доти натискання виглядало як
+   «нічого не сталось»: людина тисне ще раз — і в стрічці два пости.
+   Тому перевіряємо не вигляд, а те, що другий клік НЕ проходить, і
+   що хід видно на тій кнопці, яку натиснули, — з черги теж, бо
+   раніше там не мінялось нічого. */
+const busy = await page.evaluate(async () => {
+  /* Чергу ставимо прямо, а не через boot: стенд тут про поведінку
+     кнопки, і зайвий шар читання лише додав би йому причин упасти. */
+  psPosts = [{ id: 'p1', status: 'draft', page_id: '1', page_name: 'Lucky KG',
+               message: 'текст' }];
+  psF = '';
+  psPaint();
+
+  /* Тримаємо відповідь функції, щоб побачити кнопку В ПРОЦЕСІ:
+     інакше вона встигає повернутись у вихідний стан. */
+  let release;
+  const held = new Promise(r => release = r);
+  const keep = window.fetch;
+  window.fetch = async (u, o) => { await held; return keep(u, o); };
+
+  const btn = document.querySelector('#ps-list [data-send="p1"]');
+  if (!btn) { window.fetch = keep; return { err: 'кнопки в рядку немає' }; }
+  const label0 = btn.textContent.trim();
+  psSend('p1');
+  await new Promise(r => setTimeout(r, 30));
+  const mid = { text: btn.textContent.trim(), off: btn.disabled,
+                ring: btn.classList.contains('is-busy') };
+
+  /* Другий клік під час відправки не має надіслати нічого. */
+  window.__ps.calls = [];
+  psSend('p1');
+  await new Promise(r => setTimeout(r, 20));
+  const second = window.__ps.calls.length;
+
+  release();
+  await new Promise(r => setTimeout(r, 120));
+  window.fetch = keep;
+  return { label0, mid, second };
+});
+ok('кнопка в рядку черги каже, що запит пішов',
+  busy.mid && /Відправляю/.test(busy.mid.text), busy);
+ok('і показує кільце, а не саму лише зміну слова',
+  busy.mid && busy.mid.ring === true, busy);
+ok('поки йде — натиснути вдруге не можна', busy.mid && busy.mid.off === true, busy);
+ok('другий клік не надсилає другий пост', busy.second === 0, busy);
+
+/* «вийшов» читалось як «пішов геть», а не «опублікований». */
+ok('статус опублікованого названий своїм словом', await page.evaluate(() =>
+  PS_ST.published.l === 'опубліковано'));
 
 await done(browser, srv, errs);
