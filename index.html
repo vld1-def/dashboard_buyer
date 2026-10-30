@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 23:06">
+  <meta name="build" content="build 30.10 23:19">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6479,7 +6479,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 23:06</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 23:19</div>
     </div>
   </aside>
 
@@ -15592,6 +15592,48 @@ window.toast = function (msg, kind, ms, raw) {
   };
 })();
 
+/* ═══════════ «FAILED TO FETCH» — НАЙГІРША З МОЖЛИВИХ ВІДПОВІДЕЙ ═══════════
+
+   Коли Edge-функція не задеплоєна, браузер не показує ні коду, ні
+   причини: CORS-préflight отримує голий 404 без заголовків, і fetch
+   падає з TypeError «Failed to fetch». Те саме слово в слово — якщо
+   функція не змогла стартувати або зникла мережа.
+
+   У коді дашборда п'ятнадцять місць, які кличуть функції, і в кожному
+   стояла своя обробка 404 — яка в цьому випадку НЕ спрацьовує, бо
+   відповіді немає взагалі. Писати ту саму латку п'ятнадцять разів
+   означало б забути її в шістнадцятому.
+
+   Тому перехоплюємо один раз тут, на рівні fetch: успішні виклики
+   проходять незмінними, а ось TypeError на адресу /functions/v1/…
+   перетворюється на помилку, яка називає функцію і найімовірнішу
+   причину. Вгадувати не можемо — тому названі обидві, у порядку
+   ймовірності.
+
+   Назву беремо з самої адреси: так це працює і для функцій, яких ще
+   немає в коді на момент написання цього рядка. */
+(function () {
+  const real = window.fetch;
+  if (!real) return;
+  window.fetch = function (url, opt) {
+    const u = String((url && url.url) || url || '');
+    const m = u.match(/\/functions\/v1\/([a-z0-9-]+)/i);
+    const p = real.apply(this, arguments);
+    if (!m) return p;
+    return p.catch(err => {
+      /* Саме TypeError означає «відповіді не було». Усе інше —
+         скасування, таймаут нашого ж коду — лишаємо як є: підмінити
+         чужу помилку своєю здогадкою гірше, ніж не чіпати. */
+      if (!(err instanceof TypeError)) throw err;
+      throw new Error('Функція ' + m[1] + ' не відповіла зовсім. '
+        + 'Найчастіше це означає, що вона не задеплоєна: '
+        + 'supabase functions deploy ' + m[1]
+        + '. Рідше — вона не змогла стартувати (дивись логи функції) '
+        + 'або зникла мережа.');
+    });
+  };
+})();
+
 /* ═══════════ ПИТАННЯ ═══════════
 
    alert() ми перехопили давно, а confirm() лишався системним вікном
@@ -23722,6 +23764,15 @@ async function tgTest() {
     });
     if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
     const j = await res.json().catch(() => ({}));
+    /* СТАРА ЗАДЕПЛОЄНА ВЕРСІЯ — ОКРЕМА ВІДПОВІДЬ.
+
+       Перевірка звʼязку шле {test:true} і жодного кабінета. Функція,
+       яка на це відповідає «account_id is required», просто не знає
+       про цей вхід — тобто в Supabase працює збірка, старша за цю
+       сторінку. Пропустити таке як є означало б відправити людину
+       шукати кабінет, якого вона й не вказувала. */
+    if (!res.ok && /account_id is required/i.test(String(j.error || '')))
+      throw Object.assign(new Error('old'), { code: 'old' });
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
 
     if (j.test === 'sent')
@@ -23741,7 +23792,11 @@ async function tgTest() {
         'var(--warn)');
     say('Telegram refused it: ' + tgEsc(String(j.note || j.test || 'unknown')), 'var(--bad)');
   } catch (e) {
-    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    if (e.code === 'old')
+      return say('The deployed fb-sync is older than this page \u2014 it does not know '
+        + 'about the test message yet. Run <span class="font-mono">supabase functions '
+        + 'deploy fb-sync</span>.', 'var(--warn)');
+    const net = /failed to fetch|networkerror|load failed|не відповіла зовсім/i.test(e.message || '');
     say(e.code === 'missing' || net
       ? 'The fb-sync function did not answer \u2014 it is either not deployed '
         + '(<span class="font-mono">supabase functions deploy fb-sync</span>) or failing on start-up.'
