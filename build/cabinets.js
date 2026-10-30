@@ -2824,10 +2824,10 @@ async function cabStopAll(idEnc) {
 window.cabDrop = async function (id) {
   const c = cabAll.find(x => String(x.id) === String(id));
   if (!c || !c.fb || !c.fb.missing_since) return;
-  if (!confirm('Remove cabinet ' + c.id + ' from the list?\n\n'
-      + 'Only the row here goes away. Nothing changes in Facebook, and your own '
-      + 'notes in Accounts stay. If a token ever sees this cabinet again, the row '
-      + 'comes back with it.')) return;
+  if (!await ask({ title: 'Remove cabinet ' + c.id + ' from the list?', ok: 'Remove',
+      body: 'Only the row here goes away. Nothing changes in Facebook, and your own '
+          + 'notes in Accounts stay.\n\nIf a token ever sees this cabinet again, '
+          + 'the row comes back with it.' })) return;
   const step = toastStep();
   try {
     const { data, error } = await sb.from('fb_accounts')

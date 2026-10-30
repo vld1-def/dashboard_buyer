@@ -332,7 +332,8 @@ window.psSend = async function (id) {
 window.psDrop = async function (id) {
   const p = psPosts.find(x => String(x.id) === String(id));
   if (!p) return;
-  if (!confirm('Прибрати цей запис?')) return;
+  if (!await ask({ title: 'Прибрати цей запис?', ok: 'Прибрати', danger: true,
+      body: 'Зникне тільки рядок у черзі. У Facebook нічого не зміниться.' })) return;
   const { error } = await sb.from('fb_posts').delete().eq('id', id);
   if (error) { psSay('Не вийшло: ' + error.message, true); return; }
   await psLoad(false);

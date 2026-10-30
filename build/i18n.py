@@ -140,6 +140,7 @@ LONG = {
  "Текст порожній.": "The text is empty.",
  "Вигляд графіка": "Chart style",
  "Видалити звіт?": "Delete this report?",
+ "Видалити виплату?": "Delete the payout?",
  "Видалити таск?": "Delete this task?",
  "Легша (швидше)": "Lighter (faster)",
  "· без комісії": "· no fee",

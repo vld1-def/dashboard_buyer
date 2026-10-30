@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 19:38">
+  <meta name="build" content="build 30.10 21:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6393,7 +6393,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 19:38</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 21:32</div>
     </div>
   </aside>
 
@@ -8238,15 +8238,18 @@ async function refreshTeamsList() {
   }
 }
 // 3. Створення нової команди (профіль)
-function promptCreateTeam() {
-  const newTeamName = prompt("Enter a name for the new team (Latin letters):");
-  
+async function promptCreateTeam() {
+  const newTeamName = await ask({ title: 'Нова команда',
+    body: 'Назва латиницею. Вона з\'явиться в базі, щойно ти додаси перші дані.',
+    ok: 'Створити', input: { placeholder: 'team_name' } });
+  if (newTeamName === false) return;
+
   if (newTeamName && newTeamName.trim().length > 2) {
     const formattedName = newTeamName.trim();
     // Просто перемикаємось на нову назву. 
     // Вона з'явиться в базі, як тільки ви додасте перші дані.
     switchTeam(formattedName);
-  } else if (newTeamName !== null) {
+  } else {
     alert("The name must be longer than 2 characters.");
   }
 }
@@ -11682,7 +11685,7 @@ function renderTasks(filter) {
 
 // Функція видалення таска (SQL)
 async function deleteTaskRow(id) {
-  if (!confirm('Delete this task?')) return;
+  if (!await ask({ title: 'Delete this task?', ok: 'Delete', danger: true })) return;
   const { error } = await sb.from('tasks').delete().eq('id', id);
   if (!error) refreshTasks();
 }
@@ -11730,7 +11733,7 @@ function renderReports() {
 
 // Видалення звіту (SQL)
 async function deleteReport(id) {
-  if (!confirm('Delete this report?')) return;
+  if (!await ask({ title: 'Delete this report?', ok: 'Delete', danger: true })) return;
   const { error } = await sb.from('daily_reports').delete().eq('id', id);
   if (!error) refreshReports();
 }
@@ -13349,7 +13352,7 @@ async function deletePayoutFromSQL(payoutId) {
     return;
   }
 
-  if (!confirm("Видалити?")) return;
+  if (!await ask({ title: 'Delete the payout?', ok: 'Delete', danger: true })) return;
 
   // 2. Спроба видалення
   const { error } = await sb
@@ -14513,7 +14516,9 @@ async function loadDbLogsTab(tab) {
 }
 
 async function deleteDbDay(tab, date) {
-  if (!confirm(`Delete data for ${date} from ${tab === 'stats' ? 'daily_stats' : 'creatives_stats'}?`)) return;
+  if (!await ask({ title: 'Delete data for ' + date + '?', ok: 'Delete', danger: true,
+      body: 'Table ' + (tab === 'stats' ? 'daily_stats' : 'creatives_stats')
+          + '. Only this one day, and only for team "' + currentTeam + '".' })) return;
   const table = tab === 'stats' ? 'daily_stats' : 'creatives_stats';
   const { error } = await sb.from(table).delete().eq('team_name', currentTeam).eq('date', date);
   if (error) { alert('Error: ' + error.message); return; }
@@ -14532,7 +14537,12 @@ async function deleteDbDay(tab, date) {
 }
 
 async function deleteDbAll(tab) {
-  if (!confirm(`Delete ALL data from ${tab === 'stats' ? 'daily_stats' : 'creatives_stats'} for team "${currentTeam}"?`)) return;
+  /* Тут гине не day, а вся історія команди — і тому питання інше:
+     воно називає таблицю й команду, а кнопка каже саме це. */
+  if (!await ask({ title: 'Delete ALL data?', ok: 'Delete everything', danger: true,
+      body: 'Table ' + (tab === 'stats' ? 'daily_stats' : 'creatives_stats')
+          + ', team "' + currentTeam + '".\n\nEvery day goes at once. '
+          + 'Nothing here can bring it back.' })) return;
   const table = tab === 'stats' ? 'daily_stats' : 'creatives_stats';
   const { error } = await sb.from(table).delete().eq('team_name', currentTeam);
   if (error) { alert('Error: ' + error.message); return; }
@@ -18162,13 +18172,16 @@ async function apClone(id) {
   const it = apItems.find(x => x.id === id);
   if (!it) return;
   const { mine, free } = apGeoHints(it);
-  const ask = ['Під яке гео скопіювати «' + ((it.geo || '—').toUpperCase()
-      + (it.provider ? ' · ' + it.provider : '')) + '»?',
-    'Можна кілька через кому: KZ, TJ',
+  /* Змінну звали ask — тим самим іменем, що й вікно питання, і вона
+     його перекривала. Поки тут стояв prompt(), цього не було видно. */
+  const body = ['Можна кілька через кому: KZ, TJ',
     free.length ? 'Апки вже є під: ' + free.join(', ')
                 : 'Гео апок цього постачальника не видно — впиши вручну'].join('\n');
-  const raw = prompt(ask, free.slice(0, 3).join(', '));
-  if (raw === null) return;
+  const raw = await ask({ ok: 'Скопіювати',
+    title: 'Під яке гео скопіювати «' + ((it.geo || '—').toUpperCase()
+      + (it.provider ? ' · ' + it.provider : '')) + '»?',
+    body, input: { value: free.slice(0, 3).join(', '), placeholder: 'KZ, TJ' } });
+  if (raw === false) return;
 
   const want = String(raw).split(/[,\s]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
   const bad = want.filter(g => !/^[A-Z]{2,4}$/.test(g));
@@ -18179,8 +18192,8 @@ async function apClone(id) {
      промах, але буває й свідомо (два неймінги під одне гео). Тому
      питаємо, а не забороняємо. */
   const dup = want.filter(g => mine.has(g));
-  if (dup.length && !confirm('Шаблон під ' + dup.join(', ')
-      + ' у цього постачальника вже є. Зробити ще один?')) return;
+  if (dup.length && !await ask({ title: 'Такий шаблон уже є', ok: 'Зробити ще один',
+      body: 'Під ' + dup.join(', ') + ' у цього постачальника шаблон уже стоїть.' })) return;
 
   const made = [];
   want.forEach((geo, i) => {
@@ -18204,7 +18217,8 @@ async function apClone(id) {
 
 async function apDelete(id) {
   const it = apItems.find(x => x.id === id);
-  if (!confirm('Видалити «' + (it && (it.title || it.app) || id) + '»?')) return;
+  if (!await ask({ ok: 'Видалити', danger: true,
+      title: 'Видалити «' + (it && (it.title || it.app) || id) + '»?' })) return;
   const keep = apItems;
   apItems = apItems.filter(x => x.id !== id);
   if (!await apSave()) { apItems = keep; return; }
@@ -21284,7 +21298,7 @@ async function txSubmit() {
   await txSave(); txRenderTree(); txRender();
 }
 async function txDelete(id) {
-  if (!confirm('Delete this text?')) return;
+  if (!await ask({ title: 'Delete this text?', ok: 'Delete', danger: true })) return;
   txItems = txItems.filter(x => x.id !== id);
   await txSave(); txRenderTree(); txRender();
 }
@@ -28270,10 +28284,10 @@ async function cabStopAll(idEnc) {
 window.cabDrop = async function (id) {
   const c = cabAll.find(x => String(x.id) === String(id));
   if (!c || !c.fb || !c.fb.missing_since) return;
-  if (!confirm('Remove cabinet ' + c.id + ' from the list?\n\n'
-      + 'Only the row here goes away. Nothing changes in Facebook, and your own '
-      + 'notes in Accounts stay. If a token ever sees this cabinet again, the row '
-      + 'comes back with it.')) return;
+  if (!await ask({ title: 'Remove cabinet ' + c.id + ' from the list?', ok: 'Remove',
+      body: 'Only the row here goes away. Nothing changes in Facebook, and your own '
+          + 'notes in Accounts stay.\n\nIf a token ever sees this cabinet again, '
+          + 'the row comes back with it.' })) return;
   const step = toastStep();
   try {
     const { data, error } = await sb.from('fb_accounts')
@@ -32689,9 +32703,13 @@ window.cdBudgetEdit = async function (id, nameEnc) {
   if (!cur) return;
   const per = cur.kind === 'daily' ? 'per day' : 'total';
 
-  const raw = prompt(`New ${cur.kind} budget for “${name}” (${per}), `
-    + `now ${cur.v.toFixed(2)}:`, String(cur.v));
-  if (raw === null) return;
+  const raw = await ask({
+    title: 'New ' + cur.kind + ' budget',
+    body: name + '\n\nNow ' + cur.v.toFixed(2) + ' ' + per + '.',
+    ok: 'Next', input: { value: String(cur.v), placeholder: cur.v.toFixed(2) } });
+  /* false — це скасування, а не порожнє поле: порожнє піде далі й
+     чесно впреться в «Not a budget», бо нуль тут теж відповідь. */
+  if (raw === false) return;
   const v = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
   if (!Number.isFinite(v) || v <= 0) {
     if (typeof toast === 'function') toast('Not a budget: ' + raw, 'error');
@@ -33640,7 +33658,8 @@ window.psSend = async function (id) {
 window.psDrop = async function (id) {
   const p = psPosts.find(x => String(x.id) === String(id));
   if (!p) return;
-  if (!confirm('Прибрати цей запис?')) return;
+  if (!await ask({ title: 'Прибрати цей запис?', ok: 'Прибрати', danger: true,
+      body: 'Зникне тільки рядок у черзі. У Facebook нічого не зміниться.' })) return;
   const { error } = await sb.from('fb_posts').delete().eq('id', id);
   if (error) { psSay('Не вийшло: ' + error.message, true); return; }
   await psLoad(false);
