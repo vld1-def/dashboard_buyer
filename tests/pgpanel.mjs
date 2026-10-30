@@ -38,7 +38,10 @@ await page.evaluate(() => {
   pgCall = async body => {
     window.__calls.push(body);
     if (body.action === 'pages') return { pages: [
-      { page_id: '111', name: 'Alpha', tasks: ['MODERATE'], can_moderate: true, token: 'AgentX_12_BM' },
+      { page_id: '111', name: 'Alpha', tasks: ['MODERATE'], can_moderate: true,
+        pic: 'https://scontent.example/alpha.jpg', token: 'AgentX_12_BM' },
+      /* Друга без аватарки навмисне: Facebook віддає picture не завжди,
+         і рядок без неї має лишатись рівним, а не з'їжджати вліво. */
       { page_id: '222', name: 'Beta', tasks: ['ADVERTISE'], can_moderate: false, token: 'AgentX_12_BM' }
     ], problems: [] };
     if (body.action === 'page_list') return {
@@ -74,6 +77,33 @@ ok('порожній підпис не лишає по собі відступу
   await page.evaluate(() => getComputedStyle(
     document.getElementById('pg-note')).display === 'none'));
 ok('Сторінка без прав позначена read only', opened.readonly === 1, opened.readonly);
+
+/* ЛОГО. Сторінки впізнають по ньому швидше, ніж по назві — надто коли
+   половина зветься схоже. Але картинка з CDN Facebook протухає, тому
+   рядок не має на неї спиратись: без аватарки лишається заглушка тієї
+   ж ширини, інакше назви їхали б на різну відстань від краю. */
+const pics = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('#pg-list .pg-pick')];
+  const slot = r => r.querySelector('.pg-pic');
+  return rows.map(r => ({
+    src: (slot(r) && slot(r).getAttribute('src')) || '',
+    wide: slot(r) ? Math.round(slot(r).getBoundingClientRect().width) : 0,
+    /* Адреса нашої сторінки не має їхати у Facebook із кожною
+       аватаркою — це саме те, що віддає referrer. */
+    quiet: slot(r) ? slot(r).getAttribute('referrerpolicy') : ''
+  }));
+});
+ok('у Сторінки з аватаркою вона й стоїть',
+  /alpha\.jpg/.test(pics[0].src), pics);
+ok('без аватарки лишається заглушка тієї ж ширини',
+  pics[1].src === '' && pics[1].wide === pics[0].wide, pics);
+ok('адреса дашборда не їде у Facebook із кожною аватаркою',
+  pics[0].quiet === 'no-referrer', pics);
+ok('протухла картинка прибирає себе, а не ламає рядок',
+  await page.evaluate(() => {
+    const img = document.querySelector('#pg-list .pg-pic');
+    return /this\.remove\(\)/.test(img.getAttribute('onerror') || '');
+  }));
 
 /* ─────────── коментарі Сторінки ─────────── */
 await page.evaluate(() => pgPick('111'));

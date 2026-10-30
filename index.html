@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 22:41">
+  <meta name="build" content="build 30.10 22:48">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6116,6 +6116,20 @@ input.ui-in[type="range"] { padding: 0; }
 }
 .cab-lim-ed:hover { opacity: 1; color: var(--accent); }
 
+/* АВАТАР СТОРІНКИ. Квадрат зі скругленням, а не коло: у Facebook лого
+   Сторінок квадратні, і коло зрізало б їм кути — саме ті, де в
+   половини брендів літера.
+
+   Заглушка тієї ж ширини стоїть там, де аватарки немає: інакше назви
+   в списку їхали б на різну відстань від краю, і рівного стовпчика
+   не вийшло б. */
+.pg-pic {
+  width: 20px; height: 20px; flex: 0 0 20px;
+  border-radius: 5px; object-fit: cover;
+  background: var(--surface-3); margin-right: 8px;
+}
+.pg-pic.is-none { display: inline-block; opacity: .35; }
+
 /* ЗАПИТ ПІШОВ — ЦЕ ВИДНО.
 
    Facebook відповідає не миттєво, і без цього кільця натискання
@@ -6429,7 +6443,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 22:41</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 22:48</div>
     </div>
   </aside>
 
@@ -31374,6 +31388,17 @@ function pgRowHtml(r) {
       title="${r.can_moderate
         ? 'Read and moderate what people write under this Page'
         : 'Read only: this token was not given the Moderate content task on this Page'}">
+      ${/* АВАТАР. Сторінки впізнають по лого швидше, ніж по назві —
+            особливо коли їх двадцять і половина зветься схоже.
+
+            Адреса веде на CDN Facebook і з часом протухає. Тому
+            onerror прибирає саме зображення, а не ламає рядок: краще
+            список без картинок, ніж список із порожніми рамками.
+            referrerpolicy — щоб Facebook не діставав адресу нашої
+            сторінки з кожного завантаження аватарки. */
+        r.pic ? `<img class="pg-pic" src="${pgEsc(r.pic)}" alt="" loading="lazy"
+                   referrerpolicy="no-referrer" onerror="this.remove()">`
+              : '<span class="pg-pic is-none"></span>'}
       <span class="pg-name">${pgEsc(r.name || '#' + r.page_id)}</span>
       <span class="pg-tags">
         ${r.can_moderate ? '' : '<span class="fcm-tag">read only</span>'}
