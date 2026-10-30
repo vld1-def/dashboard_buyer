@@ -47,7 +47,17 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-10-30.1';
+const FN_VERSION = '2026-10-30.2';
+
+/* Картинка, залита в наш бакет, лежить за позначкою storage:<шлях>.
+   Бакет приватний, тож Graph його не дістане — підписуємо тимчасове
+   посилання рівно на час виклику.
+
+   Десять хвилин вистачає і запланованому посту: Facebook качає
+   зображення В МОМЕНТ виклику, бо сам об'єкт фото створюється одразу,
+   відкладається лише публікація. */
+const STORAGE_MARK = 'storage:';
+const SIGN_SECONDS = 600;
 
 type Json = Record<string, any>;
 
@@ -174,10 +184,34 @@ Deno.serve(async (req) => {
   const sched = when && when > Math.floor(Date.now() / 1000)
     ? { published: 'false', scheduled_publish_time: String(when) } : {};
 
-  const hasImg = !!String(row.image_url || '').trim();
+  /* Своя картинка чи чужа адреса — вирішує позначка. Підписуємо лише
+     своє: чужий https і так відкритий, а спроба «підписати» його
+     перетворила б робоче посилання на поломане. */
+  let imgUrl = String(row.image_url || '').trim();
+  if (imgUrl.startsWith(STORAGE_MARK)) {
+    const path = imgUrl.slice(STORAGE_MARK.length);
+    const slash = path.indexOf('/');
+    const bucket = slash > 0 ? path.slice(0, slash) : '';
+    const key = slash > 0 ? path.slice(slash + 1) : '';
+    if (!bucket || !key) return reply({ error: 'the stored picture path is broken: ' + path }, 400);
+    try {
+      const r = await fetch(base + '/storage/v1/object/sign/' + bucket + '/'
+        + key.split('/').map(encodeURIComponent).join('/'),
+        { method: 'POST', headers: hdr, body: JSON.stringify({ expiresIn: SIGN_SECONDS }) });
+      const j = await r.json().catch(() => ({}));
+      const signed = String(j?.signedURL || j?.signedUrl || '');
+      if (!r.ok || !signed) throw new Error(String(j?.message || j?.error || ('HTTP ' + r.status)));
+      imgUrl = base + '/storage/v1' + (signed.startsWith('/') ? signed : '/' + signed);
+    } catch (e) {
+      return reply({ error: 'could not sign the picture: ' + String((e as Error).message)
+        + '. If the bucket is missing, run POST_IMAGES.sql.' }, 400);
+    }
+  }
+
+  const hasImg = !!imgUrl;
   const path = '/' + String(row.page_id) + (hasImg ? '/photos' : '/feed');
   const params: Json = hasImg
-    ? { url: row.image_url, caption: row.message, ...sched }
+    ? { url: imgUrl, caption: row.message, ...sched }
     : { message: row.message, link: row.link, ...sched };
 
   let out: Json;

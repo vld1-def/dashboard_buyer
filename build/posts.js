@@ -16,6 +16,20 @@
 
 let psPosts = [], psPages = [], psF = '', psBusy = false;
 
+/* КАРТИНКА: ФАЙЛ ЛЕЖИТЬ У НАС, FACEBOOK ОТРИМУЄ ТИМЧАСОВЕ ПОСИЛАННЯ.
+
+   Бакет приватний. Коли пост відправляється, fb-post підписує
+   посилання на хвилини й віддає його Graph — Facebook качає картинку
+   в момент виклику, навіть для запланованого поста: саме зображення
+   створюється одразу, відкладається лише публікація.
+
+   У рядку зберігається не адреса, а шлях із позначкою storage:. Так
+   видно з одного погляду, чиє це зображення — наше чи чуже, — і
+   підписувати треба лише перше. */
+const PS_BUCKET = 'post-images';
+const PS_MARK = 'storage:';
+let psUp = null;                 // {path, url} щойно залитого файлу
+
 const psEsc = v => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -32,6 +46,84 @@ function psSay(t, bad) {
   el.textContent = t || '';
   el.className = 'ps-hint' + (bad ? ' is-bad' : '');
 }
+
+/* МЕЖА РОЗМІРУ. Facebook приймає до 4 МБ на зображення у постах; до
+   того ж кожен зайвий мегабайт — це час заливу й час, поки Graph його
+   качає. Зменшуємо довгу сторону до 1600: для стрічки цього з запасом
+   (Meta радить від 1200 по ширині), а вага падає в рази.
+
+   Якщо canvas не впорався — заливаємо як є: важка картинка краща за
+   жодної. */
+const PS_MAX_SIDE = 1600;
+function psShrink(file) {
+  return new Promise(resolve => {
+    if (!/^image\//.test(file.type) || /gif$/i.test(file.type)) return resolve(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const k = Math.min(1, PS_MAX_SIDE / Math.max(img.width, img.height));
+        if (k === 1 && file.size < 3.5 * 1048576) { URL.revokeObjectURL(url); return resolve(file); }
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(b => { URL.revokeObjectURL(url); resolve(b || file); }, 'image/jpeg', 0.9);
+      } catch (e) { URL.revokeObjectURL(url); resolve(file); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+window.psPick = async function (input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  psSay('Заливаю картинку…');
+  try {
+    const small = await psShrink(file);
+    /* Ім'я з часом і випадковим хвостом: два однакових «photo.jpg» від
+       двох людей не мають перетирати один одного. */
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().slice(0, 5);
+    const path = String(currentTeam || 'team') + '/' + Date.now() + '_'
+               + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    const { error } = await sb.storage.from(PS_BUCKET).upload(path, small,
+      { contentType: small.type || file.type || 'image/jpeg', upsert: false });
+    if (error) throw new Error(error.message);
+    const { data: sg } = await sb.storage.from(PS_BUCKET).createSignedUrl(path, 3600);
+    psUp = { path, url: (sg && sg.signedUrl) || '' };
+    document.getElementById('ps-img').value = '';
+    psPrev();
+    psSay('Картинка готова');
+  } catch (e) {
+    const m = String(e.message || e);
+    psSay(/bucket|not found|does not exist/i.test(m)
+      ? 'Бакета post-images ще немає — виконай POST_IMAGES.sql'
+      : 'Картинка не залилась: ' + m, true);
+  }
+};
+
+window.psImgHint = function () {
+  if (document.getElementById('ps-img')?.value.trim()) { psUp = null; psPrev(); }
+};
+
+function psPrev() {
+  const box = document.getElementById('ps-prev');
+  if (!box) return;
+  const by = document.getElementById('ps-img')?.value.trim();
+  const src = psUp ? psUp.url : by;
+  box.innerHTML = src
+    ? `<img src="${psEsc(src)}" alt="" onerror="this.remove()">
+       <button type="button" class="ps-mini" onclick="psDropImg()">прибрати</button>
+       <span class="ps-hint">${psUp ? 'файл у сховищі команди' : 'за адресою'}</span>`
+    : '';
+}
+
+window.psDropImg = function () {
+  psUp = null;
+  const el = document.getElementById('ps-img'); if (el) el.value = '';
+  psPrev();
+};
 
 function psCount() {
   const n = (document.getElementById('ps-msg')?.value || '').length;
@@ -162,7 +254,10 @@ function psForm() {
     page_name: p ? (p.page_name || p.page_id) : page,
     message: document.getElementById('ps-msg')?.value || '',
     link: document.getElementById('ps-link')?.value || null,
-    image_url: document.getElementById('ps-img')?.value || null,
+    /* Залитий файл перемагає адресу: якщо людина щойно вибрала файл,
+       це і є її вибір, а поле адреси могло лишитись від попереднього. */
+    image_url: psUp ? (PS_MARK + psUp.path)
+                    : (document.getElementById('ps-img')?.value || null),
     publish_at: when ? new Date(when).toISOString() : null
   };
 }
@@ -219,6 +314,7 @@ window.psSend = async function (id) {
     }
     psSay(j.status === 'scheduled' ? 'Заплановано на Сторінці ' + j.page : 'Опубліковано на ' + j.page);
     const msg = document.getElementById('ps-msg'); if (msg && !id) msg.value = '';
+    if (!id) { psUp = null; const im = document.getElementById('ps-img'); if (im) im.value = ''; psPrev(); }
     psCount();
     await psLoad(false);
   } catch (e) {
