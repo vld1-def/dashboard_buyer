@@ -14,6 +14,18 @@
    лише тоді, коли Сторінку видали системному користувачеві в Business
    Manager, а в токені є pages_manage_posts.
 
+   САМ ТОКЕН ЧИТАЄТЬСЯ СЕРВІСНИМ КЛЮЧЕМ, і це не послаблення, а
+   наслідок FB_TOKENS.sql: там select на таблиці забрано цілком і
+   повернуто поіменно, без token і без proxy, щоб зі сторінки токен
+   прочитати не можна було. Запит заголовками того, хто покликав, через
+   це завжди падав на 42501 «permission denied for table fb_tokens» —
+   і саме тому публікація мовчки не працювала.
+
+   Межу тримає не ключ, а порядок: Сторінка й кабінет читаються
+   заголовками того, хто покликав, тобто їх показує RLS, а сервісним
+   ключем береться лише токен — і тільки той, що належить КОМАНДІ вже
+   підтвердженого кабінета.
+
    Права перевіряємо ДО першого запиту в Graph: дізнатись про брак
    дозволу після того, як пост уже пішов, неможливо — але дізнатись
    після того, як людина натиснула і чекає, цілком реально, і це
@@ -47,7 +59,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-10-30.2';
+const FN_VERSION = '2026-10-30.3';
 
 /* Картинка, залита в наш бакет, лежить за позначкою storage:<шлях>.
    Бакет приватний, тож Graph його не дістане — підписуємо тимчасове
@@ -136,6 +148,13 @@ Deno.serve(async (req) => {
   /* ЯКИЙ ТОКЕН ДІСТАЄ ЦЮ СТОРІНКУ. Сторінку бачить кабінет, кабінет
      прив'язаний до токена. Йдемо тим самим ланцюжком, що й
      fb-comments: page_id → account_id → token_id → сам токен. */
+  const svc = Deno.env.get('SERVICE_ROLE_KEY')
+    || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (!svc) return reply({ error: 'SERVICE_ROLE_KEY is not set in the function secrets — '
+    + 'without it the Page token cannot be read' }, 400);
+  const svcHdr = { apikey: svc, Authorization: 'Bearer ' + svc,
+                   'content-type': 'application/json' };
+
   let token = '', scopes: string[] = [];
   try {
     const pgs = await rest(base, hdr, 'fb_cabinet_pages?page_id=eq.'
@@ -144,11 +163,16 @@ Deno.serve(async (req) => {
       'this Page is not seen by any of your cabinets — press Sync now on the Cabinets tab' }, 400);
     const ids = pgs.map((p: Json) => String(p.account_id)).filter(Boolean);
     const accs = await rest(base, hdr, 'fb_accounts?account_id=in.('
-      + ids.map((i: string) => '"' + i + '"').join(',') + ')&select=account_id,token_id');
+      + ids.map((i: string) => '"' + i + '"').join(',') + ')&select=account_id,token_id,team_name');
     const withTok = (accs || []).find((a: Json) => a.token_id);
     if (!withTok) return reply({ error:
       'no token is linked to the cabinets that see this Page — press Sync now on the Cabinets tab' }, 400);
-    const toks = await rest(base, hdr, 'fb_tokens?id=eq.' + Number(withTok.token_id)
+    /* Сторінку й кабінет вище показала RLS — отже цей рядок твій.
+       Токен до нього браузерним ключем не читається взагалі (у
+       FB_TOKENS.sql стовпця token немає серед дозволених), тож беремо
+       сервісним, звузивши до команди вже підтвердженого кабінета. */
+    const toks = await rest(base, svcHdr, 'fb_tokens?id=eq.' + Number(withTok.token_id)
+      + '&team_name=eq.' + encodeURIComponent(String(withTok.team_name || ''))
       + '&select=id,token,scopes&limit=1');
     if (!toks.length) return reply({ error: 'the token this Page came from is gone' }, 400);
     token = String(toks[0].token || '');

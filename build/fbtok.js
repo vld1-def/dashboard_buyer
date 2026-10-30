@@ -473,11 +473,29 @@ window.fbDrop = async function (id) {
 window.fbAdd = async function () {
   const tokEl = document.getElementById('fb-token-input');
   const labEl = document.getElementById('fb-label-input');
+  const pxEl  = document.getElementById('fb-proxy-input');
   const out = document.getElementById('fb-add-status');
   const token = (tokEl.value || '').trim();
   const label = (labEl.value || '').trim();
   if (!token) return alert('Paste the token first');
   if (!label) return alert('Give it a name — in a month you will not remember whose BM this is');
+
+  /* ПРОКСІ — ТУТ-ТАКИ, І НЕОБОВʼЯЗКОВЕ.
+
+     Доти воно вписувалось окремим кроком після збереження, і між цими
+     кроками токен уже ходив у Facebook зі своєї адреси. Порожнє поле —
+     повноцінна відповідь «без проксі», а не пропущений крок, тож
+     мовчки воно нічого не ламає.
+
+     А ось нечитабельний рядок зупиняє ДО звернення в Facebook: інакше
+     токен збережеться, проксі — ні, і вийде рівно той стан, якого ми
+     й позбуваємось. */
+  const proxyRaw = pxEl ? (pxEl.value || '').trim() : '';
+  const proxyHost = proxyRaw ? fbProxyHost(proxyRaw) : '';
+  if (proxyRaw && !proxyHost) {
+    return alert('Could not read that as a proxy — expected host:port, '
+      + 'host:port:user:pass or a URL. Leave it empty if there is no proxy.');
+  }
 
   const say = (t, tone) => { out.innerHTML = t; out.style.color = tone || 'var(--text-muted)'; };
   say('Asking Facebook…');
@@ -500,7 +518,11 @@ window.fbAdd = async function () {
     body: `Permissions: ${(info.scopes || []).join(', ') || '—'}\n`
       + `Expires: ${info.expires_at ? new Date(info.expires_at).toLocaleString() : 'never'}\n`
       + `Ad accounts: ${info.accounts.length}\n`
-      + (info.bm ? `BM: ${info.bm.name || ''} (${info.bm.id})` : '')
+      + (info.bm ? `BM: ${info.bm.name || ''} (${info.bm.id})\n` : '')
+      /* Проксі називаємо в тому ж вікні: інакше «зберіг із проксі» і
+         «зберіг без» виглядають однаково, а різниця між ними — те, з
+         якої адреси токен піде в Facebook. */
+      + `Proxy: ${proxyHost || 'none'}`
       + warn });
   if (!ok) return say('');
 
@@ -514,6 +536,11 @@ window.fbAdd = async function () {
     scopes: info.scopes, expires_at: info.expires_at,
     accounts: info.accounts, app_id: info.app_id,
     status: info.status, status_note: info.note,
+    /* Сам рядок проксі лягає поруч із токеном і так само не читається
+       назад: у списку видно лише host. Перевірку (proxy_ip, note)
+       лишаємо порожньою — її робить кнопка Check proxy, і вдавати
+       перевірене до першого виклику не можна. */
+    proxy: proxyRaw || null, proxy_host: proxyHost || null,
     /* checked_at НЕ СТАВИМО, і це важливо.
 
        fb-sync обходить токени за давністю перевірки
@@ -527,11 +554,19 @@ window.fbAdd = async function () {
     checked_at: null
   };
   const { data: saved, error } = await sb.from('fb_tokens').insert([row]).select('id');
-  if (error) return say('Could not save: ' + fbEsc(error.message), 'var(--bad)');
+  if (error) {
+    /* Стовпців проксі ще немає — це невиконана міграція, а не збій
+       збереження, і сказати треба саме це: інакше людина піде
+       перевіряти токен, з яким усе гаразд. */
+    return say(/proxy/.test(error.message)
+      ? 'No proxy columns yet — run the proxy block of FB_TOKENS.sql'
+      : 'Could not save: ' + fbEsc(error.message), 'var(--bad)');
+  }
 
   // Чистимо поле одразу: токен не має лишатись у формі, яку хтось
-  // побачить через плече.
+  // побачить через плече. Проксі — так само: у ньому логін і пароль.
   tokEl.value = ''; labEl.value = '';
+  if (pxEl) pxEl.value = '';
 
   /* ЗБЕРЕГТИ ТОКЕН І ПОКАЗАТИ КАБІНЕТИ — РІЗНІ РЕЧІ, і через це
      зникали кабінети «без жодної помилки».
