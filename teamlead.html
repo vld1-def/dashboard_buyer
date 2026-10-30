@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html class="dark" lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Lead</title>
+<link rel="icon" type="image/png" href="icon.png">
+<!-- Дизайн береться з того самого файлу, що вшивається в дашборд. Отже
+     наступна зміна токенів доїде і сюди, без копії кольорів у цьому
+     файлі. ?v піднімати руками: ця сторінка не збирається build.py. -->
+<link rel="stylesheet" href="build/design.css?v=1">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ТІЛЬКИ РОЗКЛАДКА ЦІЄЇ СТОРІНКИ. Кольори, радіуси й шрифт — з
+   design.css. Тут навмисно немає Tailwind: він вантажиться з CDN, а
+   сторінку тімліда відкривають з чужих мереж, де той CDN буває
+   закритий — і тоді від неї лишився б голий текст. Звичайний CSS
+   працює завжди, і його ще й видно стендам. */
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+.tl-wrap { display: flex; min-height: 100vh; }
+
+/* ─────────── своє меню ─────────── */
+.tl-side {
+  width: 220px; flex-shrink: 0; background: var(--bg-soft);
+  border-right: 1px solid var(--border); padding: 16px 12px;
+  display: flex; flex-direction: column; gap: 4px;
+  position: sticky; top: 0; height: 100vh;
+}
+.tl-brand { padding: 4px 8px 14px; }
+.tl-brand b { display: block; font-size: 14px; font-weight: 800; color: var(--text-main); }
+.tl-brand span {
+  display: block; margin-top: 3px; font-size: 10px; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted);
+}
+.tl-nav {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: 10px; cursor: pointer;
+  background: transparent; color: var(--text-muted);
+  font: inherit; font-size: 12px; font-weight: 700; text-align: left;
+  transition: background .12s, color .12s;
+}
+.tl-nav:hover { background: var(--surface-2); color: var(--text-main); }
+.tl-nav.is-on { background: var(--accent-soft); color: var(--text-main); box-shadow: inset 0 0 0 1px var(--accent-bd); }
+.tl-nav i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .45; flex-shrink: 0; }
+.tl-nav.is-on i { opacity: 1; background: var(--accent); }
+.tl-side-foot { margin-top: auto; padding: 10px 8px 0; border-top: 1px solid var(--border); }
+.tl-side-foot p { margin: 0 0 6px; font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted); }
+
+/* ─────────── основна частина ─────────── */
+.tl-main { flex: 1; min-width: 0; padding: 18px 20px 32px; }
+.tl-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.tl-top h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.02em; color: var(--text-main); }
+.tl-top .tl-sub { margin: 2px 0 0; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted); }
+.tl-sel {
+  margin-left: auto; background: var(--surface-2); color: var(--text-main);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 10px; font: inherit; font-size: 12px; font-weight: 700; outline: none;
+}
+.tl-sel:focus { border-color: var(--accent-bd); }
+
+.tl-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.tl-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.tl-kpi p { margin: 0; font-size: 9px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--text-muted); }
+.tl-kpi b { display: block; margin-top: 5px; font-size: 23px; font-weight: 800; letter-spacing: -.03em; color: var(--text-main); }
+.tl-kpi .tl-note { display: block; margin-top: 3px; font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.is-ok { color: var(--ok) !important; }
+.is-bad { color: var(--bad) !important; }
+
+.tl-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.tl-panel > header { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.tl-panel > header h2 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text-main); }
+.tl-panel > header p { margin: 3px 0 0; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
+
+table.tl-tbl { width: 100%; border-collapse: collapse; }
+.tl-tbl th {
+  padding: 9px 14px; text-align: right; font-size: 9px; font-weight: 800;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.tl-tbl th:first-child, .tl-tbl td:first-child { text-align: left; }
+.tl-tbl td { padding: 9px 14px; text-align: right; font-size: 12px; font-weight: 700; color: var(--text-main); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.tl-tbl tbody tr:last-child td { border-bottom: 0; }
+.tl-tbl tbody tr:hover td { background: var(--surface-2); }
+.tl-tbl tfoot td { padding: 10px 14px; text-align: right; font-size: 12px; font-weight: 800; color: var(--text-main); border-top: 1px solid var(--border-2); background: var(--surface-2); }
+.tl-tbl tfoot td:first-child { text-align: left; }
+.tl-name { display: flex; align-items: center; gap: 8px; }
+.tl-name img { width: 18px; height: 13px; object-fit: cover; border-radius: 2px; flex-shrink: 0; }
+.tl-muted { color: var(--text-muted); font-weight: 700; }
+
+.tl-chip {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  background: var(--surface-3); color: var(--text-muted); border: 1px solid var(--border);
+}
+.tl-chip.is-lead { background: var(--accent-soft); border-color: var(--accent-bd); color: var(--text-main); }
+/* Людина в команді є, а рядків за цей місяць у неї немає. Нуль у
+   стовпці спенду сказав би «крутив і не витратив», що неправда. */
+.tl-idle td:not(:first-child) { color: var(--text-muted); font-weight: 700; }
+.tl-empty { padding: 42px 16px; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted); }
+.tl-gate { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.tl-gate .tl-panel { max-width: 420px; width: 100%; }
+.tl-gate p { margin: 0 0 10px; font-size: 12px; line-height: 1.6; color: var(--text-muted); font-weight: 600; }
+.tl-gate code { color: var(--text-main); font-size: 11px; }
+@media (max-width: 760px) {
+  .tl-wrap { display: block; }
+  .tl-side { width: auto; height: auto; position: static; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); }
+  .tl-brand, .tl-side-foot { width: 100%; }
+  .tl-side-foot { margin-top: 8px; }
+}
+</style>
+</head>
+<body>
+
+<div id="tl-gate" class="tl-gate" style="display:none">
+  <div class="tl-panel">
+    <header><h2 id="tl-gate-h">Доступ закрито</h2></header>
+    <div style="padding:14px">
+      <p id="tl-gate-p"></p>
+    </div>
+  </div>
+</div>
+
+<div id="tl-app" class="tl-wrap" style="display:none">
+  <aside class="tl-side">
+    <div class="tl-brand">
+      <b>Team Lead</b>
+      <span id="tl-team">—</span>
+    </div>
+    <button class="tl-nav is-on" data-sec="over"><i></i>Огляд</button>
+    <button class="tl-nav" data-sec="team"><i></i>Моя команда</button>
+    <button class="tl-nav" data-sec="geo"><i></i>По гео</button>
+    <button class="tl-nav" data-sec="month"><i></i>По місяцях</button>
+    <div class="tl-side-foot">
+      <p>Місяць</p>
+      <select id="tl-month" class="tl-sel" style="margin:0;width:100%"></select>
+    </div>
+  </aside>
+
+  <main class="tl-main">
+    <div class="tl-top">
+      <div>
+        <h1 id="tl-title">Огляд</h1>
+        <p class="tl-sub" id="tl-period">—</p>
+      </div>
+    </div>
+
+    <div class="tl-kpis" id="tl-kpis"></div>
+
+    <div class="tl-panel">
+      <header>
+        <h2 id="tl-panel-h">Розбивка</h2>
+        <p id="tl-panel-sub">—</p>
+      </header>
+      <div id="tl-body"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ═══════════ СТОРІНКА ТІМЛІДА ═══════════
+
+   ЩО ЦЕ. Окрема сторінка для тімліда: своя команда і її результати.
+   Не режим дашборда, який ховає зайве класами — там увесь код і всі
+   дані однаково приїжджали в браузер, і «закрито» означало лише «не
+   намальовано». Тут не приходить нічого зайвого.
+
+   ХТО ПУСКАЄ. Звичайний вхід у дашборд, далі рядок у team_members:
+   він дає і роль (lead / admin), і команду. Ні ключів у посиланні, ні
+   паролів: команду не можна підмінити параметром, бо її ніхто не
+   передає — вона читається з того, хто ти є. Межі даних однаково
+   ставить база (TEAM_ROLES.sql), а ця перевірка лише вирішує, чи
+   показувати сторінку і чию команду на ній малювати.
+
+   ВІДМОВА ЗАВЖДИ НАЗИВАЄ СЕБЕ. «Access denied» не каже, чого бракує:
+   входу, рядка в команді чи ролі. Кожен із цих трьох випадків тут
+   звучить по-своєму й каже, що робити далі.
+
+   ЧИСЛА МУСЯТЬ ЗБІГАТИСЬ ІЗ ДАШБОРДОМ. Виручка рахується тією самою
+   формулою (cpa: депозити × ставка; spend: відсоток від спенду) і так
+   само розводить дублі ставок: та сама пара гео+офер двома рядками —
+   перемагає активний. Інакше тімлід і власник дивились би на різні
+   числа і зʼясовували б, хто з них має рацію. */
+
+const SUPABASE_URL = 'https://zsfumuiajrytmeycbtnn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_E7DQ-cWE-YluCiGr3lS2HQ_1b35T6g4';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let tlTeam = '', tlMe = null, tlRows = [], tlMembers = [];
+let tlPayouts = {}, tlModels = {};
+let tlSec = 'over', tlMonth = '';
+
+const money = n => '$' + Number(n || 0).toLocaleString('en-US',
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = v => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/* Прапорець лише для дворівневого коду країни — те саме правило, що в
+   дашборді: на «—» чи назву регіону flagcdn віддав би 404, і поруч із
+   кодом висіла б бита іконка. */
+const FLAG_ALIAS = { UK: 'gb', EL: 'gr' };
+function flag(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return '';
+  return `<img src="https://flagcdn.com/w40/${FLAG_ALIAS[c] || c.toLowerCase()}.png"
+    alt="" loading="lazy" onerror="this.remove()">`;
+}
+
+function gate(title, html) {
+  document.getElementById('tl-gate-h').textContent = title;
+  document.getElementById('tl-gate-p').innerHTML = html;
+  document.getElementById('tl-gate').style.display = 'flex';
+  document.getElementById('tl-app').style.display = 'none';
+}
+
+/* ─────────── ставки ─────────── */
+function tlApplyPayouts(data) {
+  tlPayouts = {}; tlModels = {};
+  const fromActive = new Set();
+  (data || []).forEach(p => {
+    const key = String(p.geo || '').toUpperCase().trim() + '_'
+              + String(p.offer || 'DEFAULT').toUpperCase().trim();
+    const on = p.active !== false;
+    if (!on && (fromActive.has(key) || tlPayouts[key] !== undefined)) return;
+    if (on) fromActive.add(key);
+    tlPayouts[key] = Number(p.value);
+    tlModels[key] = (p.model === 'spend') ? 'spend' : 'cpa';
+  });
+}
+function payoutOf(geo, offer) {
+  const g = String(geo || '').toUpperCase().trim();
+  const o = String(offer || 'DEFAULT').toUpperCase().trim();
+  const key = tlPayouts[`${g}_${o}`] !== undefined ? `${g}_${o}` : `${g}_DEFAULT`;
+  return { value: tlPayouts[key] || 0, model: tlModels[key] || 'cpa' };
+}
+function revenueOf(r) {
+  const p = payoutOf(r.geo, r.offer);
+  if (p.model === 'spend') return (Number(r.spend) || 0) * p.value / 100;
+  return (Number(r.deposits ?? r.deps) || 0) * p.value;
+}
+
+/* ─────────── підсумки ─────────── */
+function sum(rows) {
+  const t = { s: 0, r: 0, d: 0, rev: 0, n: 0 };
+  rows.forEach(x => {
+    t.s += Number(x.spend) || 0;
+    t.r += Number(x.regs) || 0;
+    t.d += Number(x.deposits) || 0;
+    t.rev += revenueOf(x);
+    t.n++;
+  });
+  t.profit = t.rev - t.s;
+  /* Спенду немає — ROI не «0%», а прочерк: нуль читався б як
+     «відпрацювали в нуль», хоч насправді не крутили зовсім. */
+  t.roi = t.s > 0 ? Math.round(t.profit / t.s * 100) : null;
+  return t;
+}
+const roiTxt = t => t.roi === null ? '—' : t.roi + '%';
+const toneCls = v => v >= 0 ? 'is-ok' : 'is-bad';
+const monthsOf = rows => [...new Set(rows.map(r => String(r.date || '').slice(0, 7))
+  .filter(m => /^\d{4}-\d{2}$/.test(m)))].sort().reverse();
+const inMonth = r => !tlMonth || String(r.date || '').slice(0, 7) === tlMonth;
+
+function groupBy(rows, keyOf, byKeyDesc) {
+  const m = {};
+  rows.forEach(r => { const k = keyOf(r); if (!k) return; (m[k] = m[k] || []).push(r); });
+  const list = Object.entries(m).map(([k, v]) => ({ k, t: sum(v) }));
+  list.sort(byKeyDesc ? (a, b) => b.k.localeCompare(a.k) : (a, b) => b.t.s - a.t.s);
+  return list;
+}
+
+/* ─────────── рендер ─────────── */
+function tlRender() {
+  const rows = tlRows.filter(inMonth);
+  const t = sum(rows);
+
+  document.getElementById('tl-period').textContent =
+    (tlMonth || 'весь час') + ' · ' + tlMembers.length
+    + (tlMembers.length === 1 ? ' людина в команді' : ' людей у команді');
+
+  document.getElementById('tl-kpis').innerHTML = [
+    ['Spend', money(t.s), ''],
+    ['Gross Profit', money(t.profit), 'ROI ' + roiTxt(t), toneCls(t.profit)],
+    ['Deposits', t.d, t.r + ' reg'],
+    ['CPA', money(t.d > 0 ? t.s / t.d : 0), ''],
+    ['CPL', money(t.r > 0 ? t.s / t.r : 0), '']
+  ].map(([k, v, note, cls]) => `<div class="tl-kpi">
+      <p>${k}</p><b class="${cls || ''}">${v}</b>
+      ${note ? `<span class="tl-note ${cls || ''}">${note}</span>` : ''}
+    </div>`).join('');
+
+  const H = { over: 'Огляд', team: 'Моя команда', geo: 'По гео', month: 'По місяцях' };
+  document.getElementById('tl-title').textContent = H[tlSec];
+
+  if (tlSec === 'team')  return tlTeamTable(rows);
+  if (tlSec === 'month') return tlTable('Місяць', groupBy(tlRows, r => String(r.date || '').slice(0, 7), true),
+    'Весь час, свіжий місяць зверху', false);
+  if (tlSec === 'geo')   return tlTable('Гео', groupBy(rows, r => String(r.geo || '—').toUpperCase()),
+    'Розбивка за вибраний місяць', true);
+  return tlTable('Гео', groupBy(rows, r => String(r.geo || '—').toUpperCase()).slice(0, 8),
+    'Вісім найбільших гео за спендом', true);
+}
+
+/* МОЯ КОМАНДА — СПИСОК ЛЮДЕЙ, А НЕ СПИСОК ТИХ, ХТО КРУТИВ.
+
+   Йдемо від складу команди, а не від рядків статистики. Інакше людина,
+   яка цього місяця нічого не запускала, просто зникала б зі списку — і
+   «чому його тут немає» читалось би як поломка сторінки, хоч це
+   відповідь на питання, якого ніхто не ставив.
+
+   Рядок без created_by — це НЕ ще один баєр, а незаповнена колонка
+   (SECURITY_BUYERS.sql, крок 3). Тому такі рядки йдуть окремо й
+   підписані як є, а не домальовуються комусь. */
+function tlTeamTable(rows) {
+  document.getElementById('tl-panel-h').textContent = 'Люди';
+  document.getElementById('tl-panel-sub').textContent =
+    'Склад команди і результат кожного за ' + (tlMonth || 'весь час');
+  const body = document.getElementById('tl-body');
+
+  const byUid = {};
+  rows.forEach(r => { const u = String(r.created_by || ''); (byUid[u] = byUid[u] || []).push(r); });
+
+  const list = tlMembers.map(m => ({
+    uid: String(m.user_id || ''),
+    name: m.name || String(m.user_id || '').slice(0, 8),
+    named: !!m.name,
+    role: m.role || 'buyer',
+    t: sum(byUid[String(m.user_id || '')] || [])
+  })).sort((a, b) => b.t.s - a.t.s);
+
+  const orphan = byUid[''] || [];
+  const known = new Set(tlMembers.map(m => String(m.user_id || '')));
+  const strangers = Object.keys(byUid).filter(u => u && !known.has(u))
+    .map(u => ({ uid: u, name: u.slice(0, 8), named: false, role: '', t: sum(byUid[u]) }));
+
+  if (!list.length && !strangers.length && !orphan.length) {
+    body.innerHTML = '<p class="tl-empty">У team_members ще немає жодного рядка цієї команди</p>';
+    return;
+  }
+
+  const row = p => `<tr class="${p.t.n ? '' : 'tl-idle'}">
+    <td><span class="tl-name">${esc(p.name)}${p.role
+      ? `<span class="tl-chip ${p.role === 'lead' || p.role === 'admin' ? 'is-lead' : ''}">${esc(p.role)}</span>`
+      : '<span class="tl-chip">не в команді</span>'}</span></td>
+    <td>${p.t.n ? money(p.t.s) : '—'}</td>
+    <td>${p.t.n ? p.t.r : '—'}</td>
+    <td>${p.t.n ? p.t.d : '—'}</td>
+    <td class="tl-muted">${p.t.d > 0 ? money(p.t.s / p.t.d) : '—'}</td>
+    <td class="${p.t.n ? toneCls(p.t.profit) : 'tl-muted'}">${p.t.n ? money(p.t.profit) : '—'}</td>
+    <td class="${p.t.n ? (p.t.roi === null ? 'tl-muted' : toneCls(p.t.profit)) : 'tl-muted'}">${p.t.n ? roiTxt(p.t) : '—'}</td>
+  </tr>`;
+
+  const all = sum(rows);
+  body.innerHTML = `<table class="tl-tbl">
+    <thead><tr><th>Людина</th><th>Spend</th><th>Reg</th><th>Dep</th><th>CPA</th><th>Gross</th><th>ROI</th></tr></thead>
+    <tbody>
+      ${list.map(row).join('')}
+      ${strangers.map(row).join('')}
+      ${orphan.length ? `<tr class="tl-idle"><td colspan="7" style="text-align:left">
+        ${orphan.length} ${orphan.length === 1 ? 'рядок' : 'рядків'} без автора —
+        у них не заповнена колонка created_by, тож їх не можна віднести нікому
+        (SECURITY_BUYERS.sql, крок 3)</td></tr>` : ''}
+    </tbody>
+    <tfoot><tr>
+      <td>Разом</td><td>${money(all.s)}</td><td>${all.r}</td><td>${all.d}</td>
+      <td class="tl-muted">${all.d > 0 ? money(all.s / all.d) : '—'}</td>
+      <td class="${toneCls(all.profit)}">${money(all.profit)}</td>
+      <td class="${all.roi === null ? 'tl-muted' : toneCls(all.profit)}">${roiTxt(all)}</td>
+    </tr></tfoot>
+  </table>`;
+}
+
+function tlTable(label, list, sub, withFlag) {
+  document.getElementById('tl-panel-h').textContent = label;
+  document.getElementById('tl-panel-sub').textContent = sub;
+  const body = document.getElementById('tl-body');
+  if (!list.length) {
+    body.innerHTML = `<p class="tl-empty">${tlRows.length
+      ? 'За цей місяць рядків немає'
+      : 'Жодного рядка статистики ще немає'}</p>`;
+    return;
+  }
+  const tot = list.reduce((a, x) => {
+    a.s += x.t.s; a.r += x.t.r; a.d += x.t.d; a.rev += x.t.rev; return a;
+  }, { s: 0, r: 0, d: 0, rev: 0 });
+  tot.profit = tot.rev - tot.s;
+  tot.roi = tot.s > 0 ? Math.round(tot.profit / tot.s * 100) : null;
+
+  body.innerHTML = `<table class="tl-tbl">
+    <thead><tr>
+      <th>${label}</th><th>Spend</th><th>Reg</th><th>Dep</th><th>CPA</th><th>Gross</th><th>ROI</th>
+    </tr></thead>
+    <tbody>${list.map(({ k, t }) => `<tr>
+      <td><span class="tl-name">${withFlag ? flag(k) : ''}${esc(k)}</span></td>
+      <td>${money(t.s)}</td><td>${t.r}</td><td>${t.d}</td>
+      <td class="tl-muted">${t.d > 0 ? money(t.s / t.d) : '—'}</td>
+      <td class="${toneCls(t.profit)}">${money(t.profit)}</td>
+      <td class="${t.roi === null ? 'tl-muted' : toneCls(t.profit)}">${roiTxt(t)}</td>
+    </tr>`).join('')}</tbody>
+    <tfoot><tr>
+      <td>Разом</td><td>${money(tot.s)}</td><td>${tot.r}</td><td>${tot.d}</td>
+      <td class="tl-muted">${tot.d > 0 ? money(tot.s / tot.d) : '—'}</td>
+      <td class="${toneCls(tot.profit)}">${money(tot.profit)}</td>
+      <td class="${tot.roi === null ? 'tl-muted' : toneCls(tot.profit)}">${tot.roi === null ? '—' : tot.roi + '%'}</td>
+    </tr></tfoot>
+  </table>`;
+}
+
+/* ─────────── старт ─────────── */
+const LOGIN = '<a href="index.html" style="color:var(--accent)">Відкрий дашборд</a>';
+
+async function tlBoot() {
+  let uid = null;
+  try { uid = (await sb.auth.getSession()).data.session?.user?.id || null; } catch (e) {}
+  if (!uid) {
+    gate('Спершу увійди', LOGIN + ' і зайди під своїм акаунтом, потім повернись сюди. '
+      + 'Ця сторінка не має власного входу — вона користується тим самим.');
+    return;
+  }
+
+  /* Команду НЕ передають параметром — її читають із того, хто ти є.
+     Саме тому тут немає ?team=: підмінити команду в посиланні
+     неможливо, якщо її ніхто не приймає ззовні. */
+  let me = null, mErr = '';
+  try {
+    const { data, error } = await sb.from('team_members')
+      .select('user_id,team_name,name,role').eq('user_id', uid).limit(1);
+    if (error) throw error;
+    me = (data || [])[0] || null;
+  } catch (e) { mErr = e.message || e.code || String(e); }
+
+  if (mErr) {
+    gate('Не вдалось прочитати команду', 'Запит до <code>team_members</code> відмовив: <b>'
+      + esc(mErr) + '</b><br><br>Найчастіше це означає, що TEAM_ROLES.sql ще не виконували.');
+    return;
+  }
+  if (!me) {
+    gate('Тебе ще немає в команді', 'Твого рядка немає в <code>team_members</code>, '
+      + 'тож ні команди, ні ролі в тебе поки що немає. Власник додає людей через TEAM_ROLES.sql.');
+    return;
+  }
+  const role = me.role || 'buyer';
+  if (role !== 'lead' && role !== 'admin') {
+    gate('Ця сторінка для тімліда', 'Твоя роль — <b>' + esc(role) + '</b>. '
+      + 'Командні числа видно тімліду й власнику; ' + LOGIN + ' для своєї роботи.');
+    return;
+  }
+
+  tlMe = me;
+  tlTeam = me.team_name || '';
+  if (!tlTeam) {
+    gate('У рядку немає команди', 'Роль <b>' + esc(role) + '</b> є, а <code>team_name</code> порожній — '
+      + 'тому невідомо, чию команду показувати.');
+    return;
+  }
+  document.getElementById('tl-team').textContent = tlTeam;
+
+  const [stats, pays, members] = await Promise.all([
+    sb.from('daily_stats').select('*').eq('team_name', tlTeam).order('date', { ascending: false }),
+    sb.from('payouts').select('*').eq('team_name', tlTeam),
+    sb.from('team_members').select('user_id,name,role').eq('team_name', tlTeam)
+  ]);
+
+  if (stats.error) {
+    gate('База не віддала статистику', 'Запит до <code>daily_stats</code> відмовив: <b>'
+      + esc(stats.error.message || stats.error.code || 'невідома помилка')
+      + '</b><br><br>Політики доступу не пускають читати цю команду.');
+    return;
+  }
+
+  tlRows = stats.data || [];
+  tlMembers = members?.data || [];
+  tlApplyPayouts(pays?.data);
+
+  const ms = monthsOf(tlRows);
+  const sel = document.getElementById('tl-month');
+  sel.innerHTML = '<option value="">Весь час</option>'
+    + ms.map(m => `<option value="${m}">${m}</option>`).join('');
+  tlMonth = ms[0] || '';
+  sel.value = tlMonth;
+  sel.onchange = () => { tlMonth = sel.value; tlRender(); };
+
+  document.querySelectorAll('.tl-nav').forEach(b => {
+    b.onclick = () => {
+      document.querySelectorAll('.tl-nav').forEach(x => x.classList.toggle('is-on', x === b));
+      tlSec = b.getAttribute('data-sec');
+      tlRender();
+    };
+  });
+
+  document.getElementById('tl-gate').style.display = 'none';
+  document.getElementById('tl-app').style.display = 'flex';
+  tlRender();
+}
+
+tlBoot().catch(e => gate('Сторінка не піднялась', esc(e.message || e)));
+</script>
+</body>
+</html>
