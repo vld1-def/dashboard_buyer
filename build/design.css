@@ -4980,6 +4980,31 @@ input.ui-in[type="range"] { padding: 0; }
 .ps-btn.is-main:hover { filter: brightness(1.08); }
 .ps-btn:disabled { opacity: .55; cursor: default; }
 
+/* ЗАПИТ ПІШОВ — ЦЕ ВИДНО.
+
+   Facebook відповідає не миттєво, і без цього кільця натискання
+   виглядало як «нічого не сталось»: людина тисне ще раз, і в стрічці
+   два пости. Кільце стоїть ПЕРЕД підписом, тож ряд кнопок не стрибає,
+   коли воно зʼявляється.
+
+   Той самий вигляд для кнопки форми й для кнопки в рядку черги:
+   відправляють ними одне й те саме, і виглядати це має однаково. */
+.ps-btn.is-busy::before,
+.ps-mini.is-busy::before {
+  content: ''; display: inline-block; vertical-align: -1px;
+  width: 11px; height: 11px; margin-right: 6px;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; opacity: .85;
+  animation: ps-spin .7s linear infinite;
+}
+@keyframes ps-spin { to { transform: rotate(360deg); } }
+/* Кому рух заважає — лишається кільце, просто нерухоме: сам факт
+   «зараз щось іде» від анімації не залежить. */
+@media (prefers-reduced-motion: reduce) {
+  .ps-btn.is-busy::before, .ps-mini.is-busy::before { animation: none; }
+}
+.ps-mini:disabled { opacity: .55; cursor: default; }
+
 .ps-tabs { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
 .ps-tab {
   padding: 3px 9px; border-radius: 999px; border: 1px solid transparent;

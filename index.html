@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 22:19">
+  <meta name="build" content="build 30.10 22:29">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6105,6 +6105,31 @@ input.ui-in[type="range"] { padding: 0; }
 .ps-btn.is-main:hover { filter: brightness(1.08); }
 .ps-btn:disabled { opacity: .55; cursor: default; }
 
+/* ЗАПИТ ПІШОВ — ЦЕ ВИДНО.
+
+   Facebook відповідає не миттєво, і без цього кільця натискання
+   виглядало як «нічого не сталось»: людина тисне ще раз, і в стрічці
+   два пости. Кільце стоїть ПЕРЕД підписом, тож ряд кнопок не стрибає,
+   коли воно зʼявляється.
+
+   Той самий вигляд для кнопки форми й для кнопки в рядку черги:
+   відправляють ними одне й те саме, і виглядати це має однаково. */
+.ps-btn.is-busy::before,
+.ps-mini.is-busy::before {
+  content: ''; display: inline-block; vertical-align: -1px;
+  width: 11px; height: 11px; margin-right: 6px;
+  border: 2px solid currentColor; border-right-color: transparent;
+  border-radius: 50%; opacity: .85;
+  animation: ps-spin .7s linear infinite;
+}
+@keyframes ps-spin { to { transform: rotate(360deg); } }
+/* Кому рух заважає — лишається кільце, просто нерухоме: сам факт
+   «зараз щось іде» від анімації не залежить. */
+@media (prefers-reduced-motion: reduce) {
+  .ps-btn.is-busy::before, .ps-mini.is-busy::before { animation: none; }
+}
+.ps-mini:disabled { opacity: .55; cursor: default; }
+
 .ps-tabs { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
 .ps-tab {
   padding: 3px 9px; border-radius: 999px; border: 1px solid transparent;
@@ -6393,7 +6418,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 22:19</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 22:29</div>
     </div>
   </aside>
 
@@ -16585,6 +16610,27 @@ document.addEventListener('keydown', e => {
             <p id="tg-test-status" class="set-hint"></p>
             <p class="set-hint opacity-60">You get alerts about your own domains only. The link is personal and works once — do not pass it on.</p>
 
+            <!-- ЩО НОВОГО. Одне повідомлення всім, у кого телеграм
+                 підключений. Стоїть після перевірки звʼязку, бо саме в
+                 такому порядку це й роблять: спершу переконався, що
+                 бот до тебе доходить, потім пишеш решті.
+
+                 Відправити не можна відкликати, тож кнопок дві, і
+                 «тільки собі» стоїть першою — щоб подивитись, як воно
+                 виглядає в чаті, перш ніж це побачать усі. -->
+            <div class="set-group mt-3" data-setting="telegram news новини оновлення розсилка">
+              <h3 class="set-gtitle">What's new</h3>
+              <p class="set-gsub">One message to everyone whose Telegram is connected — what was added to the dashboard.</p>
+              <textarea id="tg-news-text" class="set-input font-mono" rows="4"
+                style="width:100%;resize:vertical"
+                placeholder="Added в СРМ:&#10;· Створення постів на сторінки фб&#10;· Можливість міняти ліміт у кабінетах"></textarea>
+              <div class="set-addrow mt-2">
+                <button type="button" onclick="tgNews(true)" class="set-btn">Send to me only</button>
+                <button type="button" onclick="tgNews(false)" class="set-btn set-btn-amber">Send to everyone</button>
+              </div>
+              <p id="tg-news-status" class="set-hint"></p>
+            </div>
+
             <div id="grp-tg" class="mt-3">
               <label class="set-row set-toggle" data-setting="telegram ban бан"><span class="set-label">Cabinet banned or restricted</span>
                 <span class="toggle-switch"><input type="checkbox" id="tg-ev-ban" onchange="saveTelegramEvents()"><span class="toggle-slider"></span></span></label>
@@ -23642,6 +23688,84 @@ window.tgConnect = tgConnect;
 window.tgUnlink = tgUnlink;
 window.tgRefresh = tgRefresh;
 window.saveTelegramBot = saveTelegramBot;
+
+/* ═══════════ «ЩО НОВОГО» — РОЗСИЛКА ═══════════
+
+   Відправити не можна відкликати, і це визначає всю поведінку тут:
+
+     • «тільки собі» не питає нічого — це й є безпечний крок, яким
+       дивляться, як текст виглядає в чаті;
+     • «всім» спершу РАХУЄ отримувачів (dry) і показує число в
+       питанні. «Надіслати 14 людям?» і «надіслати всім?» — різні
+       питання, і друге нічого не важить;
+     • кнопки блокуються на time відправки: другий клік означав би
+       другу розсилку тим самим людям.
+
+   Сам список адресатів складає функція. Звідси йде лише текст — щоб
+   підсунути чужий chat_id не було куди. */
+let tgNewsBusy = false;
+
+async function tgNewsCall(body) {
+  const { data: s } = await sb.auth.getSession();
+  const jwt = s && s.session && s.session.access_token;
+  if (!jwt) throw new Error('Сесія скінчилась — зайди ще раз');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/tg-news', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + jwt, apikey: SUPABASE_KEY,
+               'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const j = await res.json().catch(() => ({}));
+  /* Незадеплоєна функція — це не «щось пішло не так», а невиконаний
+     крок розгортання, і сказати треба саме його. */
+  if (!res.ok) throw new Error(res.status === 404
+    ? 'Функція tg-news ще не задеплоєна: supabase functions deploy tg-news'
+    : (j.error || 'HTTP ' + res.status));
+  return j;
+}
+
+window.tgNews = async function (onlyMe) {
+  if (tgNewsBusy) return;
+  const el = document.getElementById('tg-news-text');
+  const out = document.getElementById('tg-news-status');
+  const say = (t, bad) => { if (out) { out.textContent = t || '';
+    out.style.color = bad ? 'var(--bad)' : 'var(--text-muted)'; } };
+  const text = String((el && el.value) || '').trim();
+  if (!text) { say('Спершу напиши текст', true); if (el) el.focus(); return; }
+
+  const btns = [...document.querySelectorAll('[onclick^="tgNews("]')];
+  try {
+    if (!onlyMe) {
+      /* Рахуємо ДО питання: число отримувачів — єдине, що робить це
+         питання осмисленим. */
+      const n = await tgNewsCall({ dry: true });
+      if (!n.total) { say('Жодного підключеного телеграма — нікому надсилати', true); return; }
+      const go = await ask({ title: 'Надіслати ' + n.total
+          + (n.total === 1 ? ' людині?' : ' людям?'),
+        ok: 'Надіслати', danger: true,
+        body: 'Повідомлення піде всім, у кого телеграм підключений. '
+            + 'Відкликати його не можна.\n\n' + text });
+      if (!go) { say(''); return; }
+    }
+    tgNewsBusy = true;
+    btns.forEach(b => b.disabled = true);
+    say(onlyMe ? 'Надсилаю тобі…' : 'Надсилаю…');
+    const j = await tgNewsCall({ text, test: !!onlyMe });
+    /* Заблокували бота — не збій розсилки, а стан світу, тож окремим
+       числом: інакше «5 з 20» читається як поломка. */
+    const tail = [j.blocked ? j.blocked + ' заблокували бота' : '',
+                  j.failed ? j.failed + ' не дійшло' : ''].filter(Boolean).join(' · ');
+    say(onlyMe
+      ? 'Надіслано тобі — подивись, як воно виглядає в чаті'
+      : 'Надіслано: ' + j.sent + ' з ' + j.total + (tail ? ' · ' + tail : ''));
+    if (typeof toast === 'function') toast(onlyMe ? 'Тестове надіслано' : 'Розіслано', 'ok');
+  } catch (e) {
+    say(String(e.message || e), true);
+  } finally {
+    tgNewsBusy = false;
+    btns.forEach(b => b.disabled = false);
+  }
+};
 </script>
 
 <script>
@@ -33400,7 +33524,7 @@ const psEsc = v => String(v == null ? '' : v)
 const PS_ST = {
   draft:     { l: 'чернетка',   c: '' },
   scheduled: { l: 'заплановано', c: 'is-warn' },
-  published: { l: 'вийшов',     c: 'is-ok' },
+  published: { l: 'опубліковано', c: 'is-ok' },
   failed:    { l: 'відмова',    c: 'is-bad' }
 };
 
@@ -33617,7 +33741,7 @@ function psPaint() {
         <span class="ps-page">${psEsc(p.page_name || p.page_id)}</span>
         ${when ? `<span class="ps-when-at">${psEsc(when)}</span>` : ''}
         ${p.status === 'draft' ? `<button type="button" class="ps-mini is-main"
-            onclick="psSend('${p.id}')">Опублікувати</button>` : ''}
+            data-send="${psEsc(p.id)}" onclick="psSend('${p.id}')">Опублікувати</button>` : ''}
         ${p.status === 'draft' || p.status === 'failed'
           ? `<button type="button" class="ps-mini" onclick="psDrop('${p.id}')">×</button>` : ''}
       </div>
@@ -33670,8 +33794,21 @@ window.psSave = async function () {
 window.psSend = async function (id) {
   if (psBusy) return;
   psBusy = true;
-  const btn = document.getElementById('ps-send');
-  if (btn && !id) { btn.disabled = true; btn.textContent = 'Відправляю…'; }
+  /* ХІД РОБОТИ ВИДНО НА ТІЙ КНОПЦІ, ЯКУ НАТИСНУЛИ.
+
+     Доти підпис мінявся лише на головній кнопці форми, а з черги пост
+     відправлявся мовчки: натиснув — і нічого, бо Facebook відповідає
+     не миттєво. Людина тисне ще раз, і це вже другий пост.
+
+     Тому кнопку шукаємо по тому, звідки прийшов виклик: з форми —
+     головну, з рядка — його власну. Обидві гаснуть на time відправки:
+     заблокована кнопка тут не прикраса, а єдине, що стоїть між
+     затримкою і дублем у стрічці. */
+  const btn = id
+    ? document.querySelector('[data-send="' + String(id).replace(/"/g, '\\"') + '"]')
+    : document.getElementById('ps-send');
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Відправляю…'; btn.classList.add('is-busy'); }
   try {
     let rowId = id;
     if (!rowId) {
@@ -33713,7 +33850,14 @@ window.psSend = async function (id) {
     await psLoad(false);
   } finally {
     psBusy = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Опублікувати'; }
+    /* Повертаємо саме той підпис, що був: у рядку черги й у формі він
+       однаковий сьогодні, але писати його тут наново означало б, що
+       завтра кнопка повернеться з чужим словом. Перемальовка списку
+       кнопку все одно замінить — це про той короткий проміжок, коли
+       вона ще стара. */
+    if (btn && btn.isConnected) {
+      btn.disabled = false; btn.textContent = was; btn.classList.remove('is-busy');
+    }
   }
 };
 

@@ -39,7 +39,7 @@ const psEsc = v => String(v == null ? '' : v)
 const PS_ST = {
   draft:     { l: 'чернетка',   c: '' },
   scheduled: { l: 'заплановано', c: 'is-warn' },
-  published: { l: 'вийшов',     c: 'is-ok' },
+  published: { l: 'опубліковано', c: 'is-ok' },
   failed:    { l: 'відмова',    c: 'is-bad' }
 };
 
@@ -256,7 +256,7 @@ function psPaint() {
         <span class="ps-page">${psEsc(p.page_name || p.page_id)}</span>
         ${when ? `<span class="ps-when-at">${psEsc(when)}</span>` : ''}
         ${p.status === 'draft' ? `<button type="button" class="ps-mini is-main"
-            onclick="psSend('${p.id}')">Опублікувати</button>` : ''}
+            data-send="${psEsc(p.id)}" onclick="psSend('${p.id}')">Опублікувати</button>` : ''}
         ${p.status === 'draft' || p.status === 'failed'
           ? `<button type="button" class="ps-mini" onclick="psDrop('${p.id}')">×</button>` : ''}
       </div>
@@ -309,8 +309,21 @@ window.psSave = async function () {
 window.psSend = async function (id) {
   if (psBusy) return;
   psBusy = true;
-  const btn = document.getElementById('ps-send');
-  if (btn && !id) { btn.disabled = true; btn.textContent = 'Відправляю…'; }
+  /* ХІД РОБОТИ ВИДНО НА ТІЙ КНОПЦІ, ЯКУ НАТИСНУЛИ.
+
+     Доти підпис мінявся лише на головній кнопці форми, а з черги пост
+     відправлявся мовчки: натиснув — і нічого, бо Facebook відповідає
+     не миттєво. Людина тисне ще раз, і це вже другий пост.
+
+     Тому кнопку шукаємо по тому, звідки прийшов виклик: з форми —
+     головну, з рядка — його власну. Обидві гаснуть на час відправки:
+     заблокована кнопка тут не прикраса, а єдине, що стоїть між
+     затримкою і дублем у стрічці. */
+  const btn = id
+    ? document.querySelector('[data-send="' + String(id).replace(/"/g, '\\"') + '"]')
+    : document.getElementById('ps-send');
+  const was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Відправляю…'; btn.classList.add('is-busy'); }
   try {
     let rowId = id;
     if (!rowId) {
@@ -352,7 +365,14 @@ window.psSend = async function (id) {
     await psLoad(false);
   } finally {
     psBusy = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Опублікувати'; }
+    /* Повертаємо саме той підпис, що був: у рядку черги й у формі він
+       однаковий сьогодні, але писати його тут наново означало б, що
+       завтра кнопка повернеться з чужим словом. Перемальовка списку
+       кнопку все одно замінить — це про той короткий проміжок, коли
+       вона ще стара. */
+    if (btn && btn.isConnected) {
+      btn.disabled = false; btn.textContent = was; btn.classList.remove('is-busy');
+    }
   }
 };
 
