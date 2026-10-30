@@ -3079,6 +3079,21 @@ window.cabLimitEdit = async function (enc) {
     if (j.warning) toast(String(j.warning), 'warn', 12000);
     cabRender();
     if (typeof cabDetail === 'function') cabDetail(c);
+
+    /* ПЕРЕЧИТУЄМО КАБІНЕТ САМІ, а не просимо натиснути Sync.
+
+       Число вище — це відповідь Facebook на нашу ж зміну, і її досить,
+       щоб побачити нову стелю. Але поруч стоїть залишок, і він
+       рахується від amount_spent, якого ми не чіпали: без прогону
+       картка показувала б нову стелю зі старим залишком. Просити за
+       цим іти в іншу кнопку означає лишити на екрані число, яке не
+       сходиться саме з собою.
+
+       Прогін тихий і лише по цьому кабінету — помилка в ньому не
+       скасовує того, що стеля вже змінена. */
+    if (typeof cabSyncOne === 'function') {
+      try { await cabSyncOne(String(id)); } catch (_e) {}
+    }
   } catch (e) {
     step.done(String(e.message || e), 'error');
   }

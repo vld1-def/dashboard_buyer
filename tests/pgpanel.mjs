@@ -99,6 +99,24 @@ ok('без аватарки лишається заглушка тієї ж ши
   pics[1].src === '' && pics[1].wide === pics[0].wide, pics);
 ok('адреса дашборда не їде у Facebook із кожною аватаркою',
   pics[0].quiet === 'no-referrer', pics);
+/* Жодного лого в усіх Сторінках одразу — це не «Facebook не дав», а
+   старіша збірка функції: поле приходить тим самим запитом. Без цього
+   рядка на екрані просто літери, і причину видно нізвідки. */
+ok('коли лого не прийшло в жодної — сказано, чому', await page.evaluate(async () => {
+  const keep = pgCall;
+  pgCall = async b => b.action === 'pages'
+    ? { pages: [{ page_id: '111', name: 'Alpha', tasks: ['MODERATE'],
+                  can_moderate: true, token: 'T' }], problems: [] }
+    : keep(b);
+  pgRows = null; await pgLoad(true);
+  const el = document.getElementById('pg-note');
+  const seen = getComputedStyle(el).display !== 'none' && /deploy fb-comments/.test(el.textContent);
+  pgCall = keep; pgRows = null; await pgLoad(true);
+  return seen;
+}));
+ok('а коли лого є — рядка немає', await page.evaluate(() =>
+  getComputedStyle(document.getElementById('pg-note')).display === 'none'));
+
 ok('протухла картинка прибирає себе, а не ламає рядок',
   await page.evaluate(() => {
     const img = document.querySelector('#pg-list .pg-pic');
