@@ -97,6 +97,53 @@ table.tl-tbl { width: 100%; border-collapse: collapse; }
 /* Людина в команді є, а рядків за цей місяць у неї немає. Нуль у
    стовпці спенду сказав би «крутив і не витратив», що неправда. */
 .tl-idle td:not(:first-child) { color: var(--text-muted); font-weight: 700; }
+/* ПЛАШКА МАКЕТА. На сторінці поруч живуть справжні числа (Огляд,
+   Моя команда, Гео, Місяці читають базу) і намальовані (Капи,
+   Сьогодні). Без видимої межі між ними сторінка стала б такою, де
+   не видно, де правда — а саме через це колись і прилетіло за «фейк
+   інфу». Тому плашка велика, кольорова і стоїть НАД блоком. */
+.tl-mock {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  padding: 8px 12px; border-radius: 10px;
+  background: rgba(234, 179, 8, .12); border: 1px solid rgba(234, 179, 8, .34);
+  font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: #FDE68A;
+}
+.tl-mock b { font-weight: 900; }
+
+/* Смужка наповнення капи. Ширина — відсоток, колір — стан. */
+.tl-bar { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; min-width: 90px; }
+.tl-bar i { display: block; height: 100%; border-radius: 99px; background: var(--accent); }
+.tl-bar.is-close i { background: var(--warn); }
+.tl-bar.is-full i { background: var(--ok); }
+.tl-bar.is-over i { background: var(--bad); }
+
+.tl-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  background: var(--surface-3); color: var(--text-muted); border: 1px solid var(--border);
+}
+.tl-tag.is-ok   { background: rgba(34,197,94,.14);  border-color: rgba(34,197,94,.34);  color: #86EFAC; }
+.tl-tag.is-warn { background: rgba(234,179,8,.14);  border-color: rgba(234,179,8,.34);  color: #FDE68A; }
+.tl-tag.is-bad  { background: rgba(239,68,68,.14);  border-color: rgba(239,68,68,.34);  color: #FCA5A5; }
+
+/* Смуга підсумку над таблицею капів: три числа, які тімлід читає
+   першими, перш ніж дивитись рядки. */
+.tl-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.tl-strip > div { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.tl-strip p { margin: 0; font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted); }
+.tl-strip b { display: block; margin-top: 4px; font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+
+/* Картка тривоги: що сталось, у кого, і що з цим робити. Без
+   третього рядка це просто червоний текст, на який перестають
+   дивитись на другий день. */
+.tl-alert { display: flex; gap: 10px; padding: 11px 12px; border-bottom: 1px solid var(--border); }
+.tl-alert:last-child { border-bottom: 0; }
+.tl-alert .tl-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.tl-alert h4 { margin: 0 0 2px; font-size: 12px; font-weight: 800; color: var(--text-main); }
+.tl-alert p  { margin: 0; font-size: 11px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
+.tl-alert em { font-style: normal; color: var(--text-main); font-weight: 700; }
+
 .tl-empty { padding: 42px 16px; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted); }
 .tl-gate { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
 .tl-gate .tl-panel { max-width: 420px; width: 100%; }
@@ -129,6 +176,8 @@ table.tl-tbl { width: 100%; border-collapse: collapse; }
     </div>
     <button class="tl-nav is-on" data-sec="over"><i></i>Огляд</button>
     <button class="tl-nav" data-sec="team"><i></i>Моя команда</button>
+    <button class="tl-nav" data-sec="caps"><i></i>Капи</button>
+    <button class="tl-nav" data-sec="today"><i></i>Сьогодні</button>
     <button class="tl-nav" data-sec="geo"><i></i>По гео</button>
     <button class="tl-nav" data-sec="month"><i></i>По місяцях</button>
     <div class="tl-side-foot">
@@ -289,9 +338,12 @@ function tlRender() {
       ${note ? `<span class="tl-note ${cls || ''}">${note}</span>` : ''}
     </div>`).join('');
 
-  const H = { over: 'Огляд', team: 'Моя команда', geo: 'По гео', month: 'По місяцях' };
+  const H = { over: 'Огляд', team: 'Моя команда', caps: 'Капи',
+              today: 'Сьогодні', geo: 'По гео', month: 'По місяцях' };
   document.getElementById('tl-title').textContent = H[tlSec];
 
+  if (tlSec === 'caps')  return tlCaps();
+  if (tlSec === 'today') return tlToday();
   if (tlSec === 'team')  return tlTeamTable(rows);
   if (tlSec === 'month') return tlTable('Місяць', groupBy(tlRows, r => String(r.date || '').slice(0, 7), true),
     'Весь час, свіжий місяць зверху', false);
@@ -368,6 +420,172 @@ function tlTeamTable(rows) {
       <td class="${all.roi === null ? 'tl-muted' : toneCls(all.profit)}">${roiTxt(all)}</td>
     </tr></tfoot>
   </table>`;
+}
+
+/* ═══════════ НИЖЧЕ — МАКЕТ, А НЕ РОБОЧІ ЧИСЛА ═══════════
+
+   Капи і «Сьогодні» намальовані на вигаданих даних: таблиці капів у
+   базі ще немає, і поки це дизайн, якого ми чекаємо на правки. Решта
+   сторінки читає базу по-справжньому.
+
+   Через те, що на одному екрані живе і те, і те, кожен такий блок
+   починається з жовтої плашки. Сторінка, на якій не видно, де правда,
+   гірша за сторінку без половини блоків: за фейкові числа прилітає
+   рівно один раз, і цього досить.
+
+   Коли дійде до роботи, звідси зміниться лише джерело: форма рядка і
+   всі стани (порожня, майже повна, перелита, капи немає) вже тут. */
+const MOCK = '<div class="tl-mock">◆ <b>Дизайн</b> · числа намальовані, база тут ще не задіяна</div>';
+
+const DEMO_CAPS = [
+  { geo: 'KG', offer: 'DEFAULT',   cap: 60,  got: 58, pace: 71, tz: 'Europe/Kyiv' },
+  { geo: 'UZ', offer: '1win',      cap: 40,  got: 44, pace: 52, tz: 'Europe/Kyiv' },
+  { geo: 'TJ', offer: 'DEFAULT',   cap: 35,  got: 12, pace: 19, tz: 'Asia/Dushanbe' },
+  { geo: 'KZ', offer: 'Mostbet',   cap: 80,  got: 0,  pace: 0,  tz: 'Europe/Kyiv' },
+  { geo: 'AZ', offer: 'DEFAULT',   cap: 25,  got: 25, pace: 30, tz: 'Europe/Kyiv' },
+  { geo: 'PL', offer: 'DEFAULT',   cap: null, got: 17, pace: 23, tz: '' }
+];
+
+const DEMO_ALERTS = [
+  { tone: 'bad',  t: 'Капа UZ · 1win перелита', w: '44 з 40 — на 4 депи більше',
+    a: 'Спільні ліди партнер може не зарахувати. Варто зупинити або домовитись про розширення.' },
+  { tone: 'warn', t: 'Капа KG майже повна', w: '58 з 60, за темпом добʼємо до 71',
+    a: 'Якщо капу не розширять, зайве піде в мінус — краще притиснути бюджет уже зараз.' },
+  { tone: 'bad',  t: 'Прілка Fortune Dragon у бані', w: 'KG · FD11003, робот побачив удруге',
+    a: 'Воронка жива в списку, але Play її не віддає. Трафік на неї зараз горить.' },
+  { tone: 'warn', t: 'Олег сьогодні ще не стартував', w: 'останній спенд — учора 21:40',
+    a: 'Вихідний, проблема з кабінетами чи просто пізній старт — варто спитати.' },
+  { tone: 'bad',  t: '2 кабінети в бані', w: 'обидва в Марії, разом $1 240 невикористаного балансу',
+    a: 'Баланс можна повернути або перекинути, поки не минув строк.' },
+  { tone: 'warn', t: 'Домен під увагою', w: 'pwa-kg-07.site — Google дав попередження',
+    a: 'Перевірити, чи не на ньому зараз ллється KG.' },
+  { tone: 'ok',   t: 'TJ тримає ROI 41%', w: 'третій день поспіль вище цілі',
+    a: 'Є куди масштабувати: капа заповнена лише на третину.' }
+];
+
+const DEMO_TEAM_TODAY = [
+  { who: 'Олег',  spend: 0,    dep: 0,  roi: null, cabs: '4 живих', last: 'учора 21:40' },
+  { who: 'Марія', spend: 612,  dep: 31, roi: 28,   cabs: '3 живих · 2 бан', last: '12 хв тому' },
+  { who: 'Ігор',  spend: 430,  dep: 19, roi: -6,   cabs: '5 живих', last: '38 хв тому' },
+  { who: 'Ніка',  spend: 155,  dep: 12, roi: 54,   cabs: '2 живих', last: '5 хв тому' }
+];
+
+const DEMO_HEALTH = [
+  { k: 'Кабінети',  v: '14 живих', note: '2 бани · 1 без токена', tone: 'warn' },
+  { k: 'Домени',    v: '23 робочих', note: '1 під увагою', tone: 'warn' },
+  { k: 'Прілки',    v: '11 живих', note: '1 у бані', tone: 'bad' },
+  { k: 'Капи',      v: '4 з 6 заповнені', note: '1 перелита', tone: 'bad' }
+];
+
+/* Стан капи. Межі тут не випадкові: 80% — момент, коли ще можна
+   встигнути попросити розширення; 100% — коли кожен наступний деп
+   може не зарахуватись. */
+function capState(c) {
+  if (c.cap == null) return { k: 'none',  cls: '',        tag: 'капи не задано',  tagCls: '' };
+  const p = c.cap > 0 ? c.got / c.cap * 100 : 0;
+  if (p > 100) return { k: 'over',  cls: 'is-over',  tag: 'перелита',   tagCls: 'is-bad',  p };
+  if (p >= 100) return { k: 'full', cls: 'is-full',  tag: 'повна',      tagCls: 'is-ok',   p };
+  if (p >= 80) return { k: 'close', cls: 'is-close', tag: 'майже повна',tagCls: 'is-warn', p };
+  if (p === 0) return { k: 'empty', cls: '',         tag: 'ще нічого',  tagCls: '',        p };
+  return { k: 'fill', cls: '', tag: 'наповнюється', tagCls: '', p };
+}
+
+function tlCaps() {
+  document.getElementById('tl-panel-h').textContent = 'Капи на сьогодні';
+  document.getElementById('tl-panel-sub').textContent =
+    'Скільки депів партнер приймає за добу і скільки ще лишилось відлити';
+
+  const withCap = DEMO_CAPS.filter(c => c.cap != null);
+  const left = withCap.reduce((a, c) => a + Math.max(0, c.cap - c.got), 0);
+  const over = withCap.filter(c => c.got > c.cap).length;
+  const close = withCap.filter(c => c.got < c.cap && c.got / c.cap >= 0.8).length;
+  const noCap = DEMO_CAPS.filter(c => c.cap == null).length;
+
+  const rows = DEMO_CAPS.map(c => {
+    const st = capState(c);
+    const rest = c.cap == null ? null : c.cap - c.got;
+    return `<tr>
+      <td><span class="tl-name">${flag(c.geo)}${c.geo}</span></td>
+      <td style="text-align:left" class="tl-muted">${esc(c.offer)}</td>
+      <td>${c.cap == null ? '—' : c.cap}</td>
+      <td>${c.got}</td>
+      <td class="${rest == null ? 'tl-muted' : (rest < 0 ? 'is-bad' : (rest === 0 ? 'is-ok' : ''))}">
+        ${rest == null ? '—' : (rest > 0 ? '+' + rest : rest)}</td>
+      <td><span class="tl-bar ${st.cls}" style="display:inline-block"><i style="width:${
+        Math.min(100, Math.round(st.p || 0))}%"></i></span></td>
+      <td class="tl-muted">${c.cap == null ? '—' : '≈' + c.pace}</td>
+      <td style="text-align:right"><span class="tl-tag ${st.tagCls}">${st.tag}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tl-body').innerHTML = MOCK + `
+    <div class="tl-strip">
+      <div><p>Лишилось відлити</p><b>${left} ${left === 1 ? 'деп' : 'депів'}</b></div>
+      <div><p>Майже повні</p><b class="${close ? 'is-bad' : ''}">${close}</b></div>
+      <div><p>Перелиті</p><b class="${over ? 'is-bad' : ''}">${over}</b></div>
+      <div><p>Без капи</p><b class="${noCap ? 'is-bad' : ''}">${noCap}</b></div>
+    </div>
+    <table class="tl-tbl">
+      <thead><tr>
+        <th>Гео</th><th style="text-align:left">Офер</th><th>Капа</th><th>Відлито</th>
+        <th>Залишок</th><th>Прогрес</th><th>Темп до ночі</th><th style="text-align:right">Стан</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <!-- ЧАСОВИЙ ПОЯС — НЕ ДРІБНИЦЯ. Доба капи скидається опівночі в
+         партнера, а не в нас. Якщо рахувати за своїм днем, то кожен
+         вечір кілька годин ми дивимось на чужу добу й не можемо цього
+         помітити: число виглядає нормальним. Тому пояс стоїть поруч із
+         капою, а сторінка каже, за яку саме дату рахує. -->
+    <div style="padding:12px 14px;border-top:1px solid var(--border)">
+      <p class="tl-muted" style="margin:0;font-size:11px;line-height:1.6">
+        Рахуємо за <b style="color:var(--text-main)">30.10</b> у поясі кожної капи.
+        PL без пояса — там доба взята наша, і це видно окремо, щоб не плутати.
+        Капи KZ ще не торкались: партнер дав 80, відлито нуль.
+      </p>
+    </div>`;
+}
+
+function tlToday() {
+  document.getElementById('tl-panel-h').textContent = 'Що вимагає уваги';
+  document.getElementById('tl-panel-sub').textContent = 'Екран, з якого починається ранок';
+
+  const dot = { bad: 'var(--bad)', warn: 'var(--warn)', ok: 'var(--ok)' };
+  const alerts = DEMO_ALERTS.map(a => `<div class="tl-alert">
+      <span class="tl-dot" style="background:${dot[a.tone]}"></span>
+      <div><h4>${esc(a.t)}</h4>
+        <p><em>${esc(a.w)}</em> — ${esc(a.a)}</p></div>
+    </div>`).join('');
+
+  const health = DEMO_HEALTH.map(h => `<div>
+      <p>${esc(h.k)}</p><b>${esc(h.v)}</b>
+      <span class="tl-note tl-${h.tone === 'bad' ? 'bad-note' : 'muted'}"
+        style="display:block;margin-top:3px;font-size:10px;font-weight:700;color:${
+          h.tone === 'bad' ? 'var(--bad)' : h.tone === 'warn' ? 'var(--warn)' : 'var(--text-muted)'}">${esc(h.note)}</span>
+    </div>`).join('');
+
+  const team = DEMO_TEAM_TODAY.map(p => `<tr>
+      <td>${esc(p.who)}</td>
+      <td>${p.spend ? '$' + p.spend : '<span class="tl-tag is-warn">не стартував</span>'}</td>
+      <td>${p.dep || '—'}</td>
+      <td class="${p.roi == null ? 'tl-muted' : (p.roi >= 0 ? 'is-ok' : 'is-bad')}">${
+        p.roi == null ? '—' : p.roi + '%'}</td>
+      <td class="tl-muted" style="text-align:left">${esc(p.cabs)}</td>
+      <td class="tl-muted" style="text-align:right">${esc(p.last)}</td>
+    </tr>`).join('');
+
+  document.getElementById('tl-body').innerHTML = MOCK + `
+    <div class="tl-strip">${health}</div>
+    <div style="border-top:1px solid var(--border)">${alerts}</div>
+    <header style="padding:12px 14px;border-top:1px solid var(--border)">
+      <h2 style="margin:0;font-size:13px;font-weight:700;color:var(--text-main)">Команда зараз</h2>
+      <p style="margin:3px 0 0;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted)">Сьогоднішній день, оновлюється з імпортів</p>
+    </header>
+    <table class="tl-tbl">
+      <thead><tr><th>Людина</th><th>Спенд</th><th>Деп</th><th>ROI</th>
+        <th style="text-align:left">Кабінети</th><th style="text-align:right">Остання дія</th></tr></thead>
+      <tbody>${team}</tbody>
+    </table>`;
 }
 
 function tlTable(label, list, sub, withFlag) {
