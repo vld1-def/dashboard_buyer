@@ -58,6 +58,20 @@
    назад, який із двох варіантів одиниць це означає, і яким викликом
    повернути як було.
 
+   ЧОМУ ТОКЕН ЧИТАЄТЬСЯ СЕРВІСНИМ КЛЮЧЕМ. FB_TOKENS.sql забирає
+   select на таблиці цілком і повертає його поіменно — без token і
+   без proxy. Це зроблено навмисно: зі сторінки власний токен прочитати
+   не можна, а отже й з чужої відкритої вкладки. Тому запит токена
+   заголовками того, хто покликав, завжди дає 42501 «permission denied
+   for table fb_tokens» — не помилка прав, а саме та стіна, заради якої
+   її й ставили.
+
+   Межу при цьому тримає не ключ, а ФІЛЬТР, як у fb-pause: кабінет
+   спершу читається заголовками того, хто покликав, тобто його показує
+   RLS. Сервісним ключем беремо лише токен — і тільки той, що належить
+   КОМАНДІ вже підтвердженого кабінета. По created_by тут фільтрувати
+   не можна: токен заводить тімлід, а кабінетом користується баєр.
+
    Розгортання:
      supabase functions deploy fb-limit
 */
@@ -69,7 +83,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-10-30.1';
+const FN_VERSION = '2026-10-30.3';
 
 /* Скільком мінорним одиницям дорівнює одиниця валюти. Для JPY це 1, і
    тоді вся арифметика нижче інша — тому валюту ми не вгадуємо, а
@@ -162,16 +176,31 @@ Deno.serve(async (req) => {
      fb-post і check-domains. Чужий кабінет просто не прийде. */
   const hdr = { apikey: anon, Authorization: auth, 'content-type': 'application/json' };
 
+  const svc = Deno.env.get('SERVICE_ROLE_KEY')
+    || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (!svc) return reply({ error: 'SERVICE_ROLE_KEY не заданий у секретах функції — '
+    + 'без нього токен кабінета не прочитати' }, 400);
+  const svcHdr = { apikey: svc, Authorization: 'Bearer ' + svc,
+                   'content-type': 'application/json' };
+
   // Кабінет → токен. Той самий ланцюжок, що в усіх інших функціях.
   let token = '', scopes: string[] = [];
   try {
     const bare = acc.replace(/^act_/, '');
+    /* Кабінет — заголовками того, хто покликав: чужий сюди не прийде,
+       і саме це робить дозволеним крок нижче. */
     const accs = await rest(base, hdr, 'fb_accounts?account_id=eq.'
-      + encodeURIComponent(bare) + '&select=account_id,token_id,spend_cap,amount_spent,currency&limit=1');
+      + encodeURIComponent(bare)
+      + '&select=account_id,token_id,team_name,spend_cap,amount_spent,currency&limit=1');
     if (!accs.length) return reply({ error: 'такого кабінета немає серед твоїх — '
       + 'натисни Sync now на вкладці Cabinets' }, 404);
-    if (!accs[0].token_id) return reply({ error: 'до цього кабінета не привʼязаний токен' }, 400);
-    const toks = await rest(base, hdr, 'fb_tokens?id=eq.' + Number(accs[0].token_id)
+    if (!accs[0].token_id) return reply({ error: 'до цього кабінета не привʼязаний токен — '
+      + 'натисни Sync now на вкладці Cabinets' }, 400);
+    /* А токен — сервісним ключем, бо стовпець token браузерним JWT не
+       читається взагалі. Фільтр по команді підтвердженого кабінета і є
+       межа: ключ бачить усе, бачити дозволено лише це. */
+    const toks = await rest(base, svcHdr, 'fb_tokens?id=eq.' + Number(accs[0].token_id)
+      + '&team_name=eq.' + encodeURIComponent(String(accs[0].team_name || ''))
       + '&select=id,label,token,scopes&limit=1');
     if (!toks.length) return reply({ error: 'токен, з якого прийшов кабінет, зник' }, 400);
     token = String(toks[0].token || '');
