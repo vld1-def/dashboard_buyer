@@ -133,7 +133,8 @@ const app = await page.evaluate(async ([me, members, rows, pays]) => {
 ok('тімліда пускає', app.gate === 'none', app.gate);
 ok('команда підписана в меню', app.team === 'Makeberry', app.team);
 ok('меню має свої розділи',
-  JSON.stringify(app.navs) === JSON.stringify(['Огляд', 'Моя команда', 'По гео', 'По місяцях']), app.navs);
+  JSON.stringify(app.navs) === JSON.stringify(
+    ['Огляд', 'Моя команда', 'Капи', 'Сьогодні', 'По гео', 'По місяцях']), app.navs);
 ok('у шапці видно, скільки людей у команді', /3 людей у команді/.test(app.period), app.period);
 ok('свіжий місяць вибраний сам', app.month === '2026-10', app.month);
 
@@ -199,6 +200,74 @@ ok('прапорці в гео є', rest.geo.flags.some(s => /\/kg\.png/.test(s)
 ok('місяці свіжим зверху',
   rest.month.rows.map(r => r[0]).join('|') === '2026-10|2026-09', rest.month.rows);
 ok('розділ місяців не звужений фільтром', rest.month.foot[1] === '$570.00', rest.month.foot);
+
+/* ─────────── 4b. МАКЕТНІ РОЗДІЛИ ───────────
+
+   Капи і «Сьогодні» намальовані: таблиці капів у базі ще немає. На
+   одному екрані з ними живуть справжні числа, тому головне тут — щоб
+   було ВИДНО, де що. Сторінка, на якій не видно, де правда, гірша за
+   сторінку без половини блоків. */
+const mock = await page.evaluate(() => {
+  const go = s => { document.querySelector(`.tl-nav[data-sec="${s}"]`).click();
+    return document.getElementById('tl-body'); };
+  /* #tl-body — ОДИН елемент на всі розділи: перехід перемальовує
+     його вміст. Тому кожен розділ треба дочитати ДО переходу, інакше
+     перевірка мовчки дивиться на наступний. Саме на цьому стенд
+     спіймав сам себе. */
+  const caps = go('caps');
+  const out = {
+    capsMock: !!caps.querySelector('.tl-mock'),
+    capNote: caps.textContent.includes('у поясі кожної капи'),
+    capRows: [...caps.querySelectorAll('tbody tr')].map(tr => ({
+      cells: [...tr.querySelectorAll('td')].map(td => td.textContent.trim()),
+      tag: tr.querySelector('.tl-tag')?.textContent.trim() || '',
+      bar: tr.querySelector('.tl-bar')?.className || '',
+      w: tr.querySelector('.tl-bar i')?.style.width || '' })),
+    strip: [...caps.querySelectorAll('.tl-strip > div')].map(d =>
+      d.querySelector('p').textContent + '=' + d.querySelector('b').textContent)
+  };
+  const today = go('today');
+  Object.assign(out, {
+    todayMock: !!today.querySelector('.tl-mock'),
+    alerts: today.querySelectorAll('.tl-alert').length,
+    health: today.querySelectorAll('.tl-strip > div').length,
+    todayTeam: [...today.querySelectorAll('tbody tr')].map(tr =>
+      tr.querySelector('td').textContent.trim()),
+    notStarted: today.textContent.includes('не стартував')
+  });
+  // а тепер СПРАВЖНІ розділи — на них плашки бути не мусить
+  out.realMock = ['team', 'geo', 'month'].some(s => !!go(s).querySelector('.tl-mock'));
+  return out;
+});
+ok('капи позначені як макет', mock.capsMock === true);
+ok('«Сьогодні» позначене як макет', mock.todayMock === true);
+ok('на справжніх розділах плашки НЕМАЄ', mock.realMock === false);
+ok('рядок на кожну капу', mock.capRows.length === 6, mock.capRows.length);
+ok('перелита капа названа перелитою',
+  mock.capRows.find(r => r.cells[0] === 'UZ')?.tag === 'перелита', mock.capRows);
+ok('і її залишок відʼємний',
+  mock.capRows.find(r => r.cells[0] === 'UZ')?.cells[4] === '-4', mock.capRows);
+ok('майже повна відрізняється від повної',
+  mock.capRows.find(r => r.cells[0] === 'KG')?.tag === 'майже повна'
+  && mock.capRows.find(r => r.cells[0] === 'AZ')?.tag === 'повна', mock.capRows);
+ok('капа, якої не торкались, не плутається з повною',
+  mock.capRows.find(r => r.cells[0] === 'KZ')?.tag === 'ще нічого', mock.capRows);
+ok('незадана капа каже про себе, а не показує нуль',
+  mock.capRows.find(r => r.cells[0] === 'PL')?.tag === 'капи не задано'
+  && mock.capRows.find(r => r.cells[0] === 'PL')?.cells[2] === '—', mock.capRows);
+ok('смужка перелитої пофарбована окремо',
+  /is-over/.test(mock.capRows.find(r => r.cells[0] === 'UZ')?.bar || ''), mock.capRows);
+ok('смужка не вилазить за 100%',
+  mock.capRows.every(r => !r.w || parseInt(r.w) <= 100), mock.capRows.map(r => r.w));
+ok('підсумок каже, скільки ще лити',
+  mock.strip.some(x => /Лишилось відлити=105/.test(x)), mock.strip);
+ok('перелиті й майже повні пораховані окремо',
+  mock.strip.some(x => /Майже повні=1/.test(x)) && mock.strip.some(x => /Перелиті=1/.test(x)), mock.strip);
+ok('про часовий пояс сказано прямо', mock.capNote === true);
+ok('тривоги на місці', mock.alerts === 7, mock.alerts);
+ok('здоровʼя парку чотирма плитками', mock.health === 4, mock.health);
+ok('видно, хто сьогодні не стартував', mock.notStarted === true);
+ok('команда на сьогодні — рядок на людину', mock.todayTeam.length === 4, mock.todayTeam);
 
 /* ─────────── 5. порожньо ─────────── */
 const empty = await page.evaluate(async () => {
