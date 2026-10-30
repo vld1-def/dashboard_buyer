@@ -183,6 +183,15 @@ async function tgTest() {
     });
     if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
     const j = await res.json().catch(() => ({}));
+    /* СТАРА ЗАДЕПЛОЄНА ВЕРСІЯ — ОКРЕМА ВІДПОВІДЬ.
+
+       Перевірка звʼязку шле {test:true} і жодного кабінета. Функція,
+       яка на це відповідає «account_id is required», просто не знає
+       про цей вхід — тобто в Supabase працює збірка, старша за цю
+       сторінку. Пропустити таке як є означало б відправити людину
+       шукати кабінет, якого вона й не вказувала. */
+    if (!res.ok && /account_id is required/i.test(String(j.error || '')))
+      throw Object.assign(new Error('old'), { code: 'old' });
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
 
     if (j.test === 'sent')
@@ -202,7 +211,11 @@ async function tgTest() {
         'var(--warn)');
     say('Telegram refused it: ' + tgEsc(String(j.note || j.test || 'unknown')), 'var(--bad)');
   } catch (e) {
-    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    if (e.code === 'old')
+      return say('The deployed fb-sync is older than this page \u2014 it does not know '
+        + 'about the test message yet. Run <span class="font-mono">supabase functions '
+        + 'deploy fb-sync</span>.', 'var(--warn)');
+    const net = /failed to fetch|networkerror|load failed|не відповіла зовсім/i.test(e.message || '');
     say(e.code === 'missing' || net
       ? 'The fb-sync function did not answer \u2014 it is either not deployed '
         + '(<span class="font-mono">supabase functions deploy fb-sync</span>) or failing on start-up.'
