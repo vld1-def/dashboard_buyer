@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 14:20">
+  <meta name="build" content="build 29.10 22:55">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6029,43 +6029,23 @@ input.ui-in[type="range"] { padding: 0; }
 .ss-num.is-bad { color: var(--bad); }
 .ss-sec { margin-top: 14px; }
 .ss-sec > .ss-cap { display: block; margin-bottom: 7px; }
-/* Рядок списку. Називається .ss-row, а не .ss-geo, бо ним іде і гео, і
-   місяць: клас із назвою одного з двох змістів почав би брехати на
-   другій же картці. */
-.ss-row {
+.ss-geo {
   display: flex; align-items: center; gap: 8px;
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 10px; padding: 7px 9px; margin-bottom: 5px;
 }
-.ss-row:last-child { margin-bottom: 0; }
-.ss-row-key { font-size: 12px; font-weight: 800; color: var(--text-main); }
+.ss-geo:last-child { margin-bottom: 0; }
+.ss-geo-code { font-size: 12px; font-weight: 800; color: var(--text-main); }
 /* Праворуч два рядки: скільки принесло і скільки коштувало. Вирівняні
-   по правому краю, щоб числа сусідніх рядків читались стовпцем. */
-.ss-row-right { margin-left: auto; text-align: right; line-height: 1.35; }
-.ss-row-kv { font-size: 10px; font-weight: 700; color: var(--text-muted); }
-.ss-row-kv b { color: var(--text-main); font-weight: 800; }
-.ss-row-pf { font-size: 11px; font-weight: 800; margin-left: 6px; }
-
-/* Дві картки поруч. На вузькому екрані стають одна під одну, і тоді
-   вікно скролиться — ширину самих карток не чіпаємо, бо знімок має
-   лишатись однаковим з будь-якого екрана. */
-.ss-pair {
-  display: flex; flex-wrap: wrap; gap: 14px;
-  align-items: flex-start; justify-content: center;
-  max-height: 86vh; overflow-y: auto;
-}
+   по правому краю, щоб числа сусідніх гео читались стовпцем. */
+.ss-geo-right { margin-left: auto; text-align: right; line-height: 1.35; }
+.ss-geo-kv { font-size: 10px; font-weight: 700; color: var(--text-muted); }
+.ss-geo-kv b { color: var(--text-main); font-weight: 800; }
+.ss-geo-pf { font-size: 11px; font-weight: 800; margin-left: 6px; }
 .ss-foot {
   margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-/* ROI стоїть під сумою профіту, а не поруч: поруч він з'їдав ширину в
-   плитки й ламав її на два рядки на довгих сумах. */
-.ss-roi {
-  margin: 3px 0 0; font-size: 10px; font-weight: 800;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted);
-}
-.ss-roi.is-ok { color: var(--ok); }
-.ss-roi.is-bad { color: var(--bad); }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -6300,7 +6280,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 14:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 29.10 22:55</div>
     </div>
   </aside>
 
@@ -7441,7 +7421,6 @@ input.ui-in[type="range"] { padding: 0; }
            токени, тут лишались #0f172a, райдужна смужка зверху і
            тривідсоткові радіуси. Тепер класи .ss-* у design.css, тобто
            наступна зміна дизайну дійде й сюди. -->
-      <div class="ss-pair">
       <div id="capture-card" class="ss-card">
         <div class="ss-head">
           <div class="min-w-0">
@@ -7451,11 +7430,7 @@ input.ui-in[type="range"] { padding: 0; }
         </div>
         <div class="ss-grid">
           <div class="ss-tile"><p class="ss-cap">Total Spend</p><p id="ss-total-spend" class="ss-num">$0.00</p></div>
-          <div class="ss-tile">
-            <p class="ss-cap">Gross Profit</p>
-            <p id="ss-total-profit" class="ss-num is-ok">$0.00</p>
-            <p class="ss-roi" id="ss-total-roi">ROI 0%</p>
-          </div>
+          <div class="ss-tile"><p class="ss-cap">Net Profit</p><p id="ss-total-profit" class="ss-num is-ok">$0.00</p></div>
         </div>
         <div class="ss-grid">
           <div class="ss-tile"><p class="ss-cap">Total CPL</p><p id="ss-cpl" class="ss-num is-sm">$0.00</p></div>
@@ -7469,40 +7444,6 @@ input.ui-in[type="range"] { padding: 0; }
           <span class="ss-cap">Performance Summary</span>
           <span class="ss-cap" id="ss-footer-date">...</span>
         </div>
-      </div>
-
-      <!-- ДРУГА КАРТКА: той самий вигляд, але за ВЕСЬ ЧАС і з розбивкою
-           по місяцях. Перша відповідає «як пройшов цей місяць», друга —
-           «скільки зібралось за весь time роботи команди». Обидві рахує
-           одна функція (ssSum), щоб числа поруч завжди сходились. -->
-      <div id="capture-card-all" class="ss-card">
-        <div class="ss-head">
-          <div class="min-w-0">
-            <h3>All time</h3>
-            <p class="ss-cap" id="ss2-sub">...</p>
-          </div>
-        </div>
-        <div class="ss-grid">
-          <div class="ss-tile"><p class="ss-cap">Total Spend</p><p id="ss2-total-spend" class="ss-num">$0.00</p></div>
-          <div class="ss-tile">
-            <p class="ss-cap">Gross Profit</p>
-            <p id="ss2-total-profit" class="ss-num is-ok">$0.00</p>
-            <p class="ss-roi" id="ss2-total-roi">ROI 0%</p>
-          </div>
-        </div>
-        <div class="ss-grid">
-          <div class="ss-tile"><p class="ss-cap">Total CPL</p><p id="ss2-cpl" class="ss-num is-sm">$0.00</p></div>
-          <div class="ss-tile"><p class="ss-cap">Total CPA</p><p id="ss2-cpa" class="ss-num is-sm">$0.00</p></div>
-        </div>
-        <div class="ss-sec">
-          <p class="ss-cap">By month</p>
-          <div id="ss2-month-list"></div>
-        </div>
-        <div class="ss-foot">
-          <span class="ss-cap">Performance Summary</span>
-          <span class="ss-cap" id="ss2-footer-date">...</span>
-        </div>
-      </div>
       </div>
     </div>
   </div>
@@ -12346,77 +12287,6 @@ async function toggleSyncModal() {
 }
 
 // --- 3. СКРІНШОТ КАРТКА (SUMMARY) ---
-/* ОДНА АРИФМЕТИКА НА ОБИДВІ КАРТКИ.
-
-   Картки дві — за місяць і за весь time — і рахувати їх двома копіями
-   коду означало б одного дня показати поруч два числа, які не
-   сходяться. Тому підсумок і рядок списку будує одна функція, а
-   відрізняються картки лише тим, ЯКІ рядки в неї віддали і за чим
-   згрупували. */
-function ssSum(rows) {
-  const t = { s: 0, r: 0, d: 0, rev: 0 };
-  rows.forEach(i => {
-    t.s += Number(i.spend) || 0;
-    t.r += Number(i.regs) || 0;
-    t.d += Number(i.deposits) || 0;
-    t.rev += revenueOf(i);
-  });
-  return t;
-}
-const ssRoi = t => t.s > 0 ? Math.round((t.rev - t.s) / t.s * 100) + '%' : '—';
-
-/* Права половина рядка: скільки принесло і скільки коштувало. Colour
-   бере на себе профіт, бо саме його шукають очима. */
-function ssRowRight(t) {
-  const p = t.rev - t.s;
-  const tone = p >= 0 ? 'var(--ok)' : 'var(--bad)';
-  return `<span class="ss-row-right">
-    <span class="ss-row-kv"><b>${t.r}</b> reg · <b>${t.d}</b> dep · roi <b style="color:${tone}">${ssRoi(t)}</b></span><br>
-    <span class="ss-row-kv">${formatCurrency(t.s)}</span>
-    <span class="ss-row-pf" style="color:${tone}">${p >= 0 ? '+' : ''}${formatCurrency(p)}</span>
-  </span>`;
-}
-
-/* ЗА ВЕСЬ ЧАС — з rawData, а не з filteredDataCache.
-
-   filteredDataCache це вже відфільтрований місяць, і зібрати з нього
-   історію неможливо. rawData тримає всі місяці команди: запит
-   daily_stats іде без обмеження по даті, тож нового походу в базу тут
-   не потрібно. */
-function ssRenderAllTime() {
-  const byMonth = {};
-  (rawData || []).forEach(d => {
-    const m = String(d.date || '').slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(m)) return;
-    (byMonth[m] = byMonth[m] || []).push(d);
-  });
-  const months = Object.keys(byMonth).sort().reverse();   // свіжий місяць зверху
-  const all = ssSum(rawData || []);
-  const profit = all.rev - all.s;
-
-  document.getElementById('ss2-sub').innerText =
-    (currentTeam || '—') + ' · ' + months.length
-    + (months.length === 1 ? ' month' : ' months');
-  document.getElementById('ss2-total-spend').innerText = formatCurrency(all.s);
-  const p2 = document.getElementById('ss2-total-profit');
-  p2.innerText = formatCurrency(profit);
-  p2.className = 'ss-num ' + (profit >= 0 ? 'is-ok' : 'is-bad');
-  const r2 = document.getElementById('ss2-total-roi');
-  r2.innerText = 'ROI ' + ssRoi(all);
-  r2.className = 'ss-roi ' + (all.s > 0 && profit < 0 ? 'is-bad' : 'is-ok');
-  document.getElementById('ss2-cpl').innerText = formatCurrency(all.r > 0 ? all.s / all.r : 0);
-  document.getElementById('ss2-cpa').innerText = formatCurrency(all.d > 0 ? all.s / all.d : 0);
-  document.getElementById('ss2-footer-date').innerText =
-    months.length ? months[months.length - 1] + ' — ' + months[0] : '—';
-
-  document.getElementById('ss2-month-list').innerHTML = months.length
-    ? months.map(m => `<div class="ss-row">
-        <span class="ss-row-key">${m}</span>
-        ${ssRowRight(ssSum(byMonth[m]))}
-      </div>`).join('')
-    : '<p class="ss-cap">Даних за жоден місяць ще немає</p>';
-}
-
 function openScreenshotModal() {
   const modal = document.getElementById('screenshot-modal');
   /* Period беремо з місяця, вибраного вгорі сторінки. Раніше він
@@ -12459,28 +12329,24 @@ function openScreenshotModal() {
   const profitEl = document.getElementById('ss-total-profit');
   profitEl.innerText = formatCurrency(totalProfit);
   profitEl.className = 'ss-num ' + (totalProfit >= 0 ? 'is-ok' : 'is-bad');
-  /* ROI тією ж формулою, що й у Geo Performance: профіт до спенду.
-     Спенду нема — ROI не «0%», а прочерк: нуль тут читався б як
-     «відпрацювали в нуль», хоч насправді не крутили зовсім. */
-  const roiEl = document.getElementById('ss-total-roi');
-  roiEl.innerText = totalS > 0 ? 'ROI ' + Math.round(totalProfit / totalS * 100) + '%' : 'ROI —';
-  roiEl.className = 'ss-roi ' + (totalS > 0 && totalProfit < 0 ? 'is-bad' : 'is-ok');
 
   const allGeos = Object.entries(geoMap).sort((a, b) => b[1].s - a[1].s);
 
   const ssG = document.getElementById('ss-geo-list');
   ssG.innerHTML = allGeos.map(([name, m]) => {
     const gProfit = m.rev - m.s;
-    const gRoi = m.s > 0 ? Math.round(gProfit / m.s * 100) + '%' : '—';
     return `
-    <div class="ss-row">
+    <div class="ss-geo">
       ${geoFlag(name, 'w-5 h-3.5')}
-      <span class="ss-row-key">${name}</span>
-      ${ssRowRight(m)}
+      <span class="ss-geo-code">${name}</span>
+      <span class="ss-geo-right">
+        <span class="ss-geo-kv"><b>${m.r}</b> reg · <b>${m.d}</b> dep</span><br>
+        <span class="ss-geo-kv">${formatCurrency(m.s)}</span>
+        <span class="ss-geo-pf" style="color:${gProfit >= 0 ? 'var(--ok)' : 'var(--bad)'}">${gProfit >= 0 ? '+' : ''}${formatCurrency(gProfit)}</span>
+      </span>
     </div>`;
   }).join('');
 
-  ssRenderAllTime();
   modal.classList.remove('hidden');
 }
 function closeScreenshotModal() { document.getElementById('screenshot-modal').classList.add('hidden'); }

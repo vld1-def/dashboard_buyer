@@ -1792,7 +1792,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
            токени, тут лишались #0f172a, райдужна смужка зверху і
            тривідсоткові радіуси. Тепер класи .ss-* у design.css, тобто
            наступна зміна дизайну дійде й сюди. -->
-      <div class="ss-pair">
       <div id="capture-card" class="ss-card">
         <div class="ss-head">
           <div class="min-w-0">
@@ -1802,11 +1801,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
         </div>
         <div class="ss-grid">
           <div class="ss-tile"><p class="ss-cap">Total Spend</p><p id="ss-total-spend" class="ss-num">$0.00</p></div>
-          <div class="ss-tile">
-            <p class="ss-cap">Gross Profit</p>
-            <p id="ss-total-profit" class="ss-num is-ok">$0.00</p>
-            <p class="ss-roi" id="ss-total-roi">ROI 0%</p>
-          </div>
+          <div class="ss-tile"><p class="ss-cap">Net Profit</p><p id="ss-total-profit" class="ss-num is-ok">$0.00</p></div>
         </div>
         <div class="ss-grid">
           <div class="ss-tile"><p class="ss-cap">Total CPL</p><p id="ss-cpl" class="ss-num is-sm">$0.00</p></div>
@@ -1820,40 +1815,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <span class="ss-cap">Performance Summary</span>
           <span class="ss-cap" id="ss-footer-date">...</span>
         </div>
-      </div>
-
-      <!-- ДРУГА КАРТКА: той самий вигляд, але за ВЕСЬ ЧАС і з розбивкою
-           по місяцях. Перша відповідає «як пройшов цей місяць», друга —
-           «скільки зібралось за весь час роботи команди». Обидві рахує
-           одна функція (ssSum), щоб числа поруч завжди сходились. -->
-      <div id="capture-card-all" class="ss-card">
-        <div class="ss-head">
-          <div class="min-w-0">
-            <h3>All time</h3>
-            <p class="ss-cap" id="ss2-sub">...</p>
-          </div>
-        </div>
-        <div class="ss-grid">
-          <div class="ss-tile"><p class="ss-cap">Total Spend</p><p id="ss2-total-spend" class="ss-num">$0.00</p></div>
-          <div class="ss-tile">
-            <p class="ss-cap">Gross Profit</p>
-            <p id="ss2-total-profit" class="ss-num is-ok">$0.00</p>
-            <p class="ss-roi" id="ss2-total-roi">ROI 0%</p>
-          </div>
-        </div>
-        <div class="ss-grid">
-          <div class="ss-tile"><p class="ss-cap">Total CPL</p><p id="ss2-cpl" class="ss-num is-sm">$0.00</p></div>
-          <div class="ss-tile"><p class="ss-cap">Total CPA</p><p id="ss2-cpa" class="ss-num is-sm">$0.00</p></div>
-        </div>
-        <div class="ss-sec">
-          <p class="ss-cap">By month</p>
-          <div id="ss2-month-list"></div>
-        </div>
-        <div class="ss-foot">
-          <span class="ss-cap">Performance Summary</span>
-          <span class="ss-cap" id="ss2-footer-date">...</span>
-        </div>
-      </div>
       </div>
     </div>
   </div>
@@ -6179,77 +6140,6 @@ async function toggleSyncModal() {
 }
 
 // --- 3. СКРІНШОТ КАРТКА (SUMMARY) ---
-/* ОДНА АРИФМЕТИКА НА ОБИДВІ КАРТКИ.
-
-   Картки дві — за місяць і за весь час — і рахувати їх двома копіями
-   коду означало б одного дня показати поруч два числа, які не
-   сходяться. Тому підсумок і рядок списку будує одна функція, а
-   відрізняються картки лише тим, ЯКІ рядки в неї віддали і за чим
-   згрупували. */
-function ssSum(rows) {
-  const t = { s: 0, r: 0, d: 0, rev: 0 };
-  rows.forEach(i => {
-    t.s += Number(i.spend) || 0;
-    t.r += Number(i.regs) || 0;
-    t.d += Number(i.deposits) || 0;
-    t.rev += revenueOf(i);
-  });
-  return t;
-}
-const ssRoi = t => t.s > 0 ? Math.round((t.rev - t.s) / t.s * 100) + '%' : '—';
-
-/* Права половина рядка: скільки принесло і скільки коштувало. Колір
-   бере на себе профіт, бо саме його шукають очима. */
-function ssRowRight(t) {
-  const p = t.rev - t.s;
-  const tone = p >= 0 ? 'var(--ok)' : 'var(--bad)';
-  return `<span class="ss-row-right">
-    <span class="ss-row-kv"><b>${t.r}</b> reg · <b>${t.d}</b> dep · roi <b style="color:${tone}">${ssRoi(t)}</b></span><br>
-    <span class="ss-row-kv">${formatCurrency(t.s)}</span>
-    <span class="ss-row-pf" style="color:${tone}">${p >= 0 ? '+' : ''}${formatCurrency(p)}</span>
-  </span>`;
-}
-
-/* ЗА ВЕСЬ ЧАС — з rawData, а не з filteredDataCache.
-
-   filteredDataCache це вже відфільтрований місяць, і зібрати з нього
-   історію неможливо. rawData тримає всі місяці команди: запит
-   daily_stats іде без обмеження по даті, тож нового походу в базу тут
-   не потрібно. */
-function ssRenderAllTime() {
-  const byMonth = {};
-  (rawData || []).forEach(d => {
-    const m = String(d.date || '').slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(m)) return;
-    (byMonth[m] = byMonth[m] || []).push(d);
-  });
-  const months = Object.keys(byMonth).sort().reverse();   // свіжий місяць зверху
-  const all = ssSum(rawData || []);
-  const profit = all.rev - all.s;
-
-  document.getElementById('ss2-sub').innerText =
-    (currentTeam || '—') + ' · ' + months.length
-    + (months.length === 1 ? ' month' : ' months');
-  document.getElementById('ss2-total-spend').innerText = formatCurrency(all.s);
-  const p2 = document.getElementById('ss2-total-profit');
-  p2.innerText = formatCurrency(profit);
-  p2.className = 'ss-num ' + (profit >= 0 ? 'is-ok' : 'is-bad');
-  const r2 = document.getElementById('ss2-total-roi');
-  r2.innerText = 'ROI ' + ssRoi(all);
-  r2.className = 'ss-roi ' + (all.s > 0 && profit < 0 ? 'is-bad' : 'is-ok');
-  document.getElementById('ss2-cpl').innerText = formatCurrency(all.r > 0 ? all.s / all.r : 0);
-  document.getElementById('ss2-cpa').innerText = formatCurrency(all.d > 0 ? all.s / all.d : 0);
-  document.getElementById('ss2-footer-date').innerText =
-    months.length ? months[months.length - 1] + ' — ' + months[0] : '—';
-
-  document.getElementById('ss2-month-list').innerHTML = months.length
-    ? months.map(m => `<div class="ss-row">
-        <span class="ss-row-key">${m}</span>
-        ${ssRowRight(ssSum(byMonth[m]))}
-      </div>`).join('')
-    : '<p class="ss-cap">Даних за жоден місяць ще немає</p>';
-}
-
 function openScreenshotModal() {
   const modal = document.getElementById('screenshot-modal');
   /* Період беремо з місяця, вибраного вгорі сторінки. Раніше він
@@ -6292,28 +6182,24 @@ function openScreenshotModal() {
   const profitEl = document.getElementById('ss-total-profit');
   profitEl.innerText = formatCurrency(totalProfit);
   profitEl.className = 'ss-num ' + (totalProfit >= 0 ? 'is-ok' : 'is-bad');
-  /* ROI тією ж формулою, що й у Geo Performance: профіт до спенду.
-     Спенду нема — ROI не «0%», а прочерк: нуль тут читався б як
-     «відпрацювали в нуль», хоч насправді не крутили зовсім. */
-  const roiEl = document.getElementById('ss-total-roi');
-  roiEl.innerText = totalS > 0 ? 'ROI ' + Math.round(totalProfit / totalS * 100) + '%' : 'ROI —';
-  roiEl.className = 'ss-roi ' + (totalS > 0 && totalProfit < 0 ? 'is-bad' : 'is-ok');
 
   const allGeos = Object.entries(geoMap).sort((a, b) => b[1].s - a[1].s);
 
   const ssG = document.getElementById('ss-geo-list');
   ssG.innerHTML = allGeos.map(([name, m]) => {
     const gProfit = m.rev - m.s;
-    const gRoi = m.s > 0 ? Math.round(gProfit / m.s * 100) + '%' : '—';
     return `
-    <div class="ss-row">
+    <div class="ss-geo">
       ${geoFlag(name, 'w-5 h-3.5')}
-      <span class="ss-row-key">${name}</span>
-      ${ssRowRight(m)}
+      <span class="ss-geo-code">${name}</span>
+      <span class="ss-geo-right">
+        <span class="ss-geo-kv"><b>${m.r}</b> reg · <b>${m.d}</b> dep</span><br>
+        <span class="ss-geo-kv">${formatCurrency(m.s)}</span>
+        <span class="ss-geo-pf" style="color:${gProfit >= 0 ? 'var(--ok)' : 'var(--bad)'}">${gProfit >= 0 ? '+' : ''}${formatCurrency(gProfit)}</span>
+      </span>
     </div>`;
   }).join('');
 
-  ssRenderAllTime();
   modal.classList.remove('hidden');
 }
 function closeScreenshotModal() { document.getElementById('screenshot-modal').classList.add('hidden'); }
