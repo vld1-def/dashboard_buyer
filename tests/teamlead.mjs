@@ -123,7 +123,13 @@ const app = await page.evaluate(async ([me, members, rows, pays]) => {
     team: document.getElementById('tl-team').textContent,
     period: document.getElementById('tl-period').textContent,
     month: document.getElementById('tl-month').value,
-    navs: [...document.querySelectorAll('.tl-nav')].map(b => b.textContent),
+    navs: [...document.querySelectorAll('.tl-nav')].map(b =>
+      b.textContent.replace(/\d+$/, '').trim()),
+    groups: [...document.querySelectorAll('.tl-grp')].map(g => g.textContent),
+    icons: [...document.querySelectorAll('.tl-nav svg')].length,
+    counters: [...document.querySelectorAll('.tl-nav .tl-cnt')].length,
+    meName: document.getElementById('tl-me-name').textContent,
+    meRole: document.getElementById('tl-me-role').textContent,
     kpi: [...document.querySelectorAll('.tl-kpi')].map(k => ({
       k: k.querySelector('p').textContent,
       v: k.querySelector('b').textContent,
@@ -134,7 +140,17 @@ ok('тімліда пускає', app.gate === 'none', app.gate);
 ok('команда підписана в меню', app.team === 'Makeberry', app.team);
 ok('меню має свої розділи',
   JSON.stringify(app.navs) === JSON.stringify(
-    ['Огляд', 'Моя команда', 'Капи', 'Сьогодні', 'По гео', 'По місяцях']), app.navs);
+    ['Сьогодні', 'Капи', 'Таски', 'Команда', 'Гео', 'Місяці']), app.navs);
+/* Сайдбар був рядом однакових кнопок із кружечком: усі пункти важили
+   однаково. Значки розрізняються периферійним зором, групи ділять
+   ранкові екрани й розбори минулого, лічильники кажуть, куди глянути,
+   ще до заходу. */
+ok('кожен пункт має свій значок', app.icons === 6, app.icons);
+ok('пункти розділені на групи',
+  JSON.stringify(app.groups) === JSON.stringify(['Зараз', 'Аналітика']), app.groups);
+ok('на термінових пунктах є лічильники', app.counters === 3, app.counters);
+ok('у підвалі підписано, хто зайшов',
+  app.meName === 'Олег' && app.meRole === 'lead', app);
 ok('у шапці видно, скільки людей у команді', /3 людей у команді/.test(app.period), app.period);
 ok('свіжий місяць вибраний сам', app.month === '2026-10', app.month);
 
@@ -268,6 +284,43 @@ ok('тривоги на місці', mock.alerts === 7, mock.alerts);
 ok('здоровʼя парку чотирма плитками', mock.health === 4, mock.health);
 ok('видно, хто сьогодні не стартував', mock.notStarted === true);
 ok('команда на сьогодні — рядок на людину', mock.todayTeam.length === 4, mock.todayTeam);
+
+/* ─────────── 4c. ДОШКА ТАСКІВ ─────────── */
+const tasks = await page.evaluate(() => {
+  document.querySelector('.tl-nav[data-sec="tasks"]').click();
+  const b = document.getElementById('tl-body');
+  return {
+    mock: !!b.querySelector('.tl-mock'),
+    cols: [...b.querySelectorAll('.tl-col')].map(c => ({
+      who: c.querySelector('b').textContent,
+      left: c.querySelector('header span:last-child').textContent,
+      cards: c.querySelectorAll('.tl-card').length })),
+    auto: b.querySelectorAll('.tl-card .tl-auto').length,
+    done: b.querySelectorAll('.tl-card.is-done').length,
+    high: b.querySelectorAll('.tl-card.p-high').length,
+    strip: [...b.querySelectorAll('.tl-strip > div')].map(d =>
+      d.querySelector('p').textContent + '=' + d.querySelector('b').textContent),
+    note: b.textContent.includes('ще ніхто не говорив')
+  };
+});
+ok('дошка тасків позначена як макет', tasks.mock === true);
+ok('колонка на людину, а не на статус',
+  tasks.cols.map(c => c.who).join('|') === 'Олег|Марія|Ігор|Ніка', tasks.cols);
+ok('у шапці колонки — скільки лишилось',
+  tasks.cols.find(c => c.who === 'Ніка')?.left === '1', tasks.cols);
+/* Таск від системи і таск від людини — різні речі: про перший ще
+   ніхто не говорив. Якщо цього не показати, тімлід питатиме людину
+   про таск, якого та не бачила. */
+ok('автоматичні таски позначені окремо', tasks.auto === 4, tasks.auto);
+ok('і сказано, що це означає', tasks.note === true);
+ok('зроблене видно, але притлумлено', tasks.done === 1, tasks.done);
+ok('високий пріоритет має свій колір', tasks.high === 3, tasks.high);
+ok('підсумок рахує відкриті, а не всі',
+  tasks.strip.some(x => /Відкритих=7/.test(x)), tasks.strip);
+ok('видно, скільки поставила система',
+  tasks.strip.some(x => /Поставила система=4/.test(x)), tasks.strip);
+ok('і скільки горить зараз',
+  tasks.strip.some(x => /Горить зараз=2/.test(x)), tasks.strip);
 
 /* ─────────── 5. порожньо ─────────── */
 const empty = await page.evaluate(async () => {
