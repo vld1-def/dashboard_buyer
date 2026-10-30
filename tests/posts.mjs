@@ -36,11 +36,21 @@ const INIT = () => {
       window.__ps.tables[t] || { data: [], error: null }).then(f, j);
     return o;
   };
+  window.__ps.store = { uploads: [], upErr: null };
   const real = window.supabase.createClient;
   window.supabase.createClient = (...a) => {
     const c = real(...a);
     c.from = t => mk(t);
     c.auth.getSession = async () => ({ data: { session: { access_token: 'jwt', user: { id: 'u1' } } } });
+    c.storage = { from: b => ({
+      upload: async (path, body, opt) => {
+        if (window.__ps.store.upErr) return { error: { message: window.__ps.store.upErr } };
+        window.__ps.store.uploads.push({ path, type: opt && opt.contentType });
+        return { data: { path }, error: null };
+      },
+      createSignedUrl: async (path, sec) => ({
+        data: { signedUrl: 'https://sb.example/sign/' + path + '?t=' + sec }, error: null })
+    }) };
     return c;
   };
   window.fetch = async (url, opt) => {
@@ -221,6 +231,60 @@ ok('прибрати можна чернетку й відмову, але не 
   q.all[0].drop && q.all[3].drop && !q.all[2].drop, q.all);
 ok('фільтр звужує список', q.failed.length === 1 && q.failed[0].tag === 'відмова', q.failed);
 
+/* ─────────── 6b. КАРТИНКА ФАЙЛОМ ───────────
+
+   Бакет приватний, тож у рядок іде не адреса, а шлях із позначкою
+   storage:. Підписує його fb-post у момент відправки — чернетка з
+   картинкою не має бути доступною по голому посиланню, поки її не
+   вирішили публікувати. */
+await boot({ tables: {
+  fb_cabinet_pages: { data: [{ page_id: '1', page_name: 'Lucky KG', can_moderate: true }], error: null },
+  fb_posts: { data: [], error: null } } });
+
+const up = await page.evaluate(async () => {
+  const f = new File([new Uint8Array([1, 2, 3])], 'creative.PNG', { type: 'image/png' });
+  const inp = document.getElementById('ps-file');
+  Object.defineProperty(inp, 'files', { value: [f], configurable: true });
+  await psPick(inp);
+  window.__ps.calls = [];
+  document.getElementById('ps-msg').value = 'з картинкою';
+  await psSave();
+  const row = (window.__ps.calls.find(c => c.insert) || {}).insert;
+  return { uploads: window.__ps.store.uploads.map(u => u.path),
+           row, prev: !!document.querySelector('#ps-prev img'),
+           note: document.getElementById('ps-prev').textContent };
+});
+ok('файл залився в бакет команди',
+  up.uploads.length === 1 && up.uploads[0].startsWith('Makeberry/'), up.uploads);
+ok('імʼя файлу не перетирає чуже',
+  /\/\d{10,}_[a-z0-9]{4,}\.png$/.test(up.uploads[0] || ''), up.uploads);
+ok('у рядок іде шлях із позначкою, а не адреса',
+  String(up.row.image_url || '').startsWith('storage:Makeberry/'), up.row);
+ok('видно превʼю того, що вибрав', up.prev === true);
+ok('і сказано, що це файл у сховищі', /сховищі команди/.test(up.note), up.note);
+
+const both = await page.evaluate(async () => {
+  document.getElementById('ps-img').value = 'https://chuzhe.example/pic.jpg';
+  psImgHint();
+  window.__ps.calls = [];
+  await psSave();
+  const row = (window.__ps.calls.find(c => c.insert) || {}).insert;
+  return { img: row.image_url, note: document.getElementById('ps-prev').textContent };
+});
+ok('вписана адреса знімає залитий файл', both.img === 'https://chuzhe.example/pic.jpg', both);
+ok('і підпис каже, що тепер це адреса', /за адресою/.test(both.note), both.note);
+
+const noBucket = await page.evaluate(async () => {
+  window.__ps.store.upErr = 'Bucket not found';
+  const f = new File([new Uint8Array([1])], 'a.jpg', { type: 'image/jpeg' });
+  const inp = document.getElementById('ps-file');
+  Object.defineProperty(inp, 'files', { value: [f], configurable: true });
+  await psPick(inp);
+  window.__ps.store.upErr = null;
+  return document.getElementById('ps-say').textContent;
+});
+ok('немає бакета — сказано, що виконати', /POST_IMAGES\.sql/.test(noBucket), noBucket);
+
 /* ─────────── 7. правила живуть у функції ─────────── */
 {
   const FN = fs.readFileSync('supabase/functions/fb-post/index.ts', 'utf8');
@@ -238,6 +302,12 @@ ok('фільтр звужує список', q.failed.length === 1 && q.failed[0
     !/for \(const row of/.test(FN) && /row_id/.test(FN));
   ok('видалення поста функція не вміє зовсім',
     !/method: 'DELETE'/.test(FN));
+  /* Підписуємо ЛИШЕ своє: чужий https і так відкритий, а спроба його
+     «підписати» перетворила б робоче посилання на поломане. */
+  ok('підписується лише картинка з нашого сховища',
+    /imgUrl\.startsWith\(STORAGE_MARK\)/.test(FN));
+  ok('підпис живе хвилини, а не вічність', /SIGN_SECONDS = 600/.test(FN));
+  ok('у Graph іде підписана адреса, а не шлях', /\{ url: imgUrl, caption/.test(FN));
 }
 
 await done(browser, srv, errs);
