@@ -25,37 +25,39 @@ const FN = fs.readFileSync('supabase/functions/fb-limit/index.ts', 'utf8');
 
 /* Беремо функцію з файлу, а не копію: копія розійшлася б із
    функцією рівно тоді, коли її правлять. */
-const m = FN.match(/function unitVerdict\([\s\S]*?\n\}/);
-ok('unitVerdict знайдена у файлі функції', !!m);
+const m = FN.match(/function capVerdict\([\s\S]*?\n\}/);
+ok('capVerdict знайдена у файлі функції', !!m);
 const verdict = m
   ? new Function('MINOR', m[0].replace(/(\w+): number(?: \| null)?/g, '$1')
-      + '; return unitVerdict;')(100)
+      + '; return capVerdict;')(100)
   : () => ({ units: 'missing' });
 
-/* Надіслали 700 (хотіли 7). Прийшло 700 — нас зрозуміли так само. */
-ok('назад те саме число → мінорні одиниці', verdict(700, 700).units === 'minor');
-/* Прийшло 70000 — наші 700 узяли за 700 цілих, тобто у сто разів більше. */
-ok('назад у сто разів більше → ціла валюта', verdict(700, 70000).units === 'major');
-/* Facebook міг і не віддати поле: це «не знаємо», а не «немає ліміту». */
-ok('поля немає → одиниці не вгадуються', verdict(700, null).units === 'unknown');
-/* Будь-яке третє число — теж «не знаємо». Вгадати тут означало б
-   показати людині впевнену відповідь, якої ніхто не перевіряв. */
-ok('чуже число → не вгадуємо', verdict(700, 12345).units === 'unknown');
-/* Округлення Facebook на одиницю не повинне перетворювати вердикт у
-   «не знаємо»: це той самий результат. */
-ok('похибка в одиницю не ламає вердикт', verdict(700, 701).units === 'minor');
+/* Просили $15 → послали 15 (ціла валюта) → чекаємо назад 1500. */
+ok('назад очікуване число → усе правильно, виправляти нічого',
+  verdict(1500, 1500).units === 'major' && verdict(1500, 1500).fix === 0);
+/* У сто разів МЕНШЕ — кабінет прочитав запис як центи, і стеля вийшла
+   $0.15 замість $15. Це спиняє доставку, тож виправляємо. */
+ok('назад у сто разів менше → стеля занизька, виправляємо',
+  verdict(1500, 15).units === 'minor' && verdict(1500, 15).fix === 1500);
+/* Facebook міг і не віддати поле: це «не знаємо», а не «усе гаразд». */
+ok('поля немає → не вгадуємо', verdict(1500, null).units === 'unknown');
+ok('чуже число → не вгадуємо', verdict(1500, 12345).units === 'unknown');
+/* Великі суми Facebook округлює по-своєму: відсоток різниці не має
+   перетворювати правильний результат у «не знаємо». */
+ok('округлення у відсоток не ламає вердикт',
+  verdict(1000000, 1009000).units === 'major');
 ok('кожен вердикт має текст для людини',
-  ['minor', 'major', 'unknown'].every(u => {
-    const r = [verdict(700, 700), verdict(700, 70000), verdict(700, 12345)]
-      .find(x => x.units === u);
-    return r && typeof r.note === 'string' && r.note.length > 10;
-  }));
+  [verdict(1500, 1500), verdict(1500, 15), verdict(1500, 12345)]
+    .every(r => typeof r.note === 'string' && r.note.length > 10));
 
 /* ── 2. запобіжники ── */
 
 const iScope  = FN.indexOf("includes('ads_management')");
 const iNoCap  = FN.indexOf('!capNow && !allowNew');
-const iSpent  = FN.indexOf('sent <= spentNow');
+/* Порівнюється те, що СТАНЕ стелею в мінорних одиницях, із уже
+   витраченим у тих самих: мішати тут валюту з центами означало б
+   пропустити стелю, яка спиняє кабінет. */
+const iSpent  = FN.indexOf('wantBack <= spentNow');
 /* Єдиний запис живе у put(): і перший, і виправлення йдуть через
    нього, тож «до запису» рахується саме від цього місця. */
 const iWrite  = FN.indexOf("{ spend_cap: String(v) }, 'POST'");
@@ -89,7 +91,7 @@ ok('act_ дописується, якщо його не передали', /star
 ok('після запису стеля читається назад', FN.indexOf('capBack') > iWrite);
 ok('у відповіді є чим повернути як було', /restore:/.test(FN));
 ok('перевищення в рази виноситься в warning',
-  /capBack > Math\.round\(setMajor \* MINOR\) \* 10/.test(FN) && /warning:/.test(FN));
+  /capBack > wantBack \* 10/.test(FN) && /warning:/.test(FN));
 ok('добовий ліміт Facebook названий своїми словами',
   /1885172/.test(FN) && /10 змін/.test(FN));
 ok('advertiser проти admin сказано там, де це болить',
@@ -107,8 +109,15 @@ ok('видалення стелі функція не обіцяє', !/spend_cap
    коли одиниці не ті; залишена завищеною стеля коштувала б грошей. */
 ok('після запису стеля читається назад тим самим викликом',
   /const put = async/.test(CODE) && /fields: ACC_FIELDS/.test(CODE));
-ok("'major' виправляється другим записом, а не повідомленням",
-  /verdict\.units === 'major'/.test(CODE) && /put\(Math\.round\(setMajor\)\)/.test(CODE));
+ok('виправлення — другий запис, а не повідомлення',
+  /if \(verdict\.fix\)/.test(CODE) && /put\(verdict\.fix\)/.test(CODE));
+/* Головне, що дав живий кабінет: на запис Facebook бере ЦІЛУ ВАЛЮТУ.
+   Поки слали центи, стеля виходила в сто разів більшою — вписав 15,
+   отримав 1500. */
+ok('у Facebook іде ціла валюта, а не центи',
+  /const sent = Math\.round\(setMajor\);/.test(CODE));
+ok('назад чекаємо мінорні одиниці',
+  /const wantBack = Math\.round\(setMajor \* MINOR\);/.test(CODE));
 ok('після виправлення результат звіряється ще раз',
   /після виправлення назад прийшло/.test(FN));
 ok('у відповіді видно, що виправляли', /fixed,/.test(CODE));

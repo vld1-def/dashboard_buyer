@@ -219,7 +219,8 @@ function pgRowHtml(r) {
             сторінки з кожного завантаження аватарки. */
         r.pic ? `<img class="pg-pic" src="${pgEsc(r.pic)}" alt="" loading="lazy"
                    referrerpolicy="no-referrer" onerror="this.remove()">`
-              : '<span class="pg-pic is-none"></span>'}
+              : `<span class="pg-pic is-none">${pgEsc(
+                   String(r.name || '?').trim().charAt(0).toUpperCase())}</span>`}
       <span class="pg-name">${pgEsc(r.name || '#' + r.page_id)}</span>
       <span class="pg-tags">
         ${r.can_moderate ? '' : '<span class="fcm-tag">read only</span>'}

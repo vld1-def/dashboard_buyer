@@ -350,6 +350,73 @@ ok('немає бакета — сказано, що виконати', /POST_IM
     /SERVICE_ROLE_KEY is not set/.test(FN));
 }
 
+/* ─────────── список Сторінок із лого ───────────
+
+   У select картинки не покладеш, а Сторінки впізнають по лого швидше,
+   ніж по назві. Видимий список — кнопки; значення лишається у
+   прихованому select, щоб решта коду читала його так само.
+
+   Лого приходить другим запитом і може не прийти зовсім (функція не
+   перезадеплоєна, Facebook не віддав). Список не має права від цього
+   зникнути — лишаються літери. */
+await boot({ tables: {
+  fb_cabinet_pages: { data: [
+    { page_id: '1', page_name: 'Lucky KG', can_moderate: true },
+    { page_id: '2', page_name: 'Alpha UZ', can_moderate: true }
+  ], error: null },
+  fb_posts: { data: [], error: null } } });
+
+/* Шукаємо по data-id, а не по місцю: список сортується за назвою, і
+   прив'язка до порядку ламала б перевірку на кожному перейменуванні. */
+const pickOf = id => `#ps-pages .ps-page-pick[data-id="${id}"]`;
+const picks = await page.evaluate(sel => {
+  const btns = [...document.querySelectorAll('#ps-pages .ps-page-pick')];
+  const letter = id => {
+    const e = document.querySelector(sel.replace('%', id) + ' .ps-page-pic.is-none');
+    return e ? e.textContent : null;
+  };
+  return { n: btns.length,
+           on: btns.filter(b => b.classList.contains('is-on')).length,
+           lucky: letter('1'), alpha: letter('2'),
+           hidden: document.getElementById('ps-page').hidden,
+           value: document.getElementById('ps-page').value };
+}, '#ps-pages .ps-page-pick[data-id="%"]');
+ok('кожна Сторінка — своя кнопка в списку', picks.n === 2, picks);
+ok('вибрана рівно одна', picks.on === 1, picks);
+ok('select лишився, але схований — решта коду читає його як раніше',
+  picks.hidden === true && !!picks.value, picks);
+/* Лого ще не приїхало: замість темного квадрата — перша літера. */
+ok('без лого стоїть літера, а не порожній квадрат',
+  picks.lucky === 'L' && picks.alpha === 'A', picks);
+
+const switched = await page.evaluate(sel => {
+  psPickPage('1');
+  return { value: document.getElementById('ps-page').value,
+           onLucky: document.querySelector(sel.replace('%', '1')).classList.contains('is-on'),
+           onAlpha: document.querySelector(sel.replace('%', '2')).classList.contains('is-on') };
+}, '#ps-pages .ps-page-pick[data-id="%"]');
+ok('клік по Сторінці міняє саме значення', switched.value === '1', switched);
+ok('і підсвічує саме її', switched.onLucky && !switched.onAlpha, switched);
+
+/* Коли лого таки приїхало — воно стає на місце літери. Йдемо справжнім
+   шляхом: підміняємо саму функцію, яка його приносить, а не внутрішню
+   змінну — інакше стенд перевіряв би не той код, що працює. */
+const withPics = await page.evaluate(async () => {
+  pgCall = async () => ({ pages: [
+    { page_id: '1', pic: 'https://scontent.example/lucky.jpg' },
+    { page_id: '2', pic: '' } ] });
+  await psLoadPics();
+  const at = id => document.querySelector('#ps-pages .ps-page-pick[data-id="' + id + '"]');
+  const img = at('1').querySelector('img');
+  return { src: img ? img.getAttribute('src') : '',
+           quiet: img ? img.getAttribute('referrerpolicy') : '',
+           second: !!at('2').querySelector('.ps-page-pic.is-none') };
+});
+ok('лого стає на місце літери', /lucky\.jpg/.test(withPics.src), withPics);
+ok('адреса дашборда не їде у Facebook із кожним лого',
+  withPics.quiet === 'no-referrer', withPics);
+ok('у кого лого немає — лишається літера', withPics.second === true, withPics);
+
 /* ─────────── хід відправки видно ───────────
 
    Facebook відповідає не миттєво, і доти натискання виглядало як
