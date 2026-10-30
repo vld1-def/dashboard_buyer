@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 22:48">
+  <meta name="build" content="build 30.10 23:06">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6128,7 +6128,17 @@ input.ui-in[type="range"] { padding: 0; }
   border-radius: 5px; object-fit: cover;
   background: var(--surface-3); margin-right: 8px;
 }
-.pg-pic.is-none { display: inline-block; opacity: .35; }
+/* ЗАГЛУШКА — ЛІТЕРА, А НЕ КВАДРАТ. Порожній темний квадрат виглядає
+   як недовантажена картинка, тобто як поломка. Перша літера назви
+   нічого не вдає й водночас допомагає вести око по списку.
+
+   Його ж видно й тоді, коли fb-comments ще не перезадеплоєна: лого
+   тоді не приходить узагалі, і список мусить лишатись читабельним. */
+.pg-pic.is-none {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800; color: var(--text-muted);
+  background: var(--surface-3);
+}
 
 /* ЗАПИТ ПІШОВ — ЦЕ ВИДНО.
 
@@ -6192,6 +6202,32 @@ input.ui-in[type="range"] { padding: 0; }
 .ps-mini:hover { color: var(--text-main); }
 .ps-empty { padding: 36px 12px; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--text-muted); }
 /* Картинка поста: файл або адреса, і одразу видно, що саме вибрано. */
+/* СПИСОК СТОРІНОК. Смужка кнопок, що переносяться: при двох-трьох
+   Сторінках вона займає один рядок, при двадцяти — кілька, і жодна
+   назва не ховається за «…» всередині випадайки.
+
+   Вибрана підсвічена рамкою, а не лише кольором тексту: саме по ній
+   перевіряють, куди піде пост, і зробити це треба одним поглядом. */
+.ps-pages { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.ps-page-pick {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 9px 5px 5px; border-radius: 9px; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-main); font-size: 12px; font-weight: 700;
+  max-width: 230px; transition: border-color .12s, background .12s;
+}
+.ps-page-pick:hover { background: var(--surface-3); }
+.ps-page-pick.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.ps-page-pic {
+  width: 22px; height: 22px; flex: 0 0 22px;
+  border-radius: 6px; object-fit: cover; background: var(--surface-3);
+}
+.ps-page-pic.is-none {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-muted);
+}
+.ps-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .ps-img-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ps-img-row .ps-in { flex: 1; min-width: 160px; }
 .ps-file { cursor: pointer; white-space: nowrap; }
@@ -6443,7 +6479,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 22:48</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 23:06</div>
     </div>
   </aside>
 
@@ -7589,7 +7625,14 @@ input.ui-in[type="range"] { padding: 0; }
       <p class="ps-cap">Новий пост</p>
 
       <label class="ps-lbl">Сторінка</label>
-      <select id="ps-page" class="ps-in"></select>
+      <!-- СПИСОК, А НЕ ВИПАДАЙКА. У select картинки не покладеш, а
+           Сторінки впізнають по лого швидше, ніж по назві — надто
+           коли половина зветься схоже. Список видно весь одразу:
+           вибір Сторінки тут робиться раз на пост і помилитись у
+           ньому дорого. Саме значення лишається у прихованому
+           select — щоб решта коду читала його так само, як читала. -->
+      <div id="ps-pages" class="ps-pages"></div>
+      <select id="ps-page" class="ps-in" hidden></select>
       <p class="ps-hint" id="ps-page-hint"></p>
 
       <label class="ps-lbl">Текст</label>
@@ -27978,7 +28021,11 @@ function cabLimit(c) {
     return { text: '<span class="cab-na">—</span>', left: null,
              tip: 'Facebook has not sent a spending limit for this cabinet yet.' };
   const cap = Number(fb.spend_cap) || 0;
-  if (!cap) return { text: '<span class="cab-dim">No limit</span>', left: null,
+  /* Без стелі показуємо той самий формат «стеля / залишок» нулями, а
+     не слова: комірку з олівцем видно однаково в обох станах, і
+     натиснути його можна там, де стелі ще немає — саме там він і
+     потрібен найчастіше. */
+  if (!cap) return { text: '<span class="cab-dim">0 / 0</span>', left: null,
                      tip: 'No spending limit is set on this cabinet.' };
   const spent = Number(fb.amount_spent) || 0;
   const left = Math.max(0, cap - spent);
@@ -27988,7 +28035,12 @@ function cabLimit(c) {
   const tight = cap > 0 && left / cap < 0.1;
   return {
     left, tight,
-    text: `${cabMoneyCur(cap, cur)} <span class="cab-dim">· ${cabMoneyCur(left, cur)} left</span>`,
+    /* СТЕЛЯ / ЗАЛИШОК. Два числа через скісну: перше — скільки
+       дозволено всього, друге — скільки з цього ще не витрачено.
+       Слово «left» прибране: коли числа стоять поруч у сталому
+       порядку, воно не додає нічого, а місце в ряду їсть. */
+    text: `${cabMoneyCur(cap, cur)} <span class="cab-dim">/</span> `
+        + `<span class="${tight ? 'cab-lim-tight' : ''}">${cabMoneyCur(left, cur)}</span>`,
     tip: 'Spending limit ' + cabMoneyCur(cap, cur) + ', already spent against it '
        + cabMoneyCur(spent, cur) + ', left ' + cabMoneyCur(left, cur)
        + (tight ? '. Less than a tenth of the limit is left — it will stop when it runs out.' : '')
@@ -28145,7 +28197,7 @@ function cabCardOld(fb) {
                поруч, а не згадуючи про неї десь збоку. Без токена
                міняти нічим — тоді й олівця немає. */
             const can = c.fb && c.fb.token_id;
-            return cell('Limit', `<span class="${l.tight ? 'cab-lim-tight' : ''}">${l.text}</span>`
+            return cell('Limit', l.text
               + (can ? ` <button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
                    title="Change the spending limit in Facebook">\u270e</button>` : ''), l.tip);
           })()}
@@ -31398,7 +31450,8 @@ function pgRowHtml(r) {
             сторінки з кожного завантаження аватарки. */
         r.pic ? `<img class="pg-pic" src="${pgEsc(r.pic)}" alt="" loading="lazy"
                    referrerpolicy="no-referrer" onerror="this.remove()">`
-              : '<span class="pg-pic is-none"></span>'}
+              : `<span class="pg-pic is-none">${pgEsc(
+                   String(r.name || '?').trim().charAt(0).toUpperCase())}</span>`}
       <span class="pg-name">${pgEsc(r.name || '#' + r.page_id)}</span>
       <span class="pg-tags">
         ${r.can_moderate ? '' : '<span class="fcm-tag">read only</span>'}
@@ -33827,6 +33880,8 @@ window.psLoad = async function (loud) {
   }
   psPaintPages();
   psPaint();
+  // Лого — другим заходом, щоб список не чекав на ще один запит.
+  psLoadPics();
   if (loud && typeof toast === 'function') toast('Оновлено', 'ok', 1500);
 };
 
@@ -33853,6 +33908,7 @@ function psPaintPages() {
   sel.innerHTML = psPages.map(p =>
     `<option value="${psEsc(p.page_id)}">${psEsc(p.page_name || p.page_id)}</option>`).join('');
   sel.onchange = psPageHint;
+  psPaintPicks();
   psPageHint();
 }
 
@@ -34023,6 +34079,66 @@ window.psDrop = async function (id) {
 };
 
 window.psInit = psInit;
+
+
+/* ═══════════ СПИСОК СТОРІНОК ІЗ ЛОГО ═══════════
+
+   У select картинки не покладеш, а Сторінки впізнають по лого швидше,
+   ніж по назві. Тому видимий список — це кнопки, а значення й далі
+   лежить у прихованому select: решта коду (psForm, psSend) читає його
+   так само, як читала, і нічого про картинки не знає.
+
+   ЛОГО БЕРЕТЬСЯ ТІЄЮ Ж ФУНКЦІЄЮ, що й у панелі Pages. У нашій таблиці
+   fb_cabinet_pages його немає, і заводити під нього стовпець означало б
+   зберігати адресу, яка з часом протухає, — показували б старий
+   логотип саме там, де по ньому й упізнають.
+
+   Не приїхало — не біда: лишається літера. Список не має права
+   зникнути через те, що картинка не дійшла. */
+let psPics = {};
+
+function psPaintPicks() {
+  const box = document.getElementById('ps-pages');
+  const sel = document.getElementById('ps-page');
+  if (!box || !sel) return;
+  const cur = sel.value || (psPages[0] && psPages[0].page_id) || '';
+  if (sel.value !== cur) sel.value = cur;
+  box.innerHTML = psPages.map(p => {
+    const id = String(p.page_id);
+    const name = p.page_name || id;
+    const pic = psPics[id];
+    return `<button type="button" class="ps-page-pick${id === String(cur) ? ' is-on' : ''}"
+      data-id="${psEsc(id)}" onclick="psPickPage('${psEsc(id)}')" title="${psEsc(name)}">
+      ${pic ? `<img class="ps-page-pic" src="${psEsc(pic)}" alt="" loading="lazy"
+                 referrerpolicy="no-referrer" onerror="this.remove()">`
+            : `<span class="ps-page-pic is-none">${psEsc(
+                 String(name).trim().charAt(0).toUpperCase())}</span>`}
+      <span class="ps-page-name">${psEsc(name)}</span></button>`;
+  }).join('');
+}
+
+window.psPickPage = function (id) {
+  const sel = document.getElementById('ps-page');
+  if (!sel) return;
+  sel.value = String(id);
+  psPaintPicks();
+  psPageHint();
+};
+
+/* Лого докладаємо ПІСЛЯ того, як список уже на екрані: він не має
+   чекати на другий запит, а якщо той не дійде — просто лишиться з
+   літерами. Тому жодного throw назовні. */
+async function psLoadPics() {
+  if (typeof pgCall !== 'function') return;
+  try {
+    const j = await pgCall({ action: 'pages' });
+    const got = {};
+    (j.pages || []).forEach(p => { if (p.pic) got[String(p.page_id)] = p.pic; });
+    if (!Object.keys(got).length) return;
+    psPics = got;
+    psPaintPicks();
+  } catch (_e) { /* немає лого — лишаються літери */ }
+}
 </script>
 
 <!-- ═══════════ ФАЙЛИ ═══════════

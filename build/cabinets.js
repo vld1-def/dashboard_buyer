@@ -2320,7 +2320,11 @@ function cabLimit(c) {
     return { text: '<span class="cab-na">—</span>', left: null,
              tip: 'Facebook has not sent a spending limit for this cabinet yet.' };
   const cap = Number(fb.spend_cap) || 0;
-  if (!cap) return { text: '<span class="cab-dim">No limit</span>', left: null,
+  /* Без стелі показуємо той самий формат «стеля / залишок» нулями, а
+     не слова: комірку з олівцем видно однаково в обох станах, і
+     натиснути його можна там, де стелі ще немає — саме там він і
+     потрібен найчастіше. */
+  if (!cap) return { text: '<span class="cab-dim">0 / 0</span>', left: null,
                      tip: 'No spending limit is set on this cabinet.' };
   const spent = Number(fb.amount_spent) || 0;
   const left = Math.max(0, cap - spent);
@@ -2330,7 +2334,12 @@ function cabLimit(c) {
   const tight = cap > 0 && left / cap < 0.1;
   return {
     left, tight,
-    text: `${cabMoneyCur(cap, cur)} <span class="cab-dim">· ${cabMoneyCur(left, cur)} left</span>`,
+    /* СТЕЛЯ / ЗАЛИШОК. Два числа через скісну: перше — скільки
+       дозволено всього, друге — скільки з цього ще не витрачено.
+       Слово «left» прибране: коли числа стоять поруч у сталому
+       порядку, воно не додає нічого, а місце в ряду їсть. */
+    text: `${cabMoneyCur(cap, cur)} <span class="cab-dim">/</span> `
+        + `<span class="${tight ? 'cab-lim-tight' : ''}">${cabMoneyCur(left, cur)}</span>`,
     tip: 'Spending limit ' + cabMoneyCur(cap, cur) + ', already spent against it '
        + cabMoneyCur(spent, cur) + ', left ' + cabMoneyCur(left, cur)
        + (tight ? '. Less than a tenth of the limit is left — it will stop when it runs out.' : '')
@@ -2487,7 +2496,7 @@ function cabCardOld(fb) {
                поруч, а не згадуючи про неї десь збоку. Без токена
                міняти нічим — тоді й олівця немає. */
             const can = c.fb && c.fb.token_id;
-            return cell('Limit', `<span class="${l.tight ? 'cab-lim-tight' : ''}">${l.text}</span>`
+            return cell('Limit', l.text
               + (can ? ` <button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
                    title="Change the spending limit in Facebook">\u270e</button>` : ''), l.tip);
           })()}

@@ -194,6 +194,8 @@ window.psLoad = async function (loud) {
   }
   psPaintPages();
   psPaint();
+  // Лого — другим заходом, щоб список не чекав на ще один запит.
+  psLoadPics();
   if (loud && typeof toast === 'function') toast('Оновлено', 'ok', 1500);
 };
 
@@ -220,6 +222,7 @@ function psPaintPages() {
   sel.innerHTML = psPages.map(p =>
     `<option value="${psEsc(p.page_id)}">${psEsc(p.page_name || p.page_id)}</option>`).join('');
   sel.onchange = psPageHint;
+  psPaintPicks();
   psPageHint();
 }
 
@@ -390,3 +393,63 @@ window.psDrop = async function (id) {
 };
 
 window.psInit = psInit;
+
+
+/* ═══════════ СПИСОК СТОРІНОК ІЗ ЛОГО ═══════════
+
+   У select картинки не покладеш, а Сторінки впізнають по лого швидше,
+   ніж по назві. Тому видимий список — це кнопки, а значення й далі
+   лежить у прихованому select: решта коду (psForm, psSend) читає його
+   так само, як читала, і нічого про картинки не знає.
+
+   ЛОГО БЕРЕТЬСЯ ТІЄЮ Ж ФУНКЦІЄЮ, що й у панелі Pages. У нашій таблиці
+   fb_cabinet_pages його немає, і заводити під нього стовпець означало б
+   зберігати адресу, яка з часом протухає, — показували б старий
+   логотип саме там, де по ньому й упізнають.
+
+   Не приїхало — не біда: лишається літера. Список не має права
+   зникнути через те, що картинка не дійшла. */
+let psPics = {};
+
+function psPaintPicks() {
+  const box = document.getElementById('ps-pages');
+  const sel = document.getElementById('ps-page');
+  if (!box || !sel) return;
+  const cur = sel.value || (psPages[0] && psPages[0].page_id) || '';
+  if (sel.value !== cur) sel.value = cur;
+  box.innerHTML = psPages.map(p => {
+    const id = String(p.page_id);
+    const name = p.page_name || id;
+    const pic = psPics[id];
+    return `<button type="button" class="ps-page-pick${id === String(cur) ? ' is-on' : ''}"
+      data-id="${psEsc(id)}" onclick="psPickPage('${psEsc(id)}')" title="${psEsc(name)}">
+      ${pic ? `<img class="ps-page-pic" src="${psEsc(pic)}" alt="" loading="lazy"
+                 referrerpolicy="no-referrer" onerror="this.remove()">`
+            : `<span class="ps-page-pic is-none">${psEsc(
+                 String(name).trim().charAt(0).toUpperCase())}</span>`}
+      <span class="ps-page-name">${psEsc(name)}</span></button>`;
+  }).join('');
+}
+
+window.psPickPage = function (id) {
+  const sel = document.getElementById('ps-page');
+  if (!sel) return;
+  sel.value = String(id);
+  psPaintPicks();
+  psPageHint();
+};
+
+/* Лого докладаємо ПІСЛЯ того, як список уже на екрані: він не має
+   чекати на другий запит, а якщо той не дійде — просто лишиться з
+   літерами. Тому жодного throw назовні. */
+async function psLoadPics() {
+  if (typeof pgCall !== 'function') return;
+  try {
+    const j = await pgCall({ action: 'pages' });
+    const got = {};
+    (j.pages || []).forEach(p => { if (p.pic) got[String(p.page_id)] = p.pic; });
+    if (!Object.keys(got).length) return;
+    psPics = got;
+    psPaintPicks();
+  } catch (_e) { /* немає лого — лишаються літери */ }
+}

@@ -12,12 +12,18 @@
    те, чого ніхто не дозволяв; стеля $1 замість $100 — це кабінет,
    який стає посеред дня.
 
-   Пишемо число в мінорних одиницях (так воно приходить на читанні).
-   Якщо назад прийшло те саме — вгадали, кінець. Якщо прийшло в сто
-   разів більше — Facebook прийняв наші центи за цілу валюту, і тоді
-   одразу шлемо число в цілій валюті, після чого читаємо ще раз.
-   Відповідь Facebook — єдине джерело, якому тут можна вірити, і
-   звірка коштує дешевше за будь-яке припущення.
+   ВІДПОВІДЬ ВІДОМА З ЖИВОГО КАБІНЕТА: на ЗАПИС Facebook бере
+   spend_cap у ЦІЛІЙ ВАЛЮТІ, а на читанні віддає мінорні одиниці.
+   Перевірено так: у поле вписали 15, функція послала 1500 (як центи),
+   і стеля стала 1500 доларів.
+
+   Тому пишемо одразу цілу валюту. Це не просто правильніше — це
+   прибирає сам проміжок, у якому стеля стояла завищеною в сто разів:
+   перший же запит ставить рівно те, що просили.
+
+   Звірка лишається, бо припущення, яке ніхто не перевіряє, одного дня
+   стає неправдою мовчки. Якщо назад прийшло вчетверо не те — функція
+   виправляє другим записом і каже про це у відповіді.
 
    ЦІНА САМОПЕРЕВІРКИ — ЩЕ ОДНА ЗМІНА З ДЕСЯТИ ДОБОВИХ, і то лише
    тоді, коли одиниці не ті. Проміжок, у який стеля стоїть завищеною,
@@ -96,7 +102,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-10-30.4';
+const FN_VERSION = '2026-10-31.1';
 
 /* Скільком мінорним одиницям дорівнює одиниця валюти. Для JPY це 1, і
    тоді вся арифметика нижче інша — тому валюту ми не вгадуємо, а
@@ -143,22 +149,32 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/* Головне питання проби. Ми надіслали sent (мінорні одиниці). Якщо
-   Facebook зрозумів нас так само — назад прийде те саме число. Якщо
-   він прийняв наші 700 за 700 цілих — назад прийде 70000. Третього
-   очікуваного варіанта немає, тож усе інше ми НЕ вгадуємо, а
-   показуємо як є. */
-function unitVerdict(sent: number, back: number | null) {
-  if (back === null) return { units: 'unknown',
-    note: 'Facebook не віддав spend_cap назад — одиниці проба не визначила' };
-  if (Math.abs(back - sent) <= 1) return { units: 'minor',
-    note: 'spend_cap на запис — у мінорних одиницях (центах), як і на читанні' };
-  if (Math.abs(back - sent * MINOR) <= MINOR) return { units: 'major',
-    note: 'spend_cap на запис — у цілій валюті: наші ' + sent + ' Facebook прийняв за '
-        + sent + ' ' + 'цілих, а не за ' + (sent / MINOR) };
-  return { units: 'unknown',
-    note: 'назад прийшло ' + back + ', а це не збігається ні з ' + sent
-        + ', ні з ' + sent * MINOR + ' — не вгадуємо, дивись raw нижче' };
+/* ЩО ВИЙШЛО З ЗАПИСУ.
+
+   Ми надіслали число в ЦІЛІЙ ВАЛЮТІ (так Facebook бере його на
+   запис), а на читанні він віддає мінорні одиниці. Отже назад має
+   прийти те саме, помножене на сто, — це `want`.
+
+   Якщо натомість прийшло у сто разів менше, цей кабінет прочитав наш
+   запис як центи, і стеля зараз ЗАНИЗЬКА. Це небезпечніший бік:
+   занизька стеля спиняє доставку, тоді як зависока лише дозволяє
+   зайве. Тому її виправляють, а не повідомляють.
+
+   Усе інше — «не знаємо». Вгадати тут означало б показати людині
+   впевнену відповідь, якої ніхто не перевіряв. */
+function capVerdict(want: number, back: number | null) {
+  if (back === null) return { units: 'unknown', fix: 0,
+    note: 'Facebook не віддав spend_cap назад — що саме стоїть, не видно' };
+  // Відсоток, а не одиниця: великі суми Facebook округлює по-своєму.
+  const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(1, b * 0.01);
+  if (near(back, want)) return { units: 'major', fix: 0,
+    note: 'spend_cap на запис — у цілій валюті, як і очікувалось' };
+  if (near(back, Math.round(want / MINOR))) return { units: 'minor', fix: want,
+    note: 'цей кабінет прочитав запис як центи — стеля вийшла в сто разів '
+        + 'нижчою, виправляємо другим записом' };
+  return { units: 'unknown', fix: 0,
+    note: 'назад прийшло ' + back + ', а чекали ' + want
+        + ' — не вгадуємо, перевір стелю в Ads Manager' };
 }
 
 Deno.serve(async (req) => {
@@ -268,13 +284,13 @@ Deno.serve(async (req) => {
       needs_confirm: 'new_cap', before: shape }, 409);
   }
 
-  /* Надсилаємо в тих одиницях, у яких читаємо. Якщо вгадали — назад
-     прийде те саме число; якщо ні — у сто разів більше, і проба це
-     побачить. */
-  const sent = Math.round(setMajor * MINOR);
+  /* Надсилаємо ЦІЛУ ВАЛЮТУ — так її бере Facebook на запис. Назад
+     чекаємо мінорні одиниці, тобто в сто разів більше число. */
+  const sent = Math.round(setMajor);
+  const wantBack = Math.round(setMajor * MINOR);
 
-  if (spentNow !== null && sent <= spentNow) {
-    return reply({ error: 'стеля ' + sent + ' не вище вже витраченого ' + spentNow
+  if (spentNow !== null && wantBack <= spentNow) {
+    return reply({ error: 'стеля ' + wantBack + ' не вище вже витраченого ' + spentNow
       + ' — такий запис або відкинуть, або кабінет стане негайно. Це дія fb-pause, '
       + 'і робити її треба там, де воно так і називається. Візьми set_major більше '
       + 'за ' + (spentNow / MINOR) + ' ' + (cur || ''), before: shape }, 409);
@@ -297,31 +313,24 @@ Deno.serve(async (req) => {
 
   let capBack: number | null;
   try { capBack = await put(sent); } catch (e) { return fail(e); }
-  let verdict = unitVerdict(sent, capBack);
+  let verdict = capVerdict(wantBack, capBack);
   let fixed = false;
 
-  /* ВИЙШЛО В СТО РАЗІВ БІЛЬШЕ — ВИПРАВЛЯЄМО ОДРАЗУ, а не кажемо про
-     це людині. Facebook прийняв наші центи за цілу валюту, отже
-     потрібне число — саме setMajor. Другий запит коштує ще однієї
-     зміни з десяти добових; залишена завищеною стеля коштувала б
-     грошей. */
-  if (verdict.units === 'major') {
-    try { capBack = await put(Math.round(setMajor)); } catch (e) { return fail(e); }
+  if (verdict.fix) {
+    try { capBack = await put(verdict.fix); } catch (e) { return fail(e); }
     fixed = true;
-    /* Після виправлення назад має прийти рівно те, що просили — у
-       мінорних одиницях читання. Якщо ні, мовчати про це не можна:
-       далі йде warning, і він тепер уже не теорія. */
-    verdict = Math.abs((capBack ?? -1) - Math.round(setMajor * MINOR)) <= MINOR
-      ? { units: 'major', note: 'spend_cap на запис — у цілій валюті; '
-          + 'перший запит пішов у центах, виправлено другим' }
-      : { units: 'unknown', note: 'після виправлення назад прийшло ' + capBack
-          + ' — це не те, що просили; дивись raw і перевір стелю в Ads Manager' };
+    const again = capVerdict(wantBack, capBack);
+    verdict = again.units === 'major'
+      ? { units: 'minor', fix: 0, note: verdict.note + ' \u2014 виправлено' }
+      : { units: 'unknown', fix: 0,
+          note: 'після виправлення назад прийшло ' + capBack
+              + ' — це не те, що просили; перевір стелю в Ads Manager' };
   }
 
   /* Якщо вийшло в рази більше, ніж просили, — це не деталь, а головна
      новина відповіді. Проба для того й існує, щоб це сталось на одному
      кабінеті, а не на всіх. */
-  const overshoot = capBack !== null && capBack > Math.round(setMajor * MINOR) * 10
+  const overshoot = capBack !== null && capBack > wantBack * 10
     ? 'УВАГА: стеля вийшла ' + (capBack / MINOR) + ' ' + cur + ', а просили '
       + setMajor + ' ' + cur + '. Поверни як було ТИМ ЖЕ викликом із set_major: '
       + (capNow !== null ? capNow / MINOR : '<як було>')
