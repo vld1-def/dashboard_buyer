@@ -220,14 +220,26 @@ function whyDenied(pageId: string, name: string,
 /* Сторінки, які системний користувач має, і з якими завданнями. Один
    запит на весь виклик: це й діагноз, і відповідь на питання «а чому
    не працює». */
+/* АВАТАР СТОРІНКИ ПРИЇЖДЖАЄ ТИМ САМИМ ЗАПИТОМ.
+
+   picture{url} — це розгортання поля в тому ж виклику /me/accounts, а
+   не окремий запит на кожну Сторінку: двадцять Сторінок інакше
+   означали б двадцять зайвих походів у Graph щоразу, коли відкрили
+   панель.
+
+   Адресу віддаємо як є, нічого не кешуючи: вона вказує на CDN
+   Facebook і з часом міняється. Збережена копія рано чи пізно почала б
+   показувати старий логотип — а саме по ньому Сторінку й упізнають. */
 async function myPages(token: string):
-    Promise<{ mine: Map<string, { name: string; tasks: string[] }>; failed: string }> {
-  const mine = new Map<string, { name: string; tasks: string[] }>();
+    Promise<{ mine: Map<string, { name: string; tasks: string[]; pic: string }>; failed: string }> {
+  const mine = new Map<string, { name: string; tasks: string[]; pic: string }>();
   try {
-    const j = await graph('/me/accounts', token, { fields: 'id,name,tasks', limit: 200 });
+    const j = await graph('/me/accounts', token,
+      { fields: 'id,name,tasks,picture{url}', limit: 200 });
     (Array.isArray(j.data) ? j.data : []).forEach((x: Json) => mine.set(String(x.id), {
       name: String(x.name || x.id),
-      tasks: Array.isArray(x.tasks) ? x.tasks.map(String) : []
+      tasks: Array.isArray(x.tasks) ? x.tasks.map(String) : [],
+      pic: String(x?.picture?.data?.url || '')
     }));
     return { mine, failed: '' };
   } catch (e) {
@@ -628,7 +640,8 @@ async function handle(req: Request): Promise<Response> {
 const PAGE_POSTS = 15;
 
 type PgRow = { page_id: string; name: string; tasks: string[];
-               can_moderate: boolean; token: string; token_label: string };
+               can_moderate: boolean; pic: string;
+               token: string; token_label: string };
 
 /* Сторінки, які мають ТОКЕНИ ЦІЄЇ ЛЮДИНИ. Не «усі Сторінки бізнесу»:
    у дашборді кілька людей, і токени в них різні.
@@ -660,7 +673,7 @@ async function pagesOf(base: string, hdr: Json, me: string):
          дає БІЛЬШЕ прав: інакше випадковий порядок рядків вирішував
          би, чи можна тут прибрати коментар. */
       if (!had || (can && !had.can_moderate)) out.set(id, {
-        page_id: id, name: v.name, tasks: v.tasks, can_moderate: can,
+        page_id: id, name: v.name, tasks: v.tasks, can_moderate: can, pic: v.pic,
         token: String(t.token), token_label: String(t.label || '')
       });
     });
@@ -686,7 +699,8 @@ async function byPage(base: string, hdr: Json, me: string,
       .sort((a, b) => (b.can_moderate ? 1 : 0) - (a.can_moderate ? 1 : 0)
                    || a.name.localeCompare(b.name))
       .map(p => ({ page_id: p.page_id, name: p.name, tasks: p.tasks,
-                   can_moderate: p.can_moderate, token: p.token_label })),
+                   can_moderate: p.can_moderate, pic: p.pic || '',
+                   token: p.token_label })),
     problems: problems.slice(0, 5)
   });
 

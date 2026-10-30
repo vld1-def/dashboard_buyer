@@ -209,6 +209,17 @@ function pgRowHtml(r) {
       title="${r.can_moderate
         ? 'Read and moderate what people write under this Page'
         : 'Read only: this token was not given the Moderate content task on this Page'}">
+      ${/* АВАТАР. Сторінки впізнають по лого швидше, ніж по назві —
+            особливо коли їх двадцять і половина зветься схоже.
+
+            Адреса веде на CDN Facebook і з часом протухає. Тому
+            onerror прибирає саме зображення, а не ламає рядок: краще
+            список без картинок, ніж список із порожніми рамками.
+            referrerpolicy — щоб Facebook не діставав адресу нашої
+            сторінки з кожного завантаження аватарки. */
+        r.pic ? `<img class="pg-pic" src="${pgEsc(r.pic)}" alt="" loading="lazy"
+                   referrerpolicy="no-referrer" onerror="this.remove()">`
+              : '<span class="pg-pic is-none"></span>'}
       <span class="pg-name">${pgEsc(r.name || '#' + r.page_id)}</span>
       <span class="pg-tags">
         ${r.can_moderate ? '' : '<span class="fcm-tag">read only</span>'}

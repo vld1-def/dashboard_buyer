@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 30.10 22:29">
+  <meta name="build" content="build 30.10 22:48">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6105,6 +6105,31 @@ input.ui-in[type="range"] { padding: 0; }
 .ps-btn.is-main:hover { filter: brightness(1.08); }
 .ps-btn:disabled { opacity: .55; cursor: default; }
 
+/* ОЛІВЕЦЬ БІЛЯ СТЕЛІ. Стоїть у самій комірці, поруч із числом: стелю
+   міняють, дивлячись на неї й на залишок, а не згадуючи про кнопку
+   десь збоку. Тьмяний, поки на картку не навели, — щоб не тягнув
+   увагу на себе в ряду, де головне числа. */
+.cab-lim-ed {
+  margin-left: 6px; padding: 0 3px; border: 0; background: none;
+  color: var(--text-muted); font-size: 11px; line-height: 1;
+  cursor: pointer; opacity: .45; transition: opacity .12s, color .12s;
+}
+.cab-lim-ed:hover { opacity: 1; color: var(--accent); }
+
+/* АВАТАР СТОРІНКИ. Квадрат зі скругленням, а не коло: у Facebook лого
+   Сторінок квадратні, і коло зрізало б їм кути — саме ті, де в
+   половини брендів літера.
+
+   Заглушка тієї ж ширини стоїть там, де аватарки немає: інакше назви
+   в списку їхали б на різну відстань від краю, і рівного стовпчика
+   не вийшло б. */
+.pg-pic {
+  width: 20px; height: 20px; flex: 0 0 20px;
+  border-radius: 5px; object-fit: cover;
+  background: var(--surface-3); margin-right: 8px;
+}
+.pg-pic.is-none { display: inline-block; opacity: .35; }
+
 /* ЗАПИТ ПІШОВ — ЦЕ ВИДНО.
 
    Facebook відповідає не миттєво, і без цього кільця натискання
@@ -6418,7 +6443,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 22:29</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 30.10 22:48</div>
     </div>
   </aside>
 
@@ -28115,7 +28140,14 @@ function cabCardOld(fb) {
               пояснює. Залишок менший за десяту частину стелі
               підсвічуємо: саме тут кабінет спиняється посеред дня. */
           (() => { const l = cabLimit(c);
-            return cell('Limit', `<span class="${l.tight ? 'cab-lim-tight' : ''}">${l.text}</span>`, l.tip);
+            /* Олівець стоїть у самій комірці, а не окремою кнопкою в
+               ряду: стелю міняють, дивлячись саме на неї й на залишок
+               поруч, а не згадуючи про неї десь збоку. Без токена
+               міняти нічим — тоді й олівця немає. */
+            const can = c.fb && c.fb.token_id;
+            return cell('Limit', `<span class="${l.tight ? 'cab-lim-tight' : ''}">${l.text}</span>`
+              + (can ? ` <button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
+                   title="Change the spending limit in Facebook">\u270e</button>` : ''), l.tip);
           })()}
         ${/* За чиїм годинником цей кабінет вважає «сьогодні». Без цього
               рядка розбіжність зі спендом в Ads Manager виглядає як
@@ -28595,6 +28627,111 @@ document.addEventListener('click', e => {
 
 window.cabInit = cabInit;
 window.cabRefresh = cabRefresh;
+
+
+/* ═══════════ СТЕЛЯ ВИТРАТ — ЗМІНА ═══════════
+
+   Міняє spend_cap у Facebook через функцію fb-limit. Сам токен сюди
+   не потрапляє: звідси йде лише номер кабінета й число.
+
+   ТРИ РЕЧІ, ЯКІ ТУТ ВАЖАТЬ БІЛЬШЕ ЗА ЗРУЧНІСТЬ:
+
+   1. Видно БУЛО і СТАНЕ. Зайвий нуль у цьому полі — це гроші, і
+      єдине, що стоїть між друкарською помилкою й витратами, — екран,
+      де обидва числа поруч.
+
+   2. Підняти й опустити — різні дії. Підняття дозволяє витрачати
+      більше, тому воно червоне; опускання лише гальмує.
+
+   3. Account без стелі питається окремо: поставити ми вміємо,
+      прибрати назад — ні, і мовчки залишати кабінет із лімітом,
+      якого в нього не було, не можна.
+
+   Одиниці звіряє сама функція: пише, читає назад і виправляє, якщо
+   Facebook зрозумів число інакше. Сюди це доходить уже як результат,
+   а не як питання. */
+window.cabLimitEdit = async function (enc) {
+  const id = decodeURIComponent(enc || '');
+  const c = cabAll.find(x => String(x.id) === String(id));
+  if (!c || !c.fb) return;
+
+  /* ОДИНИЦІ. У базі spend_cap і amount_spent лежать у ЦІЛІЙ ВАЛЮТІ:
+     fb-sync ділить відповідь Graph на сто (функція cents). А Graph і
+     наша fb-limit говорять мінорними одиницями. Через цю межу число
+     переходить рівно двічі — тут і на поверненні відповіді, — і
+     обидва рази це написано поруч: помилка в сто разів тут коштує
+     грошей, і я вже раз її тут зробив. */
+  const cur = c.fb.currency || '';
+  const cap = Number(c.fb.spend_cap) || 0;        // валюта, не центи
+  const spent = Number(c.fb.amount_spent) || 0;   // так само
+  const m = v => cabMoneyCur(v, cur);
+
+  const raw = await ask({ title: 'Spending limit \u00b7 ' + id, ok: 'Next',
+    body: (cap ? 'Now ' + m(cap) + ', already spent against it ' + m(spent) + '.'
+               : 'No limit on this cabinet right now.')
+        + '\n\nFacebook allows 10 limit changes per cabinet per day.',
+    input: { value: cap ? String(cap) : '', placeholder: '1000' } });
+  if (raw === false) return;
+
+  const want = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(want) || want <= 0) {
+    toast('Not a limit: ' + raw, 'error');
+    return;
+  }
+  if (Math.abs(want - cap) < 0.005) return;              // те саме число
+
+  /* Стеля на рівні витраченого або нижче спиняє кабінет негайно.
+     Функція це теж не пропустить, але сказати треба ТУТ: інакше
+     людина дізнається про межу після натискання, а не замість. */
+  if (want <= spent) {
+    toast('A limit of ' + m(want) + ' is at or below the ' + m(spent)
+      + ' already spent \u2014 the cabinet would stop at once. Stopping is what '
+      + 'the pause button is for.', 'error', 9000);
+    return;
+  }
+
+  const up = want > cap;
+  const go = await ask({ title: 'Change the limit?', ok: 'Change', danger: up,
+    body: id + '\n\n' + (cap ? m(cap) : 'no limit') + '  \u2192  ' + m(want)
+        + '\n\n' + (cap && up
+            ? 'It becomes free to spend more as soon as Facebook accepts this.'
+            : cap ? 'Delivery stops once this is reached.'
+                  : 'This cabinet has no limit now. Setting one is possible; '
+                    + 'removing it again is not \u2014 that was never tested.') });
+  if (!go) return;
+
+  const step = toastStep();
+  step.say('Asking Facebook\u2026');
+  try {
+    const { data: s } = await sb.auth.getSession();
+    const jwt = s && s.session && s.session.access_token;
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-limit', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + jwt, apikey: SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ account_id: String(id), set_major: want,
+                             allow_new_cap: !cap })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(res.status === 404
+      ? 'Function fb-limit is not deployed yet: supabase functions deploy fb-limit'
+      : (j.error || 'HTTP ' + res.status));
+
+    /* Показуємо те, що Facebook ВІДДАВ, а не те, що ми просили: вони
+       збігаються майже завжди, і саме тому розбіжність варто бачити. */
+    /* cap_after приходить таким, як його віддав Graph — у мінорних
+       одиницях. Ділимо: у базі й на екрані валюта. */
+    const back = Number(j.cap_after);
+    c.fb.spend_cap = Number.isFinite(back) ? back / 100 : want;
+    step.done('Limit is now ' + m(c.fb.spend_cap)
+      + (j.fixed ? ' \u00b7 units corrected on the second try' : ''), 'ok');
+    if (j.warning) toast(String(j.warning), 'warn', 12000);
+    cabRender();
+    if (typeof cabDetail === 'function') cabDetail(c);
+  } catch (e) {
+    step.done(String(e.message || e), 'error');
+  }
+};
 </script>
 
 <script>
@@ -31251,6 +31388,17 @@ function pgRowHtml(r) {
       title="${r.can_moderate
         ? 'Read and moderate what people write under this Page'
         : 'Read only: this token was not given the Moderate content task on this Page'}">
+      ${/* АВАТАР. Сторінки впізнають по лого швидше, ніж по назві —
+            особливо коли їх двадцять і половина зветься схоже.
+
+            Адреса веде на CDN Facebook і з часом протухає. Тому
+            onerror прибирає саме зображення, а не ламає рядок: краще
+            список без картинок, ніж список із порожніми рамками.
+            referrerpolicy — щоб Facebook не діставав адресу нашої
+            сторінки з кожного завантаження аватарки. */
+        r.pic ? `<img class="pg-pic" src="${pgEsc(r.pic)}" alt="" loading="lazy"
+                   referrerpolicy="no-referrer" onerror="this.remove()">`
+              : '<span class="pg-pic is-none"></span>'}
       <span class="pg-name">${pgEsc(r.name || '#' + r.page_id)}</span>
       <span class="pg-tags">
         ${r.can_moderate ? '' : '<span class="fcm-tag">read only</span>'}
