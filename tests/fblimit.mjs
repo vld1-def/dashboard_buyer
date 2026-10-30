@@ -56,7 +56,9 @@ ok('кожен вердикт має текст для людини',
 const iScope  = FN.indexOf("includes('ads_management')");
 const iNoCap  = FN.indexOf('!capNow && !allowNew');
 const iSpent  = FN.indexOf('sent <= spentNow');
-const iWrite  = FN.indexOf("{ spend_cap: String(sent) }, 'POST'");
+/* Єдиний запис живе у put(): і перший, і виправлення йдуть через
+   нього, тож «до запису» рахується саме від цього місця. */
+const iWrite  = FN.indexOf("{ spend_cap: String(v) }, 'POST'");
 
 ok('запис у Graph у функції один', iWrite > 0
   && (FN.match(/graph\([^;]*'POST'\)/g) || []).length === 1);
@@ -87,7 +89,7 @@ ok('act_ дописується, якщо його не передали', /star
 ok('після запису стеля читається назад', FN.indexOf('capBack') > iWrite);
 ok('у відповіді є чим повернути як було', /restore:/.test(FN));
 ok('перевищення в рази виноситься в warning',
-  /capBack > sent \* 10/.test(FN) && /warning:/.test(FN));
+  /capBack > Math\.round\(setMajor \* MINOR\) \* 10/.test(FN) && /warning:/.test(FN));
 ok('добовий ліміт Facebook названий своїми словами',
   /1885172/.test(FN) && /10 змін/.test(FN));
 ok('advertiser проти admin сказано там, де це болить',
@@ -98,6 +100,18 @@ ok('advertiser проти admin сказано там, де це болить',
 ok('нуль не приймається за «прибери стелю»',
   /set_major має бути більше нуля/.test(FN));
 ok('видалення стелі функція не обіцяє', !/spend_cap_action/.test(FN));
+
+/* САМОПЕРЕВІРКА. Функція більше не питає людину про одиниці: пише,
+   читає назад і, якщо Facebook зрозумів число інакше, виправляє
+   другим записом. Ціна — ще одна зміна з десяти добових, і то лише
+   коли одиниці не ті; залишена завищеною стеля коштувала б грошей. */
+ok('після запису стеля читається назад тим самим викликом',
+  /const put = async/.test(CODE) && /fields: ACC_FIELDS/.test(CODE));
+ok("'major' виправляється другим записом, а не повідомленням",
+  /verdict\.units === 'major'/.test(CODE) && /put\(Math\.round\(setMajor\)\)/.test(CODE));
+ok('після виправлення результат звіряється ще раз',
+  /після виправлення назад прийшло/.test(FN));
+ok('у відповіді видно, що виправляли', /fixed,/.test(CODE));
 
 /* Той самий 42501, що ламав публікацію: стовпець token браузерним
    JWT не читається взагалі, тож його бере сервісний ключ — і лише

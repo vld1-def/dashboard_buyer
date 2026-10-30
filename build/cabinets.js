@@ -2482,7 +2482,14 @@ function cabCardOld(fb) {
               пояснює. Залишок менший за десяту частину стелі
               підсвічуємо: саме тут кабінет спиняється посеред дня. */
           (() => { const l = cabLimit(c);
-            return cell('Limit', `<span class="${l.tight ? 'cab-lim-tight' : ''}">${l.text}</span>`, l.tip);
+            /* Олівець стоїть у самій комірці, а не окремою кнопкою в
+               ряду: стелю міняють, дивлячись саме на неї й на залишок
+               поруч, а не згадуючи про неї десь збоку. Без токена
+               міняти нічим — тоді й олівця немає. */
+            const can = c.fb && c.fb.token_id;
+            return cell('Limit', `<span class="${l.tight ? 'cab-lim-tight' : ''}">${l.text}</span>`
+              + (can ? ` <button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
+                   title="Change the spending limit in Facebook">\u270e</button>` : ''), l.tip);
           })()}
         ${/* За чиїм годинником цей кабінет вважає «сьогодні». Без цього
               рядка розбіжність зі спендом в Ads Manager виглядає як
@@ -2962,3 +2969,108 @@ document.addEventListener('click', e => {
 
 window.cabInit = cabInit;
 window.cabRefresh = cabRefresh;
+
+
+/* ═══════════ СТЕЛЯ ВИТРАТ — ЗМІНА ═══════════
+
+   Міняє spend_cap у Facebook через функцію fb-limit. Сам токен сюди
+   не потрапляє: звідси йде лише номер кабінета й число.
+
+   ТРИ РЕЧІ, ЯКІ ТУТ ВАЖАТЬ БІЛЬШЕ ЗА ЗРУЧНІСТЬ:
+
+   1. Видно БУЛО і СТАНЕ. Зайвий нуль у цьому полі — це гроші, і
+      єдине, що стоїть між друкарською помилкою й витратами, — екран,
+      де обидва числа поруч.
+
+   2. Підняти й опустити — різні дії. Підняття дозволяє витрачати
+      більше, тому воно червоне; опускання лише гальмує.
+
+   3. Кабінет без стелі питається окремо: поставити ми вміємо,
+      прибрати назад — ні, і мовчки залишати кабінет із лімітом,
+      якого в нього не було, не можна.
+
+   Одиниці звіряє сама функція: пише, читає назад і виправляє, якщо
+   Facebook зрозумів число інакше. Сюди це доходить уже як результат,
+   а не як питання. */
+window.cabLimitEdit = async function (enc) {
+  const id = decodeURIComponent(enc || '');
+  const c = cabAll.find(x => String(x.id) === String(id));
+  if (!c || !c.fb) return;
+
+  /* ОДИНИЦІ. У базі spend_cap і amount_spent лежать у ЦІЛІЙ ВАЛЮТІ:
+     fb-sync ділить відповідь Graph на сто (функція cents). А Graph і
+     наша fb-limit говорять мінорними одиницями. Через цю межу число
+     переходить рівно двічі — тут і на поверненні відповіді, — і
+     обидва рази це написано поруч: помилка в сто разів тут коштує
+     грошей, і я вже раз її тут зробив. */
+  const cur = c.fb.currency || '';
+  const cap = Number(c.fb.spend_cap) || 0;        // валюта, не центи
+  const spent = Number(c.fb.amount_spent) || 0;   // так само
+  const m = v => cabMoneyCur(v, cur);
+
+  const raw = await ask({ title: 'Spending limit \u00b7 ' + id, ok: 'Next',
+    body: (cap ? 'Now ' + m(cap) + ', already spent against it ' + m(spent) + '.'
+               : 'No limit on this cabinet right now.')
+        + '\n\nFacebook allows 10 limit changes per cabinet per day.',
+    input: { value: cap ? String(cap) : '', placeholder: '1000' } });
+  if (raw === false) return;
+
+  const want = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(want) || want <= 0) {
+    toast('Not a limit: ' + raw, 'error');
+    return;
+  }
+  if (Math.abs(want - cap) < 0.005) return;              // те саме число
+
+  /* Стеля на рівні витраченого або нижче спиняє кабінет негайно.
+     Функція це теж не пропустить, але сказати треба ТУТ: інакше
+     людина дізнається про межу після натискання, а не замість. */
+  if (want <= spent) {
+    toast('A limit of ' + m(want) + ' is at or below the ' + m(spent)
+      + ' already spent \u2014 the cabinet would stop at once. Stopping is what '
+      + 'the pause button is for.', 'error', 9000);
+    return;
+  }
+
+  const up = want > cap;
+  const go = await ask({ title: 'Change the limit?', ok: 'Change', danger: up,
+    body: id + '\n\n' + (cap ? m(cap) : 'no limit') + '  \u2192  ' + m(want)
+        + '\n\n' + (cap && up
+            ? 'It becomes free to spend more as soon as Facebook accepts this.'
+            : cap ? 'Delivery stops once this is reached.'
+                  : 'This cabinet has no limit now. Setting one is possible; '
+                    + 'removing it again is not \u2014 that was never tested.') });
+  if (!go) return;
+
+  const step = toastStep();
+  step.say('Asking Facebook\u2026');
+  try {
+    const { data: s } = await sb.auth.getSession();
+    const jwt = s && s.session && s.session.access_token;
+    const res = await fetch(SUPABASE_URL + '/functions/v1/fb-limit', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + jwt, apikey: SUPABASE_KEY,
+                 'content-type': 'application/json' },
+      body: JSON.stringify({ account_id: String(id), set_major: want,
+                             allow_new_cap: !cap })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(res.status === 404
+      ? 'Function fb-limit is not deployed yet: supabase functions deploy fb-limit'
+      : (j.error || 'HTTP ' + res.status));
+
+    /* Показуємо те, що Facebook ВІДДАВ, а не те, що ми просили: вони
+       збігаються майже завжди, і саме тому розбіжність варто бачити. */
+    /* cap_after приходить таким, як його віддав Graph — у мінорних
+       одиницях. Ділимо: у базі й на екрані валюта. */
+    const back = Number(j.cap_after);
+    c.fb.spend_cap = Number.isFinite(back) ? back / 100 : want;
+    step.done('Limit is now ' + m(c.fb.spend_cap)
+      + (j.fixed ? ' \u00b7 units corrected on the second try' : ''), 'ok');
+    if (j.warning) toast(String(j.warning), 'warn', 12000);
+    cabRender();
+    if (typeof cabDetail === 'function') cabDetail(c);
+  } catch (e) {
+    step.done(String(e.message || e), 'error');
+  }
+};
