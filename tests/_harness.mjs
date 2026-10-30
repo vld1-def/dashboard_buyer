@@ -87,9 +87,16 @@ export function checks() {
     if (extra !== undefined) console.log('       ' + JSON.stringify(extra).slice(0, 400));
   };
   const done = async (browser, srv, moreErrs) => {
-    if (moreErrs && moreErrs.length) ok('сторінка без помилок', false, moreErrs);
-    else ok('сторінка без помилок', true);
-    await browser.close(); srv.close();
+    /* Стенд, який перевіряє лише джерело (у функції без UI перевіряти
+       на сторінці нічого), приходить сюди без браузера. Тоді й рядка
+       про сторінку бути не повинно: він сказав би про екран, якого в
+       цьому стенді не було. */
+    if (browser) {
+      if (moreErrs && moreErrs.length) ok('сторінка без помилок', false, moreErrs);
+      else ok('сторінка без помилок', true);
+    }
+    if (browser) await browser.close();
+    if (srv) srv.close();
     console.log(`\n${pass} ok, ${fail} fail`);
     process.exit(fail ? 1 : 0);
   };
