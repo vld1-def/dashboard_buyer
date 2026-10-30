@@ -83,14 +83,14 @@ const ss = await page.evaluate(() => {
   return { err, cls: card.className,
     w: cs.width, bg: cs.backgroundColor, radius: cs.borderTopLeftRadius,
     tiles: card.querySelectorAll('.ss-tile').length,
-    geos: card.querySelectorAll('.ss-geo').length,
+    geos: card.querySelectorAll('.ss-row').length,
     profitCls: profit.className,
     profitColor: getComputedStyle(profit).color,
     flags: card.querySelectorAll('img').length,
     gradient: card.innerHTML.includes('bg-gradient-to-r'),
     hardBg: /#0f172a|bg-\[#0f172a\]/.test(card.outerHTML),
     foot: card.querySelector('.ss-foot') ? 1 : 0,
-    order: [...card.querySelectorAll('.ss-geo-code')].map(e => e.textContent)
+    order: [...card.querySelectorAll('.ss-row-key')].map(e => e.textContent)
   };
 });
 ok('знімок будується без помилки', ss.err === '', ss.err);
@@ -121,5 +121,141 @@ const neg = await page.evaluate(() => {
 });
 ok('збитковий профіт червоний', /239, 68, 68/.test(neg.color), neg);
 ok('і він справді відʼємний', neg.text.includes('-'), neg.text);
+
+/* ─────────── 6. GROSS PROFIT і ROI ───────────
+
+   «Net Profit» тут ніколи не було чистим прибутком: у коді прямо
+   написано, що з нього не віднімаються ні комісії, ні витрати
+   (кабінети, платіжки, команда, інструменти). Підпис наздогнав
+   формулу, а не навпаки. */
+const roi = await page.evaluate(() => {
+  // KG: спенд 100, 20 деп × $50 = 1000 → профіт 900, roi 900%
+  // TJ: спенд 300, 40 деп × $10 = 400  → профіт 100, roi 33%
+  // разом: спенд 400, виручка 1400 → профіт 1000, roi 250%
+  filteredDataCache = [
+    { geo: 'KG', offer: 'DEFAULT', spend: 100, regs: 10, deposits: 20 },
+    { geo: 'TJ', offer: 'DEFAULT', spend: 300, regs: 20, deposits: 40 }
+  ];
+  globalPayouts = { KG_DEFAULT: 50, TJ_DEFAULT: 10 };
+  openScreenshotModal();
+  const card = document.getElementById('capture-card');
+  const caps = [...card.querySelectorAll('.ss-tile .ss-cap')].map(e => e.textContent.trim());
+  const rEl = document.getElementById('ss-total-roi');
+  return { caps,
+    total: rEl.innerText, totalCls: rEl.className,
+    totalColor: getComputedStyle(rEl).color,
+    profit: document.getElementById('ss-total-profit').innerText,
+    geos: [...card.querySelectorAll('.ss-row')].map(g => ({
+      code: g.querySelector('.ss-row-key').textContent,
+      kv: g.querySelector('.ss-row-kv').textContent.replace(/\s+/g, ' ').trim() }))
+  };
+});
+ok('плитка називається Gross Profit', roi.caps.includes('Gross Profit'), roi.caps);
+ok('назви Net Profit більше немає', !roi.caps.includes('Net Profit'), roi.caps);
+ok('загальний ROI стоїть біля профіта', /ROI\s*250%/.test(roi.total), roi.total);
+ok('профіт порахований тією ж арифметикою', roi.profit.includes('1,000'), roi.profit);
+ok('позитивний ROI зелений', /is-ok/.test(roi.totalCls) && /34, 197, 94/.test(roi.totalColor), roi);
+ok('ROI є в кожному гео', roi.geos.every(g => /roi/i.test(g.kv)), roi.geos);
+ok('ROI гео порахований правильно',
+  /roi 900%/i.test(roi.geos.find(g => g.code === 'KG')?.kv || '')
+  && /roi 33%/i.test(roi.geos.find(g => g.code === 'TJ')?.kv || ''), roi.geos);
+
+const roiNeg = await page.evaluate(() => {
+  filteredDataCache = [{ geo: 'KG', offer: 'DEFAULT', spend: 900, regs: 1, deposits: 1 }];
+  globalPayouts = { KG_DEFAULT: 1 };
+  openScreenshotModal();
+  const r = document.getElementById('ss-total-roi');
+  return { t: r.innerText, cls: r.className, color: getComputedStyle(r).color };
+});
+ok('збитковий ROI відʼємний і червоний',
+  /-100%/.test(roiNeg.t) && /is-bad/.test(roiNeg.cls) && /239, 68, 68/.test(roiNeg.color), roiNeg);
+
+/* Нуль спенду — не «ROI 0%». Нуль читався б як «відпрацювали в нуль»,
+   хоч насправді не крутили зовсім. */
+const roiZero = await page.evaluate(() => {
+  filteredDataCache = [{ geo: 'KG', offer: 'DEFAULT', spend: 0, regs: 0, deposits: 0 }];
+  globalPayouts = { KG_DEFAULT: 1 };
+  openScreenshotModal();
+  const card = document.getElementById('capture-card');
+  return { t: document.getElementById('ss-total-roi').innerText,
+    geo: card.querySelector('.ss-row .ss-row-kv')?.textContent.replace(/\s+/g, ' ').trim() || '' };
+});
+ok('без спенду загальний ROI — прочерк, а не нуль', /ROI\s*—/.test(roiZero.t), roiZero.t);
+ok('без спенду ROI гео — теж прочерк', /roi —/i.test(roiZero.geo), roiZero.geo);
+
+/* ─────────── 7. ДРУГА КАРТКА: ЗА ВЕСЬ ЧАС ───────────
+
+   «Тотал команди» це збірка по місяцях: скільки зібралось за весь час
+   роботи. Рахується з rawData, бо filteredDataCache — це вже один
+   відфільтрований місяць, і історії з нього не зібрати. */
+const all = await page.evaluate(() => {
+  currentTeam = 'Makeberry';
+  rawData = [
+    // 2026-08: спенд 100, 10 деп × $50 = 500 → профіт 400, roi 400%
+    { date: '2026-08-04', geo: 'KG', offer: 'DEFAULT', spend: 60, regs: 6, deposits: 6 },
+    { date: '2026-08-19', geo: 'KG', offer: 'DEFAULT', spend: 40, regs: 4, deposits: 4 },
+    // 2026-09: спенд 200, 2 деп × $50 = 100 → профіт −100, roi −50%
+    { date: '2026-09-11', geo: 'KG', offer: 'DEFAULT', spend: 200, regs: 8, deposits: 2 },
+    // 2026-10: спенд 100, 20 деп × $50 = 1000 → профіт 900
+    { date: '2026-10-02', geo: 'KG', offer: 'DEFAULT', spend: 100, regs: 10, deposits: 20 },
+    { date: 'сміття',     geo: 'KG', offer: 'DEFAULT', spend: 999, regs: 0, deposits: 0 }
+  ];
+  globalPayouts = { KG_DEFAULT: 50 };
+  filteredDataCache = rawData.slice(3, 4);
+  let err = '';
+  try { openScreenshotModal(); } catch (e) { err = String(e); }
+  const c = document.getElementById('capture-card-all');
+  return { err,
+    pair: document.querySelectorAll('.ss-pair > .ss-card').length,
+    cls: c.className,
+    sub: document.getElementById('ss2-sub').innerText,
+    spend: document.getElementById('ss2-total-spend').innerText,
+    profit: document.getElementById('ss2-total-profit').innerText,
+    profitCls: document.getElementById('ss2-total-profit').className,
+    roi: document.getElementById('ss2-total-roi').innerText,
+    foot: document.getElementById('ss2-footer-date').innerText,
+    rows: [...c.querySelectorAll('.ss-row')].map(r => ({
+      key: r.querySelector('.ss-row-key').textContent,
+      kv: r.querySelector('.ss-row-kv').textContent.replace(/\s+/g, ' ').trim(),
+      pf: r.querySelector('.ss-row-pf').textContent }))
+  };
+});
+ok('друга картка будується без помилки', all.err === '', all.err);
+ok('обидві картки стоять поруч', all.pair === 2, all.pair);
+ok('друга картка того самого вигляду', all.cls.trim() === 'ss-card', all.cls);
+ok('у підписі команда і скільки місяців',
+  /makeberry/i.test(all.sub) && /3 months/i.test(all.sub), all.sub);
+ok('рядок на кожен місяць', all.rows.length === 3, all.rows);
+ok('свіжий місяць зверху',
+  JSON.stringify(all.rows.map(r => r.key)) === JSON.stringify(['2026-10', '2026-09', '2026-08']), all.rows);
+ok('дні одного місяця складаються в один рядок',
+  /10 reg · 10 dep/.test(all.rows.find(r => r.key === '2026-08')?.kv || ''), all.rows);
+ok('ROI рахується в кожному місяці',
+  /roi 400%/.test(all.rows.find(r => r.key === '2026-08')?.kv || '')
+  && /roi -50%/.test(all.rows.find(r => r.key === '2026-09')?.kv || ''), all.rows);
+ok('збитковий місяць показує мінус',
+  (all.rows.find(r => r.key === '2026-09')?.pf || '').includes('-'), all.rows);
+/* Підсумок мусить дорівнювати сумі рядків. Це головна перевірка тут:
+   дві картки поруч із числами, які не сходяться, гірші за одну. */
+ok('спенд за весь час = сума місяців', all.spend.includes('1,399'), all.spend);
+ok('профіт за весь час = сума місяців', all.profit.includes('201'), all.profit);
+ok('ROI за весь час рахується з тих самих чисел', /ROI 14%/.test(all.roi), all.roi);
+ok('профіт додатний — отже зелений', /is-ok/.test(all.profitCls), all.profitCls);
+ok('у підвалі період від першого місяця до останнього',
+  all.foot === '2026-08 — 2026-10', all.foot);
+ok('рядок зі сміттям замість дати в місяці не потрапив',
+  all.rows.every(r => /^\d{4}-\d{2}$/.test(r.key)), all.rows);
+
+const empty = await page.evaluate(() => {
+  rawData = [];
+  filteredDataCache = [{ geo: 'KG', offer: 'DEFAULT', spend: 1, regs: 0, deposits: 0 }];
+  openScreenshotModal();
+  return { list: document.getElementById('ss2-month-list').textContent.trim(),
+           foot: document.getElementById('ss2-footer-date').innerText,
+           rows: document.querySelectorAll('#ss2-month-list .ss-row').length };
+});
+ok('порожня історія каже про себе, а не лишає пустоту',
+  empty.rows === 0 && /жоден місяць/.test(empty.list), empty);
+ok('і період у підвалі — прочерк, а не вигадана дата', empty.foot === '—', empty.foot);
 
 await done(browser, srv, errs);
