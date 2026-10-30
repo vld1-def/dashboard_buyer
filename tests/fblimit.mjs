@@ -53,7 +53,6 @@ ok('кожен вердикт має текст для людини',
 
 /* ── 2. запобіжники ── */
 
-const iRole   = FN.indexOf('rpc/my_role');
 const iScope  = FN.indexOf("includes('ads_management')");
 const iNoCap  = FN.indexOf('!capNow && !allowNew');
 const iSpent  = FN.indexOf('sent <= spentNow');
@@ -61,17 +60,23 @@ const iWrite  = FN.indexOf("{ spend_cap: String(sent) }, 'POST'");
 
 ok('запис у Graph у функції один', iWrite > 0
   && (FN.match(/graph\([^;]*'POST'\)/g) || []).length === 1);
-ok('роль перевіряється до запису', iRole > 0 && iRole < iWrite);
 ok('ads_management перевіряється до запису', iScope > 0 && iScope < iWrite);
 ok('кабінет без стелі відсікається до запису', iNoCap > 0 && iNoCap < iWrite);
 ok('стеля нижче витраченого відсікається до запису', iSpent > 0 && iSpent < iWrite);
 
-ok('читання стелі ролі не вимагає — гейт лише на записі',
-  /if \(setMajor !== null\) \{[\s\S]{0,400}rpc\/my_role/.test(FN));
 ok('без set_major функція лише читає',
   /mode: 'read'/.test(FN) && FN.indexOf("mode: 'read'") < iWrite);
-ok('стелю рухає тімлід або адмін, не баєр',
-  /role !== 'lead' && role !== 'admin'/.test(FN));
+/* Гейт по my_role() тут стояв і прибраний: my_role() віддає 'buyer'
+   усім, у кого немає рядка у team_members, тобто першим він відмовляв
+   власнику кабінетів. Межі ставлять RLS і сам Facebook — ті, хто
+   справді їх знає.
+
+   Дивимось на КОД без коментарів: сам текст про прибраний гейт слово
+   my_role згадує, і перевірка по всьому файлу падала б саме через
+   пояснення, чому перевірки немає. */
+const CODE = FN.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+ok('роль у коді не питається зовсім',
+  !/my_role/.test(CODE) && !/'lead'/.test(CODE) && !/403/.test(CODE));
 
 ok('один виклик — один кабінет, списку немає',
   !/for \(const .* of .*(accounts|accs|ids)\)/.test(FN) && /account_id is required/.test(FN));
