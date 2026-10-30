@@ -1,0 +1,70 @@
+<!-- ═══════════ ПОСТИ НА СТОРІНКИ ═══════════
+     Окрема сторінка, а не панель: пост — це текст, картинка,
+     посилання й час, і у вузькій колонці це не вміщається. Ліворуч
+     те, що пишеш; праворуч те, що вже поставив. -->
+<div id="posts-section" class="card p-5 rounded-3xl shadow-xl">
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div>
+      <h2>Posts</h2>
+      <p class="panel-sub">Пости від імені Сторінок · чернетки, заплановані й те, що вже вийшло</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button type="button" class="ps-btn" onclick="psLoad(true)" id="ps-refresh">Оновити</button>
+    </div>
+  </div>
+
+  <p class="ps-note" id="ps-note"></p>
+
+  <div class="ps-grid">
+    <!-- ЛІВОРУЧ: що пишемо -->
+    <div class="ps-card">
+      <p class="ps-cap">Новий пост</p>
+
+      <label class="ps-lbl">Сторінка</label>
+      <select id="ps-page" class="ps-in"></select>
+      <p class="ps-hint" id="ps-page-hint"></p>
+
+      <label class="ps-lbl">Текст</label>
+      <textarea id="ps-msg" rows="6" class="ps-in ps-area"
+        placeholder="Те, що побачать у стрічці…" oninput="psCount()"></textarea>
+      <p class="ps-hint"><span id="ps-count">0</span> символів</p>
+
+      <label class="ps-lbl">Посилання <span class="ps-opt">необов'язково</span></label>
+      <input id="ps-link" class="ps-in" placeholder="https://…">
+
+      <label class="ps-lbl">Картинка за адресою <span class="ps-opt">необов'язково</span></label>
+      <input id="ps-img" class="ps-in" placeholder="https://… .jpg">
+      <!-- Картинка і посилання — різні ендпоїнти Graph. Коли є
+           картинка, текст іде підписом під нею, а посилання в пост не
+           потрапляє: це не наша примха, так влаштований /photos. -->
+      <p class="ps-hint" id="ps-img-hint"></p>
+
+      <label class="ps-lbl">Коли</label>
+      <div class="ps-when">
+        <label><input type="radio" name="ps-when" value="now" checked onchange="psWhen()"> Зараз</label>
+        <label><input type="radio" name="ps-when" value="at" onchange="psWhen()"> На час</label>
+        <input type="datetime-local" id="ps-at" class="ps-in" style="display:none">
+      </div>
+
+      <div class="ps-acts">
+        <button type="button" class="ps-btn" onclick="psSave()">Зберегти чернеткою</button>
+        <button type="button" class="ps-btn is-main" onclick="psSend()" id="ps-send">Опублікувати</button>
+      </div>
+      <p class="ps-hint" id="ps-say"></p>
+    </div>
+
+    <!-- ПРАВОРУЧ: що вже поставили -->
+    <div class="ps-card">
+      <p class="ps-cap">Черга
+        <span class="ps-tabs">
+          <button type="button" class="ps-tab is-on" data-f="" onclick="psFilter(this)">Усі</button>
+          <button type="button" class="ps-tab" data-f="draft" onclick="psFilter(this)">Чернетки</button>
+          <button type="button" class="ps-tab" data-f="scheduled" onclick="psFilter(this)">Заплановані</button>
+          <button type="button" class="ps-tab" data-f="published" onclick="psFilter(this)">Вийшли</button>
+          <button type="button" class="ps-tab" data-f="failed" onclick="psFilter(this)">Відмови</button>
+        </span>
+      </p>
+      <div id="ps-list"></div>
+    </div>
+  </div>
+</div>

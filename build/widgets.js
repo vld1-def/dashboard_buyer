@@ -18,6 +18,7 @@
     'cabinets':   { section: 'cabinets-section' },
     'domains':    { section: 'domains-section' },
     'team':       { section: 'team-section' },
+    'posts':      { section: 'posts-section' },
     'reports':    { section: 'report-builder-section' },
     'expenses':   { section: 'expenses-section' },
     /* ПРИПУЩЕННЯ, ЯКЕ ПРОТЕРМІНУВАЛОСЬ.
@@ -642,6 +643,10 @@
     // баєрові вона взагалі не відкриється, тож витрачати на неї запити
     // при кожному завантаженні дашборда сенсу немає.
     if (name === 'team' && typeof tmOpen === 'function') tmOpen();
+    /* Пости вантажаться при заході: список Сторінок і черга
+       потрібні лише тут, а на старті дашборда це два зайвих запити
+       для кожного, хто постами не займається. */
+    if (name === 'posts' && typeof psInit === 'function') psInit();
 
     document.body.classList.remove('sb-open');
     /* Гортається тепер колонка контенту, а не вікно: window.scrollTo
