@@ -87,7 +87,7 @@ type Json = Record<string, any>;
    тижня тричі виглядав як вада в коді. Номер у кожній відповіді
    коштує нічого, а дозволяє сторінці відрізнити «функція про це ще
    не знає» від «Facebook так відповів». */
-const FN_VERSION = '2026-10-31.2';
+const FN_VERSION = '2026-10-31.3';
 
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
@@ -739,7 +739,7 @@ async function byPage(base: string, hdr: Json, me: string,
     return reply({ error: (e as Error).message }, 400);
   }
 
-  if (action === 'page_list') return await pageComments(pg, row);
+  if (action === 'page_list') return await pageComments(pg, row, base, hdr, me);
   if (!row.can_moderate) return reply({
     error: 'the token "' + row.token_label + '" can only READ comments on "' + row.name
          + '": it needs pages_manage_engagement, and the Page needs the Moderate content task.' }, 400);
@@ -793,10 +793,69 @@ async function pagePosts(pg: { token: string }, pageId: string, deadline: number
   }
 }
 
-async function pageComments(pg: { token: string; name: string }, row: PgRow): Promise<Response> {
+/* ПОСТИ, ЯКИХ НЕМАЄ У СТРІЧЦІ СТОРІНКИ.
+
+   Оце й була різниця між двома екранами. Панель Сторінок дивилась
+   пости самої Сторінки, а кабінетний шлях іде від ОГОЛОШЕНЬ — через
+   creative.effective_object_story_id. Пост, зроблений лише під
+   рекламу, у стрічці Сторінки не лежить узагалі: /posts його не
+   віддає, а /promotable_posts віддає не завжди. Тому в кабінеті
+   коментарі були, а тут — порожньо.
+
+   Тепер беремо й той бік: кабінети, які бачать цю Сторінку, їхні
+   оголошення, і з них — номери постів. Назву поста підставляємо з
+   назв оголошень: іншої в dark post і немає, а без неї в списку
+   стояв би голий номер.
+
+   Межа — ті кабінети, які RLS визнала твоїми; більше п'яти не
+   беремо: це вже не «подивитись коментарі», а обхід парку. */
+const DARK_ACCOUNTS = 5;
+
+async function darkPosts(base: string, hdr: Json, me: string, row: PgRow,
+                         deadline: number): Promise<{ map: Map<string, string[]>; why: string }> {
+  const map = new Map<string, string[]>();
+  try {
+    const links = await pgGet(base, hdr, 'fb_cabinet_pages?select=account_id'
+      + '&page_id=eq.' + encodeURIComponent(row.page_id)
+      + '&created_by=eq.' + encodeURIComponent(me) + '&limit=' + DARK_ACCOUNTS);
+    for (const l of links) {
+      if (Date.now() > deadline) break;
+      const act = String(l.account_id || '').replace(/\D/g, '');
+      if (!act) continue;
+      try {
+        const posts = await ourPosts(row.token, act);
+        posts.forEach((v, story) => {
+          /* Нас цікавлять лише пости ЦІЄЇ Сторінки: кабінет крутить і
+             чужі, а чужий коментар цим токеном усе одно не читається. */
+          if (!story.startsWith(row.page_id + '_')) return;
+          const was = map.get(story) || [];
+          map.set(story, [...new Set([...was, ...v.names])]);
+        });
+      } catch (_e) { /* один кабінет не зміг — решта мусить */ }
+    }
+  } catch (e) {
+    return { map, why: 'Posts that live only inside ads were not checked: '
+      + (e as Error).message };
+  }
+  return { map, why: '' };
+}
+
+async function pageComments(pg: { token: string; name: string }, row: PgRow,
+                            base: string, hdr: Json, me: string): Promise<Response> {
   const deadline = Date.now() + DEADLINE_MS;
   const { list, why, more: morePosts } = await pagePosts(pg, row.page_id, deadline);
   const problems: string[] = why ? [why] : [];
+
+  /* Додаємо те, чого у стрічці Сторінки немає. Ті, що вже є, не
+     дублюємо: той самий пост під двома заголовками читався б як два
+     різні. */
+  const have = new Set(list.map((p: Json) => String(p.id || '')));
+  const dark = await darkPosts(base, hdr, me, row, deadline);
+  if (dark.why) problems.push(dark.why);
+  dark.map.forEach((names, story) => {
+    if (have.has(story)) return;
+    list.push({ id: story, message: names.join(', '), is_published: false, _dark: true });
+  });
   if (!list.length) return reply({ comments: [], page: pg.name, posts: 0, looked: 0,
     can_moderate: row.can_moderate, problems,
     note: 'This Page has no posts we can see yet.' });
