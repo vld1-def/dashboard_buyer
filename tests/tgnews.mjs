@@ -24,7 +24,10 @@ const srv = await serve(PORT);
 const { browser, page, errs } = await open(PORT);
 
 await page.evaluate(() => {
-  window.__tg = { calls: [], answer: true, status: 200,
+  /* fn у відповіді — підпис функції. Без нього дашборд відповіді не
+     вірить, і правильно робить: саме так виглядає чужа функція під
+     тією самою адресою. */
+  window.__tg = { calls: [], answer: true, status: 200, fn: '2026-10-30.1',
                   body: { ok: true, total: 14, sent: 13, blocked: 1, failed: 0 },
                   dryTotal: 14 };
   window.toast = () => {};
@@ -40,10 +43,12 @@ await page.evaluate(() => {
     if (!/tg-news/.test(u)) return realFetch(url, opt);
     const body = JSON.parse(opt.body);
     window.__tg.calls.push(body);
+    const sign = o => window.__tg.fn ? Object.assign({ fn: window.__tg.fn }, o) : o;
     if (window.__tg.status >= 400)
-      return { ok: false, status: window.__tg.status, json: async () => ({ error: 'no' }) };
-    return { ok: true, status: 200, json: async () =>
-      body.dry ? { ok: true, dry: true, total: window.__tg.dryTotal } : window.__tg.body };
+      return { ok: false, status: window.__tg.status,
+               json: async () => sign({ error: window.__tg.err || 'no' }) };
+    return { ok: true, status: 200, json: async () => sign(
+      body.dry ? { ok: true, dry: true, total: window.__tg.dryTotal } : window.__tg.body) };
   };
 });
 
@@ -103,9 +108,26 @@ ok('порожній текст не йде нікуди', empty.calls.length ==
 ok('і не питає, а каже, чого бракує', empty.asked === null && /текст/i.test(empty.status), empty);
 
 /* ── 7. незадеплоєна функція ── */
-const gone = await run('Додано в СРМ: пости', true, { status: 404 });
+const gone = await run('Додано в СРМ: пости', true, { fn: '', status: 404 });
 ok('незадеплоєна функція названа кроком розгортання',
   /deploy tg-news/.test(gone.status), gone.status);
+
+/* ── відповідь не від tg-news ── */
+
+/* «account_id is required» у телеграмі може прийти лише від ЧУЖОЇ
+   функції: tg-news такого не каже зроду. Без цієї перевірки людина
+   йшла б шукати кабінет, якого не вказувала. */
+const alien = await run('Додано в СРМ: пости', true,
+  { fn: '', status: 400, err: 'account_id is required' });
+ok('чужу відповідь названо чужою', /не від tg-news/.test(alien.status), alien);
+ok('і показано, що саме відповіло', /account_id is required/.test(alien.status), alien);
+ok('і сказано, чим це лікується', /deploy tg-news/.test(alien.status), alien);
+
+/* 404 лишається окремим випадком: функції немає зовсім, і це інша
+   фраза, ніж «під адресою щось інше». */
+const gone404 = await run('Додано в СРМ: пости', true, { fn: '', status: 404 });
+ok('404 названо саме незадеплоєною функцією',
+  /ще не задеплоєна/.test(gone404.status), gone404);
 
 /* ── межі самої функції ── */
 const FN = fs.readFileSync('supabase/functions/tg-news/index.ts', 'utf8');
