@@ -1073,13 +1073,39 @@ function cabSnapPer(c, key) {
 }
 const cabSnapMoney = (v, c) => v == null ? null : cabMoneyCur(v, c.fb && c.fb.currency);
 
+/* ЧИЄ «СЬОГОДНІ». Це й була вада: fb-sync кладе день у fb_spend_daily
+   за часовим поясом САМОГО КАБІНЕТА (todayIn(tz)), а таблиця питала
+   дату браузера. Коли пояси розходяться — а вночі вони розходяться
+   щодня — фільтр просив твою дату, якої в кабінета ще немає, і на
+   екран ішов учорашній підсумок. У дереві кампаній цього не було, бо
+   воно питає Facebook наживо й теж у поясі кабінета.
+
+   Без пояса (поле ще не приїхало) лишається локальна дата: це та сама
+   відповідь, що була, і краща за порожнечу. */
+const cabTzDay = tz => {
+  try { return new Intl.DateTimeFormat('en-CA',
+    tz ? { timeZone: tz } : {}).format(new Date()); }
+  catch (_e) { return cabDay(0); }
+};
+
+// Зсув дати-рядка. Через UTC-опівніч, щоб переведення годинника не
+// з'їло й не подвоїло день.
+const cabShiftDay = (day, n) => {
+  const [y, m, d] = String(day).split('-').map(Number);
+  return new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + n)).toISOString().slice(0, 10);
+};
+
 async function cabDaysLoad() {
   cabDays = {};
   cabDaysErr = '';
   const [since, until] = cabRangeDates();
   try {
+    /* Беремо на добу ширше з обох боків: «сьогодні» кабінета може
+       бути як учорашньою, так і завтрашньою датою відносно твоєї, і
+       потрібний рядок має вже лежати тут, коли ми його питатимемо. */
     const rows = await sbFetchAll('fb_spend_daily',
-      q => q.gte('day', since).lte('day', until).order('day', { ascending: true }));
+      q => q.gte('day', cabShiftDay(since, -1)).lte('day', cabShiftDay(until, 1))
+             .order('day', { ascending: true }));
     rows.forEach(r => {
       if (r.team_name && r.team_name !== currentTeam) return;
       const id = String(r.account_id || '');
@@ -1087,15 +1113,39 @@ async function cabDaysLoad() {
       /* Беремо не лише гроші. Покази й кліки по днях лежать у тій
          самій таблиці — fb-sync кладе їх одним запитом, — і без них
          CTR із CPC лишались би «сьогоднішніми» на будь-якому періоді,
-         тобто числом, під яким написано не те, що порахували. */
-      const o = cabDays[id] || (cabDays[id] = { spend: 0, imps: 0, clicks: 0 });
-      o.spend += Number(r.spend) || 0;
-      o.imps += Number(r.impressions) || 0;
-      o.clicks += Number(r.clicks) || 0;
+         тобто числом, під яким написано не те, що порахували.
+
+         Тепер зберігаємо ще й ПО ДНЯХ: сума за період і окремий день
+         потрібні обидві, і рахувати другу з першої вже не можна. */
+      const o = cabDays[id] || (cabDays[id] = { spend: 0, imps: 0, clicks: 0, by: {} });
+      const day = String(r.day || '');
+      const d = o.by[day] || (o.by[day] = { spend: 0, imps: 0, clicks: 0 });
+      const add = (k, v) => { d[k] += v; if (day >= since && day <= until) o[k] += v; };
+      add('spend', Number(r.spend) || 0);
+      add('imps', Number(r.impressions) || 0);
+      add('clicks', Number(r.clicks) || 0);
     });
   } catch (e) {
     cabDaysErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
+}
+
+/* Число за вибраний період для ОДНОГО кабінета.
+
+   Для «сьогодні» й «вчора» день беремо в поясі цього кабінета — саме
+   там вада й була. Для довших періодів лишається сума за вікно: там
+   один день з краю не міняє відповіді на питання, яке ставлять, а
+   рахувати кожному кабінету власне вікно означало б, що «цей місяць»
+   у сусідніх рядках охоплює різні дні. */
+function cabFrom(fb, key) {
+  const o = cabDays[String(fb && fb.account_id || '')];
+  if (!o) return 0;
+  if (cabRange.key === 'today' || cabRange.key === 'yest') {
+    const today = cabTzDay(fb && fb.timezone_name);
+    const day = cabRange.key === 'yest' ? cabShiftDay(today, -1) : today;
+    return (o.by[day] || {})[key] || 0;
+  }
+  return o[key] || 0;
 }
 
 /* Покази й кліки за той самий період, що й гроші.
@@ -1106,8 +1156,7 @@ async function cabDaysLoad() {
    написано над стовпчиком. */
 function cabStatIn(fb, key) {
   if (!fb) return null;
-  const id = String(fb.account_id || '');
-  if (!cabDaysErr) { const o = cabDays[id]; return o ? o[key] : 0; }
+  if (!cabDaysErr) return cabFrom(fb, key);
   if (fb.missing_since) return null;
   if (cabRange.key !== 'today') return null;
   return Number(key === 'imps' ? fb.impressions_today : fb.clicks_today) || 0;
@@ -1121,8 +1170,7 @@ function cabStatIn(fb, key) {
    fb_accounts, тож на нього і спираємось, поки історії немає. */
 function cabSpendIn(fb) {
   if (!fb) return null;
-  const id = String(fb.account_id || '');
-  if (!cabDaysErr) return (cabDays[id] || {}).spend || 0;
+  if (!cabDaysErr) return cabFrom(fb, 'spend');
   /* Запасний шлях, коли історії ще немає: сьогоднішнє число беремо з
      самого fb_accounts. Але в кабінета, якого токен уже не бачить, воно
      заморожене — і видати його за «сьогодні» означало б додати вчорашні
