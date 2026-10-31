@@ -331,13 +331,25 @@ function pgPaint() {
   if (note) {
     const empty = !pgRows.length;
     note.className = 'rl-note';
+    /* ЛОГО НЕ ПРИЙШЛО — КАЖЕМО ЧОМУ.
+
+       Сторінки є, а жодна не має picture: Graph віддає це поле тим
+       самим запитом, тож порожньо в усіх одразу означає не «Facebook
+       не дав», а «функція про це поле ще не знає» — тобто в Supabase
+       стоїть старіша збірка. Без цього рядка на екрані просто літери,
+       і причину видно нізвідки. */
+    const noPics = !empty && pgRows.every(r => !r.pic);
     note.innerHTML = empty
       ? 'No Pages: the tokens in Settings do not have any Page assigned to their system user.'
         + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '')
-      : '';
+      : noPics
+        ? 'Logos are not coming: the deployed fb-comments is older than this page. '
+          + 'Run <span class="font-mono">supabase functions deploy fb-comments</span> '
+          + '\u2014 until then each Page shows its first letter.'
+        : '';
     // Порожній <p> лишав би над списком свій відступ — саме той
     // проміжок, через який текст і заважав.
-    if (!empty) note.style.display = 'none';
+    if (!empty && !noPics) note.style.display = 'none';
   }
 
   list.innerHTML = !rows.length
