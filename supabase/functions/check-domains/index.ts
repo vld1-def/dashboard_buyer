@@ -48,31 +48,64 @@ type Verdict = { status: string; status_code: number | null };
 type Row = { id: number; domain: string; team_name: string; status: string | null;
               created_by: string | null; broken_since: string | null };
 
+/* ЩО САМЕ ОЗНАЧАЄ КОД ВІДПОВІДІ.
+
+   Доти будь-який 4xx, крім 404, ішов у notfound — і домени, які
+   чудово працюють у браузері, щоранку приходили як зламані.
+
+   403 (а ще 401, 429 і 451) означає рівно протилежне «домен мертвий»:
+   DNS розвʼязався, TLS потиснув руку, сервер ВІДПОВІВ — і відмовив
+   саме НАМ. Для лендінга це нормальний стан: Cloudflare відсікає все,
+   що не схоже на людину, а клоакінг віддає сторінку лише своєму
+   трафіку з потрібного гео. Запит із серверної IP-адреси туди не
+   потрапляє за визначенням.
+
+   Тому в таких кодів свій стан — guarded. Він не ховається (видно
+   окремою плиткою) і не здіймає тривогу: домену нічого не бракує,
+   бракує нам доступу до нього.
+
+   404 і 410 лишаються notfound: там сервер каже, що сторінки немає, і
+   це вже про домен, а не про нас. */
+const GUARDED = [401, 403, 429, 451];
+
+function verdictOf(code: number): Verdict {
+  return {
+    status: code >= 200 && code < 400 ? 'ok'
+          : GUARDED.includes(code) ? 'guarded'
+          : code === 404 || code === 410 ? 'notfound'
+          : code >= 500 ? 'down'
+          : 'notfound',
+    status_code: code
+  };
+}
+
 async function probe(domain: string): Promise<Verdict> {
-  for (const method of ['HEAD', 'GET'] as const) {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), TIMEOUT);
-    try {
-      const res = await fetch('https://' + domain + '/', {
-        method, redirect: 'follow', signal: ctl.signal,
-        // Без цього частина хостингів віддає 403 просто через порожній UA.
-        headers: { 'user-agent': 'Mozilla/5.0 (compatible; domain-check/1.0)' }
-      });
-      // 405 на HEAD — сервер просто не вміє цей метод, це не діагноз.
-      // Пробуємо GET, перш ніж записати домен у проблемні.
-      if (method === 'HEAD' && (res.status === 405 || res.status === 501)) continue;
-      return {
-        status: res.status >= 200 && res.status < 400 ? 'ok'
-              : res.status === 404 ? 'notfound'
-              : res.status >= 500 ? 'down'
-              : 'notfound',           // 4xx: 403, 410 — домен живий, але не віддає
-        status_code: res.status
-      };
-    } catch (_e) {
-      // DNS, сертифікат, відкинуте з'єднання, таймаут — з HTTP не
-      // розрізняються, і для нас це однаково «не відповідає».
-      if (method === 'GET') return { status: 'down', status_code: null };
-    } finally { clearTimeout(t); }
+  /* ДРУГА СПРОБА НА МЕРЕЖЕВУ ВІДМОВУ. Одна обірвана зʼєднання з
+     сотні — це не «домен упав», а мережа; а домен, записаний у
+     зламані, йде в телеграм і підіймає людину вночі. Другої спроби
+     досить, щоб відсіяти саме такі випадки, і вона коштує одного
+     запиту лише там, де перший уже не вдався. */
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, 800));
+    for (const method of ['HEAD', 'GET'] as const) {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), TIMEOUT);
+      try {
+        const res = await fetch('https://' + domain + '/', {
+          method, redirect: 'follow', signal: ctl.signal,
+          // Без цього частина хостингів віддає 403 просто через порожній UA.
+          headers: { 'user-agent': 'Mozilla/5.0 (compatible; domain-check/1.0)' }
+        });
+        // 405 на HEAD — сервер просто не вміє цей метод, це не діагноз.
+        // Пробуємо GET, перш ніж записати домен у проблемні.
+        if (method === 'HEAD' && (res.status === 405 || res.status === 501)) continue;
+        return verdictOf(res.status);
+      } catch (_e) {
+        // DNS, сертифікат, відкинуте з'єднання, таймаут — з HTTP не
+        // розрізняються, і для нас це однаково «не відповідає».
+        if (method === 'GET') break;      // на другий заход, а не одразу у вирок
+      } finally { clearTimeout(t); }
+    }
   }
   return { status: 'down', status_code: null };
 }
@@ -325,9 +358,12 @@ const TG_MARK: Record<string, string> = {
 const TG_WHAT: Record<string, string> = {
   danger: 'мітка', notfound: '404 — сторінки немає', down: 'не відповідає'
 };
+/* guarded у TG_WHAT немає навмисно: про домен, який просто не пускає
+   робота, будити людину нема за чим. */
 const TG_WAS: Record<string, string> = {
   ok: 'працював', danger: 'був із міткою', notfound: 'був 404',
-  down: 'не відповідав', unknown: 'не перевірявся'
+  down: 'не відповідав', guarded: 'не пускав робота',
+  unknown: 'не перевірявся'
 };
 
 /* ── ДОСІ ЗЛАМАНИЙ ──

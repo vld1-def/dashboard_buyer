@@ -18,6 +18,11 @@ const DM_STATE = {
   danger:   { label: 'Flagged',      dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.14)',  bd: 'rgba(239,68,68,.32)' },
   notfound: { label: 'Not found',    dot: '#F59E0B', tone: 'text-amber-400',   soft: 'rgba(245,158,11,.14)', bd: 'rgba(245,158,11,.32)' },
   down:     { label: 'No answer',    dot: '#EF4444', tone: 'text-red-400',     soft: 'rgba(239,68,68,.10)',  bd: 'rgba(239,68,68,.25)' },
+  /* 403 і подібні. Сервер ВІДПОВІВ і відмовив саме нам: Cloudflare
+     відсікає роботів, клоакінг віддає сторінку лише своєму трафіку.
+     Це не поломка домену, тому колір спокійний і в DM_BAD його
+     немає — але окремою плиткою видно, скільки їх. */
+  guarded:  { label: 'Shields up',   dot: '#38BDF8', tone: 'text-sky-400',     soft: 'rgba(56,189,248,.12)', bd: 'rgba(56,189,248,.28)' },
   unknown:  { label: 'Not checked',  dot: '#6C6C76', tone: 'text-muted-dynamic', soft: 'var(--surface-2)',   bd: 'var(--border)' }
 };
 /* Статус, якого ми не знаємо, — це «не перевіряли», а не падіння.
@@ -29,7 +34,10 @@ const DM_STATE = {
 const dmState = v => DM_STATE[v] || DM_STATE.unknown;
 
 // Зверху те, що вимагає дії.
-const DM_ORDER = ['danger', 'notfound', 'down', 'ok', 'unknown'];
+const DM_ORDER = ['danger', 'notfound', 'down', 'guarded', 'ok', 'unknown'];
+/* guarded сюди НЕ входить: домену нічого не бракує, бракує нам
+   доступу до нього, і тривожити цим — те саме, що будити людину
+   через роботозахист. */
 const DM_BAD = ['danger', 'notfound', 'down'];
 
 // Скільки перевірок одночасно. Більше — браузер просто ставить їх у
