@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 31.10 00:01">
+  <meta name="build" content="build 31.10 00:53">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4285,8 +4285,11 @@ body.is-lead-only .admin-only { display: none; }
    й правила стають одне під одним, і стелі від висоти ряду мати там
    не повинні — інакше панель сплющиться. */
 @media (min-width: 721px) {
+  /* height, а не лише max-height: стеля не давала панелі РОСТИ, і
+     при короткому списку вона стояла обрізаним клаптем посеред
+     екрана. Тепер займає ряд цілком, а всередині гортається. */
   body[data-route="cabinets"] #rules-panel:not(.hidden) {
-    display: flex; min-height: 0; max-height: 100%;
+    display: flex; min-height: 0; height: 100%; max-height: 100%;
   }
   body[data-route="cabinets"] #rules-panel > .rl-wrap {
     flex: 1 1 auto; min-height: 0;
@@ -4296,7 +4299,7 @@ body.is-lead-only .admin-only { display: none; }
      id-селектор мусить лишитись сильнішим за Tailwind-івський
      .hidden, інакше панель було б видно завжди. */
   body[data-route="cabinets"] #pages-panel:not(.hidden) {
-    display: flex; min-height: 0; max-height: 100%;
+    display: flex; min-height: 0; height: 100%; max-height: 100%;
   }
   body[data-route="cabinets"] #pages-panel > .rl-wrap {
     flex: 1 1 auto; min-height: 0;
@@ -6071,15 +6074,41 @@ input.ui-in[type="range"] { padding: 0; }
    Дві колонки: ліворуч те, що пишеш, праворуч те, що вже поставив.
    На вузькому екрані стають одна під одну — черга йде під формою, бо
    спершу пишуть, а вже потім дивляться, що там у черзі. */
-.ps-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 12px; }
+/* ДВА СТОВПЦІ, ЯКІ ГОРТАЮТЬСЯ ОКРЕМО.
+
+   Доти вся сторінка була одним полотном: щоб подивитись чергу,
+   доводилось прогортати повз форму, а щоб дописати текст — назад.
+   Форма коротка й стоїть на місці, черга довга й гортається сама —
+   це дві різні речі, і висоту їм треба різну.
+
+   Під 1000px стовпці стають один під одним, і стеля висоти там
+   шкідлива: на вузькому екрані гортається сторінка, а не колонка. */
+.ps-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 14px; align-items: start;
+}
+@media (min-width: 1001px) {
+  .ps-grid { max-height: calc(100vh / var(--zoom, 1) - 190px); }
+  .ps-card { max-height: 100%; overflow: auto; }
+}
 @media (max-width: 1000px) { .ps-grid { grid-template-columns: 1fr; } }
-.ps-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; padding: 14px; }
+.ps-card {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px 16px 18px;
+}
 .ps-cap {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px;
   font-size: 10px; font-weight: 800; letter-spacing: .16em;
   text-transform: uppercase; color: var(--text-muted);
 }
-.ps-lbl { display: block; margin: 10px 0 4px; font-size: 11px; font-weight: 700; color: var(--text-main); }
+/* Повітря між групами. Поля йшли одне за одним із зазором у десять
+   пікселів, і форма читалась суцільним стовпом: де закінчується
+   «картинка» й починається «коли», видно не було. */
+.ps-lbl {
+  display: block; margin: 16px 0 5px; font-size: 11px;
+  font-weight: 700; color: var(--text-main);
+}
+.ps-lbl:first-of-type { margin-top: 0; }
 .ps-opt { font-weight: 600; color: var(--text-muted); text-transform: none; letter-spacing: 0; }
 .ps-in {
   width: 100%; background: var(--bg); color: var(--text-main);
@@ -6087,11 +6116,18 @@ input.ui-in[type="range"] { padding: 0; }
   padding: 8px 10px; font: inherit; font-size: 12px; font-weight: 600; outline: none;
 }
 .ps-in:focus { border-color: var(--accent-bd); }
-.ps-area { resize: vertical; min-height: 92px; line-height: 1.55; }
+.ps-area { resize: vertical; min-height: 120px; line-height: 1.6; }
 .ps-hint { margin: 4px 0 0; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
 .ps-hint.is-bad { color: var(--bad); }
 .ps-note { margin: 0 0 10px; font-size: 11px; font-weight: 700; color: var(--warn); }
-.ps-when { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 12px; font-weight: 600; }
+/* «Коли» — один блок, а не три сусідні елементи: радіо й поле часу
+   відповідають на одне питання, і рамка навколо них це й каже. */
+.ps-when {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  font-size: 12px; font-weight: 600;
+  padding: 9px 11px; border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border);
+}
 .ps-when label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .ps-when .ps-in { width: auto; }
 .ps-acts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
@@ -6109,12 +6145,21 @@ input.ui-in[type="range"] { padding: 0; }
    міняють, дивлячись на неї й на залишок, а не згадуючи про кнопку
    десь збоку. Тьмяний, поки на картку не навели, — щоб не тягнув
    увагу на себе в ряду, де головне числа. */
+/* ОЛІВЕЦЬ БУВ ЗАМАЛИЙ. Одинадцять пікселів при opacity .45 поруч із
+   числами того ж розміру читаються як крапка, а не як кнопка — його
+   просто не помічали. Тепер це видимий значок із власним тлом: за
+   ним і тягнеться рука, коли треба змінити стелю. */
 .cab-lim-ed {
-  margin-left: 6px; padding: 0 3px; border: 0; background: none;
-  color: var(--text-muted); font-size: 11px; line-height: 1;
-  cursor: pointer; opacity: .45; transition: opacity .12s, color .12s;
+  margin-left: 7px; padding: 2px 5px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface-3);
+  color: var(--text-main); font-size: 13px; line-height: 1;
+  cursor: pointer; opacity: .8; vertical-align: -1px;
+  transition: opacity .12s, color .12s, border-color .12s, background .12s;
 }
-.cab-lim-ed:hover { opacity: 1; color: var(--accent); }
+.cab-lim-ed:hover {
+  opacity: 1; color: #fff;
+  background: var(--accent); border-color: var(--accent);
+}
 
 /* АВАТАР СТОРІНКИ. Квадрат зі скругленням, а не коло: у Facebook лого
    Сторінок квадратні, і коло зрізало б їм кути — саме ті, де в
@@ -6134,6 +6179,22 @@ input.ui-in[type="range"] { padding: 0; }
 
    Його ж видно й тоді, коли fb-comments ще не перезадеплоєна: лого
    тоді не приходить узагалі, і список мусить лишатись читабельним. */
+/* «Прибрати всі без токена» стоїть у ряду плиток стану — там, де їх
+   і рахують. Виглядає як дія, а не як ще одна плитка: інакше в ряді
+   фільтрів зʼявилась би кнопка, яка нічого не фільтрує. */
+.flt-sweep {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 0 10px; height: 30px; border-radius: 9px;
+  background: var(--surface-2); border: 1px dashed var(--border-2);
+  color: var(--text-muted); font-size: 11px; font-weight: 800;
+  cursor: pointer; white-space: nowrap;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.flt-sweep:hover {
+  color: var(--text-main); background: var(--surface-3);
+  border-color: var(--text-muted);
+}
+
 .pg-pic.is-none {
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 10px; font-weight: 800; color: var(--text-muted);
@@ -6479,7 +6540,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 31.10 00:01</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 31.10 00:53</div>
     </div>
   </aside>
 
@@ -7440,7 +7501,6 @@ input.ui-in[type="range"] { padding: 0; }
     <div class="pg-head rl-head">
       <div>
         <h2>Pages</h2>
-        <p class="panel-sub">Every Page your tokens reach — and what people write under it</p>
       </div>
       <button type="button" class="rl-x" onclick="pgPanel(false)" title="Close">&times;</button>
     </div>
@@ -16618,7 +16678,7 @@ document.addEventListener('keydown', e => {
                  крок. Видиме, а не зірочками, з тієї ж причини, що і в
                  окремому вікні: рядок копіюють із панелі постачальника,
                  він довгий, і зайвий пробіл видно лише очима. -->
-            <div class="set-addrow" data-setting="proxy проксі token токен">
+            <div class="set-addrow mt-2" data-setting="proxy проксі token токен">
               <input type="text" id="fb-proxy-input" class="set-input font-mono"
                 placeholder="Proxy (optional) — 1.2.3.4:8000:user:pass" autocomplete="off"
                 style="flex:1 1 auto;min-width:0">
@@ -23883,7 +23943,12 @@ window.tgNews = async function (onlyMe) {
       : 'Надіслано: ' + j.sent + ' з ' + j.total + (tail ? ' · ' + tail : ''));
     if (typeof toast === 'function') toast(onlyMe ? 'Тестове надіслано' : 'Розіслано', 'ok');
   } catch (e) {
-    say(String(e.message || e), true);
+    /* Рядок під кнопками легко не помітити — особливо коли дивишся на
+       саму кнопку, а вона вже знову активна. Розсилка, яка не пішла,
+       мусить сказати про це так само голосно, як та, що пішла. */
+    const m = String(e.message || e);
+    say(m, true);
+    if (typeof toast === 'function') toast(m, 'error', 10000);
   } finally {
     tgNewsBusy = false;
     btns.forEach(b => b.disabled = false);
@@ -27695,10 +27760,32 @@ function cabRender() {
        керують, гірші за три кнопки, яких немає. */
     const tools = cabTreeId && typeof cdHeadBits === 'function'
       ? `<div class="flt-tools">${cdHeadBits()}</div>` : '';
+
+    /* ПРИБРАТИ ВСІ БЕЗ ТОКЕНА — ОДНІЄЮ ДІЄЮ.
+
+       «No token» означає, що жоден токен цього кабінета вже не
+       бачить: числа в рядку заморожені, зробити з ним нічого не
+       можна, а місце в таблиці він займає нарівні з робочими. Таких
+       назбирується десятками, і прибирати по одному — робота, якої
+       ніхто не робить.
+
+       Кнопка стоїть у самій плитці «No token», поруч із їх числом:
+       саме дивлячись на це число й виникає бажання їх прибрати.
+
+       Архів не видаляє нічого: історія витрат і твої нотатки
+       лишаються, кабінет просто йде у свою плитку. Тому й питаємо
+       один раз, а не лякаємо. */
+    const noTok = all.filter(c => c.state === 'notoken');
+    const sweep = noTok.length
+      ? `<button type="button" class="flt-sweep" onclick="cabArchiveNoToken()"
+           title="Move all ${noTok.length} cabinets that no token sees any more into Archive">
+           \u21b4 archive ${noTok.length}</button>`
+      : '';
     tiles.innerHTML = `<div class="flt-row flt-row-cab">
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
+      ${sweep}
       ${tools}
     </div>`
     /* Попередження стоїть ПІД плитками, тобто рівно там, куди людина
@@ -28901,6 +28988,55 @@ window.cabLimitEdit = async function (enc) {
   } catch (e) {
     step.done(String(e.message || e), 'error');
   }
+};
+
+
+/* ═══════════ АРХІВУВАТИ ВСІ БЕЗ ТОКЕНА ═══════════
+
+   Account у стані notoken — це той, якого жоден токен уже не бачить.
+   Його числа заморожені, діяти з ним нема чим, а рядок він займає
+   такий самий, як робочий.
+
+   Що тут важить:
+
+   1. Це НЕ видалення. Архів лише ховає рядок у свою плитку; історія
+      витрат і нотатки лишаються, і повернути можна тим самим статусом.
+      Тому й питання спокійне, без червоного.
+
+   2. Accountи, яких ще немає в accounts_mapping, спершу треба завести
+      — інакше архіву нема куди лягти. Це та сама пара дій, що вже
+      робить cabArchiveNew.
+
+   3. Ідемо по одному й рахуємо, що не вийшло. Одна відмова посеред
+      сорока не має ні спиняти решту, ні зникати: у підсумку видно
+      обидва числа. */
+window.cabArchiveNoToken = async function () {
+  const list = cabAll.filter(c => c.state === 'notoken');
+  if (!list.length) return;
+
+  const go = await ask({ title: 'Archive ' + list.length + ' cabinet(s) without a token?',
+    ok: 'Archive',
+    body: 'No token sees them any more, so their numbers are frozen and nothing can be '
+        + 'done with them from here.\n\nArchiving only moves them out of the way: spend '
+        + 'history and your notes stay, and the Archived tile still holds them.' });
+  if (!go) return;
+
+  const step = toastStep();
+  let done = 0, failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    step.say('Archiving ' + (i + 1) + ' of ' + list.length + '\u2026');
+    const c = list[i];
+    try {
+      const enc = encodeURIComponent(String(c.id));
+      if (c.row && c.row.id) await cabSetStatus(c.row.id, 'archive');
+      else await cabArchiveNew(enc);
+      done++;
+    } catch (_e) { failed++; }
+  }
+  step.done(failed
+    ? 'Archived ' + done + ', ' + failed + ' did not go \u2014 open those and try again'
+    : 'Archived ' + done, failed ? 'warn' : 'ok');
+  cabRender();
 };
 </script>
 
@@ -31381,6 +31517,7 @@ window.rlCheck = async function () {
 
 let pgRows = null;       // null — ще не питали
 let pgErr = '', pgProb = [];
+let pgFn = '';            // версія функції, що відповіла
 let pgSel = '';          // яка Сторінка розкрита
 let pgList = null;       // коментарі розкритої, null — їдуть
 let pgListErr = '', pgNote = '', pgMore = false, pgCan = true;
@@ -31453,6 +31590,10 @@ window.pgLoad = async function (force) {
     const j = await pgCall({ action: 'pages' });
     pgRows = Array.isArray(j.pages) ? j.pages : [];
     pgProb = Array.isArray(j.problems) ? j.problems : [];
+    /* Яка збірка відповіла. Без цього «лого немає» має дві різні
+       причини з одним виглядом — стара функція й відмова Facebook, —
+       і ми вгадували першу. */
+    pgFn = String(j.fn || '');
   } catch (e) {
     pgRows = [];
     pgErr = pgWhy(e);
@@ -31687,15 +31828,24 @@ function pgPaint() {
        не дав», а «функція про це поле ще не знає» — тобто в Supabase
        стоїть старіша збірка. Без цього рядка на екрані просто літери,
        і причину видно нізвідки. */
+    /* ДВІ РІЗНІ ПРИЧИНИ З ОДНИМ ВИГЛЯДОМ.
+
+       Лого немає в жодної Сторінки — це або функція, яка про поле ще
+       не знає, або Facebook, який його не дав. Раніше ми писали перше
+       навздогад; тепер версія у відповіді розрізняє їх, і там, де
+       здогадки немає, кажемо саме це, а не вигадуємо винного. */
     const noPics = !empty && pgRows.every(r => !r.pic);
     note.innerHTML = empty
       ? 'No Pages: the tokens in Settings do not have any Page assigned to their system user.'
         + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '')
-      : noPics
+      : !noPics ? ''
+      : !pgFn
         ? 'Logos are not coming: the deployed fb-comments is older than this page. '
           + 'Run <span class="font-mono">supabase functions deploy fb-comments</span> '
           + '\u2014 until then each Page shows its first letter.'
-        : '';
+        : 'Logos are not coming, and the function is current (' + pgEsc(pgFn) + '). '
+          + 'So Facebook returned no picture for these Pages \u2014 that is a Business '
+          + 'Manager question, not a deploy one. Each Page shows its first letter meanwhile.';
     // Порожній <p> лишав би над списком свій відступ — саме той
     // проміжок, через який текст і заважав.
     if (!empty && !noPics) note.style.display = 'none';
@@ -34258,16 +34408,49 @@ window.psPickPage = function (id) {
 /* Лого докладаємо ПІСЛЯ того, як список уже на екрані: він не має
    чекати на другий запит, а якщо той не дійде — просто лишиться з
    літерами. Тому жодного throw назовні. */
+/* ЖИВИЙ СПИСОК ВИРІШУЄ, ЩО ПОКАЗУВАТИ.
+
+   Сторінки ми беремо з fb_cabinet_pages — це знімок останньої
+   синхронізації. Токен міг за цей time померти або втратити Сторінку,
+   а в таблиці вона лишилась: людина вибирає її, пише текст і лише
+   тоді дізнається, що постити нічим.
+
+   Той самий виклик, яким приходять лого, повертає ЖИВИЙ список. Якщо
+   він дійшов — лишаємо тільки те, що в ньому є: зникла Сторінка
+   означає мертвий токен, і тримати її в списку немає сенсу.
+
+   Не дійшов — не чіпаємо нічого. Порожній список через те, що
+   відповідь не прийшла, гірший за трохи застарілий. */
 async function psLoadPics() {
   if (typeof pgCall !== 'function') return;
-  try {
-    const j = await pgCall({ action: 'pages' });
-    const got = {};
-    (j.pages || []).forEach(p => { if (p.pic) got[String(p.page_id)] = p.pic; });
-    if (!Object.keys(got).length) return;
-    psPics = got;
+  let j;
+  try { j = await pgCall({ action: 'pages' }); }
+  catch (_e) { return; }                 // лишаються літери й список із бази
+
+  const live = Array.isArray(j.pages) ? j.pages : [];
+  if (!live.length) return;
+
+  const pic = {}, ok = new Set();
+  live.forEach(p => {
+    const id = String(p.page_id);
+    if (p.can_moderate) ok.add(id);
+    if (p.pic) pic[id] = p.pic;
+  });
+  psPics = pic;
+
+  const before = psPages.length;
+  const kept = psPages.filter(p => ok.has(String(p.page_id)));
+  /* Відсікаємо лише тоді, коли лишається хоч щось: порожнеча тут
+     читалась би як «Сторінок немає», а це інша біда з іншим лікуванням. */
+  if (kept.length) {
+    psHidden += before - kept.length;
+    psPages = kept;
+    const sel = document.getElementById('ps-page');
+    if (sel && !ok.has(String(sel.value))) sel.value = String(psPages[0].page_id);
+    psPaintPages();
+  } else {
     psPaintPicks();
-  } catch (_e) { /* немає лого — лишаються літери */ }
+  }
 }
 </script>
 

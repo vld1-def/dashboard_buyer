@@ -1939,10 +1939,32 @@ function cabRender() {
        керують, гірші за три кнопки, яких немає. */
     const tools = cabTreeId && typeof cdHeadBits === 'function'
       ? `<div class="flt-tools">${cdHeadBits()}</div>` : '';
+
+    /* ПРИБРАТИ ВСІ БЕЗ ТОКЕНА — ОДНІЄЮ ДІЄЮ.
+
+       «No token» означає, що жоден токен цього кабінета вже не
+       бачить: числа в рядку заморожені, зробити з ним нічого не
+       можна, а місце в таблиці він займає нарівні з робочими. Таких
+       назбирується десятками, і прибирати по одному — робота, якої
+       ніхто не робить.
+
+       Кнопка стоїть у самій плитці «No token», поруч із їх числом:
+       саме дивлячись на це число й виникає бажання їх прибрати.
+
+       Архів не видаляє нічого: історія витрат і твої нотатки
+       лишаються, кабінет просто йде у свою плитку. Тому й питаємо
+       один раз, а не лякаємо. */
+    const noTok = all.filter(c => c.state === 'notoken');
+    const sweep = noTok.length
+      ? `<button type="button" class="flt-sweep" onclick="cabArchiveNoToken()"
+           title="Move all ${noTok.length} cabinets that no token sees any more into Archive">
+           \u21b4 archive ${noTok.length}</button>`
+      : '';
     tiles.innerHTML = `<div class="flt-row flt-row-cab">
       ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
           CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
+      ${sweep}
       ${tools}
     </div>`
     /* Попередження стоїть ПІД плитками, тобто рівно там, куди людина
@@ -3145,4 +3167,53 @@ window.cabLimitEdit = async function (enc) {
   } catch (e) {
     step.done(String(e.message || e), 'error');
   }
+};
+
+
+/* ═══════════ АРХІВУВАТИ ВСІ БЕЗ ТОКЕНА ═══════════
+
+   Кабінет у стані notoken — це той, якого жоден токен уже не бачить.
+   Його числа заморожені, діяти з ним нема чим, а рядок він займає
+   такий самий, як робочий.
+
+   Що тут важить:
+
+   1. Це НЕ видалення. Архів лише ховає рядок у свою плитку; історія
+      витрат і нотатки лишаються, і повернути можна тим самим статусом.
+      Тому й питання спокійне, без червоного.
+
+   2. Кабінети, яких ще немає в accounts_mapping, спершу треба завести
+      — інакше архіву нема куди лягти. Це та сама пара дій, що вже
+      робить cabArchiveNew.
+
+   3. Ідемо по одному й рахуємо, що не вийшло. Одна відмова посеред
+      сорока не має ні спиняти решту, ні зникати: у підсумку видно
+      обидва числа. */
+window.cabArchiveNoToken = async function () {
+  const list = cabAll.filter(c => c.state === 'notoken');
+  if (!list.length) return;
+
+  const go = await ask({ title: 'Archive ' + list.length + ' cabinet(s) without a token?',
+    ok: 'Archive',
+    body: 'No token sees them any more, so their numbers are frozen and nothing can be '
+        + 'done with them from here.\n\nArchiving only moves them out of the way: spend '
+        + 'history and your notes stay, and the Archived tile still holds them.' });
+  if (!go) return;
+
+  const step = toastStep();
+  let done = 0, failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    step.say('Archiving ' + (i + 1) + ' of ' + list.length + '\u2026');
+    const c = list[i];
+    try {
+      const enc = encodeURIComponent(String(c.id));
+      if (c.row && c.row.id) await cabSetStatus(c.row.id, 'archive');
+      else await cabArchiveNew(enc);
+      done++;
+    } catch (_e) { failed++; }
+  }
+  step.done(failed
+    ? 'Archived ' + done + ', ' + failed + ' did not go \u2014 open those and try again'
+    : 'Archived ' + done, failed ? 'warn' : 'ok');
+  cabRender();
 };

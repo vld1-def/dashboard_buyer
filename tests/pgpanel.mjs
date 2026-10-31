@@ -102,18 +102,33 @@ ok('адреса дашборда не їде у Facebook із кожною ав
 /* Жодного лого в усіх Сторінках одразу — це не «Facebook не дав», а
    старіша збірка функції: поле приходить тим самим запитом. Без цього
    рядка на екрані просто літери, і причину видно нізвідки. */
-ok('коли лого не прийшло в жодної — сказано, чому', await page.evaluate(async () => {
+/* ДВІ ПРИЧИНИ З ОДНИМ ВИГЛЯДОМ, і вгадувати не можна: лого немає або
+   тому, що функція про поле ще не знає, або тому, що Facebook його не
+   дав. Версія у відповіді їх і розрізняє — питання деплою чи питання
+   Business Manager, а це різні місця, куди йти. */
+const noPics = fn => page.evaluate(async v => {
   const keep = pgCall;
   pgCall = async b => b.action === 'pages'
-    ? { pages: [{ page_id: '111', name: 'Alpha', tasks: ['MODERATE'],
-                  can_moderate: true, token: 'T' }], problems: [] }
+    ? Object.assign(v ? { fn: v } : {}, { problems: [],
+        pages: [{ page_id: '111', name: 'Alpha', tasks: ['MODERATE'],
+                  can_moderate: true, token: 'T' }] })
     : keep(b);
   pgRows = null; await pgLoad(true);
   const el = document.getElementById('pg-note');
-  const seen = getComputedStyle(el).display !== 'none' && /deploy fb-comments/.test(el.textContent);
+  const out = { shown: getComputedStyle(el).display !== 'none', text: el.textContent };
   pgCall = keep; pgRows = null; await pgLoad(true);
-  return seen;
-}));
+  return out;
+}, fn);
+
+const old = await noPics('');
+ok('стара збірка без лого — названа деплоєм',
+  old.shown && /deploy fb-comments/.test(old.text), old);
+const cur = await noPics('2026-10-31.1');
+ok('свіжа збірка без лого — це вже не деплой',
+  cur.shown && !/deploy fb-comments/.test(cur.text), cur);
+ok('і сказано, де насправді дивитись', /Business\s+Manager/.test(cur.text), cur);
+ok('версію функції названо, щоб було видно, чому так вирішили',
+  /2026-10-31\.1/.test(cur.text), cur);
 ok('а коли лого є — рядка немає', await page.evaluate(() =>
   getComputedStyle(document.getElementById('pg-note')).display === 'none'));
 

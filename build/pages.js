@@ -32,6 +32,7 @@
 
 let pgRows = null;       // null — ще не питали
 let pgErr = '', pgProb = [];
+let pgFn = '';            // версія функції, що відповіла
 let pgSel = '';          // яка Сторінка розкрита
 let pgList = null;       // коментарі розкритої, null — їдуть
 let pgListErr = '', pgNote = '', pgMore = false, pgCan = true;
@@ -104,6 +105,10 @@ window.pgLoad = async function (force) {
     const j = await pgCall({ action: 'pages' });
     pgRows = Array.isArray(j.pages) ? j.pages : [];
     pgProb = Array.isArray(j.problems) ? j.problems : [];
+    /* Яка збірка відповіла. Без цього «лого немає» має дві різні
+       причини з одним виглядом — стара функція й відмова Facebook, —
+       і ми вгадували першу. */
+    pgFn = String(j.fn || '');
   } catch (e) {
     pgRows = [];
     pgErr = pgWhy(e);
@@ -338,15 +343,24 @@ function pgPaint() {
        не дав», а «функція про це поле ще не знає» — тобто в Supabase
        стоїть старіша збірка. Без цього рядка на екрані просто літери,
        і причину видно нізвідки. */
+    /* ДВІ РІЗНІ ПРИЧИНИ З ОДНИМ ВИГЛЯДОМ.
+
+       Лого немає в жодної Сторінки — це або функція, яка про поле ще
+       не знає, або Facebook, який його не дав. Раніше ми писали перше
+       навздогад; тепер версія у відповіді розрізняє їх, і там, де
+       здогадки немає, кажемо саме це, а не вигадуємо винного. */
     const noPics = !empty && pgRows.every(r => !r.pic);
     note.innerHTML = empty
       ? 'No Pages: the tokens in Settings do not have any Page assigned to their system user.'
         + (pgProb.length ? '<br>' + pgProb.map(pgEsc).join('<br>') : '')
-      : noPics
+      : !noPics ? ''
+      : !pgFn
         ? 'Logos are not coming: the deployed fb-comments is older than this page. '
           + 'Run <span class="font-mono">supabase functions deploy fb-comments</span> '
           + '\u2014 until then each Page shows its first letter.'
-        : '';
+        : 'Logos are not coming, and the function is current (' + pgEsc(pgFn) + '). '
+          + 'So Facebook returned no picture for these Pages \u2014 that is a Business '
+          + 'Manager question, not a deploy one. Each Page shows its first letter meanwhile.';
     // Порожній <p> лишав би над списком свій відступ — саме той
     // проміжок, через який текст і заважав.
     if (!empty && !noPics) note.style.display = 'none';

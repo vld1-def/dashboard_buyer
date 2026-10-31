@@ -82,8 +82,15 @@ function sameSecret(a: string, b: string): boolean {
 
 type Json = Record<string, any>;
 
+/* ЯКА САМЕ ЗБІРКА ВІДПОВІЛА. У Supabase працює та версія, яку
+   задеплоїли, а не та, що в репозиторії, — і розрив між ними цього
+   тижня тричі виглядав як вада в коді. Номер у кожній відповіді
+   коштує нічого, а дозволяє сторінці відрізнити «функція про це ще
+   не знає» від «Facebook так відповів». */
+const FN_VERSION = '2026-10-31.2';
+
 function reply(body: Json, status = 200): Response {
-  return new Response(JSON.stringify(body),
+  return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
     { status, headers: { ...CORS, 'content-type': 'application/json' } });
 }
 
@@ -637,7 +644,21 @@ async function handle(req: Request): Promise<Response> {
    Скільки останніх постів Сторінки обходимо за виклик. Менше, ніж
    постів кабінета: там вони вже відсортовані за «під ним крутиться
    оголошення», а тут просто найсвіжіші — і саме під свіжими й пишуть. */
-const PAGE_POSTS = 15;
+/* СКІЛЬКИ ТЯГНЕМО ЗА ОДИН РАЗ.
+
+   Доти бралися перші 15 постів по 50 коментарів у кожному — і все:
+   ні старих постів, ні коментарів поза першою півсотнею. Для
+   Сторінки, якій рік, це означало «показали шматок» без жодної
+   позначки, що він шматок.
+
+   Тепер ідемо сторінками, доки є що брати, і спиняємось на стелі або
+   на часі. Стеля тут не прикраса: Сторінка з тисячею постів інакше
+   тримала б функцію до таймауту і не віддала б нічого. Якщо
+   спинились раніше, ніж скінчились дані, кажемо про це прямо. */
+const PAGE_POSTS = 100;       // постів максимум
+const PAGE_POST_PAGES = 5;    // і не більше стількох порцій по них
+const PER_POST_MAX = 500;     // коментарів з одного поста
+const PER_POST_PAGES = 10;
 
 type PgRow = { page_id: string; name: string; tasks: string[];
                can_moderate: boolean; pic: string;
@@ -730,44 +751,77 @@ async function byPage(base: string, hdr: Json, me: string,
    зовсім, тож список коментарів під рекламою був би порожній при
    повних правах. Не вийшло — відкочуємось на /posts і кажемо це: пів
    відповіді краще за порожній екран. */
-async function pagePosts(pg: { token: string }, pageId: string):
-    Promise<{ list: Json[]; why: string }> {
+/* Обхід порціями. Наступну Facebook віддає готовим посиланням у
+   paging.next — беремо його як є: самостійно складений курсор рано чи
+   пізно розійдеться з тим, що Graph мав на увазі. */
+async function graphAll(first: Json, pages: number, cap: number,
+                        deadline: number): Promise<{ list: Json[]; more: boolean }> {
+  const out: Json[] = Array.isArray(first?.data) ? [...first.data] : [];
+  let next = String(first?.paging?.next || '');
+  for (let i = 1; i < pages && next && out.length < cap; i++) {
+    if (Date.now() > deadline) break;
+    try {
+      const res = await fetch(next);
+      const j = await res.json();
+      if (!res.ok || j?.error) break;
+      if (Array.isArray(j.data)) out.push(...j.data);
+      next = String(j?.paging?.next || '');
+    } catch (_e) { break; }
+  }
+  /* «Є ще» — це коли дані не скінчились, а ми спинились. Саме це й
+     треба сказати людині: інакше обрізаний список читається як повний. */
+  return { list: out.slice(0, cap), more: !!next || out.length > cap };
+}
+
+async function pagePosts(pg: { token: string }, pageId: string, deadline: number):
+    Promise<{ list: Json[]; why: string; more: boolean }> {
+  const take = async (edge: string, fields: string) => {
+    const first = await graph('/' + pageId + '/' + edge, pg.token, { fields, limit: 100 });
+    return await graphAll(first, PAGE_POST_PAGES, PAGE_POSTS, deadline);
+  };
   try {
-    const j = await graph('/' + pageId + '/promotable_posts', pg.token, {
-      fields: 'id,message,created_time,permalink_url,is_published', limit: PAGE_POSTS });
-    return { list: Array.isArray(j.data) ? j.data : [], why: '' };
+    const r = await take('promotable_posts',
+      'id,message,created_time,permalink_url,is_published');
+    return { ...r, why: '' };
   } catch (e) {
     try {
-      const j = await graph('/' + pageId + '/posts', pg.token, {
-        fields: 'id,message,created_time,permalink_url', limit: PAGE_POSTS });
-      return { list: Array.isArray(j.data) ? j.data : [],
-               why: 'Only published posts are shown: ' + (e as Error).message };
+      const r = await take('posts', 'id,message,created_time,permalink_url');
+      return { ...r, why: 'Only published posts are shown: ' + (e as Error).message };
     } catch (e2) {
-      return { list: [], why: (e2 as Error).message };
+      return { list: [], more: false, why: (e2 as Error).message };
     }
   }
 }
 
 async function pageComments(pg: { token: string; name: string }, row: PgRow): Promise<Response> {
-  const { list, why } = await pagePosts(pg, row.page_id);
+  const deadline = Date.now() + DEADLINE_MS;
+  const { list, why, more: morePosts } = await pagePosts(pg, row.page_id, deadline);
   const problems: string[] = why ? [why] : [];
   if (!list.length) return reply({ comments: [], page: pg.name, posts: 0, looked: 0,
     can_moderate: row.can_moderate, problems,
     note: 'This Page has no posts we can see yet.' });
 
-  const deadline = Date.now() + DEADLINE_MS;
   const out: Json[] = [];
   let seen = 0;
+  let cut = morePosts;          // щось лишилось за межею
   for (const p of list) {
-    if (Date.now() > deadline) break;
+    if (Date.now() > deadline) { cut = true; break; }
     seen++;
     // Підпис посту — його ж текст, обрізаний: по ньому пост і впізнають.
     const title = String(p.message || '').replace(/\s+/g, ' ').trim();
     try {
-      const j = await graph('/' + p.id + '/comments', pg.token, {
+      /* filter=stream, а не типове toplevel: інакше відповіді під
+         коментарями не приходять зовсім, а спам найчастіше саме там.
+         Приховані Facebook віддає разом з рештою, позначені
+         is_hidden — але лише тому, в кого є право модерації. Тим, хто
+         Сторінку лише читає, він їх не покаже, і вдавати тут повноту
+         не можна. */
+      const first = await graph('/' + p.id + '/comments', pg.token, {
         fields: 'id,message,created_time,is_hidden,like_count,permalink_url,from{name,id}',
         filter: 'stream', limit: PER_POST });
-      (Array.isArray(j.data) ? j.data : []).forEach((c: Json) => out.push({
+      const got = await graphAll(first, PER_POST_PAGES, PER_POST_MAX, deadline);
+      if (got.more) cut = true;
+      got.list.forEach((c: Json) => out.push({
         id: String(c.id || ''),
         story: String(p.id || ''),
         page: pg.name,
@@ -787,9 +841,18 @@ async function pageComments(pg: { token: string; name: string }, row: PgRow): Pr
     }
   }
 
+  /* Приховані видно лише тому, хто має право модерації. Сказати це
+     треба саме тут: список без них виглядає так само, як список, де
+     їх і не було. */
+  if (!row.can_moderate) problems.push('Hidden comments are not shown: this token can only '
+    + 'read "' + row.name + '". Facebook shows hidden ones to moderators only.');
+
   out.sort((a, b) => String(b.created_time || '').localeCompare(String(a.created_time || '')));
+  const cutOff = cut || seen < list.length;
   return reply({ comments: out, page: pg.name, posts: list.length, looked: seen,
-                 more: seen < list.length, can_moderate: row.can_moderate,
+                 more: cutOff, can_moderate: row.can_moderate,
+                 note: cutOff ? 'Stopped early \u2014 this Page has more than fits in one '
+                   + 'pass. What is shown is the newest part of it.' : '',
                  problems: problems.slice(0, 5) });
 }
 
