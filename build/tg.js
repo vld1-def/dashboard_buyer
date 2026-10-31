@@ -190,7 +190,11 @@ async function tgTest() {
        про цей вхід — тобто в Supabase працює збірка, старша за цю
        сторінку. Пропустити таке як є означало б відправити людину
        шукати кабінет, якого вона й не вказувала. */
-    if (!res.ok && /account_id is required/i.test(String(j.error || '')))
+    /* Стару збірку ловимо за БУДЬ-ЯКОГО коду відповіді. Частина
+       наших функцій віддає помилку з кодом 200, і перевірка лише на
+       !res.ok пропускала саме цей випадок — а він тут єдиний, що
+       взагалі трапляється. */
+    if (/account_id is required/i.test(String(j.error || '')))
       throw Object.assign(new Error('old'), { code: 'old' });
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
 
@@ -258,11 +262,23 @@ async function tgNewsCall(body) {
     body: JSON.stringify(body)
   });
   const j = await res.json().catch(() => ({}));
-  /* Незадеплоєна функція — це не «щось пішло не так», а невиконаний
-     крок розгортання, і сказати треба саме його. */
-  if (!res.ok) throw new Error(res.status === 404
-    ? 'Функція tg-news ще не задеплоєна: supabase functions deploy tg-news'
-    : (j.error || 'HTTP ' + res.status));
+
+  /* ХТО САМЕ ВІДПОВІВ. Наші функції ставлять у відповідь своє fn, і
+     tg-news теж. Відповідь без нього — це НЕ вона: або під цією
+     адресою в Supabase лежить щось інше, або запит туди не дійшов.
+
+     Це не прискіпливість: «account_id is required» у телеграмі може
+     прийти лише від чужої функції, бо tg-news такого не каже зроду, і
+     без цієї перевірки людина шукала б кабінет, якого не вказувала. */
+  if (!j.fn) {
+    if (res.status === 404) throw new Error(
+      'Функція tg-news ще не задеплоєна: supabase functions deploy tg-news');
+    throw new Error('Відповідь прийшла не від tg-news'
+      + (j.error ? ' («' + j.error + '»)' : ' (HTTP ' + res.status + ')')
+      + '. Виконай supabase functions deploy tg-news — найчастіше під цією '
+      + 'адресою ще стоїть інша функція або стара збірка.');
+  }
+  if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
   return j;
 }
 

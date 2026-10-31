@@ -92,4 +92,18 @@ ok('стару збірку функції названо саме нею', /old
 ok('і сказано, чим це лікується', /deploy fb-sync/.test(stale), stale);
 ok('про кабінет не згадано жодним словом', !/account_id/.test(stale), stale);
 
+/* Стару збірку ловимо за БУДЬ-ЯКОГО коду відповіді: частина наших
+   функцій віддає помилку з кодом 200, і перевірка лише на !res.ok
+   пропускала саме цей випадок — а він тут єдиний, що трапляється. */
+const stale200 = await page.evaluate(async () => {
+  const keep = window.fetch;
+  window.fetch = async () => ({ ok: true, status: 200,
+    json: async () => ({ error: 'account_id is required' }) });
+  await tgTest();
+  window.fetch = keep;
+  return document.getElementById('tg-test-status').textContent;
+});
+ok('стара збірка з кодом 200 теж названа собою',
+  /older than this page/.test(stale200), stale200);
+
 await done(browser, srv, errs);
