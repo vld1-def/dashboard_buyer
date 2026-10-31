@@ -82,8 +82,15 @@ function sameSecret(a: string, b: string): boolean {
 
 type Json = Record<string, any>;
 
+/* ЯКА САМЕ ЗБІРКА ВІДПОВІЛА. У Supabase працює та версія, яку
+   задеплоїли, а не та, що в репозиторії, — і розрив між ними цього
+   тижня тричі виглядав як вада в коді. Номер у кожній відповіді
+   коштує нічого, а дозволяє сторінці відрізнити «функція про це ще
+   не знає» від «Facebook так відповів». */
+const FN_VERSION = '2026-10-31.1';
+
 function reply(body: Json, status = 200): Response {
-  return new Response(JSON.stringify(body),
+  return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
     { status, headers: { ...CORS, 'content-type': 'application/json' } });
 }
 
