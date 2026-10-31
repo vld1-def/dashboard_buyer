@@ -417,6 +417,43 @@ ok('адреса дашборда не їде у Facebook із кожним ло
   withPics.quiet === 'no-referrer', withPics);
 ok('у кого лого немає — лишається літера', withPics.second === true, withPics);
 
+/* ─────────── живий список вирішує, що показувати ───────────
+
+   Сторінки беруться з fb_cabinet_pages — знімка останньої
+   синхронізації. Токен міг за цей час померти, а Сторінка в таблиці
+   лишилась: людина вибирає її, пише текст і лише тоді дізнається, що
+   постити нічим. Той самий виклик, яким приходять лого, повертає
+   живий список — ним і відсікаємо. */
+await boot({ tables: {
+  fb_cabinet_pages: { data: [
+    { page_id: '1', page_name: 'Lucky KG', can_moderate: true },
+    { page_id: '9', page_name: 'Dead BM', can_moderate: true }
+  ], error: null },
+  fb_posts: { data: [], error: null } } });
+
+const alive = await page.evaluate(async () => {
+  pgCall = async () => ({ pages: [
+    { page_id: '1', pic: '', can_moderate: true } ] });   // '9' живою не прийшла
+  await psLoadPics();
+  return { ids: [...document.querySelectorAll('#ps-pages .ps-page-pick')]
+             .map(b => b.dataset.id),
+           hint: document.getElementById('ps-page-hint').textContent };
+});
+ok('Сторінка, якої живий список не знає, зникає',
+  JSON.stringify(alive.ids) === JSON.stringify(['1']), alive);
+ok('і її рахують серед прихованих, а не гублять мовчки',
+  /Сторінок приховано/.test(alive.hint), alive);
+
+/* Відповідь не дійшла — не чіпаємо нічого: порожній список через
+   мовчання гірший за трохи застарілий. */
+const quiet = await page.evaluate(async () => {
+  pgCall = async () => { throw new Error('offline'); };
+  await psLoadPics();
+  return [...document.querySelectorAll('#ps-pages .ps-page-pick')].map(b => b.dataset.id);
+});
+ok('коли живий список не дійшов — список лишається як був',
+  quiet.length >= 1, quiet);
+
 /* ─────────── хід відправки видно ───────────
 
    Facebook відповідає не миттєво, і доти натискання виглядало як

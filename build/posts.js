@@ -442,14 +442,47 @@ window.psPickPage = function (id) {
 /* Лого докладаємо ПІСЛЯ того, як список уже на екрані: він не має
    чекати на другий запит, а якщо той не дійде — просто лишиться з
    літерами. Тому жодного throw назовні. */
+/* ЖИВИЙ СПИСОК ВИРІШУЄ, ЩО ПОКАЗУВАТИ.
+
+   Сторінки ми беремо з fb_cabinet_pages — це знімок останньої
+   синхронізації. Токен міг за цей час померти або втратити Сторінку,
+   а в таблиці вона лишилась: людина вибирає її, пише текст і лише
+   тоді дізнається, що постити нічим.
+
+   Той самий виклик, яким приходять лого, повертає ЖИВИЙ список. Якщо
+   він дійшов — лишаємо тільки те, що в ньому є: зникла Сторінка
+   означає мертвий токен, і тримати її в списку немає сенсу.
+
+   Не дійшов — не чіпаємо нічого. Порожній список через те, що
+   відповідь не прийшла, гірший за трохи застарілий. */
 async function psLoadPics() {
   if (typeof pgCall !== 'function') return;
-  try {
-    const j = await pgCall({ action: 'pages' });
-    const got = {};
-    (j.pages || []).forEach(p => { if (p.pic) got[String(p.page_id)] = p.pic; });
-    if (!Object.keys(got).length) return;
-    psPics = got;
+  let j;
+  try { j = await pgCall({ action: 'pages' }); }
+  catch (_e) { return; }                 // лишаються літери й список із бази
+
+  const live = Array.isArray(j.pages) ? j.pages : [];
+  if (!live.length) return;
+
+  const pic = {}, ok = new Set();
+  live.forEach(p => {
+    const id = String(p.page_id);
+    if (p.can_moderate) ok.add(id);
+    if (p.pic) pic[id] = p.pic;
+  });
+  psPics = pic;
+
+  const before = psPages.length;
+  const kept = psPages.filter(p => ok.has(String(p.page_id)));
+  /* Відсікаємо лише тоді, коли лишається хоч щось: порожнеча тут
+     читалась би як «Сторінок немає», а це інша біда з іншим лікуванням. */
+  if (kept.length) {
+    psHidden += before - kept.length;
+    psPages = kept;
+    const sel = document.getElementById('ps-page');
+    if (sel && !ok.has(String(sel.value))) sel.value = String(psPages[0].page_id);
+    psPaintPages();
+  } else {
     psPaintPicks();
-  } catch (_e) { /* немає лого — лишаються літери */ }
+  }
 }

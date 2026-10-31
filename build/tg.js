@@ -302,7 +302,12 @@ window.tgNews = async function (onlyMe) {
       : 'Надіслано: ' + j.sent + ' з ' + j.total + (tail ? ' · ' + tail : ''));
     if (typeof toast === 'function') toast(onlyMe ? 'Тестове надіслано' : 'Розіслано', 'ok');
   } catch (e) {
-    say(String(e.message || e), true);
+    /* Рядок під кнопками легко не помітити — особливо коли дивишся на
+       саму кнопку, а вона вже знову активна. Розсилка, яка не пішла,
+       мусить сказати про це так само голосно, як та, що пішла. */
+    const m = String(e.message || e);
+    say(m, true);
+    if (typeof toast === 'function') toast(m, 'error', 10000);
   } finally {
     tgNewsBusy = false;
     btns.forEach(b => b.disabled = false);
