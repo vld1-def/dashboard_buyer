@@ -43,13 +43,17 @@ await page.evaluate(() => {
 });
 
 const LONG = 'Betwinner KZ app';
+/* Гео нарочно приходять НЕ в тому порядку, у якому мусять лежати:
+   KZ найбільше оферів, а в масиві воно третє. */
 const ROWS = [
   { id: '1', geo: 'UA', offer: 'DEFAULT', value: 25, model: 'cpa', active: true },
   { id: '2', geo: 'UA', offer: 'Pinco', value: 40, model: 'spend', active: true },
   { id: '3', geo: 'KZ', offer: LONG, value: 18, model: 'cpa', active: false },
   { id: '4', geo: 'UZ', offer: 'Melbet', value: 22, model: 'cpa', active: true },
   { id: '5', geo: 'TJ', offer: '1win', value: 30, model: 'cpa', active: true },
-  { id: '6', geo: 'KG', offer: 'Leon', value: 12, model: 'cpa', active: true }
+  { id: '6', geo: 'KG', offer: 'Leon', value: 12, model: 'cpa', active: true },
+  { id: '7', geo: 'KZ', offer: 'Mostbet', value: 20, model: 'cpa', active: true },
+  { id: '8', geo: 'KZ', offer: '1xBet', value: 16, model: 'cpa', active: true }
 ];
 
 const draw = rows => page.evaluate(r => {
@@ -132,6 +136,45 @@ const acts = await page.evaluate(() => {
 });
 ok('тугл, модель і видалення на місці',
   acts.tog && acts.mod && acts.del, acts);
+
+/* ── порядок: велике гео зверху ── */
+const order = await page.evaluate(() =>
+  [...document.querySelectorAll('.pay-head b')].map(b => b.textContent.trim()));
+/* Алфавіт тут нічого не означав: гео з одним оффером стояло перед гео
+   з трьома тільки тому, що починається на іншу літеру. Правлять і
+   шукають у великих — вони й мусять лежати зверху. */
+ok('гео з найбільшою кількістю оферів — перше', order[0] === 'KZ', order);
+ok('далі за кількістю', order.slice(0, 2).join() === 'KZ,UA', order);
+ok('найменші — в кінці', order.slice(2).join() === 'KG,TJ,UZ', order);
+/* Вимкнений оффер лишається вписаним: його так само правлять і
+   вмикають назад, тож у підрахунку він є. KZ тримає першість саме
+   завдяки йому — один із трьох його оферів вимкнений. */
+const offCounted = await page.evaluate(() => {
+  renderGeoPayoutSettings([
+    { id: 'a', geo: 'PL', offer: 'One', value: 1, model: 'cpa', active: true },
+    { id: 'b', geo: 'PL', offer: 'Two', value: 1, model: 'cpa', active: false },
+    { id: 'c', geo: 'DE', offer: 'Solo', value: 1, model: 'cpa', active: true }
+  ]);
+  return [...document.querySelectorAll('.pay-head b')].map(b => b.textContent.trim());
+});
+ok('вимкнені офери теж рахуються', offCounted.join() === 'PL,DE', offCounted);
+/* Порядок не має стрибати між перемальовками: Map тримає порядок
+   вставки, а він залежить від того, як рядки прийшли з бази. */
+const stable = await page.evaluate(rows => {
+  const heads = () => [...document.querySelectorAll('.pay-head b')]
+    .map(el => el.textContent.trim()).join();
+  renderGeoPayoutSettings(rows);
+  const a = heads();
+  renderGeoPayoutSettings(rows);
+  const b = heads();
+  renderGeoPayoutSettings([...rows].reverse());
+  const c = heads();
+  return { a, b, c };
+}, ROWS);
+ok('той самий порядок при повторному малюванні', stable.a === stable.b, stable);
+ok('і не залежить від порядку рядків із бази', stable.a === stable.c, stable);
+
+await draw(ROWS);
 
 /* ── 2. модель вибирається ПРИ додаванні ── */
 const model = await page.evaluate(() => {

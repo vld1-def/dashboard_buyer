@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 11:52">
+  <meta name="build" content="build 02.11 12:00">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6562,7 +6562,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 11:52</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 12:00</div>
     </div>
   </aside>
 
@@ -12301,7 +12301,23 @@ function renderGeoPayoutSettings(data) {
     byGeo.get(g).push(p);
   });
 
-  container.innerHTML = `<div class="pay-grid">` + [...byGeo.keys()].sort().map(g => {
+  /* ПОРЯДОК ГЕО — ПО КІЛЬКОСТІ ОФЕРІВ, А НЕ ПО АЛФАВІТУ.
+
+     Алфавіт тут нічого не означає: гео з одним оффером стояло перед
+     гео з дванадцятьма тільки тому, що починається на іншу літеру.
+     А шукають і правлять у великих, тож вони й мусять лежати зверху,
+     де їх видно без гортання.
+
+     Рахуємо ВСІ офери гео, разом із вимкненими: вимкнений оффер
+     лишається вписаним, його так само правлять і вмикають назад.
+
+     При однаковій кількості — алфавіт, щоб порядок не стрибав між
+     перемальовками: Map тримає порядок вставки, а він залежить від
+     того, як рядки прийшли з бази. */
+  const order = [...byGeo.keys()].sort((a, b) =>
+    (byGeo.get(b).length - byGeo.get(a).length) || a.localeCompare(b, 'uk'));
+
+  container.innerHTML = `<div class="pay-grid">` + order.map(g => {
     /* DEFAULT — перший: він ставка «на все інше в цьому гео», і
        читається як заголовок решти, а не як ще один оффер. */
     const rows = byGeo.get(g).slice().sort((a, b) => {
