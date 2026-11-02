@@ -3819,7 +3819,7 @@ window.crToggleCold = async function () {
   // Скануємо лише коли увімкнули і ще не сканували цього сеансу.
   if (crCold && crColdFiles === null && !crColdBusy) {
     crColdBusy = true;
-    try { crColdFiles = await crDriveAll(); }
+    try { crColdFiles = await crDriveAllOnce(); }
     catch (e) { crColdErr = e.message || 'Drive error'; crColdFiles = []; }
     crColdBusy = false;
     searchCreative();
@@ -3829,9 +3829,26 @@ window.crToggleCold = async function () {
 /* Усі файли папки команди та її підпапок. Папки пропускаємо, файли
    беремо з посиланням — клік по такому рядку має відкривати сам файл,
    бо статистики в нього немає й показувати нічого. */
+/* Скан робиться РАЗ на сторінку, і результат ділять усі, кому він
+   потрібен: холодний список креативів і картинки в дереві оголошень.
+   Обхід папки з підпапками — це десятки запитів, і робити їх двічі
+   за одне відкриття сторінки означало б платити вдвічі за те саме.
+
+   Памʼятаємо саме ОБІЦЯНКУ, а не результат: два виклики підряд, поки
+   перший ще йде, інакше запустили б два обходи. */
+let _driveAllMemo = null;
+function crDriveAllOnce() {
+  if (!_driveAllMemo) _driveAllMemo = crDriveAll();
+  return _driveAllMemo;
+}
+
 async function crDriveAll() {
   if (!teamDriveFolderId) throw new Error('not configured');
-  const fields = 'fields=' + encodeURIComponent('files(id,name,mimeType,webViewLink)');
+  /* thumbnailLink — заради картинок у дереві оголошень. Той самий
+     запит, те саме місце: Drive віддає посилання на мініатюру поруч
+     із рештою полів, і окремого походу це не коштує. */
+  const fields = 'fields=' + encodeURIComponent(
+    'files(id,name,mimeType,webViewLink,thumbnailLink)');
   const out = [];
   const seen = new Set();
   const grab = async (parentId) => {
