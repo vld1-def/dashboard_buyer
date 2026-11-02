@@ -399,11 +399,87 @@ let cdOld = '';
    гроші», список — на «яке оголошення найдорожче»; це різні питання, і
    вигравати має те, яке зараз. */
 let cdFlat = false;
-/* Чому немає картинок: '' — усе гаразд, 'sql' — колонок немає в
-   базі, 'sync' — колонки є, а задеплоєна fb-sync ще стара. Три різні
-   причини й три різні дії; одне спільне повідомлення на всіх відсилало
-   б дві третини людей не туди. */
-let cdNoPic = '';
+/* ═══════════ КАРТИНКА — З DRIVE, А НЕ З FACEBOOK ═══════════
+
+   Facebook віддає те, що лежить у самому оголошенні, і це не завжди
+   той файл, який заливали: дарк-пост, старий креатив, пост іншої
+   Сторінки — і посилання в нього підписані, тобто живуть годинами.
+
+   У Drive лежить ТВІЙ файл, під твоєю назвою, і він нікуди не
+   дінеться. Те саме джерело, що й у превʼю Creative Analyzer — отже
+   одна картинка на одну назву в усьому дашборді, а не дві різні.
+
+   Скан папки спільний із холодним списком креативів (crDriveAllOnce):
+   обхід із підпапками це десятки запитів, і робити їх двічі за одне
+   відкриття сторінки не можна. */
+let cdDrive = null;      // null — ще не шукали; [] — шукали, порожньо
+let cdDriveErr = '';
+let cdDriveBusy = false;
+const cdPicBy = new Map();   // назва оголошення → файл або null
+
+async function cdDriveLoad() {
+  if (cdDrive !== null || cdDriveBusy) return;
+  if (typeof crDriveAllOnce !== 'function') { cdDrive = []; return; }
+  cdDriveBusy = true;
+  try {
+    cdDrive = await crDriveAllOnce();
+    cdDriveErr = '';
+  } catch (e) {
+    cdDrive = [];
+    cdDriveErr = String((e && e.message) || e || 'Drive error');
+  }
+  cdDriveBusy = false;
+  cdPicBy.clear();
+  if (cdAcc) cdPaint();
+}
+
+/* З назви оголошення — можливі назви креатива, від найдовшої до
+   найкоротшої. Ріжемо ЛИШЕ по межі «не буквоцифра», як це робить
+   Creative Analyzer: інакше «KG_JS_674_10» зійшовся б за «KG_JS_674_1».
+
+   Короткі шматки відкидаємо навмисно. «KG» підійшло б до будь-якого
+   файлу гео, і в рядку стояв би чужий креатив — а чуже тут гірше за
+   порожнє: на нього подивляться й ухвалять рішення. Тому беремо лише
+   те, що схоже на справжню назву: щонайменше дві частини й цифра. */
+function cdCids(name) {
+  const base = String(name || '').replace(/\.[^.]+$/, '').trim().toLowerCase();
+  if (!base) return [];
+  const out = [];
+  const add = v => {
+    const t = v.replace(/[^0-9a-zа-яіїєґ]+$/i, '');
+    if (t.length < 4 || out.includes(t)) return;
+    if (!/\d/.test(t)) return;                       // без числа це не назва
+    if (t.split(/[^0-9a-zа-яіїєґ]+/i).filter(Boolean).length < 2) return;
+    out.push(t);
+  };
+  add(base);
+  for (let i = base.length - 1; i > 0; i--) {
+    if (/[0-9a-zа-яіїєґ]/i.test(base[i])) continue;
+    add(base.slice(0, i));
+  }
+  return out;
+}
+
+/* Файл під це оголошення. Памʼятаємо й невдачу теж: дерево
+   перемальовується часто, а перебирати сотню файлів на кожен рядок
+   щоразу — робота на порожньому місці. */
+function cdPicOf(name) {
+  if (cdPicBy.has(name)) return cdPicBy.get(name);
+  let hit = null;
+  if (Array.isArray(cdDrive) && cdDrive.length && typeof _drivePickExact === 'function') {
+    const cids = cdCids(name);
+    for (const cid of cids) { hit = _drivePickExact(cdDrive, cid); if (hit) break; }
+  }
+  cdPicBy.set(name, hit);
+  return hit;
+}
+
+/* Мініатюру просимо в Drive сталим посиланням, а не тим, що приїхало
+   в thumbnailLink: воно приходить із розміром =s220 у хвості, і для
+   превʼю це замало. За id Drive віддає будь-який розмір. */
+const cdPicUrl = (f, w) => f
+  ? 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(f.id) + '&sz=w' + w
+  : '';
 
 window.cdIsOpen = (acc) => !!cdAcc && String(acc || '') === cdAcc;
 window.cdBtnLabel = (acc) => cdIsOpen(acc) ? 'Hide campaigns & ads' : 'Campaigns & ads';
@@ -501,21 +577,6 @@ async function cdLinkWhy() {
   if (cdLinkNote && cdAcc) cdPaint();
 }
 
-/* Те саме про картинки, і з тієї самої причини: наша здогадка
-   («задеплой fb-sync») буває хибною саме тоді, коли людина щойно його
-   задеплоїла. Відповідь прогону знає більше за нас — яка версія
-   насправді крутиться й що відповів Facebook, — і саме її й
-   показуємо, коли вона є. */
-let cdPicNote = null;
-async function cdPicWhy() {
-  if (cdPicNote !== null) return;
-  cdPicNote = '';
-  try {
-    if (typeof getTeamSetting === 'function')
-      cdPicNote = String((await getTeamSetting('fb_pic_note')) || '');
-  } catch (e) { cdPicNote = ''; }
-  if (cdPicNote && cdAcc) cdPaint();
-}
 
 function cdDomNote() {
   if (!cdNoDom) return '';
@@ -612,16 +673,14 @@ async function cdLoad(account) {
      забрав би з собою й бюджети, й вимикачі. Так брак однієї колонки
      коштує рівно її. */
   const CD_DOM = 'link_domain';
-  /* КАРТИНКА КРЕАТИВА — СВІЙ ЯРУС, І ЦЕ НЕ ДРІБНИЦЯ.
+  /* КАРТИНОК ТУТ БІЛЬШЕ НЕМАЄ, і це свідомо: їх беруть із Drive
+     (див. cdPicCell), а не зі знімка. Колонки thumb_url/image_url у
+     fb_ad_today лишаються — синк їх пише, просто сторінка не читає.
 
-     Перша редакція не просила ці колонки взагалі: вони були в базі, їх
-     писав синк, а сторінка читала r.thumb_url і отримувала undefined —
-     тобто кожне оголошення малювало порожню рамку, хоч картинка
-     лежала в базі. Колонку мусять знати ОБА боки: і той, хто пише, і
-     той, хто читає. */
-  const CD_PIC = 'thumb_url,image_url';
+     Урок із них лишається теж: колонку мусять знати ОБА боки. Поки
+     сторінка їх не просила, вона читала undefined і малювала порожню
+     рамку, хоч картинки лежали в базі. */
   cdNoDom = '';
-  cdNoPic = '';
   const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
   try {
@@ -635,7 +694,7 @@ async function cdLoad(account) {
        Так брак однієї колонки коштує рівно свого яруса, а не всього
        розбору кабінета. Четвертий ярус додався рівно одним рядком —
        заради цього ладанка й переписана. */
-    const TIERS = [CD_CORE, CD_NEW, CD_DOM, CD_PIC];
+    const TIERS = [CD_CORE, CD_NEW, CD_DOM];
     let res = null, drop = 0;
     for (; drop < TIERS.length; drop++) {
       res = await sb.from('fb_ad_today')
@@ -646,9 +705,8 @@ async function cdLoad(account) {
          показувати, і це вже не «база старіша», а інша поломка. */
       if (drop === TIERS.length - 1) break;
     }
-    if (drop >= 1) cdNoPic = 'sql';
-    if (drop >= 2) cdNoDom = 'sql';
-    cdOld = drop >= 3 ? String((res && res.error && res.error.message) || 'old database') : '';
+    if (drop >= 1) cdNoDom = 'sql';
+    cdOld = drop >= 2 ? String((res && res.error && res.error.message) || 'old database') : '';
     const { data, error } = res || {};
     if (error) throw new Error(error.message);
     cdRows = data || [];
@@ -659,15 +717,6 @@ async function cdLoad(account) {
        саме тому про це треба сказати вголос, а не мовчати. */
     if (!cdNoDom && cdRows.length
         && !cdRows.some(r => String(r.link_domain || '').trim())) { cdNoDom = 'sync'; cdLinkWhy(); }
-    /* Те саме з картинками, і діагноз інший: колонки є, а значень
-       немає — значить синк ще не ходив новою версією. Ззовні це не
-       відрізнити від «Facebook не дав картинки саме для цього
-       креатива», тож кажемо, що саме з трьох сталось. */
-    if (!cdNoPic && cdRows.length
-        && !cdRows.some(r => String(r.thumb_url || r.image_url || '').trim())) {
-      cdNoPic = 'sync';
-      cdPicWhy();
-    }
   } catch (e) {
     cdRows = [];
     cdErr = /fb_ad_today|does not exist|schema cache/i.test(e.message)
@@ -782,12 +831,6 @@ function cdNode(id, name, kind) {
               оголошення на різні домени, і схлопнути це в одне значення
               означало б показати перше-ліпше як «той самий». */
            hosts: new Set(),
-           /* Картинки креатива: thumb — іконка в рядку (для відео це
-              кадр), pic — повна статика для превʼю. Порожні в кампанії
-              та адсета: креатив живе на оголошенні, і зводити десяток
-              картинок в одну означало б показати першу-ліпшу як «ту
-              саму». */
-           thumb: '', pic: '',
            state: new Map(), ads: 0, kids: [] };
 }
 function cdAdd(n, m) {
@@ -830,8 +873,6 @@ function cdTree() {
     const a = cdNode(r.ad_id, r.name, 'ad');
     a.own = m.state;
     a.sw = String(r.own_status || '').toUpperCase();
-    a.thumb = String(r.thumb_url || '');
-    a.pic = String(r.image_url || '');
     cdAdd(a, m); cdAdd(s, m); cdAdd(c, m);
     a.ads = 0;
     s.kids.push(a);
@@ -969,8 +1010,6 @@ function cdAds() {
        займаючи місце. Лишається адсет — єдине, чого з назви рядка не
        видно. */
     n.where = String(r.adset_name || '').trim();
-    n.thumb = String(r.thumb_url || '');
-    n.pic = String(r.image_url || '');
     return n;
   }).sort((a, b) => b.spend - a.spend);
 }
@@ -1165,29 +1204,40 @@ function cdNameCell(n, depth) {
 function cdPicCell(n) {
   if (n.kind !== 'ad') return '';
   const name = String(n.name || n.id || '');
-  const url = String(n.thumb || n.pic || '');
-  if (!url) {
-    const why = cdNoPic === 'sql'
-      ? 'The two picture columns are missing from fb_ad_today \u2014 run the ALTER TABLE '
-        + 'block from FB_RULES.sql, then press Sync now.'
-      : cdNoPic === 'sync'
-      /* Причина від самої синхронізації важливіша за нашу здогадку:
-         вона каже, яка версія крутиться й що відповів Facebook, а не
-         що ми припускаємо. Без неї — найімовірніше пояснення. */
-      ? (cdPicNote
-          ? 'The last sync said: ' + cdPicNote
-          : 'The columns are there, but no ad here carries a picture yet \u2014 run '
-            + 'supabase functions deploy fb-sync, then press Sync now.')
-      : 'Facebook sent no picture for this creative.';
-    return `<span class="cd-thumb is-none" title="${cdEsc(why)}"></span>`;
-  }
-  return `<img class="cd-thumb" src="${cdEsc(url)}" alt="" loading="lazy"
+  /* Скан починаємо з першої ж намальованої іконки, не раніше: папка
+     команди це десятки запитів, і платити їх тому, хто дерево навіть
+     не відкривав, не можна. */
+  if (cdDrive === null) cdDriveLoad();
+  const f = cdPicOf(name);
+  if (!f) return `<span class="cd-thumb is-none" title="${cdEsc(cdPicWhy(name))}"></span>`;
+  return `<img class="cd-thumb" src="${cdEsc(cdPicUrl(f, 48))}" alt="" loading="lazy"
     referrerpolicy="no-referrer"
-    data-prev="${cdEsc(n.pic || n.thumb)}" data-name="${cdEsc(name)}"
+    data-prev="${cdEsc(cdPicUrl(f, 640))}" data-name="${cdEsc(name)}"
+    data-open="${cdEsc(f.webViewLink || '')}"
     onclick="cdPicOpen(event, this)"
     onmouseenter="cdPic(event, this)" onmouseleave="cdPicOut()"
     onerror="cdPicDead(this)"
-    title="Hover for a bigger preview, click to open the full picture">`;
+    title="${cdEsc(f.name)} \u2014 hover for a preview, click to open it in Drive">`;
+}
+
+/* ЧОМУ РАМКА ПОРОЖНЯ — чотири різні причини й чотири різні дії. Одне
+   спільне «немає картинки» відсилало б три чверті людей не туди. */
+function cdPicWhy(name) {
+  if (typeof teamDriveFolderId !== 'undefined' && !teamDriveFolderId)
+    return 'Google Drive is not set up \u2014 add the team folder and the API key in '
+         + 'Settings \u2192 Integrations, then reopen this cabinet.';
+  if (cdDrive === null)
+    return 'Looking in your Drive folder\u2026';
+  if (cdDriveErr)
+    return 'Drive did not answer: ' + cdDriveErr;
+  if (!cdDrive.length)
+    return 'Your Drive folder has no files in it.';
+  const cids = cdCids(name);
+  return cids.length
+    ? 'No file in your Drive folder is named ' + cids[0] + '. The name of the ad has to '
+      + 'match the name of the file \u2014 that is the only thing tying them together.'
+    : 'The ad name does not look like a creative name, so there is nothing to look for '
+      + 'in Drive. Names like KG_JS_674 are what gets matched.';
 }
 
 /* Превʼю показуємо тим самим вікном, що й Creative Analyzer. Якщо
@@ -1203,26 +1253,25 @@ window.cdPic = function (ev, el) {
 window.cdPicOut = function () {
   if (typeof hideImgPreview === 'function') hideImgPreview();
 };
-/* Клік — сама картинка у новій вкладці. Превʼю під курсором має
-   стелю в 300px і зникає, щойно відвів мишу; коли треба роздивитись
-   креатив, цього мало. Заодно це єдиний спосіб побачити, що саме
-   віддав Facebook, коли картинка виглядає дивно.
+/* Клік — сам файл у Drive, а не картинка: там і відео грається, і
+   видно, що це за файл. Превʼю під курсором має стелю й зникає,
+   щойно відвів мишу, — коли треба роздивитись креатив, цього мало.
 
    stopPropagation лишається: клік по клітинці назви розкриває вузол,
    і картинка не має робити того, чого від неї не чекають. */
 window.cdPicOpen = function (ev, el) {
   if (ev) ev.stopPropagation();
-  const url = (el && (el.getAttribute('data-prev') || el.getAttribute('src'))) || '';
+  const url = (el && (el.getAttribute('data-open')
+    || el.getAttribute('data-prev') || el.getAttribute('src'))) || '';
   if (url) window.open(url, '_blank', 'noopener');
 };
-/* Посилання на картинку підписане й живе недовго — застаріле просто
-   не завантажиться. Прибирати рамку не можна: назви розʼїдуться. Тому
-   лишаємо її порожньою й кажемо, що сталось. */
+/* Drive не віддав мініатюру (файл щойно залили, формат без прев'ю).
+   Рамку лишаємо: назви розʼїдуться без неї. */
 window.cdPicDead = function (el) {
   if (!el) return;
   el.removeAttribute('src');
   el.className = 'cd-thumb is-none';
-  el.title = 'The picture link has expired \u2014 press Sync now to refresh it.';
+  el.title = 'Drive has no preview for this file yet.';
 };
 
 window.cdMarkedCount = () => cdMarked.size;
