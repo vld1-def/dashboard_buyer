@@ -399,6 +399,11 @@ let cdOld = '';
    гроші», список — на «яке оголошення найдорожче»; це різні питання, і
    вигравати має те, яке зараз. */
 let cdFlat = false;
+/* Чому немає картинок: '' — усе гаразд, 'sql' — колонок немає в
+   базі, 'sync' — колонки є, а задеплоєна fb-sync ще стара. Три різні
+   причини й три різні дії; одне спільне повідомлення на всіх відсилало
+   б дві третини людей не туди. */
+let cdNoPic = '';
 
 window.cdIsOpen = (acc) => !!cdAcc && String(acc || '') === cdAcc;
 window.cdBtnLabel = (acc) => cdIsOpen(acc) ? 'Hide campaigns & ads' : 'Campaigns & ads';
@@ -591,27 +596,44 @@ async function cdLoad(account) {
      забрав би з собою й бюджети, й вимикачі. Так брак однієї колонки
      коштує рівно її. */
   const CD_DOM = 'link_domain';
+  /* КАРТИНКА КРЕАТИВА — СВІЙ ЯРУС, І ЦЕ НЕ ДРІБНИЦЯ.
+
+     Перша редакція не просила ці колонки взагалі: вони були в базі, їх
+     писав синк, а сторінка читала r.thumb_url і отримувала undefined —
+     тобто кожне оголошення малювало порожню рамку, хоч картинка
+     лежала в базі. Колонку мусять знати ОБА боки: і той, хто пише, і
+     той, хто читає. */
+  const CD_PIC = 'thumb_url,image_url';
   cdNoDom = '';
+  cdNoPic = '';
   const CD_NO_COLUMN = /column .* does not exist|schema cache|42703|PGRST204/i;
 
   try {
-    /* База може бути старішою за сторінку: блок 1 FB_RULES.sql із
-       новими колонками ще не виконали. Тоді беремо те, що є, — але не
-       падаємо з «column does not exist», бо через одну колонку зник би
-       весь розбір кабінета. */
-    let res = await sb.from('fb_ad_today')
-      .select(CD_CORE + ',' + CD_NEW + ',' + CD_DOM).eq('account_id', id).limit(1000);
-    if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
-      // Спершу без домену: він наймолодший, і найімовірніше саме його й бракує.
-      cdNoDom = 'sql';
+    /* ЯРУСИ, А НЕ ТРИ ЗАПИТИ ПОСПІЛЬ.
+
+       База може бути старішою за сторінку: блок із новими колонками
+       ще не виконали. Ярус — усе або нічого, і відпадають вони по
+       одному З КІНЦЯ, тобто наймолодший перший: саме в тому порядку
+       колонки й додавали, тож наймолодшого найімовірніше й бракує.
+
+       Так брак однієї колонки коштує рівно свого яруса, а не всього
+       розбору кабінета. Четвертий ярус додався рівно одним рядком —
+       заради цього ладанка й переписана. */
+    const TIERS = [CD_CORE, CD_NEW, CD_DOM, CD_PIC];
+    let res = null, drop = 0;
+    for (; drop < TIERS.length; drop++) {
       res = await sb.from('fb_ad_today')
-        .select(CD_CORE + ',' + CD_NEW).eq('account_id', id).limit(1000);
+        .select(TIERS.slice(0, TIERS.length - drop).join(','))
+        .eq('account_id', id).limit(1000);
+      if (!res.error || !CD_NO_COLUMN.test(res.error.message || '')) break;
+      /* Сам ярус ядра не скидаємо ніколи: без нього немає чого
+         показувати, і це вже не «база старіша», а інша поломка. */
+      if (drop === TIERS.length - 1) break;
     }
-    if (res.error && CD_NO_COLUMN.test(res.error.message || '')) {
-      cdOld = res.error.message;
-      res = await sb.from('fb_ad_today').select(CD_CORE).eq('account_id', id).limit(1000);
-    } else cdOld = '';
-    const { data, error } = res;
+    if (drop >= 1) cdNoPic = 'sql';
+    if (drop >= 2) cdNoDom = 'sql';
+    cdOld = drop >= 3 ? String((res && res.error && res.error.message) || 'old database') : '';
+    const { data, error } = res || {};
     if (error) throw new Error(error.message);
     cdRows = data || [];
     cdErr = '';
@@ -621,6 +643,13 @@ async function cdLoad(account) {
        саме тому про це треба сказати вголос, а не мовчати. */
     if (!cdNoDom && cdRows.length
         && !cdRows.some(r => String(r.link_domain || '').trim())) { cdNoDom = 'sync'; cdLinkWhy(); }
+    /* Те саме з картинками, і діагноз інший: колонки є, а значень
+       немає — значить синк ще не ходив новою версією. Ззовні це не
+       відрізнити від «Facebook не дав картинки саме для цього
+       креатива», тож кажемо, що саме з трьох сталось. */
+    if (!cdNoPic && cdRows.length
+        && !cdRows.some(r => String(r.thumb_url || r.image_url || '').trim()))
+      cdNoPic = 'sync';
   } catch (e) {
     cdRows = [];
     cdErr = /fb_ad_today|does not exist|schema cache/i.test(e.message)
@@ -1119,8 +1148,16 @@ function cdPicCell(n) {
   if (n.kind !== 'ad') return '';
   const name = String(n.name || n.id || '');
   const url = String(n.thumb || n.pic || '');
-  if (!url) return `<span class="cd-thumb is-none"
-    title="No picture for this creative yet. The snapshot carries it \u2014 deploy fb-sync, add the two fb_ad_today columns from FB_RULES.sql, then press Sync now."></span>`;
+  if (!url) {
+    const why = cdNoPic === 'sql'
+      ? 'The two picture columns are missing from fb_ad_today \u2014 run the ALTER TABLE '
+        + 'block from FB_RULES.sql, then press Sync now.'
+      : cdNoPic === 'sync'
+      ? 'The deployed fb-sync has not brought pictures yet \u2014 run '
+        + 'supabase functions deploy fb-sync, then press Sync now.'
+      : 'Facebook sent no picture for this creative.';
+    return `<span class="cd-thumb is-none" title="${cdEsc(why)}"></span>`;
+  }
   return `<img class="cd-thumb" src="${cdEsc(url)}" alt="" loading="lazy"
     referrerpolicy="no-referrer"
     data-prev="${cdEsc(n.pic || n.thumb)}" data-name="${cdEsc(name)}"

@@ -124,9 +124,12 @@ ok('у статики превʼю — повна картинка',
 /* ── рамка там, де картинки немає ── */
 ok('без картинки рамка все одно є', by('No picture').box && by('No picture').none,
   by('No picture'));
+/* Три причини — три різні підказки, і тут саме третя: у сусідніх
+   рядках картинки є, отже й колонки, і синк на місці, а Facebook не
+   дав картинки саме для цього креатива. Відсилати тут до SQL або до
+   деплою означало б послати не туди. */
 ok('і вона каже, чому порожня',
-  /deploy fb-sync/.test(by('No picture').tip) && /FB_RULES\.sql/.test(by('No picture').tip),
-  by('No picture').tip);
+  /Facebook sent no picture/.test(by('No picture').tip), by('No picture').tip);
 /* Головне, заради чого рамка й стоїть: назви в усіх рядках
    починаються з одного місця. */
 /* > 0 обовʼязкове: у прихованому вузлі всі три дорівнювали б нулю, і
@@ -178,6 +181,97 @@ const dead = await page.evaluate(() => {
 ok('застаріле посилання лишає рамку',
   dead.src === null && /is-none/.test(dead.cls), dead);
 ok('і каже, що робити', /press Sync now/.test(dead.tip), dead.tip);
+
+/* ── СТОРІНКА МУСИТЬ ПРОСИТИ ЦІ КОЛОНКИ ──
+
+   Перша редакція їх не просила: колонки були в базі, їх писав синк, а
+   запит дерева перелічує поля поіменно — і r.thumb_url приходило
+   undefined. Кожне оголошення малювало порожню рамку, хоч картинка
+   лежала в базі, і ззовні це виглядало як «SQL виконав, а зображень
+   немає».
+
+   Тому стенд іде справжнім завантажувачем, а заглушка поводиться як
+   PostgREST: віддає РІВНО ті колонки, які попросили. Забув попросити —
+   стенд червоний. */
+const asked = await page.evaluate(async rows => {
+  const seen = [];
+  sb.from = () => ({
+    select: cols => {
+      seen.push(cols);
+      const want = String(cols).split(',').map(c => c.trim());
+      const cut = rows.map(r => {
+        const o = {};
+        want.forEach(c => { if (c in r) o[c] = r[c]; });
+        return o;
+      });
+      return { eq: () => ({ limit: async () => ({ data: cut, error: null }) }) };
+    }
+  });
+  cdFlat = true; cdFilt = ''; cdMarked = new Set(); cdOpenIds = new Set();
+  cdAcc = '777';
+  await cdLoad('777');
+  const v = cdView();
+  const n = (v.list || []).map(x => x.n).find(x => x.name === 'Static ad') || {};
+  return { cols: seen.join(' | '), thumb: n.thumb || '', pic: n.pic || '',
+           noPic: cdNoPic };
+}, ROWS);
+ok('запит просить обидві колонки картинки',
+  /thumb_url/.test(asked.cols) && /image_url/.test(asked.cols), asked.cols);
+ok('і вони доходять до вузла дерева',
+  asked.thumb === 'https://cdn.example/small.jpg'
+  && asked.pic === 'https://cdn.example/full.jpg', asked);
+ok('коли картинки є — причини казати нема', asked.noPic === '', asked);
+
+/* Колонок у базі немає: ярус відпадає, решта розбору лишається, і
+   причина названа саме як «виконай SQL». */
+const noCol = await page.evaluate(async rows => {
+  sb.from = () => ({
+    select: cols => ({
+      eq: () => ({ limit: async () => {
+        if (/thumb_url/.test(cols)) return { data: null,
+          error: { message: "column fb_ad_today.thumb_url does not exist" } };
+        const want = String(cols).split(',').map(c => c.trim());
+        return { data: rows.map(r => {
+          const o = {}; want.forEach(c => { if (c in r) o[c] = r[c]; }); return o;
+        }), error: null };
+      } })
+    })
+  });
+  cdAcc = '777';
+  await cdLoad('777');
+  return { rows: cdRows.length, noPic: cdNoPic, err: cdErr,
+           names: cdRows.map(r => r.name) };
+}, ROWS);
+ok('без колонок розбір кабінета не зникає',
+  noCol.rows === 3 && !noCol.err, noCol);
+ok('і причина названа як «виконай SQL»', noCol.noPic === 'sql', noCol);
+
+/* Колонки є, значень немає — це вже про деплой, і це рівно те, що
+   буває зразу після ALTER TABLE. Дві різні причини, дві різні дії. */
+const noVal = await page.evaluate(async rows => {
+  const bare = rows.map(r => ({ ...r, thumb_url: null, image_url: null }));
+  sb.from = () => ({
+    select: cols => {
+      const want = String(cols).split(',').map(c => c.trim());
+      return { eq: () => ({ limit: async () => ({ data: bare.map(r => {
+        const o = {}; want.forEach(c => { if (c in r) o[c] = r[c]; }); return o;
+      }), error: null }) }) };
+    }
+  });
+  cdAcc = '777';
+  await cdLoad('777');
+  const v = cdView();
+  /* Підказку беремо з САМОЇ рамки, а не першим title у рядку: першим
+     там стоїть галочка мультивибору. */
+  const html = (v.list || []).map(x => cdFields(x.n, x.depth).name).join('');
+  const box = document.createElement('div');
+  box.innerHTML = html;
+  return { noPic: cdNoPic,
+           tip: (box.querySelector('.cd-thumb.is-none') || {}).title || '' };
+}, ROWS);
+ok('колонки є, картинок немає — причина про деплой', noVal.noPic === 'sync', noVal);
+ok('і рамка каже саме про деплой',
+  /deploy fb-sync/.test(noVal.tip) && !/ALTER TABLE/.test(noVal.tip), noVal.tip);
 
 /* ── кампанія й адсет ── */
 await paint(false);
