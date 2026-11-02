@@ -1,15 +1,21 @@
-/* ═══════════ ВИПЛАТИ: НАЙЧАСТІША ДІЯ МАЄ БУТИ НАЙКОРОТШОЮ ═══════════
+/* ═══════════ ВИПЛАТИ: НАЗВА ОФЕРА — ЦЕ ТЕ, ЗА ЧИМ ЗАХОДЯТЬ ═══════════
 
-   Список виплат давно картками по гео, але правити в ньому було
-   незручно рівно там, де правлять найчастіше:
+   Блок на гео був шириною 208px — рівно стільки, щоб вліз тугл,
+   модель, ставка й хрестик. Назві оффера лишалось 63px із 219, і
+   обрізало саме її: єдине, за чим рядок відрізняють від сусіднього.
+   Три блоки в ряд коштували того, через що в цей список заходять.
 
-     1. ставку не можна було ЗМІНИТИ — лише видалити оффер і завести
-        наново. Тобто найчастіша дія йшла через незворотне видалення;
-     2. модель вибиралась ПІСЛЯ додавання, тож кожен відсотковий
-        оффер заводився двічі;
-     3. при двадцяти гео лишалось тільки гортати.
+   Обрізана назва тут ще й бреше тихо: «Betwinner KZ app» і
+   «Betwinner KZ web» під ellipsis читаються одним рядком, а ставки в
+   них різні.
 
-   Стенд тримає саме ці три речі, а не вигляд. */
+   Стенд тримає три речі:
+
+     1. назва вміщається — блок ширший, а довга назва переходить на
+        другий рядок, а не зникає;
+     2. модель вибирається ПРИ додаванні, інакше кожен відсотковий
+        оффер заводиться двічі;
+     3. при двадцяти гео є пошук. */
 import { serve, open, checks } from './_harness.mjs';
 
 const PORT = 8176;
@@ -18,23 +24,29 @@ const srv = await serve(PORT);
 const { browser, page, errs } = await open(PORT);
 
 await page.evaluate(() => {
-  window.__pay = { updates: [], answer: '30', asked: null, toasts: [] };
+  window.__pay = { updates: [], toasts: [] };
   window.toast = (t, k) => window.__pay.toasts.push({ t: String(t), k });
-  window.ask = async o => { window.__pay.asked = o; return window.__pay.answer; };
   refreshPayoutsFromSQL = async () => {};
-  applyGlobalFilter = () => { window.__pay.repainted = true; };
+  applyGlobalFilter = () => {};
   sb.from = () => ({
     update: v => ({ eq: async (_c, id) => {
       window.__pay.updates.push({ id: String(id), v });
-      return { error: window.__pay.err || null };
+      return { error: null };
     } })
   });
+  /* Панель налаштувань тримає ширину класом Tailwind (max-w-4xl), а
+     Tailwind у стенді не вантажиться — CDN закритий. Тому ширину
+     ставимо руками: 672px — це рівно те, що лишається від модалки на
+     896px після навігації збоку й відступів. */
+  const l = document.getElementById('geo-payouts-list');
+  l.parentElement.style.width = '672px';
 });
 
+const LONG = 'Betwinner KZ app';
 const ROWS = [
   { id: '1', geo: 'UA', offer: 'DEFAULT', value: 25, model: 'cpa', active: true },
   { id: '2', geo: 'UA', offer: 'Pinco', value: 40, model: 'spend', active: true },
-  { id: '3', geo: 'KZ', offer: 'Mostbet', value: 18, model: 'cpa', active: false },
+  { id: '3', geo: 'KZ', offer: LONG, value: 18, model: 'cpa', active: false },
   { id: '4', geo: 'UZ', offer: 'Melbet', value: 22, model: 'cpa', active: true },
   { id: '5', geo: 'TJ', offer: '1win', value: 30, model: 'cpa', active: true },
   { id: '6', geo: 'KG', offer: 'Leon', value: 12, model: 'cpa', active: true }
@@ -50,51 +62,76 @@ const draw = rows => page.evaluate(r => {
 
 await draw(ROWS);
 
-/* ── 1. ставка редагується на місці ── */
-const edited = await page.evaluate(async () => {
-  window.__pay.updates = []; window.__pay.repainted = false;
-  await editPayoutValue('2');
-  return { asked: window.__pay.asked, updates: window.__pay.updates,
-           repainted: window.__pay.repainted, toasts: window.__pay.toasts };
+/* ── 1. назва вміщається ── */
+const geom = await page.evaluate(() => {
+  const grid = document.querySelector('.pay-grid');
+  const offs = [...document.querySelectorAll('.pay-off')];
+  const long = offs.find(o => o.textContent.trim() === 'Betwinner KZ app');
+  const row = long.closest('.pay-row');
+  const w = el => el.getBoundingClientRect().width;
+  /* Ширину беремо з самої сітки, а не з rect: сторінка живе під
+     body { zoom: .9 }, і rect повертає вже помножені пікселі —
+     поріг «300px» на них читався б як 270. */
+  const cols = getComputedStyle(grid).gridTemplateColumns.split(' ');
+  return {
+    card: Math.round(parseFloat(cols[0])),
+    perRow: cols.length,
+    name: Math.round(w(long)),
+    /* Усе, що в рядку не назва: тугл, модель, ставка, хрестик. */
+    rest: Math.round([...row.children].filter(c => c !== long).reduce((a, c) => a + w(c), 0)),
+    wrap: getComputedStyle(long).whiteSpace,
+    /* Обрізане видно саме так: вмісту більше, ніж видимої коробки. */
+    clippedX: long.scrollWidth > long.clientWidth + 1,
+    clippedY: long.scrollHeight > long.clientHeight + 1,
+    text: long.textContent.trim()
+  };
 });
-ok('ставка міняється без видалення оффера',
-  edited.updates.length === 1 && edited.updates[0].id === '2', edited.updates);
-ok('і зберігається саме нове число', edited.updates[0].v.value === 30, edited.updates);
-/* «25» у CPA і «25» у відсотковій — різні гроші, тож вікно мусить
-   казати, яке з двох перед тобою. */
-ok('у вікні сказано, яка це модель',
-  /спенд × відсоток/.test((edited.asked || {}).body || ''), edited.asked);
-ok('і яке гео з оффером правимо',
-  /UA/.test((edited.asked || {}).title || '') && /Pinco/.test((edited.asked || {}).title || ''),
-  edited.asked);
-/* Виручка рахується з цієї ставки: лишити старий профіт під новою
-   ставкою означало б показати два числа, які не сходяться. */
-ok('числа перераховуються одразу', edited.repainted === true, edited);
+ok('блок став ширшим за 300px', geom.card > 300, geom);
+/* Доти було навпаки: кнопки займали більше, ніж назва, через яку в
+   цей список заходять. */
+ok('назві дісталось більше місця, ніж усім кнопкам рядка разом',
+  geom.name > geom.rest, geom);
+ok('довга назва не обрізана по горизонталі', geom.clippedX === false, geom);
+ok('і не обрізана по вертикалі', geom.clippedY === false, geom);
+ok('назва лишилась повною', geom.text === 'Betwinner KZ app', geom);
+/* Ширшого блока на найдовші назви колись все одно не хватить — тоді
+   назва мусить перейти на другий рядок, а не зникнути. */
+ok('довга назва переходить на другий рядок', geom.wrap !== 'nowrap', geom);
 
-const same = await page.evaluate(async () => {
-  window.__pay.updates = []; window.__pay.answer = '40';
-  await editPayoutValue('2');
-  window.__pay.answer = '30';
-  return window.__pay.updates.length;
+/* Вузька панель: блок не має вилазити за її край. Саме це робить
+   голий minmax(320px, 1fr) у контейнері на 280px. */
+const narrow = await page.evaluate(() => {
+  const l = document.getElementById('geo-payouts-list');
+  l.parentElement.style.width = '280px';
+  renderGeoPayoutSettings(payData);
+  const g = document.querySelector('.pay-grid').getBoundingClientRect().width;
+  const c = document.querySelector('.pay-card').getBoundingClientRect().width;
+  l.parentElement.style.width = '672px';
+  renderGeoPayoutSettings(payData);
+  return { grid: Math.round(g), card: Math.round(c) };
 });
-ok('те саме число не йде в базу', same === 0, { same });
+ok('на вузькій панелі блок не вилазить за край',
+  narrow.card <= narrow.grid + 1, narrow);
 
-const bad = await page.evaluate(async () => {
-  window.__pay.updates = []; window.__pay.answer = 'абв';
-  await editPayoutValue('1');
-  window.__pay.answer = '30';
-  return { n: window.__pay.updates.length, toasts: window.__pay.toasts };
+/* Ставка натискною була один коміт і виявилась непотрібною: правлять
+   її рідко, а місце в рядку вона займала щоразу. */
+const val = await page.evaluate(() => {
+  const v = document.querySelector('.pay-val');
+  return { tag: v.tagName, click: v.getAttribute('onclick'),
+           edit: typeof window.editPayoutValue };
 });
-ok('сміття замість ставки не зберігається', bad.n === 0, bad);
-ok('і про це сказано', bad.toasts.some(t => /Це не ставка/.test(t.t)), bad.toasts);
+ok('ставка просто показується, а не вдає кнопку',
+  val.tag === 'SPAN' && !val.click, val);
+ok('і правки ставки на місці більше немає', val.edit === 'undefined', val);
 
-const esc = await page.evaluate(async () => {
-  window.__pay.updates = []; window.__pay.answer = false;
-  await editPayoutValue('1');
-  window.__pay.answer = '30';
-  return window.__pay.updates.length;
+/* Те, чим рядок керують, лишилось на місці. */
+const acts = await page.evaluate(() => {
+  const r = document.querySelector('.pay-row');
+  return { tog: !!r.querySelector('.pay-tog'), mod: !!r.querySelector('.pay-mod'),
+           del: !!r.querySelector('.pay-del') };
 });
-ok('скасування нічого не міняє', esc === 0, { esc });
+ok('тугл, модель і видалення на місці',
+  acts.tog && acts.mod && acts.del, acts);
 
 /* ── 2. модель вибирається ПРИ додаванні ── */
 const model = await page.evaluate(() => {
@@ -129,7 +166,7 @@ const byGeo = await page.evaluate(() => {
   document.getElementById('payout-find').value = 'kz';
   payFind();
   const html = document.getElementById('geo-payouts-list').innerHTML;
-  return { kz: /Mostbet/.test(html), ua: /Pinco/.test(html) };
+  return { kz: /Betwinner/.test(html), ua: /Pinco/.test(html) };
 });
 ok('шукати можна й за гео', byGeo.kz === true && byGeo.ua === false, byGeo);
 
@@ -159,9 +196,9 @@ const short = await page.evaluate(() => {
 ok('на короткому списку пошуку немає', short === true, { short });
 
 await draw(ROWS);
-const long = await page.evaluate(() =>
+const long2 = await page.evaluate(() =>
   !document.getElementById('payout-find-row').classList.contains('hidden'));
-ok('а на довгому зʼявляється', long === true, { long });
+ok('а на довгому зʼявляється', long2 === true, { long2 });
 
 /* ── прапорці ── */
 const flags = await draw(ROWS);
