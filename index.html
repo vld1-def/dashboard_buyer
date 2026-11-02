@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 12:00">
+  <meta name="build" content="build 02.11 19:12">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4036,6 +4036,25 @@ body[data-route="domains"] #dm-detail {
   accent-color: var(--accent); cursor: pointer; flex: 0 0 auto;
 }
 
+/* У КЛІТИНЦІ ТАБЛИЦІ та сама галочка стоїть сама, без назви поруч, —
+   отже й відступ праворуч їй не потрібен: він зсував би її з центру
+   стовпця, у якому більше нічого немає.
+
+   Галочка кабінетів навмисно та сама, що в дереві оголошень: один
+   вигляд на одну дію, хоч вибирають тут рядки, а там оголошення. */
+.cab-x .cd-mk { margin: 0; vertical-align: middle; }
+/* Вибраний рядок видно й без галочки: при сорока рядках сама галочка
+   губиться, а дія йде саме по цих рядках. */
+.cab-tr.is-mk > td { background: rgba(139, 92, 246, .10); }
+
+/* ВИБРАНЕ ПОЗА ФІЛЬТРОМ. Вибір переживає зміну фільтра, тож число в
+   смузі буває більшим за те, що видно на екрані. Сказати про це треба
+   ДО дії, а не після неї. */
+.cab-mkaway {
+  font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--warn); cursor: help;
+}
+
 /* Смуга дії. Стоїть між шапкою й таблицею, а не над карткою: дія
    стосується рядків, і від них її відводити не можна.
 
@@ -6562,7 +6581,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 12:00</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 19:12</div>
     </div>
   </aside>
 
@@ -7461,6 +7480,11 @@ input.ui-in[type="range"] { padding: 0; }
        Вузол лишається — у ньому зʼявляється хіба що попередження, що
        журнал недоступний. Історія конкретного кабінета — у його панелі. -->
   <div id="cab-feed"></div>
+
+  <!-- Смуга дії над вибраними. Стоїть між плитками й таблицею, а не
+       над карткою: дія стосується рядків, і відводити її від них не
+       можна. Порожня, поки нічого не вибрано — місця не займає. -->
+  <div id="cab-bulk"></div>
 
   <!-- cab-row — щоб на телефоні цей ряд міг перенестись: списку,
        картці й правилам там нема як стояти поруч. -->
@@ -26036,6 +26060,23 @@ let cabRows = [], cabFilter = 'running', cabGroup = 'agent', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
+/* ВИБІР КІЛЬКОХ КАБІНЕТІВ.
+
+   Архівувати по одному — робота, якої не роблять: щоб прибрати
+   двадцять забанених, двадцять разів треба відкрити рядок, знайти
+   кнопку й підтвердити. Тому галочка стоїть у самому рядку, а дія
+   одна на всю пачку.
+
+   Вибір живе ТІЛЬКИ в памʼяті сторінки: перезавантажив — його немає.
+   Так і має бути: вибір, що переживає перезавантаження, це відкладена
+   дія над рядками, яких можеш уже не памʼятати.
+
+   cabShown тримаємо тим самим зрізом, який намальований: «вибрати
+   все» мусить брати рівно те, що людина бачить, а не весь парк. */
+let cabMark = new Set();
+let cabShown = [];
+const cabMarked = id => cabMark.has(String(id));
+
 /* Те, що приїхало з Facebook. Таблиці може не бути зовсім (FB_SYNC.sql
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
@@ -27848,6 +27889,13 @@ function cabRender() {
      вміти: інакше агент і нотатка, записані під власним підписом,
      ніколи не доїдуть до кабінета. */
   cabFree = cabRows.filter(r => !cabFbFor(r));
+  /* Account, який зник із парку, не лишається у вибраному: число у
+     смузі казало б про рядок, якого немає, а дія над ним усе одно не
+     пройшла б. */
+  if (cabMark.size) {
+    const live = new Set(cabAll.map(c => String(c.id)));
+    [...cabMark].forEach(id => { if (!live.has(id)) cabMark.delete(id); });
+  }
   const all = cabAll;
 
   // ── плитки-лічильники, вони ж фільтр ──
@@ -27954,6 +28002,11 @@ function cabRender() {
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q));
   let shown = all.filter(c => inFilter(c) && inText(c));
+  /* Те, що намальовано, — і те, що візьме «вибрати все». Один список
+     на обидва, інакше галочка в шапці колись почне брати не те, що
+     стоїть під нею. */
+  cabShown = shown;
+  cabBulkPaint();
 
   cabFbNote();
 
@@ -28012,6 +28065,14 @@ function cabRender() {
 
   cabSumPaint(shown, all);
   list.innerHTML = cabSection(shown);
+  /* Третій стан галочки в шапці — «вибрано частину» — в HTML не
+     виражається: indeterminate ставиться лише з коду. Без нього
+     половина вибраних виглядала б як «не вибрано нічого». */
+  const mkAll = document.getElementById('cab-mkall');
+  if (mkAll) {
+    const n = shown.filter(c => cabMarked(c.id)).length;
+    mkAll.indeterminate = n > 0 && n < shown.length;
+  }
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
   cabTreeRepaint(shown);
@@ -28059,12 +28120,19 @@ function cabSection(items) {
   rest.forEach(c => (groups[keyOf(c)] = groups[keyOf(c)] || []).push(c));
 
   const cols = cabColsShown();
-  // Скільки клітинок у рядку: стрілка, шпилька, крапка, кабінет,
-  // світчер, статус, витрати за період, дії — і стільки ж, скільки
-  // увімкнено колонок.
-  const COLS = 8 + cols.length;
+  // Скільки клітинок у рядку: галочка, стрілка, шпилька, крапка,
+  // кабінет, світчер, статус, витрати за період, дії — і стільки ж,
+  // скільки увімкнено колонок.
+  const COLS = 9 + cols.length;
 
+  /* Галочка в шапці бере рівно те, що намальовано: під фільтром
+     «Banned» це всі забанені, а не весь парк. Інакше вона тихо
+     чіпала б рядки, яких на екрані немає. */
+  const mkOn = items.length && items.every(c => cabMarked(c.id));
   const head = `<thead><tr>
+      <th class="cab-x"><input type="checkbox" class="cd-mk" id="cab-mkall"
+        ${mkOn ? 'checked' : ''} onclick="cabMarkAll(event)"
+        title="Select all ${items.length} cabinet(s) shown here"></th>
       <th class="cab-x"></th>
       <th class="cab-x" title="Pinned cabinets stay on top of the list"></th>
       <th class="cab-x"></th>
@@ -28177,8 +28245,12 @@ function cabRowHtml(c, COLS) {
      стрілку. Питають же в кабінета майже завжди одне — що в ньому
      крутиться; панель із картками й полями потрібна рідше, і тепер у
      неї є власна кнопка. */
-  const row = `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''} ${frozen ? 'is-frozen' : ''}"
+  const row = `<tr class="cab-tr ${cabSel === c.id ? 'is-sel' : ''} ${frozen ? 'is-frozen' : ''}${
+      cabMarked(c.id) ? ' is-mk' : ''}"
       onclick="cabToggleTree(event, '${idEnc}')">
+    <td class="cab-x"><input type="checkbox" class="cd-mk"
+      ${cabMarked(c.id) ? 'checked' : ''} onclick="cabMarkAt(event, '${idEnc}')"
+      title="Pick this cabinet to archive it together with others"></td>
     <td class="cab-x"><button type="button" class="cab-exp ${open ? 'is-on' : ''}"
       onclick="cabToggleTree(event, '${idEnc}')"
       title="Campaigns, ad sets and ads of this cabinet with today’s numbers">›</button></td>
@@ -28294,12 +28366,12 @@ function cabNodeRow(n, depth, band, cols) {
   const hit = f.kids ? ` onclick="cdToggle('${cabEsc(key)}')"` : '';
   return `<tr class="cab-node cd-r cd-d${depth}${band ? ' is-band' : ''}${
       f.marked ? ' is-mk' : ''}">
-    <!-- Три перші стовпці (стрілка, шпилька, кружок) у дереві порожні —
+    <!-- Чотири перші стовпці (галочка, стрілка, шпилька, кружок) у дереві порожні —
          і це були ~70 пікселів пустого поля ліворуч від кожної назви,
          щодня. Забираємо їх під саму назву: colspan лишає сітку
          таблиці цілою, тож світчер, статус і числа стоять там, де й
          стояли, а назва починається від краю. -->
-    <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="4"${hit}>
+    <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="5"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
     <td class="cab-nd-st">${f.status}</td>
@@ -28895,10 +28967,23 @@ async function cabSaveField(id, key, value) {
   cabRender();
 }
 
-async function cabSetStatus(id, status) {
+/* opts.quiet — для пачки. Різниця не косметична:
+
+     1. помилку ВЕРТАЄ, а не показує. Двадцять невдалих записів дали б
+        двадцять alert’ів поспіль, і закрити їх було б єдиним, що
+        людина зробить;
+     2. не перемальовує таблицю на кожному рядку — за пачку це сотня
+        перемальовок замість однієї в кінці.
+
+   Поодинокий виклик веде себе як раніше. */
+async function cabSetStatus(id, status, opts) {
+  const quiet = !!(opts && opts.quiet);
   const row = cabRows.find(r => String(r.id) === String(id));
-  if (!row) { alert('Could not save: this cabinet is not in your list yet — press '
-    + '“Add to my list” first.'); return; }
+  if (!row) {
+    const m = 'this cabinet is not in your list yet — press “Add to my list” first.';
+    if (quiet) return m;
+    alert('Could not save: ' + m); return;
+  }
   const prev = row.status;
   // Стан рахуємо до і після: ручний статус — це такий самий перехід, як
   // і той, що ми ловимо з грошей, і в журналі він має лежати поруч.
@@ -28910,13 +28995,21 @@ async function cabSetStatus(id, status) {
   // «archived → archived» або навпаки проґавив би його.
   cabArchBuild();
   const now = cabStateOf(row, f, fb);
-  cabRender();
+  if (!quiet) cabRender();
   const why = await cabWrite(id, { status });
   /* Відкочуємо саме те, що намалювали. Лишити на екрані Archived, якого
      немає в базі, — це та сама тиша, тільки відкладена до наступного
      перезавантаження. */
-  if (why) { row.status = prev; cabRender(); alert('Could not save: ' + why); return; }
+  /* Відкочуємо й набір архівних, не лише рядок: інакше засувка
+     тримала б кабінет архівним після запису, якого не було. */
+  if (why) {
+    row.status = prev;
+    cabArchBuild();
+    if (quiet) return why;
+    cabRender(); alert('Could not save: ' + why); return;
+  }
   if (typeof evLog === 'function') await evLog(String(row.account_id || '').trim(), was, now, '', 'manual');
+  return '';
 }
 
 // Дані дашборда приїжджають після того, як сторінка вже намальована:
@@ -29111,26 +29204,141 @@ window.cabLimitEdit = async function (enc) {
   }
 };
 
+/* ═══════════ ПАЧКОЮ: АРХІВ І ПОВЕРНЕННЯ З НЬОГО ═══════════
 
-/* ═══════════ АРХІВУВАТИ ВСІ БЕЗ ТОКЕНА ═══════════
+   Галочка в рядку, смуга дії над таблицею — і одне підтвердження на
+   всю пачку. Двадцять підтверджень поспіль перестають читати вже на
+   другому, тож питаємо раз і називаємо число.
 
-   Account у стані notoken — це той, якого жоден токен уже не бачить.
-   Його числа заморожені, діяти з ним нема чим, а рядок він займає
-   такий самий, як робочий.
+   Дві дії, а не одна: з архіву теж виходять не по одному. Яка з них
+   показана, вирішує сам вибір — кнопка для нуля рядків гірша за
+   кнопку, якої немає. */
 
-   Що тут важить:
+window.cabMarkAt = function (ev, idEnc) {
+  /* Клік по рядку розкриває дерево кампаній, і без цього кожна
+     галочка відкривала б його заодно. */
+  if (ev) ev.stopPropagation();
+  const id = decodeURIComponent(idEnc || '');
+  if (!id) return;
+  if (cabMark.has(id)) cabMark.delete(id); else cabMark.add(id);
+  cabRender();
+};
 
-   1. Це НЕ видалення. Архів лише ховає рядок у свою плитку; історія
-      витрат і нотатки лишаються, і повернути можна тим самим статусом.
-      Тому й питання спокійне, без червоного.
+/* Галочка в шапці: тисне рівно те, що намальовано. Другий клік по
+   повному зрізу знімає — те саме місце, та сама дія назад. */
+window.cabMarkAll = function (ev) {
+  if (ev) ev.stopPropagation();
+  const ids = (cabShown || []).map(c => String(c.id));
+  if (!ids.length) return;
+  const on = ids.every(id => cabMark.has(id));
+  ids.forEach(id => { if (on) cabMark.delete(id); else cabMark.add(id); });
+  cabRender();
+};
 
-   2. Accountи, яких ще немає в accounts_mapping, спершу треба завести
-      — інакше архіву нема куди лягти. Це та сама пара дій, що вже
-      робить cabArchiveNew.
+window.cabMarkClear = function () { cabMark.clear(); cabRender(); };
 
-   3. Ідемо по одному й рахуємо, що не вийшло. Одна відмова посеред
-      сорока не має ні спиняти решту, ні зникати: у підсумку видно
-      обидва числа. */
+/* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
+   нулем вибраних забирає висоту й нічого не каже. */
+function cabBulkPaint() {
+  const box = document.getElementById('cab-bulk');
+  if (!box) return;
+  const picked = cabAll.filter(c => cabMarked(c.id));
+  if (!picked.length) { box.innerHTML = ''; return; }
+
+  const arch = picked.filter(c => c.state === 'archived');
+  const live = picked.filter(c => c.state !== 'archived');
+  /* ВИБРАНЕ ПОЗА ФІЛЬТРОМ — ВГОЛОС. Вибір переживає зміну фільтра, і
+     це правильно: інакше він тихо губився б посеред роботи. Але тоді
+     число в смузі буває більшим за те, що видно на екрані, — і
+     сказати про це мусимо ДО дії, а не після. */
+  const seen = new Set((cabShown || []).map(c => String(c.id)));
+  const away = picked.filter(c => !seen.has(String(c.id))).length;
+
+  box.innerHTML = `<div class="cd-mkbar">
+    <span class="cd-mkn">${picked.length} picked</span>
+    ${away ? `<span class="cab-mkaway"
+      title="They stay picked and the action takes them too — clear the search or the status filter to see them">
+      ${away} not shown here</span>` : ''}
+    ${live.length ? `<button type="button" class="cd-tab" onclick="cabBulkArch('archive')"
+      title="Move them out of the list — spend history and notes stay">↴ Archive ${live.length}</button>` : ''}
+    ${arch.length ? `<button type="button" class="cd-tab" onclick="cabBulkArch('active')"
+      title="Back into the list with the state Facebook reports for them">↱ Out of archive ${arch.length}</button>` : ''}
+    <button type="button" class="cd-tab" onclick="cabMarkClear()">Clear</button>
+  </div>`;
+}
+
+/* Засувка без рядка. Архів тримається двома речами — статусом у
+   твоєму рядку й засувкою в памʼяті браузера, — і рядок могли вже
+   видалити. Тоді знімати нічого, крім засувки. */
+function cabArchForget(c) {
+  cabArchKeys(c.id).forEach(k => cabArch.delete(k));
+  if (c.fb) cabArchKeys(c.fb.account_id).forEach(k => cabArch.delete(k));
+  cabArchSave();
+}
+
+/* Сам прогін. Один на обидві дії й на «прибрати всі без токена»:
+   тримати три копії циклу з прогресом і підрахунком невдач означало б
+   три різні поведінки на помилці.
+
+   Невдача не спиняє решту: у пачці на сорок рядків зупинка на
+   третьому — найгірше з можливого. Але й не зникає: число невдалих
+   стоїть у підсумку, а самі вони лишаються вибраними. */
+async function cabArchRun(list, to) {
+  const step = toastStep();
+  const word = to === 'archive' ? 'Archiving' : 'Returning';
+  const past = to === 'archive' ? 'Archived' : 'Returned';
+  let done = 0, failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    step.say(word + ' ' + (i + 1) + ' of ' + list.length + '\u2026');
+    const c = list[i];
+    try {
+      const enc = encodeURIComponent(String(c.id));
+      let why = '';
+      if (c.row && c.row.id) why = await cabSetStatus(c.row.id, to, { quiet: true });
+      /* Архіву треба десь лежати: у кабінета, якого ще немає у твоєму
+         списку, немає ні рядка, ні місця під статус. Заводить рядок і
+         ставить архів cabArchiveNew. */
+      else if (to === 'archive') await cabArchiveNew(enc);
+      else cabArchForget(c);
+      if (why) failed++;
+      else { done++; cabMark.delete(String(c.id)); }
+    } catch (_e) { failed++; }
+  }
+  step.done(failed
+    ? past + ' ' + done + ', ' + failed + ' did not go \u2014 try those again'
+    : past + ' ' + done, failed ? 'warn' : 'ok');
+  cabRender();
+}
+
+window.cabBulkArch = async function (to) {
+  const want = to === 'archive' ? 'archive' : 'active';
+  const list = cabAll.filter(c => cabMarked(c.id)
+    && (want === 'archive' ? c.state !== 'archived' : c.state === 'archived'));
+  if (!list.length) return;
+
+  const go = await ask(want === 'archive'
+    ? { title: 'Archive ' + list.length + ' cabinet(s)?', ok: 'Archive',
+        body: 'Archiving only moves them out of the way: spend history and your notes '
+            + 'stay, and the Archived tile still holds them.\n\nThey leave every other '
+            + 'tile, so the list stops showing them.' }
+    : { title: 'Return ' + list.length + ' cabinet(s) from Archive?', ok: 'Return',
+        body: 'Their status goes back to OK, so they show up in the list again with '
+            + 'whatever state Facebook reports for them.' });
+  if (!go) return;
+
+  await cabArchRun(list, want);
+};
+
+/* ПРИБРАТИ ВСІ БЕЗ ТОКЕНА — ОДНІЄЮ ДІЄЮ.
+
+   «No token» означає, що жоден токен цього кабінета вже не бачить:
+   числа в рядку заморожені, зробити з ним нічого не можна, а місце в
+   таблиці він займає нарівні з робочими. Таких назбирується
+   десятками.
+
+   Кнопка стоїть у самій плитці «No token», поруч із їх числом: саме
+   дивлячись на це число й виникає бажання їх прибрати. Вибирати їх
+   галочками при цьому не треба — плитка вже знає, котрі вони. */
 window.cabArchiveNoToken = async function () {
   const list = cabAll.filter(c => c.state === 'notoken');
   if (!list.length) return;
@@ -29142,22 +29350,7 @@ window.cabArchiveNoToken = async function () {
         + 'history and your notes stay, and the Archived tile still holds them.' });
   if (!go) return;
 
-  const step = toastStep();
-  let done = 0, failed = 0;
-  for (let i = 0; i < list.length; i++) {
-    step.say('Archiving ' + (i + 1) + ' of ' + list.length + '\u2026');
-    const c = list[i];
-    try {
-      const enc = encodeURIComponent(String(c.id));
-      if (c.row && c.row.id) await cabSetStatus(c.row.id, 'archive');
-      else await cabArchiveNew(enc);
-      done++;
-    } catch (_e) { failed++; }
-  }
-  step.done(failed
-    ? 'Archived ' + done + ', ' + failed + ' did not go \u2014 open those and try again'
-    : 'Archived ' + done, failed ? 'warn' : 'ok');
-  cabRender();
+  await cabArchRun(list, 'archive');
 };
 </script>
 

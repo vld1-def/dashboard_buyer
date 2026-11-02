@@ -32,12 +32,20 @@ const tree = await page.evaluate(() => {
   const box = document.createElement('table');
   box.innerHTML = '<tbody>' + html + '</tbody>';
   const tds = [...box.querySelectorAll('td')];
+  /* Скільки вузьких стовпців іде ДО назви, беремо з самої таблиці
+     кабінетів, а не числом: їх уже ставало на один більше (галочка
+     мультивибору), і зашите «4» зробило б цей стенд зеленим на
+     розʼїханому дереві. */
+  cabRender();
+  const ths = [...document.querySelectorAll('#cab-list thead th')];
+  let lead = 0;
+  while (ths[lead] && ths[lead].classList.contains('cab-x')) lead++;
   return { empty: tds.filter(t => t.className === 'cab-x').length,
            span: box.querySelector('.cab-nd')?.getAttribute('colspan'),
-           total: tds.length };
+           lead: lead + 1, total: tds.length };
 });
 ok('порожніх стовпців перед назвою більше немає', tree.empty === 0, tree);
-ok('клітинка назви накриває їх собою', tree.span === '4', tree);
+ok('клітинка назви накриває їх собою', Number(tree.span) === tree.lead, tree);
 
 const ind = await page.evaluate(() => {
   const d = document.createElement('div');
