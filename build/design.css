@@ -1158,9 +1158,19 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
    Плоский список повторював гео в кожному рядку й тягнув його на всю
    ширину панелі майже порожнім. Блок називає гео раз, а рядок
    коротшає до того, що в ньому справді різне. */
+/* ШИРИНА БЛОКА РАХУЄТЬСЯ ВІД НАЗВИ ОФЕРА, А НЕ ВІД КІЛЬКОСТІ БЛОКІВ.
+
+   Було 208px — рівно стільки, щоб вліз тугл, модель, ставка й хрестик,
+   а назві оффера лишалось 63px із 219. Тобто єдине, за чим рядок
+   відрізняють від сусіднього, й було обрізане першим: три блоки в ряд
+   коштували того, через що в цей список заходять. Тепер блок 332px, а
+   назві дістається 176 — більше, ніж усім кнопкам рядка разом.
+
+   min(100%, …) — щоб на вузькому екрані блок не був ширший за панель:
+   голий minmax(320px, 1fr) у контейнері на 300px вилазить за край. */
 .pay-grid {
   display: grid; gap: 8px;
-  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
 }
 .pay-card {
   background: var(--surface-2); border: 1px solid var(--border);
@@ -1202,9 +1212,15 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 }
 .pay-tog.is-on > span { left: 11px; }
 
+/* НАЗВА НЕ ОБРІЗАЄТЬСЯ. Обрізана назва — найтихіший спосіб збрехати
+   в цьому списку: «Betwinner KZ app» і «Betwinner KZ web» під
+   ellipsis виглядають одним рядком, а ставки в них різні. Ширшого
+   блока на найдовші назви все одно колись не хватить, тож довга
+   переходить на другий рядок, а не зникає. */
 .pay-off {
-  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: 11px; font-weight: 700; color: var(--text-main);
+  flex: 1 1 auto; min-width: 0; font-size: 11px; font-weight: 700;
+  color: var(--text-main); line-height: 1.35;
+  white-space: normal; overflow-wrap: anywhere;
 }
 .pay-mod {
   flex: 0 0 auto; font-size: 8px; font-weight: 900; text-transform: uppercase;
@@ -1213,20 +1229,14 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 }
 .pay-mod:hover { color: var(--text-main); }
 .pay-mod.is-pct { background: rgba(251,191,36,.18); border-color: rgba(251,191,36,.3); color: #fbbf24; }
-/* СТАВКА — КНОПКА, І ЦЕ МАЄ БУТИ ВИДНО. Доти її правили через
-   видалити-й-завести-наново, тобто найчастіша дія була найдовшою.
-   Тепер по ній клікають — отже вона мусить виглядати натискною, але
-   не кричати: у рядку головне не вона, а оффер. */
+/* Ставка просто показується. Натискною вона була один коміт і
+   виявилась непотрібною: ставки правлять рідко, а місце в рядку
+   вона займала щоразу — разом із рамкою й відступами під клік. */
 .pay-val {
-  flex: 0 0 auto; min-width: 48px; text-align: right;
+  flex: 0 0 auto; min-width: 42px; text-align: right;
   font-size: 11px; font-weight: 800; color: var(--text-main);
   font-family: ui-monospace, Menlo, monospace;
-  padding: 2px 6px; border-radius: 6px; cursor: pointer;
-  background: none; border: 1px solid transparent;
-  transition: background .12s, border-color .12s;
 }
-.pay-val:hover { background: var(--surface-3); border-color: var(--border-2); }
-.pay-row.is-off .pay-val { cursor: pointer; }
 /* Видалення показується на навідку: натискають його рідко, а стоїть
    воно поруч із туглом, який натискають часто. */
 .pay-del {

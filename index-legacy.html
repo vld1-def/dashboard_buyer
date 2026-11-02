@@ -5819,8 +5819,7 @@ function renderGeoPayoutSettings(data) {
             title="${spend
               ? 'Спенд-модель: виручка = спенд × відсоток. Клік — повернути на CPA'
               : 'CPA: виручка = депозити × ставка. Клік — перевести на % від спенду'}">${spend ? '%' : 'CPA'}</button>
-          <button class="pay-val" onclick="editPayoutValue('${p.id}')"
-            title="Змінити ставку">${spend ? p.value + '%' : '$' + p.value}</button>
+          <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
           <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
         </div>`;
       }).join('')}
@@ -5828,46 +5827,6 @@ function renderGeoPayoutSettings(data) {
   }).join('') + `</div>`;
 }
 
-/* ЗМІНИТИ СТАВКУ НА МІСЦІ.
-
-   Доти ставку правили так: видалити оффер і завести наново. Тобто
-   найчастіша дія в цьому списку була найдовшою, та ще й через
-   видалення — а видалення тут незворотне.
-
-   Показуємо, що саме міняємо: гео, оффер і модель поруч із полем.
-   «25» у CPA і «25» у відсотковій — різні гроші, і вікно мусить
-   казати, яке з двох перед тобою. */
-window.editPayoutValue = async function (id) {
-  const p = (payData || []).find(x => String(x.id) === String(id));
-  if (!p) return;
-  const spend = p.model === 'spend';
-
-  const raw = await ask({
-    title: 'Ставка · ' + String(p.geo || '').toUpperCase()
-         + ' · ' + (p.offer || 'DEFAULT'),
-    ok: 'Зберегти',
-    body: spend
-      ? 'Відсоток від спенду. Виручка = спенд × відсоток.'
-      : 'Ставка за депозит. Виручка = депозити × ставка.',
-    input: { value: String(p.value) } });
-  if (raw === false) return;
-
-  const v = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
-  if (!Number.isFinite(v) || v <= 0) {
-    toast('Це не ставка: ' + raw, 'error');
-    return;
-  }
-  if (Math.abs(v - Number(p.value)) < 0.0001) return;   // те саме число
-
-  const { error } = await sb.from('payouts').update({ value: v }).eq('id', id);
-  if (error) { toast('Не вдалось змінити ставку: ' + error.message, 'error'); return; }
-  await refreshPayoutsFromSQL();
-  /* Виручка рахується з цієї ставки, тож перемальовуємо й цифри:
-     лишити на екрані старий профіт під новою ставкою означало б
-     показати два числа, які не сходяться між собою. */
-  applyGlobalFilter();
-  toast('Ставка змінена', 'ok');
-};
 
 // Вимкнений оффер лишається в базі (історичні рядки з ним нікуди не діваються),
 // але перестає підтягуватись при імпорті й не дає ставку для розрахунку виручки.

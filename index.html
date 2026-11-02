@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 10:47">
+  <meta name="build" content="build 02.11 11:52">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2283,9 +2283,19 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
    Плоский список повторював гео в кожному рядку й тягнув його на всю
    ширину панелі майже порожнім. Блок називає гео раз, а рядок
    коротшає до того, що в ньому справді різне. */
+/* ШИРИНА БЛОКА РАХУЄТЬСЯ ВІД НАЗВИ ОФЕРА, А НЕ ВІД КІЛЬКОСТІ БЛОКІВ.
+
+   Було 208px — рівно стільки, щоб вліз тугл, модель, ставка й хрестик,
+   а назві оффера лишалось 63px із 219. Тобто єдине, за чим рядок
+   відрізняють від сусіднього, й було обрізане першим: три блоки в ряд
+   коштували того, через що в цей список заходять. Тепер блок 332px, а
+   назві дістається 176 — більше, ніж усім кнопкам рядка разом.
+
+   min(100%, …) — щоб на вузькому екрані блок не був ширший за панель:
+   голий minmax(320px, 1fr) у контейнері на 300px вилазить за край. */
 .pay-grid {
   display: grid; gap: 8px;
-  grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
 }
 .pay-card {
   background: var(--surface-2); border: 1px solid var(--border);
@@ -2327,9 +2337,15 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 }
 .pay-tog.is-on > span { left: 11px; }
 
+/* НАЗВА НЕ ОБРІЗАЄТЬСЯ. Обрізана назва — найтихіший спосіб збрехати
+   в цьому списку: «Betwinner KZ app» і «Betwinner KZ web» під
+   ellipsis виглядають одним рядком, а ставки в них різні. Ширшого
+   блока на найдовші назви все одно колись не хватить, тож довга
+   переходить на другий рядок, а не зникає. */
 .pay-off {
-  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: 11px; font-weight: 700; color: var(--text-main);
+  flex: 1 1 auto; min-width: 0; font-size: 11px; font-weight: 700;
+  color: var(--text-main); line-height: 1.35;
+  white-space: normal; overflow-wrap: anywhere;
 }
 .pay-mod {
   flex: 0 0 auto; font-size: 8px; font-weight: 900; text-transform: uppercase;
@@ -2338,20 +2354,14 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 }
 .pay-mod:hover { color: var(--text-main); }
 .pay-mod.is-pct { background: rgba(251,191,36,.18); border-color: rgba(251,191,36,.3); color: #fbbf24; }
-/* СТАВКА — КНОПКА, І ЦЕ МАЄ БУТИ ВИДНО. Доти її правили через
-   видалити-й-завести-наново, тобто найчастіша дія була найдовшою.
-   Тепер по ній клікають — отже вона мусить виглядати натискною, але
-   не кричати: у рядку головне не вона, а оффер. */
+/* Ставка просто показується. Натискною вона була один коміт і
+   виявилась непотрібною: ставки правлять рідко, а місце в рядку
+   вона займала щоразу — разом із рамкою й відступами під клік. */
 .pay-val {
-  flex: 0 0 auto; min-width: 48px; text-align: right;
+  flex: 0 0 auto; min-width: 42px; text-align: right;
   font-size: 11px; font-weight: 800; color: var(--text-main);
   font-family: ui-monospace, Menlo, monospace;
-  padding: 2px 6px; border-radius: 6px; cursor: pointer;
-  background: none; border: 1px solid transparent;
-  transition: background .12s, border-color .12s;
 }
-.pay-val:hover { background: var(--surface-3); border-color: var(--border-2); }
-.pay-row.is-off .pay-val { cursor: pointer; }
 /* Видалення показується на навідку: натискають його рідко, а стоїть
    воно поруч із туглом, який натискають часто. */
 .pay-del {
@@ -6552,7 +6562,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 10:47</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 11:52</div>
     </div>
   </aside>
 
@@ -12320,8 +12330,7 @@ function renderGeoPayoutSettings(data) {
             title="${spend
               ? 'Spend model: revenue = spend × percent. Click to switch back to CPA'
               : 'CPA: revenue = deposits × rate. Click to switch to % of spend'}">${spend ? '%' : 'CPA'}</button>
-          <button class="pay-val" onclick="editPayoutValue('${p.id}')"
-            title="Змінити ставку">${spend ? p.value + '%' : '$' + p.value}</button>
+          <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
           <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
         </div>`;
       }).join('')}
@@ -12329,46 +12338,6 @@ function renderGeoPayoutSettings(data) {
   }).join('') + `</div>`;
 }
 
-/* ЗМІНИТИ СТАВКУ НА МІСЦІ.
-
-   Доти ставку правили так: видалити оффер і завести наново. Тобто
-   найчастіша дія в цьому списку була найдовшою, та ще й через
-   видалення — а видалення тут незворотне.
-
-   Показуємо, що саме міняємо: гео, оффер і модель поруч із полем.
-   «25» у CPA і «25» у відсотковій — різні гроші, і вікно мусить
-   казати, яке з двох перед тобою. */
-window.editPayoutValue = async function (id) {
-  const p = (payData || []).find(x => String(x.id) === String(id));
-  if (!p) return;
-  const spend = p.model === 'spend';
-
-  const raw = await ask({
-    title: 'Ставка · ' + String(p.geo || '').toUpperCase()
-         + ' · ' + (p.offer || 'DEFAULT'),
-    ok: 'Save',
-    body: spend
-      ? 'Відсоток від спенду. Виручка = спенд × відсоток.'
-      : 'Ставка за депозит. Виручка = депозити × ставка.',
-    input: { value: String(p.value) } });
-  if (raw === false) return;
-
-  const v = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
-  if (!Number.isFinite(v) || v <= 0) {
-    toast('Це не ставка: ' + raw, 'error');
-    return;
-  }
-  if (Math.abs(v - Number(p.value)) < 0.0001) return;   // те саме число
-
-  const { error } = await sb.from('payouts').update({ value: v }).eq('id', id);
-  if (error) { toast('Не вдалось змінити ставку: ' + error.message, 'error'); return; }
-  await refreshPayoutsFromSQL();
-  /* Виручка рахується з цієї ставки, тож перемальовуємо й цифри:
-     лишити на екрані старий профіт під новою ставкою означало б
-     показати два числа, які не сходяться між собою. */
-  applyGlobalFilter();
-  toast('Ставка змінена', 'ok');
-};
 
 // Вимкнений оффер лишається в базі (історичні рядки з ним нікуди не діваються),
 // але перестає підтягуватись при імпорті й не дає ставку для розрахунку виручки.
