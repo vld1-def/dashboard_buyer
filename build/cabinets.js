@@ -115,6 +115,8 @@ const cabMarked = id => cabMark.has(String(id));
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
+/* Кабінети НАШИХ токенів, підписані іншою командою. Див. cabFbLoad. */
+let cabFbMine = [];
 /* Скільки рядків віддала база ДО відсіву по команді. Різниця між цим
    числом і довжиною cabFb — це рівно те, що ми сховали навмисно, і
    про що треба сказати, якщо після відсіву не лишилось нічого. */
@@ -1027,10 +1029,28 @@ async function cabFbLoad() {
     const t = await sb.from('fb_tokens').select('id,label');
     cabTokens = {};
     (t.data || []).forEach(x => cabTokens[x.id] = x.label);
+    /* СВОЄ ПІД ЧУЖИМ ПІДПИСОМ — ОКРЕМА НОВИНА.
+
+       Назву команди носить сам токен, і ставиться вона один раз, при
+       збереженні. Перейменував команду — токен лишився зі старою
+       назвою, і все, що приносить синк, лягає під неї, хоч токен твій.
+
+       Доти ці рядки відсіювались разом із чужими, і сказати про них
+       було нічого: повідомлення про розбіжність спрацьовувало лише
+       коли після відсіву не лишалось НІЧОГО. Тобто коли частина
+       кабінетів під новою назвою, а частина під старою — старі
+       зникали тихо.
+
+       Відрізняємо по token_id: токени нам віддає RLS, отже в cabTokens
+       лежать САМЕ наші. Чужий кабінет чужого баєра сюди не потрапить
+       і зайвого рядка не покличе. */
+    cabFbMine = (res.data || []).filter(r =>
+      r.team_name && r.team_name !== currentTeam && cabTokens[r.token_id]);
   } catch (e) {
     cabFb = [];
     cabFbRaw = 0;
     cabFbTeams = [];
+    cabFbMine = [];
     cabFbErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
 }
@@ -1233,6 +1253,20 @@ function cabFbNote() {
       + '<span class="font-mono">fb-sync</span>, then press Sync now.', 'warn');
   } else if (cabDaysErr) {
     say('Could not read spend history: ' + cabEsc(cabDaysErr), 'error');
+  } else if (cabFbMine.length) {
+    /* ТВІЙ ТОКЕН ПИШЕ ПІД ІНШОЮ НАЗВОЮ — і це найтихіша з поломок:
+       кабінети не зникли, вони просто підписані не тією командою, а
+       сторінка ріже саме по ній. Повідомлення мусить спрацьовувати й
+       тоді, коли решта кабінетів видна: саме так це й виглядає після
+       перейменування — частина під новою назвою, частина під старою. */
+    const names = [...new Set(cabFbMine.map(r => String(r.team_name)))];
+    say(cabFbMine.length + ' cabinet(s) of your own token(s) are filed under <b>'
+      + cabEsc(names.slice(0, 3).join(', ')) + '</b>'
+      + (names.length > 3 ? '\u2026' : '')
+      + ', not <b>' + cabEsc(currentTeam) + '</b> — so they are hidden here. '
+      + 'A token keeps the team name it was saved with, and the sync writes '
+      + 'everything under that name. Fix it in Settings → Facebook tokens: '
+      + '<b>Move to ' + cabEsc(currentTeam) + '</b>.', 'warn');
   } else if (!cabFb.length && cabFbRaw > 0) {
     /* ПОРОЖНЬО ПІСЛЯ ВІДСІВУ — І ЦЕ ДВІ НОВИНИ, НЕ ОДНА.
 
