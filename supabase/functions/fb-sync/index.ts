@@ -165,7 +165,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-11-02.1';
+const FN_VERSION = '2026-11-02.2';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -538,8 +538,19 @@ function urlsFor(actId: string, tz: string): string[] {
          нікуди не приписати, і назовні це виглядало б як «доменів
          немає». Покладатись на замовчування — зайвий ризик за нуль
          економії. */
+      /* thumbnail_url і image_url — звідси беруться іконка креатива в
+         рядку й превʼю під курсором. Обидва — давні поля AdCreative,
+         тому їх і взято: вигадане імʼя тут валить УВЕСЬ підзапит, а
+         разом із ним і домени.
+
+         thumbnail_url є і для відео — це кадр, саме те, що потрібно
+         замість плеєра. image_url буває лише в статики, тож превʼю
+         бере його, коли воно є, і кадр, коли ні. Окремого походу в
+         Facebook це не коштує: той самий підзапит у тому самому
+         пакеті. */
       + '&fields=' + encodeURIComponent(
-        'id,creative{object_story_spec,asset_feed_spec,object_url}'),
+        'id,creative{object_story_spec,asset_feed_spec,object_url,'
+        + 'thumbnail_url,image_url}'),
   ];
 }
 
@@ -635,7 +646,10 @@ type AdSnap = { ad_id: string; name: string; status: string; own: string;
                 campaign_daily: number | null; campaign_life: number | null;
                 goal: string; event: string;
                 spend: number; imps: number; clicks: number; link_clicks: number;
-                actions: Json[]; host: string };
+                /* thumb — кадр або мініатюра (є і для відео), pic — повна
+                   картинка статики. Друге буває порожнім, перше майже
+                   завжди є; превʼю бере краще з двох. */
+                actions: Json[]; host: string; thumb: string; pic: string };
 
 /* Скільки оголошень і скільки різних постів кабінета ведуть на цю
    Сторінку. Пости рахуємо окремо від оголошень навмисно: один пост
@@ -799,6 +813,7 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
      приїхати: тоді хост лишається порожнім, а знімок — цілим. */
   const linkPart = parts[6];
   const hosts = new Map<string, string>();
+  const pics = new Map<string, { th: string; im: string }>();
   let linkErr = '';
   if (linkPart && linkPart.code === 200) {
     const list: Json[] = Array.isArray(linkPart.body?.data) ? linkPart.body.data : [];
@@ -807,12 +822,18 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
        у цьому випадку виглядає точно так само, як зламаний запит. */
     const skipped: string[] = [];
     list.forEach((r: Json) => {
-      const all = adHosts(r?.creative || {});
+      const cr = r?.creative || {};
+      const all = adHosts(cr);
       const h = pickHost(all, ours);
       if (r?.id && h) hosts.set(String(r.id), h);
       else if (all.length) all.forEach(x => {
         if (skipped.length < 4 && !skipped.includes(x)) skipped.push(x);
       });
+      /* Картинки кладемо з того ж обходу: інакше це був би другий
+         прохід по тому самому списку. */
+      const th = String(cr.thumbnail_url || '');
+      const im = String(cr.image_url || '');
+      if (r?.id && (th || im)) pics.set(String(r.id), { th, im });
     });
     /* Посилання знайшлись, але жодне не наше. Окремий діагноз: запит
        працює, поле правильне — не збігається СПИСОК. Тому й підказка
@@ -874,7 +895,9 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
         clicks: Number(row.clicks) || 0,
         link_clicks: Number(row.inline_link_clicks) || 0,
         actions: Array.isArray(row.actions) ? row.actions : [],
-        host: hosts.get(String(r.id || '')) || ''
+        host: hosts.get(String(r.id || '')) || '',
+        thumb: (pics.get(String(r.id || '')) || { th: '' }).th,
+        pic: (pics.get(String(r.id || '')) || { im: '' }).im
       };
     }).filter((a: AdSnap) => a.ad_id);
   }
@@ -1062,6 +1085,11 @@ type Outcome = { accounts: number; failed: number; changed: number;
                  // Скільки кабінетів обійшли як архівні. Кажемо вголос:
                  // інакше менше кабінетів у підсумку читалось би як збій.
                  archived: number;
+                 /* Колонок під картинки креативів ще немає. Знімок від
+                    цього не губиться — пишеться без них, — але сказати
+                    треба: інакше іконки просто не зʼявляться, і шукати
+                    причину буде ніде. */
+                 picNote: string;
                  /* ЯКІ САМЕ КАБІНЕТИ ОБІЙШЛИ. Підсумок казав «40 ad
                     account(s) from 3 token(s)» — число, з якого не
                     видно, чи твій кабінет серед тих сорока. Саме це й
@@ -1126,7 +1154,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
                         days: 0, noHistory: 0, historyError: '', knownError: '',
                         snapshot: 0, snapshotError: '', linkError: '', archived: 0,
-                        touched: [], graphMs: 0 };
+                        picNote: '', touched: [], graphMs: 0 };
 
   let accs: Json[];
   try {
@@ -1326,7 +1354,10 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
           /* Порожнє пишемо як null, а не як ''. Порожній рядок стикнувся
              б сам із собою, і домен «» зібрав би під себе всі оголошення,
              чиє посилання ми не розібрали. */
-          link_domain: a.host || null, seen_at: now
+          link_domain: a.host || null, seen_at: now,
+          /* Іконка креатива й превʼю. Колонок під них може ще не бути —
+             тоді saveSnap запише знімок без них і скаже, що виконати. */
+          thumb_url: a.thumb || null, image_url: a.pic || null
         }));
       }
       Object.assign(x.row, patch);
@@ -1492,12 +1523,39 @@ async function savePages(base: string, hdr: Json, t: TokenRow,
    видалили, і в знімку йому місця немає — інакше правило вимикало б
    уже вимкнене й писало про це в Telegram. Видаляємо ТІЛЬКИ по
    кабінетах, які щойно обійшли. */
+/* Колонки, яких у старій таблиці немає. Писати знімок цілком і
+   відмовитись від нього через дві нові колонки було б найгіршим з
+   можливого: на знімку стоять ПРАВИЛА, тобто автопауза перестала б
+   працювати через картинку в інтерфейсі.
+
+   Тому два заходи: з колонками, а на скаргу саме про них — без них.
+   І нотатка назовні, бо іконки інакше просто не зʼявляться, а причини
+   не буде видно ніде. */
+const SNAP_PIC_COLS = ['thumb_url', 'image_url'];
+
+async function snapWrite(base: string, hdr: Json, rows: Json[],
+                         out: Outcome): Promise<void> {
+  try {
+    await pgUpsert(base, hdr, 'fb_ad_today', 'created_by,ad_id', rows);
+  } catch (e) {
+    const m = String((e as Error).message || '');
+    if (!SNAP_PIC_COLS.some(c => m.includes(c))) throw e;
+    const bare = rows.map(r => {
+      const c: Json = { ...r };
+      SNAP_PIC_COLS.forEach(k => { delete c[k]; });
+      return c;
+    });
+    await pgUpsert(base, hdr, 'fb_ad_today', 'created_by,ad_id', bare);
+    out.picNote = 'creative pictures need two columns — run the ALTER TABLE '
+      + 'for fb_ad_today from FB_RULES.sql';
+  }
+}
+
 async function saveSnap(base: string, hdr: Json, t: TokenRow, rows: Json[],
                         seen: string[], now: string, out: Outcome): Promise<void> {
   if (!seen.length) return;
   try {
-    if (rows.length)
-      await pgUpsert(base, hdr, 'fb_ad_today', 'created_by,ad_id', rows);
+    if (rows.length) await snapWrite(base, hdr, rows, out);
     const ids = seen.filter(x => /^\d+$/.test(x));
     if (ids.length) {
       const res = await fetch(base + '/rest/v1/fb_ad_today'
@@ -2129,6 +2187,7 @@ async function handle(req: Request): Promise<Response> {
   let days = 0, noHistory = 0, historyError = '';
   let snapshot = 0, snapshotError = '', linkError = '';
   let archivedSkipped = 0;
+  let picNote = '';
   const problems: string[] = [];
   let throttled = false;
   /* До яких токенів черга дійшла. Рахуємо на вході в тіло циклу, а не
@@ -2166,6 +2225,7 @@ async function handle(req: Request): Promise<Response> {
     days += r.days; noHistory += r.noHistory;
     snapshot += r.snapshot;
     archivedSkipped += r.archived;
+    if (r.picNote && !picNote) picNote = r.picNote;
     if (r.snapshotError && !snapshotError) snapshotError = r.snapshotError;
     if (r.linkError && !linkError) linkError = r.linkError;
     if (r.historyError && !historyError) historyError = r.historyError;
@@ -2223,6 +2283,9 @@ async function handle(req: Request): Promise<Response> {
        підсумку читалось би як збій синхронізації — а це свідомий
        обхід, і він економить час живим. */
     archived_skipped: archivedSkipped,
+    /* Картинки креативів. «ok» означає, що колонки є; інакше тут
+       стоїть те, що треба виконати. */
+    creatives: picNote || 'ok',
     more: walked.size < tokens.length,
     /* ДО КОГО ЧЕРГА НЕ ДІЙШЛА — ПОІМЕННО. Поки тут стояло саме лише
        `more: true`, прогін міг роками не доходити до хвоста списку, і

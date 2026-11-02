@@ -735,6 +735,12 @@ function cdNode(id, name, kind) {
               оголошення на різні домени, і схлопнути це в одне значення
               означало б показати перше-ліпше як «той самий». */
            hosts: new Set(),
+           /* Картинки креатива: thumb — іконка в рядку (для відео це
+              кадр), pic — повна статика для превʼю. Порожні в кампанії
+              та адсета: креатив живе на оголошенні, і зводити десяток
+              картинок в одну означало б показати першу-ліпшу як «ту
+              саму». */
+           thumb: '', pic: '',
            state: new Map(), ads: 0, kids: [] };
 }
 function cdAdd(n, m) {
@@ -777,6 +783,8 @@ function cdTree() {
     const a = cdNode(r.ad_id, r.name, 'ad');
     a.own = m.state;
     a.sw = String(r.own_status || '').toUpperCase();
+    a.thumb = String(r.thumb_url || '');
+    a.pic = String(r.image_url || '');
     cdAdd(a, m); cdAdd(s, m); cdAdd(c, m);
     a.ads = 0;
     s.kids.push(a);
@@ -914,6 +922,8 @@ function cdAds() {
        займаючи місце. Лишається адсет — єдине, чого з назви рядка не
        видно. */
     n.where = String(r.adset_name || '').trim();
+    n.thumb = String(r.thumb_url || '');
+    n.pic = String(r.image_url || '');
     return n;
   }).sort((a, b) => b.spend - a.spend);
 }
@@ -1084,8 +1094,65 @@ function cdNameCell(n, depth) {
     : '';
   const count = n.kind === 'ad' ? ''
     : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
-  return mark + twist + label + count + side;
+  return mark + twist + cdPicCell(n) + label + count + side;
 };
+/* ═══════════ ІКОНКА КРЕАТИВА ═══════════
+
+   У списку стояли назви — а назву креативу дає людина, і дві різні
+   картинки часто звуться однаково з точністью до номера. Іконка
+   відповідає на «що це взагалі» швидше, ніж будь-який підпис.
+
+   РАМКА СТОЇТЬ У КОЖНОГО ОГОЛОШЕННЯ, навіть коли картинки немає.
+   Інакше назви в сусідніх рядках починались би з різних місць —
+   список, у якому половина рядків зсунута, читається як зламаний. А
+   порожня рамка ще й каже в підказці, чому вона порожня.
+
+   Превʼю під курсором — те саме, що в Creative Analyzer
+   (showImgPreview): другий механізм показу картинки означав би дві
+   різні поведінки на ту саму дію. Для відео це кадр, а не плеєр: з
+   кадру видно те, за чим і дивляться, а плеєр у таблиці — зайвий
+   клік і зайвий шум.
+
+   Клік по іконці НЕ розкриває рядок: клік по клітинці назви розкриває
+   вузол, і картинка не має робити того, чого від неї не чекають. */
+function cdPicCell(n) {
+  if (n.kind !== 'ad') return '';
+  const name = String(n.name || n.id || '');
+  const url = String(n.thumb || n.pic || '');
+  if (!url) return `<span class="cd-thumb is-none"
+    title="No picture for this creative yet. The snapshot carries it \u2014 deploy fb-sync, add the two fb_ad_today columns from FB_RULES.sql, then press Sync now."></span>`;
+  return `<img class="cd-thumb" src="${cdEsc(url)}" alt="" loading="lazy"
+    referrerpolicy="no-referrer"
+    data-prev="${cdEsc(n.pic || n.thumb)}" data-name="${cdEsc(name)}"
+    onclick="event.stopPropagation()"
+    onmouseenter="cdPic(event, this)" onmouseleave="cdPicOut()"
+    onerror="cdPicDead(this)"
+    title="Hover for a bigger preview">`;
+}
+
+/* Превʼю показуємо тим самим вікном, що й Creative Analyzer. Якщо
+   його на сторінці немає — нічого не робимо: іконка лишається
+   іконкою, а не ламає рядок. */
+window.cdPic = function (ev, el) {
+  if (!el) return;
+  const url = el.getAttribute('data-prev') || el.getAttribute('src') || '';
+  if (!url) return;
+  if (typeof showImgPreview === 'function')
+    showImgPreview(ev, url, el.getAttribute('data-name') || '');
+};
+window.cdPicOut = function () {
+  if (typeof hideImgPreview === 'function') hideImgPreview();
+};
+/* Посилання на картинку підписане й живе недовго — застаріле просто
+   не завантажиться. Прибирати рамку не можна: назви розʼїдуться. Тому
+   лишаємо її порожньою й кажемо, що сталось. */
+window.cdPicDead = function (el) {
+  if (!el) return;
+  el.removeAttribute('src');
+  el.className = 'cd-thumb is-none';
+  el.title = 'The picture link has expired \u2014 press Sync now to refresh it.';
+};
+
 window.cdMarkedCount = () => cdMarked.size;
 
 /* Дерево більше не має власного місця на сторінці: його рядки стоять
