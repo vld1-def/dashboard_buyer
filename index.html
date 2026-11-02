@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 19:26">
+  <meta name="build" content="build 02.11 19:54">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3876,6 +3876,16 @@ body[data-route="domains"] #dm-detail {
   background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
 }
 .cd-tab:hover { color: var(--text-main); }
+/* МЕЖА ВІД ВИБОРУ. «Ads only» показує оголошення ВІДМІЧЕНОЇ кампанії,
+   а не всі, — і це мусить бути написано поруч із вкладкою. Межа, яка
+   ховає рядки й не каже про себе, читається як порожній кабінет.
+
+   Підписом, а не кнопкою: натискати тут нічого — знімається вибір
+   там, де його й поставили, галочкою або Clear у смузі нижче. */
+.cd-scope {
+  font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--accent); cursor: help; white-space: nowrap;
+}
 .cd-tab.is-on { background: var(--accent); border-color: transparent; color: #fff; }
 /* Висота — стеля, а не «скільки вийде»: пів екрана таблиці там, де
    людина зайшла по експорт, це перешкода, а не показ даних.
@@ -6581,7 +6591,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 19:26</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 19:54</div>
     </div>
   </aside>
 
@@ -28307,15 +28317,21 @@ function cabTreeRows(COLS) {
   const v = (typeof cdView === 'function') ? cdView() : null;
   if (!v) return `<tr class="cab-treerow"><td colspan="${COLS}">
     <p class="cd-empty">Loading…</p></td></tr>`;
-  if (v.msg) return `<tr class="cab-treerow"><td colspan="${COLS}">
-    <p class="cd-empty">${cabEsc(v.msg)}</p></td></tr>`;
 
-  const cols = cabColsShown();
   /* Вкладки звідси пішли в ряд статусів угорі. Лишається смуга
      мультивибору — вона зʼявляється, лише коли щось вибрано, і тоді
      рядок у таблиці справді потрібен. */
   const bar = v.bar || '';
   const head = bar ? `<tr class="cab-treebar"><td colspan="${COLS}">${bar}</td></tr>` : '';
+
+  /* Смуга стоїть ВИЩЕ повідомлення й лишається з ним. Порожнім екран
+     буває саме через вибір або фільтр — і прибрати разом із рядками
+     єдину кнопку, якою вибір знімають, означало б зачинити двері
+     зсередини. */
+  if (v.msg) return head + `<tr class="cab-treerow"><td colspan="${COLS}">
+    <p class="cd-empty">${cabEsc(v.msg)}</p></td></tr>`;
+
+  const cols = cabColsShown();
   /* ПІДСУМКУ ТУТ НЕМАЄ. «Разом по кабінету» стоїть у самому рядку
      кабінета, прямо над деревом, — і повторювати його ще раз унизу
      означало б показати те саме число двічі, та ще й іншими словами. */
@@ -32643,7 +32659,13 @@ function cdHeadBits() {
       <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
         onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Camp</button>
       <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
-        onclick="cdSetFlat(true)" title="Just the ads, most expensive first">Ads only</button>
+        onclick="cdSetFlat(true)" title="Just the ads, most expensive first${
+          cdScopeWords() ? ' \u2014 of what you picked, while something is picked' : ''}">Ads only</button>
+      ${/* Межа від вибору — ТІЛЬКИ тут: у дереві вибір нічого не ховає,
+           і підпис про звуження там брехав би. */ ''}
+      ${cdFlat && cdScopeWords() ? `<span class="cd-scope"
+        title="Only the ads of what you picked. Clear the selection below to see every ad again.">
+        \u21b3 ${cdScopeWords()}</span>` : ''}
       <select class="cd-pick" id="cd-filt" onchange="cdSetFilt(this.value)"
         title="All \u2014 everything in the snapshot.
 Live \u2014 only what Facebook is actually showing: rejected, blocked, in-review and switched-off rows are hidden.
@@ -33036,8 +33058,52 @@ function cdHidden() {
 /* Просто оголошення, без батьків. Сортуємо так само за спендом: у
    списку це єдиний спосіб відповісти на «що найдорожче», а батьків
    лишаємо підписом, щоб рядок не втратив адресу. */
+/* ═══════════ ВИБРАНА КАМПАНІЯ ЗВУЖУЄ «ADS ONLY» ═══════════
+
+   «Ads only» — це погляд «покажи самі оголошення, найдорожчі
+   зверху». Поки він показував ВСІ оголошення кабінета, питання «а що
+   саме крутиться в цій кампанії» відповіді тут не мало: у дереві
+   треба було розкрити кампанію, потім кожен адсет, і читати по
+   чотири рядки крізь відступи.
+
+   Тепер межу ставить галочка: відмітив кампанію — «Ads only» показує
+   оголошення з неї. Те саме для адсета, бо це така сама коробка.
+
+   ВІДМІЧЕНЕ ОГОЛОШЕННЯ межі НЕ ставить. Галочки на оголошеннях
+   тиснуть, щоб вимкнути їх пачкою, і якби вибір заодно ховав решту,
+   список згортався б під рукою просто від того, що ти його
+   позначаєш. Коробка — це межа, лист — це дія. */
+function cdScope() {
+  if (!cdMarked.size) return null;
+  const camps = new Set(), sets = new Set();
+  cdRows.forEach(r => {
+    const c = String(r.campaign_id || ''), s2 = String(r.adset_id || '');
+    if (c && cdMarked.has(c)) camps.add(c);
+    if (s2 && cdMarked.has(s2)) sets.add(s2);
+  });
+  return (camps.size || sets.size) ? { camps, sets } : null;
+}
+
+/* Скільки коробок тримає межу — для підпису над списком. Межа, яка
+   ховає рядки й не каже про себе, читається як порожній кабінет. */
+function cdScopeWords() {
+  const sc = cdScope();
+  if (!sc) return '';
+  const bits = [];
+  if (sc.camps.size) bits.push(sc.camps.size + ' campaign(s)');
+  if (sc.sets.size) bits.push(sc.sets.size + ' ad set(s)');
+  return bits.join(' · ');
+}
+
+function cdScoped() {
+  const sc = cdScope();
+  if (!sc) return cdShown();
+  return cdShown().filter(r =>
+    sc.camps.has(String(r.campaign_id || '')) || sc.sets.has(String(r.adset_id || '')));
+}
+
 function cdAds() {
-  return cdShown().map(r => {
+  return cdScoped().map(r => {
     const n = cdNode(r.ad_id, r.name, 'ad');
     const m = cdMetrics(r);
     n.own = m.state;
@@ -33073,14 +33139,24 @@ window.cdView = function () {
   if (!cdRows.length) return { msg: 'Nothing active in the snapshot. '
     + 'Either this cabinet is not running anything, or the sync has not filled it yet '
     + '— press Sync now.' };
+  /* Смугу вибору віддаємо РАЗОМ із будь-яким повідомленням. Інакше на
+     порожньому екрані зникала б єдина кнопка, якою вибір знімають, —
+     а порожнім екран буває саме через вибір або фільтр. */
+  const bar = cdMarkBar();
   if (cdFilt && !cdShown().length) {
-    if (cdFilt === 'spend') return { msg: 'Nothing here has spent anything yet. '
+    if (cdFilt === 'spend') return { bar, msg: 'Nothing here has spent anything yet. '
       + 'Switch the list above back to “All” to see it all.' };
     const h = cdHidBits();
     const words = h ? cdHidWords(h) : '';
-    return { msg: 'Nothing is live here right now' + (words ? ' — ' + words : '')
+    return { bar, msg: 'Nothing is live here right now' + (words ? ' — ' + words : '')
       + '. Switch the list above back to “All” to see it all.' };
   }
+  /* Вибір звузив список до нуля. Сказати треба саме це: порожнеча
+     через власну галочку найлегше читається як «кабінет мертвий». */
+  if (cdFlat && cdScope() && !cdScoped().length)
+    return { bar, msg: 'What you picked has no ads in this view. '
+      + 'Either the list above (' + (cdFilt || 'All') + ') is hiding them, or the '
+      + 'picked rows have no ads at all — clear the selection below to see every ad.' };
 
   const top = cdFlat ? cdAds() : cdTree();
   const list = [];
@@ -33099,7 +33175,7 @@ window.cdView = function () {
       s.kids.forEach(a => list.push({ n: a, depth: 2, band: b }));
     });
   });
-  return { list, bar: cdMarkBar() };
+  return { list, bar };
 };
 
 /* ПІДСУМКОВОГО РЯДКА НЕМАЄ. Разом по кабінету стоїть у самому рядку

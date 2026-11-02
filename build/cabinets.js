@@ -2337,15 +2337,21 @@ function cabTreeRows(COLS) {
   const v = (typeof cdView === 'function') ? cdView() : null;
   if (!v) return `<tr class="cab-treerow"><td colspan="${COLS}">
     <p class="cd-empty">Loading…</p></td></tr>`;
-  if (v.msg) return `<tr class="cab-treerow"><td colspan="${COLS}">
-    <p class="cd-empty">${cabEsc(v.msg)}</p></td></tr>`;
 
-  const cols = cabColsShown();
   /* Вкладки звідси пішли в ряд статусів угорі. Лишається смуга
      мультивибору — вона зʼявляється, лише коли щось вибрано, і тоді
      рядок у таблиці справді потрібен. */
   const bar = v.bar || '';
   const head = bar ? `<tr class="cab-treebar"><td colspan="${COLS}">${bar}</td></tr>` : '';
+
+  /* Смуга стоїть ВИЩЕ повідомлення й лишається з ним. Порожнім екран
+     буває саме через вибір або фільтр — і прибрати разом із рядками
+     єдину кнопку, якою вибір знімають, означало б зачинити двері
+     зсередини. */
+  if (v.msg) return head + `<tr class="cab-treerow"><td colspan="${COLS}">
+    <p class="cd-empty">${cabEsc(v.msg)}</p></td></tr>`;
+
+  const cols = cabColsShown();
   /* ПІДСУМКУ ТУТ НЕМАЄ. «Разом по кабінету» стоїть у самому рядку
      кабінета, прямо над деревом, — і повторювати його ще раз унизу
      означало б показати те саме число двічі, та ще й іншими словами. */
