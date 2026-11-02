@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 22:17">
+  <meta name="build" content="build 02.11 22:29">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6630,7 +6630,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 22:17</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 22:29</div>
     </div>
   </aside>
 
@@ -13785,8 +13785,16 @@ function positionTooltip(e, tip) {
   if (x + tw > window.innerWidth)  x = e.clientX - tw - pad;
   if (y < pad) y = pad;
   if (y + th > window.innerHeight) y = window.innerHeight - th - pad;
-  tip.style.left = x + 'px';
-  tip.style.top  = y + 'px';
+  /* body { zoom: .9 } МНОЖИТЬ на 0.9 все, що ми ставимо в пікселях, а
+     clientX/clientY приходять уже в пікселях екрана. Без ділення
+     підказка ставала на десяту ближче до лівого верхнього кута — і що
+     далі курсор від кута, то далі вона від курсора: у правій частині
+     екрана це вже сотня пікселів убік, тобто підказка «не там, куди
+     наводжу». */
+  const z = parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue('--zoom')) || 1;
+  tip.style.left = (x / z) + 'px';
+  tip.style.top  = (y / z) + 'px';
 }
 
 
@@ -24924,7 +24932,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-11-02.3';
+const FB_FN_WANT = '2026-11-02.4';
 
 /* ЧИ ЖИВИЙ ТОКЕН — ОКРЕМОЮ КНОПКОЮ.
 
@@ -33557,10 +33565,10 @@ function cdPicCell(n) {
   return `<img class="cd-thumb" src="${cdEsc(url)}" alt="" loading="lazy"
     referrerpolicy="no-referrer"
     data-prev="${cdEsc(n.pic || n.thumb)}" data-name="${cdEsc(name)}"
-    onclick="event.stopPropagation()"
+    onclick="cdPicOpen(event, this)"
     onmouseenter="cdPic(event, this)" onmouseleave="cdPicOut()"
     onerror="cdPicDead(this)"
-    title="Hover for a bigger preview">`;
+    title="Hover for a bigger preview, click to open the full picture">`;
 }
 
 /* Превʼю показуємо тим самим вікном, що й Creative Analyzer. Якщо
@@ -33575,6 +33583,18 @@ window.cdPic = function (ev, el) {
 };
 window.cdPicOut = function () {
   if (typeof hideImgPreview === 'function') hideImgPreview();
+};
+/* Клік — сама картинка у новій вкладці. Превʼю під курсором має
+   стелю в 300px і зникає, щойно відвів мишу; коли треба роздивитись
+   креатив, цього мало. Заодно це єдиний спосіб побачити, що саме
+   віддав Facebook, коли картинка виглядає дивно.
+
+   stopPropagation лишається: клік по клітинці назви розкриває вузол,
+   і картинка не має робити того, чого від неї не чекають. */
+window.cdPicOpen = function (ev, el) {
+  if (ev) ev.stopPropagation();
+  const url = (el && (el.getAttribute('data-prev') || el.getAttribute('src'))) || '';
+  if (url) window.open(url, '_blank', 'noopener');
 };
 /* Посилання на картинку підписане й живе недовго — застаріле просто
    не завантажиться. Прибирати рамку не можна: назви розʼїдуться. Тому

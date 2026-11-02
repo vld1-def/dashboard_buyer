@@ -1184,10 +1184,10 @@ function cdPicCell(n) {
   return `<img class="cd-thumb" src="${cdEsc(url)}" alt="" loading="lazy"
     referrerpolicy="no-referrer"
     data-prev="${cdEsc(n.pic || n.thumb)}" data-name="${cdEsc(name)}"
-    onclick="event.stopPropagation()"
+    onclick="cdPicOpen(event, this)"
     onmouseenter="cdPic(event, this)" onmouseleave="cdPicOut()"
     onerror="cdPicDead(this)"
-    title="Hover for a bigger preview">`;
+    title="Hover for a bigger preview, click to open the full picture">`;
 }
 
 /* Превʼю показуємо тим самим вікном, що й Creative Analyzer. Якщо
@@ -1202,6 +1202,18 @@ window.cdPic = function (ev, el) {
 };
 window.cdPicOut = function () {
   if (typeof hideImgPreview === 'function') hideImgPreview();
+};
+/* Клік — сама картинка у новій вкладці. Превʼю під курсором має
+   стелю в 300px і зникає, щойно відвів мишу; коли треба роздивитись
+   креатив, цього мало. Заодно це єдиний спосіб побачити, що саме
+   віддав Facebook, коли картинка виглядає дивно.
+
+   stopPropagation лишається: клік по клітинці назви розкриває вузол,
+   і картинка не має робити того, чого від неї не чекають. */
+window.cdPicOpen = function (ev, el) {
+  if (ev) ev.stopPropagation();
+  const url = (el && (el.getAttribute('data-prev') || el.getAttribute('src'))) || '';
+  if (url) window.open(url, '_blank', 'noopener');
 };
 /* Посилання на картинку підписане й живе недовго — застаріле просто
    не завантажиться. Прибирати рамку не можна: назви розʼїдуться. Тому

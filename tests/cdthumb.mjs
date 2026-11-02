@@ -31,6 +31,43 @@ const FN = fs.readFileSync('supabase/functions/fb-sync/index.ts', 'utf8');
    це кадр) та image_url (лише статика). */
 ok('синк просить обидва поля креатива',
   /thumbnail_url,image_url/.test(FN.replace(/\s|'|\+/g, '')), '');
+
+/* ── ОБКЛАДИНКА ВІДЕО ──
+
+   thumbnail_url у відео-оголошень часто біла заглушка, а не кадр — і
+   порожній білий квадрат у рядку не відрізнити від зламаного
+   посилання. Справжня обкладинка лежить у полях, які ми вже тягнемо
+   заради доменів, тож коштує вона нуль запитів. */
+const picSrc = FN.match(/function adPics[\s\S]*?\n}/);
+ok('у функції є свій добір картинки', !!picSrc);
+const adPics = new Function(
+  /* Знімаємо типи TypeScript: стенд проганяє САМЕ цей код, а не його
+     копію — інакше перевіряли б не те, що задеплоїться. */
+  (picSrc ? picSrc[0] : '')
+    .replace(/ as Json/g, '')
+    .replace(/: \{ th: string; im: string \}/g, '')
+    .replace(/: Json|: string|: unknown/g, '')
+  + '\nreturn adPics;')();
+
+/* Відео: кадру немає, обкладинка в object_story_spec.video_data. */
+const vid = adPics({ thumbnail_url: 'https://cdn/white.png',
+  object_story_spec: { video_data: { image_url: 'https://cdn/cover.jpg' } } });
+ok('у відео береться обкладинка, а не заглушка',
+  vid.th === 'https://cdn/cover.jpg' && vid.im === 'https://cdn/cover.jpg', vid);
+/* Пост із посиланням — picture; динамічний креатив — стрічка. */
+const link = adPics({ object_story_spec: { link_data: { picture: 'https://cdn/post.jpg' } } });
+ok('у посту з посиланням — його картинка', link.th === 'https://cdn/post.jpg', link);
+const feed = adPics({ asset_feed_spec: { images: [{ url: 'https://cdn/feed.jpg' }] } });
+ok('у динамічного креативу — перша з стрічки', feed.th === 'https://cdn/feed.jpg', feed);
+const feedVid = adPics({ asset_feed_spec: { videos: [{ thumbnail_url: 'https://cdn/fv.jpg' }] } });
+ok('і відео зі стрічки теж', feedVid.th === 'https://cdn/fv.jpg', feedVid);
+/* Коли більше нічого немає — лишається thumbnail_url: він гірший, але
+   це все, що Facebook дав. */
+const only = adPics({ thumbnail_url: 'https://cdn/t.jpg' });
+ok('без обкладинки лишається мініатюра',
+  only.th === 'https://cdn/t.jpg' && only.im === 'https://cdn/t.jpg', only);
+const none2 = adPics({});
+ok('а без нічого — порожньо', !none2.th && !none2.im, none2);
 ok('і кладе їх у рядок знімка',
   /thumb_url: a\.thumb \|\| null, image_url: a\.pic \|\| null/.test(FN), '');
 /* На знімку стоять ПРАВИЛА. Відмовитись від нього через дві нові
@@ -142,7 +179,26 @@ ok('назви стоять в одну лінію',
 
 /* ── клік по іконці не розкриває рядок ── */
 ok('клік по іконці не розкриває рядок',
-  /stopPropagation/.test(by('Video ad').stop), by('Video ad').stop);
+  /cdPicOpen/.test(by('Video ad').stop), by('Video ad').stop);
+/* Превʼю під курсором має стелю в 300px і зникає, щойно відвів мишу.
+   Коли треба роздивитись креатив — цього мало, тож клік відкриває
+   саму картинку. */
+const opened = await page.evaluate(() => {
+  const seen = [];
+  const real = window.open;
+  window.open = (u, t) => { seen.push({ u, t }); return null; };
+  let bubbled = 0;
+  const img = [...document.querySelectorAll('#t-box img.cd-thumb')]
+    .find(x => x.getAttribute('data-name') === 'Static ad');
+  img.closest('tr').addEventListener('click', () => { bubbled++; });
+  img.click();
+  window.open = real;
+  return { seen, bubbled };
+});
+ok('клік відкриває саму картинку в новій вкладці',
+  opened.seen.length === 1 && opened.seen[0].u === 'https://cdn.example/full.jpg'
+  && opened.seen[0].t === '_blank', opened.seen);
+ok('і не доходить до рядка', opened.bubbled === 0, opened);
 
 /* ── превʼю тим самим вікном, що в Creative Analyzer ── */
 const hov = await page.evaluate(() => {
