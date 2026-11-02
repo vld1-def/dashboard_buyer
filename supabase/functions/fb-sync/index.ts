@@ -165,7 +165,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-10-27.1';
+const FN_VERSION = '2026-11-02.1';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -917,6 +917,65 @@ async function teamDomains(base: string, hdr: Json, team: string): Promise<Set<s
   return out;
 }
 
+/* ═══════════ АРХІВНІ КАБІНЕТИ ПРОГІН ОБХОДИТЬ ═══════════
+
+   Архів — поняття дашборда, не Facebook: це status='archive' у
+   accounts_mapping. Facebook про нього не знає й віддає такий кабінет
+   у списку нарівні з робочими, тож кожен прогін витрачав на архівні
+   ту саму четвірку запитів, що й на живі.
+
+   Платив за це не архів, а живі кабінети: у функції є дедлайн, і
+   хвіст списку лишався необійденим — у підсумку це «did not get to N
+   token(s)». Сорок відкладених кабінетів зʼїдали час, якого не
+   хватило тим, на які дивляться щодня.
+
+   ЩО САМЕ ОБХОДИМО. Тільки важке: сьогоднішні числа, кампанії,
+   оголошення, історію витрат. Рядок кабінета все одно пишеться —
+   стан, валюта, картка, стеля витрат і баланс приїхали вже в списку,
+   за який заплачено одним запитом на токен. Тому архівний кабінет не
+   починає виглядати зниклим і не псує позначку «No token»: про те,
+   що токен його бачить, ми знаємо саме зі списку.
+
+   Ключ беремо і як написано, і самими цифрами: підпис act_123… і
+   номер 123… — це один кабінет, і архів не має від цього залежати.
+   Так само рахує сама сторінка (cabArchKeys). */
+function archKeys(v: unknown): string[] {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return [];
+  const d = s.replace(/\D/g, '');
+  return d && d !== s ? [s, d] : [s];
+}
+
+function archivedSet(rows: Json[]): Set<string> {
+  const out = new Set<string>();
+  for (const r of rows) {
+    if (String(r?.status || '').toLowerCase() !== 'archive') continue;
+    /* Два поля, бо підпис кабінета у твоєму рядку й номер Facebook
+       можуть не збігатись: саме для цього fb_account_id і є. */
+    archKeys(r?.account_id).forEach(k => out.add(k));
+    archKeys(r?.fb_account_id).forEach(k => out.add(k));
+  }
+  return out;
+}
+
+async function teamArchived(base: string, hdr: Json, team: string): Promise<Set<string>> {
+  if (!team) return new Set<string>();
+  /* Колонки fb_account_id на старих базах може не бути — тоді запит
+     відповідає 400, і питаємо вдруге без неї. Відмовити цілому
+     прогону через це не можна. */
+  for (const sel of ['account_id,fb_account_id,status', 'account_id,status']) {
+    try {
+      const rows = await pgGet(base, hdr,
+        'accounts_mapping?select=' + sel + '&status=eq.archive'
+        + '&team_name=eq.' + encodeURIComponent(team) + '&limit=5000');
+      return archivedSet(rows);
+    } catch (_e) { /* пробуємо вужчий набір полів */ }
+  }
+  /* Не дізнались — не обходимо нічого. Прогін по всіх дорожчий, але
+     він повний; тихо пропустити живий кабінет було б гірше. */
+  return new Set<string>();
+}
+
 async function pgUpsert(base: string, hdr: Json, table: string,
                         onConflict: string, rows: Json[]): Promise<void> {
   if (!rows.length) return;
@@ -1000,6 +1059,9 @@ type Outcome = { accounts: number; failed: number; changed: number;
                  snapshot: number; snapshotError: string;
                  // Чому в знімку немає доменів. Порожньо — домени на місці.
                  linkError: string;
+                 // Скільки кабінетів обійшли як архівні. Кажемо вголос:
+                 // інакше менше кабінетів у підсумку читалось би як збій.
+                 archived: number;
                  /* ЯКІ САМЕ КАБІНЕТИ ОБІЙШЛИ. Підсумок казав «40 ad
                     account(s) from 3 token(s)» — число, з якого не
                     видно, чи твій кабінет серед тих сорока. Саме це й
@@ -1063,8 +1125,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
                          only?: Set<string>): Promise<Outcome> {
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
                         days: 0, noHistory: 0, historyError: '', knownError: '',
-                        snapshot: 0, snapshotError: '', linkError: '', touched: [],
-                        graphMs: 0 };
+                        snapshot: 0, snapshotError: '', linkError: '', archived: 0,
+                        touched: [], graphMs: 0 };
 
   let accs: Json[];
   try {
@@ -1195,9 +1257,19 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
      всіх кабінетів той самий. */
   const ourDomains = await teamDomains(base, hdr, t.team_name);
 
+  /* Архівні відкладаємо саме ТУТ, між рядком і важкими запитами.
+
+     Фільтрувати раніше, на самому списку від Facebook, не можна:
+     тоді кабінет виглядав би зниклим — markMissing звіряється саме з
+     цим списком, — і архівний почав би показуватись як «No token».
+     Фільтрувати пізніше нема де: далі вже пакети. */
+  const archived = await teamArchived(base, hdr, t.team_name);
+  const work = archived.size ? base_.filter(x => !archived.has(x.id)) : base_;
+  out.archived = base_.length - work.length;
+
   const CHUNK = BATCH_MAX / PER_ACC;
-  const slices: (typeof base_)[] = [];
-  for (let i = 0; i < base_.length; i += CHUNK) slices.push(base_.slice(i, i + CHUNK));
+  const slices: (typeof work)[] = [];
+  for (let i = 0; i < work.length; i += CHUNK) slices.push(work.slice(i, i + CHUNK));
 
   /* Пакети йдуть хвилями по BATCH_PAR, а не по одному. Розбираємо їх
      СТРОГО в початковому порядку: дані прив'язані до позиції в пакеті,
@@ -2056,6 +2128,7 @@ async function handle(req: Request): Promise<Response> {
   let accounts = 0, failed = 0, changed = 0, done = 0;
   let days = 0, noHistory = 0, historyError = '';
   let snapshot = 0, snapshotError = '', linkError = '';
+  let archivedSkipped = 0;
   const problems: string[] = [];
   let throttled = false;
   /* До яких токенів черга дійшла. Рахуємо на вході в тіло циклу, а не
@@ -2092,6 +2165,7 @@ async function handle(req: Request): Promise<Response> {
     touched.push(...r.touched);
     days += r.days; noHistory += r.noHistory;
     snapshot += r.snapshot;
+    archivedSkipped += r.archived;
     if (r.snapshotError && !snapshotError) snapshotError = r.snapshotError;
     if (r.linkError && !linkError) linkError = r.linkError;
     if (r.historyError && !historyError) historyError = r.historyError;
@@ -2145,6 +2219,10 @@ async function handle(req: Request): Promise<Response> {
     fn: FN_VERSION,
     cron, on_demand: onDemand, scoped: onlyOwner ? 'one owner' : 'all owners',
     tokens: done, accounts, failed, changed, throttled,
+    /* СКІЛЬКИ ОБІЙШЛИ ЯК АРХІВНІ. Без цього рядка менше кабінетів у
+       підсумку читалось би як збій синхронізації — а це свідомий
+       обхід, і він економить час живим. */
+    archived_skipped: archivedSkipped,
     more: walked.size < tokens.length,
     /* ДО КОГО ЧЕРГА НЕ ДІЙШЛА — ПОІМЕННО. Поки тут стояло саме лише
        `more: true`, прогін міг роками не доходити до хвоста списку, і

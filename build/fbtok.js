@@ -822,6 +822,10 @@ window.fbSync = async function (say, body) {
        «telegram: nothing to report» означають «усе гаразд»: писати їх
        щоразу означає вчити не читати цей кут екрана. */
     const head = `\u2713 ${j.accounts} cabinet(s) from ${j.tokens} token(s)`
+      /* АРХІВНІ ПРОГІН ОБХОДИТЬ — і сказати це треба тут, поруч із
+         числом кабінетів. Інакше з екрана видно лише, що кабінетів у
+         підсумку менше, ніж у списку, і це читається як збій. */
+      + (j.archived_skipped ? ` \u00b7 ${j.archived_skipped} archived skipped` : '')
       + (j.changed ? ` \u00b7 ${j.changed} changed state` : '')
       + (j.took_ms ? ` \u00b7 ${(j.took_ms / 1000).toFixed(1)}s` : '');
 
