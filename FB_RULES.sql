@@ -122,7 +122,20 @@ alter table public.fb_ad_today
   -- була хибною.
   add column if not exists own_status               text,
   add column if not exists campaign_own_status      text,
-  add column if not exists adset_own_status         text;
+  add column if not exists adset_own_status         text,
+  -- КАРТИНКА КРЕАТИВА. thumbnail_url є і для відео — це кадр, саме те,
+  -- що потрібно замість плеєра; image_url буває лише в статики, і
+  -- превʼю під курсором бере його, коли воно є.
+  --
+  -- Посилання підписані й живуть недовго, тому в них немає сенсу як в
+  -- архіві: знімок перезаписується кожною синхронізацією, а в рядку
+  -- стоїть завжди свіже. Зникле посилання на екрані не ламає нічого —
+  -- лишається порожня рамка з підказкою.
+  --
+  -- Без цих двох колонок fb-sync пише знімок БЕЗ них і каже в
+  -- підсумку, що виконати. Знімок важливіший: на ньому стоять правила.
+  add column if not exists thumb_url                text,
+  add column if not exists image_url                text;
 
 alter table public.fb_ad_today enable row level security;
 

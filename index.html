@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 19:54">
+  <meta name="build" content="build 02.11 20:20">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3876,6 +3876,28 @@ body[data-route="domains"] #dm-detail {
   background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
 }
 .cd-tab:hover { color: var(--text-main); }
+
+/* ІКОНКА КРЕАТИВА В РЯДКУ ОГОЛОШЕННЯ.
+
+   24px — свідомий вибір на користь того, що на картинці видно без
+   наведення. Ціна чесна: рядок оголошення вищий приблизно на 8px, і
+   за один погляд на екран уміщається менше рядків. Менша іконка
+   висоти не коштувала б, але й упізнати по ній креатив було б годі —
+   а тоді вона лише забирає місце.
+
+   Рамка стоїть і там, де картинки немає (.is-none): інакше назви в
+   сусідніх рядках починались би з різних місць. Порожня рамка каже
+   про себе в підказці, а не прикидається картинкою. */
+.cd-thumb {
+  width: 24px; height: 24px; flex: 0 0 auto;
+  border-radius: 5px; object-fit: cover; display: inline-block;
+  background: var(--surface-3); border: 1px solid var(--border);
+  cursor: zoom-in;
+}
+.cd-thumb.is-none { cursor: help; opacity: .55; }
+/* Campaign й адсет іконки не мають: креатив живе на оголошенні. Щоб
+   назви рівнів усе одно стояли в одну лінію, відступ рівня це вже
+   робить (.cd-d1 / .cd-d2), і зайва рамка тут лише дублювала б його. */
 /* МЕЖА ВІД ВИБОРУ. «Ads only» показує оголошення ВІДМІЧЕНОЇ кампанії,
    а не всі, — і це мусить бути написано поруч із вкладкою. Межа, яка
    ховає рядки й не каже про себе, читається як порожній кабінет.
@@ -6591,7 +6613,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 19:54</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 20:20</div>
     </div>
   </aside>
 
@@ -24803,7 +24825,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-11-02.1';
+const FB_FN_WANT = '2026-11-02.2';
 
 /* ЧИ ЖИВИЙ ТОКЕН — ОКРЕМОЮ КНОПКОЮ.
 
@@ -24966,6 +24988,10 @@ window.fbSync = async function (say, body) {
        у дереві кампаній видно тільки НАСЛІДОК — ока немає, — а причину
        знає лише відповідь функції. */
     if (j.domains && j.domains !== 'ok') warn.push('domains: ' + j.domains);
+    /* Картинки креативів. «ok» означає, що колонки є й іконки будуть;
+       інакше тут стоїть те, що треба виконати — інакше іконки просто
+       не зʼявляться, а причини не буде видно ніде. */
+    if (j.creatives && j.creatives !== 'ok') warn.push('creatives: ' + j.creatives);
     /* Кладемо причину туди, де видно НАСЛІДОК. У дереві кампаній
        людина бачить «немає доменів» і не має звідки дізнатись чому. */
     if (typeof setTeamSetting === 'function' && j.domains)
@@ -32936,6 +32962,12 @@ function cdNode(id, name, kind) {
               оголошення на різні домени, і схлопнути це в одне значення
               означало б показати перше-ліпше як «той самий». */
            hosts: new Set(),
+           /* Картинки креатива: thumb — іконка в рядку (для відео це
+              кадр), pic — повна статика для превʼю. Порожні в кампанії
+              та адсета: креатив живе на оголошенні, і зводити десяток
+              картинок в одну означало б показати першу-ліпшу як «ту
+              саму». */
+           thumb: '', pic: '',
            state: new Map(), ads: 0, kids: [] };
 }
 function cdAdd(n, m) {
@@ -32978,6 +33010,8 @@ function cdTree() {
     const a = cdNode(r.ad_id, r.name, 'ad');
     a.own = m.state;
     a.sw = String(r.own_status || '').toUpperCase();
+    a.thumb = String(r.thumb_url || '');
+    a.pic = String(r.image_url || '');
     cdAdd(a, m); cdAdd(s, m); cdAdd(c, m);
     a.ads = 0;
     s.kids.push(a);
@@ -33115,6 +33149,8 @@ function cdAds() {
        займаючи місце. Лишається адсет — єдине, чого з назви рядка не
        видно. */
     n.where = String(r.adset_name || '').trim();
+    n.thumb = String(r.thumb_url || '');
+    n.pic = String(r.image_url || '');
     return n;
   }).sort((a, b) => b.spend - a.spend);
 }
@@ -33285,8 +33321,65 @@ function cdNameCell(n, depth) {
     : '';
   const count = n.kind === 'ad' ? ''
     : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
-  return mark + twist + label + count + side;
+  return mark + twist + cdPicCell(n) + label + count + side;
 };
+/* ═══════════ ІКОНКА КРЕАТИВА ═══════════
+
+   У списку стояли назви — а назву креативу дає людина, і дві різні
+   картинки часто звуться однаково з точністью до номера. Іконка
+   відповідає на «що це взагалі» швидше, ніж будь-який підпис.
+
+   РАМКА СТОЇТЬ У КОЖНОГО ОГОЛОШЕННЯ, навіть коли картинки немає.
+   Інакше назви в сусідніх рядках починались би з різних місць —
+   список, у якому половина рядків зсунута, читається як зламаний. А
+   порожня рамка ще й каже в підказці, чому вона порожня.
+
+   Превʼю під курсором — те саме, що в Creative Analyzer
+   (showImgPreview): другий механізм показу картинки означав би дві
+   різні поведінки на ту саму дію. Для відео це кадр, а не плеєр: з
+   кадру видно те, за чим і дивляться, а плеєр у таблиці — зайвий
+   клік і зайвий шум.
+
+   Клік по іконці НЕ розкриває рядок: клік по клітинці назви розкриває
+   вузол, і картинка не має робити того, чого від неї не чекають. */
+function cdPicCell(n) {
+  if (n.kind !== 'ad') return '';
+  const name = String(n.name || n.id || '');
+  const url = String(n.thumb || n.pic || '');
+  if (!url) return `<span class="cd-thumb is-none"
+    title="No picture for this creative yet. The snapshot carries it \u2014 deploy fb-sync, add the two fb_ad_today columns from FB_RULES.sql, then press Sync now."></span>`;
+  return `<img class="cd-thumb" src="${cdEsc(url)}" alt="" loading="lazy"
+    referrerpolicy="no-referrer"
+    data-prev="${cdEsc(n.pic || n.thumb)}" data-name="${cdEsc(name)}"
+    onclick="event.stopPropagation()"
+    onmouseenter="cdPic(event, this)" onmouseleave="cdPicOut()"
+    onerror="cdPicDead(this)"
+    title="Hover for a bigger preview">`;
+}
+
+/* Превʼю показуємо тим самим вікном, що й Creative Analyzer. Якщо
+   його на сторінці немає — нічого не робимо: іконка лишається
+   іконкою, а не ламає рядок. */
+window.cdPic = function (ev, el) {
+  if (!el) return;
+  const url = el.getAttribute('data-prev') || el.getAttribute('src') || '';
+  if (!url) return;
+  if (typeof showImgPreview === 'function')
+    showImgPreview(ev, url, el.getAttribute('data-name') || '');
+};
+window.cdPicOut = function () {
+  if (typeof hideImgPreview === 'function') hideImgPreview();
+};
+/* Посилання на картинку підписане й живе недовго — застаріле просто
+   не завантажиться. Прибирати рамку не можна: назви розʼїдуться. Тому
+   лишаємо її порожньою й кажемо, що сталось. */
+window.cdPicDead = function (el) {
+  if (!el) return;
+  el.removeAttribute('src');
+  el.className = 'cd-thumb is-none';
+  el.title = 'The picture link has expired \u2014 press Sync now to refresh it.';
+};
+
 window.cdMarkedCount = () => cdMarked.size;
 
 /* Дерево більше не має власного місця на сторінці: його рядки стоять
