@@ -943,6 +943,19 @@ window.fbSync = async function (say, body) {
     if (typeof setTeamSetting === 'function' && j.domains)
       setTeamSetting('fb_link_note', j.domains === 'ok' ? '' : String(j.domains))
         .catch(() => {});   // лічильник причин не привід завалити синхронізацію
+    /* ТЕ САМЕ ПРО КАРТИНКИ КРЕАТИВІВ. Наслідок видно в дереві
+       (порожня рамка), а причину знає лише відповідь функції — і
+       найчастіша з них та, яку зі сторінки не видно взагалі:
+       задеплоєна версія старіша, тож картинок у знімку немає й бути не
+       може. Кладемо туди, де видно наслідок. */
+    if (typeof setTeamSetting === 'function') {
+      const old = FB_FN_WANT && j.fn !== FB_FN_WANT;
+      const picWhy = old
+        ? 'the deployed fb-sync is ' + (j.fn ? j.fn : 'older than this page')
+          + ', this page expects ' + FB_FN_WANT + ' — deploy it, then press Sync now'
+        : (j.creatives && j.creatives !== 'ok') ? String(j.creatives) : '';
+      setTeamSetting('fb_pic_note', picWhy).catch(() => {});
+    }
     /* Telegram: кажемо, лише коли НЕ склалось. «nothing to report» і
        «N sent» означають, що все відпрацювало як задумано; «not
        configured» і «0 sent, 1 not linked» — ні, і ось їх і видно. */

@@ -501,6 +501,22 @@ async function cdLinkWhy() {
   if (cdLinkNote && cdAcc) cdPaint();
 }
 
+/* Те саме про картинки, і з тієї самої причини: наша здогадка
+   («задеплой fb-sync») буває хибною саме тоді, коли людина щойно його
+   задеплоїла. Відповідь прогону знає більше за нас — яка версія
+   насправді крутиться й що відповів Facebook, — і саме її й
+   показуємо, коли вона є. */
+let cdPicNote = null;
+async function cdPicWhy() {
+  if (cdPicNote !== null) return;
+  cdPicNote = '';
+  try {
+    if (typeof getTeamSetting === 'function')
+      cdPicNote = String((await getTeamSetting('fb_pic_note')) || '');
+  } catch (e) { cdPicNote = ''; }
+  if (cdPicNote && cdAcc) cdPaint();
+}
+
 function cdDomNote() {
   if (!cdNoDom) return '';
   const sep = (cdSeen || cdBad()) ? ' · ' : '';
@@ -648,8 +664,10 @@ async function cdLoad(account) {
        відрізнити від «Facebook не дав картинки саме для цього
        креатива», тож кажемо, що саме з трьох сталось. */
     if (!cdNoPic && cdRows.length
-        && !cdRows.some(r => String(r.thumb_url || r.image_url || '').trim()))
+        && !cdRows.some(r => String(r.thumb_url || r.image_url || '').trim())) {
       cdNoPic = 'sync';
+      cdPicWhy();
+    }
   } catch (e) {
     cdRows = [];
     cdErr = /fb_ad_today|does not exist|schema cache/i.test(e.message)
@@ -1153,8 +1171,13 @@ function cdPicCell(n) {
       ? 'The two picture columns are missing from fb_ad_today \u2014 run the ALTER TABLE '
         + 'block from FB_RULES.sql, then press Sync now.'
       : cdNoPic === 'sync'
-      ? 'The deployed fb-sync has not brought pictures yet \u2014 run '
-        + 'supabase functions deploy fb-sync, then press Sync now.'
+      /* Причина від самої синхронізації важливіша за нашу здогадку:
+         вона каже, яка версія крутиться й що відповів Facebook, а не
+         що ми припускаємо. Без неї — найімовірніше пояснення. */
+      ? (cdPicNote
+          ? 'The last sync said: ' + cdPicNote
+          : 'The columns are there, but no ad here carries a picture yet \u2014 run '
+            + 'supabase functions deploy fb-sync, then press Sync now.')
       : 'Facebook sent no picture for this creative.';
     return `<span class="cd-thumb is-none" title="${cdEsc(why)}"></span>`;
   }

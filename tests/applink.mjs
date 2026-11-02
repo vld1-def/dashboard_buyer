@@ -177,6 +177,47 @@ await browser.close();
   ok('запит іде саме у check-apps',
     call.bodies.every(b => /\/functions\/v1\/check-apps$/.test(b.url)), call.bodies.map(b => b.url));
 
+  /* ─────────── вдала відповідь ───────────
+
+     Нотатка функції вже починається з «Play:», і сторінка додавала
+     другий — виходило «Play: Play: апки на сторінці немає».
+
+     А головне: ручна перевірка статус не міняє НІКОЛИ, і це свідомо
+     (рішення «апки немає» прибирає воронку зі списку прілок, тож
+     приймає його нічний обхід після ДВОХ невдач поспіль). Поки тут
+     стояла сама лише нотатка, це читалось як поломка: причина є, а
+     статус той самий. */
+  const said = await p2.evaluate(async () => {
+    const seen = [];
+    const realFetch = window.fetch;
+    window.showStatus = m => seen.push(String(m));
+    const answer = payload => async () => ({ ok: true, status: 200, json: async () => payload });
+    const out = {};
+    window.fetch = answer({ fn: '2026-11-02.1', one: true, state: 'gone',
+      note: 'Play: апки на сторінці немає — 404, ld+json немає' });
+    await funAppCheck(5); out.gone = seen.pop();
+    window.fetch = answer({ fn: '2026-11-02.1', one: true, state: 'live',
+      note: 'Play: сторінка апки на місці (HTTP 200)' });
+    await funAppCheck(5); out.live = seen.pop();
+    window.fetch = answer({ fn: '2026-11-02.1', one: true, state: 'unknown',
+      note: 'Play: забагато запитів (429) — стан не чіпаємо' });
+    await funAppCheck(5); out.unknown = seen.pop();
+    window.fetch = realFetch;
+    return out;
+  });
+  ok('другого «Play:» більше немає', !/Play:\s*Play:/i.test(said.gone || ''), said.gone);
+  ok('сама причина лишилась', /апки на сторінці немає/.test(said.gone || ''), said.gone);
+  ok('і сказано, що ручна перевірка статус не міняє',
+    /статус не міняється від ручної перевірки/.test(said.gone || ''), said.gone);
+  ok('і хто його змінить', /нічний обхід/.test(said.gone || '')
+    && /двох невдач/.test(said.gone || ''), said.gone);
+  /* Коли все гаразд, дописувати нема чого: рядок про статус потрібен
+     рівно там, де людина чекала зміни й не дочекалась. */
+  ok('на живій апці зайвого не дописуємо',
+    /на місці/.test(said.live || '') && !/статус не міняється/.test(said.live || ''), said.live);
+  ok('а «не дізнались» каже саме це',
+    /стан не чіпаємо/.test(said.unknown || ''), said.unknown);
+
   await b2.close();
   if (e2.length) ok('Form.html без помилок', false, e2);
 }
