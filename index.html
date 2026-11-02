@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 31.10 12:05">
+  <meta name="build" content="build 02.11 10:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2294,6 +2294,9 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 /* All офери гео вимкнені — виручка по ньому нуль. Найтихіша поломка з
    можливих, тож блок це й показує. */
 .pay-card.is-off { border-color: rgba(239, 68, 68, .28); }
+/* Прапорець біля гео — той самий, що в усьому дашборді: гео впізнають
+   по ньому швидше, ніж по двох літерах. */
+.pay-head img { flex: 0 0 auto; }
 .pay-head {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 6px; padding: 0 2px 6px; margin-bottom: 4px;
@@ -2335,11 +2338,20 @@ body.sb-compact .sb-toggle svg { transform: rotate(180deg); }
 }
 .pay-mod:hover { color: var(--text-main); }
 .pay-mod.is-pct { background: rgba(251,191,36,.18); border-color: rgba(251,191,36,.3); color: #fbbf24; }
+/* СТАВКА — КНОПКА, І ЦЕ МАЄ БУТИ ВИДНО. Доти її правили через
+   видалити-й-завести-наново, тобто найчастіша дія була найдовшою.
+   Тепер по ній клікають — отже вона мусить виглядати натискною, але
+   не кричати: у рядку головне не вона, а оффер. */
 .pay-val {
-  flex: 0 0 auto; min-width: 44px; text-align: right;
+  flex: 0 0 auto; min-width: 48px; text-align: right;
   font-size: 11px; font-weight: 800; color: var(--text-main);
   font-family: ui-monospace, Menlo, monospace;
+  padding: 2px 6px; border-radius: 6px; cursor: pointer;
+  background: none; border: 1px solid transparent;
+  transition: background .12s, border-color .12s;
 }
+.pay-val:hover { background: var(--surface-3); border-color: var(--border-2); }
+.pay-row.is-off .pay-val { cursor: pointer; }
 /* Видалення показується на навідку: натискають його рідко, а стоїть
    воно поруч із туглом, який натискають часто. */
 .pay-del {
@@ -6540,7 +6552,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 31.10 12:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 10:47</div>
     </div>
   </aside>
 
@@ -10768,7 +10780,8 @@ async function addGeoPayout() {
        created_by шлемо явно, коли знаємо: у бази є default auth.uid(),
        але з явним значенням ціль конфлікту визначена напевно, навіть
        якщо default десь не проставили. */
-    const row = { team_name: currentTeam, geo: g, offer: o, value: Number(v) };
+    const row = { team_name: currentTeam, geo: g, offer: o, value: Number(v),
+                  model: payModel };
     if (window.myUid) row.created_by = window.myUid;
 
     const { error } = await sb.from('payouts').upsert(row,
@@ -10783,7 +10796,7 @@ async function addGeoPayout() {
       document.getElementById('payout-geo').value = '';
       document.getElementById('payout-offer').value = '';
       document.getElementById('payout-value').value = '';
-      
+
       // Оновлюємо список
       await refreshPayoutsFromSQL();
       showStatus("Saved successfully");
@@ -12208,9 +12221,58 @@ async function saveDetailedTask() {
    ГЕО, В ЯКОМУ ВСЕ ВИМКНЕНО, позначене. Виручка такого гео — нуль, і
    це найтихіша з можливих поломок: дані є, оффер у списку є, просто
    ставки для розрахунку немає. */
+/* ФІЛЬТР І МОДЕЛЬ ПРИ ДОДАВАННІ.
+
+   payData тримаємо, щоб фільтр перемальовував той самий список без
+   походу в базу: шукають тут по кілька літер поспіль, і запит на
+   кожну означав би мерехтіння замість пошуку. */
+let payData = [], payQ = '', payModel = 'cpa';
+
+window.payModelPick = function () {
+  payModel = payModel === 'cpa' ? 'spend' : 'cpa';
+  const b = document.getElementById('payout-model');
+  if (!b) return;
+  b.textContent = payModel === 'spend' ? '%' : 'CPA';
+  b.classList.toggle('is-pct', payModel === 'spend');
+  /* Підказка поля міняється разом із моделлю: «25» означає долари в
+     одній і відсотки в другій, і здогадуватись про це не треба. */
+  const v = document.getElementById('payout-value');
+  if (v) v.placeholder = payModel === 'spend' ? '40' : '25';
+};
+
+window.payFind = function () {
+  payQ = String((document.getElementById('payout-find') || {}).value || '')
+    .trim().toLowerCase();
+  renderGeoPayoutSettings(payData);
+};
+
 function renderGeoPayoutSettings(data) {
   const container = document.getElementById('geo-payouts-list');
   if (!container) return;
+  if (data) payData = data;
+
+  /* Поле пошуку показуємо, лише коли є що шукати. Поріг у пʼять
+     рядків: до того весь список видно одним поглядом, і фільтр над
+     ним лише питав би, навіщо він. */
+  const findRow = document.getElementById('payout-find-row');
+  if (findRow) findRow.classList.toggle('hidden', (payData || []).length < 5);
+
+  if (payQ) {
+    const q = payQ;
+    data = (payData || []).filter(p =>
+      String(p.geo || '').toLowerCase().includes(q)
+      || String(p.offer || 'DEFAULT').toLowerCase().includes(q));
+    if (!data.length) {
+      /* Без слова-хвоста після фрази: словник build/i18n.py перекладає
+         підрядками, і «Nothing found за «…»» їхало наполовину
+         англійським — «Nothing found за «…»». Саме той шов, на якому
+         цей проєкт спіймався вже тричі. */
+      container.innerHTML = '<p class="set-empty">Nothing found — '
+        + String(payQ).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
+            '>': '&gt;', '"': '&quot;' }[c])) + '</p>';
+      return;
+    }
+  }
 
   if (!data || data.length === 0) {
     container.innerHTML = '<p class="set-empty">Виплат ще немає. Додайте гео, оффер і ставку рядком вище — без них виручка й Net Profit рахуються нулем.</p>';
@@ -12240,6 +12302,7 @@ function renderGeoPayoutSettings(data) {
     const allOff = !live;
     return `<div class="pay-card${allOff ? ' is-off' : ''}">
       <div class="pay-head">
+        ${typeof geoFlag === 'function' ? geoFlag(g, 'w-4 h-3') : ''}
         <b>${esc(g)}</b>
         <span class="pay-n"${allOff
           ? ' title="All офери цього гео вимкнені — виручка по ньому рахується нулем"'
@@ -12257,13 +12320,55 @@ function renderGeoPayoutSettings(data) {
             title="${spend
               ? 'Spend model: revenue = spend × percent. Click to switch back to CPA'
               : 'CPA: revenue = deposits × rate. Click to switch to % of spend'}">${spend ? '%' : 'CPA'}</button>
-          <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
+          <button class="pay-val" onclick="editPayoutValue('${p.id}')"
+            title="Змінити ставку">${spend ? p.value + '%' : '$' + p.value}</button>
           <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
         </div>`;
       }).join('')}
     </div>`;
   }).join('') + `</div>`;
 }
+
+/* ЗМІНИТИ СТАВКУ НА МІСЦІ.
+
+   Доти ставку правили так: видалити оффер і завести наново. Тобто
+   найчастіша дія в цьому списку була найдовшою, та ще й через
+   видалення — а видалення тут незворотне.
+
+   Показуємо, що саме міняємо: гео, оффер і модель поруч із полем.
+   «25» у CPA і «25» у відсотковій — різні гроші, і вікно мусить
+   казати, яке з двох перед тобою. */
+window.editPayoutValue = async function (id) {
+  const p = (payData || []).find(x => String(x.id) === String(id));
+  if (!p) return;
+  const spend = p.model === 'spend';
+
+  const raw = await ask({
+    title: 'Ставка · ' + String(p.geo || '').toUpperCase()
+         + ' · ' + (p.offer || 'DEFAULT'),
+    ok: 'Save',
+    body: spend
+      ? 'Відсоток від спенду. Виручка = спенд × відсоток.'
+      : 'Ставка за депозит. Виручка = депозити × ставка.',
+    input: { value: String(p.value) } });
+  if (raw === false) return;
+
+  const v = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(v) || v <= 0) {
+    toast('Це не ставка: ' + raw, 'error');
+    return;
+  }
+  if (Math.abs(v - Number(p.value)) < 0.0001) return;   // те саме число
+
+  const { error } = await sb.from('payouts').update({ value: v }).eq('id', id);
+  if (error) { toast('Не вдалось змінити ставку: ' + error.message, 'error'); return; }
+  await refreshPayoutsFromSQL();
+  /* Виручка рахується з цієї ставки, тож перемальовуємо й цифри:
+     лишити на екрані старий профіт під новою ставкою означало б
+     показати два числа, які не сходяться між собою. */
+  applyGlobalFilter();
+  toast('Ставка змінена', 'ok');
+};
 
 // Вимкнений оффер лишається в базі (історичні рядки з ним нікуди не діваються),
 // але перестає підтягуватись при імпорті й не дає ставку для розрахунку виручки.
@@ -16588,12 +16693,28 @@ document.addEventListener('keydown', e => {
           <div class="set-group">
             <h3 class="set-gtitle">Payouts per geo</h3>
             <p class="set-gsub">Rate per deposit or a share of spend — revenue and Net Profit are derived from this.</p>
+            <!-- МОДЕЛЬ ВИБИРАЄТЬСЯ ТУТ, А НЕ ПІСЛЯ ДОДАВАННЯ.
+
+                 Доти оффер завжди лягав як CPA, і відсоткові треба було
+                 перемикати другою дією — тобто кожен такий оффер
+                 додавався двічі. Перемикач коштує одну кнопку й знімає
+                 цілий крок. -->
             <div class="set-addrow">
-              <input type="text"   id="payout-geo"    placeholder="UA"    class="set-input uppercase" style="flex:0 0 78px">
-              <input type="text"   id="payout-offer"  placeholder="Offer" class="set-input" style="flex:1 1 auto;min-width:0">
-              <input type="number" id="payout-value"  placeholder="25"    class="set-input" style="flex:0 0 92px">
+              <input type="text"   id="payout-geo"    placeholder="UA"    class="set-input uppercase" style="flex:0 0 72px">
+              <input type="text"   id="payout-offer"  placeholder="Offer або порожньо = DEFAULT" class="set-input" style="flex:1 1 auto;min-width:0">
+              <button type="button" id="payout-model" class="pay-mod" onclick="payModelPick()"
+                title="CPA: виручка = депозити × ставка. %: виручка = спенд × відсоток">CPA</button>
+              <input type="number" id="payout-value"  placeholder="25"    class="set-input" style="flex:0 0 88px">
               <button type="button" onclick="addGeoPayout()" class="set-btn set-btn-primary">Add</button>
             </div>
+
+            <!-- Пошук показуємо лише тоді, коли є що шукати: поле над
+                 трьома рядками лише питає, навіщо воно. -->
+            <div class="set-addrow mt-2 hidden" id="payout-find-row">
+              <input type="text" id="payout-find" class="set-input" oninput="payFind()"
+                placeholder="Фільтр за гео або оффером…" style="flex:1 1 auto;min-width:0">
+            </div>
+
             <div id="geo-payouts-list" class="set-list custom-scrollbar"></div>
           </div>
         </section>

@@ -4517,7 +4517,8 @@ async function addGeoPayout() {
        created_by шлемо явно, коли знаємо: у бази є default auth.uid(),
        але з явним значенням ціль конфлікту визначена напевно, навіть
        якщо default десь не проставили. */
-    const row = { team_name: currentTeam, geo: g, offer: o, value: Number(v) };
+    const row = { team_name: currentTeam, geo: g, offer: o, value: Number(v),
+                  model: payModel };
     if (window.myUid) row.created_by = window.myUid;
 
     const { error } = await sb.from('payouts').upsert(row,
@@ -4532,7 +4533,7 @@ async function addGeoPayout() {
       document.getElementById('payout-geo').value = '';
       document.getElementById('payout-offer').value = '';
       document.getElementById('payout-value').value = '';
-      
+
       // Оновлюємо список
       await refreshPayoutsFromSQL();
       showStatus("Saved successfully");
@@ -5719,9 +5720,58 @@ async function saveDetailedTask() {
    ГЕО, В ЯКОМУ ВСЕ ВИМКНЕНО, позначене. Виручка такого гео — нуль, і
    це найтихіша з можливих поломок: дані є, оффер у списку є, просто
    ставки для розрахунку немає. */
+/* ФІЛЬТР І МОДЕЛЬ ПРИ ДОДАВАННІ.
+
+   payData тримаємо, щоб фільтр перемальовував той самий список без
+   походу в базу: шукають тут по кілька літер поспіль, і запит на
+   кожну означав би мерехтіння замість пошуку. */
+let payData = [], payQ = '', payModel = 'cpa';
+
+window.payModelPick = function () {
+  payModel = payModel === 'cpa' ? 'spend' : 'cpa';
+  const b = document.getElementById('payout-model');
+  if (!b) return;
+  b.textContent = payModel === 'spend' ? '%' : 'CPA';
+  b.classList.toggle('is-pct', payModel === 'spend');
+  /* Підказка поля міняється разом із моделлю: «25» означає долари в
+     одній і відсотки в другій, і здогадуватись про це не треба. */
+  const v = document.getElementById('payout-value');
+  if (v) v.placeholder = payModel === 'spend' ? '40' : '25';
+};
+
+window.payFind = function () {
+  payQ = String((document.getElementById('payout-find') || {}).value || '')
+    .trim().toLowerCase();
+  renderGeoPayoutSettings(payData);
+};
+
 function renderGeoPayoutSettings(data) {
   const container = document.getElementById('geo-payouts-list');
   if (!container) return;
+  if (data) payData = data;
+
+  /* Поле пошуку показуємо, лише коли є що шукати. Поріг у пʼять
+     рядків: до того весь список видно одним поглядом, і фільтр над
+     ним лише питав би, навіщо він. */
+  const findRow = document.getElementById('payout-find-row');
+  if (findRow) findRow.classList.toggle('hidden', (payData || []).length < 5);
+
+  if (payQ) {
+    const q = payQ;
+    data = (payData || []).filter(p =>
+      String(p.geo || '').toLowerCase().includes(q)
+      || String(p.offer || 'DEFAULT').toLowerCase().includes(q));
+    if (!data.length) {
+      /* Без слова-хвоста після фрази: словник build/i18n.py перекладає
+         підрядками, і «Нічого не знайшлось за «…»» їхало наполовину
+         англійським — «Nothing found за «…»». Саме той шов, на якому
+         цей проєкт спіймався вже тричі. */
+      container.innerHTML = '<p class="set-empty">Нічого не знайшлось — '
+        + String(payQ).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
+            '>': '&gt;', '"': '&quot;' }[c])) + '</p>';
+      return;
+    }
+  }
 
   if (!data || data.length === 0) {
     container.innerHTML = '<p class="set-empty">Виплат ще немає. Додайте гео, оффер і ставку рядком вище — без них виручка й Net Profit рахуються нулем.</p>';
@@ -5751,6 +5801,7 @@ function renderGeoPayoutSettings(data) {
     const allOff = !live;
     return `<div class="pay-card${allOff ? ' is-off' : ''}">
       <div class="pay-head">
+        ${typeof geoFlag === 'function' ? geoFlag(g, 'w-4 h-3') : ''}
         <b>${esc(g)}</b>
         <span class="pay-n"${allOff
           ? ' title="Усі офери цього гео вимкнені — виручка по ньому рахується нулем"'
@@ -5768,13 +5819,55 @@ function renderGeoPayoutSettings(data) {
             title="${spend
               ? 'Спенд-модель: виручка = спенд × відсоток. Клік — повернути на CPA'
               : 'CPA: виручка = депозити × ставка. Клік — перевести на % від спенду'}">${spend ? '%' : 'CPA'}</button>
-          <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
+          <button class="pay-val" onclick="editPayoutValue('${p.id}')"
+            title="Змінити ставку">${spend ? p.value + '%' : '$' + p.value}</button>
           <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
         </div>`;
       }).join('')}
     </div>`;
   }).join('') + `</div>`;
 }
+
+/* ЗМІНИТИ СТАВКУ НА МІСЦІ.
+
+   Доти ставку правили так: видалити оффер і завести наново. Тобто
+   найчастіша дія в цьому списку була найдовшою, та ще й через
+   видалення — а видалення тут незворотне.
+
+   Показуємо, що саме міняємо: гео, оффер і модель поруч із полем.
+   «25» у CPA і «25» у відсотковій — різні гроші, і вікно мусить
+   казати, яке з двох перед тобою. */
+window.editPayoutValue = async function (id) {
+  const p = (payData || []).find(x => String(x.id) === String(id));
+  if (!p) return;
+  const spend = p.model === 'spend';
+
+  const raw = await ask({
+    title: 'Ставка · ' + String(p.geo || '').toUpperCase()
+         + ' · ' + (p.offer || 'DEFAULT'),
+    ok: 'Зберегти',
+    body: spend
+      ? 'Відсоток від спенду. Виручка = спенд × відсоток.'
+      : 'Ставка за депозит. Виручка = депозити × ставка.',
+    input: { value: String(p.value) } });
+  if (raw === false) return;
+
+  const v = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(v) || v <= 0) {
+    toast('Це не ставка: ' + raw, 'error');
+    return;
+  }
+  if (Math.abs(v - Number(p.value)) < 0.0001) return;   // те саме число
+
+  const { error } = await sb.from('payouts').update({ value: v }).eq('id', id);
+  if (error) { toast('Не вдалось змінити ставку: ' + error.message, 'error'); return; }
+  await refreshPayoutsFromSQL();
+  /* Виручка рахується з цієї ставки, тож перемальовуємо й цифри:
+     лишити на екрані старий профіт під новою ставкою означало б
+     показати два числа, які не сходяться між собою. */
+  applyGlobalFilter();
+  toast('Ставка змінена', 'ok');
+};
 
 // Вимкнений оффер лишається в базі (історичні рядки з ним нікуди не діваються),
 // але перестає підтягуватись при імпорті й не дає ставку для розрахунку виручки.
