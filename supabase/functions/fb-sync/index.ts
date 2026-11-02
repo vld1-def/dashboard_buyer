@@ -165,7 +165,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-11-02.2';
+const FN_VERSION = '2026-11-02.3';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -659,7 +659,8 @@ type PageUse = { ads: number; posts: Set<string> };
 
 function readParts(parts: (Json | null)[], ours: Set<string>):
     { patch: Json; err: string; days: Day[] | null;
-      pages: Map<string, PageUse> | null; live: AdSnap[] | null; linkErr: string } {
+      pages: Map<string, PageUse> | null; live: AdSnap[] | null;
+      linkErr: string; picErr: string } {
   const patch: Json = {};
   let err = '';
 
@@ -814,7 +815,7 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
   const linkPart = parts[6];
   const hosts = new Map<string, string>();
   const pics = new Map<string, { th: string; im: string }>();
-  let linkErr = '';
+  let linkErr = '', picErr = '';
   if (linkPart && linkPart.code === 200) {
     const list: Json[] = Array.isArray(linkPart.body?.data) ? linkPart.body.data : [];
     /* Чужі хости, які ми свідомо не взяли — щоб було ЩО сказати, коли
@@ -850,6 +851,19 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
        віддав creative на цьому зрізі. Мовчання тут коштувало б рівно
        того, чого вже коштувало: людина шукає ваду в базі, а вада —
        у полі запиту. */
+    /* ВІДПОВІДЬ Є, КАРТИНОК НЕМА — окремий діагноз, і він потрібен
+       рівно там, де ми вже обпеклись на доменах: з екрана видно лише
+       порожню рамку, а причин у неї три, і дві з них — не наші.
+
+       Кажемо не «не знайшли», а ЩО ТАМ БУЛО: перелік ключів креатива
+       відрізняє «Facebook не віддав поле» від «ми його не просили», і
+       економить цілий захід здогадок. */
+    if (list.length && !pics.size) {
+      const firstPic = list.find((r: Json) => r?.creative) || list[0] || {};
+      const picKeys = Object.keys(firstPic?.creative || {});
+      picErr = 'answered for ' + list.length + ' ad(s), no picture came back'
+        + '; creative had: ' + (picKeys.length ? picKeys.join(', ') : 'nothing');
+    }
     if (list.length && !hosts.size && !linkErr) {
       /* Кажемо не лише «не знайшли», а Й ЩО ТАМ БУЛО. Без цього
          наступний крок — знову здогадка: поле креативу могло
@@ -865,8 +879,10 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
     }
   } else if (linkPart) {
     linkErr = String(linkPart.body?.error?.message || 'HTTP ' + linkPart.code);
+    picErr = linkErr;
   } else {
     linkErr = 'Facebook did not answer in time';
+    picErr = linkErr;
   }
 
   const livePart = parts[5];
@@ -902,7 +918,7 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
     }).filter((a: AdSnap) => a.ad_id);
   }
 
-  return { patch, err, days, pages, live, linkErr };
+  return { patch, err, days, pages, live, linkErr, picErr };
 }
 
 /* ── PostgREST ──
@@ -1330,8 +1346,12 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     }
     const slice = g.sl, parts = g.parts;
     slice.forEach((x, k) => {
-      const { patch, err, days, pages, live, linkErr } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC), ourDomains);
+      const { patch, err, days, pages, live, linkErr, picErr } = readParts(parts.slice(k * PER_ACC, (k + 1) * PER_ACC), ourDomains);
       if (linkErr && !out.linkError) out.linkError = linkErr;
+      /* Нотатку про колонки ставить saveSnap пізніше й затирає цю —
+         так і треба: «виконай ALTER TABLE» дієвіше за «Facebook не дав
+         картинки», бо без колонок їх не буде в будь-якому разі. */
+      if (picErr && !out.picNote) out.picNote = picErr;
       if (pages) pageUse.set(x.id, pages);
       if (live) {
         snapSeen.push(x.id);

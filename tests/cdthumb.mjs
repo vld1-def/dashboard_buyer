@@ -273,6 +273,21 @@ ok('колонки є, картинок немає — причина про д�
 ok('і рамка каже саме про деплой',
   /deploy fb-sync/.test(noVal.tip) && !/ALTER TABLE/.test(noVal.tip), noVal.tip);
 
+/* А КОЛИ СИНХРОНІЗАЦІЯ САМА СКАЗАЛА ЧОМУ — показуємо її слова, а не
+   свою здогадку. «Задеплой fb-sync» тому, хто щойно його задеплоїв, —
+   рівно та помилка, на якій цей проєкт уже обпікся з доменами. */
+const said = await page.evaluate(() => {
+  cdPicNote = 'the deployed fb-sync is 2026-10-27.1, this page expects 2026-11-02.2';
+  cdNoPic = 'sync';
+  const box = document.createElement('div');
+  box.innerHTML = cdPicCell({ kind: 'ad', id: 'x', name: 'Ad', thumb: '', pic: '' });
+  const tip = (box.querySelector('.cd-thumb.is-none') || {}).title || '';
+  cdPicNote = '';
+  return tip;
+});
+ok('слова самої синхронізації важливіші за здогадку',
+  /2026-10-27\.1/.test(said) && /The last sync said/.test(said), said);
+
 /* ── кампанія й адсет ── */
 await paint(false);
 const tree = await shot();

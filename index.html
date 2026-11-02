@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 21:47">
+  <meta name="build" content="build 02.11 22:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6630,7 +6630,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 21:47</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 22:17</div>
     </div>
   </aside>
 
@@ -24924,7 +24924,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-11-02.2';
+const FB_FN_WANT = '2026-11-02.3';
 
 /* ЧИ ЖИВИЙ ТОКЕН — ОКРЕМОЮ КНОПКОЮ.
 
@@ -25096,6 +25096,19 @@ window.fbSync = async function (say, body) {
     if (typeof setTeamSetting === 'function' && j.domains)
       setTeamSetting('fb_link_note', j.domains === 'ok' ? '' : String(j.domains))
         .catch(() => {});   // лічильник причин не привід завалити синхронізацію
+    /* ТЕ САМЕ ПРО КАРТИНКИ КРЕАТИВІВ. Наслідок видно в дереві
+       (порожня рамка), а причину знає лише відповідь функції — і
+       найчастіша з них та, яку зі сторінки не видно взагалі:
+       задеплоєна версія старіша, тож картинок у знімку немає й бути не
+       може. Кладемо туди, де видно наслідок. */
+    if (typeof setTeamSetting === 'function') {
+      const old = FB_FN_WANT && j.fn !== FB_FN_WANT;
+      const picWhy = old
+        ? 'the deployed fb-sync is ' + (j.fn ? j.fn : 'older than this page')
+          + ', this page expects ' + FB_FN_WANT + ' — deploy it, then press Sync now'
+        : (j.creatives && j.creatives !== 'ok') ? String(j.creatives) : '';
+      setTeamSetting('fb_pic_note', picWhy).catch(() => {});
+    }
     /* Telegram: кажемо, лише коли НЕ склалось. «nothing to report» і
        «N sent» означають, що все відпрацювало як задумано; «not
        configured» і «0 sent, 1 not linked» — ні, і ось їх і видно. */
@@ -32861,6 +32874,22 @@ async function cdLinkWhy() {
   if (cdLinkNote && cdAcc) cdPaint();
 }
 
+/* Те саме про картинки, і з тієї самої причини: наша здогадка
+   («задеплой fb-sync») буває хибною саме тоді, коли людина щойно його
+   задеплоїла. Відповідь прогону знає більше за нас — яка версія
+   насправді крутиться й що відповів Facebook, — і саме її й
+   показуємо, коли вона є. */
+let cdPicNote = null;
+async function cdPicWhy() {
+  if (cdPicNote !== null) return;
+  cdPicNote = '';
+  try {
+    if (typeof getTeamSetting === 'function')
+      cdPicNote = String((await getTeamSetting('fb_pic_note')) || '');
+  } catch (e) { cdPicNote = ''; }
+  if (cdPicNote && cdAcc) cdPaint();
+}
+
 function cdDomNote() {
   if (!cdNoDom) return '';
   const sep = (cdSeen || cdBad()) ? ' · ' : '';
@@ -33008,8 +33037,10 @@ async function cdLoad(account) {
        відрізнити від «Facebook не дав картинки саме для цього
        креатива», тож кажемо, що саме з трьох сталось. */
     if (!cdNoPic && cdRows.length
-        && !cdRows.some(r => String(r.thumb_url || r.image_url || '').trim()))
+        && !cdRows.some(r => String(r.thumb_url || r.image_url || '').trim())) {
       cdNoPic = 'sync';
+      cdPicWhy();
+    }
   } catch (e) {
     cdRows = [];
     cdErr = /fb_ad_today|does not exist|schema cache/i.test(e.message)
@@ -33513,8 +33544,13 @@ function cdPicCell(n) {
       ? 'The two picture columns are missing from fb_ad_today \u2014 run the ALTER TABLE '
         + 'block from FB_RULES.sql, then press Sync now.'
       : cdNoPic === 'sync'
-      ? 'The deployed fb-sync has not brought pictures yet \u2014 run '
-        + 'supabase functions deploy fb-sync, then press Sync now.'
+      /* Причина від самої синхронізації важливіша за нашу здогадку:
+         вона каже, яка версія крутиться й що відповів Facebook, а не
+         що ми припускаємо. Без неї — найімовірніше пояснення. */
+      ? (cdPicNote
+          ? 'The last sync said: ' + cdPicNote
+          : 'The columns are there, but no ad here carries a picture yet \u2014 run '
+            + 'supabase functions deploy fb-sync, then press Sync now.')
       : 'Facebook sent no picture for this creative.';
     return `<span class="cd-thumb is-none" title="${cdEsc(why)}"></span>`;
   }
