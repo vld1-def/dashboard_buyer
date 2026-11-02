@@ -165,7 +165,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-11-02.3';
+const FN_VERSION = '2026-11-02.4';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -576,6 +576,39 @@ function hostOf(v: unknown): string {
    привозила чужий: у стрічці посилань їх десяток, і перше з них цілком
    може вести на Amazon. Показувати його як «домен оголошення» —
    напівправда, за якою потім шукають не там. */
+/* ═══════════ КАРТИНКА КРЕАТИВА ═══════════
+
+   thumbnail_url бере не завжди: у ВІДЕО-оголошень Facebook часто
+   віддає ним білу заглушку замість кадру — порожній квадрат, який ще
+   й не відрізнити від зламаного посилання.
+
+   А справжня обкладинка лежить поруч, у полях, які ми вже тягнемо
+   заради доменів: object_story_spec.video_data.image_url для відео,
+   link_data.picture для посту з посиланням, asset_feed_spec для
+   динамічного креативу. Жодного нового запиту в Facebook це не
+   коштує — тільки подивитись туди, куди вже дивимось.
+
+   Знайдену обкладинку беремо і на іконку теж, хоч вона й більша за
+   24px: біла іконка гірша за зайві кілобайти, а превʼю потім
+   відкриється миттєво, бо браузер уже має цей файл. */
+function adPics(c: Json): { th: string; im: string } {
+  const spec: Json = c?.object_story_spec || {};
+  const feed: Json = c?.asset_feed_spec || {};
+  const firstOf = (a: unknown, k: string): string =>
+    Array.isArray(a) ? String(((a[0] || {}) as Json)[k] || '') : '';
+  /* Порядок — від найточнішого: обкладинка відео, картинка посту,
+     далі стрічка динамічного креативу. */
+  const big = String(spec.video_data?.image_url || '')
+    || String(spec.link_data?.picture || '')
+    || firstOf(spec.link_data?.child_attachments, 'picture')
+    || firstOf(feed.images, 'url')
+    || firstOf(feed.videos, 'thumbnail_url')
+    || firstOf(feed.videos, 'image_url');
+  const thumb = String(c?.thumbnail_url || '');
+  const image = String(c?.image_url || '');
+  return { th: big || thumb, im: big || image || thumb };
+}
+
 function adHosts(c: Json): string[] {
   const feed: Json[] = Array.isArray(c?.asset_feed_spec?.link_urls)
     ? c.asset_feed_spec.link_urls : [];
@@ -832,9 +865,8 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
       });
       /* Картинки кладемо з того ж обходу: інакше це був би другий
          прохід по тому самому списку. */
-      const th = String(cr.thumbnail_url || '');
-      const im = String(cr.image_url || '');
-      if (r?.id && (th || im)) pics.set(String(r.id), { th, im });
+      const p = adPics(cr);
+      if (r?.id && (p.th || p.im)) pics.set(String(r.id), p);
     });
     /* Посилання знайшлись, але жодне не наше. Окремий діагноз: запит
        працює, поле правильне — не збігається СПИСОК. Тому й підказка

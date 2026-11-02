@@ -7198,8 +7198,16 @@ function positionTooltip(e, tip) {
   if (x + tw > window.innerWidth)  x = e.clientX - tw - pad;
   if (y < pad) y = pad;
   if (y + th > window.innerHeight) y = window.innerHeight - th - pad;
-  tip.style.left = x + 'px';
-  tip.style.top  = y + 'px';
+  /* body { zoom: .9 } МНОЖИТЬ на 0.9 все, що ми ставимо в пікселях, а
+     clientX/clientY приходять уже в пікселях екрана. Без ділення
+     підказка ставала на десяту ближче до лівого верхнього кута — і що
+     далі курсор від кута, то далі вона від курсора: у правій частині
+     екрана це вже сотня пікселів убік, тобто підказка «не там, куди
+     наводжу». */
+  const z = parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue('--zoom')) || 1;
+  tip.style.left = (x / z) + 'px';
+  tip.style.top  = (y / z) + 'px';
 }
 
 

@@ -58,6 +58,28 @@ const ind = await page.evaluate(() => {
 });
 ok('відступ першого рівня зменшено', ind === '12px', ind);
 
+/* ─────────── превʼю картинки стає ПІД КУРСОРОМ ───────────
+
+   body { zoom: .9 } множить на 0.9 все, що ми ставимо в пікселях, а
+   clientX/clientY приходять уже в пікселях екрана. Без ділення
+   підказка ставала на десяту ближче до лівого верхнього кута — і що
+   далі курсор від кута, то далі вона від курсора: у правій частині
+   екрана це вже сотня пікселів убік. */
+const tipAt = await page.evaluate(() => {
+  const z = parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue('--zoom')) || 1;
+  const el = document.getElementById('img-preview-tooltip');
+  positionTooltip({ clientX: 400, clientY: 300 }, el);
+  return { z, left: parseFloat(el.style.left), top: parseFloat(el.style.top) };
+});
+ok('сторінка справді зумлена', tipAt.z > 0 && tipAt.z < 1, tipAt);
+/* 400 плюс 14 відступу, поділені на зум: саме стільки треба
+   поставити, щоб на екрані вийшло 414. */
+ok('превʼю ставиться з поправкою на зум',
+  Math.round(tipAt.left) === Math.round((400 + 14) / tipAt.z), tipAt);
+ok('і по вертикалі так само',
+  Math.round(tipAt.top) === Math.round((300 - 120) / tipAt.z), tipAt);
+
 /* ─────────── 11. скло ─────────── */
 const glass = await page.evaluate(async () => {
   const p = ask({ title: 'T', body: 'b' });
