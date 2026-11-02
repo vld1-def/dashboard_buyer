@@ -1,5 +1,5 @@
 -- ============================================================
---  ПЕРЕЙМЕНУВАТИ КОМАНДУ: Makeberry → Improve
+--  ПЕРЕЙМЕНУВАТИ КОМАНДУ (назви задаються в КРОЦІ 0)
 -- ============================================================
 --
 --  Назва команди — це ЯРЛИК, а не право доступу. Хто що бачить,
@@ -18,6 +18,15 @@
 --  team_name = 'Makeberry'. Запускати можна скільки завгодно разів:
 --  другий запуск не знайде що робити.
 --
+--  ⚠️ САМЕ ЦЕЙ СКРИПТ І ЛІКУЄ «КАБІНЕТИ ЛЕТЯТЬ ПІД СТАРОЮ НАЗВОЮ».
+--  Назву команди носить САМ ТОКЕН: fb_tokens.team_name ставиться один
+--  раз, коли токен зберігали, і fb-sync штампує цією назвою все, що
+--  пише — fb_accounts, fb_spend_daily, fb_ad_today, fb_cabinet_pages.
+--  Перейменування в дашборді токена не чіпає, тож рядок, заведений
+--  рукою, лягає під НОВОЮ назвою, а все, що приносить синк по тому ж
+--  кабінету — під СТАРОЮ. Обхід нижче проходить і fb_tokens, і саме
+--  тому після нього синк починає писати правильно.
+--
 --  ⚠️ ПІСЛЯ ЦЬОГО ОДРАЗУ ПЕРЕМКНИ КОМАНДУ В ДАШБОРДІ.
 --  У браузері лежить selected_team = 'Makeberry'. Поки він там, дашборд
 --  питатиме налаштування під старою назвою й не знайде їх — правила,
@@ -25,10 +34,36 @@
 --  це розбіжність ярликів: перемикач команди (ліва панель) уже
 --  показуватиме Improve, натисни — і все повернеться.
 --
---  Назад так само: поміняти 'Improve' і 'Makeberry' місцями.
+--  Назад так само: поміняти назви місцями в КРОЦІ 0 і пройти кроки
+--  1–3 ще раз.
 --
 --  Де запускати: Supabase Dashboard → SQL Editor → New query → Run.
 -- ============================================================
+
+
+-- ════════════════════════════════════════════════════════════
+--  КРОК 0. НАЗВИ — ТУТ, І ТІЛЬКИ ТУТ
+-- ════════════════════════════════════════════════════════════
+--  Доти обидві назви стояли літералами в пʼяти місцях трьох блоків.
+--  Виправити чотири з пʼяти — найлегша помилка в цьому файлі, і
+--  коштувала б вона найгіршого: половина таблиць під новою назвою,
+--  половина під старою, і жодної помилки на екрані.
+--
+--  Тепер назви лежать в одному рядку, а кроки 1–3 читають їх звідси.
+--  Міняєш тут — міняється все.
+
+drop table if exists public._rename_names;
+create table public._rename_names (old_name text, new_name text);
+
+-- ⚠️ ЗАКРИВАЄМО ОДРАЗУ, як і решту службових таблиць: у Supabase нова
+-- таблиця в public доступна ролі authenticated за замовчуванням. RLS
+-- без жодної політики не віддає НІЧОГО, і цього достатньо.
+alter table public._rename_names enable row level security;
+
+--  ⬇⬇⬇ ОСЬ ТУТ ⬇⬇⬇  стара назва, нова назва
+insert into public._rename_names values ('Makeberry', 'Improve');
+
+select * from public._rename_names;
 
 
 -- ════════════════════════════════════════════════════════════
@@ -57,15 +92,20 @@ create table public._rename_report ("таблиця" text, "рядків зі с
 alter table public._rename_report enable row level security;
 
 do $$
-declare t text; n bigint;
+declare t text; n bigint; o text;
 begin
+  select old_name into o from public._rename_names;
+  if o is null then
+    raise exception 'Спершу виконай КРОК 0 — назви беруться звідти.';
+  end if;
   for t in
     select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'team_name'
-       and table_name not in ('_rename_report', '_merge_report', '_merge_log')
+       and table_name not in ('_rename_report', '_rename_names',
+                              '_merge_report', '_merge_log')
      order by table_name
   loop
-    execute format('select count(*) from public.%I where team_name = %L', t, 'Makeberry')
+    execute format('select count(*) from public.%I where team_name = %L', t, o)
       into n;
     if n > 0 then
       insert into public._rename_report values (t, n);
@@ -114,26 +154,30 @@ create table public._rename_done ("таблиця" text, "перейменова
 alter table public._rename_done enable row level security;
 
 do $$
-declare t text; n bigint; clash bigint;
+declare t text; n bigint; clash bigint; o text; nw text;
 begin
-  execute format('select count(*) from public.daily_stats where team_name = %L', 'Improve')
+  select old_name, new_name into o, nw from public._rename_names;
+  if o is null or nw is null then
+    raise exception 'Спершу виконай КРОК 0 — назви беруться звідти.';
+  end if;
+  execute format('select count(*) from public.daily_stats where team_name = %L', nw)
     into clash;
   if clash > 0 then
     raise exception
       'Назва «%» вже є в даних (% рядків у daily_stats). Це ЗЛИТТЯ, а не '
       'перейменування: простий update упреться в унікальність. Виконуйте '
       'блоки «ЗЛИТТЯ, КРОК 1» і «ЗЛИТТЯ, КРОК 2» у кінці цього файлу — '
-      'вони вирішують зіткнення за автором рядка.', 'Improve', clash;
+      'вони вирішують зіткнення за автором рядка.', nw, clash;
   end if;
   for t in
     select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'team_name'
-       and table_name not in ('_rename_report', '_rename_done',
+       and table_name not in ('_rename_report', '_rename_done', '_rename_names',
                               '_merge_report', '_merge_log')
      order by table_name
   loop
     execute format('update public.%I set team_name = %L where team_name = %L',
-                   t, 'Improve', 'Makeberry');
+                   t, nw, o);
     get diagnostics n = row_count;
     if n > 0 then
       insert into public._rename_done values (t, n);
@@ -172,16 +216,20 @@ create table public._rename_left ("таблиця" text, "лишилось ря�
 alter table public._rename_left enable row level security;
 
 do $$
-declare t text; n bigint;
+declare t text; n bigint; o text;
 begin
+  select old_name into o from public._rename_names;
+  if o is null then
+    raise exception 'Спершу виконай КРОК 0 — назви беруться звідти.';
+  end if;
   for t in
     select table_name from information_schema.columns
      where table_schema = 'public' and column_name = 'team_name'
        and table_name not in ('_rename_report', '_rename_done', '_rename_left',
-                              '_merge_report', '_merge_log')
+                              '_rename_names', '_merge_report', '_merge_log')
      order by table_name
   loop
-    execute format('select count(*) from public.%I where team_name = %L', t, 'Makeberry')
+    execute format('select count(*) from public.%I where team_name = %L', t, o)
       into n;
     if n > 0 then
       insert into public._rename_left values (t, n);

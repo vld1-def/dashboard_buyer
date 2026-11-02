@@ -184,8 +184,10 @@ window.fbLoad = async function () {
   // Навмисно перелічуємо поля: select('*') спробував би дістати token,
   // а на нього немає прав — і весь запит упав би цілком.
   const { data, error } = await sb.from('fb_tokens')
-    .select('id,label,bm_id,bm_name,scopes,expires_at,accounts,status,status_note,checked_at,note,'
-           + 'proxy_host,proxy_ip,proxy_note,proxy_checked_at')
+    /* team_name тут не для показу, а тому що саме він вирішує, під
+       якою командою опиниться все, що принесе синк. Див. fbTeamLine. */
+    .select('id,label,team_name,bm_id,bm_name,scopes,expires_at,accounts,status,status_note,'
+           + 'checked_at,note,proxy_host,proxy_ip,proxy_note,proxy_checked_at')
     .order('created_at', { ascending: false });
   if (error) {
     box.innerHTML = /fb_tokens|does not exist|schema cache/i.test(error.message)
@@ -260,6 +262,7 @@ window.fbPaint = function () {
         ${r.status_note ? ' · ' + fbEsc(r.status_note) : ''}
         ${fbAgo(r.checked_at)}
       </div>
+      ${fbTeamLine(r)}
       ${fbProxyLine(r)}
       <div class="fb-acts">
         <button type="button" class="set-btn fb-chk" onclick="fbCheck(${r.id})"
@@ -273,6 +276,77 @@ window.fbPaint = function () {
       </div>
     </div>`;
   }).join('') + fold;
+};
+
+/* ═══════════ НАЗВУ КОМАНДИ НОСИТЬ ТОКЕН ═══════════
+
+   fb_tokens.team_name ставиться ОДИН раз — коли токен зберігали, з
+   тієї команди, яка була вибрана тоді. Далі fb-sync штампує цією
+   назвою все, що пише: fb_accounts, fb_spend_daily, fb_ad_today,
+   fb_cabinet_pages.
+
+   Перейменував команду — токен лишився зі старою назвою. І виходить
+   розрив, який ззовні виглядає як вада: рядок, заведений рукою, лягає
+   під НОВОЮ назвою (сторінка пише currentTeam), а все, що приносить
+   синк по тому ж кабінету — під СТАРОЮ. А кабінети сторінка ріже
+   саме по команді, тож такий кабінет просто зникає з очей.
+
+   Тому рядок тут зʼявляється лише коли назви РІЗНІ — і одразу з
+   кнопкою. Показувати команду завжди означало б додати в кожен рядок
+   слово, яке ні про що не питає. */
+function fbTeamLine(r) {
+  const mine = typeof currentTeam === 'string' ? currentTeam : '';
+  const his = String(r.team_name || '');
+  if (!his || !mine || his === mine) return '';
+  return `<div class="fb-meta fb-teamwarn">⚠ This token files everything under
+    <b>${fbEsc(his)}</b>, not <b>${fbEsc(mine)}</b> — the cabinets, spend and ads it
+    brings land there, and this page hides them.
+    <button type="button" class="set-btn" onclick="fbTeamMove(${r.id})"
+      title="Writes the current team name onto the token and re-syncs just this token, so everything it brought gets the new name">Move to ${fbEsc(mine)}</button></div>`;
+}
+
+/* Перенести токен у поточну команду. Одна дія, бо для людини це одна
+   річ — але робить вона дві: міняє підпис токена й одразу переганяє
+   його синк. Без другої частини кабінети лишались би під старою
+   назвою до наступного прогону, тобто «кнопка нічого не зробила».
+
+   Переганяємо ТІЛЬКИ цей токен: цілий парк коштував би хвилини
+   чекання за дію, яка стосується одного рядка. */
+window.fbTeamMove = async function (id) {
+  const r = fbRows.find(x => x.id === id);
+  const mine = typeof currentTeam === 'string' ? currentTeam : '';
+  if (!r || !mine) return;
+
+  const go = await ask({
+    title: 'Move this token to ' + mine + '?',
+    ok: 'Move',
+    body: 'It is filed under ' + String(r.team_name || '—') + ' now, so everything the '
+        + 'sync brings with it — cabinets, today\u2019s ads, Pages, spend history — is '
+        + 'written under that name, and this page only shows ' + mine + '.\n\n'
+        + 'Moving it rewrites the label and re-syncs this one token, which re-stamps its '
+        + 'cabinets and the last 30 days of spend.\n\n'
+        + 'Spend older than that keeps the old name: for the whole history run '
+        + 'TEAM_RENAME.sql.' });
+  if (!go) return;
+
+  const { error } = await sb.from('fb_tokens').update({ team_name: mine }).eq('id', id);
+  if (error) { toast('Could not move: ' + error.message, 'error'); return; }
+  await fbLoad();
+  /* Перегін — тим самим шляхом, що й кнопка Sync now, тільки по
+     одному токену: іншого способу перештампувати рядки зі сторінки
+     немає, бо пише їх виключно fb-sync. */
+  if (typeof fbSync === 'function') {
+    const step = typeof toastStep === 'function' ? toastStep() : null;
+    const say = (html, tone) => {
+      if (step) step.say(html, tone === 'var(--bad)' ? 'error'
+        : tone === 'var(--warn)' ? 'warn' : 'ok', true);
+    };
+    await fbSync(say, { token_id: id });
+    if (step) step.done('Moved to ' + fbEsc(mine), 'ok', true);
+  } else {
+    toast('Moved to ' + mine + ' — press Sync now to re-stamp its cabinets', 'warn');
+  }
+  if (typeof cabRefresh === 'function') cabRefresh();
 };
 
 /* ПРОКСІ — РЯДКОМ, А НЕ ЗНАЧКОМ.
