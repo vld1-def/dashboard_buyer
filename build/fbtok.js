@@ -92,13 +92,20 @@ async function fbProfilesLoad() {
   });
 }
 
-/* Браузер кабінета: спершу те, що записано, потім — другий шматок
-   назви токена (агент_браузер_БМ). Записане завжди головніше: кабінет
-   могли перенести, а назва токена лишилась старою. */
-function fbBrowserOf(accId, tokenLabel) {
-  const hit = fbIdKeys(accId).map(k => fbProfiles[k]).find(Boolean);
-  if (hit) return hit;
-  return String(tokenLabel || '').split('_')[1] || '';
+/* БРАУЗЕР — ТІЛЬКИ ТЕ, ЩО ВПИСАЛИ РУКОЮ.
+
+   Доти, коли поле profile було порожнє, сюди підставлявся другий
+   шматок назви токена (Агент_Браузер_БМ). Догадка виглядала в
+   стовпчику точно так само, як записане значення, — а бути вона могла
+   чим завгодно: назву токена пишуть як зручно, кабінет могли
+   перенести на інший браузер, а токен лишився старим. Тобто вікно
+   показувало те, чого ніхто не казав, і відрізнити це від правди було
+   ніяк.
+
+   Тепер порожнє лишається порожнім. Прочерк тут — не брак даних, а
+   відповідь: у цього кабінета браузер не вписаний. */
+function fbBrowserOf(accId) {
+  return fbIdKeys(accId).map(k => fbProfiles[k]).find(Boolean) || '';
 }
 
 const fbEsc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
@@ -513,10 +520,10 @@ window.fbShow = function (id) {
      показує звичайний текст, і без вирівнювання три поля підряд
      читаються як одне речення. */
   const wId = Math.max(...accs.map(a => String(a.id || '').length), 2);
-  const wBr = Math.max(...accs.map(a => fbBrowserOf(a.id, r.label).length), 7);
+  const wBr = Math.max(...accs.map(a => fbBrowserOf(a.id).length), 7);
   const pad = (v, n) => String(v == null ? '' : v).padEnd(n);
   const line = a => pad(a.id, wId) + '  '
-    + pad(fbBrowserOf(a.id, r.label) || '\u2014', wBr) + '  '
+    + pad(fbBrowserOf(a.id) || '\u2014', wBr) + '  '
     + (a.name || '') + (a.status === 'active' ? '' : '  (inactive)');
   tell(r.label,
       `Permissions: ${(r.scopes || []).join(', ') || '—'}\n`
@@ -525,8 +532,9 @@ window.fbShow = function (id) {
         ? 'Ad accounts:\n'
           + pad('ID', wId) + '  ' + pad('BROWSER', wBr) + '  NAME\n'
           + accs.map(line).join('\n')
-          + '\n\nThe browser comes from Cabinets (or from the token name when it is '
-          + 'not filled in there yet).'
+          + '\n\nThe browser is what you typed in for that cabinet, and nothing else: '
+          + 'a dash means it is not filled in there yet. Nothing here is guessed from '
+          + 'the token name.'
         : 'No ad accounts visible.\n\nMost common cause: the system user has no Ad Accounts assigned in Business Settings → Add Assets.'));
 };
 
