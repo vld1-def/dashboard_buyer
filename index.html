@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 03.11 19:15">
+  <meta name="build" content="build 03.11 19:34">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -3021,7 +3021,7 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
    а розділяти галочку й стрілку нема чого. */
 .cab-tbl th:not(.cab-x) + th:not(.cab-x),
 .cab-tbl td:not(.cab-x) + td:not(.cab-x) {
-  border-left: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
 /* Рядок групи — суцільна смуга на всю ширину, ділити в ньому нічого. */
 .cab-grp > td { border-left: 0 !important; }
@@ -6760,7 +6760,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 19:15</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 19:34</div>
     </div>
   </aside>
 
@@ -7157,7 +7157,9 @@ input.ui-in[type="range"] { padding: 0; }
           </div>
 
           <!-- Geo Performance -->
-          <div id="geo-sidebar-col" class="card p-4 lg:col-start-4 lg:col-span-1 lg:row-start-1 lg:row-span-2 flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
+          <!-- p-3, а не p-4: колонка вузька, і ці чотири пікселі з
+               кожного боку забирає саме той список, якому їх бракує. -->
+          <div id="geo-sidebar-col" class="card p-3 lg:col-start-4 lg:col-span-1 lg:row-start-1 lg:row-span-2 flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
             <div class="mb-3 pb-3" style="border-bottom:1px solid var(--border)">
               <h2 class="mb-2">Geo Performance</h2>
               <div class="flex items-center gap-1.5 text-[10px] font-bold">
@@ -7284,7 +7286,9 @@ input.ui-in[type="range"] { padding: 0; }
       <!-- Creative Analyzer -->
       <div id="creative-analyzer-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-blue-500">
         <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-          <div><h2 class="text-xl font-black uppercase tracking-tight text-dynamic">Creative Analyzer</h2><p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest tracking-tight font-black">Full Funnel Tracking</p></div>
+          <!-- Підзаголовок під назвою прибрано на прохання: він нічого
+               не додавав до самої назви, а рядок забирав. -->
+          <div><h2 class="text-xl font-black uppercase tracking-tight text-dynamic">Creative Analyzer</h2></div>
            <div class="flex items-center gap-1.5 w-full md:w-auto flex-wrap text-dynamic">
               <!-- Пошук -->
               <input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID…"
@@ -7391,12 +7395,20 @@ input.ui-in[type="range"] { padding: 0; }
        це й читається як «не на повну висоту блока», бо блок у цю мить
        і є ті 500px.
 
-       На широкому екрані беремо 75vh: список видно на три чверті
-       екрана ще до вибору, а коли картка праворуч вища — колонка
-       тягнеться за нею, як і раніше. 500px лишаються нижньою межею
-       для вузьких екранів, де колонки стають одна під одною й три
-       чверті екрана забрали б усе, що під ними. -->
-  <div class="lg:col-span-3 p-0 flex flex-col min-h-[500px] lg:min-h-[75vh]">
+       min-height тут не вистачало, і скарга повторилась. Поки нічого
+       не вибрано, воно працює; щойно креатив вибрано, висоту рядка
+       задає картка ПРАВОРУЧ, а колонка тягнеться за нею — і на
+       короткій картці список обривається знов, тепер уже вище за ті
+       самі 75vh.
+
+       Тому на широкому екрані висота ЗАДАНА, а не мінімальна: список
+       завжди три чверті екрана, і сусідня картка на нього більше не
+       впливає. Вища за це картка гортає сторінку, а список гортається
+       всередині себе — він і так зі своєю смугою.
+
+       500px лишаються для вузьких екранів, де колонки стають одна під
+       одною й три чверті екрана забрали б усе, що під ними. -->
+  <div class="lg:col-span-3 p-0 flex flex-col min-h-[500px] lg:h-[75vh]">
      <p class="text-[9px] font-black text-muted-dynamic uppercase mb-3 opacity-50">Creatives:</p>
      <div class="relative flex-1 min-h-0">
        <div id="creative-list-sidebar" class="absolute inset-0 space-y-2 overflow-y-auto pr-1 custom-scrollbar"></div>
@@ -34594,11 +34606,25 @@ function cdChips(n, depth) {
 
      Для оголошення own і є його стан, тож дублювати не треба: нижній
      цикл намалює те саме. */
-  if (!ad && n.own) {
-    const st = cdState(n.own);
-    const quiet = nested && st && cdFromAbove(st.k);
-    parts.push(st
-      ? { s: st.s, why: st.why, text: quiet ? 'off' : st.t, self: true }
+  /* ВЛАСНИЙ ЗНАЧОК — ЛИШЕ КОЛИ ВІН ПОЯСНЮЄ, ЧОМУ НЕ КРУТИТЬСЯ.
+
+     Він тут заради вимкненої кампанії з активними оголошеннями: без
+     нього вона виглядала робочою. Але коли вимикач УВІМКНЕНИЙ, значок
+     «Active» не каже нічого нового й займає місце:
+
+       • діти теж активні — поруч стоїть «5 active», тобто те саме,
+         тільки з числом;
+       • усі діти в реджектах — «Active» прямо бреше: кампанія
+         ввімкнена, а не крутиться нічого, і саме це питання людина й
+         ставить, дивлячись на рядок.
+
+     Тож власний значок лишається рівно там, де він відповідь:
+     вимкнено, архівовано, незнайомий стан. */
+  const ownSt = (!ad && n.own) ? cdState(n.own) : null;
+  if (!ad && n.own && !(ownSt && ownSt.k === 'ACTIVE')) {
+    const quiet = nested && ownSt && cdFromAbove(ownSt.k);
+    parts.push(ownSt
+      ? { s: ownSt.s, why: ownSt.why, text: quiet ? 'off' : ownSt.t, self: true }
       : { s: 'wait', why: 'Facebook reports this state',
           text: String(n.own).toLowerCase().replace(/_/g, ' '), self: true });
   }
@@ -34638,15 +34664,18 @@ function cdChips(n, depth) {
 
   /* Більше двох значків у рядок не влазить, а перенос робить рядок
      удвічі вищим — на тридцяти кампаніях це вже інша таблиця. Тому
-     показуємо два найгірші, решту рахуємо в «+N», а повний розклад
-     лишаємо в підказці: він потрібен рідко, а висота рядка — завжди. */
+     показуємо два найгірші, а повний розклад лишаємо в підказці: він
+     потрібен рідко, а висота рядка — завжди.
+
+     «+N» звідси прибрано. Воно коштувало стільки ж місця, скільки
+     справжній значок, а казало лише «є ще щось» — не що саме і не
+     скільки чого. Повний розклад і так у підказці на всьому рядку
+     значків, тобто за тим самим рухом миші. */
   const show = parts.slice(0, 2);
-  const rest = parts.length - show.length;
   const all = parts.map(x => x.text).join(', ');
   return `<span class="cd-sts" title="${cdEsc(all)}">`
     + show.map(x => `<span class="cd-st cd-st-${x.s}${x.self ? ' is-self' : ''}" title="${
         cdEsc(x.why)}">${cdEsc(x.text)}</span>`).join('')
-    + (rest ? `<span class="cd-st cd-st-na">+${rest}</span>` : '')
     + '</span>';
 }
 

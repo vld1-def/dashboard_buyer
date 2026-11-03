@@ -1419,6 +1419,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   </div>
 
   <!-- Блок GEO -->
+  <!-- Цю розмітку перебиває build/shell.html — відступи правляться
+       там, інакше правка просто не доїжджає до зібраної сторінки. -->
   <div id="geo-sidebar-col" class="card p-4 rounded-3xl lg:col-span-1 shadow-md flex flex-col text-dynamic transition-all duration-500 ease-in-out overflow-hidden">
     <div class="mb-3 border-b border-gray-500/10 pb-3">
       <h2 class="font-black text-[13px] text-blue-500 uppercase tracking-widest mb-2">Geo Performance</h2>
@@ -1489,7 +1491,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <!-- Creative Analyzer -->
       <div id="creative-analyzer-section" class="card p-6 rounded-3xl shadow-xl border-t-4 border-t-blue-500">
         <div class="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-          <div><h2 class="text-xl font-black uppercase tracking-tight text-dynamic">Creative Analyzer</h2><p class="text-[10px] text-muted-dynamic font-bold uppercase tracking-widest tracking-tight font-black">Full Funnel Tracking</p></div>
+          <!-- Підзаголовок під назвою прибрано на прохання: він нічого
+               не додавав до самої назви, а рядок забирав. -->
+          <div><h2 class="text-xl font-black uppercase tracking-tight text-dynamic">Creative Analyzer</h2></div>
            <div class="flex items-center gap-1.5 w-full md:w-auto flex-wrap text-dynamic">
               <!-- Пошук -->
               <input type="text" id="creative-search" oninput="searchCreative()" placeholder="Search ID…"
@@ -1596,12 +1600,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
        це й читається як «не на повну висоту блока», бо блок у цю мить
        і є ті 500px.
 
-       На широкому екрані беремо 75vh: список видно на три чверті
-       екрана ще до вибору, а коли картка праворуч вища — колонка
-       тягнеться за нею, як і раніше. 500px лишаються нижньою межею
-       для вузьких екранів, де колонки стають одна під одною й три
-       чверті екрана забрали б усе, що під ними. -->
-  <div class="lg:col-span-3 p-0 flex flex-col min-h-[500px] lg:min-h-[75vh]">
+       min-height тут не вистачало, і скарга повторилась. Поки нічого
+       не вибрано, воно працює; щойно креатив вибрано, висоту рядка
+       задає картка ПРАВОРУЧ, а колонка тягнеться за нею — і на
+       короткій картці список обривається знов, тепер уже вище за ті
+       самі 75vh.
+
+       Тому на широкому екрані висота ЗАДАНА, а не мінімальна: список
+       завжди три чверті екрана, і сусідня картка на нього більше не
+       впливає. Вища за це картка гортає сторінку, а список гортається
+       всередині себе — він і так зі своєю смугою.
+
+       500px лишаються для вузьких екранів, де колонки стають одна під
+       одною й три чверті екрана забрали б усе, що під ними. -->
+  <div class="lg:col-span-3 p-0 flex flex-col min-h-[500px] lg:h-[75vh]">
      <p class="text-[9px] font-black text-muted-dynamic uppercase mb-3 opacity-50">Creatives:</p>
      <div class="relative flex-1 min-h-0">
        <div id="creative-list-sidebar" class="absolute inset-0 space-y-2 overflow-y-auto pr-1 custom-scrollbar"></div>
