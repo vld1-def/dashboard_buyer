@@ -1088,7 +1088,7 @@ window.cdFields = function (n, depth) {
     ? (Math.round(n.clicks / n.imps * 10000) / 100).toFixed(2) + '%' : cdNone;
   return {
     name: cdNameCell(n, depth),
-    status: cdChips(n),
+    status: cdChips(n, depth),
     sw: cdSwitch(n, String(n.name || '').trim()),
     budget: cdBudgetCell(n),
     spend: cdMoney(n.spend),
@@ -1481,9 +1481,33 @@ const cdNone = '<span class="cd-na">—</span>';
    Порожнє замість вигаданого «Active»: рядок зі старого знімка стану не
    знає, і домальовувати йому «все добре» — та сама брехня, що нуль
    замість прочерка. */
-function cdChips(n) {
+/* ВИМКНЕНО ЗВЕРХУ — КАЖЕМО ОДИН РАЗ, А НЕ НА КОЖНОМУ РЯДКУ.
+
+   Facebook дає оголошенням під вимкненою кампанією стан
+   CAMPAIGN_PAUSED, а під вимкненим адсетом — ADSET_PAUSED. Поки ці
+   стани малювались як є, розгорнута вимкнена кампанія виглядала так:
+   сама кампанія «Off», під нею кожен адсет «1 campaign off», під
+   кожним адсетом кожне оголошення «Campaign off». Один і той самий
+   факт, переписаний стільки разів, скільки в кампанії рядків, —
+   причому поруч із рядком, який його вже сказав.
+
+   Тому всередині дерева, де батьківський рядок видно, ці стани
+   стають простим «off»: рядок не крутиться — це лишається, а де
+   шукати вимикач, уже написано вище. Пояснення нікуди не зникло — воно
+   в підказці того ж значка.
+
+   БЕЗ БАТЬКА НАД РЯДКОМ нічого не міняємо: у режимі «тільки
+   оголошення» кампанії на екрані немає, і «Campaign off» там —
+   єдина відповідь на питання, чому воно стоїть. */
+const CD_UPSTREAM = ['CAMPAIGN_PAUSED', 'ADSET_PAUSED'];
+const cdFromAbove = k => CD_UPSTREAM.indexOf(k) >= 0;
+
+function cdChips(n, depth) {
   const ad = n.kind === 'ad';
   const parts = [];
+  /* Чи видно над цим рядком того, хто його вимкнув. depth 0 — це
+     верхній рівень розгортання: над ним лише сам кабінет. */
+  const nested = Number(depth) > 0;
   /* ВЛАСНИЙ СТАН ВУЗЛА — ПЕРШИМ І ЗАВЖДИ. Раніше в кампанії стояв лише
      розклад її оголошень, і вимкнена кампанія з активними оголошеннями
      виглядала робочою: «5 active» — і все. Тепер спершу видно, що
@@ -1493,18 +1517,38 @@ function cdChips(n) {
      цикл намалює те саме. */
   if (!ad && n.own) {
     const st = cdState(n.own);
+    const quiet = nested && st && cdFromAbove(st.k);
     parts.push(st
-      ? { s: st.s, why: st.why, text: st.t, self: true }
+      ? { s: st.s, why: st.why, text: quiet ? 'off' : st.t, self: true }
       : { s: 'wait', why: 'Facebook reports this state',
           text: String(n.own).toLowerCase().replace(/_/g, ' '), self: true });
   }
+  /* Стани, вимкнені рівнем вище, зводимо в одне «off» РАЗОМ із
+     власною паузою: «1 off, 2 campaign off» — це три вимкнені рядки,
+     і рахувати їх окремо означає змусити людину додавати в голові. */
+  let offUp = 0;
   CD_STATE.forEach(st => {
     const cnt = n.state.get(st.k) || 0;
     if (!cnt) return;
+    if (nested && cdFromAbove(st.k)) { offUp += cnt; return; }
     // Один підпис на всі стани: «2 active», «1 rejected», «3 off».
     parts.push({ s: st.s, why: st.why,
       text: ad ? st.t : cnt + ' ' + st.t.toLowerCase() });
   });
+  if (offUp) {
+    const own = parts.find(x => !x.self && /\boff$/.test(x.text));
+    if (own && !ad) {
+      // Уже є «N off» — додаємо до нього, а не ставимо другий значок.
+      const was = parseInt(own.text, 10) || 0;
+      own.text = (was + offUp) + ' off';
+    } else if (!ad) {
+      parts.push({ s: 'off', text: offUp + ' off',
+        why: 'Switched off — the switch is on a row above this one' });
+    } else {
+      parts.push({ s: 'off', text: 'Off',
+        why: 'Switched off — the switch is on a row above this one' });
+    }
+  }
   const other = [...n.state.entries()].filter(([k]) => k && !cdState(k));
   if (other.length) parts.push({ s: 'wait', why: 'Facebook reports this state',
     text: ad ? String(other[0][0]).toLowerCase().replace(/_/g, ' ')

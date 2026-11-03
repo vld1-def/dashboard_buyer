@@ -2169,6 +2169,45 @@ function cabRender() {
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
   cabTreeRepaint(shown);
+  cabFreeze();
+}
+
+/* ═══ КАБІНЕТ І СТАТУС ЛИШАЮТЬСЯ НА МІСЦІ ═══
+
+   Розгорнуте дерево ширше за екран, і таблицю доводиться гортати
+   вбік. Разом із числами їхала й назва кабінета — тобто саме те, до
+   чого ці числа належать. Далі першого екрана читати їх ставало
+   нічим: цифри є, а чиї вони — уже за краєм.
+
+   Зліва лишаються всі клітинки до статусу включно. Межу позначає
+   клас cab-fz-end у розмітці, а не число в стилях: колонка, додана
+   перед статусом, поїде разом з усіма сама собою.
+
+   ВІДСТУПИ РАХУЄМО, А НЕ ЗАДАЄМО. Ширини цих клітинок різні й
+   залежать від вмісту (назва кабінета росте, статус — ні). Жорсткі
+   left у стилях розійшлися б із версткою на першому ж довгому імені,
+   і то МОВЧКИ: стовпці просто налізли б один на одний.
+
+   offsetLeft від прокрутки не залежить — це відстань у самій
+   таблиці, — тож рахувати його можна будь-коли після малювання. */
+function cabFreeze() {
+  const tbl = document.querySelector('#cab-list .cab-tbl');
+  if (!tbl) return;
+  tbl.querySelectorAll('tr').forEach(tr => {
+    const end = tr.querySelector('.cab-fz-end');
+    if (!end) return;
+    let x = 0;
+    for (const cell of tr.children) {
+      cell.classList.add('is-fz');
+      cell.style.left = x + 'px';
+      x += cell.offsetWidth;
+      if (cell === end) break;
+    }
+    /* Остання заморожена — та, що відкидає тінь на прокручуване. Без
+       неї не видно, що праворуч іще щось є, і межа читається як край
+       таблиці. */
+    end.classList.add('is-fz-last');
+  });
 }
 
 /* Таблиця. Набір колонок один — секцій більше немає, бо ділити стало
@@ -2231,7 +2270,13 @@ function cabSection(items) {
       <th class="cab-x"></th>
       ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
       <th class="cab-x" title="Switch campaigns, ad sets and ads on and off"></th>
-      ${th('state', 'Status')}
+      ${/* МЕЖА ЗАМОРОЖЕНОЇ ЧАСТИНИ. Усе до цієї клітинки включно
+           лишається на місці, коли таблицю гортають убік. Позначка
+           стоїть у розмітці, а не числом у стилях: додасться колонка
+           перед статусом — поїде разом з усіма, додасться після —
+           лишиться в прокрутці, і нічого не треба правити у двох
+           місцях. */ ''}
+      ${th('state', 'Status', 'cab-fz-end')}
       ${/* Підпис сталий — «Spend», — а період написаний у підказці.
            Дата в самій шапці міняла ширину стовпця на кожен фільтр, і
            «Oct 1 – Oct 7» розсувало таблицю заради того, що й так
@@ -2245,12 +2290,13 @@ function cabSection(items) {
 
   const block = (name, list2, sync) => {
     const gh = !name ? '' : `<tr class="cab-grp"><td colspan="${COLS}">
+        <span class="cab-grp-in">
           <span class="cab-grp-name">${name}</span>
           <span class="cab-grp-sub">${list2.length} · ${list2.filter(i => i.state === 'running').length} running ·
             ${cabMoney(list2.reduce((a2, i) => a2 + i.x.spend, 0))}</span>
           ${sync && list2.some(i => i.fb) ? `<button class="cab-grp-sync" onclick="cabSyncGroup('${cabEsc(name).replace(/'/g, "\\'")}')"
             title="Ask Facebook about this group only. Faster than the whole park — and the cabinets you did not ask about are left alone, not marked as lost.">↻ sync</button>` : ''}
-          </td></tr>`;
+        </span></td></tr>`;
     return gh + list2.map(c => cabRowHtml(c, COLS)).join('');
   };
 
@@ -2364,7 +2410,7 @@ function cabRowHtml(c, COLS) {
         title="Click to copy">${cabEsc(c.id)}</span></div>
     </td>
     <td class="cab-x"></td>
-    <td><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
+    <td class="cab-fz-end"><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
     <td class="ta-r cab-num cab-today">${today}</td>
     ${cabColsShown().map(cell).join('')}
     <td class="ta-r cab-act">
@@ -2479,7 +2525,7 @@ function cabNodeRow(n, depth, band, cols) {
     <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="5"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
-    <td class="cab-nd-st">${f.status}</td>
+    <td class="cab-nd-st cab-fz-end">${f.status}</td>
     <td class="ta-r cab-num cab-today">${f.spend}</td>
     ${cols.map(col => { const tip = cabNodeTip(f, col.key);
       return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${
