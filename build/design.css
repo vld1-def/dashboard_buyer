@@ -1884,6 +1884,49 @@ body[data-route="reports"] #rb-cols-menu { z-index: 120; }
   transition: color .12s, background .12s;
 }
 .cab-id:hover { color: var(--text-main); background: var(--surface-3); }
+/* ═══ ТОНКІ МЕЖІ МІЖ СТОВПЦЯМИ ═══
+
+   Вісім колонок чисел без жодної вертикалі читаються як одна смуга:
+   око саме домальовує стовпці й помиляється на рядок. Але повна сітка
+   (лінія під кожним рядком плюс між кожним стовпцем) — це вже клітка,
+   у якій числа тонуть.
+
+   Тому вертикаль ледь помітна — половина тону звичайної межі, — і її
+   немає між службовими клітинками зліва: там і так тісно від значків,
+   а розділяти галочку й стрілку нема чого. */
+.cab-tbl th:not(.cab-x) + th:not(.cab-x),
+.cab-tbl td:not(.cab-x) + td:not(.cab-x) {
+  border-left: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+/* Рядок групи — суцільна смуга на всю ширину, ділити в ньому нічого. */
+.cab-grp > td { border-left: 0 !important; }
+
+/* ═══ КАБІНЕТ І СТАТУС НЕ ЇДУТЬ УБІК ═══
+
+   left кожній клітинці проставляє cabFreeze() — ширини тут різні й
+   залежать від вмісту, тож порахувати їх можна лише після верстки.
+
+   ФОН ОБОВʼЯЗКОВИЙ: без нього прокручувані числа просвічували б
+   крізь заморожені клітинки. Беремо той самий, що й у шапки, — вона
+   стоїть над тим самим місцем. */
+.cab-tbl .is-fz { position: sticky; z-index: 2; background: var(--surface); }
+.cab-tbl thead .is-fz { z-index: 6; }
+/* Стани рядка мусять доходити й до замороженої частини, інакше
+   наведення й вибір обриваються рівно по межі прокрутки. Ці правила
+   йдуть ПІСЛЯ базового фону — на однаковій вазі виграє останнє. */
+.cab-tr:hover > td.is-fz { background: var(--surface-2); }
+.cab-tr.is-sel > td.is-fz { background: #241b3d; }
+.cab-tr.is-mk > td.is-fz { background: #1d1a2b; }
+.cab-grp > td.is-fz, .cab-treebar > td.is-fz { background: var(--surface); }
+.cab-node > td.is-fz { background: var(--surface-2); }
+/* Тінь на межі: вона й каже, що праворуч є ще. Без неї заморожена
+   частина читається як край таблиці, і вбік ніхто не гортає. */
+.cab-tbl .is-fz-last { box-shadow: 6px 0 8px -6px rgba(0, 0, 0, .55); }
+/* Назва групи їде б разом із рядком: вона в клітинці на всю ширину,
+   і заморозити її як стовпець не можна. Тримаємо сам підпис. */
+.cab-grp-in { position: sticky; left: 10px; display: inline-flex;
+              align-items: baseline; gap: 0; }
+
 .cab-dim { color: var(--text-muted); font-weight: 600; }
 .cab-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .cab-na { color: var(--text-muted); opacity: .35; }
