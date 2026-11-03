@@ -165,7 +165,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-11-03.1';
+const FN_VERSION = '2026-11-03.2';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -1047,15 +1047,58 @@ async function teamArchived(base: string, hdr: Json, team: string): Promise<Set<
   return new Set<string>();
 }
 
-async function pgUpsert(base: string, hdr: Json, table: string,
-                        onConflict: string, rows: Json[]): Promise<void> {
-  if (!rows.length) return;
+/* ═══ ОДИН ПАКЕТ — ОДИН НАБІР ПОЛІВ ═══
+
+   PostgREST відмовляє всьому пакету, якщо рядки в ньому мають РІЗНІ
+   ключі: PGRST102, «All object keys must match». Одне речення, жодної
+   назви поля й жодного номера рядка.
+
+   А рядки в нас розходяться за побудовою, і навмисно. Кабінет, по
+   якому Facebook не віддав insights, не отримує spend_today — саме
+   щоб не затерти нулем те, чого ми не дізнались. Сусідній кабінет у
+   тому самому токені його отримує. Два таких рядки в одному пакеті —
+   і ВЕСЬ токен не записується.
+
+   Ось чому «глобальна кнопка не оновлює, а поодинці працює»: в
+   одному рядку ключі збігаються самі з собою завжди, і звуженому
+   прогону ця вада не трапляється взагалі. З трьох токенів чотирьох
+   падали саме так.
+
+   ЧОМУ НЕ ДОПОВНИТИ ПОЛЯ ДО СПІЛЬНОГО НАБОРУ. Бракуючі довелось би
+   заповнити null — тобто записати «ми знаємо, що тут порожньо» там,
+   де насправді «ми не дізнались». Це стерло б і витрати, і картку, і
+   все, заради чого рядки й розходяться.
+
+   Тому ділимо пакет на групи з однаковим набором ключів і шлемо
+   кожну окремо. Зазвичай група одна, і це той самий один запит, що
+   й був. */
+function keySig(r: Json): string {
+  return Object.keys(r).sort().join(',');
+}
+
+async function pgPost(base: string, hdr: Json, table: string,
+                      onConflict: string, rows: Json[]): Promise<void> {
   const res = await fetch(base + '/rest/v1/' + table + '?on_conflict=' + onConflict, {
     method: 'POST',
     headers: { ...hdr, Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(rows)
   });
   if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
+}
+
+async function pgUpsert(base: string, hdr: Json, table: string,
+                        onConflict: string, rows: Json[]): Promise<void> {
+  if (!rows.length) return;
+  const groups = new Map<string, Json[]>();
+  for (const r of rows) {
+    const k = keySig(r);
+    const g = groups.get(k);
+    if (g) g.push(r); else groups.set(k, [r]);
+  }
+  /* Порядок груп визначений (Map тримає порядок вставки), тож при
+     однакових даних і запити однакові — інакше розбір помилки
+     залежав би від того, як цього разу лягли ключі. */
+  for (const g of groups.values()) await pgPost(base, hdr, table, onConflict, g);
 }
 
 /* ── журнал змін ──
