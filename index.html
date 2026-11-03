@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 03.11 07:28">
+  <meta name="build" content="build 03.11 07:37">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6644,7 +6644,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 07:28</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 07:37</div>
     </div>
   </aside>
 
@@ -24709,6 +24709,24 @@ window.fbProxyTest = async function (id) {
   }
 };
 
+/* ═══════════ ВІКНО ACCOUNTS — ТІЛЬКИ РУЧНЕ ═══════════
+
+   Тут не лишилось нічого, що міняється саме собою.
+
+   Було три такі речі, і всі три приходили ззовні: позначка
+   «(inactive)» біля кабінета — зі статусу, який віддав Facebook;
+   рядки «Permissions» і «Checked» — зі стану токена, а його переписує
+   КОЖЕН прогін синку. Через це список після синхронізації виглядав
+   інакше, хоч людина його не чіпала, — і вікно, у яке заходять
+   подивитись «що я сюди вписав», відповідало чимось іншим.
+
+   Лишається те, що поставила рука: номер кабінета, назва, з якою його
+   завели, і браузер із твого рядка в кабінетах. Сам список теж
+   ручний: його пише збереження токена й кнопка Check, і більше ніхто.
+
+   Стан токена нікуди не подівся — він у самому рядку списку, разом із
+   кружечком, приміткою і «checked …». Там йому й місце: там на нього
+   дивляться, коли питання саме про стан. */
 window.fbShow = function (id) {
   const r = fbRows.find(x => x.id === id);
   if (!r) return;
@@ -24721,18 +24739,17 @@ window.fbShow = function (id) {
   const pad = (v, n) => String(v == null ? '' : v).padEnd(n);
   const line = a => pad(a.id, wId) + '  '
     + pad(fbBrowserOf(a.id) || '\u2014', wBr) + '  '
-    + (a.name || '') + (a.status === 'active' ? '' : '  (inactive)');
+    + (a.name || '');
   tell(r.label,
-      `Permissions: ${(r.scopes || []).join(', ') || '—'}\n`
-    + `Checked: ${r.checked_at ? new Date(r.checked_at).toLocaleString() : '—'}\n\n`
-    + (accs.length
-        ? 'Ad accounts:\n'
-          + pad('ID', wId) + '  ' + pad('BROWSER', wBr) + '  NAME\n'
-          + accs.map(line).join('\n')
-          + '\n\nThe browser is what you typed in for that cabinet, and nothing else: '
-          + 'a dash means it is not filled in there yet. Nothing here is guessed from '
-          + 'the token name.'
-        : 'No ad accounts visible.\n\nMost common cause: the system user has no Ad Accounts assigned in Business Settings → Add Assets.'));
+    (accs.length
+      ? 'Ad accounts:\n'
+        + pad('ID', wId) + '  ' + pad('BROWSER', wBr) + '  NAME\n'
+        + accs.map(line).join('\n')
+        + '\n\nNothing here updates on its own. The list is what the token saw when '
+        + 'you last saved it or pressed Check; the browser is what you typed in for '
+        + 'that cabinet, and a dash means it is not filled in there yet.'
+      : 'No ad accounts visible.\n\nMost common cause: the system user has no Ad '
+        + 'Accounts assigned in Business Settings \u2192 Add Assets.'));
 };
 
 window.fbDrop = async function (id) {
