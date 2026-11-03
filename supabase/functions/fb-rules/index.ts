@@ -24,14 +24,37 @@
    насправді ллє. Усе, що ми рахуємо, приходить у тій самій відповіді,
    що й спенд, тобто одного віку з ним.
 
-   ЗВІДКИ ЦІ ЦИФРИ БЕРУТЬСЯ. Не звідси. Їх складає fb-sync у fb_ad_today
-   тим самим пакетом, яким обходить кабінети: список оголошень він тягнув
-   і до правил — заради статусів і Сторінок, — тож цифри доїхали одним
-   підзапитом, а не окремим обходом парку. Ця функція читає готове.
+   ЗВІДКИ ЦІ ЦИФРИ БЕРУТЬСЯ. Тепер — із самого Facebook, по одному
+   запиту на кабінет, і тільки по тих кабінетах, де є ввімкнене правило.
 
-   Отже до Facebook вона іде РІВНО один раз і рівно щоб вимкнути. Свіжість
-   знімка перевіряє сама: застарів — не діє й каже про це, бо вимикати за
-   годинними числами означало б гасити те, що вже виправили.
+   Довго ця функція читала знімок fb_ad_today, який пише fb-sync. Поки
+   синк ходив за розкладом, це було чесно. Коли кабінети стали
+   оновлюватись лише руками, вийшло ось що: правило судило по числах
+   від останнього Sync now, вимикало оголошення — і НІДЕ ЦЬОГО НЕ
+   ЗАПИСУВАЛО. Через чверть години воно читало той самий рядок, бачило
+   ті самі цифри до цента, вимикало вже вимкнене і писало в Telegram
+   ще раз. І ще. Поки знімок не старішав на дев'яносто хвилин.
+
+   Повторні повідомлення були лише симптомом. Справжня вада глибша:
+   рішення вимкнути рекламу ухвалювалось по даних, вік яких ніхто не
+   обирав. «Свіжість знімка» ми перевіряли, але перевірка на 90 хвилин
+   означає, що діяти по годинних числах — нормально. Для рішення, яке
+   не можна відкотити автоматично, це не нормально.
+
+   Тому правило бере числа САМЕ, у момент рішення. Це НЕ повернення
+   розкладу fb-sync: синк — великий обхід (Сторінки, креативи, бани,
+   стани, картинки), і він лишається ручним. Тут — один вузький запит
+   за активними оголошеннями й витратами за сьогодні, рівно по тих
+   кабінетах, які правило й так збиралось судити.
+
+   ЗНІМОК ЛИШАЄТЬСЯ ЗАПАСНИМ АЕРОДРОМОМ. Facebook відмовив — краще
+   судити по знімку з його перевіркою на вік, ніж осліпнути. Але тоді
+   це видно: і в журналі прогону, і в підписі повідомлення.
+
+   А ще після кожного вдалого вимкнення правило позначає рядок у
+   знімку як PAUSED. Живі дані й так не покажуть вимкнене вдруге, але
+   на запасному аеродромі ця позначка — єдине, що відрізняє «вимкнули
+   зараз» від «вимкнули п'ятнадцять хвилин тому».
 
    Розгортання:
      supabase functions deploy fb-rules
@@ -44,15 +67,23 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-10';
+const FN_VERSION = 'rules-11';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
 /* Наскільки старим може бути знімок, щоб на нього ще можна було
-   спиратись. fb-sync освіжає його щопівгодини вдень і раз на годину
-   вночі, тож 90 хвилин — це «синхронізація пропустила один прогін»,
-   а не «дані вчорашні». Старіше — не діємо: вимкнути оголошення за
-   годинними числами означає гасити те, що людина вже виправила. */
+   спиратись.
+
+   Це межа ЗАПАСНОГО аеродрому, і тільки його: у звичайному прогоні
+   числа беруться просто з Facebook, і вік їм ніхто не рахує, бо він
+   нульовий. Сюди потрапляють лише ті кабінети, по яких Facebook
+   відмовив.
+
+   Знімок пише fb-sync, а він ходить ЛИШЕ РУКАМИ — отже «свіжий
+   знімок» тут означає «нещодавно натискали Sync now», і нічого
+   більше. Старіше за дев'яносто хвилин — не діємо зовсім: вимкнути
+   оголошення за годинними числами означає гасити те, що людина вже
+   виправила. */
 const SNAP_MAX_AGE_MS = 90 * 60_000;
 // Окремою функцією, щоб це рішення можна було перевірити тестом, а не
 // вірити йому на слово: воно вирішує, діяти чи не діяти взагалі.
@@ -585,6 +616,102 @@ async function snapOf(base: string, hdr: Json, account: string, leadActions: str
   return { ents, age: newest ? Date.now() - newest : Infinity };
 }
 
+/* ═══════════ ЧИСЛА З FACEBOOK, У МОМЕНТ РІШЕННЯ ═══════════
+
+   Той самий запит, яким їх бере fb-sync, тільки вужчий: йому список
+   оголошень потрібен ще й заради статусів, Сторінок і бюджетів, нам —
+   рівно заради цифр.
+
+   ТІЛЬКИ ACTIVE, і це ключове для повторів: щойно правило вимкнуло
+   оголошення, Facebook більше не віддасть його в цьому списку. Тобто
+   «не діяти двічі на одному й тому самому» тут не окрема перевірка з
+   власними вадами, а наслідок того, звідки беруться дані.
+
+   date_preset(today) рахується в часовому поясі САМОГО КАБІНЕТА — так
+   само, як у синку. Свій зсув ми не рахуємо: «сьогодні» для кабінета
+   визначає Facebook, і два різні «сьогодні» на одні цифри — найгірше,
+   що тут можна зробити.
+
+   actions лишаємо сирими: що саме вважати лідом — налаштування
+   правила, і воно міняється без нового походу в Facebook. */
+const LIVE_LIMIT = 500;
+const LIVE_FIELDS = 'name,adset_id,campaign_id,adset{name},campaign{name},'
+                  + 'insights.date_preset(today){spend,impressions,clicks,'
+                  + 'inline_link_clicks,actions}';
+
+async function liveOf(token: string, account: string, leadActions: string[],
+                      note: (s: string) => void): Promise<Ent[]> {
+  /* ТОКЕН ЗАГОЛОВКОМ, А НЕ В АДРЕСІ. Graph приймає обидва способи, але
+     адреса — це те, що осідає в логах проксі, у повідомленнях про
+     помилки й у трасуванні. Токен, який уміє вимикати рекламу, не має
+     лежати в рядку, який хтось колись надрукує цілком. */
+  const url = GRAPH + '/act_' + encodeURIComponent(account) + '/ads'
+    + '?effective_status=' + encodeURIComponent(JSON.stringify(['ACTIVE']))
+    + '&limit=' + LIVE_LIMIT
+    + '&fields=' + encodeURIComponent(LIVE_FIELDS);
+  const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  const j = await res.json().catch(() => null);
+  if (!res.ok || !j || j.error)
+    throw new Error(String(j?.error?.message || 'HTTP ' + res.status));
+  const data: Json[] = Array.isArray(j.data) ? j.data : [];
+  /* СТЕЛЯ, ПРО ЯКУ ЧУТНО. Сторінок більше однієї ми не беремо — за
+     п'ятьмастами активними оголошеннями в одному кабінеті стоїть або
+     дуже великий кабінет, або безлад, і в обох випадках мовчки судити
+     перші п'ятсот означає, що решта просто не існує для правил. */
+  if (j.paging?.next)
+    note(account + ': more than ' + LIVE_LIMIT + ' active ads — judged the first '
+       + LIVE_LIMIT + ', the rest were not looked at');
+  return data.map(r => {
+    const row: Json = ((r.insights as Json)?.data || [])[0] || {};
+    /* aggOf читає link_clicks, а Facebook віддає inline_link_clicks.
+       Перейменовуємо тут, щоб розбір чисел лишався ОДИН на обидва
+       джерела: дві копії цієї арифметики розійшлись би на першій же
+       новій метриці, і розійшлись би тихо. */
+    return { id: String(r.id || ''), name: String(r.name || ''), level: 'ad', account,
+             adset: String(r.adset_id || ''),
+             adsetName: String((r.adset as Json)?.name || ''),
+             campaign: String(r.campaign_id || ''),
+             campaignName: String((r.campaign as Json)?.name || ''),
+             agg: aggOf({ ...row, link_clicks: row.inline_link_clicks }, leadActions) };
+  });
+}
+
+/* ПОЗНАЧКА ПРО ВИМКНЕНЕ У ЗНІМКУ.
+
+   Живий список вимкненого вже не віддасть, тож для звичайного прогону
+   ця позначка нічого не змінює. Вона потрібна рівно тоді, коли
+   Facebook відмовив і правило судить по знімку: без неї запасний
+   аеродром повторює стару ваду — ті самі цифри, те саме вимкнення, те
+   саме повідомлення кожні чверть години.
+
+   Колонки може не бути (SQL-блок не виконали) — тоді позначити нічим,
+   і це не привід валити прогін. Але й не привід мовчати: про це
+   скаже рядок у problems. */
+async function markPaused(base: string, hdr: Json, hits: Hit[]): Promise<string> {
+  const done = hits.filter(h => h.ok && !h.dry && h.acted);
+  if (!done.length) return '';
+  const col = (lv: string) => lv === 'adset' ? 'adset_id'
+                            : lv === 'campaign' ? 'campaign_id' : 'ad_id';
+  let err = '';
+  for (const h of done) {
+    try {
+      const res = await fetch(base + '/rest/v1/fb_ad_today'
+        + '?' + col(h.level) + '=eq.' + encodeURIComponent(h.id)
+        + '&account_id=eq.' + encodeURIComponent(h.account), {
+        method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
+        body: JSON.stringify({ effective_status: 'PAUSED' })
+      });
+      if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
+    } catch (e) {
+      const m = String((e as Error).message || '');
+      err = /effective_status/i.test(m)
+        ? 'the snapshot has no effective_status column — run block 1 of FB_RULES.sql'
+        : m;
+    }
+  }
+  return err;
+}
+
 /* Сутності того рівня, на якому працює правило.
 
    НАЗВУ БЕРЕМО СПРАВЖНЮ. Раніше тут стояла назва ПЕРШОГО оголошення
@@ -634,6 +761,11 @@ type Hit = { rule: string; ruleName: string; level: string; id: string; name: st
                 а не тому, що йому заборонено. Різні речі, і підпис у
                 Telegram мусить їх розрізняти. */
              preview: boolean;
+             /* НА ЧОМУ УХВАЛЕНО. false — числа взяті просто з Facebook;
+                true — Facebook відмовив, і судили по знімку. Вимкнення
+                по годинних числах і по хвилинних — різні за вагою
+                новини, і людина мусить бачити, яка з них перед нею. */
+             fromSnap: boolean;
              /* Фільтр гео правила і те, ЧИЯ назва під нього підійшла.
                 Порожній список означає «будь-яке гео» — і саме це
                 найчастіше й дивує: правило з назвою «BR CLICK» без
@@ -701,6 +833,7 @@ async function logRun(base: string, hdr: Json, seen: Map<string, RunSeen>,
     rule_id: null, rule_name: null, level: 'run',
     entity_id: null, entity_name: null, account_id: null,
     metrics: { cabinets: v.cabs, ads: v.ads, stale: v.stale,
+               live: v.live, fell_back: v.fell,
                paused: v.paused, would: v.would, rules: v.rules, cron },
     dry: true, ok: true, error: null
   }));
@@ -713,6 +846,9 @@ async function logRun(base: string, hdr: Json, seen: Map<string, RunSeen>,
 }
 
 type RunSeen = { team: string; cabs: number; ads: number; stale: number;
+                 /* live — кабінети з числами просто з Facebook,
+                    fell — ті, де Facebook відмовив і судили по знімку. */
+                 live: number; fell: number;
                  paused: number; would: number; rules: number };
 
 /* Журнал. Таблиці може ще не бути — це не привід нічого не робити:
@@ -938,6 +1074,20 @@ function tgText(hits: Hit[]): string {
                 failed ? '⚠ ' + failed + ' не вдалось' : '']
     .filter(Boolean).join(' · ') + '\n\n';
 
+  /* ЗВІДКИ ЧИСЛА — тільки коли вони НЕ свіжі.
+
+     Дописувати «за свіжими даними» до кожного повідомлення означало б
+     привчити не читати цей рядок, і тоді єдиний раз, коли він справді
+     щось означає, його теж не прочитають. Тож мовчимо, поки все як
+     має бути, і кажемо, коли ні. */
+  const old = hits.filter(h => h.fromSnap).length;
+  const note = old
+    ? '\u26A0 ' + (old === hits.length
+        ? 'Числа з останнього Sync now'
+        : old + ' із них — за числами з останнього Sync now')
+      + ': Facebook не віддав свіжі.\n\n'
+    : '';
+
 
   /* Підпис рахуємо В стелю, а не поверх неї. Раніше його дописували
      після обрізання — і повідомлення, що тільки-но влізло, разом із
@@ -948,7 +1098,7 @@ function tgText(hits: Hit[]): string {
      групи, викинутий сам по собі, лишив би заголовок без того, що під
      ним, або число без пояснення. */
   let keep = hits.slice(0, TG_MAX);
-  const build = (list: Hit[]) => head + tgBody(list)
+  const build = (list: Hit[]) => head + note + tgBody(list)
     + (hits.length > list.length ? '\n\n…і ще ' + (hits.length - list.length) : '');
   while (keep.length > 1 && build(keep).length > TG_LIMIT) keep = keep.slice(0, -1);
   return build(keep);
@@ -1055,6 +1205,11 @@ Deno.serve(async (req) => {
   const problems: string[] = [];
   const hits: Hit[] = [];
   let scanned = 0, cabinets = 0, stale = 0;
+  /* Скільки кабінетів судили по живих числах, і по яких довелось
+     повернутись до знімка. Друге — не дрібниця у звіті: саме воно
+     відповідає на «чому правило вимкнуло те, що я вже виправив». */
+  let live = 0;
+  const fellBack = new Set<string>();
   /* Слід про прогін — по власниках правил. Див. logRun. */
   const seen = new Map<string, RunSeen>();
 
@@ -1079,7 +1234,7 @@ Deno.serve(async (req) => {
        потрібен. */
     const seenOf = (team: string): RunSeen => {
       let v = seen.get(tokenOwner);
-      if (!v) { v = { team, cabs: 0, ads: 0, stale: 0, paused: 0, would: 0,
+      if (!v) { v = { team, cabs: 0, ads: 0, stale: 0, live: 0, fell: 0, paused: 0, would: 0,
                       rules: ours.length }; seen.set(tokenOwner, v); }
       if (!v.team && team) v.team = team;
       return v;
@@ -1103,27 +1258,48 @@ Deno.serve(async (req) => {
       const mySeen = seenOf(String(a.team_name || t.team_name || ''));
       mySeen.cabs++;
 
-      let ads: Ent[];
+      /* СПЕРШУ FACEBOOK. Запит вузький і рівно по цьому кабінету: ті,
+         де немає ввімкненого правила, відсіялись вище й у Facebook не
+         йдуть узагалі. */
+      let ads: Ent[] | null = null;
       try {
-        const snap = await snapOf(base, hdr, account, leads);
-        if (snapTooOld(snap.age, maxAge)) {
-          /* Не діємо й кажемо чому. Мовчання тут було б найгіршим:
-             виглядало б як «правила не працюють», а шукали б причину
-             в правилах, а не в синхронізації. */
-          stale++;
-          mySeen.stale++;
-          problems.push(account + ': the snapshot is '
-            + (snap.age === Infinity ? 'missing' : Math.round(snap.age / 60000) + ' min old')
-            + ', older than the ' + Math.round(maxAge / 60000) + ' min this sync pace allows'
-            + ' — press Sync now on Cabinets, or check the fb-sync schedule');
+        ads = await liveOf(String(t.token), account, leads, m => problems.push(m));
+        mySeen.live++;
+        live++;
+      } catch (e) {
+        /* Відмова Facebook — не привід осліпнути: знімок із його
+           перевіркою на вік кращий за ніщо. Але судити по ньому
+           МОВЧКИ не можна — інакше «правила вимкнули по свіжому» і
+           «правила вимкнули по годинному» виглядають однаково. */
+        fellBack.add(account);
+        mySeen.fell++;
+        problems.push(account + ': Facebook did not give the numbers ('
+          + (e as Error).message + ') — judging by the last snapshot instead');
+      }
+
+      /* ЗАПАСНИЙ АЕРОДРОМ — знімок, який пише fb-sync. */
+      if (!ads) {
+        try {
+          const snap = await snapOf(base, hdr, account, leads);
+          if (snapTooOld(snap.age, maxAge)) {
+            /* Не діємо й кажемо чому. Мовчання тут було б найгіршим:
+               виглядало б як «правила не працюють», а шукали б причину
+               в правилах, а не в даних. */
+            stale++;
+            mySeen.stale++;
+            problems.push(account + ': the snapshot is '
+              + (snap.age === Infinity ? 'missing' : Math.round(snap.age / 60000) + ' min old')
+              + ', older than the ' + Math.round(maxAge / 60000) + ' min allowed'
+              + ' — press Sync now on Cabinets');
+            continue;
+          }
+          ads = snap.ents;
+        } catch (e) {
+          const msg = (e as Error).message;
+          problems.push(account + ': ' + (/fb_ad_today|does not exist|42P01/i.test(msg)
+            ? 'no snapshot table yet — run FB_RULES.sql' : msg));
           continue;
         }
-        ads = snap.ents;
-      } catch (e) {
-        const msg = (e as Error).message;
-        problems.push(account + ': ' + (/fb_ad_today|does not exist|42P01/i.test(msg)
-          ? 'no snapshot table yet — run FB_RULES.sql' : msg));
-        continue;
       }
       scanned += ads.length;
       mySeen.ads += ads.length;
@@ -1158,7 +1334,8 @@ Deno.serve(async (req) => {
                       name: e.name, account, campaignName: e.campaignName,
                       owner: String(t.created_by || ''), team: String(a.team_name || t.team_name || ''),
                       agg: e.agg, dry: forceDry || r.dry, ok: false, error: '', acted: false,
-                      preview: forceDry, why: whyHit(r, e.agg),
+                      preview: forceDry, fromSnap: fellBack.has(account),
+                      why: whyHit(r, e.agg),
                       geos: r.geo.slice(),
                       geoIn: gw ? gw.code + ' \u2190 ' + gw.what + ' «' + gw.name + '»' : '' });
         });
@@ -1166,8 +1343,12 @@ Deno.serve(async (req) => {
     }
 
     // Вимикаємо токеном, який це бачить: чужим не вийде.
-    await pauseAll(String(t.token), hits.filter(h =>
-      accs.some(a => String(a.account_id) === h.account)));
+    const mineNow = hits.filter(h => accs.some(a => String(a.account_id) === h.account));
+    await pauseAll(String(t.token), mineNow);
+    /* Позначаємо вимкнене у знімку. Живий список його й так більше не
+       віддасть — це для прогонів, що впали на запасний аеродром. */
+    const markErr = await markPaused(base, hdr, mineNow);
+    if (markErr) problems.push(t.label + ': ' + markErr);
   }
 
   /* Що зробили — по власниках, щоб слід про прогін ніс саме його
@@ -1194,6 +1375,10 @@ Deno.serve(async (req) => {
     // Кабінети, які пропустили через застарілий знімок — щоб «нічого не
     // вимкнулось» не читалось як «правила не спрацювали».
     stale,
+    /* По скількох кабінетах числа взяті просто з Facebook, і по
+       скількох довелось судити по знімку. Без цих двох чисел відповідь
+       «правила працюють» нічого не каже про те, на чому вони працюють. */
+    live, fell_back: [...fellBack],
     paused: hits.filter(h => !h.dry && h.ok).length,
     would_pause: hits.filter(h => h.dry).length,
     failed: hits.filter(h => !h.dry && !h.ok).length,

@@ -168,11 +168,22 @@ function rlRunPaint() {
     ? ' \u00b7 <b class="rl-run-warn">' + n(m.stale)
       + ' skipped: the snapshot was too old</b>'
     : '';
+  /* НА ЧОМУ СУДИЛИ. Правило бере числа просто з Facebook; коли він
+     відмовив, воно судить по знімку, який лишив останній Sync now.
+     Мовчати про це не можна: «вимкнули по свіжому» і «вимкнули по
+     годинному» — різні за вагою новини, а виглядали б однаково.
+
+     Кажемо тільки про відкат. Дописувати «за свіжими даними» до
+     кожного прогону означало б привчити не читати цей рядок. */
+  const fell = n(m.fell_back)
+    ? ' \u00b7 <b class="rl-run-warn">' + n(m.fell_back)
+      + ' judged on the last snapshot: Facebook refused</b>'
+    : '';
   const did = n(m.paused) ? ' \u00b7 ' + n(m.paused) + ' switched off'
     : n(m.would) ? ' \u00b7 ' + n(m.would) + ' reported'
     : ' \u00b7 nothing matched';
   box.innerHTML = '<p class="rl-run-ok">\u2713 Checked <b>' + when + '</b>: '
-    + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + stale
+    + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + fell + stale
     + (mins > 90
         ? ' \u2014 <b class="rl-run-warn">that is a while ago; the schedule may have'
           + ' stopped</b>'

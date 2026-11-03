@@ -148,4 +148,26 @@ ok('правила ходять щочверть години', /'12,27,42,57 \*
 ok('і через пʼять хвилин після синку',
   /fb-sync ходить о 7, 22, 37 і 52/.test(SQL), '');
 
+/* ── НА ЧОМУ СУДИЛИ ──
+
+   Правило бере числа просто з Facebook. Коли він відмовив, воно
+   судить по знімку від останнього Sync now — і саме тоді повертається
+   стара вада з повторами. Рядок прогону мусить це показувати, бо
+   інакше «вимкнули по свіжому» й «вимкнули по годинному» виглядають
+   однаково. */
+const runWith = m => page.evaluate(mm => {
+  rlRuns = [{ at: new Date().toISOString(), metrics: mm }];
+  rlRunPaint();
+  return document.getElementById('rl-run').textContent.replace(/\s+/g, ' ').trim();
+}, m);
+
+const fresh = await runWith({ cabinets: 3, ads: 40, live: 3, fell_back: 0, paused: 1 });
+ok('по свіжих числах про знімок не згадують',
+  !/snapshot/i.test(fresh), fresh);
+const fell = await runWith({ cabinets: 3, ads: 40, live: 1, fell_back: 2, paused: 1 });
+ok('а відкат до знімка видно, і скільки саме',
+  /2 judged on the last snapshot/.test(fell), fell);
+ok('і він позначений як попередження',
+  await page.evaluate(() => !!document.querySelector('#rl-run .rl-run-warn')));
+
 await done(browser, srv, errs);
