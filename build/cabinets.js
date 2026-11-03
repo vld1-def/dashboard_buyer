@@ -3018,8 +3018,12 @@ async function cabWrite(id, patch) {
     return 'the row was not saved — it is not yours, or it belongs to another team (id ' + id + ')';
   /* Той самий рядок лежить ще й в accRows — окремому кеші вікна
      Accounts. Лишити його старим означає, що дві частини сторінки
-     думають про кабінет різне, а журнал акуратно записує цю розбіжність
-     як подію. Саме так архів і «змінював статус» сам собою. */
+     думають про кабінет різне.
+
+     Статус вікно більше звідси не читає: у нього власна колонка
+     acc_status, і сторінка кабінета її не чіпає. Але в рядку є й
+     спільне — агент, браузер, БМ, нотатка, — і ось його кеш мусить
+     бачити таким, яким воно щойно стало. */
   if (typeof accRows !== 'undefined' && Array.isArray(accRows)) {
     const twin = accRows.find(r => String(r.id) === String(id));
     if (twin) Object.assign(twin, patch);

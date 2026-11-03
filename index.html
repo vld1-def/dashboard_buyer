@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 03.11 08:33">
+  <meta name="build" content="build 03.11 08:57">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5002,6 +5002,28 @@ button.aq-v-pick:hover { border-color: var(--accent); color: var(--accent); }
 /* ── ВІКНО ACCOUNTS ──
    Плитки й рядки на поверхнях дизайну. Colour лишається рівно там, де
    він щось означає: число стану й вибрана кнопка стану. */
+/* СМУЖКА «СТАТУСИ ЩЕ СПІЛЬНІ».
+
+   Бурштин, а не червоне: вікно працює, нічого не зламано — просто
+   працює по старій спільній колонці, і це треба знати. Червоним тут
+   була б тривога не за розміром. */
+.acc-warn {
+  margin-bottom: 10px; padding: 9px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+  font-size: 11px; font-weight: 700; line-height: 1.55;
+  color: var(--text-main);
+}
+.acc-warn b { color: var(--warn); }
+/* SQL — моноширинним і окремим блоком: його копіюють цілим рядком, а
+   не читають як частину речення. */
+.acc-warn code {
+  display: block; margin-top: 6px; padding: 6px 8px; border-radius: 8px;
+  background: rgba(0, 0, 0, .3); font-family: ui-monospace, monospace;
+  font-size: 10.5px; font-weight: 700; color: var(--ok);
+  overflow-x: auto; white-space: nowrap; user-select: all;
+}
+
 /* ПЛИТКИ В ОДИН РЯДОК, СКІЛЬКИ Б ЇХ НЕ БУЛО.
 
    Було repeat(4, 1fr) — рівно під чотири наявні. Варто було додати
@@ -6644,7 +6666,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 08:33</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 08:57</div>
     </div>
   </aside>
 
@@ -22955,30 +22977,56 @@ async function uqRun() {
 }
 
 // ===== ACCOUNTS · статуси кабінетів =====
-// Status живе в accounts_mapping.status: active | ban | problem.
-// Колонок може ще не бути в базі — тоді показуємо підказку з SQL, а не падаємо.
-/* СЛОВНИК СТАНІВ ТУТ МУСИТЬ ЗБІГАТИСЯ З ТИМ, ЩО В КАБІНЕТАХ.
+/* ВЛАСНА КОЛОНКА, А НЕ СПІЛЬНА ЗІ СТОРІНКОЮ КАБІНЕТІВ.
 
-   Архіву тут не було — і кабінет, відправлений в архів на сторінці
-   Cabinets, у цьому вікні ставав «Активним»: невідомий статус
-   мовчки підмінявся на active. Тобто архів справді «жив своїм
-   життям»: на одному екрані кабінет прибраний, на іншому в роботі,
-   та ще й кнопка «Active» стояла підсвіченою — один випадковий
-   клік, і архів зникав уже й у базі.
+   Довго це вікно й сторінка Cabinets писали статус в ОДНУ колонку —
+   accounts_mapping.status. Той самий рядок, те саме поле. Тому
+   масовий архів, зроблений у Cabinets, приходив сюди; слова archive
+   вікно не знало й мовчки підміняло його на active. Account,
+   прибраний в архів, стояв тут «Активним», та ще й із підсвіченою
+   кнопкою «Active» — один випадковий клік, і архів зникав уже й
+   у базі.
 
-   Слова ті самі, що на сторінці кабінета (OK / Issue / Ban /
-   Archive), бо це той самий рядок accounts_mapping.status. Два
-   словники на одну колонку — це два різні уявлення про те саме,
-   і рано чи пізно вони розходяться. */
+   Перейменовувати архів ми вже перестали. Але показувати його тут —
+   означає, що вікно далі залежить від того, що роблять у Cabinets, а
+   просили рівно протилежного: тільки ручний режим.
+
+   Тому в вікна тепер СВОЄ поле — acc_status. Cabinets пише status,
+   вікно пише acc_status, і жодне не чіпає чуже.
+
+   ЦІНА НАЗВАНА ВГОЛОС: один кабінет тепер може мати два різні
+   статуси — «бан» у Cabinets і «активний» тут. Це не вада, а те, що
+   просили: два екрани — два судження. Але знати про це треба, бо
+   шукати тут бан, поставлений у Cabinets, після цього безглуздо.
+
+   Колонки може ще не бути — тоді вікно читає стару спільну і КАЖЕ ПРО
+   ЦЕ смужкою над списком. Працювати по-старому мовчки означало б, що
+   «міграцію виконано» і «не виконано» виглядають однаково. */
+const ACC_OWN = 'acc_status';
+
+/* Кнопки — це те, що вікно вміє ПОСТАВИТИ. Архіву серед них немає:
+   архівують на сторінці Cabinets, і кнопка, яка писала б архів у
+   власну колонку вікна, завела б третій архів, про який не знає
+   ніхто. */
 const ACC_STATUS = {
   active:  { label: 'Active', tone: 'var(--ok)' },
   ban:     { label: 'Ban',      tone: 'var(--bad)' },
-  problem: { label: 'Issue', tone: 'var(--warn)' },
-  archive: { label: 'Archive',    tone: 'var(--text-muted)' }
+  problem: { label: 'Issue', tone: 'var(--warn)' }
+};
+
+/* А це — слова, яких вікно не ставить, але які може ПОБАЧИТИ: у
+   старій спільній колонці, поки міграції немає. Показуємо їх своїм
+   іменем, а не чужим: архів, названий «активом», уже коштував нам
+   цієї вади. */
+const ACC_SEEN = {
+  archive: { label: 'Archive', tone: 'var(--text-muted)' }
 };
 let accRows = [];
 let accTeam = '';          // для якої команди лежить кеш
 let accHasStatusCol = true;
+/* Чи є у вікна власна колонка. false — читаємо спільну, і це видно. */
+let accOwnCol = true;
+const accCol = () => accOwnCol ? ACC_OWN : 'status';
 
 /* ВЧОРАШНІЙ СПЕНД — ЩОБ ВИДНО БУЛО, ЯКИЙ КАБІНЕТ У РОБОТІ.
 
@@ -23035,7 +23083,7 @@ function accFillMonths() {
   const was = sel.value;
   const months = [...new Set(accRows.map(accMonthOf).filter(Boolean))].sort().reverse();
   const n = m => accRows.filter(r => accMonthOf(r) === m).length;
-  sel.innerHTML = '<option value="">All місяці</option>'
+  sel.innerHTML = '<option value="">All months</option>'
     + months.map(m => `<option value="${m}">${
         ACC_MON[Number(m.slice(5)) - 1]} ${m.slice(0, 4)} · ${n(m)}</option>`).join('');
   // Місяця більше немає серед дат — фільтр по ньому показував би вічну
@@ -23060,6 +23108,9 @@ async function openAccountsModal() {
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
     accTeam = currentTeam;
     accHasStatusCol = !accRows.length || 'status' in accRows[0];
+    /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
+       є, тож наявність поля в рядку — це і є відповідь. */
+    accOwnCol = !accRows.length || ACC_OWN in accRows[0];
   } catch (e) {
     // З кешем на екрані помилка фонового оновлення не має стирати список —
     // краще трохи застарілі дані, ніж порожнє вікно.
@@ -23079,19 +23130,27 @@ function closeAccountsModal() { document.getElementById('accounts-modal').classL
    рядків, заведених до міграції, його просто немає, і 'active' для
    них не здогадка, а те, як їх читає решта дашборда. */
 function accStatusOf(r) {
-  return String(r.status || 'active').toLowerCase().trim() || 'active';
+  return String(r[accCol()] || 'active').toLowerCase().trim() || 'active';
 }
-const accStatusLook = k => ACC_STATUS[k]
+const accStatusLook = k => ACC_STATUS[k] || ACC_SEEN[k]
   || { label: k, tone: 'var(--text-muted)', odd: true };
 
+/* Пишемо В ТУ Ж КОЛОНКУ, З ЯКОЇ ЧИТАЛИ.
+
+   Інакше вийшло б найгірше з двох світів: на екрані власний статус, у
+   базі спільний — тобто клік у цьому вікні знову міняв би те, що
+   бачать у Cabinets. Одна функція accCol() на читання й на запис і
+   робить це неможливим. */
 async function accSetStatus(id, status) {
   const row = accRows.find(r => String(r.id) === String(id));
   if (!row) return;
-  const prev = row.status;
-  row.status = status;
+  const col = accCol();
+  const prev = row[col];
+  row[col] = status;
   renderAccountsModal();
-  const { error } = await sb.from('accounts_mapping').update({ status }).eq('id', id);
-  if (error) { row.status = prev; renderAccountsModal(); alert('Could not save the status: ' + error.message); }
+  const { error } = await sb.from('accounts_mapping')
+    .update({ [col]: status }).eq('id', id);
+  if (error) { row[col] = prev; renderAccountsModal(); alert('Could not save the status: ' + error.message); }
 }
 
 async function accSetNote(id, note) {
@@ -23202,6 +23261,19 @@ function renderAccountsModal() {
     return;
   }
 
+  /* МІГРАЦІЇ ЩЕ НЕМАЄ — і це мусить бути видно.
+
+     Вікно працює, читаючи стару спільну колонку: краще робочий
+     список зі смужкою, ніж стіна з SQL замість нього. Але без
+     смужки «статуси вже розділені» і «ще спільні» виглядали б
+     однаково, а різниця між ними — рівно та вада, з якої все
+     почалось. */
+  const warn = accOwnCol ? '' : `<div class="acc-warn">
+      <b>Statuses here are still shared with Cabinets.</b>
+      The database has no acc_status column yet, so this window reads the same one as the Cabinets page — and the archive from it shows up here. Run this in Supabase → SQL Editor:
+      <code>ALTER TABLE public.accounts_mapping ADD COLUMN IF NOT EXISTS acc_status text;</code>
+    </div>`;
+
   const counts = {};
   Object.keys(ACC_STATUS).forEach(k => counts[k] = 0);
   accRows.forEach(r => { const k = accStatusOf(r); counts[k] = (counts[k] || 0) + 1; });
@@ -23236,10 +23308,14 @@ function renderAccountsModal() {
      яка каже 40, і список на 32 — це дві різні правди на одному
      екрані. Archive має власну плитку й власне число. */
   const live = accRows.filter(r => accStatusOf(r) !== 'archive').length;
-  sumEl.innerHTML = `<div class="acc-tiles">
+  /* Чужий стан показуємо ЙОГО ІМЕНЕМ, якщо воно нам відоме: плитка
+     «archive» латиницею серед підписаних плиток читалась би як збій,
+     а не як архів зі сторінки Cabinets. */
+  sumEl.innerHTML = warn + `<div class="acc-tiles">
     ${tile('', 'All', '', live)}
     ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k] || 0)).join('')}
-    ${odd.map(k => tile(k, k, 'color:var(--text-muted)', counts[k])).join('')}
+    ${odd.map(k => { const s = accStatusLook(k);
+        return tile(k, s.label, 'color:' + s.tone, counts[k]); }).join('')}
     ${tile('yspend', 'Y. Spend', 'color:var(--accent)', yN)}
   </div>`;
 
@@ -23291,6 +23367,15 @@ function renderAccountsModal() {
     <div class="space-y-1.5">
       ${rows.map(r => {
         const st = accStatusOf(r);
+        const look = accStatusLook(st);
+        /* ЧОМУ ТУТ ЧУЖЕ СЛОВО — відповідь різна, і однією на обидва
+           випадки не обійтись. Archive ми знаємо поіменно: його ставить
+           сторінка Cabinets. Слово, якого не знає ніхто, прийшло
+           невідомо звідки, і казати про нього «це з Cabinets» —
+           здогадка, яких ми тут якраз і позбуваємось. */
+        const why = ACC_SEEN[st]
+          ? 'This is not a status of this window — it was set on the Cabinets page'
+          : 'This status is not in the list below — it came from somewhere else';
         return `<div class="acc-row ${GRID}" style="${COLS}">
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
           <span class="text-[12px] font-bold text-slate-400 truncate">${r.provider_name || '—'}</span>
@@ -23305,8 +23390,8 @@ function renderAccountsModal() {
                  видно: інакше рядок виглядає як «без статусу», а він
                  є — просто чужий нам. */ ''}
             ${ACC_STATUS[st] ? '' : `<span class="acc-st is-on"
-              style="color:var(--text-muted);border-color:var(--border-2)"
-              title="Цього статусу немає в списку нижче — він прийшов звідкись іще">${st}</span>`}
+              style="color:${look.tone};border-color:var(--border-2)"
+              title="${why}">${look.label}</span>`}
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
               <button type="button" onclick="accSetStatus('${r.id}','${k}')"
                 class="acc-st${st === k ? ' is-on' : ''}"${st === k ? ` style="color:${s.tone};border-color:${s.tone}"` : ''
@@ -29251,8 +29336,12 @@ async function cabWrite(id, patch) {
     return 'the row was not saved — it is not yours, or it belongs to another team (id ' + id + ')';
   /* Той самий рядок лежить ще й в accRows — окремому кеші вікна
      Accounts. Лишити його старим означає, що дві частини сторінки
-     думають про кабінет різне, а журнал акуратно записує цю розбіжність
-     як подію. Саме так архів і «змінював статус» сам собою. */
+     думають про кабінет різне.
+
+     Status вікно більше звідси не читає: у нього власна колонка
+     acc_status, і сторінка кабінета її не чіпає. Але в рядку є й
+     спільне — агент, браузер, БМ, нотатка, — і ось його кеш мусить
+     бачити таким, яким воно щойно стало. */
   if (typeof accRows !== 'undefined' && Array.isArray(accRows)) {
     const twin = accRows.find(r => String(r.id) === String(id));
     if (twin) Object.assign(twin, patch);
@@ -29844,6 +29933,16 @@ async function evBoot() {
       // вже з першого разу, а не після власного запиту.
       accRows = rows; accTeam = currentTeam;
       accHasStatusCol = !rows.length || 'status' in rows[0];
+      /* ХТО НАПОВНИВ КЕШ, ТОЙ І КАЖЕ, ЩО В НЬОМУ ЛЕЖИТЬ.
+
+         Вікно Accounts читає статус зі своєї колонки acc_status, а чи
+         вона взагалі є — видно лише з рядка. Поставити кеш і не
+         поставити цю ознаку означає, що вікно відкриється з кешу й
+         перший кадр намалює по колонці, якої в цій базі може не бути:
+         усі статуси «Active», смужки про спільну колонку немає. За
+         секунду запит це виправить, але саме такий кадр — «усе
+         активне» — з цієї вади й починався. */
+      accOwnCol = !rows.length || ACC_OWN in rows[0];
     }
   } catch (e) { return; }
 

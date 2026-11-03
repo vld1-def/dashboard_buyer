@@ -29,12 +29,16 @@ const TODAY = day(0), YDAY = day(1), B4 = day(2);
 
 /* 1001 крутив учора; 1002 — лише позавчора; 1003 — лише сьогодні;
    1004 не крутив узагалі. Статуси навмисно різні: число і статус —
-   різні питання, і плутати їх не можна. */
+   різні питання, і плутати їх не можна.
+
+   Статус лежить в acc_status — власній колонці цього вікна. Спільна
+   status тут є навмисно і навмисно ІНША там, де це видно: вікно не
+   має читати те, що пише сторінка Cabinets. */
 const ROWS = [
-  { id: 'r1', account_id: '1001', provider_name: 'AgentX', profile: 'p1', timezone: 3, status: 'active' },
-  { id: 'r2', account_id: '1002', provider_name: 'AgentX', profile: 'p2', timezone: 3, status: 'active' },
-  { id: 'r3', account_id: '1003', provider_name: 'AgentY', profile: 'p3', timezone: 0, status: 'ban' },
-  { id: 'r4', account_id: '1004', provider_name: 'AgentY', profile: 'p4', timezone: 0, status: 'problem' }
+  { id: 'r1', account_id: '1001', provider_name: 'AgentX', profile: 'p1', timezone: 3, status: 'active',  acc_status: 'active' },
+  { id: 'r2', account_id: '1002', provider_name: 'AgentX', profile: 'p2', timezone: 3, status: 'archive', acc_status: 'active' },
+  { id: 'r3', account_id: '1003', provider_name: 'AgentY', profile: 'p3', timezone: 0, status: 'active',  acc_status: 'ban' },
+  { id: 'r4', account_id: '1004', provider_name: 'AgentY', profile: 'p4', timezone: 0, status: 'active',  acc_status: 'problem' }
 ];
 const DAILY = [
   { account: '1001', date: YDAY,  spend: 120.4 },
@@ -47,6 +51,9 @@ const DAILY = [
 const draw = (filter) => page.evaluate(([rows, daily, flt]) => {
   rawData = daily;
   accRows = rows; accHasStatusCol = true; accFilter = flt;
+  /* Ознаку власної колонки беремо з рядка, як це робить сама
+     сторінка: задати її стендом означало б перевіряти свою вигадку. */
+  accOwnCol = ACC_OWN in rows[0];
   document.getElementById('accounts-modal').classList.remove('hidden');
   renderAccountsModal();
 }, [ROWS, DAILY, filter]);
