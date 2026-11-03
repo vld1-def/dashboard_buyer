@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 03.11 07:37">
+  <meta name="build" content="build 03.11 08:33">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2437,7 +2437,7 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
    яку сюди й заходять, зникала рівно там, де є результати. */
 .cab-node .cd-unit { display: inline; margin: 0 0 0 3px; }
 
-/* Архів, що загубився дорогою. Помітно, але не криком: це не
+/* Archive, що загубився дорогою. Помітно, але не криком: це не
    катастрофа, це підказка, куди дивитись. */
 .cab-archlost {
   margin: 8px 0 0; padding: 7px 10px; border-radius: 9px;
@@ -6644,7 +6644,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 07:37</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 08:33</div>
     </div>
   </aside>
 
@@ -22957,10 +22957,24 @@ async function uqRun() {
 // ===== ACCOUNTS · статуси кабінетів =====
 // Status живе в accounts_mapping.status: active | ban | problem.
 // Колонок може ще не бути в базі — тоді показуємо підказку з SQL, а не падаємо.
+/* СЛОВНИК СТАНІВ ТУТ МУСИТЬ ЗБІГАТИСЯ З ТИМ, ЩО В КАБІНЕТАХ.
+
+   Архіву тут не було — і кабінет, відправлений в архів на сторінці
+   Cabinets, у цьому вікні ставав «Активним»: невідомий статус
+   мовчки підмінявся на active. Тобто архів справді «жив своїм
+   життям»: на одному екрані кабінет прибраний, на іншому в роботі,
+   та ще й кнопка «Active» стояла підсвіченою — один випадковий
+   клік, і архів зникав уже й у базі.
+
+   Слова ті самі, що на сторінці кабінета (OK / Issue / Ban /
+   Archive), бо це той самий рядок accounts_mapping.status. Два
+   словники на одну колонку — це два різні уявлення про те саме,
+   і рано чи пізно вони розходяться. */
 const ACC_STATUS = {
   active:  { label: 'Active', tone: 'var(--ok)' },
   ban:     { label: 'Ban',      tone: 'var(--bad)' },
-  problem: { label: 'Issue', tone: 'var(--warn)' }
+  problem: { label: 'Issue', tone: 'var(--warn)' },
+  archive: { label: 'Archive',    tone: 'var(--text-muted)' }
 };
 let accRows = [];
 let accTeam = '';          // для якої команди лежить кеш
@@ -23056,10 +23070,19 @@ async function openAccountsModal() {
 }
 function closeAccountsModal() { document.getElementById('accounts-modal').classList.add('hidden'); }
 
+/* НЕВІДОМИЙ СТАТУС ЛИШАЄТЬСЯ СОБОЮ.
+
+   Доти все, чого немає в словнику, ставало 'active' — і саме так
+   архів перетворювався на «Active». Підмінити чуже слово своїм
+   означає стерти те, чого ми не зрозуміли; показати його як є —
+   щонайгірше незвично, зате правда. Порожній статус — інша річ: у
+   рядків, заведених до міграції, його просто немає, і 'active' для
+   них не здогадка, а те, як їх читає решта дашборда. */
 function accStatusOf(r) {
-  const s = String(r.status || 'active').toLowerCase();
-  return ACC_STATUS[s] ? s : 'active';
+  return String(r.status || 'active').toLowerCase().trim() || 'active';
 }
+const accStatusLook = k => ACC_STATUS[k]
+  || { label: k, tone: 'var(--text-muted)', odd: true };
 
 async function accSetStatus(id, status) {
   const row = accRows.find(r => String(r.id) === String(id));
@@ -23179,8 +23202,13 @@ function renderAccountsModal() {
     return;
   }
 
-  const counts = { active: 0, ban: 0, problem: 0 };
-  accRows.forEach(r => counts[accStatusOf(r)]++);
+  const counts = {};
+  Object.keys(ACC_STATUS).forEach(k => counts[k] = 0);
+  accRows.forEach(r => { const k = accStatusOf(r); counts[k] = (counts[k] || 0) + 1; });
+  /* Статуси, яких немає у словнику, теж мусять мати свою плитку:
+     інакше вони ніде не порахуються, і «усіх» буде більше, ніж сума
+     станів, без жодного пояснення. */
+  const odd = Object.keys(counts).filter(k => !ACC_STATUS[k]);
   const dot = document.getElementById('acc-ban-dot');
   if (dot) dot.classList.toggle('hidden', !(counts.ban || counts.problem));
 
@@ -23204,15 +23232,24 @@ function renderAccountsModal() {
   const yOf = r => { const v = ySp[String(r.account_id || '').trim()]; return v > 0 ? v : null; };
   const yN = accRows.filter(r => yOf(r) != null).length;
 
+  /* «All» рахує те, що видно без фільтра, тобто без архіву: плитка,
+     яка каже 40, і список на 32 — це дві різні правди на одному
+     екрані. Archive має власну плитку й власне число. */
+  const live = accRows.filter(r => accStatusOf(r) !== 'archive').length;
   sumEl.innerHTML = `<div class="acc-tiles">
-    ${tile('', 'All', '', accRows.length)}
-    ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k])).join('')}
+    ${tile('', 'All', '', live)}
+    ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k] || 0)).join('')}
+    ${odd.map(k => tile(k, k, 'color:var(--text-muted)', counts[k])).join('')}
     ${tile('yspend', 'Y. Spend', 'color:var(--accent)', yN)}
   </div>`;
 
   const q = (document.getElementById('acc-search')?.value || '').toLowerCase().trim();
   const month = document.getElementById('acc-month')?.value || '';
+  /* АРХІВ ПОЗА СПИСКОМ, поки його не попросять окремо — рівно як на
+     сторінці Cabinets. Інакше «відправив в архів» не означає нічого:
+     кабінет лишається там само, серед робочих. */
   const rows = accRows.filter(r =>
+    (accFilter === 'archive' || accStatusOf(r) !== 'archive') &&
     (!accFilter || (accFilter === 'yspend' ? yOf(r) != null : accStatusOf(r) === accFilter)) &&
     (!month || accMonthOf(r) === month) &&
     (!q ||
@@ -23224,7 +23261,7 @@ function renderAccountsModal() {
   if (!rows.length) {
     const why = month && !q && !accFilter ? 'У цьому місяці кабінетів не завели'
              : accFilter === 'yspend' ? 'Учора не крутив жоден кабінет — або імпорт за вчора ще не залитий'
-             : accFilter ? `У статусі «${ACC_STATUS[accFilter].label}» порожньо` : 'Nothing found';
+             : accFilter ? `У статусі «${accStatusLook(accFilter).label}» порожньо` : 'Nothing found';
     body.innerHTML = `<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">${why}</p>`;
     return;
   }
@@ -23236,8 +23273,10 @@ function renderAccountsModal() {
      погляд. Колонка читальна: профіль міняють там, де його й задають. */
   const COLS = 'grid-template-columns: minmax(130px,1.2fr) minmax(90px,1fr) minmax(80px,0.9fr) 52px 84px 78px 210px minmax(110px,1.3fr);';
   // проблемні — зверху, щоб не шукати їх у довгому списку
-  const order = { ban: 0, problem: 1, active: 2 };
-  rows.sort((a, b) => order[accStatusOf(a)] - order[accStatusOf(b)] ||
+  // проблемні зверху, архів — останнім; невідоме між ними, а не в кінці
+  const order = { ban: 0, problem: 1, active: 2, archive: 4 };
+  const rank = r => { const v = order[accStatusOf(r)]; return v === undefined ? 3 : v; };
+  rows.sort((a, b) => rank(a) - rank(b) ||
                       String(a.account_id).localeCompare(String(b.account_id)));
 
   body.innerHTML = `
@@ -23262,6 +23301,12 @@ function renderAccountsModal() {
             ? '<span class="acc-y is-none">—</span>'
             : `<span class="acc-y">$${Math.round(v).toLocaleString('en-US')}</span>`; })()}
           <div class="acc-sts">
+            ${/* Status, якого немає серед кнопок, однаково мусить бути
+                 видно: інакше рядок виглядає як «без статусу», а він
+                 є — просто чужий нам. */ ''}
+            ${ACC_STATUS[st] ? '' : `<span class="acc-st is-on"
+              style="color:var(--text-muted);border-color:var(--border-2)"
+              title="Цього статусу немає в списку нижче — він прийшов звідкись іще">${st}</span>`}
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
               <button type="button" onclick="accSetStatus('${r.id}','${k}')"
                 class="acc-st${st === k ? ' is-on' : ''}"${st === k ? ` style="color:${s.tone};border-color:${s.tone}"` : ''
@@ -27757,7 +27802,7 @@ function cabIsArch(row, fb) {
 }
 
 function cabStateOf(row, f, fb) {
-  /* Архів — перший і найсильніший: його поставила людина, і поставила
+  /* Archive — перший і найсильніший: його поставила людина, і поставила
      саме для того, щоб більше цей кабінет не бачити. Якби нижче його
      перебивало «No token» чи «Banned», архівувати старий забанений
      кабінет — найчастіший випадок — було б неможливо взагалі. */
@@ -28197,7 +28242,7 @@ function cabRender() {
        Кнопка стоїть у самій плитці «No token», поруч із їх числом:
        саме дивлячись на це число й виникає бажання їх прибрати.
 
-       Архів не видаляє нічого: історія витрат і твої нотатки
+       Archive не видаляє нічого: історія витрат і твої нотатки
        лишаються, кабінет просто йде у свою плитку. Тому й питаємо
        один раз, а не лякаємо. */
     const noTok = all.filter(c => c.state === 'notoken');
@@ -28242,7 +28287,7 @@ function cabRender() {
 
   // ── фільтр і пошук ──
   const q = (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
-  /* Архів у «All» не потрапляє — і це не примха. Архівують саме для
+  /* Archive у «All» не потрапляє — і це не примха. Архівують саме для
      того, щоб більше цей кабінет не бачити, а список, який усе одно
      його показує, робить архівування безглуздим. Побачити архів можна
      там, де його й просять: на власній плитці Archived. */
@@ -29529,7 +29574,7 @@ function cabBulkPaint() {
   </div>`;
 }
 
-/* Засувка без рядка. Архів тримається двома речами — статусом у
+/* Засувка без рядка. Archive тримається двома речами — статусом у
    твоєму рядку й засувкою в памʼяті браузера, — і рядок могли вже
    видалити. Тоді знімати нічого, крім засувки. */
 function cabArchForget(c) {
