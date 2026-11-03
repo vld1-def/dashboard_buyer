@@ -13622,29 +13622,55 @@ async function uqRun() {
 }
 
 // ===== ACCOUNTS · статуси кабінетів =====
-// Статус живе в accounts_mapping.status: active | ban | problem.
-// Колонок може ще не бути в базі — тоді показуємо підказку з SQL, а не падаємо.
-/* СЛОВНИК СТАНІВ ТУТ МУСИТЬ ЗБІГАТИСЯ З ТИМ, ЩО В КАБІНЕТАХ.
+/* ВЛАСНА КОЛОНКА, А НЕ СПІЛЬНА ЗІ СТОРІНКОЮ КАБІНЕТІВ.
 
-   Архіву тут не було — і кабінет, відправлений в архів на сторінці
-   Cabinets, у цьому вікні ставав «Активним»: невідомий статус
-   мовчки підмінявся на active. Тобто архів справді «жив своїм
-   життям»: на одному екрані кабінет прибраний, на іншому в роботі,
-   та ще й кнопка «Активний» стояла підсвіченою — один випадковий
-   клік, і архів зникав уже й у базі.
+   Довго це вікно й сторінка Cabinets писали статус в ОДНУ колонку —
+   accounts_mapping.status. Той самий рядок, те саме поле. Тому
+   масовий архів, зроблений у Cabinets, приходив сюди; слова archive
+   вікно не знало й мовчки підміняло його на active. Кабінет,
+   прибраний в архів, стояв тут «Активним», та ще й із підсвіченою
+   кнопкою «Активний» — один випадковий клік, і архів зникав уже й
+   у базі.
 
-   Слова ті самі, що на сторінці кабінета (OK / Issue / Ban /
-   Archive), бо це той самий рядок accounts_mapping.status. Два
-   словники на одну колонку — це два різні уявлення про те саме,
-   і рано чи пізно вони розходяться. */
+   Перейменовувати архів ми вже перестали. Але показувати його тут —
+   означає, що вікно далі залежить від того, що роблять у Cabinets, а
+   просили рівно протилежного: тільки ручний режим.
+
+   Тому в вікна тепер СВОЄ поле — acc_status. Cabinets пише status,
+   вікно пише acc_status, і жодне не чіпає чуже.
+
+   ЦІНА НАЗВАНА ВГОЛОС: один кабінет тепер може мати два різні
+   статуси — «бан» у Cabinets і «активний» тут. Це не вада, а те, що
+   просили: два екрани — два судження. Але знати про це треба, бо
+   шукати тут бан, поставлений у Cabinets, після цього безглуздо.
+
+   Колонки може ще не бути — тоді вікно читає стару спільну і КАЖЕ ПРО
+   ЦЕ смужкою над списком. Працювати по-старому мовчки означало б, що
+   «міграцію виконано» і «не виконано» виглядають однаково. */
+const ACC_OWN = 'acc_status';
+
+/* Кнопки — це те, що вікно вміє ПОСТАВИТИ. Архіву серед них немає:
+   архівують на сторінці Cabinets, і кнопка, яка писала б архів у
+   власну колонку вікна, завела б третій архів, про який не знає
+   ніхто. */
 const ACC_STATUS = {
   active:  { label: 'Активний', tone: 'var(--ok)' },
   ban:     { label: 'Бан',      tone: 'var(--bad)' },
-  problem: { label: 'Проблема', tone: 'var(--warn)' },
-  archive: { label: 'Архів',    tone: 'var(--text-muted)' }
+  problem: { label: 'Проблема', tone: 'var(--warn)' }
+};
+
+/* А це — слова, яких вікно не ставить, але які може ПОБАЧИТИ: у
+   старій спільній колонці, поки міграції немає. Показуємо їх своїм
+   іменем, а не чужим: архів, названий «активом», уже коштував нам
+   цієї вади. */
+const ACC_SEEN = {
+  archive: { label: 'Архів', tone: 'var(--text-muted)' }
 };
 let accRows = [];
 let accHasStatusCol = true;
+/* Чи є у вікна власна колонка. false — читаємо спільну, і це видно. */
+let accOwnCol = true;
+const accCol = () => accOwnCol ? ACC_OWN : 'status';
 
 /* ВЧОРАШНІЙ СПЕНД — ЩОБ ВИДНО БУЛО, ЯКИЙ КАБІНЕТ У РОБОТІ.
 
@@ -13715,6 +13741,9 @@ async function openAccountsModal() {
     accRows = await sbFetchAll('accounts_mapping',
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
     accHasStatusCol = !accRows.length || 'status' in accRows[0];
+    /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
+       є, тож наявність поля в рядку — це і є відповідь. */
+    accOwnCol = !accRows.length || ACC_OWN in accRows[0];
   } catch (e) {
     body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Помилка: ${e.message}</p>`;
     return;
@@ -13732,19 +13761,27 @@ function closeAccountsModal() { document.getElementById('accounts-modal').classL
    рядків, заведених до міграції, його просто немає, і 'active' для
    них не здогадка, а те, як їх читає решта дашборда. */
 function accStatusOf(r) {
-  return String(r.status || 'active').toLowerCase().trim() || 'active';
+  return String(r[accCol()] || 'active').toLowerCase().trim() || 'active';
 }
-const accStatusLook = k => ACC_STATUS[k]
+const accStatusLook = k => ACC_STATUS[k] || ACC_SEEN[k]
   || { label: k, tone: 'var(--text-muted)', odd: true };
 
+/* Пишемо В ТУ Ж КОЛОНКУ, З ЯКОЇ ЧИТАЛИ.
+
+   Інакше вийшло б найгірше з двох світів: на екрані власний статус, у
+   базі спільний — тобто клік у цьому вікні знову міняв би те, що
+   бачать у Cabinets. Одна функція accCol() на читання й на запис і
+   робить це неможливим. */
 async function accSetStatus(id, status) {
   const row = accRows.find(r => String(r.id) === String(id));
   if (!row) return;
-  const prev = row.status;
-  row.status = status;
+  const col = accCol();
+  const prev = row[col];
+  row[col] = status;
   renderAccountsModal();
-  const { error } = await sb.from('accounts_mapping').update({ status }).eq('id', id);
-  if (error) { row.status = prev; renderAccountsModal(); alert('Не вдалось зберегти статус: ' + error.message); }
+  const { error } = await sb.from('accounts_mapping')
+    .update({ [col]: status }).eq('id', id);
+  if (error) { row[col] = prev; renderAccountsModal(); alert('Не вдалось зберегти статус: ' + error.message); }
 }
 
 async function accSetNote(id, note) {
@@ -13855,6 +13892,19 @@ function renderAccountsModal() {
     return;
   }
 
+  /* МІГРАЦІЇ ЩЕ НЕМАЄ — і це мусить бути видно.
+
+     Вікно працює, читаючи стару спільну колонку: краще робочий
+     список зі смужкою, ніж стіна з SQL замість нього. Але без
+     смужки «статуси вже розділені» і «ще спільні» виглядали б
+     однаково, а різниця між ними — рівно та вада, з якої все
+     почалось. */
+  const warn = accOwnCol ? '' : `<div class="acc-warn">
+      <b>Статуси тут поки спільні з Cabinets.</b>
+      У базі ще немає колонки acc_status, тож вікно читає ту саму, що й сторінка кабінетів — і архів із неї видно тут. Виконай у Supabase → SQL Editor:
+      <code>ALTER TABLE public.accounts_mapping ADD COLUMN IF NOT EXISTS acc_status text;</code>
+    </div>`;
+
   const counts = {};
   Object.keys(ACC_STATUS).forEach(k => counts[k] = 0);
   accRows.forEach(r => { const k = accStatusOf(r); counts[k] = (counts[k] || 0) + 1; });
@@ -13889,10 +13939,14 @@ function renderAccountsModal() {
      яка каже 40, і список на 32 — це дві різні правди на одному
      екрані. Архів має власну плитку й власне число. */
   const live = accRows.filter(r => accStatusOf(r) !== 'archive').length;
-  sumEl.innerHTML = `<div class="acc-tiles">
+  /* Чужий стан показуємо ЙОГО ІМЕНЕМ, якщо воно нам відоме: плитка
+     «archive» латиницею серед підписаних плиток читалась би як збій,
+     а не як архів зі сторінки Cabinets. */
+  sumEl.innerHTML = warn + `<div class="acc-tiles">
     ${tile('', 'Усі', '', live)}
     ${Object.entries(ACC_STATUS).map(([k, s]) => tile(k, s.label, 'color:' + s.tone, counts[k] || 0)).join('')}
-    ${odd.map(k => tile(k, k, 'color:var(--text-muted)', counts[k])).join('')}
+    ${odd.map(k => { const s = accStatusLook(k);
+        return tile(k, s.label, 'color:' + s.tone, counts[k]); }).join('')}
     ${tile('yspend', 'Y. Spend', 'color:var(--accent)', yN)}
   </div>`;
 
@@ -13942,6 +13996,15 @@ function renderAccountsModal() {
     <div class="space-y-1.5">
       ${rows.map(r => {
         const st = accStatusOf(r);
+        const look = accStatusLook(st);
+        /* ЧОМУ ТУТ ЧУЖЕ СЛОВО — відповідь різна, і однією на обидва
+           випадки не обійтись. Архів ми знаємо поіменно: його ставить
+           сторінка Cabinets. Слово, якого не знає ніхто, прийшло
+           невідомо звідки, і казати про нього «це з Cabinets» —
+           здогадка, яких ми тут якраз і позбуваємось. */
+        const why = ACC_SEEN[st]
+          ? 'Це не статус цього вікна — його поставили на сторінці Cabinets'
+          : 'Цього статусу немає в списку нижче — він прийшов звідкись іще';
         return `<div class="acc-row ${GRID}" style="${COLS}">
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
           <span class="text-[12px] font-bold text-slate-400 truncate">${r.provider_name || '—'}</span>
@@ -13952,8 +14015,8 @@ function renderAccountsModal() {
                  видно: інакше рядок виглядає як «без статусу», а він
                  є — просто чужий нам. */ ''}
             ${ACC_STATUS[st] ? '' : `<span class="acc-st is-on"
-              style="color:var(--text-muted);border-color:var(--border-2)"
-              title="Цього статусу немає в списку нижче — він прийшов звідкись іще">${st}</span>`}
+              style="color:${look.tone};border-color:var(--border-2)"
+              title="${why}">${look.label}</span>`}
             ${Object.entries(ACC_STATUS).map(([k, s]) => `
               <button type="button" onclick="accSetStatus('${r.id}','${k}')"
                 class="acc-st${st === k ? ' is-on' : ''}"${st === k ? ` style="color:${s.tone};border-color:${s.tone}"` : ''

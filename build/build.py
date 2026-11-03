@@ -2647,6 +2647,9 @@ rest = sub(rest,
     accRows = await sbFetchAll('accounts_mapping',
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
     accHasStatusCol = !accRows.length || 'status' in accRows[0];
+    /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
+       є, тож наявність поля в рядку — це і є відповідь. */
+    accOwnCol = !accRows.length || ACC_OWN in accRows[0];
   } catch (e) {
     body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Помилка: ${e.message}</p>`;
     return;
@@ -2670,6 +2673,9 @@ rest = sub(rest,
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
     accTeam = currentTeam;
     accHasStatusCol = !accRows.length || 'status' in accRows[0];
+    /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
+       є, тож наявність поля в рядку — це і є відповідь. */
+    accOwnCol = !accRows.length || ACC_OWN in accRows[0];
   } catch (e) {
     // З кешем на екрані помилка фонового оновлення не має стирати список —
     // краще трохи застарілі дані, ніж порожнє вікно.
