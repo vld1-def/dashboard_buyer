@@ -3484,6 +3484,45 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
         });
       });
 
+      /* ОФЕР ЧУЖОГО ГЕО В РЯДОК НЕ ПИШЕМО.
+
+         Лендінг із Keitaro несе із собою офер, і доти він ставився в
+         рядок як є. Але виплата заведена на ПАРУ (гео, офер): той
+         самий «Boostwin» у TJ і в KZ — це дві різні ставки. Коли
+         лендінг прилітав із чужого гео (а він прилітає: вище видно,
+         що при невідомому гео його розподіляють по всіх рядках),
+         рядок TJ отримував офер, у якого під TJ виплати немає — і
+         виручка тихо рахувалась за DEFAULT або нулем.
+
+         Тому: офер, у якого Є виплати, але ЖОДНОЇ під гео цього
+         рядка, не ставимо. Офер, якого в довіднику немає зовсім,
+         ставимо як і раніше — це не чужий, це новий, і про нього
+         скаже сама таблиця позначкою ≠.
+
+         Числа при цьому лишаються на місці: втратити конверсії
+         страшніше, ніж лишити клітинку офера порожньою. */
+      const offerFits = (offer, geo) => {
+        const o = String(offer || '').trim().toUpperCase();
+        const g = String(geo || '').trim().toUpperCase();
+        if (!o || !g || g === '??') return true;
+        const geos = (globalOffersCache || [])
+          .filter(x => String(x.offer || '').trim().toUpperCase() === o)
+          .map(x => String(x.geo || '').trim().toUpperCase())
+          .filter(Boolean);
+        return !geos.length || geos.includes(g);
+      };
+      /* Що саме ми не поставили — щоб прев'ю сказало це вголос, а не
+         показало порожню клітинку без причини. */
+      const offerNote = (offer, geo) => {
+        const o = String(offer || '').trim();
+        const g = String(geo || '').trim().toUpperCase();
+        const geos = [...new Set((globalOffersCache || [])
+          .filter(x => String(x.offer || '').trim().toUpperCase() === o.toUpperCase())
+          .map(x => String(x.geo || '').trim().toUpperCase())
+          .filter(Boolean))].sort();
+        return o + ' pays for ' + (geos.join(', ') || '—') + ', not for ' + g;
+      };
+
       rows.forEach(row => {
         const mine = names.filter(n => owners[n].includes(row));
         if (!mine.length) { out.push(row); return; }   // свого гео не знайшлось
@@ -3492,7 +3531,8 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
           /* Офер ставимо лише той, що справді впізнано. Доти сюди падав
              текст лендінга — і в полі офера опинявся цілий рядок із
              Keitaro, якого в списку оферів немає. */
-          if (c.offer) row.offer = c.offer;
+          if (c.offer && offerFits(c.offer, row.geo)) row.offer = c.offer;
+          else if (c.offer) row._offerOther = offerNote(c.offer, row.geo);
           if (c.landing) row.landing = c.landing;
           row.site = c.site || null;
           if (foreign[mine[0]]) row._geoOther = foreign[mine[0]];
@@ -3510,9 +3550,13 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
           const spend = last ? +(row.spend - spentSoFar).toFixed(2)
                              : +(row.spend * (totIns > 0 ? v.i / totIns : 1 / mine.length)).toFixed(2);
           spentSoFar += spend;
-          out.push({ ...row, offer: c.offer || '', landing: c.landing || '',
+          const fits = offerFits(c.offer, row.geo);
+          out.push({ ...row, offer: fits ? (c.offer || '') : '',
+                     landing: c.landing || '',
                      site: c.site || null, spend,
                      _geoOther: foreign[name] || undefined,
+                     _offerOther: (!fits && c.offer)
+                       ? offerNote(c.offer, row.geo) : undefined,
                      installs: v.i, regs: v.r, deps: v.d });
         });
       });
@@ -4317,7 +4361,15 @@ function renderDualPreview() {
        офери — це вибір, і зробити його за людину означало б тихо
        приписати половину виручки не тому оферу. Такі рядки лишаються з
        «-- SELECT --», як і були. */
-    if (!String(r.offer || '').trim() && availableForThisGeo.length === 1) {
+/* ...І НЕ ПІДСТАВЛЯЄМО, КОЛИ ОФЕР УЖЕ БУВ, ПРОСТО ЧУЖОГО ГЕО.
+
+       Keitaro назвав офер лендінга, і ми його не поставили, бо під
+       гео цього рядка в нього виплати немає. Підставити натомість
+       «єдиний офер цього гео» означало б замінити відомий офер на
+       інший — тихо й упевнено. Клітинка лишається порожньою, а
+       причина стоїть поруч. */
+    if (!String(r.offer || '').trim() && !r._offerOther
+        && availableForThisGeo.length === 1) {
       r.offer = availableForThisGeo[0];
     }
 
@@ -4355,6 +4407,12 @@ function renderDualPreview() {
         </td>
         <td class="p-2 w-48">
           ${offerSelectHtml}
+          <!-- Офер із Keitaro, який платить за інше гео, у рядок не
+               пішов. Мовчазна порожня клітинка читалась би як «Keitaro
+               офера не дав» — а він дав, просто не для цього гео. -->
+          ${r._offerOther
+            ? `<span class="ds-geo" title="${String(r._offerOther).replace(/"/g, '&quot;')} — so it was left out: its payout would be the wrong one here. Pick the offer of this geo, or add the payout in Settings → Payouts.">other geo</span>`
+            : ''}
         </td>
         <!-- Руками не правимо: лендінг приходить рядком із Keitaro, і
              переписати його тут означало б розійтись із тим, що в
