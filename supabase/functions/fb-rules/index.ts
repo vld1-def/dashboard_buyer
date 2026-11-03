@@ -44,7 +44,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-9';
+const FN_VERSION = 'rules-10';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -678,6 +678,43 @@ async function pauseAll(token: string, hits: Hit[]): Promise<void> {
   }
 }
 
+/* ═══════════ СЛІД ПРО САМ ПРОГІН ═══════════
+
+   У журнал лягали лише ВЛУЧАННЯ. Тому сторінка Rules чесно писала
+   «Nothing yet. Either no rule matched, or none of them ran» — тобто
+   сама зізнавалась, що не вміє відрізнити «правила ходять, просто
+   нічого не підпадає» від «правила не ходять узагалі».
+
+   А це дві протилежні новини: у першому випадку робити нічого не
+   треба, у другому — задеплоїти функцію, поставити секрет або
+   полагодити розклад. Різницю видно лише зсередини прогону, тож
+   прогін лишає по собі рядок навіть тоді, коли не зробив нічого.
+
+   Окремої таблиці під це немає навмисно: рядок про прогін — така сама
+   подія, як і влучання, і місце їй у тому самому журналі. Рівень
+   'run' відрізняє її від дій, і сторінка показує її окремо. */
+async function logRun(base: string, hdr: Json, seen: Map<string, RunSeen>,
+                      cron: boolean): Promise<void> {
+  if (!seen.size) return;
+  const rows = [...seen.entries()].map(([owner, v]) => ({
+    created_by: owner, team_name: v.team || null,
+    rule_id: null, rule_name: null, level: 'run',
+    entity_id: null, entity_name: null, account_id: null,
+    metrics: { cabinets: v.cabs, ads: v.ads, stale: v.stale,
+               paused: v.paused, would: v.would, rules: v.rules, cron },
+    dry: true, ok: true, error: null
+  }));
+  try {
+    await fetch(base + '/rest/v1/fb_rule_log', {
+      method: 'POST', headers: { ...hdr, Prefer: 'return=minimal' },
+      body: JSON.stringify(rows)
+    });
+  } catch (_e) { /* слід про прогін не привід валити прогін */ }
+}
+
+type RunSeen = { team: string; cabs: number; ads: number; stale: number;
+                 paused: number; would: number; rules: number };
+
 /* Журнал. Таблиці може ще не бути — це не привід нічого не робити:
    причина їде у відповідь, і сторінка її показує. */
 async function logHits(base: string, hdr: Json, hits: Hit[]): Promise<string> {
@@ -1018,6 +1055,8 @@ Deno.serve(async (req) => {
   const problems: string[] = [];
   const hits: Hit[] = [];
   let scanned = 0, cabinets = 0, stale = 0;
+  /* Слід про прогін — по власниках правил. Див. logRun. */
+  const seen = new Map<string, RunSeen>();
 
   /* Правило чіпає ТІЛЬКИ кабінети свого автора. Токен — це і є
      власник: кабінети приходять під ним, і вимикати їх однаково можна
@@ -1035,6 +1074,16 @@ Deno.serve(async (req) => {
     }
     const ours = rulesFor(use, tokenOwner);
     if (!ours.length) continue;
+    /* Рахуємо по ВЛАСНИКОВІ правил: журнал і сторінка дивляться саме
+       на created_by, і чужий прогін у своєму журналі нікому не
+       потрібен. */
+    const seenOf = (team: string): RunSeen => {
+      let v = seen.get(tokenOwner);
+      if (!v) { v = { team, cabs: 0, ads: 0, stale: 0, paused: 0, would: 0,
+                      rules: ours.length }; seen.set(tokenOwner, v); }
+      if (!v.team && team) v.team = team;
+      return v;
+    };
     // Кабінети цього токена беремо з нашої ж таблиці: список парку там
     // уже є, і питати його в Facebook удруге немає потреби. Зниклі
     // (missing_since) пропускаємо — там нічого не крутиться.
@@ -1051,6 +1100,8 @@ Deno.serve(async (req) => {
       const mine = ours.filter(r => !r.cabs.length || r.cabs.includes(account));
       if (!mine.length) continue;
       cabinets++;
+      const mySeen = seenOf(String(a.team_name || t.team_name || ''));
+      mySeen.cabs++;
 
       let ads: Ent[];
       try {
@@ -1060,6 +1111,7 @@ Deno.serve(async (req) => {
              виглядало б як «правила не працюють», а шукали б причину
              в правилах, а не в синхронізації. */
           stale++;
+          mySeen.stale++;
           problems.push(account + ': the snapshot is '
             + (snap.age === Infinity ? 'missing' : Math.round(snap.age / 60000) + ' min old')
             + ', older than the ' + Math.round(maxAge / 60000) + ' min this sync pace allows'
@@ -1074,6 +1126,7 @@ Deno.serve(async (req) => {
         continue;
       }
       scanned += ads.length;
+      mySeen.ads += ads.length;
 
       for (const r of mine) {
         /* Фільтр за назвою дивиться і на БАТЬКІВ. Гео в цих назвах і
@@ -1116,6 +1169,15 @@ Deno.serve(async (req) => {
     await pauseAll(String(t.token), hits.filter(h =>
       accs.some(a => String(a.account_id) === h.account)));
   }
+
+  /* Що зробили — по власниках, щоб слід про прогін ніс саме його
+     числа, а не загальні по всіх. */
+  hits.forEach(h => {
+    const v = seen.get(h.owner);
+    if (!v) return;
+    if (h.dry) v.would++; else if (h.ok) v.paused++;
+  });
+  await logRun(base, hdr, seen, cron);
 
   const logged = await logHits(base, hdr, hits);
   /* ПРЕВʼЮ В TELEGRAM НЕ ЙДЕ.

@@ -66,6 +66,10 @@ const RL_LEVELS = [
    інше (перегляди, реакції) лідом не є, і мовчки додавати його в
    знаменник ціни ліда означало б робити правила безглуздими. */
 let rlRules = [], rlEdit = null, rlLog = [], rlLoaded = false;
+/* Рядки про сам прогін (level='run'). Лежать у тому самому журналі,
+   але показуються окремо: вони не дія, а відповідь на питання «а чи
+   воно взагалі ходить». */
+let rlRuns = [];
 
 const rlEsc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -117,21 +121,73 @@ async function rlLogLoad() {
       .select('at,rule_name,level,entity_name,entity_id,account_id,metrics,dry,ok,error')
       .order('at', { ascending: false }).limit(40);
     if (error) throw new Error(error.message);
-    rlLog = data || [];
+    const all = data || [];
+    rlRuns = all.filter(r => String(r.level) === 'run');
+    rlLog = all.filter(r => String(r.level) !== 'run');
   } catch (e) {
     box.innerHTML = /fb_rule_log|does not exist|schema cache/i.test(e.message)
       ? '<p class="rl-empty">No history table yet — run FB_RULES.sql and it starts filling by itself.</p>'
       : '<p class="rl-empty">Could not read the history: ' + rlEsc(e.message) + '</p>';
+    rlRunPaint();
     return;
   }
+  rlRunPaint();
   rlLogPaint();
+}
+
+/* КОЛИ ПРАВИЛА ПРОХОДИЛИ ОСТАННІЙ РАЗ.
+
+   Доти порожній журнал казав «Nothing yet. Either no rule matched, or
+   none of them ran» — тобто сторінка сама зізнавалась, що не вміє
+   відрізнити дві протилежні новини. У першій робити нічого не треба,
+   у другій — деплой, секрет або розклад.
+
+   Тепер прогін лишає по собі слід навіть коли не зробив нічого, і
+   відповідь однозначна. */
+function rlRunPaint() {
+  const box = document.getElementById('rl-run');
+  if (!box) return;
+  const r = (rlRuns || [])[0];
+  if (!r) {
+    box.innerHTML = '<p class="rl-run-no">\u26A0 The rules have never run.'
+      + ' Three things, in this order: <b>fb-rules</b> is deployed,'
+      + ' <b>RULES_CRON_SECRET</b> is set in its secrets (and in fb-sync too \u2014 it runs'
+      + ' them after every sync), and the schedule from <b>FB_RULES.sql</b> exists.'
+      + ' <b>Check now</b> above runs them by hand: if that works, it is the schedule'
+      + ' that does not.</p>';
+    return;
+  }
+  const m = r.metrics || {};
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(r.at || '')) / 60000));
+  const when = mins < 1 ? 'just now' : mins < 60 ? mins + ' min ago'
+    : Math.round(mins / 60) + ' h ago';
+  const n = v => Number(v) || 0;
+  /* Пропущені через застарілий знімок — окремо й голосно: саме вони
+     найчастіше й означають «нічого не вимкнулось». */
+  const stale = n(m.stale)
+    ? ' \u00b7 <b class="rl-run-warn">' + n(m.stale)
+      + ' skipped: the snapshot was too old</b>'
+    : '';
+  const did = n(m.paused) ? ' \u00b7 ' + n(m.paused) + ' switched off'
+    : n(m.would) ? ' \u00b7 ' + n(m.would) + ' reported'
+    : ' \u00b7 nothing matched';
+  box.innerHTML = '<p class="rl-run-ok">\u2713 Checked <b>' + when + '</b>: '
+    + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + stale
+    + (mins > 90
+        ? ' \u2014 <b class="rl-run-warn">that is a while ago; the schedule may have'
+          + ' stopped</b>'
+        : '') + '</p>';
 }
 
 function rlLogPaint() {
   const box = document.getElementById('rl-log');
   if (!box) return;
   if (!rlLog.length) {
-    box.innerHTML = '<p class="rl-empty">Nothing yet. Either no rule matched, or none of them ran.</p>';
+    /* Порожній список тепер означає рівно одне, і яке саме — вирішує
+       слід про прогін, а не здогадка. */
+    box.innerHTML = (rlRuns || []).length
+      ? '<p class="rl-empty">Nothing here: the rules do run, nothing has matched them yet.</p>'
+      : '<p class="rl-empty">Nothing yet \u2014 see the line above.</p>';
     return;
   }
   const money = v => '$' + (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('en-US');
