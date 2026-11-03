@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 03.11 09:54">
+  <meta name="build" content="build 03.11 13:49">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4568,6 +4568,19 @@ body.is-lead-only .admin-only { display: none; }
   font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
 }
 .pw-shot-add:hover { color: var(--text-main); border-color: var(--border-2); }
+/* КРІПИТИ НЕМА ДО ЧОГО — підписом у заголовку, а не колонкою.
+
+   Колонку превю така картка не отримує навмисно: дизайн їй прикріпити
+   ніде, а сто двадцять пікселів потрібні силкам. Але й порожнеча не
+   годиться — вона виглядає однаково і коли кнопки не має бути, і коли
+   вона зникла через ваду. Тому дрібний підпис серед інших підписів
+   картки, а пояснення — у title: рядок від цього не росте. */
+.pw-noktid {
+  margin-left: 6px; padding: 1px 5px; border-radius: 5px;
+  border: 1px dashed var(--border-2);
+  color: var(--text-muted); cursor: help;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+}
 .pw-shot-kt {
   font-size: 9px; font-weight: 700; letter-spacing: 0; text-transform: none;
   opacity: .5; max-width: 100%; padding: 0 6px;
@@ -6666,7 +6679,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 09:54</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 13:49</div>
     </div>
   </aside>
 
@@ -17767,6 +17780,11 @@ async function apLoad() {
       sb.from('funnels_mapping').select('*').eq('team_name', currentTeam),
       sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam),
       pwDomLoad(true),
+      /* Шаблон розбору — ПЕРЕД тим, як малювати картки: саме він
+         вирішує, до чого кріпиться дизайн. Прочитати його після
+         означало б показати картки з ключами за типовим шаблоном, а
+         потім тихо перемалювати з іншими. */
+      pwMaskLoad(),
       /* Дизайни їдуть тим самим заходом, що й стан доменів: обидва
          малюються на картці, і окремий крок після показав би картки
          спершу без превю, а потім із ним. Свою помилку pwShotLoad
@@ -19108,10 +19126,95 @@ let pwShots = {};            // ktid → [{ path, url }], найстаріший
 let pwShotIdx = {};          // ktid → який кадр показано в колонці
 let pwShotErr = '';
 
+/* ═══ KTID БЕРЕМО ЗА ШАБЛОНОМ КОМАНДИ, А НЕ ЗА ПОЗИЦІЄЮ ═══
+
+   Тут стояло «третій кусок через _». Для типового шаблону
+   *_{geo}_{ktid} це те саме, і саме тому помилка так довго й не
+   вилазила. Але шаблон НАЛАШТОВУЄТЬСЯ: інший баєр ставить ktid в
+   іншому місці, і для нього дашборд рахував ключем щось стороннє —
+   найчастіше порожнечу, тобто кнопки заливу дизайну в нього не було
+   взагалі, без жодного пояснення.
+
+   Шаблон лежить там, де його й задають: team_settings.pwa_parse.mask.
+   Беремо той самий, яким Form.html розбирає імпорт, і тим самим
+   кодом: два розбори одного імені рано чи пізно дадуть дві різні
+   відповіді, і тоді скрін є, а на картці його немає.
+
+   Шаблону немає — лишається стара позиція. Це не здогадка, а точно
+   те, що дає типовий шаблон, тобто поведінка команд, які його не
+   міняли, не змінюється. */
+const PW_DEFAULT_MASK = '*_{geo}_{ktid}';
+let pwMask = PW_DEFAULT_MASK;
+
+const PW_MASK_CACHE = new Map();
+
+/* Копія компілятора з Form.html. Копія, а не спільний файл, бо
+   Form.html не проходить через build.py і спільного місця в них
+   немає. Щоб копії не розійшлись мовчки, стенд ганяє однакові назви
+   крізь обидві й звіряє відповіді: саме розходження відповідей і
+   означало б, що скрін ліг під одним ключем, а шукають його під
+   іншим. */
+function pwMaskCompile(mask) {
+  const src = String(mask || '').trim();
+  if (!src) return null;
+  if (PW_MASK_CACHE.has(src)) return PW_MASK_CACHE.get(src);
+  const primary = src.includes('&') ? '&' : '_';
+  const esc = c => (/[A-Za-z0-9]/.test(c) ? c : '\\' + c);
+  const keys = [], fixed = {};
+  let re = '', i = 0;
+  while (i < src.length) {
+    const ph = /^\{(app|acc|cid|cid-|geo|ktid)(?:=([^}]*))?\}/.exec(src.slice(i));
+    if (ph) {
+      i += ph[0].length;
+      if (ph[2] !== undefined) { fixed[ph[1] === 'cid-' ? 'cid' : ph[1]] = ph[2]; continue; }
+      const stop = i < src.length ? src[i] : primary;
+      keys.push(ph[1]);
+      re += `([^${esc(stop)}]+)`;
+      continue;
+    }
+    if (src[i] === '*') { i++; re += '.*?'; continue; }
+    re += esc(src[i]); i++;
+  }
+  const compiled = { re: new RegExp('^' + re + `(?:${esc(primary)}.*)?$`, 'i'), keys, fixed };
+  PW_MASK_CACHE.set(src, compiled);
+  return compiled;
+}
+
+function pwMaskParse(mask, name) {
+  const c = pwMaskCompile(mask);
+  if (!c) return null;
+  const m = c.re.exec(String(name || ''));
+  if (!m) return null;
+  const out = { app: '', acc: '', cid: '', geo: '', ktid: '', ...c.fixed };
+  c.keys.forEach((k, i) => {
+    const v = String(m[i + 1] || '').trim();
+    if (k === 'cid-') out.cid = v.replace(/-/g, '_'); else out[k] = v;
+  });
+  return out;
+}
+
 const pwKtid = name => {
-  const p = String(name || '').trim().split('_');
-  return p.length < 3 ? '' : String(p[2] || '').trim();
+  const s = String(name || '').trim();
+  if (!s) return '';
+  const r = pwMaskParse(pwMask, s);
+  if (r && r.ktid) return r.ktid;
+  /* Шаблон не підійшов. Це НЕ привід мовчки взяти третій кусок: у
+     команди зі своїм шаблоном він означає щось інше, і скрін ліг би
+     під чужим ключем. Віддаємо порожньо — і картка скаже чому. */
+  return pwMask === PW_DEFAULT_MASK && s.split('_').length >= 3
+    ? String(s.split('_')[2] || '').trim() : '';
 };
+
+/* Шаблон читаємо там само, де решта налаштувань команди. Мовчки
+   лишити типовий означало б, що в команди з власним шаблоном усе
+   виглядає як поломка. */
+async function pwMaskLoad() {
+  try {
+    const v = await getTeamSetting('pwa_parse');
+    const m = v && typeof v === 'object' ? String(v.mask || '').trim() : '';
+    pwMask = m || PW_DEFAULT_MASK;
+  } catch (_e) { pwMask = PW_DEFAULT_MASK; }
+}
 
 /* КІЛЬКА КАРТИНОК НА ОДНУ ВОРОНКУ.
 
@@ -19386,6 +19489,10 @@ const pwIsParams = it => {
 function pwShotCol(it) {
   if (pwIsParams(it)) return '';
   const ktid = pwKtid(it.name);
+  /* Без KTID колонки превю НЕМАЄ — і це навмисно: картка, якій дизайн
+     прикріпити ніде, не має віддавати під нього сто двадцять пікселів
+     ширини, що потрібні силкам. Пояснення, чому кнопки немає, стоїть
+     у заголовку картки (pwNoKtid), а не тут. */
   if (!ktid) return '';
   const arr = pwShotsOf(ktid);
   if (!arr.length) return `<button type="button" class="pw-shot-add" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
@@ -19411,6 +19518,29 @@ function pwShotCol(it) {
       <button type="button" class="pw-shot-re" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
         title="Залити ще кадр">+ ще</button>
     </div>`;
+}
+
+/* ЧОМУ НА ЦІЙ КАРТЦІ НЕМАЄ КНОПКИ ЗАЛИВУ.
+
+   Скрін кріпиться до KTID — ТРЕТЬОГО куска назви кампанії через «_»
+   (Mbank_KG_10708-ex8g_09/10 → 10708-ex8g). Назва на два куски ключа
+   не дає, і колонка лишалась просто порожньою: «створив шаблон, а
+   кнопки грузити немає», і жодної підказки, що справа в назві, а не в
+   поломці. Порожнє місце виглядає однаково і коли кнопки не має бути,
+   і коли вона зникла через ваду.
+
+   Підпис стоїть У ЗАГОЛОВКУ, серед інших підписів картки, а не на
+   місці превю: колонку превю такій картці віддавати нема за що, а
+   силки на ній і так обрізаються. */
+function pwNoKtid(it) {
+  if (pwIsParams(it) || pwKtid(it.name)) return '';
+  /* Називаємо САМЕ той шаблон, за яким розбирали, і саме цю назву.
+     «Потрібен третій кусок» було б неправдою для команди, яка ktid
+     поставила в інше місце, — а виправляти назву людина буде за цим
+     рядком. */
+  return `<span class="pw-noktid"
+    title="KTID дістається за шаблоном PWA з налаштувань імпорту: ${apEsc(pwMask)}. Назва «${apEsc(it.name || '')}» під нього не лягла, тож кріпити скрін нема до чого. Або виправ назву, або шаблон у Form → PWA parsing.">
+    no ktid</span>`;
 }
 
 /* Перемикання кадру МІСЦЕМ, без перемальовування списку: інакше від
@@ -19824,6 +19954,7 @@ function pwRender() {
           ${it.offer ? `<span class="text-slate-600 ml-1.5">· ${apEsc(it.offer)}</span>` : ''}
           <span class="text-slate-600 ml-1.5">· ${links.length} ${links.length === 1 ? 'силка' : 'силок'}</span>
           ${nBad ? `<span class="text-rose-400 ml-1.5">· ${nBad} під увагою</span>` : ''}
+          ${pwNoKtid(it)}
         </p>
         <div class="flex items-center gap-1.5 shrink-0">
           <button onclick="pwEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
@@ -25115,7 +25246,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-11-02.4';
+const FB_FN_WANT = '2026-11-03.1';
 
 /* ЧИ ЖИВИЙ ТОКЕН — ОКРЕМОЮ КНОПКОЮ.
 
@@ -25234,7 +25365,32 @@ window.fbSync = async function (say, body) {
     // список токенів зараз на екрані.
     if (typeof fbLoad === 'function') await fbLoad();
 
-    if (!j.tokens) { tell('No tokens to sync — add one in Settings first.', 'var(--warn)'); return j; }
+    /* «ДОДАЙ ТОКЕН» ТОМУ, У КОГО ЇХ ДЕСЯТЬ.
+
+       Тут стояло просто `if (!j.tokens)`. А j.tokens — це не скільки
+       токенів є, а скільки ПРОЙШЛО до кінця. Коли жоден не вдався,
+       число теж нуль — і людині, у якої токени на місці, екран радив
+       їх додати. Причина при цьому приїжджала в тій самій відповіді,
+       полем problems, і мовчки викидалась разом із нею.
+
+       Тепер питаємо два різні числа. Старіша fb-sync tokens_total не
+       шле — тоді відповідь та сама, що й була, але хоч causes
+       видно. */
+    const total = j.tokens_total === undefined ? j.tokens : j.tokens_total;
+    if (!total) {
+      tell('No tokens to sync — add one in Settings first.', 'var(--warn)');
+      return j;
+    }
+    if (!j.tokens) {
+      /* Причину несе сама відповідь. Показати її тут — єдиний спосіб
+         її взагалі побачити: у журнал вона не лягає. */
+      const why = (j.problems || []).map(fbEsc);
+      tell('<b>' + total + ' token(s), and not one of them got through.</b>'
+        + (why.length ? '<br>' + why.join('<br>') : ' The function said nothing about why.')
+        + (j.took_ms ? '<br><span class="opacity-60">' + (j.took_ms / 1000).toFixed(1)
+           + 's spent before giving up</span>' : ''), 'var(--bad)');
+      return j;
+    }
 
     /* ПІДСУМОК — ПРО КАБІНЕТИ, А НЕ ПРО ВНУТРІШНЄ ЖИТТЯ ФУНКЦІЇ.
 
@@ -25257,6 +25413,19 @@ window.fbSync = async function (say, body) {
 
     const warn = [];
     if (j.failed) warn.push(`${j.failed} came back incomplete`);
+    /* ЧОМУ ДОВГО — З АДРЕСОЮ, а не відчуттям. Функція міряє time
+       кожного токена й окремо той, що пішов у Facebook; доти ці числа
+       приїжджали у відповіді й нікуди не потрапляли.
+
+       Кажемо лише коли довго: під десять секунд це звичайний прогін,
+       і рядок про найповільніших щоразу привчав би його не читати. */
+    if (j.took_ms > 20000 && (j.slowest || []).length) {
+      const top = j.slowest.slice(0, 3).map(x =>
+        fbEsc(x.label) + ' ' + (x.ms / 1000).toFixed(1) + 's'
+        + (x.accounts ? ' / ' + x.accounts + ' cab' : '')
+        + (x.graph_ms ? ' (' + (x.graph_ms / 1000).toFixed(1) + 's in Facebook)' : ''));
+      warn.push('slowest: ' + top.join(', '));
+    }
     if (j.throttled) warn.push('hit the Facebook rate limit — the rest comes in with the next run');
     /* ДО КОГО ЧЕРГА НЕ ДІЙШЛА — ПОІМЕННО, а не «more left».
 
@@ -27437,6 +27606,31 @@ const cabSnapMoney = (v, c) => v == null ? null : cabMoneyCur(v, c.fb && c.fb.cu
 
    Без пояса (поле ще не приїхало) лишається локальна дата: це та сама
    відповідь, що була, і краща за порожнечу. */
+/* ЧИЙ ДЕНЬ ПІД ЦИМ ЧИСЛОМ — словами, на самому числі.
+
+   «в мене щось не так з одним акаунтом, він підтягує не сьогоднішні
+   дані». Найчастіше це не вада, а різниця поясів: Facebook рахує
+   витрати ТІЛЬКИ в поясі самого кабінета, іншого розрізу він не
+   віддає. Account у Ташкенті вночі справді стоїть на іншій даті, ніж
+   ти, — і це те саме число, що в його Ads Manager.
+
+   Але відрізнити це від справжньої вади з екрана було неможливо:
+   число як число. Тому кажемо, за який day і в якому поясі воно
+   порахувало, — і окремо, якщо поясу ми не знаємо й узяли твій. */
+function cabDayNote(fb) {
+  if (cabRange.key !== 'today' && cabRange.key !== 'yest') return '';
+  const tz = (fb && fb.timezone_name) || '';
+  const day = cabRange.key === 'yest'
+    ? cabShiftDay(cabTzDay(tz), -1) : cabTzDay(tz);
+  const mine = cabTzDay('');
+  return tz
+    /* Різницю з твоїм днем називаємо лише коли вона є: щоденне
+       «збігається з твоїм» привчило б не читати цей рядок. */
+    ? day + ' in ' + tz + (day === mine ? '' : ' — not your date (' + mine + ')')
+    : day + ' — Facebook has not sent this cabinet a timezone, so this is YOUR date. '
+      + 'Press Sync now; if it stays empty, the cabinet is not coming through.';
+}
+
 const cabTzDay = tz => {
   try { return new Intl.DateTimeFormat('en-CA',
     tz ? { timeZone: tz } : {}).format(new Date()); }
@@ -28607,9 +28801,15 @@ function cabRowHtml(c, COLS) {
   /* Прочерк тут означає рівно «нуль за цей період». Коли ми взагалі не
      знаємо — історії ще немає — показуємо знак питання. */
   const inRange = cabSpendIn(c.fb);
+  const dayTip = cabDayNote(c.fb);
   const today = inRange == null ? '<span class="cab-na" title="No spend history yet">?</span>'
-    : inRange > 0 ? cabMoneyCur(inRange, c.fb.currency)
-    : '<span class="cab-na">—</span>';
+    : inRange > 0 ? (dayTip
+        ? `<span class="has-tip" title="${cabEsc(dayTip)}">${cabMoneyCur(inRange, c.fb.currency)}</span>`
+        : cabMoneyCur(inRange, c.fb.currency))
+    /* Прочерк підписуємо ТЕЖ, і саме він найчастіше й дивує: «нуль за
+       сьогодні» в кабінета, що вночі ще живе вчорашньою датою. */
+    : `<span class="cab-na${dayTip ? ' has-tip' : ''}"${
+        dayTip ? ` title="${cabEsc(dayTip)}"` : ''}>—</span>`;
 
   const cell = col => {
     const v = col.get(c);

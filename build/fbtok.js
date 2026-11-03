@@ -907,7 +907,32 @@ window.fbSync = async function (say, body) {
     // список токенів зараз на екрані.
     if (typeof fbLoad === 'function') await fbLoad();
 
-    if (!j.tokens) { tell('No tokens to sync — add one in Settings first.', 'var(--warn)'); return j; }
+    /* «ДОДАЙ ТОКЕН» ТОМУ, У КОГО ЇХ ДЕСЯТЬ.
+
+       Тут стояло просто `if (!j.tokens)`. А j.tokens — це не скільки
+       токенів є, а скільки ПРОЙШЛО до кінця. Коли жоден не вдався,
+       число теж нуль — і людині, у якої токени на місці, екран радив
+       їх додати. Причина при цьому приїжджала в тій самій відповіді,
+       полем problems, і мовчки викидалась разом із нею.
+
+       Тепер питаємо два різні числа. Старіша fb-sync tokens_total не
+       шле — тоді відповідь та сама, що й була, але хоч causes
+       видно. */
+    const total = j.tokens_total === undefined ? j.tokens : j.tokens_total;
+    if (!total) {
+      tell('No tokens to sync — add one in Settings first.', 'var(--warn)');
+      return j;
+    }
+    if (!j.tokens) {
+      /* Причину несе сама відповідь. Показати її тут — єдиний спосіб
+         її взагалі побачити: у журнал вона не лягає. */
+      const why = (j.problems || []).map(fbEsc);
+      tell('<b>' + total + ' token(s), and not one of them got through.</b>'
+        + (why.length ? '<br>' + why.join('<br>') : ' The function said nothing about why.')
+        + (j.took_ms ? '<br><span class="opacity-60">' + (j.took_ms / 1000).toFixed(1)
+           + 's spent before giving up</span>' : ''), 'var(--bad)');
+      return j;
+    }
 
     /* ПІДСУМОК — ПРО КАБІНЕТИ, А НЕ ПРО ВНУТРІШНЄ ЖИТТЯ ФУНКЦІЇ.
 
@@ -930,6 +955,19 @@ window.fbSync = async function (say, body) {
 
     const warn = [];
     if (j.failed) warn.push(`${j.failed} came back incomplete`);
+    /* ЧОМУ ДОВГО — З АДРЕСОЮ, а не відчуттям. Функція міряє час
+       кожного токена й окремо той, що пішов у Facebook; доти ці числа
+       приїжджали у відповіді й нікуди не потрапляли.
+
+       Кажемо лише коли довго: під десять секунд це звичайний прогін,
+       і рядок про найповільніших щоразу привчав би його не читати. */
+    if (j.took_ms > 20000 && (j.slowest || []).length) {
+      const top = j.slowest.slice(0, 3).map(x =>
+        fbEsc(x.label) + ' ' + (x.ms / 1000).toFixed(1) + 's'
+        + (x.accounts ? ' / ' + x.accounts + ' cab' : '')
+        + (x.graph_ms ? ' (' + (x.graph_ms / 1000).toFixed(1) + 's in Facebook)' : ''));
+      warn.push('slowest: ' + top.join(', '));
+    }
     if (j.throttled) warn.push('hit the Facebook rate limit — the rest comes in with the next run');
     /* ДО КОГО ЧЕРГА НЕ ДІЙШЛА — ПОІМЕННО, а не «more left».
 
