@@ -1119,6 +1119,31 @@ const cabSnapMoney = (v, c) => v == null ? null : cabMoneyCur(v, c.fb && c.fb.cu
 
    Без пояса (поле ще не приїхало) лишається локальна дата: це та сама
    відповідь, що була, і краща за порожнечу. */
+/* ЧИЙ ДЕНЬ ПІД ЦИМ ЧИСЛОМ — словами, на самому числі.
+
+   «в мене щось не так з одним акаунтом, він підтягує не сьогоднішні
+   дані». Найчастіше це не вада, а різниця поясів: Facebook рахує
+   витрати ТІЛЬКИ в поясі самого кабінета, іншого розрізу він не
+   віддає. Кабінет у Ташкенті вночі справді стоїть на іншій даті, ніж
+   ти, — і це те саме число, що в його Ads Manager.
+
+   Але відрізнити це від справжньої вади з екрана було неможливо:
+   число як число. Тому кажемо, за який день і в якому поясі воно
+   порахувало, — і окремо, якщо поясу ми не знаємо й узяли твій. */
+function cabDayNote(fb) {
+  if (cabRange.key !== 'today' && cabRange.key !== 'yest') return '';
+  const tz = (fb && fb.timezone_name) || '';
+  const day = cabRange.key === 'yest'
+    ? cabShiftDay(cabTzDay(tz), -1) : cabTzDay(tz);
+  const mine = cabTzDay('');
+  return tz
+    /* Різницю з твоїм днем називаємо лише коли вона є: щоденне
+       «збігається з твоїм» привчило б не читати цей рядок. */
+    ? day + ' in ' + tz + (day === mine ? '' : ' — not your date (' + mine + ')')
+    : day + ' — Facebook has not sent this cabinet a timezone, so this is YOUR date. '
+      + 'Press Sync now; if it stays empty, the cabinet is not coming through.';
+}
+
 const cabTzDay = tz => {
   try { return new Intl.DateTimeFormat('en-CA',
     tz ? { timeZone: tz } : {}).format(new Date()); }
@@ -2289,9 +2314,15 @@ function cabRowHtml(c, COLS) {
   /* Прочерк тут означає рівно «нуль за цей період». Коли ми взагалі не
      знаємо — історії ще немає — показуємо знак питання. */
   const inRange = cabSpendIn(c.fb);
+  const dayTip = cabDayNote(c.fb);
   const today = inRange == null ? '<span class="cab-na" title="No spend history yet">?</span>'
-    : inRange > 0 ? cabMoneyCur(inRange, c.fb.currency)
-    : '<span class="cab-na">—</span>';
+    : inRange > 0 ? (dayTip
+        ? `<span class="has-tip" title="${cabEsc(dayTip)}">${cabMoneyCur(inRange, c.fb.currency)}</span>`
+        : cabMoneyCur(inRange, c.fb.currency))
+    /* Прочерк підписуємо ТЕЖ, і саме він найчастіше й дивує: «нуль за
+       сьогодні» в кабінета, що вночі ще живе вчорашньою датою. */
+    : `<span class="cab-na${dayTip ? ' has-tip' : ''}"${
+        dayTip ? ` title="${cabEsc(dayTip)}"` : ''}>—</span>`;
 
   const cell = col => {
     const v = col.get(c);

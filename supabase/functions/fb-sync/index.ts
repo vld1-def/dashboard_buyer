@@ -165,7 +165,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-11-02.4';
+const FN_VERSION = '2026-11-03.1';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -2135,8 +2135,13 @@ async function handle(req: Request): Promise<Response> {
       ? 'token storage does not exist yet — run FB_TOKENS.sql' : msg }, 500);
   }
 
-  if (!tokens.length) return reply({ cron, tokens: 0, accounts: 0, changed: 0,
-    note: 'no tokens to sync' });
+  /* tokens_total — СКІЛЬКИ ТОКЕНІВ УЗЯЛИ В РОБОТУ, на відміну від
+     tokens, тобто скількох пройшли до кінця. Два різні числа, і без
+     другого екран не може відрізнити «токенів немає» від «жоден не
+     вдався»: він бачив нуль і в тому, і в тому випадку й радив
+     додати токен людині, у якої їх десяток. */
+  if (!tokens.length) return reply({ cron, tokens: 0, tokens_total: 0,
+    accounts: 0, changed: 0, note: 'no tokens to sync' });
 
   /* ═══ ЧИ ЖИВИЙ ТОКЕН — І БІЛЬШЕ НІЧОГО ═══
 
@@ -2330,7 +2335,8 @@ async function handle(req: Request): Promise<Response> {
   return reply({
     fn: FN_VERSION,
     cron, on_demand: onDemand, scoped: onlyOwner ? 'one owner' : 'all owners',
-    tokens: done, accounts, failed, changed, throttled,
+    tokens: done, tokens_total: tokens.length,
+    accounts, failed, changed, throttled,
     /* СКІЛЬКИ ОБІЙШЛИ ЯК АРХІВНІ. Без цього рядка менше кабінетів у
        підсумку читалось би як збій синхронізації — а це свідомий
        обхід, і він економить час живим. */

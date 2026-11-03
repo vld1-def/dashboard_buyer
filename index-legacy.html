@@ -9439,6 +9439,11 @@ async function apLoad() {
       sb.from('funnels_mapping').select('*').eq('team_name', currentTeam),
       sb.from('accounts_mapping').select('account_id, provider_name').eq('team_name', currentTeam),
       pwDomLoad(true),
+      /* Шаблон розбору — ПЕРЕД тим, як малювати картки: саме він
+         вирішує, до чого кріпиться дизайн. Прочитати його після
+         означало б показати картки з ключами за типовим шаблоном, а
+         потім тихо перемалювати з іншими. */
+      pwMaskLoad(),
       /* Дизайни їдуть тим самим заходом, що й стан доменів: обидва
          малюються на картці, і окремий крок після показав би картки
          спершу без превю, а потім із ним. Свою помилку pwShotLoad
@@ -10780,10 +10785,95 @@ let pwShots = {};            // ktid → [{ path, url }], найстаріший
 let pwShotIdx = {};          // ktid → який кадр показано в колонці
 let pwShotErr = '';
 
+/* ═══ KTID БЕРЕМО ЗА ШАБЛОНОМ КОМАНДИ, А НЕ ЗА ПОЗИЦІЄЮ ═══
+
+   Тут стояло «третій кусок через _». Для типового шаблону
+   *_{geo}_{ktid} це те саме, і саме тому помилка так довго й не
+   вилазила. Але шаблон НАЛАШТОВУЄТЬСЯ: інший баєр ставить ktid в
+   іншому місці, і для нього дашборд рахував ключем щось стороннє —
+   найчастіше порожнечу, тобто кнопки заливу дизайну в нього не було
+   взагалі, без жодного пояснення.
+
+   Шаблон лежить там, де його й задають: team_settings.pwa_parse.mask.
+   Беремо той самий, яким Form.html розбирає імпорт, і тим самим
+   кодом: два розбори одного імені рано чи пізно дадуть дві різні
+   відповіді, і тоді скрін є, а на картці його немає.
+
+   Шаблону немає — лишається стара позиція. Це не здогадка, а точно
+   те, що дає типовий шаблон, тобто поведінка команд, які його не
+   міняли, не змінюється. */
+const PW_DEFAULT_MASK = '*_{geo}_{ktid}';
+let pwMask = PW_DEFAULT_MASK;
+
+const PW_MASK_CACHE = new Map();
+
+/* Копія компілятора з Form.html. Копія, а не спільний файл, бо
+   Form.html не проходить через build.py і спільного місця в них
+   немає. Щоб копії не розійшлись мовчки, стенд ганяє однакові назви
+   крізь обидві й звіряє відповіді: саме розходження відповідей і
+   означало б, що скрін ліг під одним ключем, а шукають його під
+   іншим. */
+function pwMaskCompile(mask) {
+  const src = String(mask || '').trim();
+  if (!src) return null;
+  if (PW_MASK_CACHE.has(src)) return PW_MASK_CACHE.get(src);
+  const primary = src.includes('&') ? '&' : '_';
+  const esc = c => (/[A-Za-z0-9]/.test(c) ? c : '\\' + c);
+  const keys = [], fixed = {};
+  let re = '', i = 0;
+  while (i < src.length) {
+    const ph = /^\{(app|acc|cid|cid-|geo|ktid)(?:=([^}]*))?\}/.exec(src.slice(i));
+    if (ph) {
+      i += ph[0].length;
+      if (ph[2] !== undefined) { fixed[ph[1] === 'cid-' ? 'cid' : ph[1]] = ph[2]; continue; }
+      const stop = i < src.length ? src[i] : primary;
+      keys.push(ph[1]);
+      re += `([^${esc(stop)}]+)`;
+      continue;
+    }
+    if (src[i] === '*') { i++; re += '.*?'; continue; }
+    re += esc(src[i]); i++;
+  }
+  const compiled = { re: new RegExp('^' + re + `(?:${esc(primary)}.*)?$`, 'i'), keys, fixed };
+  PW_MASK_CACHE.set(src, compiled);
+  return compiled;
+}
+
+function pwMaskParse(mask, name) {
+  const c = pwMaskCompile(mask);
+  if (!c) return null;
+  const m = c.re.exec(String(name || ''));
+  if (!m) return null;
+  const out = { app: '', acc: '', cid: '', geo: '', ktid: '', ...c.fixed };
+  c.keys.forEach((k, i) => {
+    const v = String(m[i + 1] || '').trim();
+    if (k === 'cid-') out.cid = v.replace(/-/g, '_'); else out[k] = v;
+  });
+  return out;
+}
+
 const pwKtid = name => {
-  const p = String(name || '').trim().split('_');
-  return p.length < 3 ? '' : String(p[2] || '').trim();
+  const s = String(name || '').trim();
+  if (!s) return '';
+  const r = pwMaskParse(pwMask, s);
+  if (r && r.ktid) return r.ktid;
+  /* Шаблон не підійшов. Це НЕ привід мовчки взяти третій кусок: у
+     команди зі своїм шаблоном він означає щось інше, і скрін ліг би
+     під чужим ключем. Віддаємо порожньо — і картка скаже чому. */
+  return pwMask === PW_DEFAULT_MASK && s.split('_').length >= 3
+    ? String(s.split('_')[2] || '').trim() : '';
 };
+
+/* Шаблон читаємо там само, де решта налаштувань команди. Мовчки
+   лишити типовий означало б, що в команди з власним шаблоном усе
+   виглядає як поломка. */
+async function pwMaskLoad() {
+  try {
+    const v = await getTeamSetting('pwa_parse');
+    const m = v && typeof v === 'object' ? String(v.mask || '').trim() : '';
+    pwMask = m || PW_DEFAULT_MASK;
+  } catch (_e) { pwMask = PW_DEFAULT_MASK; }
+}
 
 /* КІЛЬКА КАРТИНОК НА ОДНУ ВОРОНКУ.
 
@@ -11058,6 +11148,10 @@ const pwIsParams = it => {
 function pwShotCol(it) {
   if (pwIsParams(it)) return '';
   const ktid = pwKtid(it.name);
+  /* Без KTID колонки превю НЕМАЄ — і це навмисно: картка, якій дизайн
+     прикріпити ніде, не має віддавати під нього сто двадцять пікселів
+     ширини, що потрібні силкам. Пояснення, чому кнопки немає, стоїть
+     у заголовку картки (pwNoKtid), а не тут. */
   if (!ktid) return '';
   const arr = pwShotsOf(ktid);
   if (!arr.length) return `<button type="button" class="pw-shot-add" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
@@ -11083,6 +11177,29 @@ function pwShotCol(it) {
       <button type="button" class="pw-shot-re" data-k="${apEsc(ktid)}" onclick="pwShotPick(event, this)"
         title="Залити ще кадр">+ ще</button>
     </div>`;
+}
+
+/* ЧОМУ НА ЦІЙ КАРТЦІ НЕМАЄ КНОПКИ ЗАЛИВУ.
+
+   Скрін кріпиться до KTID — ТРЕТЬОГО куска назви кампанії через «_»
+   (Mbank_KG_10708-ex8g_09/10 → 10708-ex8g). Назва на два куски ключа
+   не дає, і колонка лишалась просто порожньою: «створив шаблон, а
+   кнопки грузити немає», і жодної підказки, що справа в назві, а не в
+   поломці. Порожнє місце виглядає однаково і коли кнопки не має бути,
+   і коли вона зникла через ваду.
+
+   Підпис стоїть У ЗАГОЛОВКУ, серед інших підписів картки, а не на
+   місці превю: колонку превю такій картці віддавати нема за що, а
+   силки на ній і так обрізаються. */
+function pwNoKtid(it) {
+  if (pwIsParams(it) || pwKtid(it.name)) return '';
+  /* Називаємо САМЕ той шаблон, за яким розбирали, і саме цю назву.
+     «Потрібен третій кусок» було б неправдою для команди, яка ktid
+     поставила в інше місце, — а виправляти назву людина буде за цим
+     рядком. */
+  return `<span class="pw-noktid"
+    title="KTID дістається за шаблоном PWA з налаштувань імпорту: ${apEsc(pwMask)}. Назва «${apEsc(it.name || '')}» під нього не лягла, тож кріпити скрін нема до чого. Або виправ назву, або шаблон у Form → PWA parsing.">
+    no ktid</span>`;
 }
 
 /* Перемикання кадру МІСЦЕМ, без перемальовування списку: інакше від
@@ -11496,6 +11613,7 @@ function pwRender() {
           ${it.offer ? `<span class="text-slate-600 ml-1.5">· ${apEsc(it.offer)}</span>` : ''}
           <span class="text-slate-600 ml-1.5">· ${links.length} ${links.length === 1 ? 'силка' : 'силок'}</span>
           ${nBad ? `<span class="text-rose-400 ml-1.5">· ${nBad} під увагою</span>` : ''}
+          ${pwNoKtid(it)}
         </p>
         <div class="flex items-center gap-1.5 shrink-0">
           <button onclick="pwEdit('${it.id}')" class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">змінити</button>
