@@ -1515,11 +1515,25 @@ function cdChips(n, depth) {
 
      Для оголошення own і є його стан, тож дублювати не треба: нижній
      цикл намалює те саме. */
-  if (!ad && n.own) {
-    const st = cdState(n.own);
-    const quiet = nested && st && cdFromAbove(st.k);
-    parts.push(st
-      ? { s: st.s, why: st.why, text: quiet ? 'off' : st.t, self: true }
+  /* ВЛАСНИЙ ЗНАЧОК — ЛИШЕ КОЛИ ВІН ПОЯСНЮЄ, ЧОМУ НЕ КРУТИТЬСЯ.
+
+     Він тут заради вимкненої кампанії з активними оголошеннями: без
+     нього вона виглядала робочою. Але коли вимикач УВІМКНЕНИЙ, значок
+     «Active» не каже нічого нового й займає місце:
+
+       • діти теж активні — поруч стоїть «5 active», тобто те саме,
+         тільки з числом;
+       • усі діти в реджектах — «Active» прямо бреше: кампанія
+         ввімкнена, а не крутиться нічого, і саме це питання людина й
+         ставить, дивлячись на рядок.
+
+     Тож власний значок лишається рівно там, де він відповідь:
+     вимкнено, архівовано, незнайомий стан. */
+  const ownSt = (!ad && n.own) ? cdState(n.own) : null;
+  if (!ad && n.own && !(ownSt && ownSt.k === 'ACTIVE')) {
+    const quiet = nested && ownSt && cdFromAbove(ownSt.k);
+    parts.push(ownSt
+      ? { s: ownSt.s, why: ownSt.why, text: quiet ? 'off' : ownSt.t, self: true }
       : { s: 'wait', why: 'Facebook reports this state',
           text: String(n.own).toLowerCase().replace(/_/g, ' '), self: true });
   }
@@ -1559,15 +1573,18 @@ function cdChips(n, depth) {
 
   /* Більше двох значків у рядок не влазить, а перенос робить рядок
      удвічі вищим — на тридцяти кампаніях це вже інша таблиця. Тому
-     показуємо два найгірші, решту рахуємо в «+N», а повний розклад
-     лишаємо в підказці: він потрібен рідко, а висота рядка — завжди. */
+     показуємо два найгірші, а повний розклад лишаємо в підказці: він
+     потрібен рідко, а висота рядка — завжди.
+
+     «+N» звідси прибрано. Воно коштувало стільки ж місця, скільки
+     справжній значок, а казало лише «є ще щось» — не що саме і не
+     скільки чого. Повний розклад і так у підказці на всьому рядку
+     значків, тобто за тим самим рухом миші. */
   const show = parts.slice(0, 2);
-  const rest = parts.length - show.length;
   const all = parts.map(x => x.text).join(', ');
   return `<span class="cd-sts" title="${cdEsc(all)}">`
     + show.map(x => `<span class="cd-st cd-st-${x.s}${x.self ? ' is-self' : ''}" title="${
         cdEsc(x.why)}">${cdEsc(x.text)}</span>`).join('')
-    + (rest ? `<span class="cd-st cd-st-na">+${rest}</span>` : '')
     + '</span>';
 }
 
