@@ -938,6 +938,15 @@ window.fbSync = async function (say, body) {
        інакше тут стоїть те, що треба виконати — інакше іконки просто
        не зʼявляться, а причини не буде видно ніде. */
     if (j.creatives && j.creatives !== 'ok') warn.push('creatives: ' + j.creatives);
+    /* ПРАВИЛА ЙДУТЬ ЛАНЦЮГОМ ЗА СИНКОМ, і доти про це не було ні
+       слова: відповідь несла рядок rules, а екран його не показував.
+       Тобто «not configured: set RULES_CRON_SECRET for fb-sync too»
+       щогодини лежало у відповіді, якої ніхто не читає, а на сторінці
+       Rules це виглядало як «правила не працюють».
+
+       Мовчимо лише про «ok: …» — там немає новини. */
+    if (j.rules && !/^ok:/.test(String(j.rules)) && !/^skipped:/.test(String(j.rules)))
+      warn.push('rules: ' + j.rules);
     /* Кладемо причину туди, де видно НАСЛІДОК. У дереві кампаній
        людина бачить «немає доменів» і не має звідки дізнатись чому. */
     if (typeof setTeamSetting === 'function' && j.domains)

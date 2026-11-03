@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 02.11 22:38">
+  <meta name="build" content="build 03.11 07:28">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5193,6 +5193,20 @@ button.aq-v-pick:hover { border-color: var(--accent); color: var(--accent); }
 .rl-log-x { font-size: 10px; font-weight: 700; color: var(--text-main); opacity: .8; }
 .rl-log-t { margin-left: auto; }
 .rl-log-e { flex: 1 1 100%; font-size: 10px; color: #F87171; }
+/* КОЛИ ПРАВИЛА ПРОХОДИЛИ ОСТАННІЙ РАЗ — рядком над журналом, а не в
+   підказці: це перше, що питають, коли «нічого не вимкнулось», і
+   шукати відповідь не мають.
+
+   Зелений, коли ходять; жовтий, коли ні, — бо «не ходять» це не
+   інформація, а робота, яку треба зробити. */
+.rl-run { margin: 6px 0 2px; }
+.rl-run p { font-size: 10px; font-weight: 700; line-height: 1.5; }
+.rl-run-ok { color: var(--text-muted); }
+.rl-run-ok b { color: var(--text-main); font-weight: 900; }
+.rl-run-no { color: var(--warn); }
+.rl-run-no b { color: var(--text-main); font-weight: 900; }
+.rl-run-warn { color: var(--warn) !important; }
+
 .rl-empty { font-size: 11px; color: var(--text-muted); font-style: italic; margin: 6px 0; }
 .rl-hint { font-size: 10px; color: var(--text-muted); line-height: 1.6; margin: 14px 0 0; }
 
@@ -6630,7 +6644,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 02.11 22:38</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 07:28</div>
     </div>
   </aside>
 
@@ -7576,6 +7590,11 @@ input.ui-in[type="range"] { padding: 0; }
       <div class="rl-grp">
         <h3 class="rl-grp-h">Last actions</h3>
         <p class="rl-grp-s">What the rules did, newest first. An eye means report-only: the rule matched but nothing was touched.</p>
+        <!-- КОЛИ ПРАВИЛА ПРОХОДИЛИ ОСТАННІЙ РАЗ. Порожній журнал без
+             цього рядка означав одразу дві протилежні речі: «ходять,
+             нічого не підпадає» і «не ходять узагалі». Перше не
+             потребує нічого, друге — деплою, секрета або розкладу. -->
+        <div id="rl-run" class="rl-run"></div>
         <div id="rl-log" class="rl-log"></div>
       </div>
 
@@ -25116,6 +25135,15 @@ window.fbSync = async function (say, body) {
        інакше тут стоїть те, що треба виконати — інакше іконки просто
        не зʼявляться, а причини не буде видно ніде. */
     if (j.creatives && j.creatives !== 'ok') warn.push('creatives: ' + j.creatives);
+    /* ПРАВИЛА ЙДУТЬ ЛАНЦЮГОМ ЗА СИНКОМ, і доти про це не було ні
+       слова: відповідь несла рядок rules, а екран його не показував.
+       Тобто «not configured: set RULES_CRON_SECRET for fb-sync too»
+       щогодини лежало у відповіді, якої ніхто не читає, а на сторінці
+       Rules це виглядало як «правила не працюють».
+
+       Мовчимо лише про «ok: …» — там немає новини. */
+    if (j.rules && !/^ok:/.test(String(j.rules)) && !/^skipped:/.test(String(j.rules)))
+      warn.push('rules: ' + j.rules);
     /* Кладемо причину туди, де видно НАСЛІДОК. У дереві кампаній
        людина бачить «немає доменів» і не має звідки дізнатись чому. */
     if (typeof setTeamSetting === 'function' && j.domains)
@@ -31674,6 +31702,10 @@ const RL_LEVELS = [
    інше (перегляди, реакції) лідом не є, і мовчки додавати його в
    знаменник ціни ліда означало б робити правила безглуздими. */
 let rlRules = [], rlEdit = null, rlLog = [], rlLoaded = false;
+/* Рядки про сам прогін (level='run'). Лежать у тому самому журналі,
+   але показуються окремо: вони не дія, а відповідь на питання «а чи
+   воно взагалі ходить». */
+let rlRuns = [];
 
 const rlEsc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -31725,21 +31757,73 @@ async function rlLogLoad() {
       .select('at,rule_name,level,entity_name,entity_id,account_id,metrics,dry,ok,error')
       .order('at', { ascending: false }).limit(40);
     if (error) throw new Error(error.message);
-    rlLog = data || [];
+    const all = data || [];
+    rlRuns = all.filter(r => String(r.level) === 'run');
+    rlLog = all.filter(r => String(r.level) !== 'run');
   } catch (e) {
     box.innerHTML = /fb_rule_log|does not exist|schema cache/i.test(e.message)
       ? '<p class="rl-empty">No history table yet — run FB_RULES.sql and it starts filling by itself.</p>'
       : '<p class="rl-empty">Could not read the history: ' + rlEsc(e.message) + '</p>';
+    rlRunPaint();
     return;
   }
+  rlRunPaint();
   rlLogPaint();
+}
+
+/* КОЛИ ПРАВИЛА ПРОХОДИЛИ ОСТАННІЙ РАЗ.
+
+   Доти порожній журнал казав «Nothing yet. Either no rule matched, or
+   none of them ran» — тобто сторінка сама зізнавалась, що не вміє
+   відрізнити дві протилежні новини. У першій робити нічого не треба,
+   у другій — деплой, секрет або розклад.
+
+   Тепер прогін лишає по собі слід навіть коли не зробив нічого, і
+   відповідь однозначна. */
+function rlRunPaint() {
+  const box = document.getElementById('rl-run');
+  if (!box) return;
+  const r = (rlRuns || [])[0];
+  if (!r) {
+    box.innerHTML = '<p class="rl-run-no">\u26A0 The rules have never run.'
+      + ' Three things, in this order: <b>fb-rules</b> is deployed,'
+      + ' <b>RULES_CRON_SECRET</b> is set in its secrets (and in fb-sync too \u2014 it runs'
+      + ' them after every sync), and the schedule from <b>FB_RULES.sql</b> exists.'
+      + ' <b>Check now</b> above runs them by hand: if that works, it is the schedule'
+      + ' that does not.</p>';
+    return;
+  }
+  const m = r.metrics || {};
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(r.at || '')) / 60000));
+  const when = mins < 1 ? 'just now' : mins < 60 ? mins + ' min ago'
+    : Math.round(mins / 60) + ' h ago';
+  const n = v => Number(v) || 0;
+  /* Пропущені через застарілий знімок — окремо й голосно: саме вони
+     найчастіше й означають «нічого не вимкнулось». */
+  const stale = n(m.stale)
+    ? ' \u00b7 <b class="rl-run-warn">' + n(m.stale)
+      + ' skipped: the snapshot was too old</b>'
+    : '';
+  const did = n(m.paused) ? ' \u00b7 ' + n(m.paused) + ' switched off'
+    : n(m.would) ? ' \u00b7 ' + n(m.would) + ' reported'
+    : ' \u00b7 nothing matched';
+  box.innerHTML = '<p class="rl-run-ok">\u2713 Checked <b>' + when + '</b>: '
+    + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + stale
+    + (mins > 90
+        ? ' \u2014 <b class="rl-run-warn">that is a while ago; the schedule may have'
+          + ' stopped</b>'
+        : '') + '</p>';
 }
 
 function rlLogPaint() {
   const box = document.getElementById('rl-log');
   if (!box) return;
   if (!rlLog.length) {
-    box.innerHTML = '<p class="rl-empty">Nothing yet. Either no rule matched, or none of them ran.</p>';
+    /* Порожній список тепер означає рівно одне, і яке саме — вирішує
+       слід про прогін, а не здогадка. */
+    box.innerHTML = (rlRuns || []).length
+      ? '<p class="rl-empty">Nothing here: the rules do run, nothing has matched them yet.</p>'
+      : '<p class="rl-empty">Nothing yet \u2014 see the line above.</p>';
     return;
   }
   const money = v => '$' + (Math.round((Number(v) || 0) * 100) / 100).toLocaleString('en-US');
