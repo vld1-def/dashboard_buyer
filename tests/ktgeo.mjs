@@ -76,10 +76,10 @@ const fbHead = '"Account ID","Campaign name","Ad name",Platform,Placement,Curren
 const fbRow = (acc, geo, spend) =>
   `${acc},cy638t_8wxg_cr1_SMW11003_${acc}_${geo},AD_${geo},instagram,Feed,USD,${spend},10,,0,0,0,2026-10-23,2026-10-23`;
 
-const run = (fbCsv, mask) => page.evaluate(async ([ktCsv, fb, mk]) => {
+const run = (fbCsv, mask, pay) => page.evaluate(async ([ktCsv, fb, mk, py]) => {
   mappingDB = { timezones: { '111': 3 }, agencies: {}, funnels: {}, funnelApp: {}, providers: {} };
   knownOffers = ['Pin-Up[25]', 'Boostwin'];
-  globalOffersCache = []; datasetToImport = []; creativesToImport = [];
+  globalOffersCache = py || []; datasetToImport = []; creativesToImport = [];
   trafficMode = 'app'; appParse = { mask: mk }; appProfiles = {};
   keitaroMap = { ...KM_DEFAULT };
   parseKeitaro(ktCsv);
@@ -93,10 +93,11 @@ const run = (fbCsv, mask) => page.evaluate(async ([ktCsv, fb, mk]) => {
     cells: Object.values(keitaroAgg.byDailyLand['2026-10-23|111'] || {})
       .map(c => ({ geo: c.geo, i: c.installs })),
     kt: keitaroAgg.byDaily['2026-10-23|111'],
+    note: datasetToImport.map(r => r._offerOther || ''),
     foot: (document.getElementById('dataset-preview-foot')?.textContent || '').replace(/\s+/g, ' ').trim(),
     badges: (document.getElementById('dataset-preview-body').innerHTML.match(/class="ds-geo"/g) || []).length
   };
-}, [KT, fbCsv, mask]);
+}, [KT, fbCsv, mask, pay]);
 
 const MASK = '*_*_*_{app}_{acc}_{geo}';
 const one = await run([fbHead, fbRow('111', 'TJ', '100.00')].join('\r\n'), MASK);
@@ -120,6 +121,41 @@ ok('спенд не зрушив', Math.abs(one.rows.reduce((a, r) => a + r.sp, 
   one.rows.map(r => r.sp));
 ok('офер підставився з хвостом у дужках',
   tj.every(r => r.offer === 'Pin-Up[25]'), tj.map(r => r.offer));
+
+/* ─────────── 2б. ОФЕР ЧУЖОГО ГЕО В РЯДОК НЕ ПИШЕТЬСЯ ───────────
+
+   «в імпорті дальше є помилка з офферами, підтягує оффер від іншого
+   гео». Лендінг із Keitaro несе із собою офер, і він ставився в
+   рядок як є. Але виплата заведена на ПАРУ (гео, офер): той самий
+   «Boostwin» у TJ і в UZ — дві різні ставки. Узбецький лендінг, що
+   сів на TJ-рядок (вище), приносив із собою й узбецький офер — і
+   виручка тихо рахувалась за DEFAULT або нулем.
+
+   Виплати тут уже є, тож судити ЄСТЬ ЗА ЧИМ: Boostwin платить лише
+   за UZ, Pin-Up[25] — за TJ. */
+const PAY = [{ offer: 'Boostwin', geo: 'UZ' }, { offer: 'Pin-Up[25]', geo: 'TJ' }];
+const guard = await run([fbHead, fbRow('111', 'TJ', '100.00')].join('\r\n'), MASK, PAY);
+const gTj = guard.rows.filter(r => !r.other), gUz = guard.rows.filter(r => r.other);
+ok('свій офер як стояв, так і стоїть',
+  gTj.every(r => r.offer === 'Pin-Up[25]'), gTj.map(r => r.offer));
+ok('а офер чужого гео в рядок не пішов',
+  gUz.length === 1 && gUz[0].offer === '', gUz);
+/* Порожня клітинка без причини читалась би як «Keitaro офера не дав»
+   — а він дав, просто не для цього гео. */
+ok('і сказано, чому його немає',
+  guard.note.some(t => /Boostwin pays for UZ, not for TJ/.test(t)), guard.note);
+/* Числа чіпати не можна: втратити конверсії страшніше, ніж лишити
+   клітинку офера порожньою. */
+ok('цифри чужого лендінга на місці', gUz[0].i === 9 && gUz[0].d === 1, gUz[0]);
+ok('і сума так само дорівнює Keitaro',
+  guard.rows.reduce((a, r) => a + r.i, 0) === guard.kt.installs, [guard.rows, guard.kt]);
+/* Офер, якого в довіднику немає ЗОВСІМ, — не чужий, а новий: його
+   ставимо як і раніше, а скаже про нього позначка ≠ в таблиці. */
+const unknown = await run([fbHead, fbRow('111', 'TJ', '100.00')].join('\r\n'), MASK,
+  [{ offer: 'Pin-Up[25]', geo: 'TJ' }]);
+ok('офер без виплат ніде лишається як був',
+  unknown.rows.filter(r => r.other).every(r => r.offer === 'Boostwin'),
+  unknown.rows.filter(r => r.other).map(r => r.offer));
 
 /* ─────────── 3. ДВА ГЕО У ЗВІТІ FB — КОЖЕН БЕРЕ СВОЄ ─────────── */
 const two = await run([fbHead, fbRow('111', 'TJ', '100.00'), fbRow('111', 'UZ', '50.00')].join('\r\n'), MASK);
