@@ -1123,8 +1123,22 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     // Функція для копіювання ID
     function copyID(e, text) {
       e.stopPropagation(); // Зупиняємо вибір креатива при натисканні на кнопку копіювання
+      /* І не йдемо за силкою. Рядок креатива, якого немає в
+         статистиці, — це <a> у Drive, і клік по кнопці копіювання
+         всередині нього відкривав би ще й вкладку. На <div> це
+         нічого не міняє: у нього типової дії немає. */
+      e.preventDefault();
+      /* КНОПКУ БЕРЕМО ЗАРАЗ, А НЕ В .then().
+
+         currentTarget живе рівно стільки, скільки триває розсилання
+         події: до моменту, коли обіцянка буферу обміну справдиться,
+         там уже null. Тобто галочка не просто іноді не зʼявлялась —
+         вона не зʼявлялась ніколи, а замість неї в консоль летіло
+         «Cannot read properties of null». Мовчки, бо .then() без
+         .catch() нікому про це не каже. */
+      const btn = e.currentTarget;
       navigator.clipboard.writeText(text).then(() => {
-        const btn = e.currentTarget;
+        if (!btn) return;
         const originalHTML = btn.innerHTML;
         btn.innerHTML = '✅';
         btn.classList.add('text-green-500');
@@ -1132,6 +1146,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           btn.innerHTML = originalHTML;
           btn.classList.remove('text-green-500');
         }, 1000);
+      /* Буфер обміну відмовляє — у незахищеному з'єднанні, без дозволу,
+         у фоновій вкладці. Доти це теж було мовчанням: людина бачила
+         кнопку без галочки й не знала, скопіювалось чи ні. */
+      }).catch(err => {
+        if (typeof toast === 'function') toast('Could not copy: ' + (err && err.message || err), 'error');
       });
     }
     
@@ -1538,10 +1557,21 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                    creatives_stats узагалі. Тому єдине місце, де він існує, —
                    папка в Drive. -->
               <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2">
+              <!-- НА КНОПЦІ СТОЯЛО «\u2744 Cold» — БУКВАЛЬНО.
+
+                   Це сирий HTML, а не рядок у JS: екранована
+                   послідовність тут нічим не розгортається, і людина
+                   бачила на екрані «\u2744 Cold». Сніжинку мали на
+                   увазі, сніжинки не було.
+
+                   Та й сама назва не казала нічого: «cold» однаково
+                   зветься й трафік, і ліди, і аудиторія — щоразу інше.
+                   Кнопка ж відповідає на одне питання: що майже не
+                   лилось або не лилось узагалі. Так і називається. -->
                 <button id="cr-cold" onclick="crToggleCold()"
                   title="Creatives that barely ran, and files in Drive that never ran at all. Ignores the date range — the question is about all time."
-                  class="text-[11px] font-black uppercase transition text-slate-400 hover:text-white">\u2744 Cold</button>
-                <span class="text-[10px] font-bold text-slate-600">\u2264 $</span>
+                  class="text-[11px] font-black uppercase transition text-slate-400 hover:text-white">Barely ran</button>
+                <span class="text-[10px] font-bold text-slate-600">≤ $</span>
                 <input type="number" step="any" min="0" id="cr-cold-max" value="5" oninput="crColdMaxSet()"
                   class="w-12 h-[24px] bg-white/5 border border-white/10 rounded-lg px-1.5 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
               </div>
@@ -3368,6 +3398,21 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
         <span class="text-[11px] font-black truncate text-sky-200">${nm}</span>
         <span class="flex-shrink-0 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded
                      bg-sky-500/20 text-sky-300">never ran</span>
+        ${/* ТА САМА КНОПКА, ЩО Й У РЕШТИ РЯДКІВ.
+
+             Ім'я цього креатива потрібне рівно для того ж, для чого й
+             будь-яке інше: вставити в назву кампанії, знайти в Drive,
+             спитати в когось. Те, що він жодного разу не лився, цього
+             не міняє — а копіювати його доводилось руками з екрана.
+
+             Копіюємо ім'я без розширення: саме воно й буде cid, коли
+             креатив нарешті поллється. Із «.mp4» на кінці рядок у
+             назві кампанії не зійшовся б зі статистикою. */ ''}
+        <button onclick="copyID(event, '${String(c.cid).replace(/'/g, "\\'")}')"
+                title="Copy creative ID"
+                class="flex-shrink-0 opacity-40 hover:opacity-100 transition p-0.5 rounded hover:bg-white/10">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        </button>
       </a>`;
   }
   {

@@ -36,13 +36,83 @@ window.toast = function (msg, kind, ms, raw) {
            : text.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]))
                  .replace(/\n/g, '<br>'));
 
-  const kill = () => {
+  let lifeTimer = 0;
+  let kill = () => {
     if (el.dataset.gone) return;
     el.dataset.gone = '1';
     el.classList.add('out');
     setTimeout(() => el.remove(), 180);
   };
-  el.addEventListener('click', kill);
+  /* ЗАТИСНУТИ — ЧИТАТИ, КОРОТКИЙ ДОТИК — ПРИБРАТИ.
+
+     Підсумок синку буває на двадцять рядків: чиї токени впали, що
+     саме сказала база, які кабінети найповільніші. Прочитати це за
+     сім секунд не можна, а найменший рух пальцем по ньому — це клік,
+     тобто текст зникав рівно тоді, коли в нього вдивлялись.
+
+     Тому довге натискання (350 мс) ТРИМАЄ тост: лічильник згасання
+     знімається, зʼявляється смуга прокрутки, текст можна виділяти й
+     копіювати. Відпускання його не прибирає — прибере наступний
+     короткий дотик.
+
+     350 мс, а не менше: при 200 швидкий клік по довгому тексту вже
+     час від часу «затискався», і тост не зникав, коли його хотіли
+     прибрати. Менше 300 людина не відчуває як «затиснув». */
+  const HOLD_MS = 350;
+  let justHeld = false;    // затискання СКІНЧИЛОСЬ щойно — клік за ним не рахується
+  let grabbing = false;    // затискання відбулось у ЦЬОМУ натисканні
+  let holdTimer = 0;
+
+  const grab = () => {
+    grabbing = true;
+    el.classList.add('is-held');
+    if (lifeTimer) { clearTimeout(lifeTimer); lifeTimer = 0; }
+  };
+
+  el.addEventListener('pointerdown', e => {
+    // Правою кнопкою не тримаємо: там контекстне меню.
+    if (e.button && e.button !== 0) return;
+    grabbing = false;
+    holdTimer = setTimeout(grab, HOLD_MS);
+  });
+
+  /* Відпускання ловимо на ВІКНІ: палець часто з'їжджає за межі тоста,
+     і подія до нього вже не доходить — лічильник затискання лишався б
+     увімкненим і спрацював би на порожньому місці. */
+  const up = () => {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = 0; }
+    /* Клік приходить одразу за відпусканням. Якщо саме ЦЕ натискання
+       було затисканням, ним людина щойно відкрила текст — прибирати
+       його тим самим рухом означало б, що затиснути неможливо.
+
+       Питаємо про поточне натискання, а не про стан тоста. Поки тут
+       стояло «тост затиснутий», позначка вмикалась на КОЖНОМУ
+       наступному відпусканні — і затиснутий тост не прибирався вже
+       ніколи, тобто лишався на екрані назавжди. */
+    if (grabbing) justHeld = true;
+    grabbing = false;
+  };
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+
+  el.addEventListener('click', () => {
+    if (justHeld) { justHeld = false; return; }
+    /* Виділення тексту — не клік. Без цього спроба скопіювати рядок
+       помилки прибирала б той самий рядок. */
+    const sel = window.getSelection && window.getSelection();
+    if (sel && String(sel).length && el.contains(sel.anchorNode)) return;
+    kill();
+  });
+
+  /* Слухачі вікна знімаємо разом із тостом: їх стільки ж, скільки
+     тостів за сеанс, і самі вони не зникли б. */
+  const bare = kill;
+  kill = () => {
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    bare();
+  };
+
   wrap.appendChild(el);
 
   // Більш ніж чотири тости на екрані — це вже стіна тексту
@@ -50,7 +120,9 @@ window.toast = function (msg, kind, ms, raw) {
 
   // Помилку лишаємо довше: її треба встигнути прочитати
   const life = ms != null ? ms : (kind === 'error' ? 7000 : 3500);
-  if (life > 0) setTimeout(kill, life);
+  /* Тримаємо номер лічильника: без нього затискання не мало б чого
+     скасовувати, і тост усе одно згас би посеред читання. */
+  if (life > 0) lifeTimer = setTimeout(() => kill(), life);
   return el;
 };
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 03.11 13:49">
+  <meta name="build" content="build 03.11 14:29">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2760,6 +2760,25 @@ body.is-lead .set-row[data-team]:not(.no-hit) { display: flex; }
   animation: toast-in .18s ease-out;
 }
 .toast:hover { border-color: var(--border-2); }
+/* ЗАТИСНУТИЙ ТОСТ — ЦЕ ВЖЕ ТЕКСТ, А НЕ СПОВІЩЕННЯ.
+
+   Поки він гасне сам, його не читають, а ковзають поглядом — і курсор
+   руки тут доречний. Щойно його затримали, у нього інша робота:
+   довгий підсумок синку треба прокрутити, виділити, скопіювати. Тому
+   й курсор звичайний, і виділення дозволене, і висота обмежена
+   екраном, а не текстом.
+
+   Ліва смуга світліша: єдине, чим видно, що тост уже не зникне сам. */
+.toast.is-held {
+  cursor: default; user-select: text; -webkit-user-select: text;
+  max-height: 60vh; overflow-y: auto; overscroll-behavior: contain;
+  border-color: var(--border-2);
+  box-shadow: 0 18px 44px -18px rgba(0,0,0,.85), 0 0 0 1px var(--border-2) inset;
+}
+/* Поки тост тримають, палець по ньому прокручує, а не «тягне
+   сторінку»: без цього на телефоні замість прокрутки тексту
+   починала їхати сама сторінка. */
+.toast.is-held { touch-action: pan-y; }
 .toast.is-error { border-left-color: var(--bad); }
 .toast.is-ok    { border-left-color: var(--ok); }
 .toast.is-warn  { border-left-color: #EAB308; }
@@ -6478,8 +6497,22 @@ input.ui-in[type="range"] { padding: 0; }
     // Функція для копіювання ID
     function copyID(e, text) {
       e.stopPropagation(); // Зупиняємо вибір креатива при натисканні на кнопку копіювання
+      /* І не йдемо за силкою. Рядок креатива, якого немає в
+         статистиці, — це <a> у Drive, і клік по кнопці копіювання
+         всередині нього відкривав би ще й вкладку. На <div> це
+         нічого не міняє: у нього типової дії немає. */
+      e.preventDefault();
+      /* КНОПКУ БЕРЕМО ЗАРАЗ, А НЕ В .then().
+
+         currentTarget живе рівно стільки, скільки триває розсилання
+         події: до моменту, коли обіцянка буферу обміну справдиться,
+         там уже null. Тобто галочка не просто іноді не зʼявлялась —
+         вона не зʼявлялась ніколи, а замість неї в консоль летіло
+         «Cannot read properties of null». Мовчки, бо .then() без
+         .catch() нікому про це не каже. */
+      const btn = e.currentTarget;
       navigator.clipboard.writeText(text).then(() => {
-        const btn = e.currentTarget;
+        if (!btn) return;
         const originalHTML = btn.innerHTML;
         btn.innerHTML = '✅';
         btn.classList.add('text-green-500');
@@ -6487,6 +6520,11 @@ input.ui-in[type="range"] { padding: 0; }
           btn.innerHTML = originalHTML;
           btn.classList.remove('text-green-500');
         }, 1000);
+      /* Буфер обміну відмовляє — у незахищеному з'єднанні, без дозволу,
+         у фоновій вкладці. Доти це теж було мовчанням: людина бачила
+         кнопку без галочки й не знала, скопіювалось чи ні. */
+      }).catch(err => {
+        if (typeof toast === 'function') toast('Could not copy: ' + (err && err.message || err), 'error');
       });
     }
     
@@ -6679,7 +6717,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 13:49</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 14:29</div>
     </div>
   </aside>
 
@@ -7271,10 +7309,21 @@ input.ui-in[type="range"] { padding: 0; }
                    creatives_stats узагалі. Тому єдине місце, де він існує, —
                    папка в Drive. -->
               <div class="h-[34px] flex items-center gap-1 bg-gray-500/10 border border-gray-500/20 rounded-xl px-2">
+              <!-- НА КНОПЦІ СТОЯЛО «\u2744 Cold» — БУКВАЛЬНО.
+
+                   Це сирий HTML, а не рядок у JS: екранована
+                   послідовність тут нічим не розгортається, і людина
+                   бачила на екрані «\u2744 Cold». Сніжинку мали на
+                   увазі, сніжинки не було.
+
+                   Та й сама назва не казала нічого: «cold» однаково
+                   зветься й трафік, і ліди, і аудиторія — щоразу інше.
+                   Кнопка ж відповідає на одне питання: що майже не
+                   лилось або не лилось узагалі. Так і називається. -->
                 <button id="cr-cold" onclick="crToggleCold()"
                   title="Creatives that barely ran, and files in Drive that never ran at all. Ignores the date range — the question is about all time."
-                  class="text-[11px] font-black uppercase transition text-slate-400 hover:text-white">\u2744 Cold</button>
-                <span class="text-[10px] font-bold text-slate-600">\u2264 $</span>
+                  class="text-[11px] font-black uppercase transition text-slate-400 hover:text-white">Barely ran</button>
+                <span class="text-[10px] font-bold text-slate-600">≤ $</span>
                 <input type="number" step="any" min="0" id="cr-cold-max" value="5" oninput="crColdMaxSet()"
                   class="w-12 h-[24px] bg-white/5 border border-white/10 rounded-lg px-1.5 text-[11px] font-bold outline-none focus:border-blue-500 text-dynamic">
               </div>
@@ -9768,6 +9817,21 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
         <span class="text-[11px] font-black truncate text-sky-200">${nm}</span>
         <span class="flex-shrink-0 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded
                      bg-sky-500/20 text-sky-300">never ran</span>
+        ${/* ТА САМА КНОПКА, ЩО Й У РЕШТИ РЯДКІВ.
+
+             Ім'я цього креатива потрібне рівно для того ж, для чого й
+             будь-яке інше: вставити в назву кампанії, знайти в Drive,
+             спитати в когось. Те, що він жодного разу не лився, цього
+             не міняє — а копіювати його доводилось руками з екрана.
+
+             Копіюємо ім'я без розширення: саме воно й буде cid, коли
+             креатив нарешті поллється. Із «.mp4» на кінці рядок у
+             назві кампанії не зійшовся б зі статистикою. */ ''}
+        <button onclick="copyID(event, '${String(c.cid).replace(/'/g, "\\'")}')"
+                title="Copy creative ID"
+                class="flex-shrink-0 opacity-40 hover:opacity-100 transition p-0.5 rounded hover:bg-white/10">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+        </button>
       </a>`;
   }
   {
@@ -15863,13 +15927,83 @@ window.toast = function (msg, kind, ms, raw) {
            : text.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]))
                  .replace(/\n/g, '<br>'));
 
-  const kill = () => {
+  let lifeTimer = 0;
+  let kill = () => {
     if (el.dataset.gone) return;
     el.dataset.gone = '1';
     el.classList.add('out');
     setTimeout(() => el.remove(), 180);
   };
-  el.addEventListener('click', kill);
+  /* ЗАТИСНУТИ — ЧИТАТИ, КОРОТКИЙ ДОТИК — ПРИБРАТИ.
+
+     Підсумок синку буває на двадцять рядків: чиї токени впали, що
+     саме сказала база, які кабінети найповільніші. Прочитати це за
+     сім секунд не можна, а найменший рух пальцем по ньому — це клік,
+     тобто текст зникав рівно тоді, коли в нього вдивлялись.
+
+     Тому довге натискання (350 мс) ТРИМАЄ тост: лічильник згасання
+     знімається, зʼявляється смуга прокрутки, текст можна виділяти й
+     копіювати. Відпускання його не прибирає — прибере наступний
+     короткий дотик.
+
+     350 мс, а не менше: при 200 швидкий клік по довгому тексту вже
+     time від часу «затискався», і тост не зникав, коли його хотіли
+     прибрати. Менше 300 людина не відчуває як «затиснув». */
+  const HOLD_MS = 350;
+  let justHeld = false;    // затискання СКІНЧИЛОСЬ щойно — клік за ним не рахується
+  let grabbing = false;    // затискання відбулось у ЦЬОМУ натисканні
+  let holdTimer = 0;
+
+  const grab = () => {
+    grabbing = true;
+    el.classList.add('is-held');
+    if (lifeTimer) { clearTimeout(lifeTimer); lifeTimer = 0; }
+  };
+
+  el.addEventListener('pointerdown', e => {
+    // Правою кнопкою не тримаємо: там контекстне меню.
+    if (e.button && e.button !== 0) return;
+    grabbing = false;
+    holdTimer = setTimeout(grab, HOLD_MS);
+  });
+
+  /* Відпускання ловимо на ВІКНІ: палець часто з'їжджає за межі тоста,
+     і подія до нього вже не доходить — лічильник затискання лишався б
+     увімкненим і спрацював би на порожньому місці. */
+  const up = () => {
+    if (holdTimer) { clearTimeout(holdTimer); holdTimer = 0; }
+    /* Клік приходить одразу за відпусканням. Якщо саме ЦЕ натискання
+       було затисканням, ним людина щойно відкрила текст — прибирати
+       його тим самим рухом означало б, що затиснути неможливо.
+
+       Питаємо про поточне натискання, а не про стан тоста. Поки тут
+       стояло «тост затиснутий», позначка вмикалась на КОЖНОМУ
+       наступному відпусканні — і затиснутий тост не прибирався вже
+       ніколи, тобто лишався на екрані назавжди. */
+    if (grabbing) justHeld = true;
+    grabbing = false;
+  };
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+
+  el.addEventListener('click', () => {
+    if (justHeld) { justHeld = false; return; }
+    /* Виділення тексту — не клік. Без цього спроба скопіювати рядок
+       помилки прибирала б той самий рядок. */
+    const sel = window.getSelection && window.getSelection();
+    if (sel && String(sel).length && el.contains(sel.anchorNode)) return;
+    kill();
+  });
+
+  /* Слухачі вікна знімаємо разом із тостом: їх стільки ж, скільки
+     тостів за сеанс, і самі вони не зникли б. */
+  const bare = kill;
+  kill = () => {
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    bare();
+  };
+
   wrap.appendChild(el);
 
   // Більш ніж чотири тости на екрані — це вже стіна тексту
@@ -15877,7 +16011,9 @@ window.toast = function (msg, kind, ms, raw) {
 
   // Помилку лишаємо довше: її треба встигнути прочитати
   const life = ms != null ? ms : (kind === 'error' ? 7000 : 3500);
-  if (life > 0) setTimeout(kill, life);
+  /* Тримаємо номер лічильника: без нього затискання не мало б чого
+     скасовувати, і тост усе одно згас би посеред читання. */
+  if (life > 0) lifeTimer = setTimeout(() => kill(), life);
   return el;
 };
 
@@ -25246,7 +25382,7 @@ let fbSyncing = false;
 
 /* Версія fb-sync, під яку зібрана ця сторінка. Підставляє build.py,
    читаючи її з коду самої функції. */
-const FB_FN_WANT = '2026-11-03.1';
+const FB_FN_WANT = '2026-11-03.2';
 
 /* ЧИ ЖИВИЙ ТОКЕН — ОКРЕМОЮ КНОПКОЮ.
 
