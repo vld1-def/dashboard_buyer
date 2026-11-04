@@ -25,9 +25,10 @@ const srv = await serve(PORT);
 const { browser, page, errs } = await open(PORT);
 const { ok, done } = checks();
 
-const paint = geos => page.evaluate(gs => {
+const paint = (geos, q) => page.evaluate(([gs, query]) => {
   rawData = gs.map(g => ({ geo: g, spend: 1 }));
   openClockModal();
+  if (query) clockSearch(query);
   const body = document.getElementById('clock-body');
   return {
     hidden: document.getElementById('clock-modal').classList.contains('hidden'),
@@ -38,6 +39,9 @@ const paint = geos => page.evaluate(gs => {
       part: r.querySelector('.clk-part').textContent.trim(),
       diff: r.querySelector('.clk-diff').textContent.trim(),
       name: r.querySelector('.clk-name').getAttribute('title') || '',
+      /* Підказка і видимий текст — різні речі, і перевіряти треба
+         обидві: у title лежить пояс, а на екрані — країна й місто. */
+      shown: r.querySelector('.clk-name').textContent.replace(/\s+/g, ' ').trim(),
       night: r.classList.contains('is-night')
     })),
     none: (body.querySelector('.clk-none') || {}).textContent || '',
@@ -48,7 +52,7 @@ const paint = geos => page.evaluate(gs => {
     text: body.textContent.replace(/\s+/g, ' ').trim(),
     sub: document.getElementById('clock-sub').textContent.trim()
   };
-}, geos);
+}, [geos, q]);
 
 /* ── 1. ГЕО З ДАНИХ ── */
 const v = await paint(['KG', 'TJ', 'UZ', '??', 'kg', '']);
@@ -73,6 +77,31 @@ ok('час TJ збігається з Intl', byGeo.TJ.time === real.TJ, { ours: 
 ok('дата теж показана', /\d/.test(byGeo.KG.day), byGeo.KG.day);
 ok('і пояс названий у підказці', /Asia\/Bishkek/.test(byGeo.KG.name), byGeo.KG.name);
 
+/* ── ПОЯСИ БЕРУТЬСЯ В БРАУЗЕРА, А НЕ ЗІ СЛОВНИКА ──
+   Словник старіє мовчки; дані браузера їдуть із ним самим. */
+const fromBrowser = await page.evaluate(() => ({
+  kg: clockZones('KG'), none: clockZones('ZZ'), bad: clockZones('x!') }));
+ok('пояси країни питаємо в браузера',
+  fromBrowser.kg.join() === 'Asia/Bishkek', fromBrowser.kg);
+ok('неіснуючий код не дає поясів',
+  !fromBrowser.none.length && !fromBrowser.bad.length, fromBrowser);
+
+/* ── ПЕРШИЙ ЗА АБЕТКОЮ ≠ ОСНОВНИЙ ──
+   Браузер віддає пояси за абеткою: для США перший — America/Adak,
+   Алеутські острови на 170 людей, і він на пʼять годин від
+   Нью-Йорка. Показати це як «час у США» означало б помилятись
+   мовчки. */
+const mains = await page.evaluate(() => ({
+  us: { first: clockZones('US')[0], main: clockMain('US') },
+  ru: { first: clockZones('RU')[0], main: clockMain('RU') },
+  au: { first: clockZones('AU')[0], main: clockMain('AU') },
+  kg: { first: clockZones('KG')[0], main: clockMain('KG') } }));
+ok('для США беремо не Адак', mains.us.main === 'America/New_York', mains.us);
+ok('для Росії не Анадир', mains.ru.main === 'Europe/Moscow', mains.ru);
+ok('для Австралії не Антарктику', mains.au.main === 'Australia/Sydney', mains.au);
+ok('а де пояс один — він і основний',
+  mains.kg.main === mains.kg.first, mains.kg);
+
 /* ── 3. ПОРА ДОБИ СЛОВОМ ──
    Колір на тлі читають не всі, а «night» читають усі. */
 ok('пора доби підписана словом',
@@ -92,10 +121,33 @@ ok('і сказано ЧОМУ часу немає',
   /do not know the timezone/i.test(unk.none), unk.none);
 
 /* ── 5. КРАЇНА З КІЛЬКОМА ПОЯСАМИ ──
-   Мовчазний вибір одного з чотирьох виглядав би як факт. */
+   Мовчазний вибір одного з двадцяти девʼяти виглядав би як факт. */
 const many = await paint(['US', 'KZ']);
 const us = many.rows.find(r => r.geo === 'US');
-ok('про решту поясів країни сказано', /more zone/.test(us.name), us.name);
+ok('про решту поясів країни сказано', /zones in this country/.test(us.name), us.name);
+ok('і видно на екрані, ЧИЙ саме це час', /New York/.test(us.shown), us.shown);
+/* А де пояс один, міста не дописують: «Kyrgyzstan · Bishkek» — це те
+   саме слово двічі. KZ сюди не годиться: у неї поясів сім. */
+ok('а де пояс один — міста не дописують',
+  byGeo.KG.shown === 'Kyrgyzstan', byGeo.KG.shown);
+
+/* ── 5b. ПОШУК ПО ВСЬОМУ СВІТУ ──
+   «я хочу дізнатись за любе гео… через пошук шукати рандомне гео».
+   Шукаємо те, чого в даних немає взагалі. */
+const byName = await paint(['KG'], 'brazil');
+ok('пошук за назвою знаходить країну поза даними',
+  byName.rows.some(r => r.geo === 'BR'), byName.rows.map(r => r.geo));
+const byCode = await paint(['KG'], 'JP');
+ok('пошук за кодом теж', byCode.rows.some(r => r.geo === 'JP'), byCode.rows.map(r => r.geo));
+ok('і точний код стоїть першим',
+  byCode.rows[0].geo === 'JP', byCode.rows.map(r => r.geo));
+const nothing = await paint(['KG'], 'zzzzzz');
+ok('ненайдене пояснює, а не мовчить',
+  /Nothing matches/i.test(nothing.text), nothing.text);
+/* Відкриття вікна не має показувати те, що шукали минулого разу. */
+const reopened = await paint(['KG', 'TJ']);
+ok('нове відкриття повертає свої гео',
+  reopened.rows.map(r => r.geo).sort().join() === 'KG,TJ', reopened.rows.map(r => r.geo));
 
 /* ── 6. ПОРОЖНІ ДАНІ ── */
 const none = await paint([]);

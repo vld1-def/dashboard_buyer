@@ -12327,7 +12327,13 @@ async function pwBulkApply() {
         <h2 class="mw-title">Local time</h2>
         <p id="clock-sub" class="text-[10px] font-bold uppercase tracking-widest" style="color:var(--text-muted)"></p>
       </div>
-      <button onclick="closeClockModal()" class="mw-x">✕</button>
+      <div class="flex items-center gap-2">
+        <!-- Пошук по всьому світу. Порожній — твої гео; введене —
+             будь-яка країна з тих 273, які знає сам браузер. -->
+        <input id="clock-q" oninput="clockSearch(this.value)"
+          placeholder="Any country: KG, Brazil…" class="clk-q">
+        <button onclick="closeClockModal()" class="mw-x">✕</button>
+      </div>
     </div>
     <div id="clock-body" class="p-5 overflow-y-auto"></div>
   </div>
@@ -13823,79 +13829,115 @@ async function uqRun() {
 
 /* ═══════════ КОТРА ТАМ ГОДИНА ═══════════
 
-   «а можемо створити ще модальне вікно з часом в різних країнах?»
+   «а можемо по апі тягнути наприклад від time.is? я хочу дізнатись за
+   любе гео, і через пошук шукати рандомне гео».
 
-   ГЕО БЕРЕМО З ТВОЇХ ДАНИХ. Список країн світу відповідає на це
-   питання гірше, ніж список із п'яти: дивляться сюди про ті гео, на
-   які ллють, і шукати серед двохсот рядків означає не подивитись.
+   АПІ НЕ ПОТРІБЕН, і це не економія — це менше рухомих частин. У
+   time.is публічного API немає взагалі, а зі сторінки його й не
+   прочитати: CORS. Але головне інше: усе потрібне вже лежить у
+   браузері.
 
-   ЗВІДКИ ПОЯС. Його немає ні в імпортах, ні в Facebook — там лише
-   дволітерний код. Тож тут словник, і він свідомо НЕПОВНИЙ: у ньому
-   те, на що ллють у цій команді, і сусіди. Чого немає — показуємо
-   кодом і кажемо прямо, що поясу не знаємо, а не підставляємо UTC:
-   вгаданий час гірший за чесний прочерк, бо за ним планують залив.
+     new Intl.Locale('und-KG').getTimeZones()  → ['Asia/Bishkek']
+     new Intl.DisplayNames(['en'],{type:'region'}).of('KG') → 'Kyrgyzstan'
 
-   КРАЇНА З КІЛЬКОМА ПОЯСАМИ — окрема чесність. У Казахстані їх два, у
-   США чотири. Беремо той, де більшість населення, і пишемо це в
-   підказці: «ще N поясів». Мовчазний вибір одного з чотирьох виглядав
-   би як факт. */
-const CLOCK_TZ = {
-  /* Там, куди ллють. */
-  KG: ['Asia/Bishkek'],        TJ: ['Asia/Dushanbe'],
-  UZ: ['Asia/Tashkent'],       KZ: ['Asia/Almaty', 'Asia/Aqtobe'],
-  AZ: ['Asia/Baku'],           AM: ['Asia/Yerevan'],
-  GE: ['Asia/Tbilisi'],        TM: ['Asia/Ashgabat'],
-  MN: ['Asia/Ulaanbaatar'],    AF: ['Asia/Kabul'],
-  PK: ['Asia/Karachi'],        IN: ['Asia/Kolkata'],
-  BD: ['Asia/Dhaka'],          NP: ['Asia/Kathmandu'],
-  LK: ['Asia/Colombo'],        TR: ['Europe/Istanbul'],
-  /* Європа й сусіди. */
-  UA: ['Europe/Kyiv'],         MD: ['Europe/Chisinau'],
-  PL: ['Europe/Warsaw'],       RO: ['Europe/Bucharest'],
-  BG: ['Europe/Sofia'],        DE: ['Europe/Berlin'],
-  CZ: ['Europe/Prague'],       SK: ['Europe/Bratislava'],
-  HU: ['Europe/Budapest'],     RS: ['Europe/Belgrade'],
-  GR: ['Europe/Athens'],       IT: ['Europe/Rome'],
-  ES: ['Europe/Madrid'],       PT: ['Europe/Lisbon'],
-  FR: ['Europe/Paris'],        GB: ['Europe/London'],
-  NL: ['Europe/Amsterdam'],    BE: ['Europe/Brussels'],
-  AT: ['Europe/Vienna'],       CH: ['Europe/Zurich'],
-  SE: ['Europe/Stockholm'],    NO: ['Europe/Oslo'],
-  FI: ['Europe/Helsinki'],     DK: ['Europe/Copenhagen'],
-  LT: ['Europe/Vilnius'],      LV: ['Europe/Riga'],
-  EE: ['Europe/Tallinn'],      BY: ['Europe/Minsk'],
-  RU: ['Europe/Moscow', 'Asia/Yekaterinburg', 'Asia/Novosibirsk', 'Asia/Vladivostok'],
-  /* Близький Схід і Африка. */
-  AE: ['Asia/Dubai'],          SA: ['Asia/Riyadh'],
-  QA: ['Asia/Qatar'],          KW: ['Asia/Kuwait'],
-  IQ: ['Asia/Baghdad'],        IR: ['Asia/Tehran'],
-  IL: ['Asia/Jerusalem'],      JO: ['Asia/Amman'],
-  EG: ['Africa/Cairo'],        MA: ['Africa/Casablanca'],
-  DZ: ['Africa/Algiers'],      TN: ['Africa/Tunis'],
-  NG: ['Africa/Lagos'],        KE: ['Africa/Nairobi'],
-  ZA: ['Africa/Johannesburg'], GH: ['Africa/Accra'],
-  /* Азія й Америка. */
-  TH: ['Asia/Bangkok'],        VN: ['Asia/Ho_Chi_Minh'],
-  ID: ['Asia/Jakarta'],        MY: ['Asia/Kuala_Lumpur'],
-  PH: ['Asia/Manila'],         SG: ['Asia/Singapore'],
-  JP: ['Asia/Tokyo'],          KR: ['Asia/Seoul'],
-  CN: ['Asia/Shanghai'],
-  US: ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles'],
-  CA: ['America/Toronto', 'America/Vancouver'],
-  MX: ['America/Mexico_City'], BR: ['America/Sao_Paulo'],
-  AR: ['America/Argentina/Buenos_Aires'], CL: ['America/Santiago'],
-  CO: ['America/Bogota'],      PE: ['America/Lima'],
-  AU: ['Australia/Sydney'],    NZ: ['Pacific/Auckland']
+   Звідси 273 країни з поясами й назвами, без мережі, без ключа, без
+   лімітів — і без старіння: дані їдуть із самим браузером і
+   оновлюються разом із ним. Будь-який API тут був би гіршим у кожній
+   із цих позицій.
+
+   ЧОГО БРАУЗЕР НЕ ЗНАЄ — ДЕ ЖИВУТЬ ЛЮДИ. getTimeZones() віддає пояси
+   за АБЕТКОЮ, і перший у списку регулярно не той:
+
+     US → America/Adak      Алеутські острови, близько 170 людей.
+                            Нью-Йорк о тій же хвилині на пʼять годин
+                            попереду;
+     RU → Asia/Anadyr       Чукотка. Москва на пʼятнадцять годин
+                            попереду;
+     AU → Antarctica/Macquarie   це Антарктика, а не Австралія;
+     BR → America/Araguaina      не Сан-Паулу.
+
+   Показати це як «час у США» означало б помилятись на пів доби — і
+   мовчки, бо виглядає воно як звичайний час. Тому для країн із
+   кількома поясами є короткий перелік ОСНОВНИХ, зроблений руками.
+   Там, де руками не вказано, беремо перший і ЧЕСНО пишемо поруч, яке
+   це місто: «Brazil · Araguaina», а не «Brazil». */
+
+/* Основний пояс там, де їх кілька. Не повний довідник: лише ті
+   країни, де абетка дає відверто не те. Чого тут немає — показується
+   з назвою міста, тож помилки не буде, буде лише менше зручності. */
+const CLOCK_MAIN = {
+  US: 'America/New_York',  RU: 'Europe/Moscow',
+  AU: 'Australia/Sydney',  BR: 'America/Sao_Paulo',
+  CA: 'America/Toronto',   KZ: 'Asia/Almaty',
+  MX: 'America/Mexico_City', ID: 'Asia/Jakarta',
+  CN: 'Asia/Shanghai',     IN: 'Asia/Kolkata',
+  UA: 'Europe/Kyiv',       UZ: 'Asia/Tashkent',
+  AR: 'America/Argentina/Buenos_Aires',
+  CL: 'America/Santiago',  ES: 'Europe/Madrid',
+  PT: 'Europe/Lisbon',     NZ: 'Pacific/Auckland',
+  CD: 'Africa/Kinshasa',   MN: 'Asia/Ulaanbaatar',
+  EC: 'America/Guayaquil', PF: 'Pacific/Tahiti',
+  KI: 'Pacific/Tarawa',    MH: 'Pacific/Majuro',
+  FM: 'Pacific/Chuuk',     PG: 'Pacific/Port_Moresby',
+  GL: 'America/Nuuk',      PS: 'Asia/Gaza',
+  CY: 'Asia/Nicosia',      TR: 'Europe/Istanbul'
 };
 
-const CLOCK_NAME = {
-  KG: 'Kyrgyzstan', TJ: 'Tajikistan', UZ: 'Uzbekistan', KZ: 'Kazakhstan',
-  AZ: 'Azerbaijan', AM: 'Armenia', GE: 'Georgia', TM: 'Turkmenistan',
-  UA: 'Ukraine', MD: 'Moldova', TR: 'Turkey', RU: 'Russia', BY: 'Belarus',
-  US: 'United States', EG: 'Egypt', IN: 'India', PK: 'Pakistan'
-};
+/* Пояси країни питаємо в браузера. Старіший Safari getTimeZones() не
+   має — тоді лишається пусто, і рядок чесно каже, що поясу не знаємо,
+   замість підставленого UTC. */
+function clockZones(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return [];
+  try {
+    const L = new Intl.Locale('und-' + c);
+    const z = typeof L.getTimeZones === 'function' ? L.getTimeZones() : L.timeZones;
+    return Array.isArray(z) ? z : [];
+  } catch (_e) { return []; }
+}
+
+/* Який із них показувати. Руками вказаний — його; інакше перший за
+   абеткою, і тоді поруч стоятиме назва міста. */
+function clockMain(code) {
+  const zs = clockZones(code);
+  if (!zs.length) return '';
+  const want = CLOCK_MAIN[String(code).toUpperCase()];
+  return (want && zs.indexOf(want) >= 0) ? want : zs[0];
+}
+
+let clockNames = null;
+function clockName(code) {
+  if (!clockNames) {
+    try { clockNames = new Intl.DisplayNames(['en'], { type: 'region' }); }
+    catch (_e) { clockNames = { of: x => x }; }
+  }
+  try { return clockNames.of(code) || code; } catch (_e) { return code; }
+}
+
+/* УСІ КРАЇНИ, ЯКІ ЗНАЄ БРАУЗЕР — для пошуку.
+
+   Перебираємо AA…ZZ і лишаємо ті, у яких є пояси й СВОЯ назва.
+   Відкинуті таким чином десять кодів (CT, NT, PU, WK…) — історичні:
+   назви в них немає, і шукати їх нема кому.
+
+   Рахуємо раз: 676 перевірок дешеві, але не щоразу, коли людина
+   друкує літеру в пошуку. */
+let clockAll = null;
+function clockWorld() {
+  if (clockAll) return clockAll;
+  clockAll = [];
+  for (let a = 65; a <= 90; a++) for (let b = 65; b <= 90; b++) {
+    const c = String.fromCharCode(a) + String.fromCharCode(b);
+    if (!clockZones(c).length) continue;
+    const n = clockName(c);
+    if (n === c) continue;
+    clockAll.push({ c, n });
+  }
+  return clockAll;
+}
 
 let clockTimer = 0;
+let clockQuery = '';
 
 /* Хвилинна стрілка, а не секундна: вікно відкривають дізнатись, ніч
    там чи ранок, і цифри, що біжать щосекунди, лише тягнуть око. Але
@@ -13903,6 +13945,12 @@ let clockTimer = 0;
    тридцяти секунд. */
 window.openClockModal = function () {
   document.getElementById('clock-modal').classList.remove('hidden');
+  /* Вікно відкривається на СВОЇХ гео, навіть якщо минулого разу тут
+     шукали Бразилію: щодня потрібні свої п'ять, а не те, що питали
+     колись. */
+  clockQuery = '';
+  const q = document.getElementById('clock-q');
+  if (q) q.value = '';
   clockPaint();
   clearInterval(clockTimer);
   clockTimer = setInterval(clockPaint, 30000);
@@ -13959,60 +14007,99 @@ function clockPartOfDay(hh) {
        : { k: 'night', w: 'night' };
 }
 
+window.clockSearch = function (v) {
+  clockQuery = String(v == null ? '' : v).trim();
+  clockPaint();
+};
+
+/* Пошук і за кодом, і за назвою: половина гео в голові живе кодом
+   (KG), половина назвою (Киргизстан англійською). Питати, чим саме
+   людина його знає, — зайвий крок у вікні, яке відкривають на дві
+   секунди. */
+function clockFind(q) {
+  const s = q.toLowerCase();
+  return clockWorld()
+    .filter(x => x.c.toLowerCase() === s
+              || x.n.toLowerCase().includes(s)
+              || x.c.toLowerCase().startsWith(s))
+    /* Точний код попереду: ввівши «UA», шукають Україну, а не Уганду
+       (Uganda містить «ua»? ні — але Ecuador містить, і таких збігів
+       вистачає). */
+    .sort((x, y) => (y.c.toLowerCase() === s) - (x.c.toLowerCase() === s)
+                 || x.n.localeCompare(y.n))
+    .slice(0, 40);
+}
+
 function clockPaint() {
   const body = document.getElementById('clock-body');
   const sub = document.getElementById('clock-sub');
   if (!body) return;
 
-  const geos = clockGeos();
   if (sub) {
     const mine = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     sub.textContent = 'You: ' + clockFmt(mine, { hour: '2-digit', minute: '2-digit', hour12: false })
-      + (mine ? ' · ' + mine : '');
+      + (mine ? ' \u00b7 ' + mine : '');
   }
 
-  if (!geos.length) {
+  /* Порожній пошук — твої гео; введений — увесь світ. Так вікно
+     відповідає на обидва питання, і жодне не заважає іншому: щодня
+     потрібні свої пʼять, зрідка — будь-яка країна. */
+  const searching = clockQuery.length > 0;
+  const list = searching
+    ? clockFind(clockQuery)
+    : clockGeos().map(c => ({ c, n: clockName(c) }));
+
+  if (!list.length) {
     body.innerHTML = '<p class="text-center opacity-40 py-10 text-xs font-black uppercase tracking-widest">'
-      + 'No geo in the loaded data yet — add a report, and the geos from it appear here.</p>';
+      + (searching
+          ? 'Nothing matches \u00ab' + clockEsc(clockQuery) + '\u00bb \u2014 try a country code like KG, or a name'
+          : 'No geo in the loaded data yet \u2014 add a report, and the geos from it appear here.')
+      + '</p>';
     return;
   }
 
   /* Невідомі пояси — ОКРЕМО й унизу. Підставити їм UTC означало б
      показати час, за яким хтось спланує залив. */
   const known = [], unknown = [];
-  geos.forEach(g => (CLOCK_TZ[g] ? known : unknown).push(g));
+  list.forEach(x => (clockMain(x.c) ? known : unknown).push(x));
 
   /* Сортуємо за часом, а не за абеткою: так поруч стоять гео, які
-     живуть однаково, і видно одним поглядом, де вже ніч. */
-  known.sort((a, b) => clockDiff(CLOCK_TZ[a][0]) - clockDiff(CLOCK_TZ[b][0]));
+     живуть однаково, і видно одним поглядом, де вже ніч. У пошуку
+     порядок лишаємо як є — там важливіше, щоб знайдене стояло
+     першим. */
+  if (!searching) known.sort((x, y) => clockDiff(clockMain(x.c)) - clockDiff(clockMain(y.c)));
 
-  const row = g => {
-    const zs = CLOCK_TZ[g];
-    const tz = zs[0];
+  const row = x => {
+    const tz = clockMain(x.c);
+    const zs = clockZones(x.c);
     const time = clockFmt(tz, { hour: '2-digit', minute: '2-digit', hour12: false });
     const day = clockFmt(tz, { weekday: 'short', day: 'numeric', month: 'short' });
-    const hh = Number(String(time).slice(0, 2));
-    const part = clockPartOfDay(hh);
-    const diff = clockDiff(tz);
-    const more = zs.length > 1
-      ? ' · ' + (zs.length - 1) + ' more zone' + (zs.length > 2 ? 's' : '')
-      : '';
+    const part = clockPartOfDay(Number(String(time).slice(0, 2)));
+    const city = tz.split('/').pop().replace(/_/g, ' ');
+    /* Місто називаємо, лише коли поясів кілька: інакше «Kyrgyzstan ·
+       Bishkek» — це те саме слово двічі. Але там, де їх кілька, без
+       нього не зрозуміти, чий саме це час. */
+    const many = zs.length > 1;
     return `<div class="clk-row is-${part.k}">
-      <span class="clk-flag">${typeof geoFlag === 'function' ? geoFlag(g, 'w-5 h-4') : ''}</span>
-      <span class="clk-geo">${g}</span>
-      <span class="clk-name" title="${tz}${more}">${CLOCK_NAME[g] || tz.split('/').pop().replace(/_/g, ' ')}${more}</span>
+      <span class="clk-flag">${typeof geoFlag === 'function' ? geoFlag(x.c, 'w-5 h-4') : ''}</span>
+      <span class="clk-geo">${clockEsc(x.c)}</span>
+      <span class="clk-name" title="${clockEsc(tz)}${many ? ' \u00b7 ' + zs.length + ' zones in this country' : ''}">${
+        clockEsc(x.n)}${many ? ` <span class="clk-city">\u00b7 ${clockEsc(city)} +${zs.length - 1}</span>` : ''}</span>
       <span class="clk-time">${time}</span>
       <span class="clk-day">${day}</span>
       <span class="clk-part">${part.w}</span>
-      <span class="clk-diff">${clockSign(diff)}</span>
+      <span class="clk-diff">${clockSign(clockDiff(tz))}</span>
     </div>`;
   };
 
   body.innerHTML = known.map(row).join('')
     + (unknown.length ? `<div class="clk-none">
-        We do not know the timezone for ${unknown.map(x => `<b>${x}</b>`).join(', ')},
-        so there is no time to show — a guessed one would be planned against.</div>` : '');
+        We do not know the timezone for ${unknown.map(x => `<b>${clockEsc(x.c)}</b>`).join(', ')},
+        so there is no time to show \u2014 a guessed one would be planned against.</div>` : '');
 }
+
+const clockEsc = v => String(v == null ? '' : v)
+  .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
 // ===== ACCOUNTS · статуси кабінетів =====
 /* ВЛАСНА КОЛОНКА, А НЕ СПІЛЬНА ЗІ СТОРІНКОЮ КАБІНЕТІВ.
