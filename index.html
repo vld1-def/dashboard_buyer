@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 03.11 19:34">
+  <meta name="build" content="build 04.11 16:16">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -5074,6 +5074,59 @@ button.aq-v-pick:hover { border-color: var(--accent); color: var(--accent); }
 .aq-send svg { width: 17px; height: 17px; }
 .aq-send:disabled { opacity: .45; cursor: default; }
 
+/* ── ВІКНО «КОТРА ТАМ ГОДИНА» ──
+
+   Сітка, а не вільний рядок: time мусить стояти в одному стовпці, щоб
+   десять гео читались одним рухом ока згори вниз, а не перечитувались
+   по одному.
+
+   Час моноширинним і табличними цифрами — інакше «11:40» і «01:05»
+   різної ширини, і стовпець цифр хитається. */
+.clk-row {
+  display: grid; align-items: center; gap: 10px;
+  grid-template-columns: 22px 30px 1fr auto auto 68px 72px;
+  padding: 9px 10px; border-radius: 12px;
+  font-size: 12px; font-weight: 600;
+}
+.clk-row + .clk-row { margin-top: 3px; }
+.clk-flag { display: flex; }
+.clk-geo { font-weight: 900; letter-spacing: .04em; color: var(--text-main); }
+.clk-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; cursor: help; }
+.clk-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 15px; font-weight: 800; color: var(--text-main);
+}
+.clk-day { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+/* Пора доби — підписом, а не лише кольором: колір на зеленому тлі
+   читають не всі, а «night» читають усі. */
+.clk-part {
+  font-size: 9px; font-weight: 900; text-transform: uppercase;
+  letter-spacing: .1em; text-align: right;
+}
+.clk-diff {
+  font-size: 10px; font-weight: 800; text-align: right;
+  color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+/* Ніч помітна тлом: саме по неї сюди й заходять. Решта пір доби тоном
+   підпису, без заливки — інакше п'ять кольорових смуг сперечаються
+   одна з одною. */
+.clk-row.is-night { background: rgba(99, 102, 241, .14); }
+.clk-row.is-night .clk-part { color: #A5B4FC; }
+.clk-row.is-morning .clk-part { color: var(--warn); }
+.clk-row.is-day .clk-part { color: var(--ok); }
+.clk-row.is-evening .clk-part { color: #FB923C; }
+.clk-row:not(.is-night):nth-child(even) { background: rgba(255, 255, 255, .02); }
+/* Гео без поясу — рядком унизу, а не порожнім часом у списку. */
+.clk-none {
+  margin-top: 12px; padding: 10px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 26%, transparent);
+  font-size: 11px; font-weight: 700; line-height: 1.55; color: var(--text-main);
+}
+.clk-none b { color: var(--warn); }
+
 /* ── ВІКНО ACCOUNTS ──
    Плитки й рядки на поверхнях дизайну. Colour лишається рівно там, де
    він щось означає: число стану й вибрана кнопка стану. */
@@ -6760,7 +6813,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 03.11 19:34</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 04.11 16:16</div>
     </div>
   </aside>
 
@@ -6914,6 +6967,11 @@ input.ui-in[type="range"] { padding: 0; }
     <button onclick="openAccountsModal()" class="p-2 card rounded-xl shadow-md text-sky-400 hover:bg-gray-500/10 transition admin-only relative" title="Accounts">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8m14 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
       <span id="acc-ban-dot" class="hidden absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+    </button>
+
+    <!-- Котра там hour -->
+    <button onclick="openClockModal()" class="p-2 card rounded-xl shadow-md text-amber-400 hover:bg-gray-500/10 transition" title="Local time by geo">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 7v5l3 2"/></svg>
     </button>
 
     <!-- DB Logs (Feature 5) -->
@@ -20935,6 +20993,25 @@ async function pwBulkApply() {
 </div>
 
 <!-- ===== ACCOUNTS · статуси кабінетів ===== -->
+<!-- ═══════════ КОТРА ТАМ ГОДИНА ═══════════
+
+     Гео беремо з твоїх же даних, а не зі списку countries світу: питання
+     «не ніч там зараз?» виникає про ті гео, на які ллєш, і список із
+     двохсот рядків на нього відповідає гірше, ніж список із пʼяти. -->
+<div id="clock-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
+     onclick="if(event.target===this) closeClockModal()">
+  <div class="card w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
+      <div>
+        <h2 class="mw-title">Local time</h2>
+        <p id="clock-sub" class="text-[10px] font-bold uppercase tracking-widest" style="color:var(--text-muted)"></p>
+      </div>
+      <button onclick="closeClockModal()" class="mw-x">✕</button>
+    </div>
+    <div id="clock-body" class="p-5 overflow-y-auto"></div>
+  </div>
+</div>
+
 <div id="accounts-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4"
      onclick="if(event.target===this) closeAccountsModal()">
   <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:88vh">
@@ -23296,6 +23373,200 @@ async function uqRun() {
     document.getElementById('uq-cancel').classList.add('hidden');
     uqRenderFileList();
   }
+}
+
+
+/* ═══════════ КОТРА ТАМ ГОДИНА ═══════════
+
+   «а можемо створити ще модальне вікно з часом в різних країнах?»
+
+   ГЕО БЕРЕМО З ТВОЇХ ДАНИХ. Список countries світу відповідає на це
+   питання гірше, ніж список із п'яти: дивляться сюди про ті гео, на
+   які ллють, і шукати серед двохсот рядків означає не подивитись.
+
+   ЗВІДКИ ПОЯС. Його немає ні в імпортах, ні в Facebook — там лише
+   дволітерний код. Тож тут словник, і він свідомо НЕПОВНИЙ: у ньому
+   те, на що ллють у цій команді, і сусіди. Чого немає — показуємо
+   кодом і кажемо прямо, що поясу не знаємо, а не підставляємо UTC:
+   вгаданий time гірший за чесний прочерк, бо за ним планують залив.
+
+   КРАЇНА З КІЛЬКОМА ПОЯСАМИ — окрема чесність. У Казахстані їх два, у
+   США чотири. Беремо той, де більшість населення, і пишемо це в
+   підказці: «ще N поясів». Мовчазний вибір одного з чотирьох виглядав
+   би як факт. */
+const CLOCK_TZ = {
+  /* Там, куди ллють. */
+  KG: ['Asia/Bishkek'],        TJ: ['Asia/Dushanbe'],
+  UZ: ['Asia/Tashkent'],       KZ: ['Asia/Almaty', 'Asia/Aqtobe'],
+  AZ: ['Asia/Baku'],           AM: ['Asia/Yerevan'],
+  GE: ['Asia/Tbilisi'],        TM: ['Asia/Ashgabat'],
+  MN: ['Asia/Ulaanbaatar'],    AF: ['Asia/Kabul'],
+  PK: ['Asia/Karachi'],        IN: ['Asia/Kolkata'],
+  BD: ['Asia/Dhaka'],          NP: ['Asia/Kathmandu'],
+  LK: ['Asia/Colombo'],        TR: ['Europe/Istanbul'],
+  /* Європа й сусіди. */
+  UA: ['Europe/Kyiv'],         MD: ['Europe/Chisinau'],
+  PL: ['Europe/Warsaw'],       RO: ['Europe/Bucharest'],
+  BG: ['Europe/Sofia'],        DE: ['Europe/Berlin'],
+  CZ: ['Europe/Prague'],       SK: ['Europe/Bratislava'],
+  HU: ['Europe/Budapest'],     RS: ['Europe/Belgrade'],
+  GR: ['Europe/Athens'],       IT: ['Europe/Rome'],
+  ES: ['Europe/Madrid'],       PT: ['Europe/Lisbon'],
+  FR: ['Europe/Paris'],        GB: ['Europe/London'],
+  NL: ['Europe/Amsterdam'],    BE: ['Europe/Brussels'],
+  AT: ['Europe/Vienna'],       CH: ['Europe/Zurich'],
+  SE: ['Europe/Stockholm'],    NO: ['Europe/Oslo'],
+  FI: ['Europe/Helsinki'],     DK: ['Europe/Copenhagen'],
+  LT: ['Europe/Vilnius'],      LV: ['Europe/Riga'],
+  EE: ['Europe/Tallinn'],      BY: ['Europe/Minsk'],
+  RU: ['Europe/Moscow', 'Asia/Yekaterinburg', 'Asia/Novosibirsk', 'Asia/Vladivostok'],
+  /* Близький Схід і Африка. */
+  AE: ['Asia/Dubai'],          SA: ['Asia/Riyadh'],
+  QA: ['Asia/Qatar'],          KW: ['Asia/Kuwait'],
+  IQ: ['Asia/Baghdad'],        IR: ['Asia/Tehran'],
+  IL: ['Asia/Jerusalem'],      JO: ['Asia/Amman'],
+  EG: ['Africa/Cairo'],        MA: ['Africa/Casablanca'],
+  DZ: ['Africa/Algiers'],      TN: ['Africa/Tunis'],
+  NG: ['Africa/Lagos'],        KE: ['Africa/Nairobi'],
+  ZA: ['Africa/Johannesburg'], GH: ['Africa/Accra'],
+  /* Азія й Америка. */
+  TH: ['Asia/Bangkok'],        VN: ['Asia/Ho_Chi_Minh'],
+  ID: ['Asia/Jakarta'],        MY: ['Asia/Kuala_Lumpur'],
+  PH: ['Asia/Manila'],         SG: ['Asia/Singapore'],
+  JP: ['Asia/Tokyo'],          KR: ['Asia/Seoul'],
+  CN: ['Asia/Shanghai'],
+  US: ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles'],
+  CA: ['America/Toronto', 'America/Vancouver'],
+  MX: ['America/Mexico_City'], BR: ['America/Sao_Paulo'],
+  AR: ['America/Argentina/Buenos_Aires'], CL: ['America/Santiago'],
+  CO: ['America/Bogota'],      PE: ['America/Lima'],
+  AU: ['Australia/Sydney'],    NZ: ['Pacific/Auckland']
+};
+
+const CLOCK_NAME = {
+  KG: 'Kyrgyzstan', TJ: 'Tajikistan', UZ: 'Uzbekistan', KZ: 'Kazakhstan',
+  AZ: 'Azerbaijan', AM: 'Armenia', GE: 'Georgia', TM: 'Turkmenistan',
+  UA: 'Ukraine', MD: 'Moldova', TR: 'Turkey', RU: 'Russia', BY: 'Belarus',
+  US: 'United States', EG: 'Egypt', IN: 'India', PK: 'Pakistan'
+};
+
+let clockTimer = 0;
+
+/* Хвилинна стрілка, а не секундна: вікно відкривають дізнатись, ніч
+   там чи ранок, і цифри, що біжать щосекунди, лише тягнуть око. Але
+   перемальовуємо раз на півхвилини, щоб хвилина не стояла прілою до
+   тридцяти секунд. */
+window.openClockModal = function () {
+  document.getElementById('clock-modal').classList.remove('hidden');
+  clockPaint();
+  clearInterval(clockTimer);
+  clockTimer = setInterval(clockPaint, 30000);
+};
+
+window.closeClockModal = function () {
+  document.getElementById('clock-modal').classList.add('hidden');
+  /* Лічильник знімаємо: вікно закрите, а таймер щопівхвилини малював
+     би в нікуди — і робив би це до кінця сеансу. */
+  clearInterval(clockTimer);
+  clockTimer = 0;
+};
+
+/* Гео з даних — ті самі, що в решті дашборда: rawData (імпорти). */
+function clockGeos() {
+  const out = new Set();
+  (typeof rawData !== 'undefined' && rawData ? rawData : []).forEach(r => {
+    const g = String(r.geo || '').trim().toUpperCase();
+    if (g && g !== '??') out.add(g);
+  });
+  return [...out];
+}
+
+const clockFmt = (tz, opts) => {
+  try { return new Intl.DateTimeFormat('en-GB', { timeZone: tz, ...opts }).format(new Date()); }
+  catch (_e) { return ''; }
+};
+
+/* Зсув у годинах від ТВОГО часу, бо саме його людина й тримає в
+   голові. Рахуємо з самих відформатованих дат, а не з назви поясу:
+   літній time, півгодинні й сорокап'ятихвилинні зсуви (Кабул, Непал)
+   інакше довелось би вести списком, який старішає. */
+function clockDiff(tz) {
+  const now = new Date();
+  const asUtc = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(),
+                              d.getHours(), d.getMinutes(), d.getSeconds());
+  const there = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  const here = new Date(now.toLocaleString('en-US'));
+  const h = (asUtc(there) - asUtc(here)) / 3600000;
+  return Math.round(h * 100) / 100;
+}
+
+const clockSign = h => (h === 0 ? 'same as you'
+  : (h > 0 ? '+' : '−') + (Math.abs(h) % 1 ? Math.abs(h).toFixed(2).replace(/0$/, '') : Math.abs(h)) + 'h');
+
+/* Ніч — це не прикраса. Питання «не ніч там зараз» і є те, заради чого
+   вікно відкривають, тож відповідь має читатись без вдивляння в
+   цифри. */
+function clockPartOfDay(hh) {
+  return hh < 6 ? { k: 'night', w: 'night' }
+       : hh < 11 ? { k: 'morning', w: 'morning' }
+       : hh < 17 ? { k: 'day', w: 'day' }
+       : hh < 22 ? { k: 'evening', w: 'evening' }
+       : { k: 'night', w: 'night' };
+}
+
+function clockPaint() {
+  const body = document.getElementById('clock-body');
+  const sub = document.getElementById('clock-sub');
+  if (!body) return;
+
+  const geos = clockGeos();
+  if (sub) {
+    const mine = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    sub.textContent = 'You: ' + clockFmt(mine, { hour: '2-digit', minute: '2-digit', hour12: false })
+      + (mine ? ' · ' + mine : '');
+  }
+
+  if (!geos.length) {
+    body.innerHTML = '<p class="text-center opacity-40 py-10 text-xs font-black uppercase tracking-widest">'
+      + 'No geo in the loaded data yet — add a report, and the geos from it appear here.</p>';
+    return;
+  }
+
+  /* Невідомі пояси — ОКРЕМО й унизу. Підставити їм UTC означало б
+     показати time, за яким хтось спланує залив. */
+  const known = [], unknown = [];
+  geos.forEach(g => (CLOCK_TZ[g] ? known : unknown).push(g));
+
+  /* Сортуємо за часом, а не за абеткою: так поруч стоять гео, які
+     живуть однаково, і видно одним поглядом, де вже ніч. */
+  known.sort((a, b) => clockDiff(CLOCK_TZ[a][0]) - clockDiff(CLOCK_TZ[b][0]));
+
+  const row = g => {
+    const zs = CLOCK_TZ[g];
+    const tz = zs[0];
+    const time = clockFmt(tz, { hour: '2-digit', minute: '2-digit', hour12: false });
+    const day = clockFmt(tz, { weekday: 'short', day: 'numeric', month: 'short' });
+    const hh = Number(String(time).slice(0, 2));
+    const part = clockPartOfDay(hh);
+    const diff = clockDiff(tz);
+    const more = zs.length > 1
+      ? ' · ' + (zs.length - 1) + ' more zone' + (zs.length > 2 ? 's' : '')
+      : '';
+    return `<div class="clk-row is-${part.k}">
+      <span class="clk-flag">${typeof geoFlag === 'function' ? geoFlag(g, 'w-5 h-4') : ''}</span>
+      <span class="clk-geo">${g}</span>
+      <span class="clk-name" title="${tz}${more}">${CLOCK_NAME[g] || tz.split('/').pop().replace(/_/g, ' ')}${more}</span>
+      <span class="clk-time">${time}</span>
+      <span class="clk-day">${day}</span>
+      <span class="clk-part">${part.w}</span>
+      <span class="clk-diff">${clockSign(diff)}</span>
+    </div>`;
+  };
+
+  body.innerHTML = known.map(row).join('')
+    + (unknown.length ? `<div class="clk-none">
+        We do not know the timezone for ${unknown.map(x => `<b>${x}</b>`).join(', ')},
+        so there is no time to show — a guessed one would be planned against.</div>` : '');
 }
 
 // ===== ACCOUNTS · статуси кабінетів =====
