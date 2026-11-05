@@ -19,13 +19,26 @@ import { checks } from './_harness.mjs';
 const { ok, done } = checks();
 const FN = fs.readFileSync('supabase/functions/check-domains/index.ts', 'utf8');
 
+/* Беремо весь блок рішення — від GUARDED до кінця verdictOf. Між
+   ними тепер живе ще й shieldOf: 503 розбирається по тому, хто
+   відповів, і без нього вирок не склався б. */
 const m = FN.match(/const GUARDED[\s\S]*?\nfunction verdictOf\([\s\S]*?\n\}/);
 ok('рішення про код відповіді знайдено у файлі', !!m);
+/* Необовʼязковий параметр зрізаємо ПЕРШИМ: інакше загальне правило
+   зʼїдає його тип і лишає «h?», на якому розбір падає. */
+const plain = src => src
+  .replace(/(\w)\?\s*:\s*Headers\s*\|\s*null/g, '$1')
+  .replace(/:\s*Headers\s*\|\s*null/g, '')
+  /* І типи повернення теж: «function shieldOf(h): string» — двокрапка
+     стоїть після дужки, тож правило для параметрів її не чіпає. */
+  .replace(/:\s*(Verdict|string|number|boolean)\b/g, '');
 const verdict = m
-  ? new Function(m[0].replace(/: Verdict/g, '').replace(/(\w+): number/g, '$1')
-      + '; return verdictOf;')()
+  ? new Function(plain(m[0]) + '; return verdictOf;')()
   : () => ({ status: 'missing' });
 
+/* Без заголовків — тобто так, як відповідає звичайний сервер без
+   щита. Саме цей бік межі цей стенд і тримає; інший, із щитами, —
+   у dm503.mjs. */
 const st = c => verdict(c).status;
 
 ok('200 — працює', st(200) === 'ok');
@@ -40,7 +53,11 @@ ok('451 — юридичне блокування теж не падіння', s
 ok('404 лишається notfound', st(404) === 'notfound');
 ok('410 — теж notfound', st(410) === 'notfound');
 ok('500 — down', st(500) === 'down');
-ok('503 — down', st(503) === 'down');
+/* 503 БЕЗ ЩИТА лишається падінням. Якщо щит назвався — це вже
+   guarded, і про це окремий стенд: тут важливо, що просте «сервіс
+   недоступний» від звичайного сервера тривогу підіймає, як і
+   підіймало. */
+ok('503 без щита — down', st(503) === 'down');
 ok('код відповіді зберігається як є', verdict(403).status_code === 403);
 
 /* Мережева відмова з одного разу — не вирок: обірване зʼєднання з
@@ -51,7 +68,7 @@ ok('друга спроба не йде впритул', /setTimeout\(r, 800\)/.
 /* Повторюємо лише мережеву відмову: код відповіді другого разу дасть
    той самий, і зайвий запит нічого не додасть. */
 ok('код відповіді другий раз не перепитується',
-  /return verdictOf\(res\.status\);/.test(FN));
+  /return verdictOf\(res\.status, res\.headers\);/.test(FN));
 
 /* Тривогу новий стан не здіймає: домену нічого не бракує. */
 const DM = fs.readFileSync('build/domains.js', 'utf8');
