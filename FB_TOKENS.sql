@@ -106,11 +106,22 @@ create policy "own_delete" on public.fb_tokens for delete to authenticated
 --  Решта — слід останньої перевірки: з якої адреси вийшов запит і що
 --  сказала функція fb-proxy. Без цього «проксі доданий» означає лише
 --  «рядок вписаний», а не «трафік пішов туди».
+--
+--  proxy_on — ЧИ КОРИСТУВАТИСЬ ЦИМ ПРОКСІ. Перевірка вимикає його
+--  сама, коли він не відповів: мертвий проксі, який далі стоїть у
+--  налаштуваннях як робочий, — це рядок, що бреше. Сам рядок проксі
+--  при цьому ЛИШАЄТЬСЯ: у ньому логін і пароль, назад зі сторінки їх
+--  не прочитати, і стирати через тимчасову відмову означало б змусити
+--  вводити все заново. Пройшла перевірка — вмикається назад.
+--
+--  null або true читаємо як «увімкнено»: так старі рядки, додані до
+--  цього стовпчика, не вимикаються самі собою.
 alter table public.fb_tokens
   add column if not exists proxy            text,
   add column if not exists proxy_host       text,
   add column if not exists proxy_ip         text,
   add column if not exists proxy_note       text,
+  add column if not exists proxy_on         boolean default true,
   add column if not exists proxy_checked_at timestamptz;
 
 
@@ -133,7 +144,7 @@ revoke select on public.fb_tokens from authenticated, anon;
 grant select (id, created_by, team_name, label, bm_id, bm_name,
               scopes, expires_at, accounts, app_id,
               status, status_note, checked_at, note, created_at,
-              proxy_host, proxy_ip, proxy_note, proxy_checked_at)
+              proxy_host, proxy_ip, proxy_note, proxy_on, proxy_checked_at)
   on public.fb_tokens to authenticated;
 
 grant insert, update, delete on public.fb_tokens to authenticated;
