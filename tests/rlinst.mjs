@@ -130,8 +130,56 @@ ok('метрику можна вибрати у правилі', /k: 'cpi'/.test
 ok('і підказка каже, навіщо вона',
   /no lead events at all/.test(RL), 'tip');
 
-/* ── 8. ВЕРСІЯ ── */
-ok('версію функції піднято', /FN_VERSION = 'rules-12'/.test(FN),
+/* ── 8. У ТЕЛЕГРАМІ ІНСТАЛИ ПІДПИСАНІ, А «0 ЛІДІВ» НЕ ВИГАДАНО ──
+
+   Апп-кампанія не має подій ліда взагалі, тож «0 лідів» стоятиме в ній
+   завжди — і в повідомленні, яке читають із телефона, це перше, на що
+   падає око. Коли лідів немає, а інстали є, головним числом рядка
+   мають бути інстали. */
+const tgSrc = [
+  grab(/function money[\s\S]*?\n}/, 'money'),
+  grab(/function plural[\s\S]*?\n}/, 'plural'),
+  grab(/function metricCounts[\s\S]*?\n}/, 'metricCounts'),
+  grab(/function metricPrices[\s\S]*?\n}/, 'metricPrices')
+].join('\n');
+const tgPlain = tgSrc
+  .replace(/\(h:\s*Hit\)/g, '(h)')
+  .replace(/\(v:\s*number\)/g, '(v)')
+  .replace(/\(n:\s*number,\s*one:\s*string,\s*few:\s*string,\s*many:\s*string\)/g,
+           '(n, one, few, many)')
+  .replace(/:\s*string\[\]\s*=/g, ' =')
+  .replace(/\)\s*:\s*string\s*\{/g, ') {');
+const tg = new Function('METRICS',
+  tgPlain + '\nreturn { metricCounts, metricPrices };')(METRICS);
+
+const line = o => tg.metricCounts({ agg: agg(o) });
+const price = o => tg.metricPrices({ agg: agg(o) });
+
+const appLine = line({ spend: 48, installs: 12 });
+ok('в апп-кампанії інстали підписані', /12 інстал/.test(appLine), appLine);
+ok('і «0 лідів» у ній не вигадано', !/лід/.test(appLine), appLine);
+ok('а витрати лишились на місці', /\$48\.00/.test(appLine), appLine);
+
+const both = line({ spend: 30, leads: 3, installs: 7 });
+ok('де є і ліди, і інстали — видно обоє',
+  /3 ліди/.test(both) && /7 інстал/.test(both), both);
+
+const web = line({ spend: 20, leads: 0 });
+ok('на веб-кампанії без інсталів «0 лідів» лишається',
+  /0 лідів/.test(web), web);
+
+ok('множина в інсталів жива, а не «інстал(ів)»',
+  /1 інстал$/.test(line({ installs: 1 }))
+  && /5 інсталів/.test(line({ installs: 5 })),
+  [line({ installs: 1 }), line({ installs: 5 })]);
+
+const cpi = price({ spend: 48, installs: 12 });
+ok('ціну інстала теж видно', /CPI \$4\.00/.test(cpi), cpi);
+ok('а ціни ліда без лідів немає', !/CPL/.test(cpi), cpi);
+
+/* ── 9. ВЕРСІЯ ── */
+const fnv = Number((FN.match(/FN_VERSION = 'rules-(\d+)'/) || [])[1]);
+ok('версію функції піднято не нижче rules-13', fnv >= 13,
   (FN.match(/FN_VERSION = '[^']+'/) || [])[0]);
 
 await done(null, null, []);
