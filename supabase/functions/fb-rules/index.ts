@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-11';
+const FN_VERSION = 'rules-12';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -231,7 +231,7 @@ function geoHit(want: string[], names: unknown[]): boolean {
    нуль, це «нічого не відбувалось», і такі сутності правила не
    торкаються (плюс поріг спенду однаково їх відсіює). */
 type Agg = { spend: number; imps: number; clicks: number; linkClicks: number;
-             leads: number; regs: number; purchases: number };
+             leads: number; regs: number; purchases: number; installs: number };
 
 const METRICS: Record<string, (a: Agg) => number | null> = {
   spend:       a => a.spend,
@@ -244,6 +244,18 @@ const METRICS: Record<string, (a: Agg) => number | null> = {
   cpr:         a => a.regs > 0 ? a.spend / a.regs : (a.spend > 0 ? Infinity : null),
   purchases:   a => a.purchases,
   cpp:         a => a.purchases > 0 ? a.spend / a.purchases : (a.spend > 0 ? Infinity : null),
+  /* ІНСТАЛИ ОКРЕМОЮ МЕТРИКОЮ, А НЕ СЕРЕД ЛІДІВ.
+
+     Дашборд рахував їх давно (CD_INST у розборі кабінета), правила —
+     ні. Тобто на екрані інстали й ціна інстала були, а написати по
+     них правило було ніяк: лишалось міряти апку ціною ліда, якої в
+     неї не буває.
+
+     Складати їх із лідами не можна: 'lead' і 'mobile_app_install' —
+     різні події, і сума дала б число, яке не сходиться ні з екраном,
+     ні з Ads Manager. */
+  installs:    a => a.installs,
+  cpi:         a => a.installs > 0 ? a.spend / a.installs : (a.spend > 0 ? Infinity : null),
   cpm:         a => a.imps > 0 ? a.spend / a.imps * 1000 : (a.spend > 0 ? Infinity : null),
   ctr_link:    a => a.imps > 0 ? a.linkClicks / a.imps * 100 : null
 };
@@ -259,9 +271,10 @@ const METRIC_LABEL: Record<string, string> = {
   link_clicks: 'link clicks', cpc_link: 'cost per link click',
   cpl: 'cost per lead', cpm: 'CPM', ctr_link: 'link CTR',
   regs: 'registrations', cpr: 'cost per registration',
-  purchases: 'purchases', cpp: 'cost per purchase'
+  purchases: 'purchases', cpp: 'cost per purchase',
+  installs: 'installs', cpi: 'cost per install'
 };
-const METRIC_MONEY = ['spend', 'cpc_link', 'cpl', 'cpm', 'cpr', 'cpp'];
+const METRIC_MONEY = ['spend', 'cpc_link', 'cpl', 'cpm', 'cpr', 'cpp', 'cpi'];
 
 function fmtMetric(m: string, v: number | null): string {
   if (v == null) return 'n/a';
@@ -408,8 +421,33 @@ function rulesFor(list: Rule[], tokenOwner: string): Rule[] {
 /* ЦІНА ЗА ОДНУ ПОДІЮ — і що стоїть у знаменнику. */
 const PER_ONE: Record<string, (a: Agg) => number> = {
   cpl: a => a.leads, cpr: a => a.regs,
-  cpp: a => a.purchases, cpc_link: a => a.linkClicks
+  cpp: a => a.purchases, cpc_link: a => a.linkClicks,
+  cpi: a => a.installs
 };
+
+/* ═══ ЦІНА ЛІДА НА АПЦІ, ДЕ ЛІДІВ НЕ БУВАЄ ═══
+
+   «а правила розрізняють lead і інстал? бо мені здається воно шукає
+   lead тільки».
+
+   Шукало. І для апкової кампанії це не просто сліпота, а хибне
+   вимкнення: Facebook віддає їй mobile_app_install, а 'lead' не
+   віддає ніколи. Отже лідів нуль, ціна ліда — нескінченність, і
+   правило «лід дорожчий за $4» спрацьовує, щойно спенд перевищить ці
+   $4.
+
+   На живих числах це виглядало так: оголошення TJ_AB_676, $24.44,
+   дев'ять інсталів по $2.72 — і нуль лідів, бо лідів там і не
+   планувалось. Правило вимикало його як дороге.
+
+   Тому: нуль подій ПРИ НАЯВНИХ ІНСТАЛАХ — це не «дорого», це «міряли
+   не тим». Відповідь null — «не знаю»: в AND воно ламає весь збіг, в
+   OR просто не голосує, і жодне з двох не бреше.
+
+   Лише для подій, яких апкова кампанія не має за побудовою. Ціна
+   кліка сюди не входить: кліки є і в апок, і нуль кліків при витратах
+   — це справді дорого, а не інша подія. */
+const APP_BLIND = ['cpl', 'cpr', 'cpp'];
 
 /* НЕСКІНЧЕННІСТЬ — ЦЕ «ЩЕ НЕ ЗНАЄМО», А НЕ «БІЛЬШЕ ЗА БУДЬ-ЩО».
 
@@ -435,6 +473,10 @@ function condOk(c: Cond, a: Agg): boolean | null {
   const val = METRICS[c.m](a);
   if (val == null) return null;              // нічого не знаємо — не вирішуємо
   const count = PER_ONE[c.m];
+  /* Подій цього виду нуль, а інстали є — міряємо апку не тим. Мовчимо
+     замість вироку. */
+  if (val === Infinity && count && count(a) === 0
+      && a.installs > 0 && APP_BLIND.indexOf(c.m) >= 0) return null;
   if (val === Infinity && count && count(a) === 0 && (c.op === '>' || c.op === '>=')) {
     return c.op === '>' ? (a.spend > c.v ? true : null)
                         : (a.spend >= c.v ? true : null);
@@ -468,13 +510,22 @@ type Ent = { id: string; name: string; level: string; account: string;
              campaign: string; campaignName: string; agg: Agg };
 
 function aggZero(): Agg {
-  return { spend: 0, imps: 0, clicks: 0, linkClicks: 0, leads: 0, regs: 0, purchases: 0 };
+  return { spend: 0, imps: 0, clicks: 0, linkClicks: 0,
+           leads: 0, regs: 0, purchases: 0, installs: 0 };
 }
 
+/* НОВЕ ПОЛЕ ДОДАЄТЬСЯ В ТРЬОХ МІСЦЯХ, І ДВА З НИХ МОВЧАЗНІ.
+
+   aggOf його рахує, а от aggZero і addAgg — ні, поки про них не
+   згадаєш. Наслідок виглядав би так: на оголошенні інстали є, на
+   адсеті й кампанії нуль, і ціна інстала там — нескінченність. Тобто
+   правило рівня кампанії вимикало б усе підряд, і числа при цьому
+   були б «справжні». */
 function addAgg(to: Agg, from: Agg): void {
   to.spend += from.spend; to.imps += from.imps; to.clicks += from.clicks;
   to.linkClicks += from.linkClicks; to.leads += from.leads;
   to.regs += from.regs; to.purchases += from.purchases;
+  to.installs += from.installs;
 }
 
 /* Рядок знімка → числа, якими міряють правила.
@@ -558,6 +609,10 @@ function pickEvent(acts: Json[], suf: string): number {
 
 const REG_EVENT = 'complete_registration';
 const BUY_EVENT = 'purchase';
+/* Те саме ім'я, що в дашборді (CD_INST). Розійтись їм не можна: ціна
+   інстала на екрані й та, за якою діє правило, мусять бути одним
+   числом. */
+const INST_EVENT = 'mobile_app_install';
 
 function aggOf(row: Json, leadActions: string[]): Agg {
   const acts: Json[] = Array.isArray(row.actions) ? row.actions : [];
@@ -572,7 +627,8 @@ function aggOf(row: Json, leadActions: string[]): Agg {
        реєстрації» правило й мусить ловити. Ціна ж при нулі стає
        нескінченною, як і в лідів, — і теж ловиться. */
     regs: pickEvent(acts, REG_EVENT),
-    purchases: pickEvent(acts, BUY_EVENT)
+    purchases: pickEvent(acts, BUY_EVENT),
+    installs: pickEvent(acts, INST_EVENT)
   };
 }
 
@@ -914,6 +970,11 @@ function metricCounts(h: Hit): string {
                a.leads + ' ' + plural(a.leads, 'лід', 'ліди', 'лідів')];
   if (a.regs) out.push(a.regs + ' реєстр.');
   if (a.purchases) out.push(a.purchases + ' деп.');
+  /* Інстали в рядку лише коли вони є: на кабінеті без апок нуль
+     інсталів — не новина, а зайве слово в повідомленні, яке читають
+     із телефона. А от на апці їх відсутність у рядку й була тим, чому
+     «1 лід» виглядало як уся правда. */
+  if (a.installs) out.push(a.installs + ' інст.');
   return out.join(' \u00b7 ');
 }
 
@@ -928,6 +989,13 @@ function metricPrices(h: Hit): string {
   if (a.leads > 0) {
     const cpl = METRICS.cpl(a);
     if (cpl != null && cpl !== Infinity) out.push('CPL ' + money(cpl));
+  }
+  /* CPI поруч із CPL, а не замість: кампанія буває і з лідами, і з
+     інсталами водночас, і вибирати за неї, що показати, ми не
+     беремось. Немає інсталів — немає й рядка. */
+  if (a.installs > 0) {
+    const cpi = METRICS.cpi(a);
+    if (cpi != null && cpi !== Infinity) out.push('CPI ' + money(cpi));
   }
   return out.join(' \u00b7 ');
 }
