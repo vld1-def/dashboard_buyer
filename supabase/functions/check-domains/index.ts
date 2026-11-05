@@ -68,10 +68,48 @@ type Row = { id: number; domain: string; team_name: string; status: string | nul
    це вже про домен, а не про нас. */
 const GUARDED = [401, 403, 429, 451];
 
-function verdictOf(code: number): Verdict {
+/* ═══ 503 — ЦЕ ДВА РІЗНІ ДОМЕНИ ═══
+
+   «що за помилка 503? він позначає домен але він робочий».
+
+   Правило було одне на всі пʼятисоті: code >= 500 → down. Але 503 —
+   «сервіс недоступний» — у нашій справі найчастіше означає не
+   лежачий хостинг, а щит: Cloudflare під «Under Attack», DDoS-Guard,
+   Incapsula, Sucuri. Для людини з потрібного гео домен відкривається,
+   для нашого робота з дата-центру — ні. Це рівно той випадок, заради
+   якого й існує guarded.
+
+   І ціна помилки тут не косметична. Домен, що пролежав у down довше
+   за PAUSE_WAIT_MS, потрапляє в «мертві достатньо твердо, щоб
+   глушити», — тобто через дві години хибний 503 ГАСИТЬ РОБОЧИЙ
+   ЗАЛИВ.
+
+   Але й оголосити всі 503 щитом не можна: справді лежачий хостинг
+   віддає те саме. Тому дивимось, ХТО відповів. Щити себе називають —
+   у заголовках server, cf-mitigated, cf-ray, x-sucuri-id, x-iinfo.
+   Назвався щит — guarded; не назвався ніхто — down, як і було.
+
+   502 і 504 лишаються down НАВІТЬ за Cloudflare, і це не недогляд:
+   вони означають, що сам origin за щитом не відповідає. Щит тут
+   справний, лежить саме домен. */
+const SHIELD_HEADERS = ['cf-mitigated', 'cf-ray', 'x-sucuri-id', 'x-iinfo',
+                        'x-ddos-protection', 'x-datadome'];
+const SHIELD_SERVERS = /cloudflare|ddos-guard|sucuri|incapsula|imperva|variti|akamai|qrator|stackpath/i;
+
+function shieldOf(h: Headers | null): string {
+  if (!h) return '';
+  for (const k of SHIELD_HEADERS) { if (h.get(k)) return k; }
+  const srv = String(h.get('server') || '');
+  const m = srv.match(SHIELD_SERVERS);
+  return m ? m[0].toLowerCase() : '';
+}
+
+function verdictOf(code: number, h?: Headers | null): Verdict {
+  const shielded = code === 503 && !!shieldOf(h || null);
   return {
     status: code >= 200 && code < 400 ? 'ok'
           : GUARDED.includes(code) ? 'guarded'
+          : shielded ? 'guarded'
           : code === 404 || code === 410 ? 'notfound'
           : code >= 500 ? 'down'
           : 'notfound',
@@ -99,7 +137,8 @@ async function probe(domain: string): Promise<Verdict> {
         // 405 на HEAD — сервер просто не вміє цей метод, це не діагноз.
         // Пробуємо GET, перш ніж записати домен у проблемні.
         if (method === 'HEAD' && (res.status === 405 || res.status === 501)) continue;
-        return verdictOf(res.status);
+        /* Заголовки передаємо далі: саме в них щит себе й називає. */
+        return verdictOf(res.status, res.headers);
       } catch (_e) {
         // DNS, сертифікат, відкинуте з'єднання, таймаут — з HTTP не
         // розрізняються, і для нас це однаково «не відповідає».
