@@ -194,7 +194,7 @@ window.fbLoad = async function () {
     /* team_name тут не для показу, а тому що саме він вирішує, під
        якою командою опиниться все, що принесе синк. Див. fbTeamLine. */
     .select('id,label,team_name,bm_id,bm_name,scopes,expires_at,accounts,status,status_note,'
-           + 'checked_at,note,proxy_host,proxy_ip,proxy_note,proxy_checked_at')
+           + 'checked_at,note,proxy_host,proxy_ip,proxy_note,proxy_on,proxy_checked_at')
     .order('created_at', { ascending: false });
   if (error) {
     box.innerHTML = /fb_tokens|does not exist|schema cache/i.test(error.message)
@@ -367,9 +367,36 @@ window.fbTeamMove = async function (id) {
    пароль, тож база його зі сторінки не віддає взагалі (FB_TOKENS.sql).
    Видно лише host:port, у якому нема чим скористатись. */
 function fbProxyLine(r) {
+  /* ЦЕЙ РЯДОК КАЗАВ НЕПРАВДУ, і це важливіше за все інше тут.
+
+     Було: «No proxy — this token reads Facebook from the server
+     address». Звідси випливає, що З проксі читає НЕ з адреси сервера.
+     А через проксі зараз не ходить жодна функція за розкладом:
+     fb-sync, fb-rules і решта б'ють у Graph напряму, і єдине місце,
+     де проксі взагалі використовується, — оця перевірка.
+
+     Тобто адреса одна й та сама що з проксі, що без. Поки це так,
+     екран мусить казати саме це, а не натякати на протилежне. */
   if (!r.proxy_host) {
-    return '<div class="fb-meta fb-proxy is-off">No proxy \u2014 this token reads Facebook '
-         + 'from the server address, same as every other one</div>';
+    return '<div class="fb-meta fb-proxy is-off">No proxy \u2014 reads Facebook '
+         + 'from the server address</div>';
+  }
+  /* ВИМКНЕНО ПЕРЕВІРКОЮ. Окремий стан, а не просто жовтий: «не
+     пройшло» і «не пройшло, і ми його вимкнули» — різні новини, і
+     друга потребує від людини дії. */
+  if (r.proxy_on === false) {
+    const off = r.proxy_checked_at
+      ? new Date(r.proxy_checked_at).toLocaleString(undefined, {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit' })
+      : '';
+    return `<div class="fb-meta fb-proxy is-dead">
+        \u{1F310} ${fbEsc(r.proxy_host)} \u00b7 <b>turned off by the check</b>${
+          off ? ' \u00b7 ' + fbEsc(off) : ''}
+        ${r.proxy_note ? ' \u00b7 ' + fbEsc(r.proxy_note) : ''}
+        <span class="fb-proxy-fix">The line is kept \u2014 fix the proxy and press
+          <b>Check proxy</b>, it switches back on by itself.</span>
+      </div>`;
   }
   /* Час — без секунд: рядок стоїть у списку токенів, і три зайві
      символи там коштують більше, ніж точність до секунди комусь
@@ -442,9 +469,14 @@ window.fbProxySet = async function (id) {
     toast('Could not read that as a proxy \u2014 expected host:port, host:port:user:pass or a URL', 'warn');
     return;
   }
+  /* proxy_on: true — новий рядок дістає чистий аркуш. Інакше проксі,
+     вимкнений перевіркою місяць тому, лишався б вимкненим і після
+     того, як його замінили на інший. */
   const patch = raw
-    ? { proxy: raw, proxy_host: host, proxy_ip: null, proxy_note: null, proxy_checked_at: null }
-    : { proxy: null, proxy_host: null, proxy_ip: null, proxy_note: null, proxy_checked_at: null };
+    ? { proxy: raw, proxy_host: host, proxy_ip: null, proxy_note: null,
+        proxy_on: true, proxy_checked_at: null }
+    : { proxy: null, proxy_host: null, proxy_ip: null, proxy_note: null,
+        proxy_on: true, proxy_checked_at: null };
   const { error } = await sb.from('fb_tokens').update(patch).eq('id', id);
   if (error) {
     toast(/proxy/.test(error.message)
@@ -453,7 +485,7 @@ window.fbProxySet = async function (id) {
     return;
   }
   Object.assign(r, { proxy_host: patch.proxy_host, proxy_ip: null,
-                     proxy_note: null, proxy_checked_at: null });
+                     proxy_note: null, proxy_on: true, proxy_checked_at: null });
   fbPaint();
   toast(raw ? 'Saved \u2014 now press Check proxy' : 'Proxy removed', 'ok');
 };
@@ -505,7 +537,16 @@ window.fbProxyTest = async function (id) {
       + 'Through it Facebook sees: ' + (j.proxy_ip || 'could not tell') + '\n\n'
       + (j.note === 'ok'
           ? 'Both addresses differ and Facebook answered through the proxy \u2014 that is what we wanted.'
-          : j.note));
+          : j.note)
+      /* ЩО МИ З ЦИМ ЗРОБИЛИ — окремим рядком. Вимкнути проксі мовчки
+         означало б, що людина побачить мітку через тиждень і не
+         зрозуміє, звідки вона взялась. */
+      + (j.proxy_on === false
+          ? '\n\nTurned off for this token. The line you typed is kept \u2014 fix the '
+            + 'proxy and press Check proxy again, it switches back on by itself.'
+          : j.proxy_on === true && j.note === 'ok'
+            ? '\n\nSwitched on for this token.'
+            : ''));
   } catch (e) {
     tell('Proxy check', 'Could not reach the check function: ' + e.message
       + '\n\nDeploy it first:  supabase functions deploy fb-proxy');
