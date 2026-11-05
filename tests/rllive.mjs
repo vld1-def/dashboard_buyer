@@ -217,7 +217,8 @@ ok('коли по знімку лише частина — так і сказа�
   /1 із них/.test(tgText(mixed)), tgText(mixed));
 
 /* ── 6. ВЕРСІЯ ── */
-ok('версію функції піднято', /FN_VERSION = 'rules-11'/.test(FN),
+const fnv = Number((FN.match(/FN_VERSION = 'rules-(\d+)'/) || [])[1]);
+ok('версію функції піднято не нижче rules-11', fnv >= 11,
   (FN.match(/FN_VERSION = '[^']+'/) || [])[0]);
 
 await done(null, null, []);

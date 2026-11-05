@@ -52,6 +52,15 @@ const RL_METRICS = [
     tip: 'Spend ÷ purchases. Spent something and got none — the cost is ∞' },
   { k: 'purchases',   label: 'Purchases',
     tip: 'Purchase events today' },
+  /* ІНСТАЛИ ОКРЕМО ВІД ЛІДІВ. Facebook віддає апковій кампанії подію
+     mobile_app_install і не віддає 'lead' ніколи — тож міряти апку
+     ціною ліда означало міряти її нулем. Доти цих двох рядків тут не
+     було взагалі, і правило на апку написати було ніяк. */
+  { k: 'cpi',         label: 'Cost per install', money: true,
+    tip: 'Spend ÷ app installs. An app campaign has no lead events at all, '
+       + 'so this is the one to measure it by \u2014 not cost per lead' },
+  { k: 'installs',    label: 'App installs',
+    tip: 'Mobile app install events today' },
   { k: 'link_clicks', label: 'Link clicks',
     tip: 'Clicks that went to the link, not every click on the ad' },
   { k: 'imps',        label: 'Impressions' }
@@ -264,7 +273,11 @@ function rlBlank() {
 }
 
 function rlForm(r, i) {
-  const cond = (c, k) => `<div class="rl-cond">
+  /* Звʼязка між умовами стоїть МІЖ ними, а не лише в селекті нагорі:
+     правило читають згори вниз, і «усі одразу» чи «будь-яка» —
+     найважливіше слово в цьому читанні. */
+  const join = r.match === 'any' ? 'or' : 'and';
+  const cond = (c, k) => `${k ? `<div class="rl-join">${join}</div>` : ''}<div class="rl-cond">
       <select class="rl-in" data-f="m" data-k="${k}"
         title="${rlEsc((RL_METRICS.find(m => m.k === c.m) || {}).tip || '')}">
         ${RL_METRICS.map(m => `<option value="${m.k}" ${c.m === m.k ? 'selected' : ''}>${m.label}</option>`).join('')}
@@ -273,43 +286,65 @@ function rlForm(r, i) {
         ${RL_OPS.map(o => `<option value="${o}" ${c.op === o ? 'selected' : ''}>${o}</option>`).join('')}
       </select>
       <input class="rl-in is-num" data-f="v" data-k="${k}" type="number" step="0.01" value="${rlEsc(c.v)}">
-      ${(r.when.length > 1) ? `<button type="button" class="rl-mini is-bad" onclick="rlCondDrop(${k})">✕</button>` : ''}
+      ${(r.when.length > 1) ? `<button type="button" class="rl-mini is-bad" title="Remove this condition" onclick="rlCondDrop(${k})">✕</button>` : ''}
     </div>`;
   return `<div class="rl-form" id="rl-form">
-    <div class="rl-form-top">
-      <input class="rl-in is-wide" id="rl-f-name" placeholder="Rule name — e.g. Expensive link clicks" value="${rlEsc(r.name)}">
-      <select class="rl-in" id="rl-f-level">
-        ${RL_LEVELS.map(l => `<option value="${l.k}" ${r.level === l.k ? 'selected' : ''}>${l.label}</option>`).join('')}
-      </select>
-      <select class="rl-in" id="rl-f-match">
-        <option value="all" ${r.match !== 'any' ? 'selected' : ''}>AND</option>
-        <option value="any" ${r.match === 'any' ? 'selected' : ''}>OR</option>
-      </select>
+
+    <div class="rl-sec">
+      <h4 class="rl-sec-h">The rule</h4>
+      <div class="rl-form-top">
+        <input class="rl-in is-full" id="rl-f-name" placeholder="Rule name — e.g. Expensive link clicks" value="${rlEsc(r.name)}">
+        <label class="rl-f"><span class="rl-f-l">Looks at</span>
+          <select class="rl-in" id="rl-f-level">
+            ${RL_LEVELS.map(l => `<option value="${l.k}" ${r.level === l.k ? 'selected' : ''}>${l.label}</option>`).join('')}
+          </select></label>
+        <label class="rl-f"><span class="rl-f-l">Conditions must</span>
+          <select class="rl-in" id="rl-f-match" onchange="rlMatchFlip()">
+            <option value="all" ${r.match !== 'any' ? 'selected' : ''}>all match</option>
+            <option value="any" ${r.match === 'any' ? 'selected' : ''}>any match</option>
+          </select></label>
+      </div>
     </div>
-    <div id="rl-conds">${r.when.map(cond).join('')}</div>
-    <button type="button" class="rl-mini" onclick="rlCondAdd()">+ condition</button>
-    <div class="rl-form-bot">
-      <label class="rl-f"><span class="rl-f-l">Only from spend, $</span>
-        <input class="rl-in is-num" id="rl-f-min" type="number" step="0.5" min="0.01" value="${rlEsc(r.minSpend == null ? 10 : r.minSpend)}"></label>
-      <label class="rl-f"><span class="rl-f-l">Geo (blank = any)</span>
-        <input class="rl-in" id="rl-f-geo" placeholder="KG, UZ"
-          title="Two-letter country codes. Taken from the name in Facebook — the ad's, its ad set's or its campaign's — because Facebook does not report a country on an ad row. The code must stand on its own: Mostbet_KG and KG_15323 match, MostbetKG does not."
-          oninput="rlGeoNote()" value="${rlEsc((r.geo || []).join(', '))}"></label>
-      <!-- Назва правила ні на що не впливає, а виглядає як
-           налаштування: «BR CLICK» без кодів торкнеться всіх гео. Одне
-           таке правило вже вимкнуло TJ, і зрозуміти це ззовні було
-           неможливо. Тому поле каже про себе саме. -->
-      <span id="rl-geo-note" class="rl-note"></span>
-      ${r.nameHas ? `<label class="rl-f"><span class="rl-f-l">Old name filter</span>
-        <span class="rl-in" style="display:flex;align-items:center;gap:.5rem">
-          <span class="font-mono truncate" title="This rule still only looks at names containing this text. The field was replaced by Geo; the filter is kept so the rule does not silently start covering everything.">“${rlEsc(r.nameHas)}”</span>
-          <button type="button" class="rl-mini is-bad" onclick="rlDropHas()">✕</button>
-        </span></label>` : ''}
-      <label class="rl-f"><span class="rl-f-l">Cabinets (blank = all)</span>
-        <input class="rl-in is-wide" id="rl-f-cabs" placeholder="1149896616961527, 778" value="${rlEsc((r.cabs || []).join(', '))}"></label>
+
+    <div class="rl-sec">
+      <h4 class="rl-sec-h">When</h4>
+      <div class="rl-conds" id="rl-conds">${r.when.map(cond).join('')}</div>
+      <button type="button" class="rl-mini" onclick="rlCondAdd()">+ condition</button>
+    </div>
+
+    <div class="rl-sec">
+      <h4 class="rl-sec-h">Where it applies</h4>
+      <div class="rl-form-bot">
+        <label class="rl-f"><span class="rl-f-l">Only from spend</span>
+          <span class="rl-pre"><input class="rl-in is-num" id="rl-f-min" type="number" step="0.5" min="0.01" value="${rlEsc(r.minSpend == null ? 10 : r.minSpend)}"></span></label>
+        <label class="rl-f"><span class="rl-f-l">Geo (blank = any)</span>
+          <input class="rl-in" id="rl-f-geo" placeholder="KG, UZ"
+            title="Two-letter country codes. Taken from the name in Facebook — the ad's, its ad set's or its campaign's — because Facebook does not report a country on an ad row. The code must stand on its own: Mostbet_KG and KG_15323 match, MostbetKG does not."
+            oninput="rlGeoNote()" value="${rlEsc((r.geo || []).join(', '))}"></label>
+        <!-- Назва правила ні на що не впливає, а виглядає як
+             налаштування: «BR CLICK» без кодів торкнеться всіх гео. Одне
+             таке правило вже вимкнуло TJ, і зрозуміти це ззовні було
+             неможливо. Тому поле каже про себе саме. -->
+        <span id="rl-geo-note" class="rl-note"></span>
+        ${r.nameHas ? `<label class="rl-f"><span class="rl-f-l">Old name filter</span>
+          <span class="rl-in" style="display:flex;align-items:center;gap:.5rem">
+            <span class="font-mono truncate" title="This rule still only looks at names containing this text. The field was replaced by Geo; the filter is kept so the rule does not silently start covering everything.">“${rlEsc(r.nameHas)}”</span>
+            <button type="button" class="rl-mini is-bad" onclick="rlDropHas()">✕</button>
+          </span></label>` : ''}
+        <label class="rl-f"><span class="rl-f-l">Cabinets (blank = all)</span>
+          <input class="rl-in is-wide" id="rl-f-cabs" placeholder="1149896616961527, 778" value="${rlEsc((r.cabs || []).join(', '))}"></label>
+      </div>
+    </div>
+
+    <div class="rl-sec">
+      <h4 class="rl-sec-h">What it may do</h4>
+      <!-- Єдиний перемикач у формі, після якого реклама справді
+           вимикається. Підпис під ним каже, що буде, якщо його НЕ
+           чіпати: без цього «report only» лишалось жаргоном. -->
       <label class="rl-ax"><input type="checkbox" id="rl-f-live" ${r.dry === false ? 'checked' : ''}>
-        <span>Allowed to switch things off</span></label>
+        <span>Allowed to switch things off<small>Leave it off and the rule only reports: it writes a line into Last actions and touches nothing.</small></span></label>
     </div>
+
     <div class="rl-form-acts">
       <button type="button" class="rl-btn is-main" onclick="rlPut(${i})">Save</button>
       <button type="button" class="rl-btn" onclick="rlCancel()">Cancel</button>
@@ -379,7 +414,7 @@ window.rlGeoNote = function () {
   }
   if (!good.length) {
     el.className = 'rl-note is-warn';
-    el.textContent = 'Порожньо — правило торкнеться ВСІХ гео. Назва правила на це не впливає.';
+    el.textContent = 'Blank — the rule will touch EVERY geo. The rule name does not narrow it.';
     return;
   }
   el.className = 'rl-note';
@@ -394,6 +429,10 @@ window.rlDropHas = function () {
 window.rlAdd = function () { rlEdit = -1; rlPaint(); rlGeoNote(); };
 window.rlOpen = function (i) { rlEdit = i; rlPaint(); rlGeoNote(); };
 window.rlCancel = function () { rlEdit = null; rlPaint(); };
+
+/* AND/OR підписаний між умовами, тож зміна селекта мусить перемалювати
+   форму: інакше поруч із «or» лишиться стояти «and». */
+window.rlMatchFlip = function () { rlDraft(rlFromForm()); };
 
 window.rlCondAdd = function () {
   const draft = rlFromForm();
