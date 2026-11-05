@@ -255,6 +255,10 @@ function pickAct(actions: unknown[], suf: string): number {
    рахують різне, називаючи це однаково. */
 const EV_REG = 'complete_registration';
 const EV_DEP = 'purchase';
+/* Інстал — те саме ім'я, що в правилах (INST_EVENT у fb-rules) і в
+   дашборді. Один словник на всіх: інакше три місця рахуватимуть різне
+   під однією назвою. */
+const EV_INST = 'mobile_app_install';
 
 /* ЗАКРИТИЙ КАБІНЕТ — ЦЕ НЕ ЗАБАНЕНИЙ, і тут це довго було не так.
 
@@ -282,7 +286,7 @@ type Cab = { id: string; name: string; who: string };
    означає нічого. Спенд тут теж свій: він порахований із тих САМИХ
    оголошень, що й конверсії (див. нижче). */
 type Conv = { spend: number; clicks: number; leads: number;
-              regs: number; deps: number };
+              regs: number; deps: number; inst: number };
 type CabSpend = { id: string; name: string; who: string;
                   spend: number; cur: string };
 type Park = {
@@ -357,7 +361,7 @@ const FRESH_MIN = 5;
    ні йому, ні мені: ззовні свіжий код і старий виглядають однаково.
    Про fb-sync бот уже казав версію (вона приїжджає у відповіді
    прогону) — а про себе не казав нічого. Тепер каже. */
-const FN_VERSION = 'bot-12';
+const FN_VERSION = 'bot-13';
 /* Чекаємо довше, ніж 25 с: у кого десяток токенів, прогін за чверть
    хвилини не встигає, і кнопка щоразу відповідала «числа ще старі».
    Верхня межа тут не наша — Telegram чекає на відповідь вебхука
@@ -774,7 +778,7 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
       const cur = curOf.get(String(r.account_id || ''));
       if (!cur) return;
       const c = out.conv[cur] || (out.conv[cur] =
-        { spend: 0, clicks: 0, leads: 0, regs: 0, deps: 0 });
+        { spend: 0, clicks: 0, leads: 0, regs: 0, deps: 0, inst: 0 });
       c.spend += num(r.spend);
       /* Клац ПО ПОСИЛАННЮ, а не будь-який: саме його показує CPC у
          таблиці кампаній, і саме за нього платять. clicks рахує ще й
@@ -785,6 +789,10 @@ async function park(base: string, hdr: Record<string, string>, uid: string): Pro
       c.leads += leadCount(acts);
       c.regs += pickAct(acts, EV_REG);
       c.deps += pickAct(acts, EV_DEP);
+      /* Те саме ім'я події, що в правилах і в дашборді. Рахувати її
+         бот мусить так само, як вони, — інакше три екрани про те саме
+         «сьогодні» казатимуть три різні числа. */
+      c.inst += pickAct(acts, EV_INST);
       out.convRows++;
     });
     if (part.length < SNAP_PAGE) { all = true; break; }
@@ -862,8 +870,26 @@ const seenLine = (p: Park): string => {
    різні новини. */
 const CONV_ROWS: [string, (c: Conv) => number][] = [
   ['Клацань', c => c.clicks], ['Лідів', c => c.leads],
+  ['Інсталів', c => c.inst],
   ['Реєстрацій', c => c.regs], ['Депозитів', c => c.deps]
 ];
+
+/* ЯКІ З РЯДКІВ ПОКАЗУВАТИ.
+
+   Апп-кампанія не має подій ліда взагалі: «Лідів: 0 · —» стоятиме в
+   ній завжди, хоч би скільки вона приносила. Тому коли лідів немає, а
+   інстали є, рядок про лідів не малюємо — його місце займають інстали,
+   вони там і є тим, заради чого все крутилось.
+
+   Інстали, навпаки, показуємо лише коли вони є: на парку без апок
+   зайвий нуль — це ще один рядок у повідомленні, яке читають із
+   телефона. Решта рядків лишаються як були, нулями й усім: їх читають
+   як «подій не було», і це правда. */
+const convRows = (c: Conv): [string, (c: Conv) => number][] =>
+  CONV_ROWS.filter(([label]) =>
+    label === 'Інсталів' ? c.inst > 0
+    : label === 'Лідів' ? (c.leads > 0 || !c.inst)
+    : true);
 
 /* Розділювач тисяч — як у сумах: 1240 і 1,240 читаються з різною
    швидкістю, а поруч із грошима, де він уже є, його відсутність
@@ -871,7 +897,7 @@ const CONV_ROWS: [string, (c: Conv) => number][] = [
 const cnt = (n: number): string => n.toLocaleString('en-US');
 
 const convLines = (c: Conv, cur: string, pad: string): string =>
-  CONV_ROWS.map(([label, get]) => pad + label + ': ' + cnt(get(c))
+  convRows(c).map(([label, get]) => pad + label + ': ' + cnt(get(c))
     + ' \u00b7 ' + per(c.spend, get(c), cur)).join('\n');
 
 /* ЧОМУ СПЕНД У ЦЬОМУ БЛОЦІ МОЖЕ НЕ ЗБІГТИСЬ ІЗ ПІДСУМКОМ.
@@ -899,7 +925,7 @@ const covNote = (p: Park): string => {
 function convBlock(p: Park): string {
   const curs = Object.keys(p.conv).filter(c => {
     const x = p.conv[c];
-    return x.spend || x.clicks || x.leads || x.regs || x.deps;
+    return x.spend || x.clicks || x.leads || x.regs || x.deps || x.inst;
   });
   /* Нічого не знайшли — так і кажемо. Чотири нулі виглядали б як
      «конверсій немає», хоч насправді немає знімка: таблиці ще не
