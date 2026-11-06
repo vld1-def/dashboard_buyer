@@ -9205,6 +9205,11 @@ function gcDiff(geo, results) {
         <!-- Апка — це воронка з позначкою APP. Шаблон прілки без неї
              нічого не покаже: список апок у редакторі читається саме з
              воронок, і доти по нову апку треба було йти в Settings. -->
+        <!-- Обійти Play по всіх апках команди. Видно лише в режимі
+             прілок: у PWA апок немає, і кнопка там була б про чуже. -->
+        <button id="ap-checkall" onclick="apCheckAll(this)"
+          title="Спитати Google Play про кожну апку команди, по черзі. Забанені позначаться самі"
+          class="mw-btn">↻ Перевірити апки</button>
         <button id="ap-addfun" onclick="apAddFunnel(true)" title="Завести апку (воронку з позначкою APP)"
           class="mw-btn">+ Апка</button>
         <button id="ap-add" onclick="apAddNew()" class="mw-btn is-main">+ Шаблон</button>
@@ -9664,6 +9669,10 @@ function apModePaint() {
      кнопки на одну дію в одному вікні. */
   const af = document.getElementById('ap-addfun');
   if (af) af.classList.toggle('hidden', pwa);
+  /* Перевірка Play — лише там, де є апки. У режимі PWA вона була б
+     кнопкою про чуже: там силки, а не апки. */
+  const ca = document.getElementById('ap-checkall');
+  if (ca) ca.classList.toggle('hidden', pwa);
   const dom = document.getElementById('ap-dom');
   if (dom) dom.classList.toggle('hidden', !pwa);
   const s = document.getElementById('ap-search');
@@ -9792,6 +9801,113 @@ async function apAddFunnel(isApp) {
 /* ─────────── дерево гео → постачальник ─────────── */
 // Що було відкрито минулого разу — щоб анімація грала лише на тому, що
 // відкрилось щойно, а не на кожному перемальовуванні. Те саме, що в PWA.
+/* ═══════════ ПЕРЕВІРИТИ ВСІ ПРІЛКИ ═══════════
+
+   Кнопка «↻» була на кожному рядку, а прілок у команди під сотню:
+   обійти їх руками означало сто кліків і сто очікувань.
+
+   ЦЕ ЦИКЛ ПО ТІЙ САМІЙ КНОПЦІ, А НЕ НОВИЙ ВХІД У ФУНКЦІЮ. Масовий
+   обхід у check-apps є, але він за розкладом і вимагає x-cron-key,
+   якого в людини немає й бути не може. Тому тут та сама людська
+   перевірка однієї воронки, просто по черзі — з тими самими правами
+   (RLS пустить лише свої рядки) і тією самою поведінкою щодо банів.
+
+   ПО ЧЕРЗІ, А НЕ ВСІ ОДРАЗУ. Кожна перевірка — це похід у Google
+   Play; сотня одночасних запитів звідти повертається як 429, а 429
+   у нас означає «не дізнались» і статусу не чіпає. Тобто паралельно
+   було б швидше рівно до того моменту, як перестало б працювати.
+
+   Список беремо з бази, а не з того, що намальовано на екрані:
+   фільтр у таблиці звузив би й перевірку, а «перевірити всі» має
+   означати всі. */
+async function appCheckAll(say) {
+  const out = { n: 0, live: 0, gone: 0, unknown: 0, failed: 0, banned: 0, freed: 0 };
+  let rows = [];
+  try {
+    const res = await sb.from('funnels_mapping')
+      .select('id,app_id').eq('team_name', currentTeam);
+    if (res.error) throw new Error(res.error.message);
+    rows = (res.data || []).filter(r => String(r.app_id || '').trim());
+  } catch (e) {
+    out.error = 'не вдалось прочитати список воронок: ' + (e.message || e);
+    return out;
+  }
+  out.n = rows.length;
+  if (!rows.length) { out.error = 'жодної воронки з апкою'; return out; }
+
+  const { data: sess } = await sb.auth.getSession();
+  const jwt = sess && sess.session && sess.session.access_token;
+  if (!jwt) { out.error = 'не залогінено'; return out; }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (say) say('Play: ' + (i + 1) + ' / ' + rows.length + '…');
+    try {
+      const res = await fetch(SUPABASE_URL + '/functions/v1/check-apps', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + jwt, 'apikey': SUPABASE_KEY,
+                   'content-type': 'application/json' },
+        body: JSON.stringify({ funnel_id: rows[i].id })
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        out.failed++;
+        /* Перша ж відмова, яка стосується не апки, а самої функції,
+           зупиняє обхід: сто однакових помилок поспіль нічого не
+           додають, а чекати на них доведеться хвилини. */
+        if (!out.error) out.error = j.error || ('HTTP ' + res.status);
+        if (/x-cron-key|not configured|APP_LINK\.sql/i.test(String(j.error || ''))) break;
+        continue;
+      }
+      if (j.state === 'live') out.live++;
+      else if (j.state === 'gone') out.gone++;
+      else out.unknown++;
+      if (j.did === 'banned') out.banned++;
+      if (j.did === 'unbanned') out.freed++;
+    } catch (e) {
+      out.failed++;
+      if (!out.error) out.error = e.message || String(e);
+    }
+  }
+  return out;
+}
+
+/* Підсумок одним рядком. Нулі не показуємо: рядок читають із
+   телефона, і «0 забанено» в ньому — слово, яке треба прочитати,
+   щоб зрозуміти, що нічого не сталось. */
+function appCheckSay(o) {
+  if (o.error && !o.n) return 'Перевірка: ' + o.error;
+  const bits = [o.n + ' перевірено'];
+  if (o.banned) bits.push(o.banned + ' забанено');
+  if (o.freed) bits.push(o.freed + ' розбанено');
+  if (o.gone) bits.push(o.gone + ' не відповідають');
+  if (o.unknown) bits.push(o.unknown + ' не дізнались');
+  if (o.failed) bits.push(o.failed + ' не вдалось');
+  return bits.join(' · ') + (o.error ? ' — ' + o.error : '');
+}
+
+/* Те саме у вікні прілок. Хід перевірки пишемо в підзаголовок вікна:
+   там він стоїть над самим списком, якого стосується, а не в тості,
+   що зникне раніше, ніж обхід скінчиться. */
+window.apCheckAll = async function (btn) {
+  const sub = document.getElementById('ap-sub');
+  const was = sub ? sub.textContent : '';
+  if (btn) btn.disabled = true;
+  try {
+    const o = await appCheckAll(t => { if (sub) sub.textContent = t; });
+    if (sub) sub.textContent = appCheckSay(o);
+    /* Перечитуємо воронки: статуси щойно могли змінитись, і список
+       апок у редакторі читається саме з них. */
+    if (typeof apLoad === 'function') await apLoad();
+    if (typeof apRenderMode === 'function') apRenderMode();
+    if (sub) sub.textContent = appCheckSay(o);
+  } catch (e) {
+    if (sub) sub.textContent = 'Перевірка не вийшла: ' + (e.message || e);
+  } finally {
+    if (btn) btn.disabled = false;
+    void was;
+  }
+};
+
 let apOpenWas = '';
 
 function apRenderTree() {

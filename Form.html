@@ -928,7 +928,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <div class="card p-8 rounded-[2.5rem] border-t-4 border-t-slate-500 bg-slate-900/40">
              <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xs font-black uppercase text-slate-400 tracking-[0.2em]">KTID Mappings</h3>
-                <input type="text" id="funnel-search" oninput="filterFunnels()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
+                <div class="flex items-center gap-2">
+                  <!-- Обійти всі апки одразу. Кнопка «↻» на рядку лишається:
+                       вона про одну апку, ця — про парк. -->
+                  <button type="button" onclick="funAppCheckAll(this)"
+                    title="Спитати Google Play про КОЖНУ апку з цього списку, по черзі. Забанені позначаться самі"
+                    class="bg-sky-600/80 hover:bg-sky-500 disabled:opacity-50 px-4 py-1.5 rounded-lg font-black uppercase text-[10px] transition-all">Перевірити всі</button>
+                  <input type="text" id="funnel-search" oninput="filterFunnels()" placeholder="Filter..." class="!w-40 !py-1.5 !text-[10px] !rounded-lg">
+                </div>
              </div>
              <!-- Фільтр по постачальниках прілок. Теги ті самі, що й у
                   Funnel Mapper: читаються з дужок назви, тож окремого
@@ -5215,6 +5222,90 @@ async function updateFunnelGeo(id, val) {
 
    Мовчки не падаємо: функції може бути не задеплоєно, і тоді людина
    мусить знати, чому стан не оновився. */
+/* ═══════════ ПЕРЕВІРИТИ ВСІ ПРІЛКИ ═══════════
+
+   Кнопка «↻» була на кожному рядку, а прілок у команди під сотню:
+   обійти їх руками означало сто кліків і сто очікувань.
+
+   ЦЕ ЦИКЛ ПО ТІЙ САМІЙ КНОПЦІ, А НЕ НОВИЙ ВХІД У ФУНКЦІЮ. Масовий
+   обхід у check-apps є, але він за розкладом і вимагає x-cron-key,
+   якого в людини немає й бути не може. Тому тут та сама людська
+   перевірка однієї воронки, просто по черзі — з тими самими правами
+   (RLS пустить лише свої рядки) і тією самою поведінкою щодо банів.
+
+   ПО ЧЕРЗІ, А НЕ ВСІ ОДРАЗУ. Кожна перевірка — це похід у Google
+   Play; сотня одночасних запитів звідти повертається як 429, а 429
+   у нас означає «не дізнались» і статусу не чіпає. Тобто паралельно
+   було б швидше рівно до того моменту, як перестало б працювати.
+
+   Список беремо з бази, а не з того, що намальовано на екрані:
+   фільтр у таблиці звузив би й перевірку, а «перевірити всі» має
+   означати всі. */
+async function appCheckAll(say) {
+  const out = { n: 0, live: 0, gone: 0, unknown: 0, failed: 0, banned: 0, freed: 0 };
+  let rows = [];
+  try {
+    const res = await sb.from('funnels_mapping')
+      .select('id,app_id').eq('team_name', currentTeam);
+    if (res.error) throw new Error(res.error.message);
+    rows = (res.data || []).filter(r => String(r.app_id || '').trim());
+  } catch (e) {
+    out.error = 'не вдалось прочитати список воронок: ' + (e.message || e);
+    return out;
+  }
+  out.n = rows.length;
+  if (!rows.length) { out.error = 'жодної воронки з апкою'; return out; }
+
+  const { data: sess } = await sb.auth.getSession();
+  const jwt = sess && sess.session && sess.session.access_token;
+  if (!jwt) { out.error = 'не залогінено'; return out; }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (say) say('Play: ' + (i + 1) + ' / ' + rows.length + '…');
+    try {
+      const res = await fetch(SUPABASE_URL + '/functions/v1/check-apps', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + jwt, 'apikey': SUPABASE_KEY,
+                   'content-type': 'application/json' },
+        body: JSON.stringify({ funnel_id: rows[i].id })
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        out.failed++;
+        /* Перша ж відмова, яка стосується не апки, а самої функції,
+           зупиняє обхід: сто однакових помилок поспіль нічого не
+           додають, а чекати на них доведеться хвилини. */
+        if (!out.error) out.error = j.error || ('HTTP ' + res.status);
+        if (/x-cron-key|not configured|APP_LINK\.sql/i.test(String(j.error || ''))) break;
+        continue;
+      }
+      if (j.state === 'live') out.live++;
+      else if (j.state === 'gone') out.gone++;
+      else out.unknown++;
+      if (j.did === 'banned') out.banned++;
+      if (j.did === 'unbanned') out.freed++;
+    } catch (e) {
+      out.failed++;
+      if (!out.error) out.error = e.message || String(e);
+    }
+  }
+  return out;
+}
+
+/* Підсумок одним рядком. Нулі не показуємо: рядок читають із
+   телефона, і «0 забанено» в ньому — слово, яке треба прочитати,
+   щоб зрозуміти, що нічого не сталось. */
+function appCheckSay(o) {
+  if (o.error && !o.n) return 'Перевірка: ' + o.error;
+  const bits = [o.n + ' перевірено'];
+  if (o.banned) bits.push(o.banned + ' забанено');
+  if (o.freed) bits.push(o.freed + ' розбанено');
+  if (o.gone) bits.push(o.gone + ' не відповідають');
+  if (o.unknown) bits.push(o.unknown + ' не дізнались');
+  if (o.failed) bits.push(o.failed + ' не вдалось');
+  return bits.join(' · ') + (o.error ? ' — ' + o.error : '');
+}
+
 async function funAppCheck(id) {
   try {
     const { data: sess } = await sb.auth.getSession();
@@ -5290,6 +5381,21 @@ async function funAppCheck(id) {
    про це було нізвідки.
 
    Та сама функція, той самий вхід — просто названий кнопкою. */
+/* Кнопка в шапці KTID Mappings. Поки йде обхід — вимкнена й показує,
+   на якій апці стоїмо: сто перевірок тривають хвилини, і мовчазна
+   кнопка за цей час встигає отримати ще п'ять натискань. */
+window.funAppCheckAll = async function (btn) {
+  if (btn) { btn.disabled = true; btn.dataset.was = btn.textContent; }
+  const say = t => { if (btn) btn.textContent = t; showStatus(t); };
+  try {
+    const o = await appCheckAll(say);
+    showStatus(appCheckSay(o));
+    await refreshFunnelsTable();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = btn.dataset.was || 'Перевірити всі'; }
+  }
+};
+
 window.funAppRecheck = async function (id) {
   showStatus('Asking Play…');
   await funAppCheck(id);
