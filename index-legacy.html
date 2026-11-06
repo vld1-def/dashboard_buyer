@@ -5002,17 +5002,40 @@ window._drivePreviewError = function() {
   if (d) d.innerHTML = '<p class="text-[10px] text-slate-600 py-3 px-4 text-center">Preview unavailable</p>';
 };
 
-// Відео дивимось ПРЯМО ТУТ: клік по постеру підміняє його на вбудований плеєр Drive.
-// iframe вантажимо лише на вимогу, щоб не тягнути його для кожного креатива.
-window._drivePlayInline = function(fileId) {
-  const d = document.getElementById('cr-drive-preview');
-  if (!d) return;
-  // Фіксована висота = висота постера, щоб плеєр не розпирав блок
-  d.innerHTML = `
-    <div class="relative w-full overflow-hidden rounded-2xl" style="height:240px">
-      <iframe src="https://drive.google.com/file/d/${fileId}/preview" allow="autoplay"
-              class="absolute inset-0 w-full h-full border-0"></iframe>
-    </div>`;
+/* ВІДЕО ДИВЛЯТЬСЯ ВІКНОМ, А НЕ СМУЖКОЮ.
+
+   Плеєр Drive підставлявся НА МІСЦЕ постера — у блок заввишки 240
+   пікселів, затиснутий у колонці картки. Drive малює в ньому свою
+   шапку з назвою файлу, кнопками й меню, і на те, що лишається,
+   припадає смужка кадру. Тобто клік по прев'ю давав гірше видно, ніж
+   сам постер.
+
+   Відео дивляться на весь екран. Тому клік відкриває вікно: кадр
+   16:9 на всю доступну ширину, тло притемнене, закривається
+   хрестиком, Escape і кліком повз. Місце в картці від цього не
+   забирається взагалі. */
+window._drivePlayInline = function (fileId) {
+  window._driveClose();
+  const wrap = document.createElement('div');
+  wrap.id = 'dv-modal';
+  wrap.className = 'dv-modal';
+  wrap.onclick = e => { if (e.target === wrap) window._driveClose(); };
+  wrap.innerHTML = '<div class="dv-box">'
+    + '<button type="button" class="dv-x" title="Закрити (Esc)"'
+    + ' onclick="window._driveClose()">&times;</button>'
+    + '<div class="dv-frame"><iframe src="https://drive.google.com/file/d/'
+    + encodeURIComponent(fileId) + '/preview" allow="autoplay" allowfullscreen></iframe></div>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  document.addEventListener('keydown', window._driveEsc);
+};
+
+/* Обробник знімаємо разом із вікном: лишений висіти, він ловив би
+   Escape уже для когось іншого. */
+window._driveEsc = function (e) { if (e.key === 'Escape') window._driveClose(); };
+window._driveClose = function () {
+  document.removeEventListener('keydown', window._driveEsc);
+  document.getElementById('dv-modal')?.remove();
 };
 
 async function loadCreativePreview(creativeName) {
@@ -5069,7 +5092,7 @@ async function loadCreativePreview(creativeName) {
       <div class="relative group ${isVideo && idAttr ? 'cursor-pointer' : ''}"
            ${isVideo && idAttr ? `onclick="window._drivePlayInline('${idAttr}')"` : ''}>
         <img src="${thumbUrl}" alt="${creativeName}"
-          class="w-full max-h-[240px] object-cover rounded-2xl"
+          class="w-full max-h-[240px] object-contain rounded-2xl bg-black/30"
           onerror="window._drivePreviewError()">
         ${isVideo ? `<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div class="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center group-hover:bg-blue-600/80 group-hover:scale-110 transition-all shadow-xl">
@@ -12183,10 +12206,14 @@ async function pwBulkApply() {
 <!-- ===== UNIQUEIZER · варіанти відеокреативів ===== -->
 <div id="uniq-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4">
   <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:90vh">
-    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
+    <!-- Шапка на один рядок. Підзаголовок про обробку в браузері звідси
+         прибрано: він повторював те саме при кожному відкритті й
+         коштував висоти там, де її й так бракує — під ним список
+         файлів. Те, що файли нікуди не йдуть, лишилось у довідці під
+         іконкою «i» поруч. -->
+    <div class="px-5 py-3 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
         <h2 class="text-xl font-black italic tracking-tighter text-violet-400">Uniqueizer</h2>
-        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Відео · обробка в браузері, файли нікуди не йдуть</p>
       </div>
       <!-- Довідка біля хрестика. Підказка показується при наведенні на
            іконку й НЕ прозора: на кадрах відео під нею прозорий фон
@@ -13720,6 +13747,10 @@ async function uqRun() {
 
   if (uqFiles.every(f => uqDone.has(f.name + '|' + f.size))) uqDone.clear();
   uqBusy = true; uqStop = false; uqQueueDirty = false;
+  /* Поки крутиться — питаємо при спробі закрити вкладку. Усе
+     рахується тут, у браузері, тож перезавантаження не перерве
+     роботу, а викине її. */
+  if (typeof uqGuard === 'function') uqGuard(true);
   document.getElementById('uq-run').disabled = true;
   document.getElementById('uq-cancel').classList.remove('hidden');
   barWrap.classList.remove('hidden');
@@ -13820,6 +13851,7 @@ async function uqRun() {
     setStatus('Помилка: ' + (e.message || e));
   } finally {
     uqBusy = false; uqCurrent = -1;
+    if (typeof uqGuard === 'function') uqGuard(false);
     document.getElementById('uq-run').disabled = false;
     document.getElementById('uq-cancel').classList.add('hidden');
     uqRenderFileList();

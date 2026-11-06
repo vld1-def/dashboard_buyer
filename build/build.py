@@ -2511,13 +2511,6 @@ rest = rest[:i] + '<script>\n' + dmjs.strip() + '\n</script>\n\n' + rest[i:]
 # колізія id: у моєї сторінки був свій uq-files, а старий відеорежим
 # читав через getElementById саме його — тобто мовчки ламався.
 rest = sub(rest,
-  '<p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">'
-  'Відео \u00b7 обробка в браузері, файли нікуди не йдуть</p>',
-  '<p id="uq-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">'
-  'Відео \u00b7 обробка в браузері, файли нікуди не йдуть</p>',
-  'Uniqueizer: підзаголовок отримує id')
-
-rest = sub(rest,
   '''      <div>
         <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Відеофайли</label>''',
   '''      <div class="uq-tabs">

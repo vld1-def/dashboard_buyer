@@ -447,20 +447,23 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
 #glass-cal .gc-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
 
 /* ─── Модалка «не знайдено колонки» при імпорті ─── */
-#mc-modal {
+/* Те саме вікно обслуговує і «не знайшлись стовпці», і будь-яке
+   повідомлення, яке доти було alert(). Один вигляд на обидва: друга
+   копія цих правил розійшлася б із першою на першій же правці. */
+#mc-modal, #fm-modal {
   position:fixed; inset:0; z-index:400; display:none;
   align-items:center; justify-content:center; padding:20px;
   background:rgba(2,6,23,.72); backdrop-filter:blur(6px);
 }
-#mc-modal.open { display:flex; }
-#mc-box {
+#mc-modal.open, #fm-modal.open { display:flex; }
+#mc-box, #fm-box {
   width:100%; max-width:520px; max-height:82vh; overflow-y:auto;
   background:#0f172a; border:1px solid var(--glass-border);
   border-radius:18px; padding:22px; color:var(--text-main);
   box-shadow:0 24px 60px rgba(0,0,0,.6);
 }
-#mc-box h3 { font-size:15px; font-weight:900; margin-bottom:4px; }
-#mc-box .mc-sub { font-size:11px; color:#94a3b8; line-height:1.5; margin-bottom:16px; }
+#mc-box h3, #fm-box h3 { font-size:15px; font-weight:900; margin-bottom:4px; }
+#mc-box .mc-sub, #fm-box .mc-sub { font-size:11px; color:#94a3b8; line-height:1.5; margin-bottom:16px; }
 #mc-box .mc-file {
   font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.12em;
   color:#60a5fa; margin:14px 0 8px; padding-bottom:6px;
@@ -479,7 +482,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   border:1px solid rgba(251,191,36,.2); border-radius:10px;
   padding:8px 11px; margin-top:10px; line-height:1.5;
 }
-#mc-box .mc-btns { display:flex; gap:8px; margin-top:20px; }
+#mc-box .mc-btns, #fm-box .mc-btns{ display:flex; gap:8px; margin-top:20px; }
 #mc-box .mc-btns button {
   flex:1; padding:9px; border-radius:11px; font-size:11px;
   font-weight:900; text-transform:uppercase; letter-spacing:.06em; cursor:pointer;
@@ -2846,8 +2849,19 @@ function handleKeitaroFile(e) {
     const days = keitaroAgg ? [...keitaroAgg.days].sort() : [];
     el.textContent = `✓ ${file.name} — days: ${days.join(', ') || '—'}`;
     el.classList.remove('hidden');
-    if (keitaroAgg && keitaroAgg.unlinked.size)
-      alert('Accounts with no timezone (not counted): ' + [...keitaroAgg.unlinked].join(', ') + '\nAdd a TZ in Settings → Link Cabinet.');
+    /* Кабінети без таймзони — вікном, і з дорогою туди, де це
+       виправляють. Доти тут стояв alert: він казав «Add a TZ in
+       Settings → Link Cabinet», і йти туди треба було самому, через
+       дві вкладки, тримаючи номери кабінетів у голові. */
+    if (keitaroAgg && keitaroAgg.unlinked.size) {
+      const list = [...keitaroAgg.unlinked];
+      fmTell('Accounts with no timezone',
+        'These are not counted in the import: ' + list.join(', ')
+        + '. Without a timezone we cannot tell which day a conversion belongs to,'
+        + ' so the rows are skipped rather than put on a guessed day.',
+        [{ label: 'Add cabinet', primary: true, run: () => fmGoLink(list[0]) },
+         { label: 'Later' }]);
+    }
 
     // Якщо FB-файл уже завантажений — перераховуємо його з урахуванням Keitaro
     if (lastFbParse) {
@@ -3991,6 +4005,43 @@ function geoFromNames(lines, map) {
 
 // perFile: [{ name, missing: ['acc', 'geo', ...] }]
 // Повертає { '<file>': { acc: '...', geo: '...' } } або null, якщо скасували.
+/* ПОВІДОМЛЕННЯ З КНОПКАМИ, А НЕ alert().
+
+   actions — [{ label, primary, run }]. Порожньо означає одну кнопку
+   «Закрити»: вікно без жодного способу його закрити гірше за alert.
+
+   Текст іде ТІЛЬКИ текстом (textContent), а розмітка — окремим полем
+   html: у повідомленнях тут трапляються імена кабінетів із файлу,
+   тобто чужий текст, і пускати його в innerHTML не можна. */
+let fmActs = [];
+function fmClose() {
+  document.getElementById('fm-modal')?.classList.remove('open');
+  document.removeEventListener('keydown', fmKey);
+  fmActs = [];
+};
+function fmKey(e) { if (e.key === 'Escape') window.fmClose(); }
+function fmRun(i) {
+  const a = fmActs[i];
+  window.fmClose();
+  if (a && typeof a.run === 'function') a.run();
+};
+function fmTell(title, text, actions) {
+  const box = document.getElementById('fm-modal');
+  if (!box) { alert(title + '\n\n' + text); return; }
+  document.getElementById('fm-title').textContent = title;
+  document.getElementById('fm-body').textContent = text;
+  fmActs = Array.isArray(actions) && actions.length
+    ? actions : [{ label: 'Close' }];
+  document.getElementById('fm-btns').innerHTML = fmActs.map((a, i) =>
+    '<button type="button"' + (a.primary ? ' class="primary"' : '')
+    + ' onclick="fmRun(' + i + ')"></button>').join('');
+  [...document.getElementById('fm-btns').children].forEach((b, i) => {
+    b.textContent = fmActs[i].label;
+  });
+  box.classList.add('open');
+  document.addEventListener('keydown', fmKey);
+};
+
 function askMissingColumns(perFile) {
   const fillable = perFile
     .map(f => ({ name: f.name, keys: f.missing.filter(k => MC_FILLABLE[k]) }))
@@ -5158,9 +5209,9 @@ async function updateFunnelGeo(id, val) {
 /* СПИТАТИ PLAY ПРО ЦЮ АПКУ ЗАРАЗ.
 
    Та сама функція check-apps, але входом для живої людини — одна
-   воронка, нашим токеном. Банів звідси не ставимо: бан коштує
-   зникнення воронки зі списку прілок, і приймати таке рішення має
-   обхід, який бачить дві перевірки поспіль, а не один клік.
+   воронка, нашим токеном. Перевірка руками ТЕПЕР СТАВИТЬ БАН: доти
+   вона його не ставила, і при непрацюючому нічному обході виходило,
+   що апка в бані, перевірка це пише, а статус лишається зеленим.
 
    Мовчки не падаємо: функції може бути не задеплоєно, і тоді людина
    мусить знати, чому стан не оновився. */
@@ -5211,11 +5262,18 @@ async function funAppCheck(id) {
        поспіль, а не один клік. Але поки тут стояла сама лише нотатка
        «апки на сторінці немає», це читалось як поломка: причина є, а
        статус той самий. */
-    const what = j.state === 'gone'
-      ? ' \u2014 статус не міняється від ручної перевірки: бан ставить нічний '
-        + 'обхід, і лише після двох невдач поспіль'
-      : j.state === 'unknown'
-      ? ' \u2014 ми не дізнались, тож стан не чіпаємо'
+    /* ЩО З ЦЬОГО ВИПЛИВАЄ ДЛЯ СТАТУСУ — словом, а не здогадкою.
+
+       Доти тут стояло «статус не міняється від ручної перевірки», і
+       це було правдою, через яку екран сам собі суперечив: нотатка
+       каже «апки немає», пігулка поруч — зелена. Тепер статус
+       міняється, і сказати про це треба так само прямо. */
+    const what = j.save_error
+      ? ' \u2014 \u26A0 у базу не записалось: ' + j.save_error
+      : j.did === 'banned'  ? ' \u2014 статус змінено на \u00abбан\u00bb'
+      : j.did === 'unbanned' ? ' \u2014 бан знято: апка знову відкривається'
+      : j.state === 'gone'    ? ' \u2014 бан уже стоїть'
+      : j.state === 'unknown' ? ' \u2014 ми не дізнались, тож стан не чіпаємо'
       : '';
     showStatus('Play: ' + note + what);
   } catch (e) {
@@ -5275,6 +5333,20 @@ async function deleteFunnelMapping(id) {
 
 // Таби всередині налаштувань. Форма і її таблиця лежать в одній вкладці,
 // тому «додав кабінет → бачу його у списку» лишається в межах одного екрана.
+/* «Додати кабінет» — не порада, а дорога: вкладка налаштувань,
+   панель кабінетів, курсор у полі, і номер уже підставлений. Інакше
+   кнопка економить один клік і лишає всю роботу. */
+function fmGoLink(acc) {
+  try { switchMode('providers'); } catch (e) { /* режим міг не відкритись */ }
+  try { stSwitch('cabinets'); } catch (e) { /* панель могла не відкритись */ }
+  const inp = document.getElementById('prov-acc');
+  if (inp) {
+    if (acc) inp.value = acc;
+    inp.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    inp.focus();
+  }
+};
+
 function stSwitch(name) {
   document.querySelectorAll('.st-panel').forEach(p =>
     p.classList.toggle('hidden', p.id !== 'st-panel-' + name));
@@ -6685,6 +6757,18 @@ function recExportCSV() {
 
 
 <!-- Імпорт: чого не вистачає в файлі -->
+<!-- СПІЛЬНЕ ВІКНО ЗАМІСТЬ alert(). Рідний alert не можна ні
+     оформити, ні доповнити кнопкою, а саме кнопки тут і бракувало:
+     повідомлення «немає кабінетів» закінчувалось порадою піти в
+     налаштування, і йти треба було руками. -->
+<div id="fm-modal">
+  <div id="fm-box">
+    <h3 id="fm-title"></h3>
+    <div class="mc-sub" id="fm-body"></div>
+    <div class="mc-btns" id="fm-btns"></div>
+  </div>
+</div>
+
 <div id="mc-modal">
   <div id="mc-box">
     <h3>Some columns weren't found</h3>

@@ -202,6 +202,37 @@ async function uiOne(src, i, opts) {
            dist: uiDist(src.hash, uiHash(c, W, H)), axes: axes.join(' ') };
 }
 
+/* ═══════════ НЕ ЗАКРИВАЙ, ПОКИ ВОНО КРУТИТЬСЯ ═══════════
+
+   «зроби перевірку, коли в мене йде унікалізація, і я хочу
+   перезагрузити сторінку, ти питай мене чи точно я хочу це зробити».
+
+   Робота живе ТІЛЬКИ у вкладці: відео крутить ffmpeg у браузері,
+   картинки — canvas, нічого нікуди не вивантажується. Тобто
+   перезавантаження не «перерве й продовжить» — воно викине все, що
+   встигло нарахуватись, і повернутись до цього нічим.
+
+   Питає сам браузер: власного вікна тут не поставити, бо сторінку
+   вже закривають. Текст теж його — Chrome і Firefox свій показують і
+   чужого не беруть; наш рядок лишається для тих, хто його ще читає.
+
+   Сторож вішається РІВНО на час роботи. Постійний beforeunload
+   питав би й тоді, коли нічого не робиться, — а від такого питання
+   за тиждень перестають читати й тиснуть «піти» не дивлячись. */
+let uqGuards = 0;
+function uqBeforeUnload(e) {
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+}
+/* Рахунок, а не прапорець: обидва режими можуть крутитись одночасно,
+   і той, що скінчився першим, не має знімати сторожа з другого. */
+window.uqGuard = function (on) {
+  uqGuards = Math.max(0, uqGuards + (on ? 1 : -1));
+  if (uqGuards === 1 && on) window.addEventListener('beforeunload', uqBeforeUnload);
+  if (uqGuards === 0) window.removeEventListener('beforeunload', uqBeforeUnload);
+};
+
 window.uiGen = async function () {
   if (!uiSrc.length) {
     if (typeof toast === 'function') toast('Add an image first', 'warn');
@@ -228,6 +259,8 @@ window.uiGen = async function () {
   }
 
   const note = document.getElementById('ui-note');
+  uqGuard(true);
+  try {
   uiOut.forEach(o => { try { URL.revokeObjectURL(o.url); } catch (e) {} });
   uiOut = [];
   for (const src of uiSrc) {
@@ -239,6 +272,7 @@ window.uiGen = async function () {
     }
   }
   uiPaint();
+  } finally { uqGuard(false); }
 };
 
 function uiPaint() {
@@ -402,19 +436,13 @@ window.uiZip = async function () {
 /* ── ДВА РЕЖИМИ В ОДНОМУ ВІКНІ ──
    Відео крутить ffmpeg (старий код, нижче в документі), статику —
    canvas. Перемикач лише показує потрібну панель: спільного стану в них
-   немає, і робота одного не чіпає інший. Підзаголовок міняємо разом із
-   панеллю, бо «Відео · обробка в браузері» над налаштуваннями картинок
-   виглядало б як помилка. */
+   немає, і робота одного не чіпає інший. */
 window.uqMode = function (m) {
   const img = m === 'image';
   document.getElementById('ui-pane')?.classList.toggle('hidden', !img);
   document.getElementById('uq-pane')?.classList.toggle('hidden', img);
   document.getElementById('uq-tab-image')?.classList.toggle('is-on', img);
   document.getElementById('uq-tab-video')?.classList.toggle('is-on', !img);
-  const sub = document.getElementById('uq-sub');
-  if (sub) sub.textContent = img
-    ? 'Images · in the browser, files stay on this computer'
-    : 'Video · in the browser, files stay on this computer';
 };
 
 /* Перетягування на всю картку, а не лише на рамку: кидають зазвичай
