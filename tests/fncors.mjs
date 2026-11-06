@@ -20,7 +20,11 @@ const { ok, done } = checks();
 /* Кого кличе браузер — беремо з самого коду, а не зі списку руками:
    список руками розійшовся б із кодом рівно тоді, коли додали нову
    функцію, тобто саме тоді, коли він і потрібен. */
-const SRC = ['index-legacy.html', ...fs.readdirSync('build')
+/* Form.html теж кличе функції, і теж із браузера — а в цьому списку
+   його не було. Через це check-apps роками жила без запису в
+   config.toml, і ніхто цього не бачив: дірка була не в коді, а в
+   тому, що ми перевіряли. */
+const SRC = ['index-legacy.html', 'Form.html', ...fs.readdirSync('build')
   .filter(f => f.endsWith('.js')).map(f => path.join('build', f))];
 const called = new Set();
 SRC.forEach(f => {
@@ -49,7 +53,7 @@ ok('і перевірку шлюзом у ньому вимкнено', stillOn.
 
 /* Три, яких бракувало. Названі поіменно, щоб помилку не можна було
    «полагодити», просто прибравши виклик із коду. */
-['fb-limit', 'fb-post', 'tg-news'].forEach(n =>
+['fb-limit', 'fb-post', 'tg-news', 'check-apps'].forEach(n =>
   ok('у config.toml є ' + n, off.has(n), [...off]));
 
 /* І навпаки: у конфігу не має бути записів під функції, яких немає на
