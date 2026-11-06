@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-13';
+const FN_VERSION = 'rules-14';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -695,6 +695,82 @@ const LIVE_FIELDS = 'name,adset_id,campaign_id,adset{name},campaign{name},'
                   + 'insights.date_preset(today){spend,impressions,clicks,'
                   + 'inline_link_clicks,actions}';
 
+/* ═══════════ ЧИ ЖИВИЙ ЦЕЙ КАБІНЕТ ═══════════
+
+   ЩО ЗЛАМАЛОСЬ. За ніч кабінети забанились, а правила про це не знали
+   й кожні чверть години далі ходили в них по числа. Список активних
+   кабінетів вони беруть із НАШОЇ таблиці, а статус у ній пише
+   fb-sync — і доки та не дійшла до цього токена (у неї дедлайн 110
+   секунд і черга «найдавніше перевірений»), кабінет лишався в нас
+   «active».
+
+   Гірше за зайві запити було інше: будь-яка відмова Graph вважалась
+   «цього разу не віддав числа», і правило йшло на знімок. Тобто на
+   забаненому кабінеті воно судило за цифрами, знятими ДО бану, і
+   намагалось вимикати там оголошення. Бан — це не збій зв'язку.
+
+   ЧОМУ ПИТАЄМО, А НЕ ВГАДУЄМО ЗА КОДОМ ПОМИЛКИ. Код у відмові Graph
+   не розрізняє «кабінет забанили» й «токен протух»: на другому ми
+   позначили б забаненими геть усі кабінети цього токена. Тому на
+   відмові робимо один вузький запит і питаємо стан прямо. Він коштує
+   рівно стільки, скільки коштує — лише тоді, коли вже щось пішло не
+   так, а не в кожному прогоні. */
+
+/* Словник той самий, що в fb-sync (statusWord). Дві копії розійшлись
+   би тихо, тому стенд rlban звіряє їх рядок у рядок. */
+function statusWord(code: number): string {
+  switch (code) {
+    case 1:   return 'active';
+    case 2:   return 'banned';       // DISABLED
+    case 3:   return 'unsettled';    // UNSETTLED — не оплачено
+    case 7:   return 'review';       // PENDING_RISK_REVIEW
+    case 8:   return 'unsettled';    // PENDING_SETTLEMENT
+    case 9:   return 'grace';        // IN_GRACE_PERIOD
+    case 100: return 'closing';      // PENDING_CLOSURE
+    case 101: return 'closed';
+    default:  return 'unknown';
+  }
+}
+
+type CabState = { code: number; word: string; reason: string };
+
+/* null означає «спитати не вийшло» — а це вже звичайна відмова
+   зв'язку, і поводитись із нею треба як раніше. Мовчки вважати
+   кабінет мертвим через те, що не змогли спитати, не можна. */
+async function cabState(token: string, account: string): Promise<CabState | null> {
+  try {
+    const url = GRAPH + '/act_' + encodeURIComponent(account)
+              + '?fields=account_status,disable_reason';
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j || j.error || j.account_status == null) return null;
+    const code = Number(j.account_status || 0);
+    return { code, word: statusWord(code), reason: String(j.disable_reason || '') };
+  } catch (_e) { return null; }
+}
+
+/* Пишемо стан САМІ, не чекаючи синхронізації: доти правила щочверть
+   години повторювали б той самий запит, а дашборд показував би
+   зелений кружечок на кабінеті, якого вже немає.
+
+   Ключ той самий, що в fb-sync: created_by + account_id. */
+async function markDead(base: string, hdr: Json, owner: string,
+                        account: string, st: CabState): Promise<void> {
+  try {
+    await fetch(base + '/rest/v1/fb_accounts?created_by=eq.'
+      + encodeURIComponent(owner) + '&account_id=eq.' + encodeURIComponent(account), {
+      method: 'PATCH',
+      headers: { ...hdr, Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        status: st.word, status_code: st.code || null,
+        /* Порожнє не затирає відоме: Facebook не завжди віддає
+           причину, а та, що ми вже знали, лишається правдою. */
+        ...(st.reason ? { disable_reason: st.reason } : {})
+      })
+    });
+  } catch (_e) { /* не записали — прогін від цього не валиться */ }
+}
+
 async function liveOf(token: string, account: string, leadActions: string[],
                       note: (s: string) => void): Promise<Ent[]> {
   /* ТОКЕН ЗАГОЛОВКОМ, А НЕ В АДРЕСІ. Graph приймає обидва способи, але
@@ -889,7 +965,7 @@ async function logRun(base: string, hdr: Json, seen: Map<string, RunSeen>,
     rule_id: null, rule_name: null, level: 'run',
     entity_id: null, entity_name: null, account_id: null,
     metrics: { cabinets: v.cabs, ads: v.ads, stale: v.stale,
-               live: v.live, fell_back: v.fell,
+               live: v.live, fell_back: v.fell, dead: v.dead,
                paused: v.paused, would: v.would, rules: v.rules, cron },
     dry: true, ok: true, error: null
   }));
@@ -903,8 +979,9 @@ async function logRun(base: string, hdr: Json, seen: Map<string, RunSeen>,
 
 type RunSeen = { team: string; cabs: number; ads: number; stale: number;
                  /* live — кабінети з числами просто з Facebook,
-                    fell — ті, де Facebook відмовив і судили по знімку. */
-                 live: number; fell: number;
+                    fell — ті, де Facebook відмовив і судили по знімку,
+                    dead — ті, що виявились забаненими просто в прогоні. */
+                 live: number; fell: number; dead: number;
                  paused: number; would: number; rules: number };
 
 /* Журнал. Таблиці може ще не бути — це не привід нічого не робити:
@@ -1236,6 +1313,47 @@ async function tgSend(base: string, hdr: Json, hits: Hit[]): Promise<string> {
     + (fails.length ? ', ' + fails.length + ' failed (' + fails[0] + ')' : '');
 }
 
+/* ПРО МЕРТВИЙ КАБІНЕТ — ОКРЕМИМ ПОВІДОМЛЕННЯМ, А НЕ РЯДКОМ У ЗВІТІ
+   ПРО ВИМКНЕНЕ. Це не те, що зробили правила; це те, через що вони
+   нічого не зроблять, і дія від людини потрібна інша.
+
+   Шлемо це саме звідси, і це не дублює fb-sync. Вона порівнює те, що
+   приїхало з Facebook, із тим, що лежить у базі, — а ми щойно
+   переписали базу. Для неї зміни вже не буде, тож без цього
+   повідомлення не прийшло б жодного. */
+async function tgDead(base: string, hdr: Json,
+                      deaths: { owner: string; account: string; name: string;
+                                word: string; reason: string }[]): Promise<string> {
+  if (!deaths.length) return 'nothing to report';
+  const token = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!token) return 'not configured';
+
+  const byOwner = new Map<string, typeof deaths>();
+  deaths.forEach(d => {
+    if (!d.owner) return;
+    const list = byOwner.get(d.owner);
+    if (list) list.push(d); else byOwner.set(d.owner, [d]);
+  });
+  if (!byOwner.size) return 'nobody to notify';
+
+  let links: Json[] = [];
+  try { links = await pgGet(base, hdr, 'tg_links?select=user_id,chat_id&chat_id=not.is.null'); }
+  catch (_e) { return 'no links table'; }
+  const chats = new Map(links.map(l => [String(l.user_id), String(l.chat_id)]));
+
+  let sent = 0;
+  for (const [who, list] of byOwner) {
+    const chat = chats.get(who);
+    if (!chat) continue;
+    const text = '⛔ ' + list.length + ' cabinet(s) stopped answering\n\n'
+      + list.map(d => '• ' + d.name + ' — ' + d.word
+          + (d.reason ? ' (' + d.reason + ')' : '')).join('\n')
+      + '\n\nRules skipped them and will not ask again until they are back.';
+    if (await tgPost(token, chat, text) === 'sent') sent++;
+  }
+  return sent + ' sent';
+}
+
 /* ═══════════ ВХІД ═══════════ */
 
 Deno.serve(async (req) => {
@@ -1293,6 +1411,11 @@ Deno.serve(async (req) => {
      відповідає на «чому правило вимкнуло те, що я вже виправив». */
   let live = 0;
   const fellBack = new Set<string>();
+  /* Кабінети, які виявились мертвими просто під час прогону. Окремо
+     від fellBack: там «не змогли спитати», тут «спитали й дізнались». */
+  let dead = 0;
+  const deaths: { owner: string; account: string; name: string;
+                  word: string; reason: string }[] = [];
   /* Слід про прогін — по власниках правил. Див. logRun. */
   const seen = new Map<string, RunSeen>();
 
@@ -1317,7 +1440,8 @@ Deno.serve(async (req) => {
        потрібен. */
     const seenOf = (team: string): RunSeen => {
       let v = seen.get(tokenOwner);
-      if (!v) { v = { team, cabs: 0, ads: 0, stale: 0, live: 0, fell: 0, paused: 0, would: 0,
+      if (!v) { v = { team, cabs: 0, ads: 0, stale: 0, live: 0, fell: 0, dead: 0,
+                      paused: 0, would: 0,
                       rules: ours.length }; seen.set(tokenOwner, v); }
       if (!v.team && team) v.team = team;
       return v;
@@ -1327,7 +1451,7 @@ Deno.serve(async (req) => {
     // (missing_since) пропускаємо — там нічого не крутиться.
     let accs: Json[] = [];
     try {
-      accs = await pgGet(base, hdr, 'fb_accounts?select=account_id,status,team_name'
+      accs = await pgGet(base, hdr, 'fb_accounts?select=account_id,name,status,team_name'
         + '&token_id=eq.' + Number(t.id) + '&missing_since=is.null');
     } catch (e) { problems.push(t.label + ': ' + (e as Error).message); continue; }
 
@@ -1350,6 +1474,33 @@ Deno.serve(async (req) => {
         mySeen.live++;
         live++;
       } catch (e) {
+        /* СПЕРШУ З'ЯСОВУЄМО, ЧИ КАБІНЕТ УЗАГАЛІ ЖИВИЙ.
+
+           Забанений кабінет і хвилинний збій Graph відмовляють
+           однаково, а робити з ними треба протилежне: у першому
+           випадку знімок — це цифри з минулого життя, і судити по них
+           означає вимикати в кабінеті, де вже нічого не крутиться. */
+        const st = await cabState(String(t.token), account);
+        if (st && st.word !== 'active') {
+          dead++;
+          mySeen.dead++;
+          /* Пишемо стан одразу — щоб наступний прогін цього кабінета
+             вже не брав, і щоб дашборд не показував зелений кружечок
+             на тому, чого немає. */
+          await markDead(base, hdr, tokenOwner, account, st);
+          /* Сповіщення шлемо САМІ, і це не дублювання. fb-sync
+             порівнює те, що приїхало з Facebook, із тим, що лежить у
+             базі; ми щойно переписали базу, тож для неї зміни вже не
+             буде — і повідомлення, на яке людина розраховує, не
+             прийшло б узагалі. */
+          deaths.push({ owner: tokenOwner, account,
+                        name: String(a.name || account),
+                        word: st.word, reason: st.reason });
+          problems.push(account + ': ' + st.word
+            + (st.reason ? ' (' + st.reason + ')' : '')
+            + ' — skipped, and the cabinet is marked so the next run does not ask again');
+          continue;
+        }
         /* Відмова Facebook — не привід осліпнути: знімок із його
            перевіркою на вік кращий за ніщо. Але судити по ньому
            МОВЧКИ не можна — інакше «правила вимкнули по свіжому» і
@@ -1452,6 +1603,9 @@ Deno.serve(async (req) => {
      виглядати як випадковий: то раз на пів години, то двічі за
      десять хвилин. Розклад при цьому ніколи не мінявся. */
   const telegram = forceDry ? 'preview — not sent' : await tgSend(base, hdr, hits);
+  /* Мертві кабінети — своїм повідомленням, і в попередньому перегляді
+     теж мовчимо: preview не має слати нічого нікуди. */
+  const telegramDead = forceDry ? 'preview — not sent' : await tgDead(base, hdr, deaths);
 
   return reply({
     fn: FN_VERSION, cron, rules: use.length, cabinets, ads: scanned,
@@ -1462,6 +1616,10 @@ Deno.serve(async (req) => {
        скількох довелось судити по знімку. Без цих двох чисел відповідь
        «правила працюють» нічого не каже про те, на чому вони працюють. */
     live, fell_back: [...fellBack],
+    /* Кабінети, які померли просто під час прогону. Окремим числом, бо
+       «нічого не вимкнулось» через бан і через те, що нічого не
+       підпало, — різні новини. */
+    dead, telegram_dead: telegramDead,
     paused: hits.filter(h => !h.dry && h.ok).length,
     would_pause: hits.filter(h => h.dry).length,
     failed: hits.filter(h => !h.dry && !h.ok).length,
