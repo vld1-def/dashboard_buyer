@@ -170,8 +170,11 @@ async function addUsage(base: string, hdr: Json, me: string, action: string,
    temp приймаємо, щоб виклик був однаковий з обох боків, і свідомо
    ігноруємо — мовчазна різниця в сигнатурі коштувала б дорожче за
    цей коментар. */
+/* turns — попередні ходи розмови, якщо вони є. Доти тут завжди їхало
+   рівно одне повідомлення, і через це кожне питання було окремим
+   життям: «а тепер те саме по TJ» моделі не було з чим зіставити. */
 async function callModel(key: string, model: string, system: string, user: string,
-                         _temp: number):
+                         _temp: number, turns?: { role: string; content: string }[]):
     Promise<{ text: string; inTok: number; outTok: number }> {
   const res = await fetch(API, {
     method: 'POST',
@@ -181,7 +184,7 @@ async function callModel(key: string, model: string, system: string, user: strin
       model,
       max_tokens: MAX_TOKENS,
       system,
-      messages: [{ role: 'user', content: user }]
+      messages: [...(turns || []), { role: 'user', content: user }]
     })
   });
   const j = await res.json().catch(() => ({}));
@@ -405,6 +408,130 @@ const PLAN_SYSTEM = [
   '{"error":"<one short sentence in Ukrainian saying what is missing>"}'
 ].join(' ');
 
+/* ═══════════ ВІЛЬНА РОЗМОВА ═══════════
+
+   ЧОМУ ВОНО «ТУГО ПРАЦЮВАЛО». Модель уміла рівно одне: перекласти
+   питання в план запиту до таблиці. Усе, що в цю форму не влазить —
+   «чому CPA росте», «що робити з цим гео», «напиши план на тиждень» —
+   упиралось у {"error": …}, хоч відповідь у моделі була.
+
+   ЧОМУ НЕ МОЖНА ПРОСТО ДОЗВОЛИТИ ЇЙ ГОВОРИТИ. Увесь сенс плану в
+   тому, що ЧИСЛА РАХУЄ ДАШБОРД по своїх рядках, а не модель по
+   враженню. Модель, якій дозволили називати числа, називає їх
+   упевнено й подекуди неправильно — і зовні правильне від
+   неправильного не відрізнити.
+
+   ТОМУ ВОНА ОБИРАЄ САМА, але числа лишаються за дашбордом:
+     • питання не про дані      → говорить текстом;
+     • питання про дані         → просить план, дашборд рахує;
+     • потрібне й те, й те      → просить план із talk: порахованe
+                                  повертається їй другим ходом, і вже
+                                  по ньому вона говорить.
+
+   Тобто питати можна будь-що, а жодне число у відповіді не вигадане:
+   воно або пораховане тут, або його немає. */
+const CHAT_SYSTEM = [
+  'You are the assistant inside a media-buying dashboard. Answer in Ukrainian,',
+  'in the same plain tone the person uses. Be concrete and short: no preambles,',
+  'no "як мовна модель", no restating the question.',
+  '',
+  'YOU MUST NEVER STATE A NUMBER THAT WAS NOT COMPUTED FOR YOU.',
+  'You cannot see the rows — only column names. Any spend, count, CPA or share you',
+  'write from your own head would be a guess that looks like a fact. If a number is',
+  'needed, ask for a plan and let the dashboard compute it.',
+  '',
+  'Answer with JSON only, no prose around it, in one of these three shapes:',
+  '',
+  '{"kind":"say","text":"<your answer in Ukrainian>"}',
+  '  — for anything that needs no numbers from the tables: how something works,',
+  '  what to do about a problem, an opinion, a plan, a rewrite, a definition.',
+  '  This is the normal shape. Use it freely.',
+  '',
+  '{"kind":"plan","plan":{…},"talk":false}',
+  '  — when the question is answered by a table or a top: the dashboard computes',
+  '  and shows it. The plan format is described below.',
+  '',
+  '{"kind":"plan","plan":{…},"talk":true}',
+  '  — when the question needs numbers AND words about them ("чому", "що з цим',
+  '  робити", "порівняй", "що не так"). The dashboard computes the plan and sends',
+  '  the result back to you; you then answer in words over real numbers.',
+  '',
+  'Choosing: if the person asks for an explanation, advice, a reason or a judgement',
+  'and the answer depends on the data, use talk:true. Do not refuse a question',
+  'because it is not a table query — that was the old behaviour and it was wrong.',
+  'If you genuinely cannot help, say so in a "say" answer and name what is missing.',
+  'The conversation continues: "а тепер те саме по TJ" refers to the previous turn,',
+  'and so does "а чому". Read the history before deciding.',
+  '',
+  'THE PLAN FORMAT:'
+].join('\n');
+
+/* План описаний один раз — у PLAN_SYSTEM. Повторювати його другим
+   текстом означало б завести дві правди, які розійдуться на першій же
+   правці. */
+const CHAT_FULL = () => CHAT_SYSTEM + '\n' + PLAN_SYSTEM;
+
+/* ДРУГИЙ ХІД: модель говорить уже НАД ПОРАХОВАНИМ.
+
+   Сюди приїжджає те, що дашборд порахував своїми руками, і правило
+   лишається тим самим, тільки тепер воно здійсненне: числа брати
+   ЗВІДСИ, інших не вигадувати. */
+const TALK_SYSTEM = [
+  'You are the assistant inside a media-buying dashboard. Answer in Ukrainian,',
+  'plainly and briefly — a few sentences, not an essay. No preamble.',
+  '',
+  'Below is the question and THE RESULT THE DASHBOARD COMPUTED from its own rows.',
+  'Every number you write must come from that result. Do not recompute it, do not',
+  'round it into something else, do not add numbers that are not there. If the',
+  'result does not answer the question, say exactly what is missing instead of',
+  'filling the gap with a plausible figure.',
+  '',
+  'Say what the numbers mean and what you would do about it. The table itself is',
+  'already on screen next to your answer, so do not retell it row by row: name the',
+  'one or two rows that matter and why.',
+  'Answer with plain text, not JSON.'
+].join('\n');
+
+/* Історія розмови. Межа тут не економія, а запобіжник того самого
+   роду, що й решта меж у цій функції: кожен хід везе з собою всі
+   попередні, і без стелі довга розмова тихо дорожчає з кожним
+   питанням. */
+const HIST_MAX = 16;        // ходів
+const HIST_LEN = 4000;      // символів на хід
+
+function histOf(body: Json): { role: string; content: string }[] {
+  const raw = Array.isArray(body?.history) ? body.history : [];
+  return raw.slice(-HIST_MAX)
+    .map((m: Json) => ({
+      role: String(m?.role) === 'assistant' ? 'assistant' : 'user',
+      content: String(m?.content || '').slice(0, HIST_LEN)
+    }))
+    .filter(m => m.content.trim())
+    /* Перший хід мусить бути від людини, інакше Anthropic відмовляє
+       всьому запиту — а обрізання історії згори легко лишає ассистента
+       першим. */
+    .reduce((acc: { role: string; content: string }[], m) => {
+      if (!acc.length && m.role !== 'user') return acc;
+      /* Два однакові ролі поспіль теж відмова. Склеюємо, а не
+         викидаємо: викинути означало б загубити питання. */
+      if (acc.length && acc[acc.length - 1].role === m.role) {
+        acc[acc.length - 1].content += '\n' + m.content;
+        return acc;
+      }
+      acc.push(m);
+      return acc;
+    }, []);
+}
+
+function buildTalkUser(body: Json): string {
+  return [
+    'Question: ' + String(body?.q || '').slice(0, 2000),
+    '',
+    'What the dashboard computed:',
+    String(body?.result || '').slice(0, 6000)
+  ].join('\n');
+}
+
 function buildPlanUser(body: Json): string {
   const sets = Array.isArray(body?.sets) ? body.sets : [];
   const lines: string[] = [];
@@ -427,7 +554,10 @@ function buildPlanUser(body: Json): string {
     'Today is ' + (/^\d{4}-\d{2}-\d{2}$/.test(String(body?.today || ''))
       ? String(body.today) : today()) + '.',
     '',
-    'Question: ' + String(body?.q || '').slice(0, 500)
+    /* 500 символів вистачало плану («топ крео по CPA»), але не
+       розмові: «ось ситуація, що робити» — це абзац, і обрізаний на
+       півслові він міняє питання. */
+    'Question: ' + String(body?.q || '').slice(0, 2000)
   ].join('\n');
 }
 
@@ -493,7 +623,9 @@ async function handle(req: Request): Promise<Response> {
   let body: Json = {};
   try { body = await req.json(); } catch (_e) { /* тіла може не бути */ }
   const action = String(body?.action || 'text');
-  if (action !== 'text' && action !== 'plan')
+  /* chat — вільна розмова: модель сама вирішує, говорити чи просити
+     план. talk — другий хід тієї ж розмови, уже над порахованим. */
+  if (!['text', 'plan', 'chat', 'talk'].includes(action))
     return reply({ error: 'unknown action: ' + action }, 400);
 
   /* ХТО ЩО РОБИТЬ. Тексти — x.ai, плани по таблицях — Claude. Вибір
@@ -504,7 +636,9 @@ async function handle(req: Request): Promise<Response> {
      моделі краще за вікно текстів із помилкою. */
   const xaiKey = Deno.env.get('XAI_API_KEY') || '';
   const want = String(Deno.env.get('AI_TEXT_ENGINE') || '').trim().toLowerCase();
-  const engine = action === 'plan' ? 'claude'
+  /* Розмова й таблиці — Claude, з тієї ж причини, що й план: там
+     важить точність, а не згідливість. */
+  const engine = ['plan', 'chat', 'talk'].includes(action) ? 'claude'
                : want === 'claude' ? 'claude'
                : (want === 'xai' || xaiKey) ? 'xai' : 'claude';
 
@@ -537,7 +671,14 @@ async function handle(req: Request): Promise<Response> {
     const tText = Number.isFinite(envTemp) && envTemp >= 0 && envTemp <= 2 ? envTemp : TEMP_TEXT;
     got = action === 'plan'
       ? await ask(key, model, PLAN_SYSTEM, buildPlanUser(body), TEMP_PLAN)
-      : await ask(key, model, SYSTEM, buildUser(body), tText);
+      : action === 'chat'
+        /* Історія їде окремими ходами, а не склеєна в текст: модель
+           має бачити, де закінчилось її власне слово й почалось
+           людське. */
+        ? await callModel(key, model, CHAT_FULL(), buildPlanUser(body), TEMP_PLAN, histOf(body))
+        : action === 'talk'
+          ? await callModel(key, model, TALK_SYSTEM, buildTalkUser(body), TEMP_PLAN, histOf(body))
+          : await ask(key, model, SYSTEM, buildUser(body), tText);
   } catch (e) {
     return reply({ error: (e as Error).message }, 502);
   }
@@ -546,6 +687,18 @@ async function handle(req: Request): Promise<Response> {
      мусить стояти там, де дані: саме він знає, які стовпці справді
      існують, і саме він рахує. Перевірка тут була б другою копією тієї
      самої перевірки — і першою, яка колись від неї відстане. */
+  /* Сказане моделею віддаємо ЯК Є — розбирає сторінка. Тут була б
+     друга копія розбору, і перша, яка колись від нього відстане. */
+  if (action === 'chat' || action === 'talk') {
+    const noteC = svc ? await addUsage(base, hdr, me, action, got.inTok, got.outTok)
+                      : 'SERVICE_ROLE_KEY is not set, so nothing is counted';
+    return reply({ raw: got.text, model, engine,
+      usage: { in: got.inTok, out: got.outTok },
+      cost_usd: costOf(engine, got.inTok, got.outTok),
+      left_today: svc ? Math.max(0, limit - used - 1) : null,
+      problems: [noteC].filter(Boolean) });
+  }
+
   if (action === 'plan') {
     const noteU = svc ? await addUsage(base, hdr, me, action, got.inTok, got.outTok)
                       : 'SERVICE_ROLE_KEY is not set, so nothing is counted';

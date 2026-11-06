@@ -98,7 +98,8 @@ const askWith = (plan, q) => page.evaluate(async ([p, question]) => {
 /* ─────────── у модель їдуть назви, не дані ─────────── */
 await askWith({ set: 'sheet', metric: { op: 'count' } }, 'скільки рядків');
 const sent = await page.evaluate(() => window.__sent[0]);
-ok('у модель пішло питання і набори', sent.action === 'plan' && sent.sets.length === 1, sent);
+ok('у модель пішло питання і набори',
+  sent.action === 'chat' && sent.sets.length === 1, sent);
 ok('назви стовпців і їхній вид — так',
   JSON.stringify(sent.sets[0].cols.map(c => c.name))
     === JSON.stringify(['Site', 'Status', 'Amount', 'Deps', 'Geo', 'Day']), sent.sets[0].cols);
@@ -744,5 +745,43 @@ ok('значення так само не їдуть у модель', await pag
   const s = JSON.stringify(window.__sent);
   return !/OLEH-3971|Declined|In progress|2\.21/.test(s);
 }));
+
+/* ═══ РОЗМОВА ПАМ'ЯТАЄ ПИТАННЯ, АЛЕ НЕ ДАНІ ═══
+
+   Пам'ять ледь не знесла межу цього вікна: поклавши в історію
+   пораховану таблицю (або навіть план словами, де стоять значення
+   умов), ми возили б назви гео, номери крео й суми в КОЖНОМУ
+   наступному запиті. Тому в історії лежать питання людини та власні
+   слова моделі — і нічого з таблиці. */
+const hist = await page.evaluate(() => {
+  const last = window.__sent[window.__sent.length - 1];
+  return { h: last.history || [], all: JSON.stringify(window.__sent) };
+});
+ok('історія їде з кожним запитом', hist.h.length >= 2, hist.h.slice(0, 2));
+ok('перший хід у ній — від людини', hist.h[0] && hist.h[0].role === 'user', hist.h[0]);
+/* Anthropic відмовляє всьому запиту, коли дві однакові ролі стоять
+   поспіль, — тож це не косметика, а умова того, що розмова взагалі
+   поїде. */
+ok('ролі чергуються', hist.h.every((m, i) => !i || m.role !== hist.h[i - 1].role),
+  hist.h.map(m => m.role));
+ok('у відповідях моделі немає значень зі стовпців',
+  hist.h.filter(m => m.role === 'assistant')
+    .every(m => !/OLEH-3971|Declined|In progress|2\.21/.test(m.content)),
+  hist.h.filter(m => m.role === 'assistant').map(m => m.content));
+
+/* «Новий чат» мусить забувати по-справжньому: інакше нова тема тягне
+   за собою стару, і людина цього не бачить. */
+const after = await page.evaluate(() => {
+  window.aqNew();
+  return { thread: document.querySelectorAll('#aq-thread .aq-msg').length };
+});
+/* Лишається тільки привітання з назвою набору — саме воно й має
+   лишитись: нова розмова починається з того ж місця, що й перша. */
+ok('кнопка «новий чат» чистить стрічку', after.thread <= 1, after);
+const fresh = await askWith({ set: 'sheet', metric: { op: 'count' } }, 'скільки рядків');
+ok('і наступне питання їде вже без історії', await page.evaluate(() => {
+  const last = window.__sent[window.__sent.length - 1];
+  return (last.history || []).length === 0;
+}), fresh.txt.slice(0, 120));
 
 await done(browser, srv, errs);
