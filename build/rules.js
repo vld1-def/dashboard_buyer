@@ -188,11 +188,19 @@ function rlRunPaint() {
     ? ' \u00b7 <b class="rl-run-warn">' + n(m.fell_back)
       + ' judged on the last snapshot: Facebook refused</b>'
     : '';
+  /* ЗАБАНЕНІ — ОКРЕМО ВІД ВІДКАТУ НА ЗНІМОК. «Facebook відмовив»
+     означає «спробуємо наступного разу», а «кабінет забанено» —
+     «більше не спробуємо, і це не вада правил». Одним рядком вони
+     читались би як одна й та сама неприємність. */
+  const gone = n(m.dead)
+    ? ' \u00b7 <b class="rl-run-warn">' + n(m.dead)
+      + ' cabinet(s) turned out banned \u2014 skipped and marked</b>'
+    : '';
   const did = n(m.paused) ? ' \u00b7 ' + n(m.paused) + ' switched off'
     : n(m.would) ? ' \u00b7 ' + n(m.would) + ' reported'
     : ' \u00b7 nothing matched';
   box.innerHTML = '<p class="rl-run-ok">\u2713 Checked <b>' + when + '</b>: '
-    + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + fell + stale
+    + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + gone + fell + stale
     + (mins > 90
         ? ' \u2014 <b class="rl-run-warn">that is a while ago; the schedule may have'
           + ' stopped</b>'
