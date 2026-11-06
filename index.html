@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.11 10:52">
+  <meta name="build" content="build 06.11 14:00">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6008,6 +6008,23 @@ input.ui-in[type="range"] { padding: 0; }
 .fb-proxy.is-off { opacity: .55; font-style: italic; }
 .fb-proxy.is-on  { color: #34D399; }
 .fb-proxy.is-warn { color: #FBBF24; }
+
+/* ═══════════ АСИСТЕНТ: РОЗМОВА ═══════════
+   Кнопка «новий чат» тихіша за хрестик: обірвати розмову хочуть
+   рідше, ніж закрити вікно, і помилитись між ними не має бути легко. */
+.aq-newbtn {
+  padding: 0 10px; min-height: 26px; border-radius: 8px;
+  font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
+  transition: color .15s, background .15s, border-color .15s;
+}
+.aq-newbtn:hover { color: var(--text-main); border-color: var(--border-2); }
+/* Слова моделі ПІД числами відокремлені рискою: вище — пораховане
+   дашбордом, нижче — сказане моделлю, і плутати їх не можна. */
+.aq-said {
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
 /* ВИМКНЕНО ПЕРЕВІРКОЮ — не просто жовтий текст, а плашка. «Не
    пройшло» і «не пройшло, і ми його вимкнули» — різні новини, і друга
    потребує дії, тож і важити на екрані має більше. */
@@ -6988,7 +7005,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.11 10:52</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.11 14:00</div>
     </div>
   </aside>
 
@@ -37418,6 +37435,10 @@ window.flDrop = async function (i) {
              скільки відкрито, і всі вони вміщаються в один рядок. -->
         <select id="aq-set" class="mw-fld" style="width:auto;max-width:260px"
           onchange="aqPick(this.value)"></select>
+        <!-- Розмова пам'ятає попередні питання, тож має бути чим її
+             обірвати: інакше нова тема тягне за собою стару. -->
+        <button type="button" id="aq-new" class="aq-newbtn" onclick="aqNew()"
+          title="Почати розмову спочатку — асистент забуде попередні питання">New chat</button>
         <button type="button" onclick="aqClose()" class="mw-x" title="Закрити">&times;</button>
       </div>
     </div>
@@ -38364,6 +38385,61 @@ function aqPaintSets() {
   }
 }
 
+/* ═══════════ ПАМ'ЯТЬ РОЗМОВИ ═══════════
+
+   Доти кожне питання було окремим життям: «а тепер те саме по TJ»
+   моделі не було з чим зіставити, і вона перепитувала або вгадувала.
+
+   Тримаємо в сторінці, а не в базі: це розмова, а не документ. Закрив
+   вкладку — почав спочатку, і жоден рядок нікуди не поїхав. Кнопка
+   «Новий чат» робить те саме, не чекаючи перезавантаження. */
+let aqHist = [];
+const AQ_HIST_MAX = 16;
+const aqHistPush = (role, content) => {
+  const t = String(content || '').trim();
+  if (!t) return;
+  aqHist.push({ role, content: t.slice(0, 4000) });
+  if (aqHist.length > AQ_HIST_MAX) aqHist = aqHist.slice(-AQ_HIST_MAX);
+};
+
+window.aqNew = function () {
+  aqHist = [];
+  aqGreeted = '';
+  const box = aqThread();
+  if (box) box.innerHTML = '';
+  aqPaintSets();
+  toast && toast('Нова розмова', 'ok');
+};
+
+/* ЩО САМЕ ПОБАЧИТЬ МОДЕЛЬ ДРУГИМ ХОДОМ.
+
+   Не таблицю розміткою й не всі рядки набору — лише те, що дашборд
+   САМ порахував. Це і є та межа, заради якої все затівалось: модель
+   говорить над цими числами й не має звідки взяти інших. */
+function aqResText(spec, res) {
+  const nm = m => aqMetName(m);
+  const head = [aqPlanWords ? '' : '', res.rows + ' of ' + res.total + ' rows'].filter(Boolean);
+  if (res.one) {
+    head.push(nm(spec.metric) + ' = ' + aqFmt(res.one.v));
+    return head.join('; ');
+  }
+  const ms = spec.metrics || [];
+  const cols = [spec.buckets && spec.buckets.length ? 'row' : (spec.group || 'group')]
+    .concat(spec.group2 ? [spec.group2] : [])
+    .concat([nm(spec.metric)], ms.map(nm), ['rows']);
+  const lines = (res.list || []).slice(0, 30).map(r =>
+    [r.k].concat(spec.group2 ? [r.k2 || ''] : [])
+      .concat([aqFmt(r.v)], ms.map((m, i) => aqFmt((r.more[i] || {}).v)), [r.rows])
+      .join(' | '));
+  return head.join('; ') + '\n' + cols.join(' | ') + '\n' + lines.join('\n');
+}
+
+/* Текст моделі в розмітку: абзаци й переноси, і більше нічого. Саме
+   нічого — усе, що прийшло від моделі, це чужий текст, і потрапляти в
+   HTML він може лише екранованим. */
+const aqSayHtml = t => String(t || '').split(/\n{2,}/)
+  .map(p => `<p class="aq-val">${aqEsc(p).replace(/\n/g, '<br>')}</p>`).join('');
+
 window.aqAsk = async function () {
   if (aqBusy) return;
   const inp = document.getElementById('aq-q');
@@ -38394,7 +38470,15 @@ window.aqAsk = async function () {
     /* Їде ОДИН набір — той, що вибрано. Доти їхали всі відкриті, і
        модель мусила ще й угадати, про який питають: зайва здогадка на
        рівному місці, та ще й зайві назви стовпців у запиті. */
-    j = await aqCall({ action: 'plan', q,
+    j = await aqCall({ action: 'chat', q,
+      /* Історія їде ЩОРАЗУ: функція нічого не пам'ятає сама, і саме
+         тому кожне питання доти було першим.
+
+         КОПІЯ, а не сам масив: тіло запиту живе довше за виклик
+         (його бачать і стенд, і будь-який перехоплювач), а aqHist
+         одразу після відповіді дописується. Посилання означало б, що
+         відправлене заднім числом міняється. */
+      history: aqHist.slice(),
       /* Todayшній day шлемо СВІЙ: функція живе в UTC, а питають із
          Києва — о другій ночі «вчора» розійшлось би на добу. */
       today: new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
@@ -38409,15 +38493,35 @@ window.aqAsk = async function () {
     return;
   }
 
-  let plan = null;
+  let said = null;
   try {
-    const raw = String(j.plan_raw || '');
+    /* plan_raw — стара відповідь функції. Читаємо обидва поля: доки
+       нову ai не розгорнули, сторінка мусить працювати як раніше, а
+       не зустрічати людину порожнім екраном. */
+    const raw = String(j.raw || j.plan_raw || '');
     const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
-    if (a >= 0 && b > a) plan = JSON.parse(raw.slice(a, b + 1));
-  } catch (e) { /* нижче скажемо, що плану немає */ }
+    if (a >= 0 && b > a) said = JSON.parse(raw.slice(a, b + 1));
+  } catch (e) { /* нижче скажемо, що відповіді немає */ }
 
   const cost = `${aqEsc(j.model || '')} · ~$${(j.cost_usd || 0).toFixed(5)}${
     j.left_today != null ? ' · лишилось сьогодні: ' + j.left_today : ''}`;
+
+  /* ВІЛЬНА ВІДПОВІДЬ. Питання, яке не є запитом до таблиці, доти
+     упиралось у «модель відповіла не планом» — хоч відповідь у неї
+     була. Тепер вона каже її словами, і жодного числа з таблиці в ній
+     немає: числа живуть нижче, у гілці з планом. */
+  if (said && said.kind === 'say') {
+    aqHistPush('user', q);
+    aqHistPush('assistant', String(said.text || ''));
+    fin(aqSayHtml(said.text)
+      + `<p class="aq-meta aq-dim">словами, без цифр із таблиці · ${cost}</p>`);
+    return;
+  }
+
+  /* Стара функція віддає сам план, нова — загорнутий. Беремо те, що
+     приїхало, і не змушуємо людину чекати на деплой. */
+  const plan = said && said.kind === 'plan' ? said.plan : said;
+  const wantTalk = !!(said && said.kind === 'plan' && said.talk);
 
   const got = aqCheck(plan, [set]);
   if (got.err) {
@@ -38502,11 +38606,66 @@ window.aqAsk = async function () {
   /* ПЛАН ОДНИМ РЯДКОМ — але він є завжди. Число без плану перевірити
      нічим; «як я зрозумів питання» своїми словами моделі лишаємо
      поруч, бо саме воно ловить неправильно зрозуміле питання. */
-  fin(warn + body
+  const html = warn + body
     + `<p class="aq-meta"><b>${aqEsc(aqPlanWords(spec, set))}</b> · ${res.rows} з ${res.total} рядк.${
         spec.group ? ' · груп: ' + res.groups : ''}</p>`
     + (spec.say ? `<p class="aq-meta">${aqEsc(spec.say)}</p>` : '')
-    + `<p class="aq-meta aq-dim">рахував дашборд, модель склала план · ${cost}</p>`);
+    + `<p class="aq-meta aq-dim">рахував дашборд, модель склала план · ${cost}</p>`;
+
+  /* У ПАМ'ЯТЬ ЇДЕ ПЛАН, А НЕ ЧИСЛА — І ЦЕ НЕ ДРІБНИЦЯ.
+
+     Межа цього вікна завжди була така: у модель ідуть назви
+     стовпців, а не те, що в них лежить. Історія її ледь не знесла —
+     поклавши пораховану таблицю в пам'ять, ми возили б назви гео,
+     номери крео й суми в КОЖНОМУ наступному питанні, назавжди.
+
+     Тому пам'ятаємо, як зрозуміли питання, і не пам'ятаємо, що
+     вийшло. «А тепер те саме по TJ» від цього працює так само: воно
+     спирається на план, а не на числа. Числа модель бачить рівно в
+     одному місці — у ході talk нижче, і лише коли сама їх попросила. */
+  aqHistPush('user', q);
+  /* Навіть план словами сюди не кладемо: у ньому стоять ЗНАЧЕННЯ
+     умов («без Declined»), а це вже вміст стовпця. Один раз воно
+     поїхало б із питанням людини — і це її слова; у пам'яті ж воно
+     їхало б у кожному наступному запиті, довіку.
+
+     Для «а тепер те саме по TJ» цього й не треба: у пам'яті лежить
+     саме питання людини, і повторити його з іншим гео модель уміє
+     з нього. */
+  aqHistPush('assistant', '(порахував і показав таблицю)');
+
+  if (!wantTalk) { fin(html); return; }
+
+  /* ДРУГИЙ ХІД — СЛОВАМИ НАД ПОРАХОВАНИМ.
+
+     Саме тут питання «чому» нарешті дістає відповідь, і саме тут
+     тримається головне правило: модель бачить рівно ті числа, які
+     дашборд порахував сам, і взяти інші їй нізвідки. */
+  if (wait) wait.innerHTML = html
+    + '<p class="aq-val aq-dim">Дивлюсь на числа…</p>';
+  const box0 = aqThread();
+  if (box0) box0.scrollTop = box0.scrollHeight;
+
+  let t;
+  try {
+    t = await aqCall({ action: 'talk', q, history: aqHist.slice(),
+                       result: aqResText(spec, res) });
+  } catch (e) {
+    /* Таблиця вже на екрані й нікуди не дінеться: другий хід —
+       надбудова, і його невдача не має забирати пораховане. */
+    fin(html + `<p class="aq-meta is-bad">Словами не вийшло: ${aqEsc(e.message)}</p>`);
+    return;
+  }
+  const words = String(t.raw || '').trim();
+  /* Сказане моделею в пам'ять кладемо — це її власні слова, не дані
+     з таблиці. А ось числа, над якими вона говорила, лишаються за
+     межами історії: вони поїхали рівно в цей один виклик. */
+  aqHistPush('assistant', words);
+  fin(html + (words
+        ? `<div class="aq-said">${aqSayHtml(words)}</div>`
+          + `<p class="aq-meta aq-dim">словами — по числах вище · ${
+              aqEsc(t.model || '')} · ~$${(t.cost_usd || 0).toFixed(5)}</p>`
+        : ''));
 };
 </script>
 
