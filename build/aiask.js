@@ -145,6 +145,15 @@ async function aqCall(body) {
   });
   if (res.status === 404) throw Object.assign(new Error('not deployed'), { code: 'missing' });
   const j = await res.json().catch(() => ({}));
+  /* СТАРА ФУНКЦІЯ НА СЕРВЕРІ — ОКРЕМИЙ ВИПАДОК, А НЕ ПРОСТО ПОМИЛКА.
+
+     Сторінка оновлюється сама, щойно змерджено; функція — ні. Між
+     цими двома митями сторінка просить дію, якої розгорнута функція
+     ще не знає, і віддає «unknown action: chat». Це не поломка
+     питання й не привід показати червоне: це привід спитати
+     по-старому. */
+  if (!res.ok && /unknown action/i.test(String(j.error || '')))
+    throw Object.assign(new Error(String(j.error)), { code: 'old' });
   if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
   return j;
 }
@@ -920,7 +929,19 @@ function aqPaintSets() {
    вкладку — почав спочатку, і жоден рядок нікуди не поїхав. Кнопка
    «Новий чат» робить те саме, не чекаючи перезавантаження. */
 let aqHist = [];
+/* Стара функція на сервері. Запам'ятовуємо на сеанс, щоб не бити в
+   неї новою дією перед кожним питанням: відповідь буде та сама. */
+let aqOldFn = false;
 const AQ_HIST_MAX = 16;
+
+/* Сьогоднішній день беремо З БРАУЗЕРА: функція живе в UTC, а питають
+   із Києва, і о другій ночі «вчора» розійшлось би на добу. */
+const planToday = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+  .toISOString().slice(0, 10);
+/* Їде ОДИН набір — той, що вибрано: інакше модель мусить ще й угадати,
+   про який питають. */
+const planSets = set => [{ id: set.id, title: set.title, rows: set.rows.length,
+                           cols: set.cols.map(c => ({ name: c.name, kind: c.kind })) }];
 const aqHistPush = (role, content) => {
   const t = String(content || '').trim();
   if (!t) return;
@@ -996,27 +1017,39 @@ window.aqAsk = async function () {
     /* Їде ОДИН набір — той, що вибрано. Доти їхали всі відкриті, і
        модель мусила ще й угадати, про який питають: зайва здогадка на
        рівному місці, та ще й зайві назви стовпців у запиті. */
-    j = await aqCall({ action: 'chat', q,
-      /* Історія їде ЩОРАЗУ: функція нічого не пам'ятає сама, і саме
-         тому кожне питання доти було першим.
+    j = aqOldFn
+      ? await aqCall({ action: 'plan', q, today: planToday(), sets: planSets(set) })
+      : await aqCall({ action: 'chat', q,
+        /* Історія їде ЩОРАЗУ: функція нічого не пам'ятає сама, і саме
+           тому кожне питання доти було першим.
 
-         КОПІЯ, а не сам масив: тіло запиту живе довше за виклик
-         (його бачать і стенд, і будь-який перехоплювач), а aqHist
-         одразу після відповіді дописується. Посилання означало б, що
-         відправлене заднім числом міняється. */
-      history: aqHist.slice(),
-      /* Сьогоднішній день шлемо СВІЙ: функція живе в UTC, а питають із
-         Києва — о другій ночі «вчора» розійшлось би на добу. */
-      today: new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
-        .toISOString().slice(0, 10),
-      sets: [{ id: set.id, title: set.title, rows: set.rows.length,
-               cols: set.cols.map(c => ({ name: c.name, kind: c.kind })) }] });
+           КОПІЯ, а не сам масив: тіло запиту живе довше за виклик
+           (його бачать і стенд, і будь-який перехоплювач), а aqHist
+           одразу після відповіді дописується. Посилання означало б,
+           що відправлене заднім числом міняється. */
+        history: aqHist.slice(),
+        today: planToday(),
+        sets: planSets(set) });
   } catch (e) {
-    const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
-    fin(`<p class="aq-val is-bad">${(e.code === 'missing' || net)
-      ? 'Функція ai не відповіла — спершу розгорни її: <span class="font-mono">supabase functions deploy ai</span>'
-      : aqEsc(e.message)}</p>`);
-    return;
+    /* Стара функція ще на сервері: питаємо по-старому — планом і без
+       історії. Вільних відповідей тоді не буде (їх уміє лише нова),
+       але таблиці рахуватимуться, і людина не лишиться з червоним
+       рядком замість відповіді. */
+    if (e.code === 'old') {
+      aqOldFn = true;
+      try {
+        j = await aqCall({ action: 'plan', q, today: planToday(), sets: planSets(set) });
+      } catch (e2) {
+        fin(`<p class="aq-val is-bad">${aqEsc(e2.message)}</p>`);
+        return;
+      }
+    } else {
+      const net = /failed to fetch|networkerror|load failed/i.test(e.message || '');
+      fin(`<p class="aq-val is-bad">${(e.code === 'missing' || net)
+        ? 'Функція ai не відповіла — спершу розгорни її: <span class="font-mono">supabase functions deploy ai</span>'
+        : aqEsc(e.message)}</p>`);
+      return;
+    }
   }
 
   let said = null;

@@ -166,6 +166,41 @@ const old = await page.evaluate(async () => {
 });
 ok('зі старою функцією таблиця все одно рахується', /aq-tbl/.test(old), old.slice(0, 160));
 
+/* А ось так воно й зламалось у житті: стара функція не просто віддає
+   інший формат — вона ВІДМОВЛЯЄ новій дії, «unknown action: chat»,
+   кодом 400. Сторінка мусить спитати по-старому, а не показати
+   червоний рядок замість відповіді. */
+await page.evaluate(() => { window.aqNew(); window.__sent = []; window.aqOldFn = false; });
+const refused = await page.evaluate(async () => {
+  const real = aqCall;
+  aqCall = async body => {
+    window.__sent.push(JSON.parse(JSON.stringify(body)));
+    if (body.action !== 'plan')
+      throw Object.assign(new Error('unknown action: ' + body.action), { code: 'old' });
+    return { plan_raw: JSON.stringify({ set: 'sheet', group: 'Geo',
+      metric: { op: 'sum', col: 'Spend' }, sort: 'desc', limit: 10 }),
+      model: 'm', cost_usd: 0 };
+  };
+  const inp = document.getElementById('aq-q');
+  inp.value = 'спенд по гео';
+  await aqAsk();
+  const out = [...document.querySelectorAll('#aq-thread .aq-msg.is-bot')].pop();
+  const first = { ...inp };
+  inp.value = 'ще раз';
+  await aqAsk();
+  aqCall = real;
+  return { html: out.innerHTML,
+           txt: (out.textContent || '').replace(/\s+/g, ' ').trim(),
+           sent: window.__sent.map(x => x.action) };
+});
+ok('відмова старої функції не показується як помилка',
+  !/unknown action/.test(refused.txt), refused.txt.slice(0, 160));
+ok('а питання переїжджає на стару дію', /aq-tbl/.test(refused.html), refused.html.slice(0, 160));
+/* Другого разу новою дією не б'ємо: відповідь буде та сама, а зайвий
+   круг — це зайва секунда перед кожним питанням. */
+ok('і наступне питання одразу йде по-старому',
+  refused.sent.slice(2).every(a => a === 'plan'), refused.sent);
+
 /* ── 7. БОКУ ФУНКЦІЇ ── */
 const FN = fs.readFileSync('supabase/functions/ai/index.ts', 'utf8');
 ok('функція знає дії chat і talk',
