@@ -233,6 +233,44 @@ window.uqGuard = function (on) {
   if (uqGuards === 0) window.removeEventListener('beforeunload', uqBeforeUnload);
 };
 
+/* ═══════════ ЩО ВЖЕ ЗАБРАНО ═══════════
+
+   «зроби коли я скачую унікалізовані креативи, щоб кнопка DOWNLOAD
+   мінялась на зелений якщо я скачав вже».
+
+   Варіантів буває сорок, вони однакові з лиця й відрізняються
+   підписом — а качають їх по одному, між справами. Повернувся через
+   десять хвилин і не знаєш, де спинився: або качаєш удруге, або
+   пропускаєш.
+
+   ЩО САМЕ ПОЗНАЧАЄ ЗЕЛЕНИЙ. Що ти натиснув, а не що файл лежить на
+   диску: браузер про завершення завантаження сторінці не каже, і
+   скасоване збереження виглядає звідси так само, як вдале. Для
+   «де я спинився» цього досить, і обіцяти більше не варто.
+
+   Пам'ять — на сеанс і в сторінці: це мітка про те, що робиться
+   просто зараз, а не запис про креатив. Нові варіанти — чистий
+   аркуш, і це правильно: вони інші. */
+const uiGot = new Set();
+
+/* Для картинок позначаємо ІМЕНЕМ, а не самим елементом: сітка
+   перемальовується (uiPaint), і мітка на вузлі зникла б разом із ним.
+   Ім'я варіанта унікальне в межах набору. */
+window.uiGotMark = function (el, name) {
+  if (name) uiGot.add(name);
+  if (el) el.classList.add('is-got');
+};
+
+/* Відео малюються рядками один раз і не перемальовуються, тож тут
+   вистачає класу на самій кнопці. Класи Tailwind міняємо явно:
+   інакше hover:bg-violet-500 перебив би колір рівно тоді, коли на
+   кнопку наводять, тобто саме коли на неї й дивляться. */
+window.uqGotMark = function (a) {
+  if (!a) return;
+  a.classList.remove('bg-violet-600/80', 'hover:bg-violet-500');
+  a.classList.add('uq-got');
+};
+
 window.uiGen = async function () {
   if (!uiSrc.length) {
     if (typeof toast === 'function') toast('Add an image first', 'warn');
@@ -262,6 +300,9 @@ window.uiGen = async function () {
   uqGuard(true);
   try {
   uiOut.forEach(o => { try { URL.revokeObjectURL(o.url); } catch (e) {} });
+  /* Варіанти інші — і мітки «забрано» разом із ними. Лишити старі
+     означало б показати зеленим те, чого людина не бачила. */
+  uiGot.clear();
   uiOut = [];
   for (const src of uiSrc) {
     for (let i = 1; i <= n; i++) {
@@ -302,7 +343,10 @@ function uiPaint() {
         </figcaption>
         <span class="ui-badge" title="Perceptual hash distance from the original, out of 64. Under 5 — a machine sees the same picture.">${
           o.dist == null ? '?' : o.dist}</span>
-        <a class="ui-dl" href="${o.url}" download="${esc(o.name)}" title="Save this one">↓</a>
+        <a class="ui-dl${uiGot.has(o.name) ? ' is-got' : ''}" href="${o.url}"
+           download="${esc(o.name)}" onclick="uiGotMark(this, '${esc(o.name)}')"
+           title="${uiGot.has(o.name) ? 'Already saved' : 'Save this one'}">${
+             uiGot.has(o.name) ? '✓' : '↓'}</a>
       </figure>`;
     return `<section class="ui-group">
       <h3 class="ui-group-h">${esc(src.name)}
