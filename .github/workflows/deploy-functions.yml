@@ -44,21 +44,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Два коміти — щоб було з чим порівняти, які функції змінились.
-          fetch-depth: 2
+          # Два коміти — щоб було з чим порівняти, які функції
+          # змінились. Нуль, а не два: при push кількох комітів або
+          # після squash-мерджу github.event.before у неглибокий клон
+          # не потрапляє, git diff мовчки падає, список виходить
+          # порожній — і прогін зелений, хоч нічого не розгорнуто.
+          fetch-depth: 0
 
+      # ЗЕЛЕНИЙ ПРОГІН, ЯКИЙ НІЧОГО НЕ РОЗГОРНУВ, — ГІРШИЙ ЗА ЧЕРВОНИЙ.
+      #
+      # Без токена цей крок писав записку в звіт і завершувався
+      # успіхом. У списку збігань стояла зелена галочка «Deploy Edge
+      # Functions», сторінка оновлювалась сама — і виглядало це рівно
+      # як «усе розгорнуто». Насправді на сервері лишалась стара
+      # функція, і дізнавались про це з помилки в інтерфейсі
+      # («unknown action: chat»), а не звідси.
+      #
+      # Тепер крок падає. Записка лишається — але червоним.
       - name: Чи є токен
         id: gate
         run: |
           if [ -z "$TOKEN" ]; then
             {
-              echo '### Функції не розгорнуто'
+              echo '### Функції НЕ розгорнуто'
               echo ''
               echo 'Немає секрету `SUPABASE_ACCESS_TOKEN`. Створити токен:'
               echo 'supabase.com → Account → Access Tokens, і покласти його в'
               echo 'Settings → Secrets and variables → Actions.'
             } >> "$GITHUB_STEP_SUMMARY"
-            echo 'ok=no' >> "$GITHUB_OUTPUT"
+            echo '::error::Немає SUPABASE_ACCESS_TOKEN — функції лишились старими на сервері'
+            exit 1
           else
             echo 'ok=yes' >> "$GITHUB_OUTPUT"
           fi
@@ -97,7 +112,20 @@ jobs:
               } >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
-          echo "list=$(echo $LIST | xargs)" >> "$GITHUB_OUTPUT"
+          LIST=$(echo $LIST | xargs)
+          # ЩО САМЕ ВИРІШИЛИ — У ЗВІТ, ЗАВЖДИ. Порожній список і
+          # «нічого не змінилось» виглядали однаково, і коли diff через
+          # неглибокий клон не бачив змін, прогін був такий самий
+          # зелений, як справжній.
+          {
+            echo "- змінились: ${CHANGED:-—}"
+            echo "- розгортаємо: ${LIST:-—}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$CHANGED" ] && [ -z "$LIST" ] && [ -z "$SKIP" ]; then
+            echo '::error::Функції змінились, але жодної не вибрано — схоже, diff не спрацював'
+            exit 1
+          fi
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
 
       - uses: supabase/setup-cli@v1
         if: steps.gate.outputs.ok == 'yes' && steps.pick.outputs.list != ''
