@@ -87,8 +87,6 @@ LONG = {
  "Показати всі кабінети": "Show all accounts",
  "Позначити виконаною": "Mark as done",
  "Взяти в роботу": "Start working on it",
- "Відео · обробка в браузері, файли нікуди не йдуть":
-   "Video · processed in the browser, files are never uploaded",
  "Завантажую ядро ffmpeg (~32 МБ, лише перший раз)…":
    "Loading the ffmpeg core (~32 MB, first time only)…",
  "Помилка завантаження даних. Перевірте консоль.": "Failed to load data. Check the console.",

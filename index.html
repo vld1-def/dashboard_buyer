@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 06.11 14:20">
+  <meta name="build" content="build 06.11 16:01">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6009,6 +6009,35 @@ input.ui-in[type="range"] { padding: 0; }
 .fb-proxy.is-on  { color: #34D399; }
 .fb-proxy.is-warn { color: #FBBF24; }
 
+/* ═══════════ ПЕРЕГЛЯД КРЕАТИВА З DRIVE ═══════════
+   Плеєр жив у блоці на 240px усередині картки, а Drive малює в ньому
+   свою шапку з назвою й меню — на кадр лишалась смужка. Відео
+   дивляться на весь екран, тож це вікно, а не вставка. */
+.dv-modal {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  background: rgba(0,0,0,.82); backdrop-filter: blur(3px);
+}
+.dv-box { position: relative; width: min(1100px, 100%); }
+/* 16:9 через aspect-ratio, а не через padding-top: висота тоді сама
+   тримається поля зору, і кадр не вилазить за край на ноутбуці. */
+.dv-frame {
+  aspect-ratio: 16 / 9; max-height: 82vh; width: 100%;
+  border-radius: 16px; overflow: hidden; background: #000;
+  border: 1px solid var(--border-2);
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,.95);
+}
+.dv-frame iframe { width: 100%; height: 100%; border: 0; display: block; }
+.dv-x {
+  position: absolute; top: -34px; right: 0;
+  width: 28px; height: 28px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 18px; line-height: 1;
+  color: var(--text-muted); background: transparent; border: 1px solid transparent;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.dv-x:hover { color: #fff; background: rgba(255,255,255,.1); border-color: var(--border-2); }
+
 /* ═══════════ АСИСТЕНТ: РОЗМОВА ═══════════
    Кнопка «новий чат» тихіша за хрестик: обірвати розмову хочуть
    рідше, ніж закрити вікно, і помилитись між ними не має бути легко. */
@@ -7005,7 +7034,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.11 14:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 06.11 16:01</div>
     </div>
   </aside>
 
@@ -11938,17 +11967,40 @@ window._drivePreviewError = function() {
   if (d) d.innerHTML = '<p class="text-[10px] text-slate-600 py-3 px-4 text-center">Preview unavailable</p>';
 };
 
-// Відео дивимось ПРЯМО ТУТ: клік по постеру підміняє його на вбудований плеєр Drive.
-// iframe вантажимо лише на вимогу, щоб не тягнути його для кожного креатива.
-window._drivePlayInline = function(fileId) {
-  const d = document.getElementById('cr-drive-preview');
-  if (!d) return;
-  // Фіксована висота = висота постера, щоб плеєр не розпирав блок
-  d.innerHTML = `
-    <div class="relative w-full overflow-hidden rounded-2xl" style="height:240px">
-      <iframe src="https://drive.google.com/file/d/${fileId}/preview" allow="autoplay"
-              class="absolute inset-0 w-full h-full border-0"></iframe>
-    </div>`;
+/* ВІДЕО ДИВЛЯТЬСЯ ВІКНОМ, А НЕ СМУЖКОЮ.
+
+   Плеєр Drive підставлявся НА МІСЦЕ постера — у блок заввишки 240
+   пікселів, затиснутий у колонці картки. Drive малює в ньому свою
+   шапку з назвою файлу, кнопками й меню, і на те, що лишається,
+   припадає смужка кадру. Тобто клік по прев'ю давав гірше видно, ніж
+   сам постер.
+
+   Відео дивляться на весь екран. Тому клік відкриває вікно: кадр
+   16:9 на всю доступну ширину, тло притемнене, закривається
+   хрестиком, Escape і кліком повз. Місце в картці від цього не
+   забирається взагалі. */
+window._drivePlayInline = function (fileId) {
+  window._driveClose();
+  const wrap = document.createElement('div');
+  wrap.id = 'dv-modal';
+  wrap.className = 'dv-modal';
+  wrap.onclick = e => { if (e.target === wrap) window._driveClose(); };
+  wrap.innerHTML = '<div class="dv-box">'
+    + '<button type="button" class="dv-x" title="Закрити (Esc)"'
+    + ' onclick="window._driveClose()">&times;</button>'
+    + '<div class="dv-frame"><iframe src="https://drive.google.com/file/d/'
+    + encodeURIComponent(fileId) + '/preview" allow="autoplay" allowfullscreen></iframe></div>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  document.addEventListener('keydown', window._driveEsc);
+};
+
+/* Обробник знімаємо разом із вікном: лишений висіти, він ловив би
+   Escape уже для когось іншого. */
+window._driveEsc = function (e) { if (e.key === 'Escape') window._driveClose(); };
+window._driveClose = function () {
+  document.removeEventListener('keydown', window._driveEsc);
+  document.getElementById('dv-modal')?.remove();
 };
 
 async function loadCreativePreview(creativeName) {
@@ -12005,7 +12057,7 @@ async function loadCreativePreview(creativeName) {
       <div class="relative group ${isVideo && idAttr ? 'cursor-pointer' : ''}"
            ${isVideo && idAttr ? `onclick="window._drivePlayInline('${idAttr}')"` : ''}>
         <img src="${thumbUrl}" alt="${creativeName}"
-          class="w-full max-h-[240px] object-cover rounded-2xl"
+          class="w-full max-h-[240px] object-contain rounded-2xl bg-black/30"
           onerror="window._drivePreviewError()">
         ${isVideo ? `<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div class="w-12 h-12 bg-black/60 rounded-full flex items-center justify-center group-hover:bg-blue-600/80 group-hover:scale-110 transition-all shadow-xl">
@@ -20906,10 +20958,14 @@ async function pwBulkApply() {
 <!-- ===== UNIQUEIZER · варіанти відеокреативів ===== -->
 <div id="uniq-modal" class="hidden fixed inset-0 z-[120] modal-overlay flex items-center justify-center p-4">
   <div class="card w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden flex flex-col" style="max-height:90vh">
-    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
+    <!-- Шапка на один рядок. Підзаголовок про обробку в браузері звідси
+         прибрано: він повторював те саме при кожному відкритті й
+         коштував висоти там, де її й так бракує — під ним список
+         файлів. Те, що файли нікуди не йдуть, лишилось у довідці під
+         іконкою «i» поруч. -->
+    <div class="px-5 py-3 border-b border-white/5 flex justify-between items-center bg-white/[0.02] flex-shrink-0">
       <div>
         <h2 class="text-xl font-black italic tracking-tighter text-violet-400">Uniqueizer</h2>
-        <p id="uq-sub" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">Video · processed in the browser, files are never uploaded</p>
       </div>
       <!-- Довідка біля хрестика. Підказка показується при наведенні на
            іконку й НЕ прозора: на кадрах відео під нею прозорий фон
@@ -23239,6 +23295,10 @@ async function uqRun() {
 
   if (uqFiles.every(f => uqDone.has(f.name + '|' + f.size))) uqDone.clear();
   uqBusy = true; uqStop = false; uqQueueDirty = false;
+  /* Поки крутиться — питаємо при спробі закрити вкладку. Усе
+     рахується тут, у браузері, тож перезавантаження не перерве
+     роботу, а викине її. */
+  if (typeof uqGuard === 'function') uqGuard(true);
   document.getElementById('uq-run').disabled = true;
   document.getElementById('uq-cancel').classList.remove('hidden');
   barWrap.classList.remove('hidden');
@@ -23570,6 +23630,7 @@ async function uqRun() {
     setStatus('Error: ' + (e.message || e));
   } finally {
     uqBusy = false; uqCurrent = -1;
+    if (typeof uqGuard === 'function') uqGuard(false);
     document.getElementById('uq-run').disabled = false;
     document.getElementById('uq-cancel').classList.add('hidden');
     uqRenderFileList();
@@ -32588,6 +32649,37 @@ async function uiOne(src, i, opts) {
            dist: uiDist(src.hash, uiHash(c, W, H)), axes: axes.join(' ') };
 }
 
+/* ═══════════ НЕ ЗАКРИВАЙ, ПОКИ ВОНО КРУТИТЬСЯ ═══════════
+
+   «зроби перевірку, коли в мене йде унікалізація, і я хочу
+   перезагрузити сторінку, ти питай мене чи точно я хочу це зробити».
+
+   Робота живе ТІЛЬКИ у вкладці: відео крутить ffmpeg у браузері,
+   картинки — canvas, нічого нікуди не вивантажується. Тобто
+   перезавантаження не «перерве й продовжить» — воно викине все, що
+   встигло нарахуватись, і повернутись до цього нічим.
+
+   Питає сам браузер: власного вікна тут не поставити, бо сторінку
+   вже закривають. Текст теж його — Chrome і Firefox свій показують і
+   чужого не беруть; наш рядок лишається для тих, хто його ще читає.
+
+   Сторож вішається РІВНО на time роботи. Постійний beforeunload
+   питав би й тоді, коли нічого не робиться, — а від такого питання
+   за тиждень перестають читати й тиснуть «піти» не дивлячись. */
+let uqGuards = 0;
+function uqBeforeUnload(e) {
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+}
+/* Рахунок, а не прапорець: обидва режими можуть крутитись одночасно,
+   і той, що скінчився першим, не має знімати сторожа з другого. */
+window.uqGuard = function (on) {
+  uqGuards = Math.max(0, uqGuards + (on ? 1 : -1));
+  if (uqGuards === 1 && on) window.addEventListener('beforeunload', uqBeforeUnload);
+  if (uqGuards === 0) window.removeEventListener('beforeunload', uqBeforeUnload);
+};
+
 window.uiGen = async function () {
   if (!uiSrc.length) {
     if (typeof toast === 'function') toast('Add an image first', 'warn');
@@ -32614,6 +32706,8 @@ window.uiGen = async function () {
   }
 
   const note = document.getElementById('ui-note');
+  uqGuard(true);
+  try {
   uiOut.forEach(o => { try { URL.revokeObjectURL(o.url); } catch (e) {} });
   uiOut = [];
   for (const src of uiSrc) {
@@ -32625,6 +32719,7 @@ window.uiGen = async function () {
     }
   }
   uiPaint();
+  } finally { uqGuard(false); }
 };
 
 function uiPaint() {
@@ -32788,19 +32883,13 @@ window.uiZip = async function () {
 /* ── ДВА РЕЖИМИ В ОДНОМУ ВІКНІ ──
    Відео крутить ffmpeg (старий код, нижче в документі), статику —
    canvas. Перемикач лише показує потрібну панель: спільного стану в них
-   немає, і робота одного не чіпає інший. Підзаголовок міняємо разом із
-   панеллю, бо «Відео · обробка в браузері» над налаштуваннями картинок
-   виглядало б як помилка. */
+   немає, і робота одного не чіпає інший. */
 window.uqMode = function (m) {
   const img = m === 'image';
   document.getElementById('ui-pane')?.classList.toggle('hidden', !img);
   document.getElementById('uq-pane')?.classList.toggle('hidden', img);
   document.getElementById('uq-tab-image')?.classList.toggle('is-on', img);
   document.getElementById('uq-tab-video')?.classList.toggle('is-on', !img);
-  const sub = document.getElementById('uq-sub');
-  if (sub) sub.textContent = img
-    ? 'Images · in the browser, files stay on this computer'
-    : 'Video · in the browser, files stay on this computer';
 };
 
 /* Перетягування на всю картку, а не лише на рамку: кидають зазвичай

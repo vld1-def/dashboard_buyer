@@ -69,7 +69,7 @@ const BATCH = 120;
 const PAUSE_MS = 350;
 const DEADLINE_MS = 110_000;
 
-const FN_VERSION = '2026-11-03.1';
+const FN_VERSION = '2026-11-06.1';
 
 /* Вхід людини йде з браузера, отже потрібні CORS-заголовки — і на
    самій відповіді, і на preflight. Без них браузер не покаже навіть
@@ -241,12 +241,31 @@ Deno.serve(async (req) => {
      передаємо далі — тому рядок, і тому encodeURIComponent. */
   const one = String(body?.funnel_id ?? '').trim();
 
-  /* ═══ ВХІД ЛЮДИНИ: ОДНА ВОРОНКА, БЕЗ БАНІВ ═══
+  /* ═══ ВХІД ЛЮДИНИ: ОДНА ВОРОНКА ═══
 
      Токеном того, хто покликав: межі ставить RLS, чужий рядок просто
-     не прийде. Банів звідси не ставимо — рішення «апки більше немає»
-     коштує зникнення воронки зі списку прілок, і приймати його має
-     обхід, який бачить ДВІ перевірки поспіль, а не один клік. */
+     не прийде.
+
+     БАНИ ЗВІДСИ СТАВЛЯТЬСЯ — і раніше не ставились.
+
+     Міркування було таке: «апки більше немає» прибирає воронку зі
+     списку прілок, тож хай це вирішує нічний обхід, який бачить дві
+     невдачі поспіль, а не один клік. На папері обережно. На практиці
+     вийшло гірше за будь-яку помилку: обхід не ходив, апка лежала в
+     бані, перевірка руками писала, що її немає, — а статус лишався
+     зеленим. Людина бачила дві протилежні речі на одному екрані й
+     мусила вірити тій, що менше схожа на правду.
+
+     Обережність тут була не на тому боці. Клік по «перевірити» — це
+     свідома дія людини, яка дивиться на відповідь; 'gone' повертає
+     лише певний сигнал (404 чи сторінка без жодного сліду апки), а
+     429, 5xx і таймаут дають 'unknown' і статусу не чіпають, як і
+     досі.
+
+     Ставимо робочий бан (app_banned_by = 'robot'), а не людський: так
+     обхід зніме його сам, щойно апка відкриється. Людський бан він не
+     чіпає — і правильно робить, бо його ставлять із причини, якої в
+     Play не видно. */
   if (one) {
     const auth = req.headers.get('Authorization') || '';
     if (!auth) return reply({ error: 'no authorization header' }, 401);
@@ -271,14 +290,47 @@ Deno.serve(async (req) => {
     if (!appId) return reply({ error: 'у цієї воронки не вписане посилання на апку' }, 400);
 
     const v = await probe(appId, String(row.geo || ''));
-    const patch: Json = { app_checked_at: new Date().toISOString(), app_note: v.note };
-    if (v.state === 'live') patch.app_gone_since = null;
+    const now = new Date().toISOString();
+    const patch: Json = { app_checked_at: now, app_note: v.note };
+    /* Що саме сталось зі статусом — кажемо сторінці окремим полем, а
+       не лишаємо їй здогадуватись із state: «апки немає» і «я через
+       це забанив» — різні новини, і друга потребує слова. */
+    let did = '';
+
+    if (v.state === 'live') {
+      patch.app_gone_since = null;
+      /* Апка на місці, а бан стоїть — і він наш: знімаємо тут-таки.
+         Чекати на обхід означало б, що відновлена апка лишається
+         вимкненою до ночі. Людський бан не чіпаємо. */
+      if (row.status === 'ban' && row.app_banned_by === 'robot') {
+        patch.status = 'active';
+        patch.app_banned_by = null;
+        patch.app_note = 'Play: знову відкривається — бан знято перевіркою';
+        did = 'unbanned';
+      }
+    } else if (v.state === 'gone') {
+      patch.app_gone_since = row.app_gone_since || now;
+      if (row.status !== 'ban') {
+        patch.status = 'ban';
+        patch.app_banned_by = 'robot';
+        did = 'banned';
+      }
+    }
+    /* unknown — не чіпаємо нічого, крім часу перевірки й нотатки:
+       429, 5xx і таймаут не є відповіддю Play про апку. */
+
     try {
       await fetch(base + '/rest/v1/funnels_mapping?id=eq.' + encodeURIComponent(one), {
         method: 'PATCH', headers: { ...mine, Prefer: 'return=minimal' },
         body: JSON.stringify(patch) });
-    } catch (_e) { /* не записали — відповідь усе одно чесна */ }
-    return reply({ one: true, state: v.state, note: v.note });
+    } catch (e) {
+      /* Не записали — це не «перевірено». Доти така невдача мовчала, і
+         людина бачила «апки немає», не знаючи, що в базі не змінилось
+         нічого. */
+      return reply({ one: true, state: v.state, note: v.note,
+                     did: '', save_error: String((e as Error).message) });
+    }
+    return reply({ one: true, state: v.state, note: v.note, did });
   }
 
   /* ═══ ВХІД РОЗКЛАДУ ═══ */
