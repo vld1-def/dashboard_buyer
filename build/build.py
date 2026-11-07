@@ -25,7 +25,7 @@ def sub(hay, old, new, what):
 def read(f):
     return open(f, encoding='utf-8').read().rstrip('\n')
 
-head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, creatabjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs, pshtml, psjs = (read(f) for f in
+head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, creatabjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs, pshtml, psjs, tdjs = (read(f) for f in
     ('head.html', 'design.css', 'shell.html', 'widgets.js', 'trend.js', 'settings.html',
      'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js', 'creatab.js',
      'fresh.js', 'geomodal.js', 'cabinets.html', 'cabinets.js', 'tg.js', 'events.js',
@@ -35,7 +35,8 @@ head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs
      'files.html', 'files.js',
      'aiask.html', 'aiask.js',
      'team.html', 'team.js',
-     'posts.html', 'posts.js'))
+     'posts.html', 'posts.js',
+     'today.js'))
 
 # Версію Edge Function беремо просто з її коду: дублювати це число в
 # двох місцях означало б, що одного дня вони розійдуться, і перевірка
@@ -2555,6 +2556,10 @@ rest = rest[:i] + tmjs.strip() + '\n\n' + rest[i:]
 # ── пости на Сторінки ──
 i = rest.rindex('</body>')
 rest = rest[:i] + '<script>\n' + psjs.strip() + '\n</script>\n\n' + rest[i:]
+
+# ── вікно Today: живі числа з останнього Sync now, одною таблицею ──
+i = rest.rindex('</body>')
+rest = rest[:i] + tdjs.strip() + '\n\n' + rest[i:]
 
 # ── Files у доці ──────────────────────────────────────────────────────
 # Іконка для кнопки, яку ми додали в шапку вище: док збирає її разом із

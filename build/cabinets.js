@@ -1077,6 +1077,9 @@ async function cabFbLoad() {
    тут нічого не ламає: лишаємось без цих стовпчиків, решта таблиці на
    місці. */
 let cabSnap = {}, cabSnapErr = '';
+/* Сирі рядки знімка — для вікна Today (today.js). Той самий запит,
+   що й для сум, тож другого походу в базу вікно не робить. */
+let cabSnapRows = [];
 
 async function cabSnapLoad() {
   cabSnap = {};
@@ -1084,10 +1087,15 @@ async function cabSnapLoad() {
   if (typeof cdSumRows !== 'function') return;
   try {
     const rows = await sbFetchAll('fb_ad_today', q => q);
-    cabSnap = cdSumRows(rows.filter(r => !r.team_name || r.team_name === currentTeam));
+    cabSnapRows = rows.filter(r => !r.team_name || r.team_name === currentTeam);
+    cabSnap = cdSumRows(cabSnapRows);
   } catch (e) {
+    cabSnapRows = [];
     cabSnapErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
+  /* Знімок щойно переписали (Sync now або відкриття сторінки) —
+     відкрите вікно Today перемальовується саме. */
+  if (typeof tdOnSnap === 'function') tdOnSnap();
 }
 
 /* Число зі знімка. null означає «не знаємо» — знімка ще немає або
