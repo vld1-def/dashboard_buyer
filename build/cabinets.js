@@ -1081,12 +1081,40 @@ let cabSnap = {}, cabSnapErr = '';
    що й для сум, тож другого походу в базу вікно не робить. */
 let cabSnapRows = [];
 
+/* Номери архівних кабінетів — лише цифри, як account_id у знімку.
+   Беремо і статус рядків (щойно завантажених), і засувку cabArch:
+   так само вирішує й cabIsArch, і розійтись вони не мусять. */
+function cabSnapArchIds() {
+  const ids = new Set();
+  const add = v => { const d = String(v == null ? '' : v).replace(/\D/g, ''); if (d) ids.add(d); };
+  (cabRows || []).forEach(r => {
+    if (String(r.status || '').toLowerCase() !== 'archive') return;
+    add(r.account_id); add(r.fb_account_id);
+  });
+  if (typeof cabArch !== 'undefined') cabArch.forEach(k => { if (/^\d+$/.test(k)) ids.add(k); });
+  // Кабінет, який зараз НЕ в архіві за рядком, з відсіву повертаємо:
+  // засувка могла лишитись від минулого заходу.
+  (cabRows || []).forEach(r => {
+    if (String(r.status || '').toLowerCase() === 'archive') return;
+    [r.account_id, r.fb_account_id].forEach(v => ids.delete(String(v == null ? '' : v).replace(/\D/g, '')));
+  });
+  return [...ids];
+}
+
 async function cabSnapLoad() {
   cabSnap = {};
   cabSnapErr = '';
   if (typeof cdSumRows !== 'function') return;
   try {
-    const rows = await sbFetchAll('fb_ad_today', q => q);
+    /* АРХІВНІ НЕ ТЯГНЕМО. «сайт лагає»: на 2026-11-07 половина знімка
+       (4 228 з 8 250 рядків, разом з actions) належала кабінетам в
+       архіві, а показувати їхні числа нема де — секція Archive згорнута
+       й живих цифр не має. Відсікаємо в самому запиті, щоб ці рядки не
+       йшли по мережі взагалі. Чистить їх із бази окремо розклад
+       (FB_AD_TODAY_CLEANUP.sql), коли кабінет 14+ днів в архіві. */
+    const arch = cabSnapArchIds();
+    const rows = await sbFetchAll('fb_ad_today', q => arch.length
+      ? q.not('account_id', 'in', '(' + arch.join(',') + ')') : q);
     cabSnapRows = rows.filter(r => !r.team_name || r.team_name === currentTeam);
     cabSnap = cdSumRows(cabSnapRows);
   } catch (e) {
@@ -3172,6 +3200,13 @@ async function cabSetStatus(id, status, opts) {
     cabRender(); alert('Could not save: ' + why); return;
   }
   if (typeof evLog === 'function') await evLog(String(row.account_id || '').trim(), was, now, '', 'manual');
+  /* Повернули з архіву — рядків його знімка на сторінці немає (архівні
+     не тягнемо, див. cabSnapLoad). Дочитуємо, щоб числа з'явились
+     одразу, а не після перезавантаження. */
+  if (String(prev || '').toLowerCase() === 'archive' && String(status).toLowerCase() !== 'archive') {
+    await cabSnapLoad();
+    if (!quiet) cabRender();
+  }
   return '';
 }
 

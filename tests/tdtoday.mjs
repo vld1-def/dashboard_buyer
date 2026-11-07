@@ -90,6 +90,25 @@ ok("таблиця бере лише сьогоднішнє", TDJ.includes("cons
 ok("і Expand all — те саме", TDJ.includes("(x.s > 0 || x.im > 0) && tdIsToday(x)"));
 ok("і про сховане кажемо", /not synced today — hidden/.test(TDJ));
 
+/* 4b. АРХІВНІ РЯДКИ ЗНІМКА НЕ ТЯГНЕМО. «сайт лагає»: половина знімка
+   — кабінети в архіві. */
+{
+  const CJ0 = fs.readFileSync('build/cabinets.js', 'utf8');
+  const src = (CJ0.match(/function cabSnapArchIds\(\)[\s\S]*?\n}\n/) || [''])[0];
+  ok('є cabSnapArchIds', !!src);
+  const ids = (rows, arch) => new Function('cabRows', 'cabArch', src + '\nreturn cabSnapArchIds();')(rows, arch);
+  const got = ids([
+    { account_id: 'act_111', status: 'archive' },
+    { account_id: '222', fb_account_id: '333', status: 'Archive' },
+    { account_id: '444', status: 'active' }
+  ], new Set(['555', '444', 'act_999']));
+  ok('архівні — цифрами, з обох полів, плюс засувка', ['111', '222', '333', '555'].every(x => got.includes(x)), got);
+  ok('рядок, що каже «не архів», засувку знімає', !got.includes('444'), got);
+  ok('у засувці беремо лише цифрові ключі', !got.includes('act_999'), got);
+  ok('запит відсікає їх у базі, а не після', /q\.not\('account_id', 'in', '\(' \+ arch\.join\(','\) \+ '\)'\)/.test(CJ0));
+  ok('повернули з архіву — знімок дочитується', /=== 'archive' && String\(status\)\.toLowerCase\(\) !== 'archive'\) \{\n\s*await cabSnapLoad\(\);/.test(CJ0));
+}
+
 /* 5. Проводка: знімок перечитали — вікно знає. */
 const CJ = fs.readFileSync('build/cabinets.js', 'utf8');
 ok('cabSnapLoad тримає сирі рядки', /cabSnapRows = rows\.filter/.test(CJ));
