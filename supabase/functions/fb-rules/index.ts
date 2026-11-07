@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-17';
+const FN_VERSION = 'rules-18';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -865,6 +865,53 @@ async function liveOf(token: string, account: string, leadActions: string[],
   });
 }
 
+/* ═══ ЦИФРИ КАМПАНІЇ Й АДСЕТА — ВІД САМОГО FACEBOOK ═══
+
+   Доти правило рівня кампанії складало її з АКТИВНИХ оголошень
+   (atLevel над liveOf). Оголошення, вимкнене сьогодні раніше, зникало
+   з суми разом зі своїм спендом і лідами. Приклад: A — $20 і 4 ліди,
+   вимкнене опівдні; B — $10 і 0 лідів, активне. Справжній CPL
+   кампанії $30/4 = $7.50, а правило «CPL > $8» бачило лише B — CPL ∞ —
+   і вимикало робочу кампанію. Бувало й навпаки: дорога кампанія
+   виглядала дешевою.
+
+   Тепер для таких правил — insights на рівні level=campaign|adset за
+   сьогодні, по всіх оголошеннях, які крутились. Судимо лише ті
+   кампанії/адсети, що зараз ACTIVE: вимкнене вимикати нема чого.
+   Один запит на кабінет і рівень — і лише там, де таке правило є. */
+async function levelOf(token: string, account: string, level: 'adset' | 'campaign',
+                       leadActions: string[], note: (s: string) => void): Promise<Ent[]> {
+  const url = GRAPH + '/act_' + encodeURIComponent(account) + '/insights'
+    + '?level=' + level
+    + '&date_preset=today'
+    + '&filtering=' + encodeURIComponent(JSON.stringify([
+        { field: level + '.effective_status', operator: 'IN', value: ['ACTIVE'] }]))
+    + '&limit=' + LIVE_LIMIT
+    + '&fields=' + encodeURIComponent('campaign_id,campaign_name,adset_id,adset_name,'
+        + 'spend,impressions,clicks,inline_link_clicks,actions');
+  const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  const j = await res.json().catch(() => null);
+  if (!res.ok || !j || j.error)
+    throw new Error(String(j?.error?.message || 'HTTP ' + res.status));
+  const data: Json[] = Array.isArray(j.data) ? j.data : [];
+  if (j.paging?.next)
+    note(account + ': more than ' + LIVE_LIMIT + ' active ' + level + 's — judged the first '
+       + LIVE_LIMIT);
+  return data.map(r => {
+    const isCamp = level === 'campaign';
+    const id = String(isCamp ? r.campaign_id : r.adset_id || '');
+    return { id, level, account,
+             name: String((isCamp ? r.campaign_name : r.adset_name) || id),
+             /* У кампанії адсета немає: порожнє, щоб перевірка «вже
+                вимкнули батька» не зачепила чужий адсет. */
+             adset: isCamp ? '' : String(r.adset_id || ''),
+             adsetName: isCamp ? '' : String(r.adset_name || ''),
+             campaign: String(r.campaign_id || ''),
+             campaignName: String(r.campaign_name || ''),
+             agg: aggOf({ ...r, link_clicks: r.inline_link_clicks }, leadActions) };
+  });
+}
+
 /* ПОЗНАЧКА ПРО ВИМКНЕНЕ У ЗНІМКУ.
 
    Живий список вимкненого вже не віддасть, тож для звичайного прогону
@@ -1556,13 +1603,36 @@ Deno.serve(async (req) => {
       scanned += ads.length;
       mySeen.ads += ads.length;
 
+      /* Цифри кампаній/адсетів — по одному запиту на рівень, і лише коли
+         числа живі. На знімку (Facebook уже відмовив) лишається стара
+         сума з оголошень: гірше, ніж треба, але краще, ніж осліпнути. */
+      const byLevel = new Map<string, Ent[]>();
+      const entsAt = async (level: string): Promise<Ent[]> => {
+        if (level === 'ad') return ads as Ent[];
+        if (byLevel.has(level)) return byLevel.get(level) as Ent[];
+        let got: Ent[];
+        if (fellBack.has(account)) got = atLevel(ads as Ent[], level);
+        else {
+          try {
+            got = await levelOf(String(t.token), account, level as 'adset' | 'campaign',
+                                leads, m => problems.push(m));
+          } catch (e) {
+            problems.push(account + ': ' + level + ' numbers refused ('
+              + (e as Error).message + ') — summed from active ads instead');
+            got = atLevel(ads as Ent[], level);
+          }
+        }
+        byLevel.set(level, got);
+        return got;
+      };
+
       for (const r of mine) {
         /* Фільтр за назвою дивиться і на БАТЬКІВ. Гео в цих назвах і
            живе: оголошення зветься KG_3166698, а кампанія —
            MPlayC_KG_10708. Поки дивились лише на власну назву,
            «тільки KG» на рівні оголошення не спрацьовувало там, де гео
            стоїть у кампанії, — тобто майже скрізь. */
-        const ents = atLevel(ads, r.level).filter(e => {
+        const ents = (await entsAt(r.level)).filter(e => {
           const names = [e.name, e.adsetName, e.campaignName];
           if (r.nameHas && !names.some(n => String(n || '').toLowerCase().includes(r.nameHas)))
             return false;
