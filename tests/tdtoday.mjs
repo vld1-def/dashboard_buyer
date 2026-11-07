@@ -109,6 +109,30 @@ ok("і про сховане кажемо", /not synced today — hidden/.test(T
   ok('повернули з архіву — знімок дочитується', /=== 'archive' && String\(status\)\.toLowerCase\(\) !== 'archive'\) \{\n\s*await cabSnapLoad\(\);/.test(CJ0));
 }
 
+/* 4c. ПЛАШКА cab-sum: ЗА СЬОГОДНІ, ПО ВСІХ, БЕЗ ФІЛЬТРА.
+   «тут показуй тотал спенд за сьогодні, не дивлячись який статус
+   виставлений у фільтрі». */
+{
+  const CJ1 = fs.readFileSync('build/cabinets.js', 'utf8');
+  const tz = (CJ1.match(/const cabTzDay = tz => \{[\s\S]*?\n\};/) || [''])[0];
+  const fn = (CJ1.match(/function cabSpendToday\(fb\)[\s\S]*?\n}\n/) || [''])[0];
+  ok('є cabSpendToday', !!fn && !!tz);
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bishkek' }).format(new Date());
+  const run = (by, err, fb) => new Function('cabTodayBy', 'cabTodayErr', 'cabDay',
+    tz + '\n' + fn + '\nreturn cabSpendToday;')(by, err, () => day)(fb);
+  ok('бере денний спенд у поясі кабінета',
+    run({ '1': { [day]: 65.28, '2000-01-01': 999 } }, '', { account_id: '1', timezone_name: 'Asia/Bishkek' }) === 65.28);
+  ok('кабінета без сьогоднішнього рядка — нуль, не вчорашнє',
+    run({}, '', { account_id: '9', timezone_name: 'Asia/Bishkek', spend_today: 50 }) === 0);
+  ok('без таблиці — spend_today лише коли синкали сьогодні',
+    run({}, 'x', { account_id: '9', spend_today: 7, synced_at: new Date().toISOString() }) === 7
+    && run({}, 'x', { account_id: '9', spend_today: 7, synced_at: '2026-10-01T00:00:00Z' }) === null);
+  const paint = (CJ1.match(/function cabSumPaint[\s\S]*?\n}\n/) || [''])[0];
+  ok('сума йде по ВСІХ кабінетах, а не по видимих', /all\.forEach\(c => \{\n\s*const v = Number\(cabSpendToday\(c\.fb\)\);/.test(paint), paint.slice(0, 300));
+  ok('і підписана Today, а не періодом', /<span class="cab-sum-k">Today<\/span>/.test(paint));
+  ok('сьогоднішнє перечитується разом із днями', /async function cabDaysLoad\(\) \{[\s\S]{0,120}await cabTodayLoad\(\);/.test(CJ1));
+}
+
 /* 5. Проводка: знімок перечитали — вікно знає. */
 const CJ = fs.readFileSync('build/cabinets.js', 'utf8');
 ok('cabSnapLoad тримає сирі рядки', /cabSnapRows = rows\.filter/.test(CJ));

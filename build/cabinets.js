@@ -1193,7 +1193,49 @@ const cabShiftDay = (day, n) => {
   return new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + n)).toISOString().slice(0, 10);
 };
 
+/* ═══ СЬОГОДНІШНІЙ СПЕНД ДЛЯ ПЛАШКИ cab-sum ═══
+
+   «тут показуй тотал спенд за сьогодні, не дивлячись який статус
+   виставлений у фільтрі». Плашка рахувала видиме за вибраний період —
+   тобто під «Banned» чи «за тиждень» показувала зовсім інше число, ніж
+   «скільки ми сьогодні витратили».
+
+   Окремий вузький запит (вчора–сьогодні–завтра), бо вибраний період
+   сьогоднішнього дня може й не містити. «Сьогодні» — у поясі кожного
+   кабінета, як і в решті сторінки. fb_spend_daily, а не
+   fb_accounts.spend_today: останнє в кабінета, якого сьогодні не
+   синкали, лишається вчорашнім (на 07.11 це $564 замість $116). */
+let cabTodayBy = {}, cabTodayErr = '';
+
+async function cabTodayLoad() {
+  cabTodayBy = {}; cabTodayErr = '';
+  const t = cabDay(0);
+  try {
+    const rows = await sbFetchAll('fb_spend_daily',
+      q => q.gte('day', cabShiftDay(t, -1)).lte('day', cabShiftDay(t, 1)));
+    rows.forEach(r => {
+      if (r.team_name && r.team_name !== currentTeam) return;
+      const id = String(r.account_id || '');
+      if (!id) return;
+      const o = cabTodayBy[id] || (cabTodayBy[id] = {});
+      o[String(r.day || '')] = (o[String(r.day || '')] || 0) + (Number(r.spend) || 0);
+    });
+  } catch (e) { cabTodayErr = e.message || 'error'; }
+}
+
+function cabSpendToday(fb) {
+  if (!fb) return null;
+  if (!cabTodayErr) return (cabTodayBy[String(fb.account_id || '')] || {})[cabTzDay(fb.timezone_name)] || 0;
+  /* Немає таблиці історії — беремо fb_accounts, але лише коли кабінет
+     синкали сьогодні: інакше там учорашні гроші. */
+  if (fb.missing_since || !fb.synced_at) return null;
+  return new Date(fb.synced_at).toDateString() === new Date().toDateString()
+    ? (Number(fb.spend_today) || 0) : null;
+}
+
 async function cabDaysLoad() {
+  // Плашка «сьогодні» — разом із будь-яким перечитуванням днів.
+  await cabTodayLoad();
   cabDays = {};
   cabDaysErr = '';
   const [since, until] = cabRangeDates();
@@ -1924,11 +1966,12 @@ function cabSumPaint(shown, all) {
   const box = document.getElementById('cab-sum');
   if (!box) return;
 
-  // Сума по валютах. Рахуємо по тому, що ВИДНО: під фільтром «Banned»
-  // загальнопаркове число відповідало б на питання, якого не ставили.
+  /* Сума по валютах — ЗА СЬОГОДНІ І ПО ВСІХ кабінетах. Раніше тут було
+     «видиме за вибраний період»; людина просила інше: скільки витрачено
+     сьогодні, хоч би який фільтр стояв. Див. cabSpendToday. */
   const by = new Map();
-  shown.forEach(c => {
-    const v = Number(cabSpendIn(c.fb));
+  all.forEach(c => {
+    const v = Number(cabSpendToday(c.fb));
     if (!Number.isFinite(v) || v <= 0) return;
     const cur = String(c.fb.currency || 'USD').toUpperCase();
     by.set(cur, (by.get(cur) || 0) + v);
@@ -1965,11 +2008,11 @@ function cabSumPaint(shown, all) {
         + '. Click to see it split by currency.';
   }
 
-  const whole = shown.length !== all.length ? all.length : 0;
-  box.title = (tip || '') + (whole ? ' Showing ' + shown.length + ' of ' + whole + ' cabinet(s).' : '');
+  box.title = 'Spent today across all cabinets, whatever the filter and period. '
+    + (tip || '');
   box.innerHTML = `${approx ? '<span class="cab-sum-approx">\u2248</span>' : ''}
     <span class="cab-sum-n">${cabEsc(txt)}</span>
-    <span class="cab-sum-k">${cabEsc(cabRangeLabel())}${whole ? ' \u00b7 ' + shown.length + '/' + whole : ''}</span>`;
+    <span class="cab-sum-k">Today</span>`;
 }
 
 function cabRender() {
