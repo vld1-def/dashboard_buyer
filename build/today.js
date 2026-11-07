@@ -34,15 +34,19 @@ const tdFlag = () => '🌍';
    хвилин — не на кожен Sync now. */
 async function tdMapsLoad() {
   if (tdMaps && Date.now() - tdMapsAt < 5 * 60_000) return;
-  const m = { cab: new Map(), br: new Map(), fn: new Map() };
+  const m = { cab: new Map(), tz: new Map(), br: new Map(), fn: new Map() };
   const own = q => (window.myUid ? q.eq('created_by', window.myUid) : q);
   try {
     const [a, b, f] = await Promise.all([
-      own(sb.from('fb_accounts').select('account_id,name')),
+      own(sb.from('fb_accounts').select('account_id,name,timezone_name')),
       own(sb.from('accounts_mapping').select('account_id,profile')),
       sb.from('funnels_mapping').select('funnel_name,ktid,geo').eq('team_name', currentTeam)
     ]);
-    (a.data || []).forEach(r => m.cab.set(String(r.account_id).replace(/^act_/, ''), String(r.name || '')));
+    (a.data || []).forEach(r => {
+      const id = String(r.account_id).replace(/^act_/, '');
+      m.cab.set(id, String(r.name || ''));
+      if (r.timezone_name) m.tz.set(id, String(r.timezone_name));
+    });
     (b.data || []).forEach(r => { if (r.profile) m.br.set(String(r.account_id).replace(/^act_/, ''), String(r.profile)); });
     (f.data || []).forEach(r => { if (r.ktid) m.fn.set(String(r.ktid).trim().toLowerCase(),
       { name: String(r.funnel_name || r.ktid), geo: String(r.geo || '').toUpperCase() }); });
@@ -88,9 +92,29 @@ function tdRow(r) {
     i: (typeof cdPick === 'function' && cdPick(acts, CD_INST)) || 0,
     r: (typeof cdPick === 'function' && cdPick(acts, 'complete_registration')) || 0,
     d: (typeof cdPick === 'function' && cdPick(acts, 'purchase')) || 0,
-    at: Date.parse(r.seen_at || '') || 0
+    at: Date.parse(r.seen_at || '') || 0,
+    tz: (tdMaps && tdMaps.tz.get(acc)) || ''
   };
 }
+
+/* ═══ СЬОГОДНІ — ЦЕ СЬОГОДНІ В ПОЯСІ КАБІНЕТА ═══
+
+   «звідки взялось сьогодні аж 400 спенда, мені окремо по кабінетам
+   стільки не підтягується».
+
+   fb_ad_today не чиститься цілком: Sync now переписує рядки тих
+   кабінетів, які синкав, а рядки решти лежать зі спендом того дня,
+   коли їх синкали востаннє — 01.10, 16.10, 31.10. Вікно складало все
+   підряд і на 07.11 показало $404, з яких сьогоднішніх було $116.39
+   (рівно стільки, скільки в fb_spend_daily за день).
+
+   Тому рядок рахується лише тоді, коли його бачили СЬОГОДНІ — у поясі
+   самого кабінета, бо «сьогодні» для Facebook визначає саме він. */
+const tdDay = (ms, tz) => {
+  try { return new Date(ms).toLocaleDateString('en-CA', tz ? { timeZone: tz } : undefined); }
+  catch (e) { return new Date(ms).toLocaleDateString('en-CA'); }
+};
+const tdIsToday = x => !!x.at && tdDay(x.at, x.tz) === tdDay(Date.now(), x.tz);
 
 const tdSum = rows => rows.reduce((a, x) => ({ s: a.s + x.s, im: a.im + x.im, lc: a.lc + x.lc,
   l: a.l + x.l, i: a.i + x.i, r: a.r + x.r, d: a.d + x.d }),
@@ -110,8 +134,10 @@ function tdCells(t) {
     + `<td>${conv}</td><td>${cost}</td><td>${t.r}</td><td class="${t.d ? 'td-good' : ''}">${t.d}</td><td>${tdPer(t.s, t.d)}</td>`;
 }
 
-const tdCab = x => (x.br ? '🌐 ' + tdEsc(x.br) + ' › ' : '') + '🏦 '
-  + tdEsc(x.cab && x.cab !== x.acc ? x.cab : '…' + x.acc.slice(-4));
+/* ID кабінета, а не назва: назви тут «1», «3» і чуже ім'я з БМ, а
+   шукають кабінет у браузері саме за ID. Назва — у підказці. */
+const tdCab = x => (x.br ? '🌐 ' + tdEsc(x.br) + ' › ' : '') + '<span title="'
+  + tdEsc(x.cab || '') + '">🏦 ' + tdEsc(x.acc) + '</span>';
 const tdFn = (k, l) => l[0].fnBad
   ? '<span class="td-warn">⚠ ' + tdEsc(k) + '</span>'
   : '🔀 ' + tdEsc(k);
@@ -165,7 +191,11 @@ function tdRender() {
   const all = (typeof cabSnapRows !== 'undefined' ? cabSnapRows : []).map(tdRow);
   /* Лише те, що сьогодні справді крутилось: нуль спенду й нуль показів
      — це рядок знімка про вимкнене, і в таблиці він лише шум. */
-  const rows = all.filter(x => x.s > 0 || x.im > 0);
+  const active = all.filter(x => x.s > 0 || x.im > 0);
+  const rows = active.filter(tdIsToday);
+  /* Скільки старого сховали — щоб «а де кабінет X» мало відповідь. */
+  const old = active.filter(x => !tdIsToday(x));
+  const oldCabs = new Set(old.map(x => x.acc)).size;
   const newest = all.reduce((m, x) => Math.max(m, x.at), 0);
   const mins = newest ? Math.max(0, Math.round((Date.now() - newest) / 60000)) : null;
   const sameDay = newest && new Date(newest).toDateString() === new Date().toDateString();
@@ -173,7 +203,9 @@ function tdRender() {
     : (sameDay ? 'Last Sync now: <b>' + (mins < 1 ? 'just now' : mins < 60 ? mins + ' min ago'
         : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min ago') + '</b>'
       : '<span class="td-warn">⚠ Numbers are from ' + new Date(newest).toLocaleDateString('en-GB')
-        + ' — press Sync now for today</span>');
+        + ' — press Sync now for today</span>')
+    + (oldCabs ? ' <span class="td-dim" title="These cabinets were last synced on an earlier day;'
+        + ' their old numbers are not counted">· ' + oldCabs + ' cabinet(s) not synced today — hidden</span>' : '');
 
   const t = tdSum(rows);
   const crs = new Set(rows.map(x => x.cr)), multi = [...crs]
@@ -236,7 +268,7 @@ function tdEnsure() {
     tdOpenSet.clear();
     if (b.dataset.e === '1') {
       const lv = TD_VIEWS[tdMode];
-      const rows = (cabSnapRows || []).map(tdRow).filter(x => x.s > 0 || x.im > 0);
+      const rows = (cabSnapRows || []).map(tdRow).filter(x => (x.s > 0 || x.im > 0) && tdIsToday(x));
       const add = (list, d, path) => { if (d >= lv.length - 1) return;
         const g = new Map(); list.forEach(x => { const k = lv[d][0](x); if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
         g.forEach((l, k) => { const id = path + '/' + k; tdOpenSet.add(id); add(l, d + 1, id); }); };

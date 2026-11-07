@@ -31,10 +31,11 @@ const helpers = [
 globalThis.window = globalThis;
 globalThis.document = { getElementById: () => null };
 const T = new Function(helpers + '\nlet cabSnapRows = [], cabSnapErr = "";\n' + td
-  + '\nreturn { tdRow, tdSum, setMaps: m => { tdMaps = m; }, TD_VIEWS };')();
+  + '\nreturn { tdRow, tdSum, tdIsToday, setMaps: m => { tdMaps = m; }, TD_VIEWS };')();
 
 T.setMaps({
   cab: new Map([['3191102584433243', 'Zlata Garacheva'], ['1403209798694635', '3']]),
+  tz: new Map([['1403209798694635', 'Asia/Bishkek']]),
   br: new Map([['3191102584433243', '4327'], ['1403209798694635', '4175']]),
   fn: new Map([['cfr11003', { name: 'Chicken Fortune Road [satorapps]', geo: 'TJ' }],
                ['10708-y3wz', { name: 'MPlay KG', geo: 'KG' }]])
@@ -48,6 +49,7 @@ ok('веб: гео з маски', kg.geo === 'KG', kg);
 ok('веб: воронка за ktid з маски', kg.fn === 'MPlay KG' && !kg.fnBad, kg);
 ok('ліди не подвоюються (lead + fb_pixel_lead — ті самі два)', kg.l === 2, kg.l);
 ok('кабінет і браузер підписані', kg.cab === '3' && kg.br === '4175', kg);
+ok('у дереві — ID кабінета, а не назва', T.TD_VIEWS.tree[1][1](kg.acc, [kg]).includes('🏦 1403209798694635'), T.TD_VIEWS.tree[1][1](kg.acc, [kg]));
 
 /* 2. Апкова кампанія: маска бере не той шматок — шукаємо ключ серед шматків. */
 const tj = T.tdRow({ account_id: '3191102584433243', name: 'TJ_AB_592',
@@ -71,6 +73,22 @@ const key = T.TD_VIEWS.cre[0][0];
 const groups = new Map(); rows.forEach(r => { const k = key(r); groups.set(k, (groups.get(k) || []).concat(r)); });
 ok('однакові назви з різних кабінетів — один рядок', groups.get('KG_JS_633').length === 2 && groups.size === 2);
 ok('і суми складаються', Math.abs(T.tdSum(groups.get('KG_JS_633')).s - 8.65) < 1e-9);
+
+/* 4a. ЛИШЕ СЬОГОДНІ. «звідки 400 спенда… бачу UZ, яке я не лив цього
+   місяця»: у знімку лежали рядки кабінетів, не синканих із 06.10. */
+const now = Date.now();
+const fresh = T.tdRow({ account_id: "1403209798694635", name: "A", campaign_name: "x", spend: "5",
+  impressions: "1", seen_at: new Date(now - 60000).toISOString() });
+const stale = T.tdRow({ account_id: "2890064408040391", name: "UZ_1", campaign_name: "x_UZ_1", spend: "11.16",
+  impressions: "1174", seen_at: "2026-10-06T13:59:50Z" });
+ok("свіжий рядок — сьогоднішній", T.tdIsToday(fresh), fresh);
+ok("рядок від 06.10 — не сьогоднішній, у суму не йде", !T.tdIsToday(stale), stale);
+ok("рядок без seen_at — теж ні", !T.tdIsToday({ at: 0, tz: "" }));
+ok("день рахується в поясі кабінета", fresh.tz === "Asia/Bishkek");
+const TDJ = fs.readFileSync("build/today.js", "utf8");
+ok("таблиця бере лише сьогоднішнє", TDJ.includes("const rows = active.filter(tdIsToday);"));
+ok("і Expand all — те саме", TDJ.includes("(x.s > 0 || x.im > 0) && tdIsToday(x)"));
+ok("і про сховане кажемо", /not synced today — hidden/.test(TDJ));
 
 /* 5. Проводка: знімок перечитали — вікно знає. */
 const CJ = fs.readFileSync('build/cabinets.js', 'utf8');
