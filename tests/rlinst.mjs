@@ -20,6 +20,7 @@
    Стенд тримає обидві половини: інстали стали метрикою, і ціна ліда
    більше не виносить вироку там, де міряє не тим. */
 import fs from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import { checks } from './_harness.mjs';
 
 const { ok, done } = checks();
@@ -130,52 +131,38 @@ ok('метрику можна вибрати у правилі', /k: 'cpi'/.test
 ok('і підказка каже, навіщо вона',
   /no lead events at all/.test(RL), 'tip');
 
-/* ── 8. У ТЕЛЕГРАМІ ІНСТАЛИ ПІДПИСАНІ, А «0 ЛІДІВ» НЕ ВИГАДАНО ──
+/* ── 8. У ТЕЛЕГРАМІ ІНСТАЛИ, А «0 ЛІДІВ» АПЦІ НЕ ВИГАДАНО ──
 
-   Апп-кампанія не має подій ліда взагалі, тож «0 лідів» стоятиме в ній
-   завжди — і в повідомленні, яке читають із телефона, це перше, на що
-   падає око. Коли лідів немає, а інстали є, головним числом рядка
-   мають бути інстали. */
+   Ліди й інстали тепер під одним 📲, тож питання вже не «чи підписані
+   інстали», а «яке з двох чисел стоїть під значком». Апп-кампанія не
+   має подій ліда взагалі — під 📲 у неї мусять бути інстали, інакше
+   там завжди стоятиме нуль. */
 const tgSrc = [
-  grab(/function money[\s\S]*?\n}/, 'money'),
-  grab(/function plural[\s\S]*?\n}/, 'plural'),
-  grab(/function metricCounts[\s\S]*?\n}/, 'metricCounts'),
-  grab(/function metricPrices[\s\S]*?\n}/, 'metricPrices')
-].join('\n');
-const tgPlain = tgSrc
-  .replace(/\(h:\s*Hit\)/g, '(h)')
-  .replace(/\(v:\s*number\)/g, '(v)')
-  .replace(/\(n:\s*number,\s*one:\s*string,\s*few:\s*string,\s*many:\s*string\)/g,
-           '(n, one, few, many)')
-  .replace(/:\s*string\[\]\s*=/g, ' =')
-  .replace(/\)\s*:\s*string\s*\{/g, ') {');
-const tg = new Function('METRICS',
-  tgPlain + '\nreturn { metricCounts, metricPrices };')(METRICS);
+  "type Hit = any; type Agg = any; type Rule = any;",
+  grab(/function money[\s\S]*?\n}/, "money"),
+  grab(/const CONV_INSTALL = [^\n]*/, "CONV_INSTALL"),
+  grab(/function convPick[\s\S]*?\n}/, "convPick"),
+  grab(/function tgCounts[\s\S]*?\n}/, "tgCounts")
+].join("\n");
+const tg = new Function("METRICS", "condOk",
+  stripTypeScriptTypes(tgSrc) + "\nreturn { tgCounts, convPick };")(METRICS, condOk);
 
-const line = o => tg.metricCounts({ agg: agg(o) });
-const price = o => tg.metricPrices({ agg: agg(o) });
+const cpiRule = { when: [{ m: "cpi", op: ">", v: 2 }] };
+const cplRule = { when: [{ m: "cpl", op: ">", v: 2 }] };
+const line = (o, r) => { const a = agg(o); return tg.tgCounts({ agg: a, conv: tg.convPick(r, a) }); };
 
-const appLine = line({ spend: 48, installs: 12 });
-ok('в апп-кампанії інстали підписані', /12 інстал/.test(appLine), appLine);
-ok('і «0 лідів» у ній не вигадано', !/лід/.test(appLine), appLine);
-ok('а витрати лишились на місці', /\$48\.00/.test(appLine), appLine);
+const appLine = line({ spend: 48, installs: 12 }, cplRule);
+ok("в апп-кампанії під 📲 інстали, навіть коли правило на CPL", /📲12/.test(appLine), appLine);
+ok("а витрати лишились на місці", /\$48\.00/.test(appLine), appLine);
 
-const both = line({ spend: 30, leads: 3, installs: 7 });
-ok('де є і ліди, і інстали — видно обоє',
-  /3 ліди/.test(both) && /7 інстал/.test(both), both);
+const both = { spend: 30, linkClicks: 1, leads: 3, installs: 7 };
+ok("ліди й інстали — правило на CPI бачить інстали", /📲7/.test(line(both, cpiRule)), line(both, cpiRule));
+ok("а правило на CPL — ліди", /📲3/.test(line(both, cplRule)), line(both, cplRule));
 
-const web = line({ spend: 20, leads: 0 });
-ok('на веб-кампанії без інсталів «0 лідів» лишається',
-  /0 лідів/.test(web), web);
-
-ok('множина в інсталів жива, а не «інстал(ів)»',
-  /1 інстал$/.test(line({ installs: 1 }))
-  && /5 інсталів/.test(line({ installs: 5 })),
-  [line({ installs: 1 }), line({ installs: 5 })]);
-
-const cpi = price({ spend: 48, installs: 12 });
-ok('ціну інстала теж видно', /CPI \$4\.00/.test(cpi), cpi);
-ok('а ціни ліда без лідів немає', !/CPL/.test(cpi), cpi);
+const web = line({ spend: 20 }, cplRule);
+ok("на веб-кампанії без подій 📲 показує нуль, а не ховається", /📲0/.test(web), web);
+ok("депи й реєстрації — лише коли не нуль",
+  !/💰|📝/.test(web) && /💰2/.test(line({ spend: 9, purchases: 2 }, cplRule)));
 
 /* ── 9. ВЕРСІЯ ── */
 const fnv = Number((FN.match(/FN_VERSION = 'rules-(\d+)'/) || [])[1]);

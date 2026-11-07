@@ -1,19 +1,18 @@
-/* ═══════════ ПОВІДОМЛЕННЯ ПРАВИЛ: КОМПАКТНО Й ЗГРУПОВАНО ═══════════
+/* ═══════════ ПОВІДОМЛЕННЯ ПРАВИЛ: ОДИН РЯДОК НА ОГОЛОШЕННЯ ═══════════
 
-   «скоротимо до просто Правило: «Click OR Lead KG»… якщо вимкнуто два
-   оголошення але з одного кабу, то групуємо в один каб а не пишемо
-   два рази… більше інформативних смайликів, розділяй на блоки…
-   забув задеплоїти щоб появились в повідомленні інфа по кількості
-   кліків».
+   Формат узгоджено з людиною по кроках 2026-11-07: варіант «один
+   рядок», англійською, браузер перед кабінетом, ліди й інстали під
+   одним 📲, довга кампанія обрізана З ПОЧАТКУ, порожній рядок між
+   кабінетами, лінія над правилом і без порожнього рядка під ним.
 
-   І головне, що стояло за скаргою: «дуже багато спенда де не
-   зупинило вчасно правило». Лист не казав НІ слова про поріг, нижче
-   якого правило не має права дивитись, — а саме він і пояснює
-   «$10.09»: до десяти доларів рішення не ухвалюється взагалі.
+   Стенд збирає СПРАВЖНЄ повідомлення з чисел того дня (fb_rule_log) і
+   звіряє його з погодженим зразком символ у символ: формат, який
+   людина затвердила, не має право «поплисти» тихо.
 
-   Стенд не перевіряє розмітку по шматках — він збирає справжнє
-   повідомлення з тих самих прикладів, які прислала людина. */
+   Типи TypeScript знімає сам Node (stripTypeScriptTypes), тож шматки
+   функції беремо як є, без регулярок-чистильників. */
 import fs from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import { checks } from './_harness.mjs';
 
 const { ok, done } = checks();
@@ -26,140 +25,149 @@ const grab = (re, what) => {
 };
 
 const src = [
+  'type Hit = any; type Agg = any; type Rule = any; type Cond = any;',
   grab(/function money[\s\S]*?\n}/, 'money'),
-  grab(/function plural[\s\S]*?\n}/, 'plural'),
   grab(/const METRICS[\s\S]*?\n};/, 'METRICS'),
-  grab(/function metricCounts[\s\S]*?\n}/, 'metricCounts'),
-  grab(/function metricPrices[\s\S]*?\n}/, 'metricPrices'),
-  grab(/function ruleScope[\s\S]*?\n}/, 'ruleScope'),
-  grab(/const tgMark[\s\S]*?;/, 'tgMark'),
-  grab(/const TG_WHAT[\s\S]*?\n  ad: 'ad'[^;]*;/, 'TG_WHAT'),
-  grab(/const tgOne = \(h: Hit, pad: string\)[\s\S]*?h\.error : ''\);/, 'tgOne'),
+  grab(/const METRIC_LABEL[\s\S]*?\n};/, 'METRIC_LABEL'),
+  grab(/const METRIC_MONEY = [^\n]*/, 'METRIC_MONEY'),
+  grab(/function fmtMetric[\s\S]*?\n}/, 'fmtMetric'),
+  grab(/const PER_ONE[\s\S]*?\n};/, 'PER_ONE'),
+  grab(/const APP_BLIND = \[[^\]]*\];/, 'APP_BLIND'),
+  grab(/function condOk[\s\S]*?\n}/, 'condOk'),
+  grab(/function whyHit[\s\S]*?\n}/, 'whyHit'),
+  grab(/const CONV_INSTALL = [^\n]*/, 'CONV_INSTALL'),
+  grab(/function convPick[\s\S]*?\n}/, 'convPick'),
+  grab(/const TG_LINE = [^\n]*/, 'TG_LINE'),
+  grab(/const TG_CAMP_MAX = [^\n]*/, 'TG_CAMP_MAX'),
+  grab(/const tgMark[^\n]*/, 'tgMark'),
+  grab(/const TG_WHAT[\s\S]*?};/, 'TG_WHAT'),
+  grab(/function tgCamp\([\s\S]*?\n}/, 'tgCamp'),
+  grab(/function tgCounts[\s\S]*?\n}/, 'tgCounts'),
+  grab(/const tgOne = [\s\S]*?h\.error : ''\);/, 'tgOne'),
+  grab(/function tgPath[\s\S]*?\n}/, 'tgPath'),
+  grab(/function tgScope[\s\S]*?\n}/, 'tgScope'),
   grab(/function tgGroup[\s\S]*?\n}/, 'tgGroup'),
-  grab(/function tgCamps[\s\S]*?\n}/, 'tgCamps'),
-  grab(/function tgBody[\s\S]*?\n}/, 'tgBody')
+  grab(/function tgBody[\s\S]*?\n}/, 'tgBody'),
+  grab(/function tgText[\s\S]*?\n}/, 'tgText')
 ].join('\n');
 
-const plain = src
-  .replace(/function tgGroup<T>\(list: T\[\], key: \(x: T\) => string\): \[string, T\[\]\]\[\]/,
-           'function tgGroup(list, key)')
-  .replace(/const order: string\[\] = \[\];/, 'const order = [];')
-  .replace(/const by = new Map<string, T\[\]>\(\);/, 'const by = new Map();')
-  .replace(/\(by\.get\(k\) as T\[\]\)/g, 'by.get(k)')
-  .replace(/by\.get\(k\) as T\[\]/g, 'by.get(k)')
-  .replace(/\(h: Hit, pad: string\)/g, '(h, pad)')
-  .replace(/\(h: Hit\)/g, '(h)')
-  .replace(/\(rows: Hit\[\]\)/g, '(rows)')
-  .replace(/\(hits: Hit\[\]\)/g, '(hits)')
-  .replace(/\(a: Agg\)/g, '(a)')
-  .replace(/\(v: number\)/g, '(v)')
-  .replace(/\(n: number, one: string, few: string, many: string\)/g, '(n, one, few, many)')
-  /* Record<...> містить власні «>» і «=» всередині «=>», тож
-     зрізаємо лише до знака присвоєння, і нежадібно. */
-  .replace(/:\s*Record<[\s\S]*?>\s*=\s*\{/g, ' = {')
-  .replace(/:\s*string\[\]\s*=/g, ' =')
-  .replace(/\)\s*:\s*string\s*(=>|\{)/g, ') $1')
-  .replace(/:\s*string\s*=>/g, ' =>');
-
-const tg = new Function(plain + '\nreturn { tgBody, metricCounts, ruleScope };')();
+const tg = new Function('TG_MAX', 'TG_LIMIT', stripTypeScriptTypes(src)
+  + '\nreturn { tgText, tgBody, tgCamp, tgCounts, whyHit, convPick };')(20, 3500);
 
 const agg = o => ({ spend: 0, imps: 0, clicks: 0, linkClicks: 0,
                     leads: 0, regs: 0, purchases: 0, installs: 0, ...o });
-const hit = o => ({ rule: 'r', ruleName: 'Click OR Lead KG', level: 'ad',
-                    id: '1', name: 'KG_VD_1109', account: '1149896616961527',
-                    campaignName: 'Mostbet_KG_new', owner: 'u', team: 't',
-                    why: '', minSpend: 10, geos: ['KG'], geoIn: '',
-                    agg: agg({}), dry: false, ok: true, error: '',
-                    acted: true, preview: false, fromSnap: false, ...o });
 
-/* ── 1. ПЕРШИЙ ПРИКЛАД ЛЮДИНИ ── */
-const one = tg.tgBody([hit({
-  agg: agg({ spend: 10.09, linkClicks: 1 }),
-  why: 'cost per link click $10.09 > $2.00 OR cost per lead ∞ > $3.50' })]);
+/* Правила й числа — з team_settings і fb_rule_log того дня. */
+const KG = { id: 'rmupcvbgc', name: 'Click OR Lead KG', dry: false, level: 'ad',
+  match: 'any', minSpend: 4, geo: ['KG'],
+  when: [{ m: 'cpc_link', op: '>', v: 2 }, { m: 'cpl', op: '>', v: 3.5 }] };
+const TJ = { id: 'rmw3mbasg', name: 'Click OR Install TJ', dry: false, level: 'ad',
+  match: 'any', minSpend: 2.5, geo: ['TJ'],
+  when: [{ m: 'cpc_link', op: '>', v: 1.1 }, { m: 'cpi', op: '>', v: 2 }] };
 
-ok('заголовок правила короткий', /^\u{1F4CB} Правило: «Click OR Lead KG»/u.test(one), one);
-/* Саме цього рядка й бракувало: «$10.09» перестає бути загадкою,
-   щойно видно, що нижче $10 правило не дивиться взагалі. */
-ok('і в ньому видно поріг спенду', /від \$10\.00/.test(one), one);
-ok('гео теж лишилось одним суфіксом', /гео KG/.test(one), one);
-/* Три рядки адреси («гео:», «cab:», «camp:») і дві лінії з рисок
-   пішли: кабінет і кампанія тепер заголовки груп. */
-ok('старого блоку адреси немає',
-  !/cab: /.test(one) && !/camp: /.test(one) && !/──/.test(one), one);
-ok('кабінет окремим заголовком', /\u{1F3E6} 1149896616961527/u.test(one), one);
-ok('кампанія окремим заголовком', /\u{1F4E3} Mostbet_KG_new/u.test(one), one);
-/* Те, по що людина й відкриває лист. */
-/* \b після кирилиці не межа: \w у JS — лише ASCII. Ця пастка в
-   проєкті ловить уже вдруге, тому перевіряємо оточення явно. */
-ok('кліки нарешті в рядку чисел', /\u00b7 1 клік \u00b7/.test(one), one);
-ok('а спенд і ліди лишились', /\$10\.09/.test(one) && /0 лідів/.test(one), one);
-ok('CPC на місці', /CPC \$10\.09/.test(one), one);
-ok('і причина теж', /> \$2\.00/.test(one), one);
+const hit = (r, o) => {
+  const h = { rule: r.id, ruleName: r.name, level: r.level, owner: 'u', team: 't',
+    minSpend: r.minSpend, geos: r.geo, geoIn: '', dry: false, ok: true, error: '',
+    acted: true, preview: false, fromSnap: false, ...o };
+  h.why = tg.whyHit(r, h.agg);
+  h.conv = tg.convPick(r, h.agg);
+  return h;
+};
 
-/* ── 2. ДРУГИЙ ПРИКЛАД: АППКА ── */
-const two = tg.tgBody([hit({
-  name: 'TJ_0iHVkg', account: '778', campaignName: 'TJ_app',
-  ruleName: 'Click OR Install TJ', minSpend: 15, geos: ['TJ'],
-  agg: agg({ spend: 19.53, linkClicks: 9, purchases: 1, installs: 3 }),
-  why: 'cost per link click $2.17 > $1.10 OR cost per install $6.51 > $2.00' })]);
-ok('в аппці видно кліки, депи й інстали',
-  /9 кліків/.test(two) && /1 деп\./.test(two) && /3 інстали/.test(two), two);
-ok('і що поріг у цього правила свій', /від \$15\.00/.test(two), two);
+const hits = [
+  hit(KG, { id: '1', name: 'KG_JS_633', account: '1403209798694635', cabName: '3',
+    browser: '4175', campaignName: 'MPlay_KG_10708-y3wz_07/11 001',
+    agg: agg({ spend: 5.65, imps: 447 }) }),
+  hit(KG, { id: '2', name: '633_DV_KG', account: '1403209798694635', cabName: '3',
+    browser: '4175', campaignName: 'MPlay_KG_10708-y3wz_07/11 003',
+    agg: agg({ spend: 6.44, imps: 1419, clicks: 18, linkClicks: 8 }) }),
+  hit(KG, { id: '3', name: 'KG_VD_1109', account: '555', cabName: '5',
+    browser: '4210', campaignName: 'MPlay_KG_10711-k2pq_07/11 001',
+    agg: agg({ spend: 10.09, imps: 2491, clicks: 2, linkClicks: 1 }) }),
+  hit(TJ, { id: '4', name: 'TJ_0iHVkg', account: '1058595677211850', cabName: '1',
+    browser: '4327',
+    campaignName: 'cy638t_8wxg7hf7_bGcTwMmV_TR211003_1058595677211850_TJ',
+    agg: agg({ spend: 19.53, imps: 4281, clicks: 9, linkClicks: 9,
+               installs: 3, purchases: 1 }) })
+];
 
-/* ── 3. ГРУПУВАННЯ — ГОЛОВНЕ, ЩО ПРОСИЛИ ── */
-const many = tg.tgBody([
-  hit({ id: '1', name: 'KG_a' }),
-  hit({ id: '2', name: 'KG_b' }),
-  hit({ id: '3', name: 'KG_c', campaignName: 'Друга кампанія' }),
-  hit({ id: '4', name: 'TJ_a', account: '778', campaignName: 'TJ_camp' }),
-  hit({ id: '5', name: 'Інше', ruleName: 'Друге правило', minSpend: 5 })
+/* Погоджений зразок. Кабінет 5 / браузер 4210 у ньому — вигадані, щоб
+   було видно розділення кабінетів; решта — живі числа. */
+const WANT = [
+  '⛔ 4 paused',
+  '━━━━━━━━━━━━━━━',
+  '📋 "Click OR Lead KG" · from $4.00 · 🌍 KG',
+  '🌐 4175 › 🏦 3 › 📣 MPlay_KG_10708-y3wz_07/11 001',
+  '⛔ KG_JS_633 — 💸$5.65 🖱0 📲0 ⚡CPC ∞ > $2.00 · CPL ∞ > $3.50',
+  '🌐 4175 › 🏦 3 › 📣 MPlay_KG_10708-y3wz_07/11 003',
+  '⛔ 633_DV_KG — 💸$6.44 🖱8 📲0 ⚡CPL ∞ > $3.50',
+  '',
+  '🌐 4210 › 🏦 5 › 📣 MPlay_KG_10711-k2pq_07/11 001',
+  '⛔ KG_VD_1109 — 💸$10.09 🖱1 📲0 ⚡CPC $10.09 > $2.00 · CPL ∞ > $3.50',
+  '━━━━━━━━━━━━━━━',
+  '📋 "Click OR Install TJ" · from $2.50 · 🌍 TJ',
+  '🌐 4327 › 🏦 1 › 📣 …_TR211003_1058595677211850_TJ',
+  '⛔ TJ_0iHVkg — 💸$19.53 🖱9 📲3 💰1 ⚡CPC $2.17 > $1.10 · CPI $6.51 > $2.00'
+].join('\n');
+
+const got = tg.tgText(hits);
+ok('повідомлення збігається з погодженим зразком символ у символ', got === WANT,
+  got.split('\n').map((l, i) => l === WANT.split('\n')[i] ? '' : i + ': ' + l)
+     .filter(Boolean));
+console.log('\n' + got + '\n');
+
+/* ── окремі рішення, кожне — бо про нього просили ── */
+ok('кампанія ріжеться з ПОЧАТКУ і рівно до 30 знаків',
+  tg.tgCamp('cy638t_8wxg7hf7_bGcTwMmV_TR211003_1058595677211850_TJ').length === 30
+  && tg.tgCamp('cy638t_8wxg7hf7_bGcTwMmV_TR211003_1058595677211850_TJ').endsWith('_TJ')
+  && tg.tgCamp('cy638t_8wxg7hf7_bGcTwMmV_TR211003_1058595677211850_TJ').startsWith('…'));
+ok('коротка кампанія не чіпається', tg.tgCamp('MPlay_KG_1') === 'MPlay_KG_1');
+
+/* У правилі з OR — лише та умова, що спрацювала. */
+/* 633_DV_KG: CPC $0.81 не спрацював, CPL ∞ — так. */
+ok('⚡ каже лише те, що спрацювало', !/CPC/.test(hits[1].why) && /CPL/.test(hits[1].why),
+  hits[1].why);
+
+/* 📲: апка — інстали, веб — ліди; обидва — те, за чим спрацювало. */
+const both = agg({ spend: 30, linkClicks: 30, leads: 2, installs: 3 });
+ok('ліди+інстали, спрацював CPI → під 📲 інстали',
+  tg.convPick({ ...TJ }, both) === 'installs');
+ok('ліди+інстали, правило лише на CPL → ліди',
+  tg.convPick({ ...KG, when: [{ m: 'cpl', op: '>', v: 1 }] }, both) === 'leads');
+ok('веб без подій — ліди', tg.convPick(KG, agg({ spend: 5 })) === 'leads');
+
+/* Без браузера — просто без 🌐, а не «🌐  ›». */
+const nob = tg.tgText([hit(KG, { id: '9', name: 'X', account: '7', cabName: 'Z',
+  browser: '', campaignName: 'C', agg: agg({ spend: 5 }) })]);
+ok('немає браузера — немає й значка', /\n🏦 Z › 📣 C\n/.test(nob) && !/🌐/.test(nob), nob);
+
+/* Звіт, помилка й не-оголошення. */
+const mix = tg.tgText([
+  hit(KG, { id: 'a', name: 'A', account: '7', cabName: 'Z', browser: '1',
+    campaignName: 'C', agg: agg({ spend: 5 }), dry: true, ok: false }),
+  hit(KG, { id: 'b', name: 'B', account: '7', cabName: 'Z', browser: '1',
+    campaignName: 'C', agg: agg({ spend: 5 }), ok: false, error: 'boom' }),
+  hit({ ...KG, level: 'campaign' }, { id: 'c', name: 'Camp1', level: 'campaign',
+    account: '7', cabName: 'Z', browser: '1', campaignName: 'Camp1',
+    agg: agg({ spend: 5 }) })
 ]);
-const count = (t, re) => (t.match(re) || []).length;
-ok('два правила — два заголовки', count(many, /\u{1F4CB} Правило:/gu) === 2, many);
-/* Доти шапка повторювалась на КОЖНІЙ трійці правило+каб+кампанія:
-   три оголошення з одного кабінета давали три однакові шапки. */
-ok('кабінет у межах правила написаний один раз',
-  count(many, /\u{1F3E6} 1149896616961527/gu) === 2, many);
-ok('кампанія — теж один раз на свої оголошення',
-  count(many, /\u{1F4E3} Mostbet_KG_new/gu) === 2, many);
-ok('усі п’ять оголошень на місці',
-  ['KG_a', 'KG_b', 'KG_c', 'TJ_a', 'Інше'].every(n => many.includes(n)), many);
-ok('порядок збережено — як сталось, так і написано',
-  many.indexOf('KG_a') < many.indexOf('KG_b')
-  && many.indexOf('KG_b') < many.indexOf('KG_c'), 'order');
-/* Відступ і є тим, що показує належність: саме його просили замість
-   ліній із підкреслень. */
-ok('оголошення стоять з відступом під своєю кампанією',
-  /\u{1F4E3} Mostbet_KG_new\n   ⛔ ad: KG_a/u.test(many), many);
+ok('підсумок англійською з усіма трьома видами',
+  /^⛔ 1 paused · 👁 1 report only · ⚠ 1 failed\n/.test(mix), mix);
+ok('помилка окремим рядком', /\n   ⚠ boom/.test(mix), mix);
+ok('кампанія-сутність підписана й не дублює себе',
+  /⛔ campaign: Camp1/.test(mix) && (mix.match(/Camp1/g) || []).length === 1, mix);
 
-/* ── 4. КАМПАНІЮ НЕ ПИШЕМО ДВІЧІ ──
-   Коли вимкнена сутність і Є кампанією, окремий заголовок із тим
-   самим іменем був би тим самим словом двічі поспіль. */
-const camp = tg.tgBody([hit({ level: 'campaign', name: 'Mostbet_KG_new' })]);
-ok('кампанія-сутність не дублює сама себе',
-  count(camp, /Mostbet_KG_new/g) === 1, camp);
+ok('у листі не лишилось української', !/[А-Яа-яІіЇїЄєҐґ]/.test(got + mix + nob));
 
-/* ── 5. ПРАВИЛО БЕЗ ФІЛЬТРА ГЕО ──
-   Найнебезпечніший випадок: правило зветься «KG», а торкається всіх.
-   Через це колись вимкнуло TJ, тому рядок лишається. */
-const anyGeo = tg.tgBody([hit({ geos: [] })]);
-ok('правило без фільтра гео каже про це', /гео: будь-яке/.test(anyGeo), anyGeo);
+/* ── версія ── */
+const v = Number((FN.match(/FN_VERSION = 'rules-(\d+)'/) || [])[1]);
+ok('версію функції піднято не нижче rules-16', v >= 16,
+  (FN.match(/FN_VERSION = '[^']+'/) || [])[0]);
 
-/* ── 6. ЧЕРГА, ЯКА НЕ ГОЛОДУЄ З ХВОСТА ──
-   Токени йшли id.asc, а прогін має дедлайн: щойно він перестає
-   встигати, обривається ЗАВЖДИ один і той самий хвіст, і ті кабінети
-   не перевірялись ніколи. Зовні це й виглядає як «правило
-   спізнилось». */
+/* Черга, яка не голодує з хвоста — лишається, як і була. */
 ok('початок черги зсувається з часом',
   /const from = tokens\.length \? slot % tokens\.length : 0;/.test(FN), 'rotate');
 ok('і черга йде по колу',
   /tokens\.slice\(from\)\.concat\(tokens\.slice\(0, from\)\)/.test(FN), 'wrap');
-ok('а до кого не дійшли — названо у відповіді',
-  /skipped_total: tokens\.length - walked\.size/.test(FN), 'skipped');
-
-/* ── 7. ВЕРСІЯ ── */
-const v = Number((FN.match(/FN_VERSION = 'rules-(\d+)'/) || [])[1]);
-ok('версію функції піднято не нижче rules-15', v >= 15,
-  (FN.match(/FN_VERSION = '[^']+'/) || [])[0]);
 
 await done(null, null, []);

@@ -214,7 +214,7 @@ ok('по знімку — є', /Sync now/.test(tgText(stale)), tgText(stale));
 ok('і він не склеюється в кашу',
   !/ {2,}|— :|:\s*:/.test(tgText(stale)), JSON.stringify(tgText(stale)));
 ok('коли по знімку лише частина — так і сказано',
-  /1 із них/.test(tgText(mixed)), tgText(mixed));
+  /1 of them/.test(tgText(mixed)), tgText(mixed));
 
 /* ── 6. ВЕРСІЯ ── */
 const fnv = Number((FN.match(/FN_VERSION = 'rules-(\d+)'/) || [])[1]);

@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-15';
+const FN_VERSION = 'rules-16';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -266,13 +266,16 @@ const METRICS: Record<string, (a: Agg) => number | null> = {
    це ЗАВЖДИ link CTR, тобто переходи за посиланням ÷ покази, а не
    «CTR (all)» з Ads Manager, куди входять і лайки, і кліки по сторінці.
    Саме ця плутанина й змушує питати, чому правило спрацювало. */
+/* КОРОТКО, бо рядок тепер один на оголошення: «⚡CPC $2.17 > $1.10».
+   Довгі «cost per link click» переносились і розривали рядок навпіл.
+   CTR тут — однаково link CTR (див. вище), просто без слова link. */
 const METRIC_LABEL: Record<string, string> = {
-  spend: 'spend', imps: 'impressions', leads: 'leads',
-  link_clicks: 'link clicks', cpc_link: 'cost per link click',
-  cpl: 'cost per lead', cpm: 'CPM', ctr_link: 'link CTR',
-  regs: 'registrations', cpr: 'cost per registration',
-  purchases: 'purchases', cpp: 'cost per purchase',
-  installs: 'installs', cpi: 'cost per install'
+  spend: 'spend', imps: 'imps', leads: 'leads',
+  link_clicks: 'clicks', cpc_link: 'CPC',
+  cpl: 'CPL', cpm: 'CPM', ctr_link: 'CTR',
+  regs: 'regs', cpr: 'CPR',
+  purchases: 'deps', cpp: 'CPP',
+  installs: 'installs', cpi: 'CPI'
 };
 const METRIC_MONEY = ['spend', 'cpc_link', 'cpl', 'cpm', 'cpr', 'cpp', 'cpi'];
 
@@ -293,15 +296,29 @@ function fmtMetric(m: string, v: number | null): string {
    Показуємо і виміряне, і поріг: «link CTR 1.09% < 30%» пояснює
    рішення цілком, і видно навіть те, що поріг виставлено не тією
    міркою. */
+/* ЛИШЕ ТЕ, ЩО СПРАЦЮВАЛО. У правилі з OR умова, яка не спрацювала,
+   нічого не пояснює — вона лише подовжує рядок і змушує шукати, котра
+   з двох вирішила. В AND вирішили всі, тож там показуємо всі. */
 function whyHit(r: Rule, a: Agg): string {
-  return r.when.map(c => METRIC_LABEL[c.m] || c.m)
-    .map((label, i) => {
-      const c = r.when[i];
-      const f = METRICS[c.m];
-      return label + ' ' + fmtMetric(c.m, f ? f(a) : null)
-        + ' ' + c.op + ' ' + fmtMetric(c.m, c.v);
-    })
-    .join(r.match === 'any' ? ' OR ' : ' AND ');
+  const conds = r.match === 'any' ? r.when.filter(c => condOk(c, a) === true) : r.when;
+  return conds.map(c => {
+    const f = METRICS[c.m];
+    return (METRIC_LABEL[c.m] || c.m) + ' ' + fmtMetric(c.m, f ? f(a) : null)
+      + ' ' + c.op + ' ' + fmtMetric(c.m, c.v);
+  }).join(' · ');
+}
+
+/* ОДИН ЗНАЧОК 📲 НА ЛІДИ Й ІНСТАЛИ — тож показуємо одне число з двох.
+   Апка — інстали, веб — ліди. Коли є обидва, береться те, за чим
+   ганялось правило: правило на CPI про інстали, решта — про ліди. */
+const CONV_INSTALL = ['cpi', 'installs'];
+function convPick(r: Rule, a: Agg): 'leads' | 'installs' {
+  if (a.installs > 0 && a.leads === 0) return 'installs';
+  if (a.leads > 0 && a.installs === 0) return 'leads';
+  const inst = r.when.filter(c => CONV_INSTALL.includes(c.m));
+  // Обидва є — вирішує умова, що спрацювала; обидва нулі — сама умова.
+  if (a.leads > 0) return inst.some(c => condOk(c, a) === true) ? 'installs' : 'leads';
+  return inst.length ? 'installs' : 'leads';
 }
 
 /* ЛІД — ЦЕ ПОДІЯ ПІКСЕЛЯ, і більше нічого.
@@ -416,6 +433,27 @@ async function loadRules(base: string, hdr: Json, owner: string):
 function rulesFor(list: Rule[], tokenOwner: string): Rule[] {
   if (!tokenOwner) return [];
   return list.filter(r => r.owner === tokenOwner);
+}
+
+/* ═══ ЗВІТНЕ ПРАВИЛО НЕ МАЄ ПРАВА ЗАТУЛЯТИ БОЙОВЕ ═══
+
+   «мої оголошення перекручували бюджет, і правила ходять кожні 15хв,
+   вони мали давно вже зупинити оголошення».
+
+   Одна сутність — одне влучання за прогін: друге правило на тому
+   самому оголошенні пропускається (див. перевірку hits.some нижче).
+   Але хто «перший», вирішував порядок у списку, а не те, чи має
+   правило право діяти. Звітне «CTR<30%» стояло першим — і щочверть
+   години ловило оголошення раніше за бойове «Click OR Install TJ».
+   Бойове бачило «вже є влучання» і мовчало. На живих числах:
+   TJ_0iHVkg мав вимкнутись о 06:12 на $3.74, а вимкнувся о 09:12 на
+   $19.53 — щойно звітне правило вимкнули руками.
+
+   Тому бойові йдуть ПЕРШИМИ. Звітне пише рядок лише про те, чого
+   жодне бойове не взяло, — і нічого не блокує. Сортування стабільне:
+   усередині кожної групи порядок лишається тим, що в списку. */
+function ruleOrder(list: Rule[]): Rule[] {
+  return list.slice().sort((x, y) => Number(x.dry) - Number(y.dry));
 }
 
 /* ЦІНА ЗА ОДНУ ПОДІЮ — і що стоїть у знаменнику. */
@@ -905,7 +943,43 @@ type Hit = { rule: string; ruleName: string; level: string; id: string; name: st
                 Порожній список означає «будь-яке гео» — і саме це
                 найчастіше й дивує: правило з назвою «BR CLICK» без
                 фільтра торкається всього парку. */
-             geos: string[]; geoIn: string };
+             geos: string[]; geoIn: string;
+             /* Підписи для листа. Кабінети звуться «1», «3», тож без
+                номера браузера (профіля антидетекту) знайти, де саме
+                це сталось, можна було лише за довгим ID. */
+             cabName: string; browser: string;
+             // Яке з двох чисел стоїть під 📲. Див. convPick.
+             conv: 'leads' | 'installs' };
+
+/* ═══ НОМЕР БРАУЗЕРА ═══
+
+   Окремого поля в кабінеті немає. Номер профілю лежить у
+   accounts_mapping.profile, а ще — у назві токена: Farm_4175_<BM>.
+   Мапінг першим (його ведуть руками, він точніший), токен — запасом.
+   Таблиці може не бути — тоді просто без 🌐, прогін від цього не
+   падає. */
+async function browserMap(base: string, hdr: Json): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  let rows: Json[] = [];
+  try {
+    rows = await pgGet(base, hdr,
+      'accounts_mapping?select=account_id,profile,created_by&profile=not.is.null');
+  } catch (_e) { return out; }
+  rows.forEach(r => {
+    const acc = String(r.account_id || '').replace(/^act_/, '').trim();
+    const p = String(r.profile || '').trim();
+    if (!acc || !p) return;
+    out.set(String(r.created_by || '') + '|' + acc, p);
+    if (!out.has('|' + acc)) out.set('|' + acc, p);
+  });
+  return out;
+}
+
+function browserOf(map: Map<string, string>, owner: string, account: string,
+                   tokenLabel: string): string {
+  return map.get(owner + '|' + account) || map.get('|' + account)
+    || (String(tokenLabel || '').match(/^[A-Za-z]+_(\d+)_\d+$/) || [])[1] || '';
+}
 
 /* Пакетом, бо вимкнень за прогін може бути багато, а окремий запит на
    кожне — це і ліміти, і дедлайн. Пакет Graph тримає до 50. */
@@ -1019,190 +1093,82 @@ function money(v: number): string {
   return '$' + (Math.round(v * 100) / 100).toLocaleString('en-US',
     { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-/* Українська множина, а не «лід(ів)». Дужки в живому тексті читаються
-   як недороблений шаблон — а це повідомлення людина читає між справами
-   й швидко. */
-function plural(n: number, one: string, few: string, many: string): string {
-  const t = Math.abs(n) % 100, d = t % 10;
-  if (t > 10 && t < 20) return many;
-  if (d === 1) return one;
-  if (d >= 2 && d <= 4) return few;
-  return many;
-}
+/* ═══════════ ФОРМАТ ЛИСТА: ОДНЕ ОГОЛОШЕННЯ — ОДИН РЯДОК ═══════════
 
-/* ЧИСЛА — ТІЛЬКИ ТІ, ЩО ЩОСЬ КАЖУТЬ.
+   Узгоджено з людиною по кроках, на її ж числах за 2026-11-07:
 
-   Було «$45 · click $0.42 · lead ∞ · 0 lead(s)»: «lead ∞» і «0
-   lead(s)» — це двічі одне й те саме, бо нуль лідів і Є причина, чому
-   ціна нескінченна. Нескінченність при цьому виглядає як поломка, а не
-   як відповідь.
+     ⛔ 3 paused
+     ━━━━━━━━━━━━━━━
+     📋 "Click OR Lead KG" · from $4.00 · 🌍 KG
+     🌐 4175 › 🏦 3 › 📣 MPlay_KG_10708-y3wz_07/11 001
+     ⛔ KG_JS_633 — 💸$5.65 🖱0 📲0 ⚡CPC ∞ > $2.00
 
-   Тому ціну показуємо лише там, де є з чого її рахувати, а решту —
-   лише коли воно не нуль. Реєстрації й депозити теж: правило могло
-   ганятись саме за ними, і нуль, якого не видно, нічого не псує, а
-   видимий нуль — псує рядок. */
-/* ДВА РЯДКИ, А НЕ ОДИН. Скільки відкрутилось і скільки подій — це
-   факт; CPC і CPL — ціна. В одному рядку через крапки вони зливались у
-   кашу, у якій око шукало число, за яким спрацювало правило. */
-function metricCounts(h: Hit): string {
-  const a = h.agg;
-  const out = [money(a.spend)];
-  /* КЛІКИ. Без них «CPC $10.09» читається як щось дивне, а з ними
-     відповідь очевидна: один клік за десять доларів. Саме клік по
-     ПОСИЛАННЮ — той самий, із якого рахується cpc_link у правилах;
-     інакше число поруч не сходилось би з порогом, за яким вимкнули. */
-  if (a.linkClicks) {
-    out.push(a.linkClicks + ' ' + plural(a.linkClicks, 'клік', 'кліки', 'кліків'));
-  }
-  /* «0 лідів» В АПП-КАМПАНІЇ — НЕ ФАКТ, А ХИБНА ТРИВОГА.
+     🌐 4327 › 🏦 1 › 📣 …TR211003_1058595677211850_TJ
+     ⛔ TJ_0iHVkg — 💸$19.53 🖱9 📲3 💰1 ⚡CPC $2.17 > $1.10
 
-     Подій ліда в ній немає взагалі, тож нуль там стоятиме завжди, хоч
-     би скільки вона приносила. У повідомленні, яке читають із
-     телефона, цей нуль — перше, на що падає око, і читається він як
-     «зовсім нічого». Тому коли лідів немає, а інстали є, місце
-     головного числа займають інстали: вони там і є тим, заради чого
-     кампанія крутилась.
+   Чому саме так:
+     — лінія НАД кожним правилом, а одразу під назвою правила порожнього
+       рядка немає: лінія ділить правила, порожній рядок — кабінети;
+     — браузер ПЕРЕД кабінетом: кабінети звуться «1», «3», і шукають їх
+       у профілі антидетекту, а не за назвою;
+     — ліди й інстали під одним 📲 (див. convPick);
+     — довгу кампанію ріжемо З ПОЧАТКУ: гео й ID стоять у кінці назви;
+     — англійською: мета проєкту — увесь інтерфейс англійською.
 
-     Коли є і ті, й ті — показуємо обоє: вибирати за людину, що з них
-     її цікавить, ми не беремось. */
-  if (a.leads > 0 || !a.installs) {
-    out.push(a.leads + ' ' + plural(a.leads, 'лід', 'ліди', 'лідів'));
-  }
-  if (a.regs) out.push(a.regs + ' реєстр.');
-  if (a.purchases) out.push(a.purchases + ' деп.');
-  /* Повним словом, а не «інст.»: коли лідів немає, це головне число
-     рядка, і скорочувати його до чотирьох літер поруч із повним
-     «3 ліди» в сусідньому повідомленні означає зробити його дрібнішим,
-     ніж воно є. */
-  if (a.installs) {
-    out.push(a.installs + ' ' + plural(a.installs, 'інстал', 'інстали', 'інсталів'));
-  }
-  return out.join(' \u00b7 ');
-}
+   Без parse_mode, як і раніше: назви рясніють «_» і дужками, і
+   розмітка Telegram на них відповідає 400. */
 
-/* CPC і CPL, а не «клац» і «лід»: інакше «1 лід · лід $21.00» каже
-   словом «лід» дві різні речі підряд — кількість і ціну. А скорочення
-   тут рідніші за переклад: ними ж людина назвала свої правила. */
-function metricPrices(h: Hit): string {
-  const a = h.agg;
-  const out: string[] = [];
-  const cpc = METRICS.cpc_link(a);
-  if (cpc != null && cpc !== Infinity) out.push('CPC ' + money(cpc));
-  if (a.leads > 0) {
-    const cpl = METRICS.cpl(a);
-    if (cpl != null && cpl !== Infinity) out.push('CPL ' + money(cpl));
-  }
-  /* CPI поруч із CPL, а не замість: кампанія буває і з лідами, і з
-     інсталами водночас, і вибирати за неї, що показати, ми не
-     беремось. Немає інсталів — немає й рядка. */
-  if (a.installs > 0) {
-    const cpi = METRICS.cpi(a);
-    if (cpi != null && cpi !== Infinity) out.push('CPI ' + money(cpi));
-  }
-  return out.join(' \u00b7 ');
-}
+const TG_LINE = '━'.repeat(15);
+const TG_CAMP_MAX = 30;
 
-/* Лишаємо для місць, де потрібен один рядок (підсумки, журнал). */
-function metricLine(h: Hit): string {
-  return [metricCounts(h), metricPrices(h)].filter(Boolean).join(' \u00b7 ');
-}
-
-/* ЧОМУ АДРЕСИ БІЛЬШЕ НЕ ТРИ РЯДКИ.
-
-   Було так: заголовок правила, під ним «гео: …», лінія, «cab: …»,
-   «camp: …», ще лінія — і аж тоді оголошення. На три вимкнені
-   оголошення з одного кабінета це повторювалось тричі, і читати
-   доводилось те саме втретє, щоб дістатись до того, що відрізняється.
-
-   Тепер кабінет і кампанія — це ЗАГОЛОВКИ ГРУП (див. tgBody), тобто
-   кожен написаний рівно один раз, а під ним те, що в ньому сталось.
-   Від старого блоку лишився один суфікс до назви правила.
-
-   ГЕО ЛИШАЄТЬСЯ, і це не впертість. Питання «чому правило, назване
-   BR, вимкнуло TJ» має рівно дві відповіді, і ззовні вони однакові:
-   або в правилі НЕМА фільтра (назва ні на що не впливає), або код
-   знайшовся в назві адсета, якої в листі не видно. Один суфікс
-   замість трьох рядків — і питання далі закрите.
-
-   ПОРІГ СПЕНДУ — ТЕ, ЧОГО ТУТ НЕ БУЛО ВЗАГАЛІ, і саме його бракувало
-   найбільше: «чому аж $10.09, воно ж крутило годинами» має відповідь
-   «бо до $10 правило не мало права дивитись», і її видно лише тут. */
-function ruleScope(h: Hit): string {
-  const geo = (h.geos && h.geos.length)
-    ? ' · гео ' + (h.geoIn || h.geos.join('/'))
-    : ' · гео: будь-яке';
-  return ' · від ' + money(h.minSpend) + geo;
-}
-
-/* ЧОМУ ТУТ БІЛЬШЕ НЕМАЄ ПІДПИСУ «ТІЛЬКИ ЗВІТ».
-
-   Був цілий абзац: що нічого не вимкнулось, яке саме правило не має
-   права вимикати і де це вмикається. Написаний він був правильно — і
-   все одно пішов, бо в кожному повідомленні повторював те, що вже
-   сказано значком 👁 у заголовку й у кожному рядку.
-
-   Повідомлення читають у телефоні, між справами. Три рядки пояснення
-   під кожним звітом — це три рядки, які пролистують, і разом з ними
-   пролистують те, заради чого звіт і прийшов. Де вмикається право
-   вимикати, людина дізнається один раз; щоразу — зайве.
-
-   Саме право нікуди не поділось: «dry» як було, так і лишається, і
-   значок у рядку про нього каже. */
-
-/* ГРУПУЄМО, А НЕ ПЕРЕЛІЧУЄМО.
-
-   Кожне влучання йшло пʼятьма рядками, і всі пʼять починались
-   однаково. Коли правило чіпляє пʼять оголошень однієї кампанії — це
-   двадцять пʼять рядків, із яких десять — та сама адреса й та сама
-   назва правила, виписані пʼять разів поспіль. У телефоні, між
-   справами, однакові блоки просто зливаються, і щоб знайти, ЩО саме
-   вимкнулось, доводиться вчитуватись у кожен.
-
-   Тому спільне — правило, кабінет і кампанія — пишемо ОДИН раз
-   заголовком групи. Під ним лишається тільки те, що в кожного своє.
-
-   Ключ групи бере кампанію лише там, де сутність не є самою кампанією:
-   інакше дві кампанії під одним правилом злились би в одну групу з
-   чужим підписом. */
-
-/* Позначка на початку рядка — єдиний якір, за який чіпляється око.
-   Саме тому вона стоїть у НУЛЬОВІЙ колонці, а все інше з відступом:
-   довга назва оголошення переноситься, і без якоря не видно, де
-   закінчилось одне й почалось наступне. */
+/* Значок на початку рядка — єдиний якір для ока. */
 const tgMark = (h: Hit): string => h.dry ? '\u{1F441}' : h.ok ? '⛔' : '⚠';
 
-/* ЩО ЦЕ ЗА СУТНІСТЬ — ПІДПИСОМ, А НЕ ДОГАДКОЮ. «⛔ Mostbet_KG_new»
-   читається як одне оголошення, хоч це могла бути кампанія на сорок.
-   Підпис перед назвою коштує чотири символи й знімає питання. */
+/* Не-оголошення підписуємо: «⛔ Mostbet_KG_new» читається як одне
+   оголошення, хоч це могла бути кампанія на сорок. */
 const TG_WHAT: Record<string, string> = {
-  ad: 'ad', adset: 'adset', campaign: 'camp' };
+  ad: '', adset: 'adset: ', campaign: 'campaign: ' };
 
-const tgOne = (h: Hit, pad: string): string =>
-  pad + tgMark(h) + ' ' + (TG_WHAT[h.level] || h.level) + ': ' + h.name
-  + '\n' + pad + '   ' + metricCounts(h)
-  + (metricPrices(h) ? '\n' + pad + '   ' + metricPrices(h) : '')
-  /* «Чому» — найцінніший рядок: саме він відповідає на «та в мене там
-     інші числа». Стрілка, а не крапка: це не ще один показник, це
-     пояснення рішення. */
-  + (h.why ? '\n' + pad + '   \u21B3 ' + h.why : '')
-  /* Помилка — окремим рядком і зі своїм знаком. Останньою з пʼяти
-     однакових вона губилась, хоч це єдиний рядок, який означає, що
-     вимкнути НЕ вдалось і гроші далі йдуть. */
-  + (h.error ? '\n' + pad + '   ⚠ ' + h.error : '');
+function tgCamp(name: string): string {
+  const s = String(name || '').trim();
+  return s.length > TG_CAMP_MAX ? '…' + s.slice(-(TG_CAMP_MAX - 1)) : s;
+}
 
-/* ═══════════ ТРИ РІВНІ ГРУПУВАННЯ ═══════════
+/* Числа рядка. 📲 — завжди, навіть нулем: саме «0» тут і є причиною
+   більшості вимкнень. Реєстрації й депозити — лише коли не нуль. */
+function tgCounts(h: Hit): string {
+  const a = h.agg;
+  const conv = h.conv === 'installs' ? a.installs : a.leads;
+  return '\u{1F4B8}' + money(a.spend)
+    + ' \u{1F5B1}' + a.linkClicks
+    + ' \u{1F4F2}' + conv
+    + (a.regs ? ' \u{1F4DD}' + a.regs : '')
+    + (a.purchases ? ' \u{1F4B0}' + a.purchases : '');
+}
 
-   «якщо вимкнуто два оголошення але з одного кабу, то групуємо в
-   один каб а не пишемо два рази, так само про компанію».
+const tgOne = (h: Hit): string =>
+  tgMark(h) + ' ' + (TG_WHAT[h.level] || '') + h.name + ' — ' + tgCounts(h)
+  + (h.why ? ' ⚡' + h.why : '')
+  /* Помилка окремим рядком: це єдине, що означає «НЕ вимкнулось, гроші
+     йдуть далі», і в кінці довгого рядка вона б загубилась. */
+  + (h.error ? '\n   ⚠ ' + h.error : '');
 
-   Правило → кабінет → кампанія → оголошення. Кожен заголовок
-   написаний рівно один раз, і відступ показує, що кому належить.
-   Доти кабінет і кампанія повторювались у кожній групі, а групою
-   була трійка «правило+кабінет+кампанія» — тобто три вимкнені
-   оголошення з одного кабінета давали три однакові шапки.
+/* 🌐 браузер › 🏦 кабінет › 📣 кампанія. Кампанію не пишемо, коли
+   вимкнена сама кампанія: було б те саме ім'я двічі поспіль. */
+function tgPath(h: Hit): string {
+  const camp = h.level === 'campaign' ? '' : tgCamp(h.campaignName);
+  return [h.browser ? '\u{1F310} ' + h.browser : '',
+          '\u{1F3E6} ' + (h.cabName || h.account || '?'),
+          camp ? '\u{1F4E3} ' + camp : ''].filter(Boolean).join(' › ');
+}
 
-   Відступом, а не лініями з підкреслень: лінії ділили повідомлення
-   на смуги, між якими однаково не було видно, що з чим пов'язане. */
+function tgScope(h: Hit): string {
+  return ' · from ' + money(h.minSpend) + ' · \u{1F30D} '
+    + (h.geos && h.geos.length ? h.geos.join('/') : 'any geo');
+}
+
+/* Групи в порядку появи, а не за алфавітом: як сталось, так і
+   написано. */
 function tgGroup<T>(list: T[], key: (x: T) => string): [string, T[]][] {
   const order: string[] = [];
   const by = new Map<string, T[]>();
@@ -1214,63 +1180,42 @@ function tgGroup<T>(list: T[], key: (x: T) => string): [string, T[]][] {
   return order.map(k => [k, by.get(k) as T[]]);
 }
 
-/* Кампанію не підписуємо там, де сама вимкнена сутність і Є
-   кампанією: вийшло б те саме ім'я двічі поспіль. */
-function tgCamps(rows: Hit[]): string {
-  return tgGroup(rows, h => h.level === 'campaign'
-    ? '' : String(h.campaignName || '').trim())
-    .map(([name, list]) => (name ? '  \u{1F4E3} ' + name + '\n' : '')
-      + list.map(h => tgOne(h, name ? '   ' : '  ')).join('\n'))
-    .join('\n');
-}
-
+/* Правило → кабінет → кампанія. Шлях кампанії пишемо раз на свої
+   оголошення; між кабінетами — порожній рядок. */
 function tgBody(hits: Hit[]): string {
   return tgGroup(hits, h => h.ruleName).map(([rule, mine]) =>
-    '\u{1F4CB} Правило: «' + rule + '»' + ruleScope(mine[0]) + '\n'
-    + tgGroup(mine, h => h.account || '?').map(([acc, rows]) =>
-        ' \u{1F3E6} ' + acc + '\n' + tgCamps(rows)).join('\n')
-  ).join('\n\n');
+    TG_LINE + '\n\u{1F4CB} "' + rule + '"' + tgScope(mine[0]) + '\n'
+    + tgGroup(mine, h => h.account || '?').map(([_acc, rows]) =>
+        tgGroup(rows, h => tgPath(h)).map(([path, list]) =>
+          path + '\n' + list.map(tgOne).join('\n')).join('\n')
+      ).join('\n\n')
+  ).join('\n');
 }
 
 function tgText(hits: Hit[]): string {
   const real = hits.filter(h => !h.dry && h.ok).length;
   const dry = hits.filter(h => h.dry).length;
   const failed = hits.filter(h => !h.dry && !h.ok).length;
-  /* Підсумок окремими шматками через крапку, а не одним реченням із
-     комами: «Paused 3, 1 more only reported, 1 could not be paused»
-     читається до кінця, перш ніж стає зрозуміло, скільки всього сталось
-     поганого. */
-  const head = [real ? '⛔ Вимкнено ' + real : '',
-                dry ? '\u{1F441} ' + dry + ' лише показано' : '',
-                failed ? '⚠ ' + failed + ' не вдалось' : '']
-    .filter(Boolean).join(' · ') + '\n\n';
+  const head = [real ? '⛔ ' + real + ' paused' : '',
+                dry ? '\u{1F441} ' + dry + ' report only' : '',
+                failed ? '⚠ ' + failed + ' failed' : '']
+    .filter(Boolean).join(' · ') + '\n';
 
-  /* ЗВІДКИ ЧИСЛА — тільки коли вони НЕ свіжі.
-
-     Дописувати «за свіжими даними» до кожного повідомлення означало б
-     привчити не читати цей рядок, і тоді єдиний раз, коли він справді
-     щось означає, його теж не прочитають. Тож мовчимо, поки все як
-     має бути, і кажемо, коли ні. */
+  /* ЗВІДКИ ЧИСЛА — тільки коли вони НЕ свіжі. Дописувати «live data»
+     щоразу означало б привчити не читати цей рядок. */
   const old = hits.filter(h => h.fromSnap).length;
   const note = old
-    ? '\u26A0 ' + (old === hits.length
-        ? 'Числа з останнього Sync now'
-        : old + ' із них — за числами з останнього Sync now')
-      + ': Facebook не віддав свіжі.\n\n'
+    ? '⚠ ' + (old === hits.length
+        ? 'Numbers from the last Sync now'
+        : old + ' of them judged on the last Sync now')
+      + ': Facebook did not return fresh ones.\n'
     : '';
 
-
-  /* Підпис рахуємо В стелю, а не поверх неї. Раніше його дописували
-     після обрізання — і повідомлення, що тільки-но влізло, разом із
-     підписом уже не влазило. Telegram на таке відповідає помилкою, і
-     зникає все повідомлення, а не зайвий рядок.
-
-     Відрізаємо тепер ВЛУЧАННЯ, а не готові рядки: рядок із середини
-     групи, викинутий сам по собі, лишив би заголовок без того, що під
-     ним, або число без пояснення. */
+  /* Підпис рахуємо В стелю, і відрізаємо ВЛУЧАННЯ, а не рядки: інакше
+     лишився б заголовок без того, що під ним. */
   let keep = hits.slice(0, TG_MAX);
   const build = (list: Hit[]) => head + note + tgBody(list)
-    + (hits.length > list.length ? '\n\n…і ще ' + (hits.length - list.length) : '');
+    + (hits.length > list.length ? '\n\n…and ' + (hits.length - list.length) + ' more' : '');
   while (keep.length > 1 && build(keep).length > TG_LIMIT) keep = keep.slice(0, -1);
   return build(keep);
 }
@@ -1414,6 +1359,8 @@ Deno.serve(async (req) => {
   if (!tokens.length) return reply({ fn: FN_VERSION, cron, rules: use.length, note: 'no tokens' });
 
   const deadline = Date.now() + DEADLINE_MS;
+  // Номери браузерів для листа — один запит на прогін.
+  const browsers = await browserMap(base, hdr);
   const problems: string[] = [];
   const hits: Hit[] = [];
   let scanned = 0, cabinets = 0, stale = 0;
@@ -1495,7 +1442,8 @@ Deno.serve(async (req) => {
       if (Date.now() > deadline) { problems.push('ran out of time'); break; }
       const account = String(a.account_id || '');
       if (!account || String(a.status || '') !== 'active') continue;
-      const mine = ours.filter(r => !r.cabs.length || r.cabs.includes(account));
+      // Бойові першими — інакше звітне правило затуляє їх. Див. ruleOrder.
+      const mine = ruleOrder(ours.filter(r => !r.cabs.length || r.cabs.includes(account)));
       if (!mine.length) continue;
       cabinets++;
       const mySeen = seenOf(String(a.team_name || t.team_name || ''));
@@ -1613,7 +1561,10 @@ Deno.serve(async (req) => {
                          цього числа в листі питання виникає щоразу. */
                       minSpend: r.minSpend,
                       geos: r.geo.slice(),
-                      geoIn: gw ? gw.code + ' \u2190 ' + gw.what + ' «' + gw.name + '»' : '' });
+                      geoIn: gw ? gw.code + ' \u2190 ' + gw.what + ' «' + gw.name + '»' : '',
+                      cabName: String(a.name || ''),
+                      browser: browserOf(browsers, tokenOwner, account, String(t.label || '')),
+                      conv: convPick(r, e.agg) });
         });
       }
     }
