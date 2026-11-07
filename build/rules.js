@@ -112,6 +112,75 @@ window.rlInit = async function () {
   } catch (e) { /* немає налаштування — починаємо з чистого */ }
   rlPaint();
   rlLogLoad();
+  rlCabsLoad();
+};
+
+/* ══ ЧИ Є ТАКИЙ КАБІНЕТ ══
+
+   Поле «Cabinets» — вільний текст, і помилка в ньому нічим не
+   видна: назва замість ID, зайва цифра — і правило мовчки не діє
+   НІДЕ, а в списку стоїть спокійне «1 cabinet(s)». Функція бере
+   кабінети лише свого автора, тож і звіряємо з тими самими: твоїми.
+
+   null — ще не завантажили (тоді й не лякаємо попередженням). */
+let rlCabs = null;
+
+async function rlCabsLoad() {
+  try {
+    let q = sb.from('fb_accounts').select('account_id,name,status,missing_since,created_by');
+    if (window.myUid) q = q.eq('created_by', window.myUid);
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    rlCabs = new Map();
+    (data || []).forEach(r => {
+      if (r.missing_since) return;
+      rlCabs.set(String(r.account_id || '').replace(/^act_/, ''),
+                 { name: String(r.name || ''), status: String(r.status || '') });
+    });
+  } catch (e) { rlCabs = null; }
+  rlPaint();
+  rlCabNote();
+}
+
+/* Ті самі стани, за якими стежить функція (CAB_WATCH у fb-rules).
+   Кабінет поза ними правила пропускають — і про це теж кажемо. */
+const RL_CAB_WATCH = ['active', 'grace', 'unsettled'];
+
+/* Розбір списку: хто знайшовся, кого немає, хто вибув (бан тощо). */
+function rlCabCheck(ids) {
+  const out = { known: [], unknown: [], off: [] };
+  if (!rlCabs) return out;
+  ids.forEach(id => {
+    const c = rlCabs.get(id);
+    if (!c) out.unknown.push(id);
+    else if (!RL_CAB_WATCH.includes(c.status)) out.off.push(id);
+    else out.known.push(id);
+  });
+  return out;
+}
+const rlCabLabel = id => {
+  const c = rlCabs && rlCabs.get(id);
+  return c && c.name ? c.name + ' (…' + id.slice(-4) + ')' : id;
+};
+
+window.rlCabNote = function () {
+  const el = document.getElementById('rl-cab-note');
+  const inp = document.getElementById('rl-f-cabs');
+  if (!el || !inp) return;
+  const ids = String(inp.value || '').split(/[,\s]+/)
+    .map(x => x.replace(/^act_/, '').trim()).filter(Boolean);
+  if (!ids.length) { el.className = 'rl-note'; el.textContent = 'Blank — every cabinet of yours.'; return; }
+  if (!rlCabs) { el.className = 'rl-note'; el.textContent = ''; return; }
+  const r = rlCabCheck(ids);
+  const parts = [];
+  if (r.unknown.length) parts.push('⚠ ' + r.unknown.join(', ')
+    + (r.unknown.length > 1 ? ' — not your cabinets' : ' — not one of your cabinets')
+    + ': the rule will never touch ' + (r.unknown.length > 1 ? 'them' : 'it'));
+  if (r.off.length) parts.push('⚠ ' + r.off.map(id => rlCabLabel(id) + ' is '
+    + rlCabs.get(id).status).join(', ') + ' — rules skip it until it is back');
+  if (r.known.length) parts.push('✓ ' + r.known.map(rlCabLabel).join(', '));
+  el.className = 'rl-note' + (r.unknown.length || r.off.length ? ' is-warn' : '');
+  el.textContent = parts.join(' · ');
 };
 
 async function rlSave() {
@@ -270,8 +339,20 @@ function rlPaint() {
       <div class="rl-scope">from $${rlEsc(r.minSpend == null ? 10 : r.minSpend)} spent${
         (r.geo || []).length ? ' · geo ' + rlEsc(r.geo.join('/')) : ' · any geo'}${
         r.nameHas ? ' · FB name has “' + rlEsc(r.nameHas) + '”' : ''}${
-        (r.cabs && r.cabs.length) ? ' · ' + r.cabs.length + ' cabinet(s)' : ' · all cabinets'}</div>
+        rlCabScope(r.cabs)}</div>
     </div>`).join('') + (rlEdit === -1 ? rlForm(rlBlank(), -1) : '');
+}
+
+/* У списку правил — назви кабінетів, а не «2 cabinet(s)», і голосно
+   про ті, яких немає: саме такий рядок і ховав мовчазне правило. */
+function rlCabScope(cabs) {
+  if (!cabs || !cabs.length) return ' · all cabinets';
+  const r = rlCabCheck(cabs);
+  const names = rlCabs ? cabs.filter(id => rlCabs.has(id)).map(rlCabLabel) : [];
+  const label = names.length ? names.join(', ') : cabs.length + ' cabinet(s)';
+  return ' · ' + rlEsc(label)
+    + (r.unknown.length ? ' · <b class="rl-run-warn">⚠ ' + r.unknown.length
+        + ' unknown cabinet ID' + (r.unknown.length > 1 ? 's' : '') + '</b>' : '');
 }
 
 function rlBlank() {
@@ -340,7 +421,9 @@ function rlForm(r, i) {
             <button type="button" class="rl-mini is-bad" onclick="rlDropHas()">✕</button>
           </span></label>` : ''}
         <label class="rl-f"><span class="rl-f-l">Cabinets (blank = all)</span>
-          <input class="rl-in is-wide" id="rl-f-cabs" placeholder="1149896616961527, 778" value="${rlEsc((r.cabs || []).join(', '))}"></label>
+          <input class="rl-in is-wide" id="rl-f-cabs" placeholder="1149896616961527, 778"
+            oninput="rlCabNote()" value="${rlEsc((r.cabs || []).join(', '))}"></label>
+        <span id="rl-cab-note" class="rl-note"></span>
       </div>
     </div>
 
@@ -434,8 +517,8 @@ window.rlDropHas = function () {
   if (rlEdit >= 0 && rlRules[rlEdit]) { rlRules[rlEdit].nameHas = ''; rlPaint(); }
 };
 
-window.rlAdd = function () { rlEdit = -1; rlPaint(); rlGeoNote(); };
-window.rlOpen = function (i) { rlEdit = i; rlPaint(); rlGeoNote(); };
+window.rlAdd = function () { rlEdit = -1; rlPaint(); rlGeoNote(); rlCabNote(); };
+window.rlOpen = function (i) { rlEdit = i; rlPaint(); rlGeoNote(); rlCabNote(); };
 window.rlCancel = function () { rlEdit = null; rlPaint(); };
 
 /* AND/OR підписаний між умовами, тож зміна селекта мусить перемалювати
@@ -459,12 +542,19 @@ function rlDraft(draft) {
   const keep = i >= 0 ? { ...rlRules[i], ...draft } : { ...rlBlank(), ...draft };
   const box = document.getElementById('rl-form');
   if (box) box.outerHTML = rlForm(keep, i);
+  rlGeoNote(); rlCabNote();
 }
 
 window.rlPut = async function (i) {
   const v = rlFromForm();
   if (!v.when.length) { if (typeof toast === 'function') toast('A rule needs at least one condition', 'warn'); return; }
   if (!v.name) v.name = rlWords(v) || 'rule';
+  /* Зберігаємо все одно — може, кабінет ще не синхронізували. Але
+     мовчки не зберігаємо: правило з чужим ID не діятиме там ніде. */
+  const bad = rlCabCheck(v.cabs).unknown;
+  if (bad.length && typeof toast === 'function')
+    toast('Saved, but ' + bad.join(', ') + (bad.length > 1 ? ' are' : ' is')
+      + ' not your cabinet — the rule will not touch ' + (bad.length > 1 ? 'them' : 'it'), 'warn');
   const base = i >= 0 ? rlRules[i] : rlBlank();
   const next = { ...base, ...v, on: base.on !== false };
   if (i >= 0) rlRules[i] = next; else rlRules.push(next);

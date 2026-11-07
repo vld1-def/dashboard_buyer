@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-16';
+const FN_VERSION = 'rules-17';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -772,6 +772,25 @@ function statusWord(code: number): string {
 
 type CabState = { code: number; word: string; reason: string };
 
+/* ═══ GRACE І UNSETTLED — ПІД НАГЛЯДОМ, А НЕ ЗА БОРТОМ ═══
+
+   «grace перевіряти коли вийде з цього статусу».
+
+   Grace — Facebook не зміг списати оплату, але дав час: реклама ДАЛІ
+   крутиться й витрачає. Unsettled — не оплачено; реклама зазвичай
+   стоїть, але кабінет оживає, щойно оплата пройде. Доти обидва стани
+   читались як «мертвий»: правила пропускали кабінет, а повернути його
+   в 'active' міг лише ручний Sync now. Тобто в найризикованіший момент
+   кабінет лишався без нагляду — і так і лишався, поки хтось не
+   згадає натиснути.
+
+   Тепер правила судять і їх. Мертвими лишаються бан, закриття й
+   розгляд — там нічого не крутиться й не закрутиться само. */
+const CAB_WATCH = ['active', 'grace', 'unsettled'];
+function cabWatched(word: string): boolean {
+  return CAB_WATCH.includes(String(word || ''));
+}
+
 /* null означає «спитати не вийшло» — а це вже звичайна відмова
    зв'язку, і поводитись із нею треба як раніше. Мовчки вважати
    кабінет мертвим через те, що не змогли спитати, не можна. */
@@ -1441,7 +1460,8 @@ Deno.serve(async (req) => {
     for (const a of accs) {
       if (Date.now() > deadline) { problems.push('ran out of time'); break; }
       const account = String(a.account_id || '');
-      if (!account || String(a.status || '') !== 'active') continue;
+      // Не лише active: grace і unsettled теж під наглядом. Див. CAB_WATCH.
+      if (!account || !cabWatched(String(a.status || ''))) continue;
       // Бойові першими — інакше звітне правило затуляє їх. Див. ruleOrder.
       const mine = ruleOrder(ours.filter(r => !r.cabs.length || r.cabs.includes(account)));
       if (!mine.length) continue;
@@ -1457,6 +1477,15 @@ Deno.serve(async (req) => {
         ads = await liveOf(String(t.token), account, leads, m => problems.push(m));
         mySeen.live++;
         live++;
+        /* ВИХІД ІЗ GRACE/UNSETTLED — БЕЗ SYNC NOW. У базі кабінет не
+           active, а Facebook щойно віддав числа: питаємо стан і, якщо
+           він змінився, пишемо. Один зайвий запит — лише для таких
+           кабінетів, а не для всього парку. */
+        const was = String(a.status || '');
+        if (was !== 'active') {
+          const st = await cabState(String(t.token), account);
+          if (st && st.word !== was) await markDead(base, hdr, tokenOwner, account, st);
+        }
       } catch (e) {
         /* СПЕРШУ З'ЯСОВУЄМО, ЧИ КАБІНЕТ УЗАГАЛІ ЖИВИЙ.
 
@@ -1465,7 +1494,12 @@ Deno.serve(async (req) => {
            випадку знімок — це цифри з минулого життя, і судити по них
            означає вимикати в кабінеті, де вже нічого не крутиться. */
         const st = await cabState(String(t.token), account);
-        if (st && st.word !== 'active') {
+        /* Мертвий — лише той, за ким більше не стежимо. Grace/unsettled
+           записуємо (щоб база знала правду) і йдемо далі, як на
+           звичайному збої зв'язку — на знімок. */
+        if (st && cabWatched(st.word) && st.word !== String(a.status || ''))
+          await markDead(base, hdr, tokenOwner, account, st);
+        if (st && !cabWatched(st.word)) {
           dead++;
           mySeen.dead++;
           /* Пишемо стан одразу — щоб наступний прогін цього кабінета

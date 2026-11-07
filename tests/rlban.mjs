@@ -127,7 +127,32 @@ ok('а стан записуємо до того, як вийти',
 /* «Не змогли спитати» мусить і далі йти на знімок — інакше хвилинний
    збій Graph залишав би правила сліпими. */
 ok('коли стан невідомий — усе як було, знімок',
-  /if \(st && st\.word !== 'active'\)/.test(branch), branch.slice(0, 120));
+  /if \(st && !cabWatched\(st\.word\)\)/.test(branch), branch.slice(0, 120));
+
+/* ── 4a. GRACE І UNSETTLED ПІД НАГЛЯДОМ ──
+   «grace перевіряти коли вийде з цього статусу». У grace реклама ще
+   крутиться; пропускати такий кабінет до ручного Sync now означало
+   лишити його без правил саме тоді, коли гроші під ризиком. */
+const watchSrc = grab(FN, /const CAB_WATCH = [^\n]*\n[\s\S]*?\n}/, 'cabWatched');
+const cabWatched = new Function(
+  watchSrc.replace(/\(word: string\): boolean/, '(word)') + '\nreturn cabWatched;')();
+ok('grace — під наглядом', cabWatched('grace') === true);
+ok('unsettled — теж', cabWatched('unsettled') === true);
+ok('active — звісно', cabWatched('active') === true);
+ok('бан, закриття, розгляд — ні',
+  ['banned', 'closed', 'closing', 'review', 'unknown', ''].every(w => !cabWatched(w)));
+ok('прогін бере кабінети саме через cabWatched',
+  /if \(!account \|\| !cabWatched\(String\(a\.status \|\| ''\)\)\) continue;/.test(FN));
+ok('grace на відмові Graph записується, але кабінет не мертвий',
+  branch.indexOf('cabWatched(st.word) && st.word !==') >= 0
+  && branch.indexOf('cabWatched(st.word) && st.word !==') < branch.indexOf('if (st && !cabWatched'));
+/* Вихід із grace без Sync now: кабінет не active, а числа прийшли —
+   питаємо стан і пишемо, якщо змінився. */
+const okBranch = grab(FN, /ads = await liveOf[\s\S]*?\} catch \(e\) \{/, 'гілка вдалого запиту');
+ok('після вдалого запиту не-active кабінет перепитується',
+  /if \(was !== 'active'\)/.test(okBranch) && /cabState\(/.test(okBranch), okBranch.slice(0, 200));
+ok('і новий стан пишеться лише коли змінився',
+  /if \(st && st\.word !== was\) await markDead/.test(okBranch));
 
 /* ── 5. ПРО ЦЕ КАЖУТЬ ── */
 ok('кількість мертвих є у відповіді', /\n\s*dead, telegram_dead:/.test(FN));
