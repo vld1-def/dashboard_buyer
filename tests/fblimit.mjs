@@ -130,8 +130,14 @@ ok('і звужений до команди підтвердженого каб�
   /fb_tokens[\s\S]{0,140}team_name=eq\./.test(CODE));
 ok('кабінет лишився за RLS того, хто покликав',
   /rest\(base, hdr, 'fb_accounts/.test(CODE));
+/* У шляху кнопки (людина з JWT) — рівно один сервісний запит. Розклад
+   (runPlans) людини не має, тож читає сервісним ключем, але звужує
+   кабінет до АВТОРА запису — це перевіряє rlplan.mjs. */
+const USER_PATH = CODE.slice(0, CODE.indexOf('async function capFlow'));
 ok('сервісним ключем читається рівно один запит — за токеном',
-  (CODE.match(/rest\(base, svcHdr/g) || []).length === 1);
+  (USER_PATH.match(/rest\(base, svcHdr/g) || []).length === 1);
+ok('розклад шукає кабінет серед кабінетів автора запису',
+  /fb_accounts\?account_id=eq\.' \+ encodeURIComponent\(bare\)\s*\+ '&created_by=eq\.' \+ encodeURIComponent\(owner\)/.test(CODE));
 ok('брак ключа названий кроком розгортання', /SERVICE_ROLE_KEY/.test(CODE));
 
 /* Токен у відповідь не потрапляє — та сама межа, що у fb-post. */

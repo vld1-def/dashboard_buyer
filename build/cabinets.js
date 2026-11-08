@@ -90,7 +90,7 @@ const CAB_EXTRA = [
    з одним питанням — що зараз крутиться; а «всі» означає ще й десятки
    порожніх та без токена, крізь які це питання доводиться шукати.
    Решта станів — на відстані одного кліку по плитці. */
-let cabRows = [], cabFilter = 'running', cabGroup = 'agent', cabSel = null;
+let cabRows = [], cabFilter = 'running', cabGroup = 'profile', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
@@ -1121,6 +1121,9 @@ async function cabSnapLoad() {
     cabSnapRows = [];
     cabSnapErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
   }
+  /* Заплановані зміни ліміту — тим самим заходом: після Sync now
+     виконане вже не має висіти в картці як «заплановане». */
+  if (typeof cabPlansLoad === 'function') await cabPlansLoad();
   /* Знімок щойно переписали (Sync now або відкриття сторінки) —
      відкрите вікно Today перемальовується саме. */
   if (typeof tdOnSnap === 'function') tdOnSnap();
@@ -2810,9 +2813,19 @@ function cabCardOld(fb) {
                поруч, а не згадуючи про неї десь збоку. Без токена
                міняти нічим — тоді й олівця немає. */
             const can = c.fb && c.fb.token_id;
+            /* \u23f0 \u2014 \u0442\u0430 \u0441\u0430\u043c\u0430 \u0437\u043c\u0456\u043d\u0430, \u0430\u043b\u0435 \u0432 \u0437\u0430\u0434\u0430\u043d\u0438\u0439 \u0447\u0430\u0441 (FB_LIMIT_PLAN.sql).
+               \u0417\u0430\u043f\u043b\u0430\u043d\u043e\u0432\u0430\u043d\u0435 \u0432\u0438\u0434\u043d\u043e \u0442\u0443\u0442 \u0436\u0435, \u043f\u0456\u0434 \u043b\u0456\u043c\u0456\u0442\u043e\u043c, \u0456 \u043a\u043e\u0436\u043d\u0435 \u043c\u043e\u0436\u043d\u0430
+               \u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438: \u043f\u043b\u0430\u043d, \u044f\u043a\u043e\u0433\u043e \u043d\u0435 \u0432\u0438\u0434\u043d\u043e, \u2014 \u0446\u0435 \u0441\u044e\u0440\u043f\u0440\u0438\u0437 \u043e 19:00. */
+            const plans = cabPlansFor(c);
             return cell('Limit', l.text
               + (can ? ` <button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
-                   title="Change the spending limit in Facebook">\u270e</button>` : ''), l.tip);
+                   title="Change the spending limit in Facebook">\u270e</button>
+                 <button type="button" class="cab-lim-ed" onclick="cabLimitPlan('${enc}')"
+                   title="Change the limit at a set time">\u23f0</button>` : '')
+              + plans.map(p => `<span class="cab-plan">\u23f0 ${esc(cabPlanWhen(p.run_at))} \u2192 ${
+                  esc(cabMoneyCur(Number(p.set_major), c.fb.currency))}<button type="button"
+                  class="cab-plan-x" onclick="cabPlanDrop(${Number(p.id)})" title="Cancel this scheduled change">\u2715</button></span>`).join(''),
+              l.tip);
           })()}
         ${/* За чиїм годинником цей кабінет вважає «сьогодні». Без цього
               рядка розбіжність зі спендом в Ads Manager виглядає як
@@ -3443,6 +3456,145 @@ window.cabLimitEdit = async function (enc) {
   } catch (e) {
     step.done(String(e.message || e), 'error');
   }
+};
+
+/* ═══════════ ЛІМІТ ЗА РОЗКЛАДОМ ═══════════
+
+   «штука, яка міняє саме ліміт, щоб можна було виставляти, в котрій
+   годині це міняти … прям там, де руками міняємо, додати кнопку».
+
+   Кнопка ⏰ поруч з олівцем: сума → час → підтвердження → запис у
+   fb_limit_plan. Виконує розклад (fb-limit, той самий код, що й
+   олівець) і пише результат у Telegram. Час — за годинником цього
+   браузера. Таблиці може ще не бути: тоді кнопка каже, що виконати. */
+let cabPlans = [], cabPlansErr = '';
+const CAB_PLAN_DAY_MAX = 10;   // Facebook: 10 змін стелі на кабінет за добу
+
+async function cabPlansLoad() {
+  try {
+    const { data, error } = await sb.from('fb_limit_plan')
+      .select('id,account_id,set_major,run_at,status').eq('status', 'pending')
+      .order('run_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    cabPlans = data || []; cabPlansErr = '';
+  } catch (e) {
+    cabPlans = [];
+    cabPlansErr = /fb_limit_plan|does not exist|schema cache/i.test(e.message || '')
+      ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+const cabPlansFor = c => (cabPlans || []).filter(p =>
+  String(p.account_id).replace(/\D/g, '') === String(c.id).replace(/\D/g, ''));
+
+function cabPlanWhen(iso) {
+  const d = new Date(iso);
+  const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? t
+    : d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + t;
+}
+
+/* «19:00» — сьогодні, а якщо вже минуло — завтра; «09.11 19:00» —
+   того дня. Інше — не час, а помилка, і ми так і кажемо. */
+function cabPlanParse(s) {
+  const t = String(s || '').trim();
+  let m = /^(\d{1,2})[:.](\d{2})$/.exec(t);
+  const now = new Date();
+  if (m) {
+    const d = new Date(now); d.setHours(+m[1], +m[2], 0, 0);
+    if (+m[1] > 23 || +m[2] > 59) return null;
+    if (d <= now) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  m = /^(\d{1,2})\.(\d{1,2})\s+(\d{1,2})[:.](\d{2})$/.exec(t);
+  if (m) {
+    const d = new Date(now.getFullYear(), +m[2] - 1, +m[1], +m[3], +m[4], 0, 0);
+    if (isNaN(d) || d.getMonth() !== +m[2] - 1 || +m[3] > 23 || +m[4] > 59) return null;
+    return d;
+  }
+  return null;
+}
+
+window.cabLimitPlan = async function (enc) {
+  const id = decodeURIComponent(enc || '');
+  const c = cabAll.find(x => String(x.id) === String(id));
+  if (!c || !c.fb) return;
+  if (cabPlansErr === 'not-set-up') {
+    toast('Scheduling is not set up yet — run FB_LIMIT_PLAN.sql in Supabase.', 'warn', 9000);
+    return;
+  }
+  const cur = c.fb.currency || '';
+  const cap = Number(c.fb.spend_cap) || 0;
+  const spent = Number(c.fb.amount_spent) || 0;
+  const m = v => cabMoneyCur(v, cur);
+  const mine = cabPlansFor(c);
+
+  const raw = await ask({ title: 'Schedule a limit · ' + id, ok: 'Next',
+    body: (cap ? 'Now ' + m(cap) + ', already spent ' + m(spent) + '.' : 'No limit on this cabinet right now.')
+      + (mine.length ? '\n\nAlready scheduled: ' + mine.map(p => cabPlanWhen(p.run_at) + ' → '
+          + m(Number(p.set_major))).join(', ') : '')
+      + '\n\nThe limit to set:',
+    input: { value: cap ? String(cap) : '', placeholder: '1000' } });
+  if (raw === false) return;
+  const want = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(want) || want <= 0) { toast('Not a limit: ' + raw, 'error'); return; }
+
+  const next = new Date(Date.now() + 60 * 60000);
+  const hint = String(next.getHours()).padStart(2, '0') + ':00';
+  const rawT = await ask({ title: 'When? · ' + id, ok: 'Next',
+    body: 'Your time, as on this computer.\n\n“19:00” — today (tomorrow if it has passed)\n'
+      + '“09.11 19:00” — that day',
+    input: { value: hint, placeholder: '19:00' } });
+  if (rawT === false) return;
+  const at = cabPlanParse(rawT);
+  if (!at) { toast('Not a time: ' + rawT + ' — use 19:00 or 09.11 19:00', 'error', 7000); return; }
+  if (at <= new Date()) { toast('That time has already passed', 'error'); return; }
+
+  /* Межу витраченого кажемо зараз, а не о 19:00 листом про невдачу.
+     До того часу витрачене ще зросте — тому це лише перша перевірка;
+     остаточну зробить функція в момент зміни. */
+  if (want <= spent) {
+    toast('A limit of ' + m(want) + ' is already at or below the ' + m(spent)
+      + ' spent — the cabinet would stop.', 'error', 9000);
+    return;
+  }
+  const sameDay = mine.filter(p => new Date(p.run_at).toDateString() === at.toDateString()).length;
+  if (sameDay >= CAB_PLAN_DAY_MAX) {
+    toast('Already ' + sameDay + ' changes scheduled for that day — Facebook allows '
+      + CAB_PLAN_DAY_MAX + ' per cabinet per day.', 'error', 9000);
+    return;
+  }
+
+  const go = await ask({ title: 'Schedule this change?', ok: 'Schedule', danger: want > cap,
+    body: id + '\n\n' + cabPlanWhen(at.toISOString()) + ':  ' + (cap ? m(cap) : 'no limit') + '  →  ' + m(want)
+      + '\n\nYou get a Telegram message when it is done, or if it fails.'
+      + (!cap ? '\n\nThis cabinet has no limit now. Setting one is possible; removing it again is not.' : '') });
+  if (!go) return;
+
+  const { error } = await sb.from('fb_limit_plan').insert({
+    account_id: String(id).replace(/^act_/, ''), team_name: currentTeam,
+    set_major: want, allow_new: !cap, run_at: at.toISOString()
+  });
+  if (error) { toast('Could not schedule: ' + error.message, 'error', 9000); return; }
+  toast('Scheduled: ' + cabPlanWhen(at.toISOString()) + ' → ' + m(want), 'ok');
+  await cabPlansLoad();
+  cabRender();
+  if (typeof cabDetail === 'function') cabDetail(c);
+};
+
+window.cabPlanDrop = async function (planId) {
+  const p = (cabPlans || []).find(x => Number(x.id) === Number(planId));
+  if (!p) return;
+  const go = await ask({ title: 'Cancel this scheduled change?', ok: 'Cancel it', danger: true,
+    body: p.account_id + '\n\n' + cabPlanWhen(p.run_at) + ' → ' + p.set_major });
+  if (!go) return;
+  const { error } = await sb.from('fb_limit_plan').update({ status: 'cancelled' })
+    .eq('id', Number(planId)).eq('status', 'pending');
+  if (error) { toast('Could not cancel: ' + error.message, 'error'); return; }
+  await cabPlansLoad();
+  cabRender();
+  const c = cabAll.find(x => String(x.id).replace(/\D/g, '') === String(p.account_id).replace(/\D/g, ''));
+  if (c && typeof cabDetail === 'function') cabDetail(c);
 };
 
 /* ═══════════ ПАЧКОЮ: АРХІВ І ПОВЕРНЕННЯ З НЬОГО ═══════════

@@ -237,9 +237,9 @@ function tdEnsure() {
   if (ov) return ov;
   ov = document.createElement('div');
   ov.id = 'td-ov'; ov.className = 'td-ov hidden';
-  ov.innerHTML = `<div class="td-win" role="dialog" aria-label="Today">
+  ov.innerHTML = `<div class="td-win" role="dialog" aria-label="Stat. Day">
     <div class="td-top">
-      <h3 class="td-h">Today <span class="td-dim">· live from Facebook</span></h3>
+      <h3 class="td-h">Stat. Day <span class="td-dim">· live from Facebook</span></h3>
       <span id="td-when" class="td-when"></span>
       <div class="td-seg" id="td-mode">
         <button type="button" data-m="tree" class="is-on">Geo › Cabinet › Funnel › Creative</button>

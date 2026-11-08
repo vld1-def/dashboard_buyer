@@ -97,12 +97,20 @@
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-10-31.1';
+const FN_VERSION = '2026-11-08.1';
+
+/* Спільний секрет звіряємо по всій довжині, а не до першої розбіжності. */
+function sameSecret(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 /* Скільком мінорним одиницям дорівнює одиниця валюти. Для JPY це 1, і
    тоді вся арифметика нижче інша — тому валюту ми не вгадуємо, а
@@ -185,6 +193,20 @@ Deno.serve(async (req) => {
   const anon = Deno.env.get('SUPABASE_ANON_KEY') || '';
   if (!base) return reply({ error: 'function is not configured' }, 500);
 
+  /* РОЗКЛАД. Свій секрет розкладу правил, не браузерний JWT: людини
+     тут немає. Без секрету розкладу немає взагалі — функція, яка
+     піднімає стелю, не мусить бути досяжною «за замовчуванням». */
+  const cronKey = req.headers.get('x-cron-key') || '';
+  if (cronKey) {
+    const want = Deno.env.get('RULES_CRON_SECRET') || '';
+    if (!want) return reply({ error: 'scheduled run is not configured: set RULES_CRON_SECRET' }, 400);
+    if (!sameSecret(cronKey, want)) return reply({ error: 'bad cron key' }, 401);
+    const svcK = Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    if (!svcK) return reply({ error: 'SERVICE_ROLE_KEY is not set' }, 400);
+    return await runPlans(base, { apikey: svcK, Authorization: 'Bearer ' + svcK,
+                                  'content-type': 'application/json' });
+  }
+
   const auth = req.headers.get('Authorization') || '';
   if (!auth) return reply({ error: 'no authorization header' }, 401);
 
@@ -239,6 +261,15 @@ Deno.serve(async (req) => {
   }
   if (!token) return reply({ error: 'токен порожній' }, 400);
 
+  return await capFlow(acc, token, scopes, setMajor, allowNew);
+});
+
+/* ═══ САМА ЗМІНА СТЕЛІ ═══
+   Винесена з обробника без змін у логіці, щоб нею однаково ходили і
+   кнопка ✎ на сторінці, і розклад (runPlans нижче): два шляхи до тієї
+   самої дії з грошима мусять бути одним кодом. */
+async function capFlow(acc: string, token: string, scopes: string[],
+                       setMajor: number | null, allowNew: boolean): Promise<Response> {
   /* Дозвіл перевіряємо ДО Graph — як у fb-pause. Дізнатись про брак
      прав після того, як запис уже пішов, неможливо; дізнатись після
      того, як людина натиснула і чекає, — цілком реально. */
@@ -345,6 +376,116 @@ Deno.serve(async (req) => {
     restore: capNow !== null
       ? { account_id: acc, set_major: capNow / MINOR }
       : 'стелі не було — прибрати її ця проба не вміє',
-    after_raw: after?.spend_cap
+    /* Тут стояло after?.spend_cap — змінної after не існувало, і
+       ReferenceError валив відповідь ПІСЛЯ того, як стеля вже змінилась
+       у Facebook: на екрані помилка, а гроші вже дозволені. */
+    after_raw: capBack
   });
-});
+}
+
+/* ═══════════ ЗМІНА ЛІМІТУ ЗА РОЗКЛАДОМ ═══════════
+
+   «штука, яка міняє саме ліміт, щоб можна було виставляти, в котрій
+   годині це міняти». Записи кладе сторінка (кнопка ⏰ біля олівця) у
+   fb_limit_plan; розклад щохвилини кличе цю функцію ключем
+   RULES_CRON_SECRET, і вона виконує те, чий час настав.
+
+   Межі ті самі, що в кнопки, бо й код той самий (capFlow). Плюс три
+   власні:
+     • кабінет шукаємо серед кабінетів АВТОРА запису — чужий сюди не
+       прийде, хоч ключ і сервісний;
+     • запис спершу ЗАБИРАЄМО (pending → running умовним PATCH), і лише
+       потім виконуємо: два прогони, що наклались, не змінять стелю
+       двічі;
+     • запізнення понад PLAN_LATE_MIN — не виконуємо. Стеля, піднята о
+       23:40 замість 19:00, — це не те, що планували; кажемо про це в
+       Telegram і лишаємо рішення людині. */
+const PLAN_LATE_MIN = 30;
+const PLAN_BATCH = 20;
+
+async function tgTell(base: string, svcHdr: Json, owner: string, text: string): Promise<void> {
+  const bot = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!bot || !owner) return;
+  try {
+    const l = await rest(base, svcHdr, 'tg_links?select=chat_id&user_id=eq.'
+      + encodeURIComponent(owner) + '&chat_id=not.is.null&limit=1');
+    if (!l.length) return;
+    await fetch('https://api.telegram.org/bot' + bot + '/sendMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: l[0].chat_id, text, disable_web_page_preview: true })
+    });
+  } catch (_e) { /* повідомлення не дійшло — зміна від цього не скасовується */ }
+}
+
+async function planSet(base: string, svcHdr: Json, id: number, patch: Json,
+                       onlyIf = ''): Promise<Json[]> {
+  const res = await fetch(base + '/rest/v1/fb_limit_plan?id=eq.' + id + onlyIf, {
+    method: 'PATCH', headers: { ...svcHdr, Prefer: 'return=representation' },
+    body: JSON.stringify(patch)
+  });
+  return res.ok ? await res.json() : [];
+}
+
+async function runPlans(base: string, svcHdr: Json): Promise<Response> {
+  let due: Json[] = [];
+  try {
+    due = await rest(base, svcHdr, 'fb_limit_plan?status=eq.pending&run_at=lte.'
+      + encodeURIComponent(new Date().toISOString()) + '&order=run_at.asc&limit=' + PLAN_BATCH);
+  } catch (e) {
+    const m = String((e as Error).message);
+    return reply({ error: /fb_limit_plan|42P01|does not exist/i.test(m)
+      ? 'no fb_limit_plan table yet — run FB_LIMIT_PLAN.sql' : m }, 500);
+  }
+  const done: Json[] = [];
+  for (const p of due) {
+    const id = Number(p.id);
+    const owner = String(p.created_by || '');
+    const bare = String(p.account_id || '').replace(/^act_/, '');
+    const late = (Date.now() - Date.parse(String(p.run_at))) / 60000;
+    if (late > PLAN_LATE_MIN) {
+      const got = await planSet(base, svcHdr, id, { status: 'missed', done_at: new Date().toISOString(),
+        result: 'not run: ' + Math.round(late) + ' min late' }, '&status=eq.pending');
+      if (got.length) await tgTell(base, svcHdr, owner, '⏰ Scheduled limit NOT changed\n'
+        + '\u{1F3E6} ' + bare + ' → $' + p.set_major + '\nIt was due ' + Math.round(late)
+        + ' min ago — too late to apply safely. Change it by hand if still needed.');
+      done.push({ id, status: got.length ? 'missed' : 'skipped' });
+      continue;
+    }
+    // Забираємо запис. Хтось уже забрав — не наш.
+    const claimed = await planSet(base, svcHdr, id, { status: 'running' }, '&status=eq.pending');
+    if (!claimed.length) { done.push({ id, status: 'skipped' }); continue; }
+
+    let status = 'failed', result = '', capAfter: number | null = null;
+    try {
+      const accs = await rest(base, svcHdr, 'fb_accounts?account_id=eq.' + encodeURIComponent(bare)
+        + '&created_by=eq.' + encodeURIComponent(owner)
+        + '&select=account_id,token_id,team_name&limit=1');
+      if (!accs.length || !accs[0].token_id) throw new Error('cabinet not found among the author’s cabinets');
+      const toks = await rest(base, svcHdr, 'fb_tokens?id=eq.' + Number(accs[0].token_id)
+        + '&team_name=eq.' + encodeURIComponent(String(accs[0].team_name || ''))
+        + '&select=token,scopes&limit=1');
+      const token = String(toks[0]?.token || '');
+      if (!token) throw new Error('the cabinet’s token is gone');
+      const scopes = Array.isArray(toks[0]?.scopes) ? toks[0].scopes : [];
+      const res = await capFlow('act_' + bare, token, scopes, num(p.set_major), p.allow_new === true);
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.ok) {
+        status = 'done';
+        capAfter = num(j.cap_after);
+        result = String(j.note || 'ok') + (j.warning ? ' · ' + j.warning : '');
+      } else {
+        result = String(j.error || 'HTTP ' + res.status) + (j.hint ? ' · ' + j.hint : '');
+      }
+    } catch (e) { result = String((e as Error).message); }
+
+    await planSet(base, svcHdr, id, { status, result: result.slice(0, 500),
+      done_at: new Date().toISOString(), cap_after: capAfter });
+    await tgTell(base, svcHdr, owner, status === 'done'
+      ? '⏰ Limit changed on schedule\n\u{1F3E6} ' + bare + ' → $' + p.set_major
+        + (capAfter !== null ? ' (Facebook now: $' + (capAfter / MINOR) + ')' : '')
+      : '⚠ Scheduled limit change FAILED\n\u{1F3E6} ' + bare + ' → $' + p.set_major
+        + '\n' + result);
+    done.push({ id, status });
+  }
+  return reply({ ok: true, mode: 'plans', due: due.length, done });
+}
