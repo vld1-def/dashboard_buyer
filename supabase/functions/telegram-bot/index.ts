@@ -101,12 +101,17 @@ async function reply(token: string, chat: number | string, text: string,
    Натиснута кнопка надсилає свій ТЕКСТ звичайним повідомленням — тому
    нижче ці підписи розбираються нарівні з командами. */
 const B_SUM = '\u{1F4CA} Зведення';
+/* «кнопка Зведення … видалити, і замість неї буде нова». Стара
+   лишається в BTN нижче: клавіатура в телефоні оновиться лише з
+   наступною відповіддю бота, і до того натиснута «Зведення» мусить
+   щось відповісти, а не мовчати. */
+const B_DAY = '\u{1F4C8} Stat. Day';
 const B_SPEND = '\u{1F4B0} Спенд';
 const B_CABS = '\u{1F5C2} Кабінети';
 const B_DOM = '\u{1F310} Домени';
 
 const KEYS = {
-  keyboard: [[{ text: B_SUM }, { text: B_SPEND }],
+  keyboard: [[{ text: B_DAY }, { text: B_SPEND }],
              [{ text: B_CABS }, { text: B_DOM }]],
   resize_keyboard: true,
   is_persistent: true
@@ -115,7 +120,7 @@ const KEYS = {
 /* Підпис кнопки → та сама дія, що й команда. Один шлях на обидва
    входи: інакше кнопка й /spend колись покажуть різне. */
 const BTN: Record<string, string> = {
-  [B_SUM]: 'sum', [B_SPEND]: 'spend', [B_CABS]: 'cabs', [B_DOM]: 'dom'
+  [B_DAY]: 'day', [B_SUM]: 'sum', [B_SPEND]: 'spend', [B_CABS]: 'cabs', [B_DOM]: 'dom'
 };
 
 /* Telegram лишає кнопку «в натисканні», поки не відповіси на callback.
@@ -361,7 +366,7 @@ const FRESH_MIN = 5;
    ні йому, ні мені: ззовні свіжий код і старий виглядають однаково.
    Про fb-sync бот уже казав версію (вона приїжджає у відповіді
    прогону) — а про себе не казав нічого. Тепер каже. */
-const FN_VERSION = 'bot-13';
+const FN_VERSION = 'bot-14';
 /* Чекаємо довше, ніж 25 с: у кого десяток токенів, прогін за чверть
    хвилини не встигає, і кнопка щоразу відповідала «числа ще старі».
    Верхня межа тут не наша — Telegram чекає на відповідь вебхука
@@ -1112,6 +1117,144 @@ async function cardDom(base: string, hdr: Record<string, string>,
 
 const MENU = 'Що показати?';
 
+/* ═══════════ STAT. DAY — ЗВІТ ЗА СЬОГОДНІ ПО ГЕО ═══════════
+
+   «Кнопка в тг яка формує звіт за сьогодні по лайв кабам (fb today),
+   скільки по гео спенда і показники». Замінила кнопку «Зведення».
+
+   Джерело — лише fb_ad_today, і лише рядки, синхронізовані СЬОГОДНІ в
+   поясі самого кабінета: решта лежить зі спендом давніх днів, і
+   складена разом давала $404 там, де сьогодні було $116 (див. вікно
+   Stat. Day на сторінці Cabinets — той самий відбір і той самий
+   розбір гео).
+
+   Гео: маска команди (team_settings.pwa_parse, типово *_{geo}_{ktid});
+   не код країни — гео воронки, знайденої за ключем серед шматків назви
+   кампанії (апки: cy638t_…_CFR11003_…_TJ); далі окремий дволітерний
+   шматок назви кампанії чи оголошення. Компілятор маски — копія
+   pwMaskCompile з дашборда: спільного модуля в Deno-функції немає. */
+const DAY_MASK = '*_{geo}_{ktid}';
+
+function dayMaskParse(mask: string, name: string): { geo: string; ktid: string } | null {
+  const src = String(mask || '').trim();
+  if (!src) return null;
+  const primary = src.includes('&') ? '&' : '_';
+  const esc = (c: string) => (/[A-Za-z0-9]/.test(c) ? c : '\\' + c);
+  const keys: string[] = [];
+  let re = '', i = 0;
+  while (i < src.length) {
+    const ph = /^\{(app|acc|cid|cid-|geo|ktid)(?:=([^}]*))?\}/.exec(src.slice(i));
+    if (ph) {
+      i += ph[0].length;
+      if (ph[2] !== undefined) continue;
+      const stop = i < src.length ? src[i] : primary;
+      keys.push(ph[1]);
+      re += '([^' + esc(stop) + ']+)';
+      continue;
+    }
+    if (src[i] === '*') { i++; re += '.*?'; continue; }
+    re += esc(src[i]); i++;
+  }
+  const m = new RegExp('^' + re + '(?:' + esc(primary) + '.*)?$', 'i').exec(String(name || ''));
+  if (!m) return null;
+  const out = { geo: '', ktid: '' };
+  keys.forEach((k, j) => { if (k === 'geo' || k === 'ktid') out[k] = String(m[j + 1] || '').trim(); });
+  return out;
+}
+
+const dayLocal = (ms: number, tz: string): string => {
+  try { return new Date(ms).toLocaleDateString('en-CA', tz ? { timeZone: tz } : { timeZone: 'UTC' }); }
+  catch (_e) { return new Date(ms).toISOString().slice(0, 10); }
+};
+
+type DayAgg = { s: number; lc: number; l: number; i: number; r: number; d: number };
+const dayZero = (): DayAgg => ({ s: 0, lc: 0, l: 0, i: 0, r: 0, d: 0 });
+const dayMoney = (v: number): string => '$' + (Math.round(v * 100) / 100).toLocaleString('en-US',
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dayPer = (s: number, n: number): string => n > 0 ? dayMoney(s / n) : '';
+
+async function cardDay(base: string, hdr: Record<string, string>, uid: string,
+                       fresh: string): Promise<string> {
+  const who = '&created_by=eq.' + encodeURIComponent(uid);
+  const accs = await pick(base, hdr, 'fb_accounts?select=account_id,timezone_name' + who);
+  const tz = new Map(accs.map(a => [String(a.account_id), String(a.timezone_name || '')]));
+  const maskRow = await pick(base, hdr, 'team_settings?select=value&key=eq.pwa_parse' + who + '&limit=1');
+  let mask = DAY_MASK;
+  try {
+    const v = maskRow[0]?.value;
+    const o = typeof v === 'string' ? JSON.parse(v) : v;
+    if (o && (o as Record<string, unknown>).mask) mask = String((o as Record<string, unknown>).mask);
+  } catch (_e) { /* типова маска */ }
+  const fnRows = await pick(base, hdr, 'funnels_mapping?select=ktid,geo' + who);
+  const fnGeo = new Map(fnRows.filter(f => f.ktid)
+    .map(f => [String(f.ktid).trim().toLowerCase(), String(f.geo || '').toUpperCase()]));
+
+  const code = (v: unknown) => /^[A-Z]{2}$/.test(String(v || '').toUpperCase()) ? String(v).toUpperCase() : '';
+  const tokGeo = (s: string) => String(s || '').split(/[_\s-]+/).find(x => /^[A-Z]{2}$/.test(x)) || '';
+
+  const byGeo = new Map<string, DayAgg>();
+  const total = dayZero();
+  const hidden = new Set<string>();
+  let newest = 0;
+  for (let page = 0; page < SNAP_PAGES; page++) {
+    const part = await pick(base, hdr, 'fb_ad_today'
+      + '?select=account_id,name,campaign_name,spend,impressions,link_clicks,actions,seen_at' + who
+      + '&order=ad_id&limit=' + SNAP_PAGE + '&offset=' + (page * SNAP_PAGE));
+    part.forEach(r => {
+      const s = num(r.spend), im = num(r.impressions);
+      if (!(s > 0 || im > 0)) return;
+      const acc = String(r.account_id || '');
+      const at = Date.parse(String(r.seen_at || '')) || 0;
+      const z = tz.get(acc) || '';
+      if (!at || dayLocal(at, z) !== dayLocal(Date.now(), z)) { hidden.add(acc); return; }
+      if (at > newest) newest = at;
+      const camp = String(r.campaign_name || '');
+      const p = dayMaskParse(mask, camp);
+      let g = code(p?.geo);
+      if (!g) g = code(fnGeo.get(String(p?.ktid || '').toLowerCase()));
+      if (!g) for (const t of camp.split(/[_\s]+/)) { const x = code(fnGeo.get(t.toLowerCase())); if (x) { g = x; break; } }
+      if (!g) g = tokGeo(camp) || tokGeo(String(r.name || '')) || '??';
+      const acts = Array.isArray(r.actions) ? r.actions as unknown[] : [];
+      const a = byGeo.get(g) || (byGeo.set(g, dayZero()), byGeo.get(g)!);
+      const add = (o: DayAgg) => {
+        o.s += s; o.lc += num(r.link_clicks); o.l += leadCount(acts);
+        o.i += pickAct(acts, EV_INST); o.r += pickAct(acts, EV_REG); o.d += pickAct(acts, EV_DEP);
+      };
+      add(a); add(total);
+    });
+    if (part.length < SNAP_PAGE) break;
+  }
+
+  const when = newest ? Math.max(0, Math.round((Date.now() - newest) / 60000)) : -1;
+  const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Kyiv' })
+    .replace('/', '.');
+  const conv = (o: DayAgg) => o.l && o.i ? o.l + ' L · ' + o.i + ' I' : o.i ? o.i + ' I' : o.l + ' L';
+  const head = '\u{1F4C8} Stat. Day · ' + today
+    + (when >= 0 ? ' · last sync ' + (when < 1 ? 'just now' : when < 60 ? when + ' min ago'
+        : Math.floor(when / 60) + ' h ' + (when % 60) + ' min ago') : '') + '\n';
+  if (!byGeo.size) {
+    return head + '\nNothing spent today yet — or no cabinet was synced today.'
+      + (hidden.size ? '\n⚠ ' + hidden.size + ' cabinet(s) not synced today — not counted' : '')
+      + (fresh ? '\n\n' + fresh : '');
+  }
+  const geos = [...byGeo.entries()].sort((x, y) => y[1].s - x[1].s).map(([g, o]) => {
+    const prices = [dayPer(o.s, o.lc) && 'CPC ' + dayPer(o.s, o.lc),
+                    o.l ? 'CPL ' + dayPer(o.s, o.l) : '', o.i ? 'CPI ' + dayPer(o.s, o.i) : '',
+                    o.d ? 'CPA ' + dayPer(o.s, o.d) : ''].filter(Boolean).join(' · ');
+    return '\u{1F30D} ' + g + '\n'
+      + '\u{1F4B8}' + dayMoney(o.s) + ' \u{1F5B1}' + o.lc + ' \u{1F4F2}' + (o.i && !o.l ? o.i : o.l + (o.i ? '/' + o.i : ''))
+      + ' \u{1F4DD}' + o.r + ' \u{1F4B0}' + o.d
+      + (prices ? '\n' + prices : '');
+  });
+  return head
+    + '\u{1F4B8} ' + dayMoney(total.s) + ' · \u{1F5B1} ' + total.lc + ' · \u{1F4F2} ' + conv(total) + '\n'
+    + '\u{1F4DD} ' + total.r + ' regs · \u{1F4B0} ' + total.d + ' deps\n'
+    + '━'.repeat(15) + '\n'
+    + geos.join('\n\n')
+    + (hidden.size ? '\n\n⚠ ' + hidden.size + ' cabinet(s) not synced today — not counted' : '')
+    + (fresh ? '\n\n' + fresh : '');
+}
+
 Deno.serve(async (req) => {
   /* Telegram чекає 200 майже на все. Відповідь 500 він вважає збоєм і
      надсилає те саме повідомлення знову і знову — тож помилки ковтаємо
@@ -1248,6 +1391,7 @@ async function handle(req: Request): Promise<Response> {
 
   /* ── запит про стан ── */
   const ASK: Record<string, string> = {
+    '/day': 'day', '/stat': 'day',
     '/status': 'sum', '/sum': 'sum', '/spend': 'spend',
     '/cabs': 'cabs', '/cabinets': 'cabs', '/domains': 'dom', '/menu': 'menu'
   };
@@ -1260,6 +1404,7 @@ async function handle(req: Request): Promise<Response> {
   /* ── усе інше ── */
   await reply(token, chat,
     'Що я вмію:\n\n'
+    + '/day — Stat. Day: today by geo, live cabinets\n'
     + '/status — зведення: скільки крутить, спенд, що зламалось\n'
     + '/spend — спенд за сьогодні\n'
     + '/cabs — кабінети докладніше\n'
@@ -1295,6 +1440,10 @@ async function answer(token: string, base: string, hdr: Record<string, string>,
   /* Спершу оновлення, потім читання. Навпаки було б безглуздо: ми
      прочитали б старе, оновили базу й показали прочитане. */
   const f = await freshen(base, hdr, link.user_id);
+  if (kind === 'day') {
+    await reply(token, chat, await cardDay(base, hdr, link.user_id, f.note), KEYS);
+    return;
+  }
   const p = await park(base, hdr, link.user_id);
   p.fresh = f.note;
   const text = kind === 'spend' ? cardSpend(p)
