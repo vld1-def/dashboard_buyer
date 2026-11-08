@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-18';
+const FN_VERSION = 'rules-19';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -1212,19 +1212,23 @@ function tgCounts(h: Hit): string {
     + (a.purchases ? ' \u{1F4B0}' + a.purchases : '');
 }
 
+/* «Після назви крео також ентер і внизу вже показники»: назва,
+   під нею числа, під ними причина. В один рядок усе разом
+   переносилось посередині чисел, і назву доводилось вишукувати. */
 const tgOne = (h: Hit): string =>
-  tgMark(h) + ' ' + (TG_WHAT[h.level] || '') + h.name + ' — ' + tgCounts(h)
-  + (h.why ? ' ⚡' + h.why : '')
+  tgMark(h) + ' ' + (TG_WHAT[h.level] || '') + h.name + '\n' + tgCounts(h)
+  + (h.why ? '\n⚡' + h.why : '')
   /* Помилка окремим рядком: це єдине, що означає «НЕ вимкнулось, гроші
      йдуть далі», і в кінці довгого рядка вона б загубилась. */
-  + (h.error ? '\n   ⚠ ' + h.error : '');
+  + (h.error ? '\n⚠ ' + h.error : '');
 
 /* 🌐 браузер › 🏦 кабінет › 📣 кампанія. Кампанію не пишемо, коли
    вимкнена сама кампанія: було б те саме ім'я двічі поспіль. */
 function tgPath(h: Hit): string {
   const camp = h.level === 'campaign' ? '' : tgCamp(h.campaignName);
   return [h.browser ? '\u{1F310} ' + h.browser : '',
-          '\u{1F3E6} ' + (h.cabName || h.account || '?'),
+          /* ID, а не назва: назви тут «1», «3», а шукають кабінет за ID. */
+          '\u{1F3E6} ' + (h.account || h.cabName || '?'),
           camp ? '\u{1F4E3} ' + camp : ''].filter(Boolean).join(' › ');
 }
 
@@ -1253,7 +1257,8 @@ function tgBody(hits: Hit[]): string {
     TG_LINE + '\n\u{1F4CB} "' + rule + '"' + tgScope(mine[0]) + '\n'
     + tgGroup(mine, h => h.account || '?').map(([_acc, rows]) =>
         tgGroup(rows, h => tgPath(h)).map(([path, list]) =>
-          path + '\n' + list.map(tgOne).join('\n')).join('\n')
+          // Порожній рядок між креативами — кожен своїм блоком.
+          path + '\n' + list.map(tgOne).join('\n\n')).join('\n\n')
       ).join('\n\n')
   ).join('\n');
 }
