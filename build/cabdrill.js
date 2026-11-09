@@ -537,7 +537,7 @@ function cdHeadBits() {
      вони відрізняються від кліку по рядку. */
   return `<div class="cd-tabs"${tip ? ` title="${cdEsc(tip)}"` : ''}>
       <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
-        onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Camp</button>
+        onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Campaign</button>
       <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
         onclick="cdSetFlat(true)" title="Just the ads, most expensive first${
           cdScopeWords() ? ' \u2014 of what you picked, while something is picked' : ''}">Ads only</button>

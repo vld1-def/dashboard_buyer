@@ -72,6 +72,18 @@ const CAB_STATE = {
 // Порядок = що першим потрапляє на очі. Зверху те, що вимагає дії,
 // внизу — те, що прибрали руками.
 const CAB_ORDER = ['banned', 'notoken', 'review', 'running', 'idle', 'archived'];
+
+/* ПЛИТКИ-ФІЛЬТРИ — НЕ ТЕ САМЕ, ЩО СТАНИ.
+
+   «замість кнопки In review зроби, щоб там були всі кабінети, які не в
+   бані, не в архіві і з токеном — живі кабінети; і тоді кнопки Idle не
+   потрібно». Стани review/idle лишаються (вони в рядку й у сортуванні),
+   а плиток для них немає: обидва входять у Live.
+
+   CAB_ORDER не чіпаємо — за ним сортується таблиця. */
+const CAB_LIVE = c => !['banned', 'archived', 'notoken'].includes(c.state);
+const CAB_TILES = ['banned', 'notoken', 'live', 'running', 'archived'];
+const CAB_TILE_LIVE = { label: 'Live', dot: '#38BDF8', soft: 'rgba(56,189,248,.12)', bd: 'rgba(56,189,248,.30)' };
 // Колонки «де це було» можуть ще не існувати в базі — сторінка працює й без них.
 /* ПОЛЯ, ЯКІ ЗАПОВНЮЮТЬ РУКАМИ. Їх рівно два, і обидва Facebook про
    себе не каже: під яким БМ і в якому профілі браузера цей кабінет.
@@ -90,7 +102,7 @@ const CAB_EXTRA = [
    з одним питанням — що зараз крутиться; а «всі» означає ще й десятки
    порожніх та без токена, крізь які це питання доводиться шукати.
    Решта станів — на відстані одного кліку по плитці. */
-let cabRows = [], cabFilter = 'running', cabGroup = 'profile', cabSel = null;
+let cabRows = [], cabFilter = 'running', cabGroup = '', cabSel = null;
 let cabCols = {}, cabLoaded = false;
 let cabSort = { key: 'state', dir: 1 };
 
@@ -2102,8 +2114,12 @@ function cabRender() {
 
        Показуємо лише коли дерево відкрите: три кнопки, які нічим не
        керують, гірші за три кнопки, яких немає. */
-    const tools = cabTreeId && typeof cdHeadBits === 'function'
-      ? `<div class="flt-tools">${cdHeadBits()}</div>` : '';
+    /* «можемо не приховувати кнопки Camp, Ads only і список, просто
+       зробити їх сірим прозорим, коли вони не доступні». Стоять завжди
+       — ряд більше не стрибає, коли відкриваєш і закриваєш дерево. */
+    const tools = typeof cdHeadBits === 'function'
+      ? `<div class="flt-tools${cabTreeId ? '' : ' is-off'}"${cabTreeId ? ''
+          : ' title="Open a cabinet (click its row) to use these" aria-disabled="true"'}>${cdHeadBits()}</div>` : '';
 
     /* ПРИБРАТИ ВСІ БЕЗ ТОКЕНА — ОДНІЄЮ ДІЄЮ.
 
@@ -2126,8 +2142,11 @@ function cabRender() {
            \u21b4 archive ${noTok.length}</button>`
       : '';
     tiles.innerHTML = `<div class="flt-row flt-row-cab">
-      ${CAB_ORDER.map(k => tile(k, CAB_STATE[k].label, counts[k],
-          CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
+      ${CAB_TILES.map(k => k === 'live'
+          ? tile('live', CAB_TILE_LIVE.label, all.filter(CAB_LIVE).length,
+                 CAB_TILE_LIVE.dot, CAB_TILE_LIVE.soft, CAB_TILE_LIVE.bd)
+          : tile(k, CAB_STATE[k].label, counts[k],
+                 CAB_STATE[k].dot, CAB_STATE[k].soft, CAB_STATE[k].bd)).join('')}
       ${tile('all', 'All', all.length - counts.archived, 'var(--text-muted)', 'var(--surface-3)', 'var(--border)')}
       ${sweep}
       ${tools}
@@ -2170,6 +2189,10 @@ function cabRender() {
        плитка була. Пускаємо його на 'running', а не ламаємо екран
        порожнім списком. */
     : cabFilter === 'working' ? c.state === 'running'
+    : cabFilter === 'live' ? CAB_LIVE(c)
+    /* Плиток In review й Idle більше немає, а вибір міг лишитись у
+       чиємусь браузері — такі кабінети тепер у Live. */
+    : (cabFilter === 'review' || cabFilter === 'idle') ? CAB_LIVE(c)
     : c.state === cabFilter;
   const inText = c => !q || [c.id, c.row.provider_name, c.row.status_note,
             c.fb && c.fb.name, c.fb && c.fb.card, c.fb && c.fb.status,
@@ -2817,11 +2840,14 @@ function cabCardOld(fb) {
                \u0417\u0430\u043f\u043b\u0430\u043d\u043e\u0432\u0430\u043d\u0435 \u0432\u0438\u0434\u043d\u043e \u0442\u0443\u0442 \u0436\u0435, \u043f\u0456\u0434 \u043b\u0456\u043c\u0456\u0442\u043e\u043c, \u0456 \u043a\u043e\u0436\u043d\u0435 \u043c\u043e\u0436\u043d\u0430
                \u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438: \u043f\u043b\u0430\u043d, \u044f\u043a\u043e\u0433\u043e \u043d\u0435 \u0432\u0438\u0434\u043d\u043e, \u2014 \u0446\u0435 \u0441\u044e\u0440\u043f\u0440\u0438\u0437 \u043e 19:00. */
             const plans = cabPlansFor(c);
+            /* \u041e\u0431\u0438\u0434\u0432\u0456 \u043a\u043d\u043e\u043f\u043a\u0438 \u2014 \u041e\u0414\u041d\u0418\u041c \u0440\u044f\u0434\u043a\u043e\u043c \u043f\u0456\u0434 \u0441\u0443\u043c\u043e\u044e: \u043f\u043e\u0440\u0443\u0447 \u0456\u0437 \u0447\u0438\u0441\u043b\u043e\u043c
+               \u0432\u043e\u043d\u0438 \u043f\u0435\u0440\u0435\u043d\u043e\u0441\u0438\u043b\u0438\u0441\u044c \u043f\u043e \u043e\u0434\u043d\u0456\u0439, \u0456 \u270e \u0441\u0442\u043e\u044f\u0432 \u0432 \u043e\u0434\u043d\u043e\u043c\u0443 \u0440\u044f\u0434\u043a\u0443, \u0430
+               \u23f0 \u0432 \u0456\u043d\u0448\u043e\u043c\u0443. */
             return cell('Limit', l.text
-              + (can ? ` <button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
-                   title="Change the spending limit in Facebook">\u270e</button>
-                 <button type="button" class="cab-lim-ed" onclick="cabLimitPlan('${enc}')"
-                   title="Change the limit at a set time">\u23f0</button>` : '')
+              + (can ? `<div class="cab-lim-acts"><button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
+                   title="Change the spending limit in Facebook now">\u270e Edit</button><button type="button"
+                   class="cab-lim-ed" onclick="cabLimitPlan('${enc}')"
+                   title="Change the limit at a set time">\u23f0 Schedule</button></div>` : '')
               + plans.map(p => `<span class="cab-plan">\u23f0 ${esc(cabPlanWhen(p.run_at))} \u2192 ${
                   esc(cabMoneyCur(Number(p.set_major), c.fb.currency))}<button type="button"
                   class="cab-plan-x" onclick="cabPlanDrop(${Number(p.id)})" title="Cancel this scheduled change">\u2715</button></span>`).join(''),
