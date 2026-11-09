@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.11 14:15">
+  <meta name="build" content="build 09.11 16:06">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7138,7 +7138,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.11 14:15</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.11 16:06</div>
     </div>
   </aside>
 
@@ -20647,7 +20647,7 @@ function pwRender() {
     (!pwProv || pwProvOf(it) === pwProv) &&
     /* Шукаємо і по тому, що ЗБЕРЕЖЕНО, і по тому, що ВИДНО: назву з
        {date} шукають за сьогоднішньою датою, а не за макросом. */
-    (!q || [it.geo, it.provider, it.offer, it.name, pwName(it), it.note].concat(it.links || [])
+    (!q || [it.geo, it.provider, it.offer, it.name, pwName(it), it.note, it.subs].concat(it.links || [])
             .some(v => String(v || '').toLowerCase().includes(q))));
 
   if (!rows.length) {
@@ -20722,6 +20722,13 @@ function pwRender() {
       ${links.length > 1 ? `<div class="flex justify-end mt-1.5">
         <button onclick="pwCopy(event, this)" data-v="${apEsc(links.join('\n'))}"
           class="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-slate-400 hover:text-white transition">копі всі силки</button>
+      </div>` : ''}
+
+      ${it.subs ? `<div class="flex items-center gap-2 mt-1.5">
+        <span class="text-[9px] font-black uppercase tracking-widest text-violet-300 shrink-0 w-16">Сабки</span>
+        <code onclick="pwCopy(event, this)" data-v="${apEsc(it.subs)}"
+          title="${apEsc(it.subs)}&#10;Клік — скопіювати параметри"
+          class="pw-subs text-[11px] font-mono text-violet-200 bg-black/30 rounded-lg px-2 py-1 flex-1 min-w-0 truncate cursor-pointer hover:bg-black/60 transition">${apEsc(it.subs)}</code>
       </div>` : ''}
 
       ${(() => {
@@ -20811,6 +20818,10 @@ function pwShowEditor(v) {
       <!-- Домени зі списку, які вже підписані цим PWA. Стоять ПІД
            полем силок, бо це пропозиція до нього, а не окреме поле. -->
       <div id="pw-pool"></div>
+      <!-- Наші параметри з сабками — одним рядком, як їх вставляють у
+           кабінет. Силки від них не змінюються: це окреме поле. -->
+      <input id="pw-f-subs" value="${apEsc(v.subs || '')}" class="${inp} w-full font-mono"
+        placeholder="Параметри з сабками — одним рядком: sub1=fb&sub2={{ad.id}}&sub3={{campaign.name}}">
       <input id="pw-f-note" value="${apEsc(v.note || '')}" class="${inp} w-full" placeholder="Нотатка для себе">
       <div class="flex gap-2 pt-1">
         <button onclick="pwSubmit()" class="bg-sky-600 hover:bg-sky-500 px-5 py-1.5 rounded-xl font-black uppercase text-[11px] tracking-widest transition">Зберегти</button>
@@ -20908,6 +20919,10 @@ function pwNameHint() {
 }
 
 
+/* Параметри з сабками: один рядок без пробілів по краях і без «?»/«&»
+   на початку. */
+const pwSubsClean = s => String(s || '').trim().replace(/^[?&\s]+/, '').trim();
+
 async function pwSubmit() {
   const val = id => (document.getElementById(id)?.value || '').trim();
   const name = val('pw-f-name');
@@ -20934,6 +20949,9 @@ async function pwSubmit() {
     offer: val('pw-f-offer') || g.offer,
     // Дубль силки в одній кампанії — завжди недогляд копіпасти.
     links: [...new Set(raw)],
+    /* «?» чи «&» на початку — залишок від копіювання з силки; у полі
+       живуть самі параметри. */
+    subs: pwSubsClean(val('pw-f-subs')),
     note: val('pw-f-note')
   };
 
