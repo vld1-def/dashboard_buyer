@@ -39,5 +39,20 @@ ok('назва вузла дерева — окремим рядком', /order:
 ok('картка кабінета на телефоні — поверх списку',
   /#cab-detail \{\s*position: fixed; left: 8px; right: 8px; top: 8px; bottom: 64px;/.test(CSS));
 
+/* ── згорнута шапка ── */
+const HT = fs.readFileSync('build/cabinets.html', 'utf8');
+ok('у шапці є лупа і Filters лише для телефона', /id="cab-q-btn" onclick="cabQToggle\(\)" class="cab-rules cab-ico cab-m-only"/.test(HT)
+  && /id="cab-flt-btn" onclick="cabFltToggle\(\)" class="cab-rules cab-m-only"/.test(HT));
+ok('на компʼютері їх не видно', /\.cab-m-only, \.cab-range-m \{ display: none; \}/.test(CSS));
+ok('період на телефоні — рідним списком', /<select class="cab-range-m" aria-label="Period" onchange="cabSetRange\(this\.value\)">/.test(CB)
+  && /#cab-range \.cab-srcsel \{ display: none; \}/.test(CSS));
+ok('згорнуто: кнопки й плитки сховані, попередження про архів лишається',
+  /#cabinets-section:not\(\.cab-flt-open\) #cab-tiles > :not\(\.cab-archlost\) \{ display: none; \}/.test(CSS)
+  && /#cabinets-section:not\(\.cab-flt-open\) #cab-rules-btn,/.test(CSS));
+ok('пошук із текстом не ховається', /#cabinets-section:not\(\.cab-q-open\) #cab-search:placeholder-shown \{ display: none; \}/.test(CSS));
+ok('Filters показує вибраний статус', /fl\.textContent = cabFilter && cabFilter !== 'all'/.test(CB));
+ok('стан Filters памʼятається на пристрої', /localStorage\.setItem\('cab-flt-open', open \? '1' : '0'\)/.test(CB));
+ok('шапка доїхала в index.html', /id="cab-flt-btn"/.test(OUT) && /cabFltToggle = function/.test(OUT) && /\.cab-range-m \{/.test(OUT));
+
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
 if (fail) process.exit(1);

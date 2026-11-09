@@ -2030,6 +2030,38 @@ function cabSumPaint(shown, all) {
     <span class="cab-sum-k">Today</span>`;
 }
 
+/* ЗГОРНУТА ШАПКА НА ТЕЛЕФОНІ.
+   «А кнопки календар, пошук та інше, можливо якось компактніше?» —
+   шапка займала 300 пікселів до першого кабінета. Тепер завжди видно
+   один ряд; решту відкриває Filters. Стан памʼятаємо на пристрої. */
+let cabFltReady = false;
+function cabFltInit() {
+  if (cabFltReady) return;
+  cabFltReady = true;
+  let open = false;
+  try { open = localStorage.getItem('cab-flt-open') === '1'; } catch (e) {}
+  cabFltSet(open);
+}
+function cabFltSet(open) {
+  const sec = document.getElementById('cabinets-section');
+  const btn = document.getElementById('cab-flt-btn');
+  if (sec) sec.classList.toggle('cab-flt-open', !!open);
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+window.cabFltToggle = function () {
+  const sec = document.getElementById('cabinets-section');
+  const open = !(sec && sec.classList.contains('cab-flt-open'));
+  cabFltSet(open);
+  try { localStorage.setItem('cab-flt-open', open ? '1' : '0'); } catch (e) {}
+};
+window.cabQToggle = function () {
+  const sec = document.getElementById('cabinets-section');
+  const inp = document.getElementById('cab-search');
+  if (!sec || !inp) return;
+  const open = sec.classList.toggle('cab-q-open');
+  if (open) inp.focus();
+};
+
 function cabRender() {
   const list = document.getElementById('cab-list');
   const tiles = document.getElementById('cab-tiles');
@@ -2224,6 +2256,15 @@ function cabRender() {
     ago.classList.add('is-manual');
   }
 
+  /* Кнопка Filters на телефоні каже, який статус зараз вибрано: самі
+     плитки під нею сховані, і без підпису фільтр працював би мовчки. */
+  const fl = document.getElementById('cab-flt-lbl');
+  if (fl) {
+    fl.textContent = cabFilter && cabFilter !== 'all'
+      ? (cabFilter[0].toUpperCase() + cabFilter.slice(1)).replace(/_/g, ' ') : 'Filters';
+    cabFltInit();
+  }
+
   /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:
      підпис на кнопці, заголовок стовпчика й число в ньому беруться з
      одного cabRange, і розійтись їм нема як. */
@@ -2232,7 +2273,13 @@ function cabRender() {
     const [a, b] = cabRangeDates();
     const rb = (k, l, tip) => `<button type="button" class="${cabRange.key === k ? 'is-on' : ''}"
         onclick="cabSetRange('${k}')"${tip ? ` title="${cabEsc(tip)}"` : ''}>${cabEsc(l)}</button>`;
-    rng.innerHTML = `<div class="cab-srcsel">${
+    /* На телефоні чотири кнопки періоду — це цілий ряд шапки. Там той
+       самий вибір стоїть рідним списком; який із двох видно, вирішує CSS. */
+    const rsel = `<select class="cab-range-m" aria-label="Period" onchange="cabSetRange(this.value)">${
+        CAB_RANGES.concat([['custom', 'Custom']]).map(r =>
+          `<option value="${r[0]}"${cabRange.key === r[0] ? ' selected' : ''}>${cabEsc(r[1])}</option>`).join('')
+      }</select>`;
+    rng.innerHTML = rsel + `<div class="cab-srcsel">${
         CAB_RANGES.map(r => rb(r[0], r[1])).join('')
       }${rb('custom', 'Custom', 'Any two dates \u2014 history goes as deep as the sync has been running')}</div>`
       + (cabRange.key === 'custom' ? `<span class="cab-range-days">

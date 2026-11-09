@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 09.11 22:11">
+  <meta name="build" content="build 09.11 22:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -6996,6 +6996,42 @@ input.ui-in[type="range"] { padding: 0; }
     max-height: none !important; overflow: auto;
   }
 }
+
+/* ШАПКА КАБІНЕТІВ НА ТЕЛЕФОНІ: ОДИН РЯД, РЕШТА ПІД «FILTERS».
+   Було шість рядів і 300 пікселів до першого кабінета. */
+.cab-m-only, .cab-range-m { display: none; }
+@media (max-width: 640px) {
+  #cabinets-section > div:first-child { margin-bottom: 8px; }
+  #cabinets-section > div:first-child > div:first-child { display: none; }
+  #cabinets-section > div:first-child > div:last-child { gap: 6px; }
+  .cab-m-only { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; }
+  #cab-sum { order: 1; }
+  #cab-sum .cab-sum-k { display: none; }
+  #cab-range { order: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+  #cab-range .cab-srcsel { display: none; }
+  .cab-range-m {
+    display: block; min-height: 36px; padding: 0 8px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface-2); color: inherit;
+    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  }
+  #cab-q-btn { order: 3; margin-left: auto; min-width: 36px; justify-content: center; }
+  #cab-flt-btn { order: 4; }
+  #cab-search { order: 5; flex: 0 0 100%; width: 100%; min-height: 38px; font-size: 13px; }
+  #cab-group, #cab-cols-btn, #cab-rules-btn, #cab-today-btn, #cab-pages-btn, #cab-sync { order: 6; }
+  #cabinets-section:not(.cab-q-open) #cab-search:placeholder-shown { display: none; }
+  #cabinets-section.cab-q-open #cab-q-btn,
+  #cabinets-section.cab-flt-open #cab-flt-btn { border-color: var(--accent, #8b5cf6); color: var(--text); }
+  #cabinets-section.cab-flt-open .cab-flt-car { transform: rotate(180deg); }
+  .cab-flt-car { display: inline-block; }
+  #cabinets-section:not(.cab-flt-open) #cab-group,
+  #cabinets-section:not(.cab-flt-open) #cab-cols-btn,
+  #cabinets-section:not(.cab-flt-open) #cab-rules-btn,
+  #cabinets-section:not(.cab-flt-open) #cab-today-btn,
+  #cabinets-section:not(.cab-flt-open) #cab-pages-btn,
+  #cabinets-section:not(.cab-flt-open) #cab-sync,
+  #cabinets-section:not(.cab-flt-open) #cab-tiles > :not(.cab-archlost) { display: none; }
+  #cabinets-section:not(.cab-flt-open) #cab-tiles { margin-bottom: 0; }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -7255,7 +7291,7 @@ input.ui-in[type="range"] { padding: 0; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.11 22:11</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 09.11 22:17</div>
     </div>
   </aside>
 
@@ -8142,6 +8178,15 @@ input.ui-in[type="range"] { padding: 0; }
            вибір і його підпис мають жити в одному місці, інакше
            заголовок стовпчика колись розійдеться з тим, що в ньому. -->
       <div id="cab-range" class="cab-range"></div>
+      <!-- Лише телефон: шапка там згорнута в один ряд. Лупа відкриває
+           пошук, Filters — решту (групування, кнопки, статуси). -->
+      <button type="button" id="cab-q-btn" onclick="cabQToggle()" class="cab-rules cab-ico cab-m-only"
+        title="Search" aria-label="Search"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none"
+          stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7"
+          r="4.4"/><path d="M10.4 10.4l3.4 3.4"/></svg></button>
+      <button type="button" id="cab-flt-btn" onclick="cabFltToggle()" class="cab-rules cab-m-only"
+        aria-expanded="false" title="Grouping, tools and status filters"><span
+          id="cab-flt-lbl">Filters</span> <span class="cab-flt-car" aria-hidden="true">▾</span></button>
       <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
       <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
@@ -29728,6 +29773,38 @@ function cabSumPaint(shown, all) {
     <span class="cab-sum-k">Today</span>`;
 }
 
+/* ЗГОРНУТА ШАПКА НА ТЕЛЕФОНІ.
+   «А кнопки календар, пошук та інше, можливо якось компактніше?» —
+   шапка займала 300 пікселів до першого кабінета. Тепер завжди видно
+   один ряд; решту відкриває Filters. Стан памʼятаємо на пристрої. */
+let cabFltReady = false;
+function cabFltInit() {
+  if (cabFltReady) return;
+  cabFltReady = true;
+  let open = false;
+  try { open = localStorage.getItem('cab-flt-open') === '1'; } catch (e) {}
+  cabFltSet(open);
+}
+function cabFltSet(open) {
+  const sec = document.getElementById('cabinets-section');
+  const btn = document.getElementById('cab-flt-btn');
+  if (sec) sec.classList.toggle('cab-flt-open', !!open);
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+window.cabFltToggle = function () {
+  const sec = document.getElementById('cabinets-section');
+  const open = !(sec && sec.classList.contains('cab-flt-open'));
+  cabFltSet(open);
+  try { localStorage.setItem('cab-flt-open', open ? '1' : '0'); } catch (e) {}
+};
+window.cabQToggle = function () {
+  const sec = document.getElementById('cabinets-section');
+  const inp = document.getElementById('cab-search');
+  if (!sec || !inp) return;
+  const open = sec.classList.toggle('cab-q-open');
+  if (open) inp.focus();
+};
+
 function cabRender() {
   const list = document.getElementById('cab-list');
   const tiles = document.getElementById('cab-tiles');
@@ -29922,6 +29999,15 @@ function cabRender() {
     ago.classList.add('is-manual');
   }
 
+  /* Кнопка Filters на телефоні каже, який статус зараз вибрано: самі
+     плитки під нею сховані, і без підпису фільтр працював би мовчки. */
+  const fl = document.getElementById('cab-flt-lbl');
+  if (fl) {
+    fl.textContent = cabFilter && cabFilter !== 'all'
+      ? (cabFilter[0].toUpperCase() + cabFilter.slice(1)).replace(/_/g, ' ') : 'Filters';
+    cabFltInit();
+  }
+
   /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:
      підпис на кнопці, заголовок стовпчика й число в ньому беруться з
      одного cabRange, і розійтись їм нема як. */
@@ -29930,7 +30016,13 @@ function cabRender() {
     const [a, b] = cabRangeDates();
     const rb = (k, l, tip) => `<button type="button" class="${cabRange.key === k ? 'is-on' : ''}"
         onclick="cabSetRange('${k}')"${tip ? ` title="${cabEsc(tip)}"` : ''}>${cabEsc(l)}</button>`;
-    rng.innerHTML = `<div class="cab-srcsel">${
+    /* На телефоні чотири кнопки періоду — це цілий ряд шапки. Там той
+       самий вибір стоїть рідним списком; який із двох видно, вирішує CSS. */
+    const rsel = `<select class="cab-range-m" aria-label="Period" onchange="cabSetRange(this.value)">${
+        CAB_RANGES.concat([['custom', 'Custom']]).map(r =>
+          `<option value="${r[0]}"${cabRange.key === r[0] ? ' selected' : ''}>${cabEsc(r[1])}</option>`).join('')
+      }</select>`;
+    rng.innerHTML = rsel + `<div class="cab-srcsel">${
         CAB_RANGES.map(r => rb(r[0], r[1])).join('')
       }${rb('custom', 'Custom', 'Any two dates \u2014 history goes as deep as the sync has been running')}</div>`
       + (cabRange.key === 'custom' ? `<span class="cab-range-days">
