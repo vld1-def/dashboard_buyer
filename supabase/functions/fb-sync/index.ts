@@ -186,7 +186,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-11-09.1';
+const FN_VERSION = '2026-11-09.2';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -521,7 +521,7 @@ function urlsFor(actId: string, tz: string): string[] {
          прочерк половині кабінетів, причому тій половині, яка про це
          не здогадується. */
       + '&fields=' + encodeURIComponent('name,status,effective_status,adset_id,campaign_id,'
-        + 'adset{name,status,effective_status,daily_budget,lifetime_budget,'
+        + 'adset{name,status,effective_status,daily_budget,lifetime_budget,start_time,end_time,'
         + 'optimization_goal,promoted_object{custom_event_type}},'
         + 'campaign{name,status,effective_status,daily_budget,lifetime_budget},'
         + 'insights.date_preset(today){spend,impressions,clicks,inline_link_clicks,actions}'),
@@ -694,6 +694,9 @@ type Day = { day: string; spend: number | null;
 type AdSnap = { ad_id: string; name: string; status: string; own: string;
                 adset_id: string; adset_name: string; adset_status: string;
                 adset_own: string;
+                /* Старт і кінець адсета — з них «Scheduled»: ACTIVE з датою
+                   старту в майбутньому ще не крутиться. */
+                adset_start: string; adset_end: string;
                 adset_daily: number | null; adset_life: number | null;
                 campaign_id: string; campaign_name: string; campaign_status: string;
                 campaign_own: string;
@@ -950,6 +953,8 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
         adset_id: String(r.adset_id || ''), adset_name: String(r.adset?.name || ''),
         adset_status: String(r.adset?.effective_status || ''),
         adset_own: String(r.adset?.status || ''),
+        adset_start: String(r.adset?.start_time || ''),
+        adset_end: String(r.adset?.end_time || ''),
         adset_daily: num(r.adset?.daily_budget),
         adset_life: num(r.adset?.lifetime_budget),
         campaign_id: String(r.campaign_id || ''), campaign_name: String(r.campaign?.name || ''),
@@ -1458,6 +1463,8 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
           adset_id: a.adset_id, adset_name: a.adset_name || null,
           adset_status: a.adset_status || null,
           adset_own_status: a.adset_own || null,
+          adset_start_time: a.adset_start || null,
+          adset_end_time: a.adset_end || null,
           adset_daily_budget: a.adset_daily, adset_lifetime_budget: a.adset_life,
           campaign_id: a.campaign_id, campaign_name: a.campaign_name || null,
           campaign_status: a.campaign_status || null,
@@ -1648,22 +1655,32 @@ async function savePages(base: string, hdr: Json, t: TokenRow,
    І нотатка назовні, бо іконки інакше просто не зʼявляться, а причини
    не буде видно ніде. */
 const SNAP_PIC_COLS = ['thumb_url', 'image_url'];
+/* Дата старту/кінця адсета — так само необовʼязкові: база без них
+   пише знімок без них, а не губить його цілком. */
+const SNAP_TIME_COLS = ['adset_start_time', 'adset_end_time'];
 
 async function snapWrite(base: string, hdr: Json, rows: Json[],
                          out: Outcome): Promise<void> {
-  try {
-    await pgUpsert(base, hdr, 'fb_ad_today', 'created_by,ad_id', rows);
-  } catch (e) {
-    const m = String((e as Error).message || '');
-    if (!SNAP_PIC_COLS.some(c => m.includes(c))) throw e;
-    const bare = rows.map(r => {
-      const c: Json = { ...r };
-      SNAP_PIC_COLS.forEach(k => { delete c[k]; });
-      return c;
-    });
-    await pgUpsert(base, hdr, 'fb_ad_today', 'created_by,ad_id', bare);
-    out.picNote = 'creative pictures need two columns — run the ALTER TABLE '
-      + 'for fb_ad_today from FB_RULES.sql';
+  let cur = rows;
+  /* Кожна група необовʼязкових колонок відпадає сама, лише коли база
+     назвала саме її: двох спроб на дві групи вистачає. */
+  for (let i = 0; i < 3; i++) {
+    try {
+      await pgUpsert(base, hdr, 'fb_ad_today', 'created_by,ad_id', cur);
+      return;
+    } catch (e) {
+      const m = String((e as Error).message || '');
+      const grp = [SNAP_PIC_COLS, SNAP_TIME_COLS].find(g => g.some(c => m.includes(c)));
+      if (!grp || i === 2) throw e;
+      cur = cur.map(r => {
+        const c: Json = { ...r };
+        grp.forEach(k => { delete c[k]; });
+        return c;
+      });
+      if (grp === SNAP_PIC_COLS)
+        out.picNote = 'creative pictures need two columns — run the ALTER TABLE '
+          + 'for fb_ad_today from FB_RULES.sql';
+    }
   }
 }
 

@@ -217,6 +217,11 @@ const CD_STATE = [
     why: 'Facebook is still processing it' },
   { k: 'PREAPPROVED',          s: 'wait', t: 'Pre-approved',
     why: 'Running while review finishes' },
+  /* У Facebook такого effective_status немає: запланований адсет каже
+     ACTIVE. Ads Manager пише «Scheduled», бо дата старту ще попереду, —
+     і ми рахуємо так само (cdStartsLater). */
+  { k: 'SCHEDULED',            s: 'wait', t: 'Scheduled',
+    why: 'Switched on, waiting for its ad set start date' },
   /* Вимкнене — не біда, а рішення. Тому окремий колір, не червоний і
      не жовтий: це не те, що треба лагодити, а те, що треба бачити.
      CAMPAIGN_PAUSED і ADSET_PAUSED кажуть, що вимкнули НЕ це, а щось
@@ -673,6 +678,8 @@ async function cdLoad(account) {
      забрав би з собою й бюджети, й вимикачі. Так брак однієї колонки
      коштує рівно її. */
   const CD_DOM = 'link_domain';
+  /* Дата старту/кінця адсета — для «Scheduled». Наймолодший ярус. */
+  const CD_SCHED = 'adset_start_time,adset_end_time';
   /* КАРТИНОК ТУТ БІЛЬШЕ НЕМАЄ, і це свідомо: їх беруть із Drive
      (див. cdPicCell), а не зі знімка. Колонки thumb_url/image_url у
      fb_ad_today лишаються — синк їх пише, просто сторінка не читає.
@@ -694,7 +701,7 @@ async function cdLoad(account) {
        Так брак однієї колонки коштує рівно свого яруса, а не всього
        розбору кабінета. Четвертий ярус додався рівно одним рядком —
        заради цього ладанка й переписана. */
-    const TIERS = [CD_CORE, CD_NEW, CD_DOM];
+    const TIERS = [CD_CORE, CD_NEW, CD_DOM, CD_SCHED];
     let res = null, drop = 0;
     for (; drop < TIERS.length; drop++) {
       res = await sb.from('fb_ad_today')
@@ -705,8 +712,8 @@ async function cdLoad(account) {
          показувати, і це вже не «база старіша», а інша поломка. */
       if (drop === TIERS.length - 1) break;
     }
-    if (drop >= 1) cdNoDom = 'sql';
-    cdOld = drop >= 2 ? String((res && res.error && res.error.message) || 'old database') : '';
+    if (drop >= 2) cdNoDom = 'sql';
+    cdOld = drop >= 3 ? String((res && res.error && res.error.message) || 'old database') : '';
     const { data, error } = res || {};
     if (error) throw new Error(error.message);
     cdRows = data || [];
@@ -781,6 +788,16 @@ function cdSuffix(r) {
   return CD_EVENT[String(r.custom_event_type || '').toUpperCase()] || '';
 }
 
+/* Адсет стартує пізніше, ніж зараз — значить ще не крутиться. */
+const cdStartsLater = r => (Date.parse(r && r.adset_start_time || '') || 0) > Date.now();
+/* Коротко, у часі браузера: «10.11 09:00». */
+const cdWhen = v => {
+  const d = new Date(v);
+  if (isNaN(d)) return '';
+  const p = x => String(x).padStart(2, '0');
+  return p(d.getDate()) + '.' + p(d.getMonth() + 1) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+};
+
 function cdMetrics(r) {
   const acts = Array.isArray(r.actions) ? r.actions : [];
   const suf = cdSuffix(r);
@@ -802,7 +819,8 @@ function cdMetrics(r) {
        депозитів. Число без своєї одиниці — найтихіший спосіб збрехати. */
     unit: suf || '',
     goal: String(r.optimization_goal || r.custom_event_type || ''),
-    state: String(r.effective_status || '').toUpperCase(),
+    state: cdStartsLater(r) && String(r.effective_status || '').toUpperCase() === 'ACTIVE'
+      ? 'SCHEDULED' : String(r.effective_status || '').toUpperCase(),
     host: String(r.link_domain || '').trim()
   };
 }
@@ -870,6 +888,13 @@ function cdTree() {
     if (!s.own) s.own = String(r.adset_status || '').toUpperCase();
     if (!s.sw) s.sw = String(r.adset_own_status || '').toUpperCase();
     if (!s.budget) s.budget = cdBudget(r.adset_daily_budget, r.adset_lifetime_budget);
+    /* Старт адсета; кампанія бере НАЙРАНІШИЙ із своїх — «Scheduled» на
+       ній лише тоді, коли жоден адсет ще не стартував. */
+    const st0 = Date.parse(r.adset_start_time || '') || 0;
+    if (st0) {
+      s.start = st0;
+      if (!c.start || st0 < c.start) c.start = st0;
+    }
     const a = cdNode(r.ad_id, r.name, 'ad');
     a.own = m.state;
     a.sw = String(r.own_status || '').toUpperCase();
@@ -1530,6 +1555,13 @@ function cdChips(n, depth) {
      Тож власний значок лишається рівно там, де він відповідь:
      вимкнено, архівовано, незнайомий стан. */
   const ownSt = (!ad && n.own) ? cdState(n.own) : null;
+  /* ЗАПЛАНОВАНО — як у Ads Manager: увімкнено, але дата старту ще
+     попереду. Власним значком із датою; тоді «N scheduled» дітей нижче
+     не дублюємо. */
+  const sched = !ad && n.start && n.start > Date.now()
+    && (!n.own || n.own === 'ACTIVE');
+  if (sched) parts.push({ s: 'wait', self: true, text: 'Scheduled · ' + cdWhen(n.start),
+    why: 'Starts ' + new Date(n.start).toLocaleString() });
   if (!ad && n.own && !(ownSt && ownSt.k === 'ACTIVE')) {
     const quiet = nested && ownSt && cdFromAbove(ownSt.k);
     parts.push(ownSt
@@ -1544,6 +1576,7 @@ function cdChips(n, depth) {
   CD_STATE.forEach(st => {
     const cnt = n.state.get(st.k) || 0;
     if (!cnt) return;
+    if (sched && st.k === 'SCHEDULED') return;
     if (nested && cdFromAbove(st.k)) { offUp += cnt; return; }
     // Один підпис на всі стани: «2 active», «1 rejected», «3 off».
     parts.push({ s: st.s, why: st.why,
