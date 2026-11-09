@@ -105,6 +105,23 @@ const GRAPH = 'https://graph.facebook.com/v21.0';
 const FN_VERSION = '2026-11-08.1';
 
 /* Спільний секрет звіряємо по всій довжині, а не до першої розбіжності. */
+
+/* КЛАВІАТУРА БОТА — ДО КОЖНОГО ПОВІДОМЛЕННЯ В ОСОБИСТИЙ ЧАТ.
+   «кнопки в тг пропадають, постійно треба запускати /start». Клавіатуру
+   ставили лише відповіді самого бота; сповіщення (правила, ліміт,
+   домени, синк, коментарі, новини) ішли без неї. Тепер кожне особисте
+   повідомлення її повертає. Групам (chat_id < 0, спільний TG_CHAT_ID)
+   — ні: там кнопки висіли б у всіх учасників.
+   Підписи — рівно ті, що в telegram-bot (B_DAY…B_DOM): бот розпізнає
+   натиснуту кнопку за текстом, і розбіжність зробила б її мовчазною. */
+const TG_KEYS = {
+  keyboard: [[{ text: '📈 Stat. Day' }, { text: '💰 Спенд' }],
+             [{ text: '🗂 Кабінети' }, { text: '🌐 Домени' }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+const tgKeysFor = (chat: unknown) => Number(chat) > 0 ? { reply_markup: TG_KEYS } : {};
+
 function sameSecret(a: string, b: string): boolean {
   if (!a || !b || a.length !== b.length) return false;
   let diff = 0;
@@ -412,7 +429,7 @@ async function tgTell(base: string, svcHdr: Json, owner: string, text: string): 
     if (!l.length) return;
     await fetch('https://api.telegram.org/bot' + bot + '/sendMessage', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: l[0].chat_id, text, disable_web_page_preview: true })
+      body: JSON.stringify({ chat_id: l[0].chat_id, text, disable_web_page_preview: true, ...tgKeysFor(l[0].chat_id) })
     });
   } catch (_e) { /* повідомлення не дійшло — зміна від цього не скасовується */ }
 }

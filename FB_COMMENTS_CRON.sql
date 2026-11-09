@@ -228,7 +228,8 @@ select status_code, error_msg, timed_out, content, created
 
 select cron.schedule(
   'fb-comments-scan',
-  '13,43 * * * *',
+  -- 2026-11-09: «в коментарях давай ходити раз на 3 години» (було 13,43 * * * *).
+  '13 */3 * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets

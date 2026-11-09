@@ -93,6 +93,23 @@ const FB_NEED = ['ads_read'];
 
 type Json = Record<string, any>;
 
+
+/* КЛАВІАТУРА БОТА — ДО КОЖНОГО ПОВІДОМЛЕННЯ В ОСОБИСТИЙ ЧАТ.
+   «кнопки в тг пропадають, постійно треба запускати /start». Клавіатуру
+   ставили лише відповіді самого бота; сповіщення (правила, ліміт,
+   домени, синк, коментарі, новини) ішли без неї. Тепер кожне особисте
+   повідомлення її повертає. Групам (chat_id < 0, спільний TG_CHAT_ID)
+   — ні: там кнопки висіли б у всіх учасників.
+   Підписи — рівно ті, що в telegram-bot (B_DAY…B_DOM): бот розпізнає
+   натиснуту кнопку за текстом, і розбіжність зробила б її мовчазною. */
+const TG_KEYS = {
+  keyboard: [[{ text: '📈 Stat. Day' }, { text: '💰 Спенд' }],
+             [{ text: '🗂 Кабінети' }, { text: '🌐 Домени' }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+const tgKeysFor = (chat: unknown) => Number(chat) > 0 ? { reply_markup: TG_KEYS } : {};
+
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify(body),
     { status, headers: { ...CORS, 'content-type': 'application/json' } });
@@ -1857,7 +1874,7 @@ async function tgPost(token: string, chat: string, text: string): Promise<string
       // Без parse_mode навмисно: назви кабінетів рясніють дужками й
       // підкресленнями, а розмітка Telegram на них спотикається і
       // відповідає 400. Текст і так читається.
-      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true, ...tgKeysFor(chat) })
     });
     if (res.ok) return 'sent';
     let why = 'HTTP ' + res.status;

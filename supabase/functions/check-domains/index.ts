@@ -96,6 +96,23 @@ const SHIELD_HEADERS = ['cf-mitigated', 'cf-ray', 'x-sucuri-id', 'x-iinfo',
                         'x-ddos-protection', 'x-datadome'];
 const SHIELD_SERVERS = /cloudflare|ddos-guard|sucuri|incapsula|imperva|variti|akamai|qrator|stackpath/i;
 
+
+/* КЛАВІАТУРА БОТА — ДО КОЖНОГО ПОВІДОМЛЕННЯ В ОСОБИСТИЙ ЧАТ.
+   «кнопки в тг пропадають, постійно треба запускати /start». Клавіатуру
+   ставили лише відповіді самого бота; сповіщення (правила, ліміт,
+   домени, синк, коментарі, новини) ішли без неї. Тепер кожне особисте
+   повідомлення її повертає. Групам (chat_id < 0, спільний TG_CHAT_ID)
+   — ні: там кнопки висіли б у всіх учасників.
+   Підписи — рівно ті, що в telegram-bot (B_DAY…B_DOM): бот розпізнає
+   натиснуту кнопку за текстом, і розбіжність зробила б її мовчазною. */
+const TG_KEYS = {
+  keyboard: [[{ text: '📈 Stat. Day' }, { text: '💰 Спенд' }],
+             [{ text: '🗂 Кабінети' }, { text: '🌐 Домени' }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+const tgKeysFor = (chat: unknown) => Number(chat) > 0 ? { reply_markup: TG_KEYS } : {};
+
 function shieldOf(h: Headers | null): string {
   if (!h) return '';
   for (const k of SHIELD_HEADERS) { if (h.get(k)) return k; }
@@ -882,7 +899,7 @@ async function tgPost(token: string, chat: string, text: string): Promise<string
       // Без parse_mode навмисно: домени рясніють крапками й дефісами,
       // а розмітка Telegram на них спотикається і відповідає 400.
       // Текст і так читається, а ламатись тут нема чому.
-      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true, ...tgKeysFor(chat) })
     });
     if (res.ok) return 'sent';
     // Причину віддаємо назад: її видно в net._http_response, і це

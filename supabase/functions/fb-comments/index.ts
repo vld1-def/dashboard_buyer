@@ -68,11 +68,35 @@ const DEADLINE_MS = 100_000;
    comments_scanned_at. Кожен прогін просувається по колу, і за кілька
    годин обходить парк цілком, не впираючись у дедлайн і не ганяючи по
    тих самих кабінетах. */
-const SCAN_ACCOUNTS = 12;
+/* 25, а не 12: розклад тепер ходить раз на 3 години («в коментарях
+   давай ходити раз на 3 години»), тож за прогін беремо більше, щоб
+   живий парк обходився за один-два прогони. Дедлайн однаково зупинить. */
+const SCAN_ACCOUNTS = 25;
+/* Лише живі кабінети — ті самі стани, за якими стежать правила. Бан і
+   закриття сюди не потрапляють: там ні оголошень, ні нових коментарів,
+   а лише помилка Graph, яка займала місце в черзі. */
+const SCAN_STATUS = 'active,grace,unsettled';
 const SCAN_POSTS = 8;
 const SCAN_PER_POST = 25;
 
 /* Спільний секрет звіряємо по всій довжині, а не до першої розбіжності. */
+
+/* КЛАВІАТУРА БОТА — ДО КОЖНОГО ПОВІДОМЛЕННЯ В ОСОБИСТИЙ ЧАТ.
+   «кнопки в тг пропадають, постійно треба запускати /start». Клавіатуру
+   ставили лише відповіді самого бота; сповіщення (правила, ліміт,
+   домени, синк, коментарі, новини) ішли без неї. Тепер кожне особисте
+   повідомлення її повертає. Групам (chat_id < 0, спільний TG_CHAT_ID)
+   — ні: там кнопки висіли б у всіх учасників.
+   Підписи — рівно ті, що в telegram-bot (B_DAY…B_DOM): бот розпізнає
+   натиснуту кнопку за текстом, і розбіжність зробила б її мовчазною. */
+const TG_KEYS = {
+  keyboard: [[{ text: '📈 Stat. Day' }, { text: '💰 Спенд' }],
+             [{ text: '🗂 Кабінети' }, { text: '🌐 Домени' }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+const tgKeysFor = (chat: unknown) => Number(chat) > 0 ? { reply_markup: TG_KEYS } : {};
+
 function sameSecret(a: string, b: string): boolean {
   if (!a || !b || a.length !== b.length) return false;
   let diff = 0;
@@ -87,7 +111,7 @@ type Json = Record<string, any>;
    тижня тричі виглядав як вада в коді. Номер у кожній відповіді
    коштує нічого, а дозволяє сторінці відрізнити «функція про це ще
    не знає» від «Facebook так відповів». */
-const FN_VERSION = '2026-10-31.3';
+const FN_VERSION = '2026-11-09.1';
 
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
@@ -274,7 +298,7 @@ async function tgPost(token: string, chat: string, text: string): Promise<boolea
       method: 'POST', headers: { 'content-type': 'application/json' },
       // Без parse_mode навмисно: у коментарях трапляється будь-що, а
       // розмітка Telegram спотикається й відповідає 400.
-      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true, ...tgKeysFor(chat) })
     });
     return res.ok;
   } catch (_e) { return false; }
@@ -369,6 +393,7 @@ async function autoHideBy(base: string, hdr: Json): Promise<Map<string, boolean>
 async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Response> {
   let q = 'fb_accounts?select=account_id,name,team_name,token_id,created_by,comments_seen_at'
         + '&missing_since=is.null&token_id=not.is.null'
+        + '&status=in.(' + SCAN_STATUS + ')'
         + '&order=comments_scanned_at.asc.nullsfirst&limit=' + SCAN_ACCOUNTS;
   if (onlyOwner) q += '&created_by=eq.' + encodeURIComponent(onlyOwner);
 
@@ -412,12 +437,35 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
   const pagesOf = new Map<number, { mine: Map<string, { name: string; tasks: string[] }>;
                                     failed: string }>();
 
+  /* ЧЕРГА, ЯКА СТОЯЛА МІСЯЦЬ.
+
+     Позначка «перевірено» ставилась лише в кінці вдалого обходу. Кабінет,
+     на якому Graph відмовляв (бан, нема прав), позначки не отримував —
+     і наступний прогін знову брав його першим. На 2026-11-09 голову черги
+     тримали 8 кабінетів із 06.10: з 12 місць за прогін живим лишалось 4,
+     і живі кабінети перевірялись раз на добу, а автоприховування
+     виглядало вимкненим.
+
+     Тепер позначка ставиться ЗАВЖДИ, хоч би чим закінчився обхід, — а
+     comments_seen_at (з якого моменту рахувати нове) не чіпаємо, щоб
+     не пропустити коментарів, які прийшли за час відмови. */
+  const stampScanned = async (acc: Json) => {
+    try {
+      await fetch(base + '/rest/v1/fb_accounts?created_by=eq.'
+        + encodeURIComponent(String(acc.created_by))
+        + '&account_id=eq.' + encodeURIComponent(String(acc.account_id)), {
+        method: 'PATCH', headers: { ...hdr, Prefer: 'return=minimal' },
+        body: JSON.stringify({ comments_scanned_at: new Date().toISOString() })
+      });
+    } catch (_e) { /* наступний прогін повторить */ }
+  };
+
   for (const acc of accs) {
     if (Date.now() > deadline) break;
     const tok = byToken.get(Number(acc.token_id));
-    if (!tok) continue;
+    if (!tok) { await stampScanned(acc); continue; }
     const scopes: string[] = Array.isArray(tok.scopes) ? tok.scopes : [];
-    if (!scopes.includes('pages_read_engagement')) continue;
+    if (!scopes.includes('pages_read_engagement')) { await stampScanned(acc); continue; }
     const mayHide = scopes.includes('pages_manage_engagement')
                  && (autoHide.get(String(acc.team_name)) ?? true);
 
@@ -429,6 +477,7 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
       posts = await ourPosts(String(tok.token), String(acc.account_id));
     } catch (e) {
       problems.push(cabTag(acc, tok) + ': ' + (e as Error).message);
+      await stampScanned(acc);
       continue;
     }
     scanned++;
@@ -655,8 +704,12 @@ async function handle(req: Request): Promise<Response> {
    на часі. Стеля тут не прикраса: Сторінка з тисячею постів інакше
    тримала б функцію до таймауту і не віддала б нічого. Якщо
    спинились раніше, ніж скінчились дані, кажемо про це прямо. */
-const PAGE_POSTS = 100;       // постів максимум
-const PAGE_POST_PAGES = 5;    // і не більше стількох порцій по них
+/* «щоб усі коментарі, які є на сторінках, підтягувались, навіть якщо їм
+   місяць». 100 постів відрізали все старше кількох тижнів; тепер межу
+   ставить дедлайн функції (~100 с), а не число, і про недоїдене каже
+   напис «не встигли». */
+const PAGE_POSTS = 1000;      // постів максимум
+const PAGE_POST_PAGES = 10;   // і не більше стількох порцій по них
 const PER_POST_MAX = 500;     // коментарів з одного поста
 const PER_POST_PAGES = 10;
 
@@ -809,7 +862,10 @@ async function pagePosts(pg: { token: string }, pageId: string, deadline: number
 
    Межа — ті кабінети, які RLS визнала твоїми; більше п'яти не
    беремо: це вже не «подивитись коментарі», а обхід парку. */
-const DARK_ACCOUNTS = 5;
+/* Було 5: у Сторінок, які крутить більше п'яти кабінетів, рекламні
+   пости решти кабінетів не діставались, і їхніх коментарів у Pages
+   не було зовсім. Тепер — усі привʼязані кабінети, межа — дедлайн. */
+const DARK_ACCOUNTS = 200;
 
 async function darkPosts(base: string, hdr: Json, me: string, row: PgRow,
                          deadline: number): Promise<{ map: Map<string, string[]>; why: string }> {

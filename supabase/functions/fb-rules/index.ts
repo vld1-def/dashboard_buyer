@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-19';
+const FN_VERSION = 'rules-20';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -87,6 +87,23 @@ const ADS_LIMIT = 500;      // стеля списку оголошень на �
 const SNAP_MAX_AGE_MS = 90 * 60_000;
 // Окремою функцією, щоб це рішення можна було перевірити тестом, а не
 // вірити йому на слово: воно вирішує, діяти чи не діяти взагалі.
+
+/* КЛАВІАТУРА БОТА — ДО КОЖНОГО ПОВІДОМЛЕННЯ В ОСОБИСТИЙ ЧАТ.
+   «кнопки в тг пропадають, постійно треба запускати /start». Клавіатуру
+   ставили лише відповіді самого бота; сповіщення (правила, ліміт,
+   домени, синк, коментарі, новини) ішли без неї. Тепер кожне особисте
+   повідомлення її повертає. Групам (chat_id < 0, спільний TG_CHAT_ID)
+   — ні: там кнопки висіли б у всіх учасників.
+   Підписи — рівно ті, що в telegram-bot (B_DAY…B_DOM): бот розпізнає
+   натиснуту кнопку за текстом, і розбіжність зробила б її мовчазною. */
+const TG_KEYS = {
+  keyboard: [[{ text: '📈 Stat. Day' }, { text: '💰 Спенд' }],
+             [{ text: '🗂 Кабінети' }, { text: '🌐 Домени' }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+const tgKeysFor = (chat: unknown) => Number(chat) > 0 ? { reply_markup: TG_KEYS } : {};
+
 function snapTooOld(ageMs: number, limitMs = SNAP_MAX_AGE_MS): boolean {
   return !(ageMs <= limitMs);
 }
@@ -1297,7 +1314,7 @@ async function tgPost(token: string, chat: string, text: string): Promise<string
       method: 'POST', headers: { 'content-type': 'application/json' },
       // Без parse_mode: назви оголошень рясніють дужками й
       // підкресленнями, і розмітка Telegram на них відповідає 400.
-      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true })
+      body: JSON.stringify({ chat_id: chat, text, disable_web_page_preview: true, ...tgKeysFor(chat) })
     });
     if (res.ok) return 'sent';
     let why = 'HTTP ' + res.status;

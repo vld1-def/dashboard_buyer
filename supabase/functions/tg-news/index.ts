@@ -51,6 +51,23 @@ const PAUSE_MS = 1100;
 
 type Json = Record<string, any>;
 
+
+/* КЛАВІАТУРА БОТА — ДО КОЖНОГО ПОВІДОМЛЕННЯ В ОСОБИСТИЙ ЧАТ.
+   «кнопки в тг пропадають, постійно треба запускати /start». Клавіатуру
+   ставили лише відповіді самого бота; сповіщення (правила, ліміт,
+   домени, синк, коментарі, новини) ішли без неї. Тепер кожне особисте
+   повідомлення її повертає. Групам (chat_id < 0, спільний TG_CHAT_ID)
+   — ні: там кнопки висіли б у всіх учасників.
+   Підписи — рівно ті, що в telegram-bot (B_DAY…B_DOM): бот розпізнає
+   натиснуту кнопку за текстом, і розбіжність зробила б її мовчазною. */
+const TG_KEYS = {
+  keyboard: [[{ text: '📈 Stat. Day' }, { text: '💰 Спенд' }],
+             [{ text: '🗂 Кабінети' }, { text: '🌐 Домени' }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+const tgKeysFor = (chat: unknown) => Number(chat) > 0 ? { reply_markup: TG_KEYS } : {};
+
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
     { status, headers: { ...CORS, 'content-type': 'application/json' } });
@@ -124,7 +141,7 @@ Deno.serve(async (req) => {
            підкреслення, на яких розмітка Telegram відповідає 400 — і
            тоді не доходить нічого. */
         body: JSON.stringify({ chat_id: rows[i].chat_id, text,
-                               disable_web_page_preview: true })
+                               disable_web_page_preview: true, ...tgKeysFor(rows[i].chat_id) })
       });
       if (r.ok) sent++;
       /* 403 — людина заблокувала бота або видалила чат. Це не збій
