@@ -2486,7 +2486,7 @@ function cabRowHtml(c, COLS) {
     const extra = col.tdCls ? ' ' + col.tdCls(c) : '';
     const style = col.tdStyle ? ` style="${col.tdStyle}"` : '';
     return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${extra}${
-      tip ? ' has-tip' : ''}"${tip ? ` title="${cabEsc(tip)}"` : ''}${style}>${
+      tip ? ' has-tip' : ''}" data-l="${cabEsc(col.label)}"${tip ? ` title="${cabEsc(tip)}"` : ''}${style}>${
       out == null ? '<span class="cab-na">—</span>' : out}</td>`;
   };
 
@@ -2516,7 +2516,7 @@ function cabRowHtml(c, COLS) {
     </td>
     <td class="cab-x"></td>
     <td class="cab-fz-end"><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
-    <td class="ta-r cab-num cab-today">${today}</td>
+    <td class="ta-r cab-num cab-today" data-l="Spend">${today}</td>
     ${cabColsShown().map(cell).join('')}
     <td class="ta-r cab-act">
       ${c.fb ? `<button type="button" class="cab-mini" onclick="cabSyncRow(event, '${idEnc}')"
@@ -2631,10 +2631,10 @@ function cabNodeRow(n, depth, band, cols) {
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
     <td class="cab-nd-st cab-fz-end">${f.status}</td>
-    <td class="ta-r cab-num cab-today">${f.spend}</td>
+    <td class="ta-r cab-num cab-today" data-l="Spend">${f.spend}</td>
     ${cols.map(col => { const tip = cabNodeTip(f, col.key);
       return `<td class="ta-${col.ta} ${col.ta === 'l' ? 'cab-dim' : 'cab-num'}${
-        tip ? ' has-tip' : ''}"${tip ? ` title="${cabEsc(tip)}"` : ''}>${
+        tip ? ' has-tip' : ''}" data-l="${cabEsc(col.label)}"${tip ? ` title="${cabEsc(tip)}"` : ''}>${
         cabNodeCell(f, col.key) || '<span class="cab-na">—</span>'}</td>`; }).join('')}
     <td class="ta-r"></td>
   </tr>`;

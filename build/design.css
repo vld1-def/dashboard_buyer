@@ -5754,3 +5754,120 @@ input.ui-in[type="range"] { padding: 0; }
   border: 1px solid var(--border); background: var(--surface-3); color: var(--text-main);
 }
 .fcm-tr:disabled { opacity: .5; cursor: default; }
+
+/* ═══════════ КАБІНЕТИ НА ТЕЛЕФОНІ: КАРТКИ ЗАМІСТЬ ТАБЛИЦІ ═══════════
+
+   Заморожені зліва клітинки (галочка, стрілка, шпилька, назва, статус)
+   разом важать ~500px, а екран телефона — 360. Тобто таблиця гортатись
+   убік гортається, але всі числа лишаються ПІД замороженою частиною:
+   ні спенду, ні результатів, ні кнопки «⋯» з телефона не видно взагалі.
+
+   Розмітка та сама — міняється лише те, як вона лягає. Рядок кабінета
+   стає карткою з трьох смуг: хто це і в якому стані; числа з підписами
+   (підпис бере з data-l, тож вмикання колонки вмикає її й тут); кнопки.
+   Порожні числа ховаємо: прочерк у картці займає стільки ж місця, що й
+   число, а каже нічого. Спенд лишається завжди — його нуль теж новина. */
+@media (max-width: 640px) {
+  #cab-list .cab-scroll { overflow-x: visible; }
+  #cab-list .cab-tbl, #cab-list .cab-tbl > thead, #cab-list .cab-tbl > tbody {
+    display: block; width: 100%;
+  }
+  /* Шапка — смужка сортування, гортається вбік сама. */
+  #cab-list .cab-tbl > thead > tr {
+    display: flex; align-items: center; gap: 6px; overflow-x: auto;
+    padding: 2px 0 6px; scrollbar-width: none;
+  }
+  #cab-list .cab-tbl > thead > tr::-webkit-scrollbar { display: none; }
+  #cab-list .cab-tbl > thead th {
+    position: static !important; flex: 0 0 auto; width: auto;
+    padding: 8px 11px; border: 1px solid var(--border) !important;
+    border-radius: 999px; background: var(--surface-2); box-shadow: none !important;
+  }
+  #cab-list .cab-tbl > thead th:empty { display: none; }
+
+  #cab-list .cab-tbl > tbody > tr { display: flex; flex-wrap: wrap; align-items: center; }
+  #cab-list .cab-tbl > tbody > tr > td {
+    display: block; position: static !important; width: auto; max-width: none;
+    border: 0 !important; background: transparent !important; box-shadow: none !important;
+  }
+  /* Перенесення рядка всередині картки: порожній елемент на всю ширину. */
+  #cab-list .cab-tr::before, #cab-list .cab-tr::after, #cab-list .cab-node::before {
+    content: ''; flex: 0 0 100%; height: 0;
+  }
+  #cab-list .cab-tr::before, #cab-list .cab-node::before { order: 2; }
+  #cab-list .cab-tr::after { order: 4; }
+
+  /* ── кабінет ── */
+  #cab-list .cab-tr {
+    margin-top: 8px; padding: 8px 6px 4px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  }
+  #cab-list .cab-tr.is-mk { background: #1d1a2b; }
+  #cab-list .cab-tr.is-sel { border-color: var(--accent, #8b5cf6); }
+  #cab-list .cab-tr > td:nth-child(1) { order: 1; padding: 6px; }
+  #cab-list .cab-tr > td:nth-child(5) { order: 1; flex: 1 1 0; min-width: 0; padding: 2px 6px; }
+  #cab-list .cab-tr > td.cab-fz-end { order: 1; padding: 2px 6px; }
+  #cab-list .cab-tr > td:nth-child(4), #cab-list .cab-tr > td:nth-child(6) { display: none; }
+  #cab-list .cab-tr > td:nth-child(2), #cab-list .cab-tr > td:nth-child(3) { order: 5; padding: 0; }
+  #cab-list .cab-tr > td.cab-act { order: 5; margin-left: auto; padding: 0; }
+  #cab-list .cab-who, #cab-list .cab-tr .cab-id { font-size: 13px; }
+  #cab-list .cab-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #cab-list .cab-st { font-size: 12.5px; }
+  /* Під палець, а не під курсор. */
+  #cab-list .cab-exp, #cab-list .cab-pin, #cab-list .cab-mini {
+    min-width: 42px; min-height: 38px; opacity: .8;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  #cab-list .cab-tr .cd-mk, #cab-list .cab-tbl > thead .cd-mk { width: 20px; height: 20px; }
+
+  /* ── числа з підписами: кабінет і дерево однаково ── */
+  #cab-list .cab-tbl > tbody > tr > td[data-l] {
+    order: 3; flex: 0 0 25%; min-width: 0; text-align: left;
+    padding: 6px 6px 3px; font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #cab-list .cab-tbl > tbody > tr > td[data-l]::before {
+    content: attr(data-l); display: block; margin-bottom: 2px;
+    font-family: inherit; font-size: 9.5px; font-weight: 800; line-height: 1.2;
+    letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted);
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  #cab-list .cab-tbl > tbody > tr > td[data-l]:not(.cab-today):has(> .cab-na:only-child),
+  #cab-list .cab-node > td[data-l]:empty { display: none; }
+
+  /* ── дерево: назва цілком, перемикач і статус поруч, числа під нею ── */
+  #cab-list .cab-node {
+    margin-left: 6px; padding: 5px 4px;
+    border-left: 2px solid var(--accent, #8b5cf6);
+    border-bottom: 1px solid var(--border); background: var(--surface-2);
+  }
+  #cab-list .cab-node.is-band { background: var(--cd-band); }
+  #cab-list .cab-node.is-mk { background: var(--surface-3); }
+  #cab-list .cab-node > td.cab-nd {
+    order: 1; flex: 0 0 100%; min-width: 0; padding: 4px;
+    white-space: normal; overflow: visible;
+  }
+  #cab-list .cab-node .cd-lbl { white-space: normal; overflow-wrap: anywhere; font-size: 13px; }
+  #cab-list .cab-node > td.cab-nd-sw, #cab-list .cab-node > td.cab-nd-st { order: 1; padding: 4px 5px; }
+  #cab-list .cab-node > td:last-child { display: none; }
+  #cab-list .cab-node .cd-mk { width: 18px; height: 18px; }
+
+  /* ── рядки на всю ширину: група, смуга вибору, повідомлення дерева ── */
+  #cab-list .cab-tbl > tbody > tr.cab-grp,
+  #cab-list .cab-tbl > tbody > tr.cab-treebar,
+  #cab-list .cab-tbl > tbody > tr.cab-treerow { display: block; }
+  #cab-list .cab-grp > td, #cab-list .cab-treebar > td, #cab-list .cab-treerow > td { width: 100%; }
+  #cab-list .cab-grp { margin-top: 12px; }
+  #cab-list .cab-grp-in { position: static; flex-wrap: wrap; row-gap: 4px; }
+}
+
+/* Картка кабінета на телефоні — на весь екран поверх списку. Поруч зі
+   списком-картками їй нема місця: вона стискала список до 50 пікселів. */
+@media (max-width: 640px) {
+  #cab-list { flex: 1 1 100%; min-width: 0; }
+  #cab-detail {
+    position: fixed; left: 8px; right: 8px; top: 8px; bottom: 64px;
+    z-index: 110; flex: none; width: auto !important;
+    max-height: none !important; overflow: auto;
+  }
+}

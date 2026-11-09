@@ -268,12 +268,20 @@ function rlRunPaint() {
   const did = n(m.paused) ? ' \u00b7 ' + n(m.paused) + ' switched off'
     : n(m.would) ? ' \u00b7 ' + n(m.would) + ' reported'
     : ' \u00b7 nothing matched';
+  /* \u0423\u0421\u0406 \u041f\u0420\u0410\u0412\u0418\u041b\u0410 \u0412\u0418\u041c\u041a\u041d\u0415\u041d\u0406 \u2014 \u0426\u0415 \u041d\u0415 \u0417\u041b\u0410\u041c\u0410\u041d\u0418\u0419 \u0420\u041e\u0417\u041a\u041b\u0410\u0414. fb-rules \u0431\u0435\u0437
+     \u0443\u0432\u0456\u043c\u043a\u043d\u0435\u043d\u0438\u0445 \u043f\u0440\u0430\u0432\u0438\u043b \u0432\u0438\u0445\u043e\u0434\u0438\u0442\u044c \u043e\u0434\u0440\u0430\u0437\u0443 \u0439 \u0441\u043b\u0456\u0434\u0443 \u043f\u0440\u043e \u043f\u0440\u043e\u0433\u0456\u043d \u043d\u0435 \u043b\u0438\u0448\u0430\u0454, \u0442\u043e\u0436
+     \u043e\u0441\u0442\u0430\u043d\u043d\u0456\u0439 \u0441\u043b\u0456\u0434 \u0441\u0442\u0430\u0440\u0456\u0454, \u0456 \u0441\u0442\u043e\u0440\u0456\u043d\u043a\u0430 \u043a\u0430\u0437\u0430\u043b\u0430 \u00abthe schedule may have
+     stopped\u00bb \u2014 \u0445\u043e\u0447\u0430 \u0440\u043e\u0437\u043a\u043b\u0430\u0434 \u043f\u0440\u0430\u0446\u044e\u0454, \u0430 \u0441\u043f\u0438\u043d\u0438\u043b\u0438 \u043f\u0440\u0430\u0432\u0438\u043b\u0430 \u0440\u0443\u043a\u0430\u043c\u0438. */
+  const anyOn = (rlRules || []).some(r => r && r.on !== false);
+  const late = mins <= 90 ? ''
+    : !anyOn && (rlRules || []).length
+      ? ' \u2014 <b class="rl-run-warn">all rules are switched off, so nothing is'
+        + ' being checked now</b>'
+      : ' \u2014 <b class="rl-run-warn">that is a while ago; the schedule may have'
+        + ' stopped</b>';
   box.innerHTML = '<p class="rl-run-ok">\u2713 Checked <b>' + when + '</b>: '
     + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + gone + fell + stale
-    + (mins > 90
-        ? ' \u2014 <b class="rl-run-warn">that is a while ago; the schedule may have'
-          + ' stopped</b>'
-        : '') + '</p>';
+    + late + '</p>';
 }
 
 function rlLogPaint() {
