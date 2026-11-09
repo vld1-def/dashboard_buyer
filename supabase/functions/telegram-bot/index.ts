@@ -366,7 +366,7 @@ const FRESH_MIN = 5;
    ні йому, ні мені: ззовні свіжий код і старий виглядають однаково.
    Про fb-sync бот уже казав версію (вона приїжджає у відповіді
    прогону) — а про себе не казав нічого. Тепер каже. */
-const FN_VERSION = 'bot-14';
+const FN_VERSION = 'bot-15';
 /* Чекаємо довше, ніж 25 с: у кого десяток токенів, прогін за чверть
    хвилини не встигає, і кнопка щоразу відповідала «числа ще старі».
    Верхня межа тут не наша — Telegram чекає на відповідь вебхука
@@ -1439,9 +1439,16 @@ async function answer(token: string, base: string, hdr: Record<string, string>,
   }
   /* Спершу оновлення, потім читання. Навпаки було б безглуздо: ми
      прочитали б старе, оновили базу й показали прочитане. */
+  /* «коли я відправляю запит, щоб одразу повідомлення появлялось типу
+     Очікуйте, отримуємо інформацію». Оновлення кабінетів перед звітом
+     триває до 45 с, і весь цей час чат мовчав — натискали ще раз.
+     Тепер одразу пишемо «Очікуйте», а коли звіт готовий, прибираємо
+     його: у чаті лишається лише сам звіт. */
+  const waitId = await sayWait(token, chat);
   const f = await freshen(base, hdr, link.user_id);
   if (kind === 'day') {
     await reply(token, chat, await cardDay(base, hdr, link.user_id, f.note), KEYS);
+    await dropMsg(token, chat, waitId);
     return;
   }
   const p = await park(base, hdr, link.user_id);
@@ -1450,4 +1457,29 @@ async function answer(token: string, base: string, hdr: Record<string, string>,
              : kind === 'cabs'  ? cardCabs(p)
              : cardSum(p);
   await reply(token, chat, text, KEYS);
+  await dropMsg(token, chat, waitId);
+}
+
+/* «Очікуйте» — і його номер, щоб потім прибрати. Не вдалось надіслати —
+   0, і прибирати тоді нічого. */
+async function sayWait(token: string, chat: number | string): Promise<number> {
+  try {
+    const res = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat, text: '⏳ Очікуйте, отримую інформацію…',
+                             disable_notification: true })
+    });
+    const j = await res.json().catch(() => null);
+    return Number(j?.result?.message_id) || 0;
+  } catch (_e) { return 0; }
+}
+
+async function dropMsg(token: string, chat: number | string, id: number): Promise<void> {
+  if (!id) return;
+  try {
+    await fetch('https://api.telegram.org/bot' + token + '/deleteMessage', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chat, message_id: id })
+    });
+  } catch (_e) { /* лишилось «Очікуйте» — некрасиво, але не шкодить */ }
 }
