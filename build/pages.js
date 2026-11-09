@@ -41,6 +41,32 @@ let pgGone = [];         // що видалили цього разу — щоб
 let pgBusy = '';
 let pgMsg = { html: '', tone: '' };
 
+/* ПЕРЕКЛАД НА ЗАПИТ. «щоб було зрозуміло, про що писали». Одна кнопка —
+   один запит до моделі на всі коментарі Сторінки (функція fb-comments,
+   дія translate). Не автоматично: Сторінка з сотнями старих коментарів
+   коштувала б токенів при кожному відкритті. Переклад тримаємо за id
+   коментаря — він переживає перемальовування й вибір. */
+let pgUk = {}, pgTrBusy = false;
+
+window.pgTranslate = async function () {
+  if (!pgList || !pgList.length || pgTrBusy) return;
+  const todo = pgList.filter(c => c.message && !(c.id in pgUk));
+  if (!todo.length) return;
+  pgTrBusy = true; pgPaint();
+  try {
+    const j = await pgCall({ action: 'translate', texts: todo.map(c => c.message) });
+    const uk = Array.isArray(j.uk) ? j.uk : [];
+    todo.forEach((c, k) => { pgUk[c.id] = String(uk[k] || ''); });
+    const got = uk.filter(Boolean).length;
+    pgMsg = { html: got ? 'Translated ' + got + ' comment(s). Ukrainian ones are left as they are.'
+                        : 'Nothing to translate — they are already in Ukrainian, or the AI did not answer.',
+              tone: '' };
+  } catch (e) {
+    pgMsg = { html: 'Could not translate: ' + pgEsc(e.message || String(e)), tone: 'var(--bad)' };
+  }
+  pgTrBusy = false; pgPaint();
+};
+
 const pgEsc = v => String(v == null ? '' : v)
   .replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
@@ -256,6 +282,7 @@ function pgComments() {
           ${c.likes ? '<span class="fcm-tag">&#9829; ' + c.likes + '</span>' : ''}
         </span>
         <span class="fcm-text">${pgEsc(c.message) || '<i>no text — a photo or a sticker</i>'}</span>
+        ${pgUk[c.id] ? `<span class="fcm-uk">\u{1F1FA}\u{1F1E6} ${pgEsc(pgUk[c.id])}</span>` : ''}
         <span class="fcm-ad" title="The post this comment sits under">${pgEsc(c.ad)}${
           c.live ? '' : ' · not published'}</span>
       </span></label>`;
@@ -288,6 +315,9 @@ function pgComments() {
       : `<label class="fcm-all"><input type="checkbox" ${
             n && n === pgList.filter(c => !pgGone.includes(c.id)).length ? 'checked' : ''}
             onchange="pgPickAll(this.checked)"> ${pgList.length} comment(s)</label>
+         <button type="button" class="fcm-tr" onclick="pgTranslate()" ${pgTrBusy ? 'disabled' : ''}
+           title="Translate every comment here into Ukrainian (one AI request)">${
+           pgTrBusy ? 'Translating…' : '\u{1F1FA}\u{1F1E6} Translate'}</button>
          <div class="fcm-list">${rows}</div>
          ${acts}`}
     ${pgMore ? '<p class="fbr-hint">Only the latest posts were walked — older ones are not checked yet.</p>' : ''}

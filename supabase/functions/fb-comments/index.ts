@@ -111,7 +111,7 @@ type Json = Record<string, any>;
    тижня тричі виглядав як вада в коді. Номер у кожній відповіді
    коштує нічого, а дозволяє сторінці відрізнити «функція про це ще
    не знає» від «Facebook так відповів». */
-const FN_VERSION = '2026-11-09.1';
+const FN_VERSION = '2026-11-09.2';
 
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
@@ -311,7 +311,71 @@ async function tgPost(token: string, chat: string, text: string): Promise<boolea
    місць: або назвати своїм те, що сховали раніше, або показати як
    відкрите те, що вже приховане. */
 type Found = { owner: string; cab: string; ad: string; from: string;
-               text: string; hidden: boolean; byUs: boolean };
+               text: string; hidden: boolean; byUs: boolean; uk?: string };
+
+/* ═══════════ ПЕРЕКЛАД УКРАЇНСЬКОЮ ═══════════
+
+   «чи можемо одразу перекладати коментарі на укр, щоб було зрозуміло,
+   про що писали; в нас якраз є апі до аішок». Пишуть киргизькою,
+   таджицькою, узбецькою, російською — і щоб зрозуміти, спам це чи
+   питання покупця, доводилось копіювати в перекладач.
+
+   Та сама модель і той самий ключ, що в функції ai (ANTHROPIC_API_KEY,
+   claude-haiku-5-5), той самий виклик без бібліотек. Пачкою: один
+   запит на 50 коментарів, а не на кожен. Відповідь — строгий JSON за
+   схемою (output_config.format), тож розбирати текст не доводиться.
+
+   Уже український — порожній рядок: перекладати його нема чого, а
+   повтор того самого тексту в повідомленні лише подвоїв би його.
+
+   Будь-яка відмова (немає ключа, ліміт, збій) — порожній результат, і
+   все далі йде як без перекладу: сповіщення про коментар важливіше за
+   його переклад. */
+const TR_MODEL = 'claude-haiku-5-5';
+const TR_BATCH = 50;
+const TR_MAX_CHARS = 600;      // довші коментарі ріжемо — для розуміння досить
+
+async function translateUk(texts: string[]): Promise<string[]> {
+  const key = Deno.env.get('ANTHROPIC_API_KEY') || '';
+  const out: string[] = texts.map(() => '');
+  if (!key || !texts.length) return out;
+  for (let i = 0; i < texts.length; i += TR_BATCH) {
+    const part = texts.slice(i, i + TR_BATCH).map(t => String(t || '').slice(0, TR_MAX_CHARS));
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01',
+                   'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: TR_MODEL,
+          max_tokens: 8000,
+          output_config: {
+            effort: 'low',
+            format: { type: 'json_schema', schema: {
+              type: 'object',
+              properties: { t: { type: 'array', items: { type: 'string' } } },
+              required: ['t'], additionalProperties: false } }
+          },
+          system: 'You translate Facebook ad comments into Ukrainian for a media buyer. '
+            + 'Return {"t": [...]} with exactly one string per input comment, in the same order. '
+            + 'Translate the meaning plainly and briefly. If a comment is already in Ukrainian, '
+            + 'or is empty, emoji-only or a bare link, return an empty string for it. '
+            + 'No explanations, no quotes around the text.',
+          messages: [{ role: 'user', content: JSON.stringify(part) }]
+        })
+      });
+      const j = await res.json().catch(() => null);
+      if (!res.ok || !j || j.stop_reason === 'refusal') continue;
+      const txt = (Array.isArray(j.content) ? j.content : [])
+        .filter((b: Json) => b?.type === 'text').map((b: Json) => String(b.text || '')).join('');
+      const arr = JSON.parse(txt)?.t;
+      // Не та кількість — порядок уже ненадійний, краще без перекладу.
+      if (!Array.isArray(arr) || arr.length !== part.length) continue;
+      arr.forEach((s: unknown, k: number) => { out[i + k] = String(s || '').trim(); });
+    } catch (_e) { /* без перекладу — не біда */ }
+  }
+  return out;
+}
 
 /* Підпис кабінета в повідомленні — номер і браузер, а не назва профілю
    у Facebook: у роботі кабінет шукають саме за ними. Браузер лежить
@@ -333,7 +397,9 @@ function tgText(list: Found[]): string {
   const one = (f: Found) => (f.hidden ? '\u{1F648} ' : '\u{1F4AC} ')
     + f.cab + (f.ad ? ' \u00b7 ' + f.ad : '') + '\n'
     + (f.from ? f.from + ': ' : '')
-    + (f.text.length > 300 ? f.text.slice(0, 300) + '\u2026' : f.text || '(no text)');
+    + (f.text.length > 300 ? f.text.slice(0, 300) + '\u2026' : f.text || '(no text)')
+    // \u041f\u0435\u0440\u0435\u043a\u043b\u0430\u0434 \u2014 \u043e\u043a\u0440\u0435\u043c\u0438\u043c \u0440\u044f\u0434\u043a\u043e\u043c \u043f\u0456\u0434 \u043e\u0440\u0438\u0433\u0456\u043d\u0430\u043b\u043e\u043c, \u043b\u0438\u0448\u0435 \u044f\u043a\u0449\u043e \u0432\u0456\u043d \u0454.
+    + (f.uk ? '\n\u{1F1FA}\u{1F1E6} ' + (f.uk.length > 300 ? f.uk.slice(0, 300) + '\u2026' : f.uk) : '');
   const lines = list.slice(0, TG_MAX).map(one);
   const tail = () => {
     const rest = list.length - lines.length;
@@ -347,6 +413,11 @@ async function tgSend(base: string, hdr: Json, found: Found[]): Promise<string> 
   if (!found.length) return 'nothing new';
   const token = Deno.env.get('TG_BOT_TOKEN') || '';
   if (!token) return 'not configured';
+  /* Перекладаємо лише те, що піде в повідомлення: решту однаково ніхто
+     тут не прочитає, а платити за неї нема причини. */
+  const shown = found.slice(0, TG_MAX * 4);
+  const uk = await translateUk(shown.map(f => f.text));
+  shown.forEach((f, k) => { if (uk[k]) f.uk = uk[k]; });
 
   const byOwner = new Map<string, Found[]>();
   found.forEach(f => {
@@ -390,10 +461,29 @@ async function autoHideBy(base: string, hdr: Json): Promise<Map<string, boolean>
 }
 
 /* ═════ ОБХІД ЗА РОЗКЛАДОМ ═════ */
+/* АРХІВНІ — ПОЗА КОМЕНТАРЯМИ. «ті, що активні (точніше живі каби, які не
+   в архіві), тільки їх перевіряти на коментарі». Статус Facebook цього
+   не знає: архів — наше слово в accounts_mapping. Номери — лише цифри,
+   як у fb_accounts. Не прочитали — нікого не виключаємо: краще зайвий
+   кабінет у черзі, ніж мовчки пропущений живий. */
+async function archivedIds(base: string, hdr: Json, owner = ''): Promise<Set<string>> {
+  const out = new Set<string>();
+  try {
+    const rows = await pgGet(base, hdr, 'accounts_mapping?select=account_id,fb_account_id&status=eq.archive'
+      + (owner ? '&created_by=eq.' + encodeURIComponent(owner) : ''));
+    rows.forEach((r: Json) => [r.account_id, r.fb_account_id].forEach(v => {
+      const d = String(v || '').replace(/\D/g, ''); if (d) out.add(d);
+    }));
+  } catch (_e) { /* без виключення */ }
+  return out;
+}
+
 async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Response> {
+  const arch = await archivedIds(base, hdr, onlyOwner);
   let q = 'fb_accounts?select=account_id,name,team_name,token_id,created_by,comments_seen_at'
         + '&missing_since=is.null&token_id=not.is.null'
         + '&status=in.(' + SCAN_STATUS + ')'
+        + (arch.size ? '&account_id=not.in.(' + [...arch].join(',') + ')' : '')
         + '&order=comments_scanned_at.asc.nullsfirst&limit=' + SCAN_ACCOUNTS;
   if (onlyOwner) q += '&created_by=eq.' + encodeURIComponent(onlyOwner);
 
@@ -616,6 +706,19 @@ async function handle(req: Request): Promise<Response> {
      тілі. А далі токен Сторінки виводиться з цієї ж перевіреної
      Сторінки — тобто дотягнутись ним можна рівно туди, куди тобі й
      так видали доступ. */
+  /* ── ПЕРЕКЛАД НА ЗАПИТ (кнопка Translate у вікні Pages) ──
+     Лише для залогіненого: ключ до моделі коштує грошей, і віддавати
+     його будь-кому, хто знайде адресу функції, не можна. Стеля — 300
+     коментарів за раз. */
+  if (action === 'translate') {
+    const a = req.headers.get('Authorization') || '';
+    const who = a ? await whoAmI(base, anon, a) : '';
+    if (!who) return reply({ error: 'could not verify who is calling' }, 401);
+    const texts = (Array.isArray(body?.texts) ? body.texts : []).slice(0, 300).map((t: unknown) => String(t || ''));
+    if (!Deno.env.get('ANTHROPIC_API_KEY')) return reply({ error: 'no ANTHROPIC_API_KEY in the function secrets' }, 400);
+    return reply({ uk: await translateUk(texts) });
+  }
+
   if (action === 'pages' || action === 'page_list' || action === 'page_act') {
     const a = req.headers.get('Authorization') || '';
     if (!a) return reply({ error: 'no authorization header' }, 401);
@@ -874,10 +977,12 @@ async function darkPosts(base: string, hdr: Json, me: string, row: PgRow,
     const links = await pgGet(base, hdr, 'fb_cabinet_pages?select=account_id'
       + '&page_id=eq.' + encodeURIComponent(row.page_id)
       + '&created_by=eq.' + encodeURIComponent(me) + '&limit=' + DARK_ACCOUNTS);
+    // Рекламні пости архівних кабінетів не шукаємо — див. archivedIds.
+    const arch = await archivedIds(base, hdr, me);
     for (const l of links) {
       if (Date.now() > deadline) break;
       const act = String(l.account_id || '').replace(/\D/g, '');
-      if (!act) continue;
+      if (!act || arch.has(act)) continue;
       try {
         const posts = await ourPosts(row.token, act);
         posts.forEach((v, story) => {
