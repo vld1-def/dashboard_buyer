@@ -86,6 +86,10 @@ const HISTORY_DAYS = 30;
 // Edge Function не працює вічно. Упершись у дедлайн, чесно віддаємо
 // «є ще» замість того, щоб обірватись, нічого не записавши.
 const DEADLINE_MS = 110_000;
+// Скільки токенів синхронізуємо одночасно (див. цикл у handle).
+const TOKEN_PAR = 3;
+// Стани, з якими кнопка токен пропускає: Facebook уже назвав його недійсним.
+const DEAD_TOKEN = new Set(['error', 'expired']);
 /* Права, без яких токен не зробить нічого потрібного. Той самий список,
    що й на сторінці (build/fbtok.js): інакше один токен називався б
    придатним у браузері й непридатним тут. */
@@ -182,7 +186,7 @@ const THROTTLE = new Set([4, 17, 32, 613, 80000, 80001, 80002, 80003, 80004, 800
    Тепер забути не вийде: fnver.mjs звіряє це число з git — коміт, що
    ввів поточне значення, мусить бути тим самим, що останній раз
    торкався файлу. */
-const FN_VERSION = '2026-11-03.2';
+const FN_VERSION = '2026-11-09.1';
 
 class GraphError extends Error {
   code: number; sub: number; throttled: boolean;
@@ -2321,9 +2325,33 @@ async function handle(req: Request): Promise<Response> {
   const timing: { label: string; ms: number; graph_ms: number; accounts: number }[] = [];
   const runStart = Date.now();
 
-  for (const t of tokens) {
-    if (Date.now() > deadline) break;
-    walked.add(t.id);
+  /* МЕРТВІ ТОКЕНИ — НЕ НА КНОПЦІ. Токен, який Facebook уже назвав
+     недійсним, на натисканні кнопки нічого не привезе, а чергу
+     затримає. Пропускаємо, коли людина синхронізує свої токени
+     (не один конкретний — тоді вона явно хоче спробувати саме його).
+     Ожити він може тільки після перевірки (Check) — вона й поверне
+     йому стан ok. Розклад їх і далі пробує. */
+  const deadSkip = (!cron && !onlyToken)
+    ? tokens.filter(t => DEAD_TOKEN.has(String(t.status || ''))) : [];
+  const live = deadSkip.length ? tokens.filter(t => !deadSkip.includes(t)) : tokens;
+  for (const t of deadSkip) walked.add(t.id);
+
+  /* ТОКЕНИ — ПО TOKEN_PAR ОДНОЧАСНО. По черзі натискання кнопки на
+     дев'яти токенах їло ~75 с: кожен ~8 с, а між ними — нічого. У
+     кожного токена свій ліміт Facebook (свій системний користувач),
+     тож кілька разом не їдять один одному квоту. Більше трьох — уже
+     сплеск, і про всяк випадок не робимо. Черга одна: кожен робітник
+     бере наступний токен, поки не скінчиться список, дедлайн або не
+     впремось у ліміт. */
+  let next = 0;
+  const worker = async () => {
+    while (next < live.length && !throttled && Date.now() <= deadline) {
+      const t = live[next++];
+      walked.add(t.id);
+      await oneToken(t);
+    }
+  };
+  const oneToken = async (t: TokenRow) => {
     let r: Outcome;
     const tStart = Date.now();
     try {
@@ -2334,7 +2362,7 @@ async function handle(req: Request): Promise<Response> {
       // Один поганий токен не мусить зупиняти решту: у людини їх
       // десяток, і зупинятись на першому — найгірше з можливого.
       problems.push(t.label + ': ' + (e as Error).message);
-      continue;
+      return;
     }
     done++;
     accounts += r.accounts; failed += r.failed; changed += r.changed;
@@ -2355,11 +2383,11 @@ async function handle(req: Request): Promise<Response> {
         + 'can be raised for it — ' + r.knownError);
     if (r.throttled) {
       // Ліміт Facebook рахує навіть відмовлені запити. Далі по списку
-      // буде те саме — краще вийти й доробити наступною годиною.
+      // буде те саме — нових токенів не беремо, доробить наступний прогін.
       throttled = true;
-      break;
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(TOKEN_PAR, live.length) }, worker));
 
   const telegram = await tgSend(base, hdr, alerts);
 
@@ -2401,6 +2429,9 @@ async function handle(req: Request): Promise<Response> {
        підсумку читалось би як збій синхронізації — а це свідомий
        обхід, і він економить час живим. */
     archived_skipped: archivedSkipped,
+    /* Мертві токени, які кнопка пропустила, — поіменно: «чому цей
+       кабінет не оновився» має відповідь тут же. */
+    dead_skipped: deadSkip.map(t => t.label),
     /* Картинки креативів. «ok» означає, що колонки є; інакше тут
        стоїть те, що треба виконати. */
     creatives: picNote || 'ok',
