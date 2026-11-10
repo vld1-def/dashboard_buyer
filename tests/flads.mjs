@@ -47,6 +47,12 @@ ok('проксі host:port:user:pass розібрано', body.user_proxy_config
   && body.user_proxy_config.proxy_port === '8080' && body.user_proxy_config.proxy_user === 'pu'
   && body.user_proxy_config.proxy_password === 'pp' && body.user_proxy_config.proxy_soft === 'other', body.user_proxy_config);
 ok('юзер-агент і примітка з назвою файла', body.fingerprint_config.ua.startsWith('Mozilla/5.0') && /CRM: batch\.txt line 2/.test(body.remark));
+const fpX = api.flApBody(p.rows[1], p.map, '0', 'f').fingerprint_config;
+const fpNone = api.flApBody({ line: 0, cells: ['x@example.com', 'pw'], tail: '' }, ['login', 'pass'], '0', 'f').fingerprint_config;
+const fpIos = api.flApBody({ line: 0, cells: ['x@example.com', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'], tail: '' }, ['login', 'ua'], '0', 'f').fingerprint_config;
+ok('завжди Windows: чужий або відсутній UA замінюється випадковим Windows', [fpX, fpNone, fpIos].every(f => !f.ua
+  && JSON.stringify(f.random_ua.ua_system_version) === '["Windows 10","Windows 11"]'), [fpX, fpNone, fpIos]);
+ok('UA від Windows із файла лишається як є', /Windows NT 10\.0/.test(body.fingerprint_config.ua) && !body.fingerprint_config.random_ua);
 ok('без проксі — no_proxy', api.flApBody({ line: 0, cells: ['x@example.com', 'pw'], tail: '' }, ['login', 'pass'], '0', 'f')
   .user_proxy_config.proxy_soft === 'no_proxy');
 ok('рядок без логіна й куків не відправляється', api.flApBody({ line: 0, cells: ['a', 'b'], tail: '' }, ['skip', 'note'], '0', 'f') === null);

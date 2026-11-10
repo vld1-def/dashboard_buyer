@@ -963,7 +963,14 @@ function flApBody(row, map, groupId, title) {
   if (pick('pass')) body.password = pick('pass');
   if (pick('fakey')) body.fakey = pick('fakey').replace(/\s+/g, '');
   if (cookie) { body.cookie = cookie; body.ignore_cookie_error = '1'; }
-  if (pick('ua')) body.fingerprint_config = { ua: pick('ua') };
+  /* ЗАВЖДИ WINDOWS. «деякі профілі створились os ios — завжди віндовс
+     вибирай». Без вказівки AdsPower бере систему навмання, а юзер-агент
+     із файла буває телефонним — і профіль виходив айфоном. Свій UA
+     лишаємо лише коли він сам від Windows; інакше просимо випадковий,
+     але тільки Windows 10 чи 11. */
+  const ua = pick('ua');
+  body.fingerprint_config = /Windows NT/i.test(ua) ? { ua }
+    : { random_ua: { ua_system_version: ['Windows 10', 'Windows 11'] } };
   return body;
 }
 
