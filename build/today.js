@@ -120,7 +120,9 @@ const tdSum = rows => rows.reduce((a, x) => ({ s: a.s + x.s, im: a.im + x.im, lc
   l: a.l + x.l, i: a.i + x.i, r: a.r + x.r, d: a.d + x.d }),
   { s: 0, im: 0, lc: 0, l: 0, i: 0, r: 0, d: 0 });
 
-const TD_COLS = ['Spend', 'Impr.', 'Clicks', 'CTR', 'CPC', 'CPM', '📲', 'CPL / CPI', 'Regs', 'Deps', 'CPA'];
+/* Порядок — як просили: кожне число поруч зі своєю ціною
+   (Clicks-CPC, Regs-CPR, Deps-CPA), а не лічильники окремо від цін. */
+const TD_COLS = ['Spend', 'Impr.', 'CTR', 'CPM', 'Clicks', 'CPC', '📲', 'CPL / CPI', 'Regs', 'CPR', 'Deps', 'CPA'];
 /* 📲 — ліди або інстали, як у листах правил: апка — інстали, веб —
    ліди. Є обидва — пишемо обидва, щоб не вибирати за людину. */
 function tdCells(t) {
@@ -129,9 +131,11 @@ function tdCells(t) {
   const cost = t.l && t.i ? tdPer(t.s, t.l) + ' · ' + tdPer(t.s, t.i)
     : t.i ? tdPer(t.s, t.i) : tdPer(t.s, t.l);
   const ctr = t.im > 0 ? (Math.round(t.lc / t.im * 10000) / 100) + '%' : '<span class="td-dim">—</span>';
-  return `<td>${tdMoney(t.s)}</td><td>${t.im.toLocaleString('en-US')}</td><td>${t.lc}</td><td>${ctr}</td>`
-    + `<td>${tdPer(t.s, t.lc)}</td><td>${t.im > 0 ? tdMoney(t.s / t.im * 1000) : '<span class="td-dim">—</span>'}</td>`
-    + `<td>${conv}</td><td>${cost}</td><td>${t.r}</td><td class="${t.d ? 'td-good' : ''}">${t.d}</td><td>${tdPer(t.s, t.d)}</td>`;
+  const cpm = t.im > 0 ? tdMoney(t.s / t.im * 1000) : '<span class="td-dim">—</span>';
+  return `<td>${tdMoney(t.s)}</td><td>${t.im.toLocaleString('en-US')}</td><td>${ctr}</td><td>${cpm}</td>`
+    + `<td>${t.lc}</td><td>${tdPer(t.s, t.lc)}</td>`
+    + `<td>${conv}</td><td>${cost}</td><td>${t.r}</td><td>${tdPer(t.s, t.r)}</td>`
+    + `<td class="${t.d ? 'td-good' : ''}">${t.d}</td><td>${tdPer(t.s, t.d)}</td>`;
 }
 
 /* ID кабінета, а не назва: назви тут «1», «3» і чуже ім'я з БМ, а

@@ -1123,7 +1123,7 @@ async function cabSnapLoad() {
        архіві, а показувати їхні числа нема де — секція Archive згорнута
        й живих цифр не має. Відсікаємо в самому запиті, щоб ці рядки не
        йшли по мережі взагалі. Чистить їх із бази окремо розклад
-       (FB_AD_TODAY_CLEANUP.sql), коли кабінет 14+ днів в архіві. */
+       (FB_AD_TODAY_CLEANUP.sql), коли кабінет 7+ днів в архіві. */
     const arch = cabSnapArchIds();
     const rows = await sbFetchAll('fb_ad_today', q => arch.length
       ? q.not('account_id', 'in', '(' + arch.join(',') + ')') : q);

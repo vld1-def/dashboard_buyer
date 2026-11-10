@@ -11,7 +11,7 @@
 --  кабінетів, що лежать в архіві.
 --
 --  ПРАВИЛО: рядок видаляється, коли його кабінет В АРХІВІ (статус
---  'archive' в accounts_mapping) ВЖЕ 14+ ДНІВ. Відлік — від ОСТАННЬОГО
+--  'archive' в accounts_mapping) ВЖЕ 7+ ДНІВ (до 2026-11-10 було 14). Відлік — від ОСТАННЬОГО
 --  переходу в архів у журналі account_events: кабінет, який повертали
 --  з архіву й переархівували, починає відлік заново.
 --
@@ -51,7 +51,7 @@ begin
      where a.account_id = t.account_id
        and (a.team_name = t.team_name or a.created_by = t.created_by)
        and a.since is not null
-       and a.since < now() - interval '14 days'
+       and a.since < now() - interval '7 days'
     returning 1
   )
   select count(*) into n from gone;
