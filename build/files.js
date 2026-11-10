@@ -1026,6 +1026,29 @@ window.flApPing = async function () {
   flApPaint();
 };
 
+/* «клікаю на кнопку і програма на компі відкривається».
+   Сторінка запустити програму не може, але Windows уміє відкривати
+   програму за власним посиланням — якщо його один раз зареєстрували
+   (adspower-bridge-install.bat). Після adsbridge:// у посиланні нічого
+   корисного немає й бути не може: установник програмі його не передає.
+
+   Чи спрацювало — дізнатись нема як (браузер мовчить в обидва боки),
+   тому просто кілька разів перепитуємо місток. */
+window.flApStart = function () {
+  if (!flAp || flAp.busy) return;
+  const mine = flAp;
+  try {
+    const fr = document.createElement('iframe');
+    fr.style.display = 'none';
+    fr.src = 'adsbridge://start';
+    document.body.appendChild(fr);
+    setTimeout(() => fr.remove(), 4000);
+  } catch (e) {}
+  [2500, 5000, 9000].forEach(ms => setTimeout(() => {
+    if (flAp === mine && mine.bridge === 'down') flApPing();
+  }, ms));
+};
+
 window.flApMap = function (col, type) {
   if (!flAp || flAp.busy) return;
   /* Два стовпчики «Login» — це завжди помилка вибору, а не задум:
@@ -1157,13 +1180,17 @@ function flApHtml() {
     + '<span class="fl-ap-dim">' + a.rows.length + ' account(s)' + (sentN ? ', ' + sentN + ' already sent' : '') + '</span></div>';
 
   const help = a.bridge === 'down'
-    ? '<div class="fl-ap-help"><b>Start the AdsPower bridge on this computer.</b> '
-      + 'Download both files into one folder, run <b>adspower-bridge.bat</b> and keep its window open: '
+    ? '<div class="fl-ap-help"><b>The AdsPower bridge is not running on this computer.</b> '
+      + '<button type="button" class="fl-mini is-main" onclick="flApStart()">Start bridge</button> '
+      + '<button type="button" class="fl-mini" onclick="flApPing()">Check again</button>'
+      + '<br><span class="fl-ap-dim">First time on this computer: download the three files into one '
+      + 'folder and run <b>adspower-bridge-install.bat</b> once — after that the Start button works. '
       + '<a href="tools/adspower-bridge.py" download>adspower-bridge.py</a> · '
-      + '<a href="tools/adspower-bridge.bat" download>adspower-bridge.bat</a>. '
-      + 'It works only on the computer where AdsPower runs. If the browser asks to allow access to '
-      + 'devices on the local network, allow it. '
-      + '<button type="button" class="fl-mini" onclick="flApPing()">Check again</button></div>'
+      + '<a href="tools/adspower-bridge.bat" download>adspower-bridge.bat</a> · '
+      + '<a href="tools/adspower-bridge-install.bat" download>adspower-bridge-install.bat</a>. '
+      + 'Without the install step, run adspower-bridge.bat by hand and keep its window open. '
+      + 'Works only where AdsPower runs; if the browser asks to allow access to devices on the '
+      + 'local network, allow it.</span></div>'
     : a.bridge === 'noads'
     ? '<div class="fl-ap-help"><b>Open AdsPower and sign in</b>, then '
       + '<button type="button" class="fl-mini" onclick="flApPing()">Check again</button>'

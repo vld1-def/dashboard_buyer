@@ -87,6 +87,23 @@ ok('місток пропускає рівно три виклики AdsPower', 
   && /group\/list/.test(routes) && /group\/create/.test(routes) && /user\/create/.test(routes)
   && !/delete|start|stop|cookies/.test(routes), routes);
 ok('місток не пише в журнал того, що через нього йде', /def log_request\(self/.test(PY) && /protocol_version = 'HTTP\/1\.0'/.test(PY));
+/* Запуск містка кнопкою з сайту. */
+const INST = fs.readFileSync('tools/adspower-bridge-install.bat', 'utf8');
+const BAT = fs.readFileSync('tools/adspower-bridge.bat', 'utf8');
+ok('кнопка Start bridge відкриває adsbridge:// і перепитує місток', /window\.flApStart = function/.test(FL)
+  && /fr\.src = 'adsbridge:\/\/start';/.test(FL) && /onclick="flApStart\(\)"/.test(FL));
+ok('установник пише лише в реєстр поточного користувача', (INST.match(/reg add "HKCU\\Software\\Classes\\adsbridge/g) || []).length === 3
+  && !/HKLM|HKEY_LOCAL_MACHINE/i.test(INST));
+/* Головне: те, що сторінка напише після adsbridge://, до програми не
+   доходить. %1 у команді означав би, що будь-який сайт може дописати
+   свої аргументи до cmd. */
+const cmdLine = (INST.match(/shell\\open\\command" \/ve \/d "(.*)" \/f/) || ['', ''])[1];
+ok('посилання програмі не передається (без %1)', cmdLine.includes('adspower-bridge.bat\\" protocol') && !/%1|%\*|%L/i.test(cmdLine), cmdLine);
+ok('установник уміє прибрати за собою', /reg delete "HKCU\\Software\\Classes\\adsbridge" \/f/.test(INST));
+ok('запущений із сайту місток не лишає вікна з pause', /if \/i "%~1"=="protocol" set "FROM_CRM=1"/.test(BAT)
+  && /if not defined FROM_CRM pause/.test(BAT));
+ok('bat-файли з кінцями рядків Windows', /\r\n/.test(INST) && /\r\n/.test(BAT) && !/[^\r]\n/.test(INST) && !/[^\r]\n/.test(BAT));
+
 ok('і це доїхало в зібраний index.html', /flApSend = async function/.test(OUT) && /\.fl-ap-tbl/.test(OUT));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
