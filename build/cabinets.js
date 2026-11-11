@@ -3438,53 +3438,61 @@ window.cabLimitEdit = async function (enc) {
   const c = cabAll.find(x => String(x.id) === String(id));
   if (!c || !c.fb) return;
 
-  /* ОДИНИЦІ. У базі spend_cap і amount_spent лежать у ЦІЛІЙ ВАЛЮТІ:
-     fb-sync ділить відповідь Graph на сто (функція cents). А Graph і
-     наша fb-limit говорять мінорними одиницями. Через цю межу число
-     переходить рівно двічі — тут і на поверненні відповіді, — і
-     обидва рази це написано поруч: помилка в сто разів тут коштує
-     грошей, і я вже раз її тут зробив. */
+  /* ЛІМІТ — ВІД НУЛЯ, ЯК У ADS MANAGER.
+     «Я ставлю 5$ значить я хочу щоб 5$ відкрутило і зупинилось …
+     раніше я в срм ставив 5$ і в фб в лімітах також ставилось 5$».
+
+     Стелю Facebook порівнює з лічильником витраченого, а той рахує від
+     останнього скидання. Поки лічильник малий, «5» і було п'ятьма; на
+     кабінеті, де він доріс до 215, те саме «5» означало «стань негайно»,
+     і поле відмовляло. Тепер разом із лімітом скидаємо лічильник
+     (reset: true — те саме, що кнопка Reset біля ліміту в Ads Manager):
+     ввів 5 — у Facebook стоїть «0 з 5», кабінет відкручує п'ять і стає.
+
+     Скидання, тимчасову стелю для кабінета без ліміту й перевірку, що
+     лічильник справді обнулився, робить функція fb-limit: вони мусять
+     іти одним ланцюжком, і розривати його між браузером і сервером не
+     можна.
+
+     ОДИНИЦІ. У базі spend_cap і amount_spent — у ЦІЛІЙ ВАЛЮТІ (fb-sync
+     ділить відповідь Graph на сто). Функція віддає мінорні одиниці —
+     ділимо на сто на поверненні. На запис Facebook бере лише цілу
+     валюту, тому дробове число округлюємо й кажемо про це у вікні. */
   const cur = c.fb.currency || '';
   const cap = Number(c.fb.spend_cap) || 0;        // валюта, не центи
   const spent = Number(c.fb.amount_spent) || 0;   // так само
   const m = v => cabMoneyCur(v, cur);
+  const mc = v => (typeof cabMoneyCents === 'function' ? cabMoneyCents(v, cur) : cabMoneyCur(v, cur));
 
-  const raw = await ask({ title: 'Spending limit \u00b7 ' + id, ok: 'Next',
-    body: (cap ? 'Now ' + m(cap) + ', already spent against it ' + m(spent) + '.'
+  const raw = await ask({ title: 'Spending limit · ' + id, ok: 'Next',
+    body: (cap ? 'Now ' + m(cap) + ', spent against it ' + mc(spent) + '.'
                : 'No limit on this cabinet right now.')
+        + '\n\nType how much the cabinet may spend from now. The spent counter is reset to '
+        + 'zero, so it spends this much and stops.'
         + '\n\nFacebook allows 10 limit changes per cabinet per day.',
-    input: { value: cap ? String(cap) : '', placeholder: '1000' } });
+    input: { value: '', placeholder: '5' } });
   if (raw === false) return;
 
-  const want = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
-  if (!Number.isFinite(want) || want <= 0) {
+  const typed = Number(String(raw).replace(',', '.').replace(/[^\d.]/g, ''));
+  if (!Number.isFinite(typed) || typed <= 0) {
     toast('Not a limit: ' + raw, 'error');
     return;
   }
-  if (Math.abs(want - cap) < 0.005) return;              // те саме число
+  const want = Math.max(1, Math.round(typed));     // Facebook бере лише цілу валюту
 
-  /* Стеля на рівні витраченого або нижче спиняє кабінет негайно.
-     Функція це теж не пропустить, але сказати треба ТУТ: інакше
-     людина дізнається про межу після натискання, а не замість. */
-  if (want <= spent) {
-    toast('A limit of ' + m(want) + ' is at or below the ' + m(spent)
-      + ' already spent \u2014 the cabinet would stop at once. Stopping is what '
-      + 'the pause button is for.', 'error', 9000);
-    return;
-  }
-
-  const up = want > cap;
-  const go = await ask({ title: 'Change the limit?', ok: 'Change', danger: up,
-    body: id + '\n\n' + (cap ? m(cap) : 'no limit') + '  \u2192  ' + m(want)
-        + '\n\n' + (cap && up
-            ? 'It becomes free to spend more as soon as Facebook accepts this.'
-            : cap ? 'Delivery stops once this is reached.'
-                  : 'This cabinet has no limit now. Setting one is possible; '
-                    + 'removing it again is not \u2014 that was never tested.') });
+  const go = await ask({ title: 'Set the limit?', ok: 'Set', danger: true,
+    body: id + '\n\nLimit: ' + (cap ? m(cap) + ' (spent ' + mc(spent) + ')' : 'no limit')
+        + '  →  ' + m(want) + ' from zero'
+        + (Math.abs(want - typed) >= 0.005
+            ? '\nFacebook takes whole ' + (cur || 'units') + ' only: ' + m(want) + '.' : '')
+        + '\n\nThe cabinet spends ' + m(want) + ' more and stops. Facebook’s spent counter for '
+        + 'this cabinet goes back to zero.'
+        + (cap ? '' : '\n\nThis cabinet has no limit now. Setting one is possible; '
+                      + 'removing it again is not — that was never tested.') });
   if (!go) return;
 
   const step = toastStep();
-  step.say('Asking Facebook\u2026');
+  step.say('Asking Facebook…');
   try {
     const { data: s } = await sb.auth.getSession();
     const jwt = s && s.session && s.session.access_token;
@@ -3493,36 +3501,39 @@ window.cabLimitEdit = async function (enc) {
       headers: { Authorization: 'Bearer ' + jwt, apikey: SUPABASE_KEY,
                  'content-type': 'application/json' },
       body: JSON.stringify({ account_id: String(id), set_major: want,
-                             allow_new_cap: !cap })
+                             allow_new_cap: !cap, reset: true })
     });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(res.status === 404
       ? 'Function fb-limit is not deployed yet: supabase functions deploy fb-limit'
       : (j.error || 'HTTP ' + res.status));
+    /* Стара функція слова reset не знає й поставила б стелю БЕЗ
+       скидання. Вона ж і відмовить, якщо стеля нижча за витрачене, —
+       але сказати, що сталось, мусимо ми: відповідь без reset означає,
+       що лічильник не чіпали. */
+    if (j.reset !== true)
+      toast('The limit is set, but this server function is old and did not reset the spent '
+        + 'counter — deploy fb-limit.', 'warn', 12000);
 
     /* Показуємо те, що Facebook ВІДДАВ, а не те, що ми просили: вони
        збігаються майже завжди, і саме тому розбіжність варто бачити. */
-    /* cap_after приходить таким, як його віддав Graph — у мінорних
-       одиницях. Ділимо: у базі й на екрані валюта. */
+    /* cap_after і spent_after_reset приходять такими, як їх віддав
+       Graph — у мінорних одиницях. Ділимо: у базі й на екрані валюта. */
     const back = Number(j.cap_after);
     c.fb.spend_cap = Number.isFinite(back) ? back / 100 : want;
-    step.done('Limit is now ' + m(c.fb.spend_cap)
-      + (j.fixed ? ' \u00b7 units corrected on the second try' : ''), 'ok');
+    const left = Number(j.spent_after_reset);
+    if (j.reset === true && Number.isFinite(left)) c.fb.amount_spent = left / 100;
+    step.done('Limit is now ' + m(c.fb.spend_cap) + ', spent against it '
+      + mc(Number(c.fb.amount_spent) || 0)
+      + (j.fixed ? ' · units corrected on the second try' : ''), 'ok');
     if (j.warning) toast(String(j.warning), 'warn', 12000);
     cabRender();
     if (typeof cabDetail === 'function') cabDetail(c);
 
-    /* ПЕРЕЧИТУЄМО КАБІНЕТ САМІ, а не просимо натиснути Sync.
-
-       Число вище — це відповідь Facebook на нашу ж зміну, і її досить,
-       щоб побачити нову стелю. Але поруч стоїть залишок, і він
-       рахується від amount_spent, якого ми не чіпали: без прогону
-       картка показувала б нову стелю зі старим залишком. Просити за
-       цим іти в іншу кнопку означає лишити на екрані число, яке не
-       сходиться саме з собою.
-
-       Прогін тихий і лише по цьому кабінету — помилка в ньому не
-       скасовує того, що стеля вже змінена. */
+    /* ПЕРЕЧИТУЄМО КАБІНЕТ САМІ, а не просимо натиснути Sync: поруч зі
+       стелею стоїть залишок, і без прогону картка показувала б нову
+       стелю зі старим залишком. Прогін тихий і лише по цьому кабінету —
+       помилка в ньому не скасовує того, що стеля вже змінена. */
     if (typeof cabSyncOne === 'function') {
       try { await cabSyncOne(String(id)); } catch (_e) {}
     }

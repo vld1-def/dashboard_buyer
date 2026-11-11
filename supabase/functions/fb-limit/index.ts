@@ -102,7 +102,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-08.1';
+const FN_VERSION = '2026-11-11.1';
 
 /* Спільний секрет звіряємо по всій довжині, а не до першої розбіжності. */
 
@@ -239,6 +239,7 @@ Deno.serve(async (req) => {
 
   const setMajor = num(body?.set_major);
   const allowNew = body?.allow_new_cap === true;
+  const reset = body?.reset === true;
 
   /* Читаємо токеном того, хто покликав: межі ставить RLS, як у
      fb-post і check-domains. Чужий кабінет просто не прийде. */
@@ -278,7 +279,7 @@ Deno.serve(async (req) => {
   }
   if (!token) return reply({ error: 'токен порожній' }, 400);
 
-  return await capFlow(acc, token, scopes, setMajor, allowNew);
+  return await capFlow(acc, token, scopes, setMajor, allowNew, reset);
 });
 
 /* ═══ САМА ЗМІНА СТЕЛІ ═══
@@ -286,7 +287,8 @@ Deno.serve(async (req) => {
    кнопка ✎ на сторінці, і розклад (runPlans нижче): два шляхи до тієї
    самої дії з грошима мусять бути одним кодом. */
 async function capFlow(acc: string, token: string, scopes: string[],
-                       setMajor: number | null, allowNew: boolean): Promise<Response> {
+                       setMajor: number | null, allowNew: boolean,
+                       reset = false): Promise<Response> {
   /* Дозвіл перевіряємо ДО Graph — як у fb-pause. Дізнатись про брак
      прав після того, як запис уже пішов, неможливо; дізнатись після
      того, як людина натиснула і чекає, — цілком реально. */
@@ -337,11 +339,61 @@ async function capFlow(acc: string, token: string, scopes: string[],
   const sent = Math.round(setMajor);
   const wantBack = Math.round(setMajor * MINOR);
 
-  if (spentNow !== null && wantBack <= spentNow) {
-    return reply({ error: 'стеля ' + wantBack + ' не вище вже витраченого ' + spentNow
+  /* СКИДАННЯ ЛІЧИЛЬНИКА (reset: true).
+     «раніше я в срм ставив 5$ і в фб в лімітах також ставилось 5$».
+
+     Стелю Facebook порівнює з amount_spent, а той рахує від останнього
+     скидання. У Ads Manager скидання робить кнопка Reset біля ліміту;
+     тут — spend_cap_action=reset. Після нього «ліміт 5» означає рівно
+     «п'ять від нуля», і саме так його видно у Facebook.
+
+     ПОРЯДОК ВАЖИТЬ. Спершу скидаємо, потім ставимо стелю: навпаки
+     кабінет із витраченими 215 дістав би стелю 5 і став би негайно.
+
+     Кабінет БЕЗ стелі може не дати скинути лічильник (скидати нема
+     проти чого). Тоді ставимо тимчасову стелю «витрачено + скільки
+     просили» — вона сама по собі безпечна й означає те саме, — і
+     скидаємо вдруге. Не вийшло й так — лишаємо її й кажемо прямо.
+
+     Після скидання читаємо лічильник назад: вірити, що він нуль, не
+     можна — на цьому числі стоять гроші. */
+  let spentBase = spentNow;
+  let spentAfterReset: number | null = null;
+  let tempCap: number | null = null;
+  if (reset) {
+    const doReset = async () => {
+      await graph('/' + acc, token, { spend_cap_action: 'reset' }, 'POST');
+      return num((await graph('/' + acc, token, { fields: ACC_FIELDS }))?.amount_spent);
+    };
+    let why = '';
+    try { spentAfterReset = await doReset(); }
+    catch (e) { why = String((e as Error).message); }
+    const stuck = () => spentAfterReset === null || spentAfterReset >= wantBack;
+    if (stuck() && !capNow && spentNow !== null) {
+      tempCap = Math.ceil(spentNow / MINOR) + sent;
+      try {
+        await graph('/' + acc, token, { spend_cap: String(tempCap) }, 'POST');
+        spentAfterReset = await doReset();
+        why = '';
+      } catch (e) { why = String((e as Error).message); }
+    }
+    if (stuck()) {
+      return reply({ error: 'Facebook не скинув лічильник витраченого'
+        + (why ? ': ' + why : ' (після скидання він ' + spentAfterReset + ')')
+        + (tempCap !== null
+            ? '. Стоїть стеля ' + tempCap + ' ' + cur + ' — кабінет відкрутить ще приблизно '
+              + sent + ' ' + cur + ' і стане.'
+            : '. Ліміт не змінено.'),
+        reset_failed: true, temp_cap: tempCap, before: shape }, 409);
+    }
+    spentBase = spentAfterReset;
+  }
+
+  if (spentBase !== null && wantBack <= spentBase) {
+    return reply({ error: 'стеля ' + wantBack + ' не вище вже витраченого ' + spentBase
       + ' — такий запис або відкинуть, або кабінет стане негайно. Це дія fb-pause, '
       + 'і робити її треба там, де воно так і називається. Візьми set_major більше '
-      + 'за ' + (spentNow / MINOR) + ' ' + (cur || ''), before: shape }, 409);
+      + 'за ' + (spentBase / MINOR) + ' ' + (cur || ''), before: shape }, 409);
   }
 
   const fail = (e: unknown) => {
@@ -388,6 +440,7 @@ async function capFlow(acc: string, token: string, scopes: string[],
     ok: true, mode: 'set', account_id: acc, currency: cur,
     asked_major: setMajor, sent_as: sent, fixed,
     cap_before: capNow, cap_after: capBack,
+    reset, spent_before: spentNow, spent_after_reset: spentAfterReset,
     units: verdict.units, note: verdict.note,
     warning: overshoot || undefined,
     restore: capNow !== null
