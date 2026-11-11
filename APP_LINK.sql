@@ -192,7 +192,7 @@ end $$;
 
 select cron.schedule(
   'apps-check',
-  '40 4 * * *',
+  '40 22,1,4 * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets

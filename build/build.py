@@ -1021,8 +1021,10 @@ rest = sub(rest,
      запит лише коли в нього попросять результат (це thenable), тож
      без обгортки рядок нічого б не відправив. */
   if (typeof sb !== 'undefined') {
-    window.dailyReady = Promise.resolve(sb.from('daily_stats').select('*')
-      .eq('team_name', currentTeam).order('date', { ascending: false }));
+    /* Сторінками: одним запитом база віддає щонайбільше 1000 рядків. */
+    window.dailyReady = sbAllRows(() => sb.from('daily_stats').select('*')
+      .eq('team_name', currentTeam).order('date', { ascending: false })
+      .order('id', { ascending: true }));
     if (typeof refreshPayoutsFromSQL === 'function') window.payoutsReady = refreshPayoutsFromSQL();
   }
 

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 10.11 17:15">
+  <meta name="build" content="build 11.11 13:52">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7338,7 +7338,7 @@ p.fl-ap-empty { padding: 14px; font-size: 12px; color: var(--text-muted); margin
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 10.11 17:15</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 11.11 13:52</div>
     </div>
   </aside>
 
@@ -9097,8 +9097,10 @@ window.onload = async () => {
      запит лише коли в нього попросять результат (це thenable), тож
      без обгортки рядок нічого б не відправив. */
   if (typeof sb !== 'undefined') {
-    window.dailyReady = Promise.resolve(sb.from('daily_stats').select('*')
-      .eq('team_name', currentTeam).order('date', { ascending: false }));
+    /* Сторінками: одним запитом база віддає щонайбільше 1000 рядків. */
+    window.dailyReady = sbAllRows(() => sb.from('daily_stats').select('*')
+      .eq('team_name', currentTeam).order('date', { ascending: false })
+      .order('id', { ascending: true }));
     if (typeof refreshPayoutsFromSQL === 'function') window.payoutsReady = refreshPayoutsFromSQL();
   }
 
@@ -9217,7 +9219,7 @@ async function refreshTeamsList() {
   teamsLoaded = true;
   try {
     // Отримуємо унікальні імена команд із таблиці daily_stats
-    const { data, error } = await sb.from('daily_stats').select('team_name');
+    const { data, error } = await sbAllRows(() => sb.from('daily_stats').select('team_name').order('id', { ascending: true }));
     
     // Список будується з власних даних. Якщо їх ще немає, показуємо
     // рівно те, що людина щойно назвала, — і нічого чужого.
@@ -9279,11 +9281,12 @@ function switchTeam(teamName) {
      Тоді тут лишається тільки дочекатись відповіді. */
   const sent = window.dailyReady;
   window.dailyReady = null;         // наступний виклик — свіжий запит
-  const { data: stats, error } = await (sent || sb
+  const { data: stats, error } = await (sent || sbAllRows(() => sb
     .from('daily_stats')
     .select('*')
     .eq('team_name', currentTeam)
-    .order('date', { ascending: false }));
+    .order('date', { ascending: false })
+    .order('id', { ascending: true })));
 
   // 2. Обробка помилки (замість if !error використовуємо ранній вихід)
   if (error) {
@@ -9364,6 +9367,28 @@ async function sbFetchAll(table, build) {
     if (error) throw error;
     all = all.concat(data || []);
     if (!data || data.length < PAGE) return all;
+    from += PAGE;
+  }
+}
+
+/* УСІ РЯДКИ ЗАПИТУ, А НЕ ПЕРША ТИСЯЧА.
+   «Select month немає в списку місяців» — Supabase віддає щонайбільше
+   1000 рядків за запит і нічого про це не каже. У daily_stats команди
+   стало 1482, і сторінка мовчки бачила лише найновішу тисячу: зі списку
+   зникли липень-вересень, а жовтень рахувався без 37 рядків.
+
+   make() щоразу будує запит наново (той самий білдер двічі не
+   відправиш) і МУСИТЬ мати однозначний порядок — інакше сторінки
+   перекриються або загублять рядки на межі. Відповідь тієї ж форми,
+   що й у звичайного запиту: { data, error }. */
+async function sbAllRows(make) {
+  const PAGE = 1000;
+  let all = [], from = 0;
+  for (;;) {
+    const { data, error } = await make().range(from, from + PAGE - 1);
+    if (error) return { data: null, error };
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) return { data: all, error: null };
     from += PAGE;
   }
 }
@@ -18001,7 +18026,7 @@ async function gcLoadTeamsList() {
   listEl.innerHTML = '<p class="text-[10px] opacity-40 px-1">Loading...</p>';
   let teams = [];
   try {
-    const { data } = await sb.from('daily_stats').select('team_name');
+    const { data } = await sbAllRows(() => sb.from('daily_stats').select('team_name').order('id', { ascending: true }));
     teams = [...new Set((data||[]).map(x => x.team_name).filter(Boolean))].sort();
   } catch(e) {}
   if (!teams.includes(currentTeam)) teams.unshift(currentTeam);
@@ -18024,7 +18049,8 @@ async function gcLoadTeamsList() {
 async function gcEnsureTeamData(team) {
   if (gcCache[team]) return;
   const [statsRes, payRes] = await Promise.all([
-    sb.from('daily_stats').select('date,geo,offer,spend,regs,deposits').eq('team_name', team),
+    sbAllRows(() => sb.from('daily_stats').select('date,geo,offer,spend,regs,deposits')
+      .eq('team_name', team).order('date', { ascending: false }).order('id', { ascending: true })),
     sb.from('payouts').select('*').eq('team_name', team)
   ]);
   const payouts = {}, models = {}, fromActive = new Set();
