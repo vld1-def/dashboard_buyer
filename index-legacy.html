@@ -9236,6 +9236,11 @@ function gcDiff(geo, results) {
              воронок, і доти по нову апку треба було йти в Settings. -->
         <!-- Обійти Play по всіх апках команди. Видно лише в режимі
              прілок: у PWA апок немає, і кнопка там була б про чуже. -->
+        <!-- Вимикач автопаузи стоїть поруч із перевіркою: саме вона й
+             ставить бан, після якого кампанії зупиняються. -->
+        <button id="ap-banpause" onclick="apBanPauseToggle(this)"
+          title="When an app is banned in the store, pause the campaigns that have its KTID in the name"
+          class="mw-btn">Auto-pause: …</button>
         <button id="ap-checkall" onclick="apCheckAll(this)"
           title="Спитати Google Play про кожну апку команди, по черзі. Забанені позначаться самі"
           class="mw-btn">↻ Перевірити апки</button>
@@ -9540,6 +9545,7 @@ function closeAppsModal() {
    що тут можна зробити. */
 async function apLoad() {
   const sub = document.getElementById('ap-sub');
+  apBanPauseLoad();              // вимикач автопаузи — поруч, не чекаючи на нього
   try {
     /* Обидва довідники одним запитом: і шаблони прілок, і PWA-кампанії.
        Окремий select на другий ключ коштував би ще один круг до бази
@@ -9702,6 +9708,8 @@ function apModePaint() {
      кнопкою про чуже: там силки, а не апки. */
   const ca = document.getElementById('ap-checkall');
   if (ca) ca.classList.toggle('hidden', pwa);
+  const bp = document.getElementById('ap-banpause');
+  if (bp) bp.classList.toggle('hidden', pwa);
   const dom = document.getElementById('ap-dom');
   if (dom) dom.classList.toggle('hidden', !pwa);
   const s = document.getElementById('ap-search');
@@ -9850,7 +9858,7 @@ async function apAddFunnel(isApp) {
    фільтр у таблиці звузив би й перевірку, а «перевірити всі» має
    означати всі. */
 async function appCheckAll(say) {
-  const out = { n: 0, live: 0, gone: 0, unknown: 0, failed: 0, banned: 0, freed: 0 };
+  const out = { n: 0, live: 0, gone: 0, unknown: 0, failed: 0, banned: 0, freed: 0, paused: 0 };
   let rows = [];
   try {
     const res = await sb.from('funnels_mapping')
@@ -9892,6 +9900,10 @@ async function appCheckAll(say) {
       else out.unknown++;
       if (j.did === 'banned') out.banned++;
       if (j.did === 'unbanned') out.freed++;
+      // Скільки кампаній зупинено через цей бан — функція каже сама.
+      (Array.isArray(j.paused) ? j.paused : []).forEach(r => {
+        out.paused += Array.isArray(r.paused) ? r.paused.length : 0;
+      });
     } catch (e) {
       out.failed++;
       if (!out.error) out.error = e.message || String(e);
@@ -9928,13 +9940,65 @@ window.apCheckAll = async function (btn) {
        апок у редакторі читається саме з них. */
     if (typeof apLoad === 'function') await apLoad();
     if (typeof apRenderMode === 'function') apRenderMode();
-    if (sub) sub.textContent = appCheckSay(o);
+    if (sub) sub.textContent = appCheckSay(o)
+      + (o.paused ? ' \u00b7 paused ' + o.paused + ' campaign(s) on banned apps' : '');
   } catch (e) {
     if (sub) sub.textContent = 'Перевірка не вийшла: ' + (e.message || e);
   } finally {
     if (btn) btn.disabled = false;
     void was;
   }
+};
+
+/* ═══ ЗАБАНИЛИ ПРІЛКУ → СТОП РЕКЛАМИ: ВИМИКАЧ ═══
+
+   Саму паузу робить check-apps (і нічний обхід, і ця кнопка перевірки):
+   після НОВОГО бану вона зупиняє активні кампанії, у назві яких стоїть
+   KTID прілки. Тут лише вимикач — team_settings, ключ app_ban_pause.
+   Запису немає — увімкнено: заради цього все й робилось. */
+let apBanPauseOn = true;
+
+function apBanPausePaint() {
+  const b = document.getElementById('ap-banpause');
+  if (!b) return;
+  b.textContent = 'Auto-pause: ' + (apBanPauseOn ? 'ON' : 'OFF');
+  b.classList.toggle('is-main', apBanPauseOn);
+}
+
+async function apBanPauseLoad() {
+  try {
+    const { data, error } = await sb.from('team_settings')
+      .select('value').eq('key', 'app_ban_pause').eq('team_name', currentTeam).limit(1);
+    if (error) throw error;
+    const cell = data && data[0] ? data[0].value : null;
+    const v = typeof cell === 'string' ? JSON.parse(cell || '{}') : (cell || {});
+    apBanPauseOn = !(v && v.on === false);
+  } catch (e) {
+    // Не прочитали — показуємо типове (увімкнено): так поводиться й функція.
+    apBanPauseOn = true;
+  }
+  apBanPausePaint();
+}
+
+window.apBanPauseToggle = async function (btn) {
+  const next = !apBanPauseOn;
+  if (!next && !await ask({ title: 'Turn auto-pause off?', ok: 'Turn off', danger: true,
+    body: 'When an app of yours is banned in the store, its campaigns will keep running. '
+        + 'You will still get the Telegram message with the list.' })) return;
+  const row = { team_name: currentTeam, key: 'app_ban_pause', value: JSON.stringify({ on: next }) };
+  if (window.myUid) row.created_by = window.myUid;
+  if (btn) btn.disabled = true;
+  const { error } = await sb.from('team_settings').upsert(row, { onConflict: 'created_by,key' });
+  if (btn) btn.disabled = false;
+  if (error) {
+    if (typeof toast === 'function') toast('Could not save: ' + (error.message || error), 'error', 7000);
+    return;
+  }
+  apBanPauseOn = next;
+  apBanPausePaint();
+  if (typeof toast === 'function')
+    toast(next ? 'Auto-pause is on: a banned app stops its campaigns.'
+               : 'Auto-pause is off: banned apps only send a Telegram message.', next ? 'ok' : 'warn', 5000);
 };
 
 let apOpenWas = '';
@@ -11047,7 +11111,16 @@ function pwMaskCompile(mask) {
   const src = String(mask || '').trim();
   if (!src) return null;
   if (PW_MASK_CACHE.has(src)) return PW_MASK_CACHE.get(src);
-  const primary = src.includes('&') ? '&' : '_';
+  /* РОЗДІЛЬНИК — ТОЙ, ЯКИМ НАПИСАНО САМ ШАБЛОН.
+     «для пва просто додай патерн … я сам придумаю назву і впишу».
+     Доти він був прибитий: «_» (або «&»). Шаблон із пробілами чи
+     рисками — «{ktid} {geo} *», «{ktid} | {geo} | *» — компілювався, але
+     останній шматок і хвіст назви однаково шукались по «_» і виходили
+     не тими. Тепер роздільник читаємо з шаблону: якщо після якогось
+     {поля} стоїть «_» — це він, як і було (жоден старий шаблон не
+     міняє поведінки); інакше — перший знак, що йде після {поля}. */
+  const sepM = /\}([^A-Za-z0-9{}*])/.exec(src);
+  const primary = src.includes('&') ? '&' : (/\}_/.test(src) || !sepM) ? '_' : sepM[1];
   const esc = c => (/[A-Za-z0-9]/.test(c) ? c : '\\' + c);
   const keys = [], fixed = {};
   let re = '', i = 0;
@@ -11056,7 +11129,10 @@ function pwMaskCompile(mask) {
     if (ph) {
       i += ph[0].length;
       if (ph[2] !== undefined) { fixed[ph[1] === 'cid-' ? 'cid' : ph[1]] = ph[2]; continue; }
-      const stop = i < src.length ? src[i] : primary;
+      /* Після поля одразу «*» чи наступне {поле} — межі в шаблоні немає,
+         тож поле тягнеться до роздільника, а не до буквальної зірочки. */
+      const nx = i < src.length ? src[i] : '';
+      const stop = nx && nx !== '*' && nx !== '{' ? nx : primary;
       keys.push(ph[1]);
       re += `([^${esc(stop)}]+)`;
       continue;

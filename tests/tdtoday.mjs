@@ -37,8 +37,9 @@ T.setMaps({
   cab: new Map([['3191102584433243', 'Zlata Garacheva'], ['1403209798694635', '3']]),
   tz: new Map([['1403209798694635', 'Asia/Bishkek']]),
   br: new Map([['3191102584433243', '4327'], ['1403209798694635', '4175']]),
-  fn: new Map([['cfr11003', { name: 'Chicken Fortune Road [satorapps]', geo: 'TJ' }],
-               ['10708-y3wz', { name: 'MPlay KG', geo: 'KG' }]])
+  /* Ключ — «на слух»: без регістру, дефісів і підкреслень (tdLoose). */
+  fn: new Map([['cfr11003', { name: 'Chicken Fortune Road [satorapps]', geo: 'TJ', ktid: 'CFR11003' }],
+               ['10708y3wz', { name: 'MPlay KG', geo: 'KG', ktid: '10708-y3wz' }]])
 });
 
 /* 1. Веб-кампанія: маска *_{geo}_{ktid} спрацьовує сама. */
@@ -60,6 +61,19 @@ const tj = T.tdRow({ account_id: '3191102584433243', name: 'TJ_AB_592',
 ok('апка: воронка знайдена серед шматків назви', tj.fn === 'Chicken Fortune Road [satorapps]' && !tj.fnBad, tj);
 ok('апка: гео — з воронки, а не «8W» з маски', tj.geo === 'TJ', tj.geo);
 ok('інстали, реєстрації, депозити', tj.i === 59 && tj.r === 28 && tj.d === 5, tj);
+
+/* 2а. Той самий ktid, написаний інакше: «в фб 000_000, в кейтаро
+   000-000 … ігнорувати -_ типу не звертати уваги який». */
+const us = T.tdRow({ account_id: '1403209798694635', name: 'kg_js_633',
+  campaign_name: 'MPlay_KG_10708_y3wz_07/11 001', spend: '1', impressions: '5' });
+ok('дефіс ktid став підкресленням — воронка та сама', us.fn === 'MPlay KG' && !us.fnBad && us.geo === 'KG', us);
+const ds = T.tdRow({ account_id: '1403209798694635', name: 'KG-JS-633',
+  campaign_name: 'MPlay-KG-10708-Y3WZ-07/11-001', spend: '1', impressions: '5' });
+ok('назва через дефіси й іншим регістром — воронка та сама', ds.fn === 'MPlay KG' && !ds.fnBad, ds);
+ok('і гео тоді береться з воронки', ds.geo === 'KG', ds.geo);
+const lc = T.tdRow({ account_id: '3191102584433243', name: 'TJ_AB_592',
+  campaign_name: 'cy638t_8wxg7hf7_bGcTwMmV_cfr11003_3191102584433243_TJ', spend: '1', impressions: '5' });
+ok('апка малими літерами — воронка та сама', lc.fn === 'Chicken Fortune Road [satorapps]' && !lc.fnBad, lc);
 
 /* 3. Невідомий ключ — не вгадуємо, а кажемо. */
 const un = T.tdRow({ account_id: '1', name: 'GE_1', campaign_name: 'Slots_GE_11115-kwwk_01/11',

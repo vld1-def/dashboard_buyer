@@ -69,7 +69,7 @@ const BATCH = 120;
 const PAUSE_MS = 350;
 const DEADLINE_MS = 110_000;
 
-const FN_VERSION = '2026-11-06.1';
+const FN_VERSION = '2026-11-12.1';
 
 /* Вхід людини йде з браузера, отже потрібні CORS-заголовки — і на
    самій відповіді, і на preflight. Без них браузер не покаже навіть
@@ -85,6 +85,7 @@ type Row = {
   id: number; funnel_name: string | null; app_id: string | null;
   geo: string | null; status: string | null; app_gone_since: string | null;
   app_banned_by: string | null;
+  ktid?: string | null; team_name?: string | null; created_by?: string | null;
 };
 
 /* ВЕРСІЯ ЇДЕ В КОЖНІЙ ВІДПОВІДІ, Й ОСОБЛИВО В ПОМИЛКАХ.
@@ -214,6 +215,237 @@ async function probe(appId: string, geo: string): Promise<Verdict> {
   } finally { clearTimeout(t); }
 }
 
+/* ═══════════ ЗАБАНИЛИ ПРІЛКУ → СТОП РЕКЛАМИ НА НЕЇ ═══════════
+
+   «Забанили прілку → стоп реклами на неї. от це я давно хотів, її легко
+   знаходити, так як в нас є ктід кожної прілки».
+
+   Перевірка вже знала, що прілку знесли зі стору, — і на цьому
+   зупинялась: кампанії лили на мертве посилання до ранку. Тепер одразу
+   після НОВОГО бану шукаємо активні кампанії, у назві яких стоїть ktid
+   цієї прілки, і ставимо їх на паузу.
+
+   ДЕ ШУКАЄМО. У самому Facebook, а не у знімку: знімок оновлюється лише
+   по Sync now, і вночі в ньому немає того, що запустили ввечері. Один
+   запит на кабінет — і тільки тоді, коли бан справді стався.
+
+   ЯК ВПІЗНАЄМО. ktid мусить стояти в назві ЦІЛИМ шматком — без регістру
+   й без різниці між «-», «_» і пробілом (CR11116 = cr11116, а
+   10708-ry05 = 10708_ry05). Саме шматком, а не підрядком: «CR11017»
+   всередині «LCR11017» — це інша прілка, і зупинити її кампанії за
+   чужий бан було б гірше, ніж не зупинити нічого.
+
+   ЩО ЗУПИНЯЄМО. Кампанії — пауза на кампанії глушить усе під нею.
+   Нічого не вмикаємо назад: коли прілка повернеться, бан зніметься сам,
+   а запускати рекламу — рішення людини.
+
+   ЛИШЕ НОВИЙ БАН. Прілки, забанені раніше, не чіпаємо: інакше кожен
+   обхід знову зупиняв би те, що людина свідомо ввімкнула назад.
+
+   ВИМИКАЧ. team_settings, ключ app_ban_pause, значення {"on":false} —
+   тоді нічого не зупиняємо, а в Telegram пишемо, що саме досі крутить.
+   Запису немає — вважаємо ввімкненим: заради цього все й робилось.
+   Вимикач — ВЛАСНИКА ВОРОНКИ, а не команди: один баєр, який вимкнув
+   автопаузу собі, не мусить вимикати її всім іншим. */
+const GRAPH = 'https://graph.facebook.com/v21.0';
+const BAN_BUDGET_MS = 30_000;      // на все разом: обхід і так довгий
+const BAN_PAR = 5;                 // кабінетів одночасно
+
+const TG_KEYS = {
+  keyboard: [[{ text: '📈 Stat. Day' }, { text: '💰 Спенд' }],
+             [{ text: '🗂 Кабінети' }, { text: '🌐 Домени' }]],
+  resize_keyboard: true,
+  is_persistent: true
+};
+const tgKeysFor = (chat: unknown) => Number(chat) > 0 ? { reply_markup: TG_KEYS } : {};
+
+const looseKey = (v: unknown) => String(v == null ? '' : v).toLowerCase().replace(/[-_\s]+/g, '');
+
+/* Чи стоїть ktid у назві цілим шматком. Шматки назви склеюємо по
+   сусідству (до чотирьох), бо сам ktid буває з дефісом, а в назві на
+   його місці — підкреслення: «10708_ry05» це два шматки одного ktid. */
+function nameHasKtid(name: string, ktid: string): boolean {
+  const want = looseKey(ktid);
+  if (want.length < 4) return false;            // «gf» знайшовся б у будь-чому
+  const toks = String(name || '').toLowerCase().split(/[-_\s]+/).filter(Boolean);
+  for (let i = 0; i < toks.length; i++) {
+    let acc = '';
+    for (let j = i; j < toks.length && j < i + 4; j++) {
+      acc += toks[j];
+      if (acc === want) return true;
+      if (acc.length >= want.length) break;
+    }
+  }
+  return false;
+}
+
+function settingOff(value: unknown): boolean {
+  let v: unknown = value;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch (_e) { /* лишаємо рядком */ } }
+  if (v === false || v === 'false' || v === 'off') return true;
+  return !!v && typeof v === 'object' && (v as Json).on === false;
+}
+
+async function pg(base: string, hdr: Json, path: string): Promise<Json[]> {
+  const res = await fetch(base + '/rest/v1/' + path, { headers: hdr });
+  if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
+  const j = await res.json();
+  return Array.isArray(j) ? j : [];
+}
+
+// Те, що ЗАРАЗ крутиться. Той самий запит, що у fb-pause.
+async function activeCampaigns(token: string, actId: string): Promise<Json[]> {
+  const body = new URLSearchParams({
+    access_token: token, method: 'GET', fields: 'id,name',
+    effective_status: '["ACTIVE"]', limit: '500'
+  });
+  const res = await fetch(GRAPH + '/act_' + actId + '/campaigns', {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: body.toString()
+  });
+  const j = await res.json().catch(() => ({}));
+  if (j && j.error) throw new Error(j.error.message || 'Graph API error');
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return Array.isArray(j.data) ? j.data : [];
+}
+
+// Пакетна пауза — як у fb-pause: одна невдача не валить решти.
+async function pauseBatch(token: string, ids: string[]):
+    Promise<{ ok: string[]; bad: { id: string; why: string }[] }> {
+  const ok: string[] = [];
+  const bad: { id: string; why: string }[] = [];
+  for (let at = 0; at < ids.length; at += 50) {
+    const part = ids.slice(at, at + 50);
+    const batch = part.map(id => ({ method: 'POST', relative_url: id, body: 'status=PAUSED' }));
+    const res = await fetch(GRAPH + '/', {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        access_token: token, include_headers: 'false', batch: JSON.stringify(batch)
+      }).toString()
+    });
+    const j = await res.json().catch(() => null);
+    if (j && !Array.isArray(j) && j.error) throw new Error(j.error.message || 'Graph API error');
+    if (!Array.isArray(j)) throw new Error('batch: unexpected response');
+    j.forEach((one: Json | null, i: number) => {
+      const id = part[i];
+      if (!one) { bad.push({ id, why: 'Facebook did not answer in time' }); return; }
+      let body: Json = {};
+      try { body = JSON.parse(one.body || '{}'); } catch (_e) { /* байдуже */ }
+      if (Number(one.code) === 200 && body?.success !== false) ok.push(id);
+      else bad.push({ id, why: String(body?.error?.message || 'HTTP ' + one.code) });
+    });
+  }
+  return { ok, bad };
+}
+
+async function banTell(base: string, hdr: Json, list: Row[], rep: Json): Promise<void> {
+  const bot = Deno.env.get('TG_BOT_TOKEN') || '';
+  if (!bot) return;
+  const owners = [...new Set(list.map(r => String(r.created_by || '')).filter(Boolean))];
+  if (!owners.length) return;
+  const line = (c: Json) => '\u{1F3E6} ' + c.account + ' · ' + String(c.name || c.id).slice(0, 80);
+  const cap = (arr: Json[]) => arr.slice(0, 12).map(line).join('\n')
+    + (arr.length > 12 ? '\n… +' + (arr.length - 12) + ' more' : '');
+  let text = '\u{1F6AB} App banned in the store: '
+    + list.map(r => (r.funnel_name || '').trim() + ' (' + r.ktid + ')').join(', ');
+  if (rep.paused.length) text += '\n\n⏸ Paused ' + rep.paused.length + ' campaign(s):\n' + cap(rep.paused);
+  if (rep.running.length) text += '\n\n⚠ Auto-pause is OFF — still running ('
+    + rep.running.length + '):\n' + cap(rep.running);
+  if (rep.failed.length) text += '\n\n⚠ Could not pause ' + rep.failed.length + ':\n'
+    + rep.failed.slice(0, 8).map((c: Json) => '\u{1F3E6} ' + c.account + ' · '
+        + String(c.name || c.id || '').slice(0, 50) + ' — ' + String(c.why || '').slice(0, 90)).join('\n');
+  if (!rep.paused.length && !rep.running.length && !rep.failed.length)
+    text += '\n\nNo active campaigns with this app in the name.';
+  if (rep.note) text += '\n\n' + rep.note;
+  try {
+    const links = await pg(base, hdr, 'tg_links?select=user_id,chat_id&chat_id=not.is.null&user_id=in.('
+      + owners.map(o => encodeURIComponent(o)).join(',') + ')');
+    for (const l of links) {
+      await fetch('https://api.telegram.org/bot' + bot + '/sendMessage', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: l.chat_id, text: text.slice(0, 3900),
+                               disable_web_page_preview: true, ...tgKeysFor(l.chat_id) })
+      });
+    }
+  } catch (_e) { /* повідомлення не дійшло — пауза від цього не скасовується */ }
+}
+
+async function banPause(base: string, hdr: Json, rows: Row[]): Promise<Json[]> {
+  const out: Json[] = [];
+  const until = Date.now() + BAN_BUDGET_MS;
+  const byTeam = new Map<string, Row[]>();
+  rows.forEach(r => {
+    const t = String(r.team_name || '').trim();
+    if (!t || looseKey(r.ktid).length < 4) return;
+    if (!byTeam.has(t)) byTeam.set(t, []);
+    byTeam.get(t)!.push(r);
+  });
+
+  for (const [team, list] of byTeam) {
+    const rep: Json = { team, apps: list.map(r => String(r.ktid)), on: true,
+                        paused: [], running: [], failed: [], note: '' };
+    out.push(rep);
+    try {
+      const q = encodeURIComponent(team);
+      const st = await pg(base, hdr, 'team_settings?key=eq.app_ban_pause&team_name=eq.' + q
+        + '&select=value,created_by');
+      const offOwners = new Set(st.filter(x => settingOff(x.value)).map(x => String(x.created_by || '')));
+      const isOff = (r: Row) => offOwners.has(String(r.created_by || ''));
+      rep.on = !list.every(isOff);
+
+      const accs = await pg(base, hdr, 'fb_accounts?team_name=eq.' + q
+        + '&missing_since=is.null&token_id=not.is.null&status=neq.banned'
+        + '&select=account_id,token_id&limit=300');
+      const tokIds = [...new Set(accs.map(a => Number(a.token_id)).filter(n => n > 0))];
+      const toks = tokIds.length ? await pg(base, hdr, 'fb_tokens?id=in.(' + tokIds.join(',')
+        + ')&team_name=eq.' + q + '&select=id,token,status') : [];
+      const tokBy = new Map<number, string>();
+      toks.forEach(t => {
+        if (t.token && !['error', 'expired'].includes(String(t.status || ''))) tokBy.set(Number(t.id), String(t.token));
+      });
+      const queue = accs.filter(a => tokBy.has(Number(a.token_id)));
+      if (!queue.length) { rep.note = 'No cabinets with a working token to check.'; }
+
+      let next = 0;
+      const worker = async () => {
+        while (next < queue.length && Date.now() < until) {
+          const a = queue[next++];
+          const token = tokBy.get(Number(a.token_id)) as string;
+          const act = String(a.account_id).replace(/^act_/, '');
+          let camps: Json[] = [];
+          try { camps = await activeCampaigns(token, act); }
+          catch (e) { rep.failed.push({ account: act, why: 'could not list: ' + String((e as Error).message) }); continue; }
+          const mineOf = (c: Json) => list.filter(r => nameHasKtid(String(c.name || ''), String(r.ktid || '')));
+          const all = camps.filter(c => mineOf(c).length);
+          if (!all.length) continue;
+          /* Кампанія на прілку власника, який автопаузу вимкнув, лишається
+             крутити — про неї лише скажемо. */
+          const hit = all.filter(c => !mineOf(c).every(isOff));
+          all.filter(c => mineOf(c).every(isOff))
+            .forEach(c => rep.running.push({ account: act, id: String(c.id), name: String(c.name || '') }));
+          if (!hit.length) continue;
+          const nameOf = new Map(hit.map(c => [String(c.id), String(c.name || '')]));
+          try {
+            const res = await pauseBatch(token, hit.map(c => String(c.id)));
+            res.ok.forEach(id => rep.paused.push({ account: act, id, name: nameOf.get(id) || '' }));
+            res.bad.forEach(b => rep.failed.push({ account: act, id: b.id, name: nameOf.get(b.id) || '', why: b.why }));
+          } catch (e) {
+            hit.forEach(c => rep.failed.push({ account: act, id: String(c.id), name: String(c.name || ''),
+                                               why: String((e as Error).message) }));
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(BAN_PAR, queue.length) }, worker));
+      if (next < queue.length)
+        rep.note = 'Ran out of time: ' + (queue.length - next) + ' cabinet(s) were not checked.';
+    } catch (e) {
+      rep.note = 'Auto-pause failed: ' + String((e as Error).message).slice(0, 200);
+    }
+    await banTell(base, hdr, list, rep);
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   /* Preflight іде ЗАВЖДИ без Authorization — відповідати на нього
      треба до будь-яких перевірок, інакше браузер не дійде й до запиту. */
@@ -275,7 +507,8 @@ Deno.serve(async (req) => {
     try {
       const res = await fetch(base + '/rest/v1/funnels_mapping?id=eq.'
         + encodeURIComponent(one)
-        + '&select=id,funnel_name,app_id,geo,status,app_gone_since,app_banned_by'
+        + '&select=id,funnel_name,app_id,geo,status,app_gone_since,app_banned_by,'
+        + 'ktid,team_name,created_by'
         + '&limit=1', { headers: mine });
       if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
       row = (await res.json())[0] || null;
@@ -330,7 +563,19 @@ Deno.serve(async (req) => {
       return reply({ one: true, state: v.state, note: v.note,
                      did: '', save_error: String((e as Error).message) });
     }
-    return reply({ one: true, state: v.state, note: v.note, did });
+    /* Забанили щойно — зупиняємо рекламу на цю прілку тут-таки, а не
+       чекаємо нічного обходу: людина саме для цього й натиснула
+       «перевірити». Сервісним ключем, бо токени кабінетів браузерним
+       JWT не читаються; межу тримає те, що сам рядок воронки прийшов
+       заголовками того, хто покликав. */
+    let paused: Json[] = [];
+    if (did === 'banned' && svc) {
+      try {
+        paused = await banPause(base, { apikey: svc, Authorization: 'Bearer ' + svc,
+                                        'content-type': 'application/json' }, [row]);
+      } catch (_e) { /* бан уже записано — пауза йому не умова */ }
+    }
+    return reply({ one: true, state: v.state, note: v.note, did, paused });
   }
 
   /* ═══ ВХІД РОЗКЛАДУ ═══ */
@@ -356,7 +601,7 @@ Deno.serve(async (req) => {
        по-різному залежно від версії, і одного дня такий фільтр почав
        би мовчки пропускати все. */
     const q = 'funnels_mapping?select=id,funnel_name,app_id,geo,status,'
-            + 'app_gone_since,app_banned_by'
+            + 'app_gone_since,app_banned_by,ktid,team_name,created_by'
             + '&app_id=not.is.null'
             + '&order=app_checked_at.asc.nullsfirst,id.asc'
             + '&limit=' + BATCH;
@@ -376,6 +621,7 @@ Deno.serve(async (req) => {
   const at = new Date().toISOString();
   const until = Date.now() + DEADLINE_MS;
   const banned: string[] = [], freed: string[] = [], quiet: string[] = [];
+  const bannedRows: Row[] = [];     // щойно забанені — на них зупиняємо рекламу
   let live = 0, unknown = 0, done = 0;
 
   for (const r of rows) {
@@ -422,6 +668,7 @@ Deno.serve(async (req) => {
         patch.app_banned_by = 'robot';
         patch.app_note = v.note + ' — 404 від Play, поставлено ban одразу';
         banned.push(r.funnel_name || String(r.app_id));
+        bannedRows.push(r);
       } else if (sure) {
         // Уже забанена — лишаємо як є, лише оновлюємо нотатку й день.
         patch.app_gone_since = r.app_gone_since || at;
@@ -436,6 +683,7 @@ Deno.serve(async (req) => {
         patch.app_banned_by = 'robot';
         patch.app_note = v.note + ' — друга перевірка поспіль, поставлено ban';
         banned.push(r.funnel_name || String(r.app_id));
+        bannedRows.push(r);
       }
     } else {
       /* Ми не дізнались. Не діагноз: ні стану, ні app_gone_since не
@@ -454,10 +702,16 @@ Deno.serve(async (req) => {
     if (PAUSE_MS) await new Promise(r2 => setTimeout(r2, PAUSE_MS));
   }
 
+  let paused: Json[] = [];
+  if (bannedRows.length) {
+    try { paused = await banPause(base, hdr, bannedRows); }
+    catch (_e) { /* бани вже записані — пауза їм не умова */ }
+  }
+
   const left = rows.length - done;
   return reply({
     fn: FN_VERSION, checked: done, live, unknown,
-    banned, freed, first_miss: quiet,
+    banned, freed, first_miss: quiet, paused,
     not_reached: left > 0 ? left : 0,
     note: left > 0
       ? 'Обійдено ' + done + ' з ' + rows.length

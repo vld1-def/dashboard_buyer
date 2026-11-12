@@ -30,6 +30,12 @@ const tdPer = (s, n) => n > 0 ? tdMoney(s / n) : '<span class="td-dim">—</span
    кодом виходило «KG KG». */
 const tdFlag = () => '🌍';
 
+/* ОДИН KTID, НАПИСАНИЙ ПО-РІЗНОМУ. «в фб 000_000, в кейтаро 000-000 …
+   ігнорувати -_ типу не звертати уваги який». Порівнюємо без регістру,
+   дефісів, підкреслень і пробілів — так само, як імпорт у Form.html
+   (looseKey): воронка на екрані й у звіті мусить бути одна. */
+const tdLoose = v => String(v == null ? '' : v).toLowerCase().replace(/[-_\s]+/g, '');
+
 /* Назви кабінетів, браузери, воронки. Невеликі таблиці, раз на кілька
    хвилин — не на кожен Sync now. */
 async function tdMapsLoad() {
@@ -48,8 +54,9 @@ async function tdMapsLoad() {
       if (r.timezone_name) m.tz.set(id, String(r.timezone_name));
     });
     (b.data || []).forEach(r => { if (r.profile) m.br.set(String(r.account_id).replace(/^act_/, ''), String(r.profile)); });
-    (f.data || []).forEach(r => { if (r.ktid) m.fn.set(String(r.ktid).trim().toLowerCase(),
-      { name: String(r.funnel_name || r.ktid), geo: String(r.geo || '').toUpperCase() }); });
+    (f.data || []).forEach(r => { if (r.ktid && tdLoose(r.ktid)) m.fn.set(tdLoose(r.ktid),
+      { name: String(r.funnel_name || r.ktid), geo: String(r.geo || '').toUpperCase(),
+        ktid: String(r.ktid).trim() }); });
   } catch (e) { /* без підписів таблиця однаково працює */ }
   if (typeof pwMaskLoad === 'function') { try { await pwMaskLoad(); } catch (e) {} }
   tdMaps = m; tdMapsAt = Date.now();
@@ -63,7 +70,7 @@ function tdRow(r) {
   const mask = typeof pwMask !== 'undefined' ? pwMask : '*_{geo}_{ktid}';
   const p = typeof pwMaskParse === 'function' ? pwMaskParse(mask, camp) : null;
   let ktid = String((p && p.ktid) || '').trim();
-  let fn = ktid && tdMaps ? tdMaps.fn.get(ktid.toLowerCase()) : null;
+  let fn = ktid && tdMaps ? tdMaps.fn.get(tdLoose(ktid)) : null;
   /* МАСКА НЕ ДЛЯ ВСІХ НАЗВ. Апкові кампанії звуться інакше:
      cy638t_8wxg7hf7_bGcTwMmV_LTR11003_1098482592991689_TJ — ключ
      воронки (LTR11003) стоїть четвертим, а маска бере другий шматок.
@@ -71,9 +78,20 @@ function tdRow(r) {
      тут немає, лише точний збіг із тим, що завели самі. */
   if (!fn && tdMaps) {
     for (const tok of camp.split(/[_\s]+/)) {
-      const f = tdMaps.fn.get(tok.trim().toLowerCase());
+      const f = tdMaps.fn.get(tdLoose(tok));
       if (f) { fn = f; ktid = tok.trim(); break; }
     }
+  }
+  /* Жоден шматок не збігся цілим — ktid міг сам розпастись на шматки
+     («10708_ry05» замість «10708-ry05») або назва йде через дефіси.
+     Шукаємо відомий ktid у всій назві; з кількох — найдовший, а
+     коротші за 4 знаки не шукаємо: вони знайдуться в будь-чому. */
+  if (!fn && tdMaps) {
+    const hay = tdLoose(camp);
+    let bestLen = 0;
+    tdMaps.fn.forEach((f, key) => {
+      if (key.length >= 4 && key.length > bestLen && hay.includes(key)) { fn = f; ktid = f.ktid; bestLen = key.length; }
+    });
   }
   /* Гео: з маски, якщо там справді код країни; далі — з воронки; далі —
      окремий дволітерний шматок назви кампанії чи оголошення (…_TJ,

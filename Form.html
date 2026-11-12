@@ -1033,6 +1033,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                 <span class="font-mono text-sky-300">*_{geo}_{ktid}</span> is enough for
                 <span class="font-mono">Melbet_EG_10864-9lm5_19/09_001</span> &mdash; the date and the number at the end need no mention.
                 How many characters <span class="font-mono">{&hellip;}</span> takes is decided by the character right after it.</p>
+              <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">The separator is whatever you write between the fields. Names with spaces:
+                <span class="font-mono text-sky-300">{ktid} {geo} *</span> reads
+                <span class="font-mono">10708RY05 KG MPlayC 0611</span>; with bars:
+                <span class="font-mono text-sky-300">{ktid} | {geo} | *</span>. Keep the KTID itself one word.</p>
               <p class="text-[10px] text-amber-300/80 mt-3 leading-relaxed">If a name does not match, geo becomes <b>??</b> and KTID becomes <b>0</b> &mdash;
                 the row is still written. After the import you will be told how many names did not match. Check here first.</p>
             </div>
@@ -1297,10 +1301,13 @@ async function loadMappings() {
   // Чи це апка — тримаємо окремо від назви: саме від цього залежить,
   // чи лишиться [постачальник] у даних (див. apFunnelData).
   mappingDB.funnelApp = {};
+  mappingDB.funnelGeo = {};
   funs?.forEach(r => {
     mappingDB.funnels[r.ktid] = r.funnel_name;
     mappingDB.funnelApp[r.ktid] = !!r.is_app;
+    mappingDB.funnelGeo[r.ktid] = String(r.geo || '').trim().toUpperCase();
   });
+  ktidIndexBuild();
 
   // список постачальників показує, які апки на них зав'язані через [] у назві воронки
   if (typeof apRenderProfilesList === 'function') apRenderProfilesList();
@@ -2316,7 +2323,16 @@ function apMaskCompile(mask) {
   if (!src) return null;
   if (AP_MASK_CACHE.has(src)) return AP_MASK_CACHE.get(src);
 
-  const primary = src.includes('&') ? '&' : '_';
+  /* РОЗДІЛЬНИК — ТОЙ, ЯКИМ НАПИСАНО САМ ШАБЛОН.
+     «для пва просто додай патерн … я сам придумаю назву і впишу».
+     Доти він був прибитий: «_» (або «&»). Шаблон із пробілами чи
+     рисками — «{ktid} {geo} *», «{ktid} | {geo} | *» — компілювався, але
+     останній шматок і хвіст назви однаково шукались по «_» і виходили
+     не тими. Тепер роздільник читаємо з шаблону: якщо після якогось
+     {поля} стоїть «_» — це він, як і було (жоден старий шаблон не
+     міняє поведінки); інакше — перший знак, що йде після {поля}. */
+  const sepM = /\}([^A-Za-z0-9{}*])/.exec(src);
+  const primary = src.includes('&') ? '&' : (/\}_/.test(src) || !sepM) ? '_' : sepM[1];
   // екрануємо будь-який символ — і як літерал, і всередині [^…]
   const esc = c => (/[A-Za-z0-9]/.test(c) ? c : '\\' + c);
   const keys = [], fixed = {};
@@ -2330,7 +2346,10 @@ function apMaskCompile(mask) {
         fixed[ph[1] === 'cid-' ? 'cid' : ph[1]] = ph[2];
         continue;
       }
-      const stop = i < src.length ? src[i] : primary;
+      /* Після поля одразу «*» чи наступне {поле} — межі в шаблоні немає,
+         тож поле тягнеться до роздільника, а не до буквальної зірочки. */
+      const nx = i < src.length ? src[i] : '';
+      const stop = nx && nx !== '*' && nx !== '{' ? nx : primary;
       keys.push(ph[1]);
       re += `([^${esc(stop)}]+)`;
       continue;
@@ -2528,6 +2547,55 @@ function tmRowMode(campName) {          // 'pwa' | 'app' | 'unknown'
 // Невпізнаний читаємо як APP — так було до цієї зміни.
 const tmUse = m => (m === 'unknown' ? 'app' : m);
 
+/* ОДНЕ ІМ'Я, НАПИСАНЕ ПО-РІЗНОМУ.
+   «в фб 000_000, в кейтаро 000-000 … бачу креативи також змінюють
+   регістр … ігнорувати -_ типу не звертати уваги який».
+
+   Постачальник PWA віддає в Keitaro назву кампанії з дефісами там, де у
+   Facebook підкреслення, а регістр міняє як заманеться. Розбір назви
+   ділив її по «_» — і на такій назві не знаходив нічого; ключ злиття
+   FB ↔ Keitaro порівнював ktid побуквено — і не сходився.
+
+   Тому порівнюємо «на слух»: без регістру, дефісів, підкреслень і
+   пробілів. А сам ktid завжди приводимо до того написання, яким він
+   заведений у KTID Mappings: там він один, і обидва боки сходяться на
+   ньому, хоч би як його написали у вигрузці. */
+const looseKey = v => String(v == null ? '' : v).toLowerCase().replace(/[-_\s]+/g, '');
+
+let ktidLoose = new Map();     // «10708ry05» → «10708-ry05»
+function ktidIndexBuild() {
+  const seen = new Map(), dup = new Set();
+  Object.keys((mappingDB && mappingDB.funnels) || {}).forEach(k => {
+    const l = looseKey(k);
+    if (!l) return;
+    /* Два РІЗНІ ktid, що «звучать» однаково, не зводимо в один: вибрати
+       між ними за людину означало б мовчки перекласти чужу статистику. */
+    if (seen.has(l) && seen.get(l) !== k) dup.add(l);
+    else seen.set(l, k);
+  });
+  dup.forEach(l => seen.delete(l));
+  ktidLoose = seen;
+}
+// Як ktid заведений у мапінгу. Невідомий — лишаємо як прийшов.
+function ktidCanon(k) {
+  const raw = String(k == null ? '' : k).trim();
+  if (!raw || (mappingDB.funnels && mappingDB.funnels[raw])) return raw;
+  return ktidLoose.get(looseKey(raw)) || raw;
+}
+/* Шаблон не впорався з назвою — шукаємо в ній ВІДОМИЙ ktid.
+   Не вгадування: беремо лише те, що вже заведено в KTID Mappings, і з
+   кількох збігів — найдовший («10708-kyqn», а не «kyqn»). Короткі
+   (менше 4 знаків) не шукаємо зовсім: «gf» знайдеться в будь-чому. */
+function ktidFind(name) {
+  const hay = looseKey(name);
+  if (!hay) return '';
+  let best = '', bestLen = 0;
+  ktidLoose.forEach((k, l) => {
+    if (l.length >= 4 && l.length > bestLen && hay.includes(l)) { best = k; bestLen = l.length; }
+  });
+  return best;
+}
+
 function campParse(campName, adName, country, count, accHint) {
   /* Рахуємо тут, бо саме через campParse проходить кожен рядок ЗВІТУ
      FB — тобто ті рядки, які й поїдуть у базу. Бік Keitaro рахує своє
@@ -2539,7 +2607,7 @@ function campParse(campName, adName, country, count, accHint) {
   if (mode === 'app') {
     // accHint — Account ID із колонки звіту: ним перевіряється вирівнювання.
     const a = parseAppCampaign(campName, adName || '', country || '', accHint);
-    return { geo: geoPick(a.geo, country, count) || '??', ktid: a.app || '0',
+    return { geo: geoPick(a.geo, country, count) || '??', ktid: ktidCanon(a.app) || '0',
              acc: a.acc || '', cid: a.cid || '', mode };
   }
   const w = parsePwaCampaign(campName, country);
@@ -2613,12 +2681,25 @@ let offerFromNameHits = 0;
    не проганяв. */
 function parsePwaCampaign(campName, country) {
   const r = apParseMask(pwaMask, String(campName || '').split('_'), '', country || '');
-  const geo = geoPick(r && r.geo, country);
+  let geo = geoPick(r && r.geo, country);
+  let ktid = ktidCanon(r && r.ktid);
+  /* Шаблон не ліг (назва через дефіси) або дав шматок, якого в мапінгу
+     немає («10708» із «10708_ry05»), — шукаємо відомий ktid у самій
+     назві. Гео тоді беремо з воронки: вона заведена під конкретне гео,
+     і це надійніше за здогад по токенах назви. */
+  if (!ktid || !mappingDB.funnels[ktid]) {
+    const found = ktidFind(campName);
+    if (found) {
+      ktid = found;
+      const fg = mappingDB.funnelGeo && mappingDB.funnelGeo[found];
+      if (fg && (!geo || !r)) geo = fg;
+    }
+  }
   /* Промах шаблону рахуємо окремо від гео: колонка Country могла
      врятувати гео, але ktid із назви однаково не дістали, і мовчати про
      це не можна. */
-  if (!r) pwaMissed++;
-  return { geo: geo || '??', ktid: (r && String(r.ktid || '').trim()) || '0' };
+  if (!ktid) pwaMissed++;
+  return { geo: geo || '??', ktid: ktid || '0' };
 }
 
 // Розбір назви APP-кампанії
@@ -2736,6 +2817,7 @@ function setTrafficMode(m) {
 // Приклад: "[Riddick's Partners] Zazino KG | Reg | Anna" → "Zazino".
 // Не парсимо за позицією (формат змінюється), а шукаємо збіг зі СВОЇМИ офферами з payouts.
 let knownOffers = [];
+let offerGeos = {};            // «PIN-UP[30$]» → Set{«KG»}: під які гео офер платить
 
 async function loadKnownOffers() {
   try {
@@ -2746,7 +2828,13 @@ async function loadKnownOffers() {
                                           .map(r => String(r.offer || '').trim()).filter(Boolean))]
       .filter(o => o.toUpperCase() !== 'DEFAULT')
       .sort((a, b) => b.length - a.length);   // довші перевіряємо першими: "22bet[crash]" > "22bet"
-  } catch (e) { console.warn('offers:', e.message); knownOffers = []; }
+    offerGeos = {};
+    (data || []).filter(r => r.active !== false).forEach(r => {
+      const o = String(r.offer || '').trim().toUpperCase();
+      const g = String(r.geo || '').trim().toUpperCase();
+      if (o && g) (offerGeos[o] = offerGeos[o] || new Set()).add(g);
+    });
+  } catch (e) { console.warn('offers:', e.message); knownOffers = []; offerGeos = {}; }
 }
 
 /* ХВІСТ У КВАДРАТНИХ ДУЖКАХ — НАША ПРИМІТКА, А НЕ ЧАСТИНА НАЗВИ.
@@ -2771,7 +2859,7 @@ const offBase = o => String(o == null ? '' : o).replace(/\s*\[[^\]]*\]\s*$/, '')
    кандидати це вибір, і зробити його за людину означало б тихо
    приписати виручку не тому оферу. Різні версії одного офера
    («22bet» і «22bet[crash]») суперниками не рахуються — це один бренд. */
-function matchOffer(raw) {
+function matchOffer(raw, geo) {
   const s = String(raw || '').toLowerCase();
   if (!s) return '';
   const hits = [];
@@ -2786,7 +2874,30 @@ function matchOffer(raw) {
   const top = hits[0];
   const rival = hits.find(h => h.len === top.len
     && offBase(h.o).toLowerCase() !== offBase(top.o).toLowerCase());
-  return rival ? '' : top.o;
+  if (rival) return '';
+  /* ОДИН БРЕНД — КІЛЬКА ВЕРСІЙ ПІД РІЗНІ ГЕО.
+     «в мене одинакові оффери на KG TJ але чомусь срм захотіла оффер від
+     TJ показувати під КГ». У рядку Keitaro стоїть лише бренд («Pin-Up |
+     … KG | 30$ | kg»), а в довіднику їх кілька: Pin-up[30] для TJ і
+     PIN-UP[30$] для KG. Збіг у всіх однаковий, і вигравав той, що стояв
+     у списку першим, — тобто чужий.
+
+     Повну назву з дужками, якщо вона є в рядку, не чіпаємо: там уже
+     сказано, який саме. В решті випадків серед версій ЦЬОГО бренду
+     беремо ту, що платить під гео рядка; якщо таких кілька — ту, чия
+     сума з дужок стоїть у рядку («30$» → PIN-UP[30$], а не Pin-Up[20]). */
+  const g = String(geo || '').trim().toUpperCase();
+  if (top.exact || !g || g === '??') return top.o;
+  const brand = offBase(top.o).toLowerCase();
+  const mine = hits.filter(h => offBase(h.o).toLowerCase() === brand
+    && offerGeos[h.o.toUpperCase()] && offerGeos[h.o.toUpperCase()].has(g));
+  if (!mine.length) return top.o;
+  const nums = new Set(s.match(/\d+/g) || []);
+  const byNum = mine.filter(h => {
+    const t = (String(h.o).match(/\[([^\]]*)\]\s*$/) || ['', ''])[1].match(/\d+/);
+    return t && nums.has(t[0]);
+  });
+  return (byNum[0] || mine[0]).o;
 }
 
 /* ОФЕР ІЗ НАЗВИ — І ЧОМУ ЦЕ ПРАЦЮЄ ЛИШЕ ТАМ, ДЕ Є ТЕКСТ.
@@ -3161,7 +3272,7 @@ function parseKeitaro(content) {
     if (rowProv) provSeen[rowProv] = (provSeen[rowProv] || 0) + 1;
     let geo, ktid, pIdx = provIdx[rowProv] || null;
     if (rowMode === 'app') {
-      ktid = (iKtApp >= 0 ? String(r[iKtApp] || '').trim() : '') || '0';
+      ktid = ktidCanon(iKtApp >= 0 ? String(r[iKtApp] || '').trim() : '') || '0';
       const ic = (pIdx && pIdx.country >= 0) ? pIdx.country : iCountry;
       geo = toGeoCode(ic >= 0 ? String(r[ic] || '').trim() : '') || '??';
     } else {
@@ -3212,7 +3323,7 @@ function parseKeitaro(content) {
         { account: acc, date: localDay, campaign: campRaw, funnel, geo, ktid });
     // Ключ креатива — у нижньому регістрі: FB і Keitaro часто віддають ту саму
     // назву по-різному (KG_cr1 / kg_cr1), і через це крео просто не зіставлялись.
-    const crKey = `${localDay}|${acc}|${cr.toLowerCase()}`;
+    const crKey = `${localDay}|${acc}|${looseKey(cr)}`;
     add(byCreative, crKey, ins, reg, dep, { account: acc, date: localDay, cid: cr });
     /* Плейсмент з Keitaro (Sub ID 4) — за ключем креатива, щоб
        підставити у FB-рядки. Тільно для PWA-рядка: в APP у тому самому
@@ -3231,7 +3342,7 @@ function parseKeitaro(content) {
     // Офер і лендінг — теж зі стовпця цього постачальника, якщо він інший.
     const io = (pIdx && pIdx.offer >= 0) ? pIdx.offer : iOff;
     // офер із рядка Keitaro (напр. "[Riddick's Partners] Zazino KG | Reg | Anna")
-    const offer = io >= 0 ? matchOffer(r[io]) : '';
+    const offer = io >= 0 ? matchOffer(r[io], landGeo || geo) : '';
     // Повний рядок — це лендінг. Пробіли нормалізуємо, щоб той самий
     // лендінг із подвійним пробілом не став другим рядком у звіті.
     const raw = io >= 0 ? String(r[io] || '').trim().replace(/\s+/g, ' ') : '';
@@ -3398,7 +3509,7 @@ function applyKeitaroMerge(dailyAgg, creativeAgg) {
   // Креативи: якщо на (день,акаунт,креатив) кілька рядків (девайси) — ділимо пропорційно кліками
   const groups = {};
   Object.values(creativeAgg).forEach(row => {
-    const k = `${row.date}|${row.acc}|${String(row.cid || '').toLowerCase()}`;
+    const k = `${row.date}|${row.acc}|${looseKey(row.cid)}`;
     (groups[k] = groups[k] || []).push(row);
   });
   const usedKt = new Set();      // які ключі Keitaro справді зійшлися з FB
