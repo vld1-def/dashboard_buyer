@@ -14582,13 +14582,40 @@ async function accSetNote(id, note) {
    самий, що й у решти, і друкувати назву агенції наново щоразу —
    зайве. Але це підказка, а не список: новий агент вписується руками,
    інакше першого кабінета нового агента не завести. */
+// Скільки годин від UTC зараз у Києві.
+function accKyivOffset() {
+  for (const zone of ['Europe/Kyiv', 'Europe/Kiev']) {
+    try {
+      const part = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'shortOffset' })
+        .formatToParts(new Date()).find(x => x.type === 'timeZoneName');
+      const m = /GMT([+-]\d+)/.exec(part ? part.value : '');
+      if (m) return parseInt(m[1], 10);
+    } catch (_e) { /* цієї назви зони браузер не знає — пробуємо наступну */ }
+  }
+  return 2;
+}
+
 async function accAdd() {
   if (typeof ask !== 'function') {
     alert('Додати кабінет можна в Settings → Cabinets.');
     return;
   }
+  /* ПРИХОВАНІ АГЕНТИ ТУТ ТЕЖ ПРИХОВАНІ.
+     «дратує те що у вікні додати кабінет підтягуються агенти які
+     приховані в форм». Список прихованих веде Form (team_settings,
+     ключ hidden_agents) — і досі його читав лише він сам: тут підказка
+     складалась з усіх кабінетів, тобто з усіх агентів, що колись були.
+     Сховані зникають лише з підказки: вписати такого руками можна, і на
+     вже привʼязані кабінети це не впливає — так само, як у Form. */
+  let hidden = new Set();
+  try {
+    const raw = await getTeamSetting('hidden_agents');
+    const arr = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || []);
+    hidden = new Set((Array.isArray(arr) ? arr : []).map(x => String(x).trim().toLowerCase()));
+  } catch (_e) { /* не прочитали — показуємо всіх, як і було */ }
   const agents = [...new Set(accRows.map(r => String(r.provider_name || '').trim())
-    .filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
+    .filter(Boolean))].filter(a => !hidden.has(a.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b, 'uk'));
   const v = await ask({
     title: 'Додати кабінет',
     body: 'Ляже в команду ' + (currentTeam || '—').toUpperCase()
@@ -14597,7 +14624,10 @@ async function accAdd() {
     fields: [
       { key: 'acc', label: 'Account ID', need: true, full: true,
         placeholder: 'напр. 1234567890123456' },
-      { key: 'tz', label: 'TZ', type: 'number', placeholder: '-8, 0, 3' },
+      /* «по дефолту хочеться щоб таймзона ставилась така як в kiev».
+         Зсув рахуємо на сьогодні: узимку +2, улітку +3 — вписане
+         назавжди число було б неправильним пів року. */
+      { key: 'tz', label: 'TZ', type: 'number', placeholder: '-8, 0, 3', value: accKyivOffset() },
       { key: 'agent', label: 'Agent', list: agents, placeholder: 'агенція або порожньо' },
       { key: 'browser', label: 'Browser', full: true, list: [...new Set(accRows
           .map(r => String(r.profile || '').trim()).filter(Boolean))].sort(),

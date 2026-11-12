@@ -31,7 +31,8 @@ const helpers = [
 globalThis.window = globalThis;
 globalThis.document = { getElementById: () => null };
 const T = new Function(helpers + '\nlet cabSnapRows = [], cabSnapErr = "";\n' + td
-  + '\nreturn { tdRow, tdSum, tdIsToday, setMaps: m => { tdMaps = m; }, TD_VIEWS };')();
+  + '\nreturn { tdRow, tdSum, tdIsToday, setMaps: m => { tdMaps = m; }, TD_VIEWS,'
+  + ' tdFlag, tdPrice, tdShare, tdCells, setAvg: a => { tdAvg = a; } };')();
 
 T.setMaps({
   cab: new Map([['3191102584433243', 'Zlata Garacheva'], ['1403209798694635', '3']]),
@@ -155,6 +156,28 @@ ok('кнопка Today поруч із Rules', /id="cab-today-btn" onclick="tdTo
 const built = fs.readFileSync('index.html', 'utf8');
 ok('усе це доїхало в зібраний index.html', /window\.tdToggle = async function/.test(built)
   && /id="cab-today-btn"/.test(built) && /\.td-ov \{/.test(built));
+
+/* ═══ НОВИЙ ВИГЛЯД: ПРАПОРИ, СМУЖКИ, ПІДСВІТКА ЦІН ═══
+   «хочеться цікавіший і комфортніший дизайн … як мінімум додати прапори». */
+ok('прапор — картинкою, код країни малими', /<img class="td-flag" src="https:\/\/cdnjs\.cloudflare\.com\/[^"]+\/kg\.svg"/.test(T.tdFlag('KG')), T.tdFlag('KG'));
+ok('невідоме гео — без картинки', !/<img/.test(T.tdFlag('??')) && !/<img/.test(T.tdFlag('')));
+ok('у гео-рядку дерева стоїть прапор', /td-flag/.test(T.TD_VIEWS.tree[0][1]('TJ')));
+
+T.setAvg({ s: 1000, lc: 1000, l: 100, i: 50, r: 40, d: 10, sBy: { l: 600, i: 400 } });
+ok('ціна на п\'яту частину нижча за середню — зелена', /td-good/.test(T.tdPrice({ s: 40, l: 10 }, 'l')), T.tdPrice({ s: 40, l: 10 }, 'l'));
+ok('на чверть вища — червона', /td-bad/.test(T.tdPrice({ s: 90, l: 10 }, 'l')));
+ok('близька до середньої — без кольору', !/td-(good|bad)/.test(T.tdPrice({ s: 62, l: 10 }, 'l')));
+ok('середня для лідів — по рядках із лідами, а не по всьому спенду',
+  !/td-good/.test(T.tdPrice({ s: 62, l: 10 }, 'l')) && /td-good/.test(T.tdPrice({ s: 62, i: 10 }, 'i')));
+ok('нуль подій — прочерк, а не ціна', /td-dim/.test(T.tdPrice({ s: 50, d: 0 }, 'd')));
+ok('підсумок сам із собою не порівнюється', !/td-(good|bad)/.test(T.tdPrice({ s: 1000, d: 10 }, 'd')));
+T.setAvg(null);
+ok('без середньої — просто ціна', T.tdPrice({ s: 50, d: 10 }, 'd') === '$5.00');
+T.setAvg({ s: 1000, lc: 1, l: 1, i: 1, r: 1, d: 1 });
+ok('смужка — частка спенду таблиці', T.tdShare(250) === 25 && T.tdShare(0) === 0 && T.tdShare(5000) === 100);
+ok('порядок стовпців лишився, як просили', (T.tdCells({ s: 10, im: 100, lc: 5, l: 2, i: 0, r: 1, d: 0 }).match(/<td/g) || []).length === 12);
+ok('три великі числа і рядок довідки', /td-heroes/.test(td) && /td-facts/.test(td) && /Spend today/.test(td));
+ok('підсумок прилипає до низу', /\.td-tbl tr\.td-tot td \{ position: sticky; bottom: 0;/.test(fs.readFileSync('build/design.css', 'utf8')));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
 if (fail) process.exit(1);

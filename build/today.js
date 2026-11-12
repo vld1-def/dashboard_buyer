@@ -26,9 +26,45 @@ const tdMoney = v => '$' + (Number(v) || 0).toLocaleString('en-US',
 /* Ціна за подію. Нуль подій при витратах — не «дорого», а «ще нема з
    чого рахувати»: прочерк, як і на сторінці кабінетів. */
 const tdPer = (s, n) => n > 0 ? tdMoney(s / n) : '<span class="td-dim">—</span>';
-/* Не прапорці: у Windows вони малюються двома літерами, і поруч із
-   кодом виходило «KG KG». */
-const tdFlag = () => '🌍';
+/* ПРАПОР — КАРТИНКОЮ, А НЕ ЕМОДЗІ. «Як мінімум додати прапори».
+   Емодзі-прапори у Windows малюються двома літерами, і поруч із кодом
+   виходило «KG KG» — тому тут довго стояв глобус. Беремо SVG з набору
+   flag-icons (cdnjs): один файл на країну, і вантажиться лише той, що
+   справді є в таблиці. Не завантажився чи гео невідоме — картинка
+   просто зникає, код країни поруч лишається. */
+const TD_FLAGS = 'https://cdnjs.cloudflare.com/ajax/libs/flag-icons/7.2.3/flags/4x3/';
+const tdFlag = geo => {
+  const c = String(geo || '').trim().toLowerCase();
+  return /^[a-z]{2}$/.test(c)
+    ? '<img class="td-flag" src="' + TD_FLAGS + c + '.svg" alt="" loading="lazy" onerror="this.remove()">'
+    : '<span class="td-flag is-none" aria-hidden="true"></span>';
+};
+
+/* ЦІНА ПРОТИ СЕРЕДНЬОЇ ПО ТАБЛИЦІ.
+   Дванадцять стовпців цифр читати рядок за рядком довго; а питання до
+   них одне — де дешевше за середнє, а де дорожче. Тому ціну (CPC, CPL,
+   CPI, CPR, CPA) фарбуємо: на п'яту частину нижче середньої — зелена,
+   на чверть вище — червона. Решта лишається як є: розфарбована вся
+   таблиця читалась би гірше за нерозфарбовану.
+   Середня — з підсумку ЦІЄЇ таблиці (tdAvg), а не якась стала. */
+let tdAvg = null;
+const tdPrice = (t, k) => {
+  const n = t[k];
+  if (!(n > 0)) return '<span class="td-dim">—</span>';
+  const v = t.s / n, txt = tdMoney(v);
+  /* Для лідів та інсталів середня — лише по тих рядках, де вони Є.
+     Веб-кампанії дають ліди, апкові — інстали; поділити спенд усієї
+     таблиці на самі ліди означало б завищити середню рівно на спенд
+     апок — і тоді «дешевше за середнє» горіло б зеленим у кожному
+     рядку. */
+  const N = tdAvg ? tdAvg[k] : 0;
+  const S = tdAvg ? (tdAvg.sBy && tdAvg.sBy[k] != null ? tdAvg.sBy[k] : tdAvg.s) : 0;
+  if (!(N > 0) || !(S > 0) || !(v > 0)) return txt;
+  const avg = S / N;
+  if (Math.abs(v - avg) < 0.005) return txt;         // сам підсумок — із собою не порівнюємо
+  return v <= avg * 0.8 ? '<span class="td-good">' + txt + '</span>'
+       : v >= avg * 1.25 ? '<span class="td-bad">' + txt + '</span>' : txt;
+};
 
 /* ОДИН KTID, НАПИСАНИЙ ПО-РІЗНОМУ. «в фб 000_000, в кейтаро 000-000 …
    ігнорувати -_ типу не звертати уваги який». Порівнюємо без регістру,
@@ -146,14 +182,14 @@ const TD_COLS = ['Spend', 'Impr.', 'CTR', 'CPM', 'Clicks', 'CPC', '📲', 'CPL /
 function tdCells(t) {
   const conv = t.l && t.i ? t.l + ' <span class="td-dim">L</span> · ' + t.i + ' <span class="td-dim">I</span>'
     : t.i ? t.i + ' <span class="td-dim">I</span>' : String(t.l);
-  const cost = t.l && t.i ? tdPer(t.s, t.l) + ' · ' + tdPer(t.s, t.i)
-    : t.i ? tdPer(t.s, t.i) : tdPer(t.s, t.l);
+  const cost = t.l && t.i ? tdPrice(t, 'l') + ' · ' + tdPrice(t, 'i')
+    : t.i ? tdPrice(t, 'i') : tdPrice(t, 'l');
   const ctr = t.im > 0 ? (Math.round(t.lc / t.im * 10000) / 100) + '%' : '<span class="td-dim">—</span>';
   const cpm = t.im > 0 ? tdMoney(t.s / t.im * 1000) : '<span class="td-dim">—</span>';
   return `<td>${tdMoney(t.s)}</td><td>${t.im.toLocaleString('en-US')}</td><td>${ctr}</td><td>${cpm}</td>`
-    + `<td>${t.lc}</td><td>${tdPer(t.s, t.lc)}</td>`
-    + `<td>${conv}</td><td>${cost}</td><td>${t.r}</td><td>${tdPer(t.s, t.r)}</td>`
-    + `<td class="${t.d ? 'td-good' : ''}">${t.d}</td><td>${tdPer(t.s, t.d)}</td>`;
+    + `<td>${t.lc}</td><td>${tdPrice(t, 'lc')}</td>`
+    + `<td>${conv}</td><td>${cost}</td><td>${t.r}</td><td>${tdPrice(t, 'r')}</td>`
+    + `<td class="${t.d ? 'td-good' : ''}">${t.d}</td><td>${tdPrice(t, 'd')}</td>`;
 }
 
 /* ID кабінета, а не назва: назви тут «1», «3» і чуже ім'я з БМ, а
@@ -185,6 +221,9 @@ const TD_VIEWS = {
   ]
 };
 
+// Скільки відсотків спенду таблиці припадає на рядок (для смужки).
+const tdShare = s => (tdAvg && tdAvg.s > 0 ? Math.max(0, Math.min(100, Math.round(s / tdAvg.s * 1000) / 10)) : 0);
+
 function tdTree(rows, levels) {
   let html = '';
   const walk = (list, depth, path) => {
@@ -194,7 +233,10 @@ function tdTree(rows, levels) {
     [...g.entries()].sort((a, b) => tdSum(b[1]).s - tdSum(a[1]).s).forEach(([k, l]) => {
       const id = path + '/' + k, leaf = depth === levels.length - 1, open = tdOpenSet.has(id);
       html += `<tr class="td-l${Math.min(depth, 1)}${leaf ? '' : ' td-x'}${open ? ' is-open' : ''}" data-id="${tdEsc(id)}">`
-        + `<td style="padding-left:${10 + depth * 18}px"><span class="td-car">${leaf ? '' : '▸'}</span>${label(k, l)}</td>`
+        /* Смужка — частка рядка в спенді всієї таблиці: де йдуть гроші,
+           видно без читання цифр. */
+        + `<td style="padding-left:${10 + depth * 18}px"><span class="td-car">${leaf ? '' : '▸'}</span>${label(k, l)}`
+        + `<div class="td-bar"><i style="width:${tdShare(tdSum(l).s)}%"></i></div></td>`
         + tdCells(tdSum(l)) + '</tr>';
       if (!leaf && open) walk(l, depth + 1, id);
     });
@@ -233,23 +275,49 @@ function tdRender() {
   const crs = new Set(rows.map(x => x.cr)), multi = [...crs]
     .filter(c => new Set(rows.filter(x => x.cr === c).map(x => x.acc)).size > 1).length;
   const unk = new Set(rows.filter(x => x.fnBad).map(x => x.fn)).size;
-  document.getElementById('td-kpis').innerHTML = [
-    ['Spend', tdMoney(t.s)], ['Clicks · CPC', t.lc + ' · ' + tdPer(t.s, t.lc)],
-    ['📲 Leads · Inst', t.l + ' · ' + t.i], ['Regs · Deps', t.r + ' · ' + t.d],
-    ['Cabinets', new Set(rows.map(x => x.acc)).size],
-    ['Creatives', crs.size + (multi ? ' <span class="td-tag">' + multi + ' in 2+ cabs</span>' : '')],
-    ['Funnels', new Set(rows.map(x => x.fn)).size + (unk ? ' <span class="td-tag td-warn">⚠ ' + unk + ' unknown</span>' : '')]
-  ].map(([l, v]) => `<div class="td-kpi"><div class="td-kl">${l}</div><div class="td-kv">${v}</div></div>`).join('');
+  /* ТРИ ВЕЛИКІ ЧИСЛА, РЕШТА — РЯДКОМ. Сім однакових плиток не казали,
+     на що дивитись першим. Перше питання до дня — скільки витрачено, що
+     за це прийшло і чи є депозити; кабінети, креативи й воронки — це
+     вже довідка, і їй досить одного тихого рядка. */
+  tdAvg = { ...t, sBy: {
+    l: rows.filter(x => x.l > 0).reduce((a, x) => a + x.s, 0),
+    i: rows.filter(x => x.i > 0).reduce((a, x) => a + x.s, 0) } };
+  const convBig = t.l && t.i ? t.l + ' <span class="td-dim">L</span> · ' + t.i + ' <span class="td-dim">I</span>'
+    : t.i ? String(t.i) : String(t.l);
+  const convSub = t.l && t.i ? 'Leads ' + tdPer(t.s, t.l) + ' · Installs ' + tdPer(t.s, t.i)
+    : t.i ? 'Installs · CPI ' + tdPer(t.s, t.i) : 'Leads · CPL ' + tdPer(t.s, t.l);
+  const hero = [
+    [tdMoney(t.s), 'Spend today', ''],
+    [convBig, convSub, ''],
+    [String(t.d), 'Deps · CPA ' + tdPer(t.s, t.d), t.d ? ' is-good' : '']
+  ].map(([v, l, c]) => `<div class="td-hero${c}"><div class="td-hv">${v}</div><div class="td-hl">${l}</div></div>`).join('');
+  const facts = [
+    new Set(rows.map(x => x.acc)).size + ' cabinets',
+    crs.size + ' creatives' + (multi ? ' <span class="td-tag">' + multi + ' in 2+ cabs</span>' : ''),
+    new Set(rows.map(x => x.fn)).size + ' funnels'
+      + (unk ? ' <span class="td-tag td-warn">⚠ ' + unk + ' unknown</span>' : ''),
+    t.lc + ' clicks · CPC ' + tdPer(t.s, t.lc),
+    t.r + ' regs · CPR ' + tdPer(t.s, t.r)
+  ].map(x => '<span>' + x + '</span>').join('');
+  document.getElementById('td-kpis').innerHTML =
+    '<div class="td-heroes">' + hero + '</div><div class="td-facts">' + facts + '</div>';
 
   if (!rows.length) {
     box.innerHTML = '<p class="td-empty">Nothing spent today yet — or Sync now has not run today.</p>';
     return;
   }
   const head = tdMode === 'cre' ? 'Creative' : tdMode === 'fun' ? 'Funnel' : 'Geo › Cabinet › Funnel › Creative';
+  const body = tdTree(rows, TD_VIEWS[tdMode]);
+  /* Підсумок не фарбуємо: він і є середня, з якою порівнюють решту, а
+     червоний Total читався б як «усе погано» там, де це просто сума. */
+  const avg = tdAvg;
+  tdAvg = null;
+  const total = tdCells(t);
+  tdAvg = avg;
   box.innerHTML = '<table class="td-tbl"><thead><tr><th>' + head + '</th>'
     + TD_COLS.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>'
-    + tdTree(rows, TD_VIEWS[tdMode])
-    + '<tr class="td-tot"><td>Total</td>' + tdCells(t) + '</tr></tbody></table>';
+    + body
+    + '<tr class="td-tot"><td>Total</td>' + total + '</tr></tbody></table>';
 }
 
 /* Вікно створюємо при першому відкритті: на сторінці, де його ніхто не
