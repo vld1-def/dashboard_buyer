@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 12.11 17:00">
+  <meta name="build" content="build 12.11 17:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7079,6 +7079,34 @@ p.fl-ap-empty { padding: 14px; font-size: 12px; color: var(--text-muted); margin
 .fl-ap-tbl tr.is-sent td.fl-ap-st { opacity: 1; }
 .fl-ap-tbl td.fl-ap-st { max-width: 320px; font-family: inherit; }
 .fl-mini:disabled { opacity: .45; cursor: default; }
+
+/* ═══ ШАПКА ВІКНА ПРІЛОК: ДВА РЯДИ ═══
+   Верхній — назва, режим, закрити; нижній — пошук і дії. Дії не
+   переносяться посеред ряду: не вміщаються — гортаються вбік. */
+.ap-head { padding: 16px 20px 14px; display: flex; flex-direction: column; gap: 12px; }
+.ap-head-row { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.ap-head-tools { gap: 12px; }
+.ap-head-search { flex: 1 1 220px; min-width: 140px; max-width: 340px; }
+.ap-head-acts {
+  display: flex; align-items: center; gap: 8px; margin-left: auto;
+  min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+.ap-head-acts::-webkit-scrollbar { display: none; }
+.ap-head-acts > .mw-btn { flex: 0 0 auto; white-space: nowrap; }
+/* Вимикач: крапка стану замість заливки. */
+.mw-sw { display: inline-flex; align-items: center; gap: 7px; }
+.mw-sw::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-muted); opacity: .55; flex: 0 0 auto;
+}
+.mw-sw.is-on::before { background: var(--success, #34D399); opacity: 1; box-shadow: 0 0 6px rgba(52, 211, 153, .6); }
+.mw-sw.is-on { color: var(--text-main); }
+@media (max-width: 720px) {
+  .ap-head { padding: 12px 14px; gap: 10px; }
+  .ap-head-tools { flex-wrap: wrap; }
+  .ap-head-search { flex: 1 1 100%; max-width: none; }
+  .ap-head-acts { margin-left: 0; width: 100%; }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -7338,7 +7366,7 @@ p.fl-ap-empty { padding: 14px; font-size: 12px; color: var(--text-muted); margin
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 12.11 17:00</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 12.11 17:17</div>
     </div>
   </aside>
 
@@ -18275,7 +18303,14 @@ function gcDiff(geo, results) {
          Тепер посередині те, чим КЕРУЮТЬ показом (перемикач і пошук), а
          праворуч те, що ЩОСЬ РОБИТЬ (домени, списком, шаблон, закрити).
          Різні речі — різні місця. -->
-    <div class="p-5 border-b border-white/5 flex items-center bg-white/[0.02] flex-shrink-0 gap-4 flex-wrap">
+    <!-- ДВА РЯДИ, А НЕ ОДИН. «треба шапку у цьому вікні норм зробити, все
+         поплило через те що багато кнопок». В одному ряду стояли заголовок,
+         перемикач, пошук і шість кнопок; із сьомою (Auto-pause) правий край
+         перестав уміщатись і почав переноситись посеред шапки.
+         Верхній ряд — ЩО це за вікно: назва, режим, закрити.
+         Нижній — ЧИМ у ньому працюють: пошук ліворуч, дії праворуч. -->
+    <div class="ap-head border-b border-white/5 bg-white/[0.02] flex-shrink-0">
+     <div class="ap-head-row">
       <!-- Обидва краї тягнуться ОДНАКОВО (flex-1 basis-0), тож середина
            стоїть рівно посередині шапки й не їздить, коли праворуч
            зʼявляються чи зникають кнопки «домени» й «списком». Доти
@@ -18295,10 +18330,15 @@ function gcDiff(geo, results) {
           <button id="ap-tab-app" onclick="apSetMode('app')" class="ap-tab">Прілки</button>
           <button id="ap-tab-pwa" onclick="apSetMode('pwa')" class="ap-tab">PWA APP</button>
         </div>
-        <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
-          class="mw-in" style="width:224px">
       </div>
-      <div class="flex items-center gap-2 flex-wrap flex-1 basis-0 min-w-0 justify-end">
+      <div class="flex-1 basis-0 min-w-0 flex justify-end">
+        <button type="button" onclick="closeAppsModal()" class="mw-x" title="Закрити">&times;</button>
+      </div>
+     </div>
+     <div class="ap-head-row ap-head-tools">
+      <input id="ap-search" oninput="apRenderMode()" placeholder="Пошук: гео, постачальник, неймінг…"
+        class="mw-in ap-head-search">
+      <div class="ap-head-acts">
         <button id="ap-dom" onclick="pwDomRefresh(this)" title="Перечитати стан доменів зі списку доменів — його міняє перевірка, а не ми"
           class="hidden mw-btn">↻ домени</button>
         <button id="ap-paste" onclick="pwPaste()" title="Вставити назви й силки списком — як вони лежать у тебе в нотатках"
@@ -18312,15 +18352,15 @@ function gcDiff(geo, results) {
              ставить бан, після якого кампанії зупиняються. -->
         <button id="ap-banpause" onclick="apBanPauseToggle(this)"
           title="When an app is banned in the store, pause the campaigns that have its KTID in the name"
-          class="mw-btn">Auto-pause: …</button>
+          class="mw-btn mw-sw">Auto-pause</button>
         <button id="ap-checkall" onclick="apCheckAll(this)"
           title="Спитати Google Play про кожну апку команди, по черзі. Забанені позначаться самі"
           class="mw-btn">↻ Перевірити апки</button>
         <button id="ap-addfun" onclick="apAddFunnel(true)" title="Завести апку (воронку з позначкою APP)"
           class="mw-btn">+ Апка</button>
         <button id="ap-add" onclick="apAddNew()" class="mw-btn is-main">+ Шаблон</button>
-        <button type="button" onclick="closeAppsModal()" class="mw-x" title="Закрити">&times;</button>
       </div>
+     </div>
     </div>
 
     <div class="flex-1 min-h-0 flex">
@@ -19033,8 +19073,11 @@ let apBanPauseOn = true;
 function apBanPausePaint() {
   const b = document.getElementById('ap-banpause');
   if (!b) return;
-  b.textContent = 'Auto-pause: ' + (apBanPauseOn ? 'ON' : 'OFF');
-  b.classList.toggle('is-main', apBanPauseOn);
+  /* Вимикач, а не ще одна кольорова кнопка: головна дія в шапці одна
+     («+ Шаблон»), і друга заливка поруч із нею сперечалась би за увагу. */
+  b.textContent = 'Auto-pause ' + (apBanPauseOn ? 'on' : 'off');
+  b.classList.toggle('is-on', apBanPauseOn);
+  b.setAttribute('aria-pressed', apBanPauseOn ? 'true' : 'false');
 }
 
 async function apBanPauseLoad() {
