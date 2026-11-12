@@ -43,7 +43,7 @@ ok('у чужій назві нічого не знаходиться', K.ktidFi
 ok('короткий ktid у назві не шукаємо', K.ktidFind('big_gf_campaign') === '');
 
 /* Розбір PWA-назви: шаблон не ліг → ktid із назви, гео з воронки. */
-const pwSrc = cut('function parsePwaCampaign(campName, country) {', '// Розбір назви APP-кампанії');
+const pwSrc = cut('function parsePwaCampaign(campName, country, prov) {', '// Розбір назви APP-кампанії');
 ok('розбір PWA шукає відомий ktid, коли шаблон не впорався', /const found = ktidFind\(campName\);/.test(pwSrc)
   && /mappingDB\.funnelGeo\[found\]/.test(pwSrc));
 ok('ключі креативів теж порівнюються «на слух»', (F.match(/\$\{looseKey\((cr|row\.cid)\)\}/g) || []).length === 2);
@@ -117,6 +117,60 @@ ok('шаблон із «&» лишився як був', P('*&sub1={ktid}&geo={g
   && P('*&sub1={ktid}&geo={geo}', 'x=1&sub1=ABC123&geo=TJ&z=9').geo === 'TJ');
 ok('назва не за шаблоном — не розбирається', run(compF, '{ktid} {geo} *', 'no-geo-here') === null);
 ok('біля поля шаблону сказано про пробіли', /\{ktid\} \{geo\} \*<\/span> reads/.test(F));
+
+/* ── свій шаблон у кожного постачальника ──
+   «Можеш додати типу як постачальник і шаблон, в кейтаро якщо що ми в
+   source передаємо інфу про постачальника». */
+const provSrc = cut('let pwaProvMasks = {};', '/* ═══════════ PWA: налаштування шаблону ═══════════ */');
+ok('блок шаблонів постачальників є', provSrc.length > 300);
+const mkProv = (funnels, main, provs) => {
+  const mappingDB = { funnels };
+  const env = new Function('mappingDB', 'pwaMask', 'COUNTRY_TO_ISO',
+    'const AP_MASK_CACHE = new Map();\n' + grab(F, 'apMaskCompile')
+    + (F.match(/function apParseMask\(mask, parts, adName, country\) \{[\s\S]*?\n\}\n/) || [''])[0]
+    + ktSrc + provSrc
+    + '\npwaProvMasks = ' + JSON.stringify(provs) + ';\nktidIndexBuild();'
+    + '\nreturn { pwaParseAny, pwaProvParse, pwaProvText, pwaMasksFor };');
+  return env(mappingDB, main, { kyrgyzstan: 'KG' });
+};
+const FUN = { '10708-ry05': 'MPlayCasino_KG_vld 10708-ry05', 'SKAK4HE1': 'MPlay_KG [SkakApp]', '1112919393': 'MPlay AppHeroes KG' };
+const PV = mkProv(FUN, '*_{geo}_{ktid}', { skakapp: '{ktid} {geo} *', appheroes: '*-{geo}-{ktid}' });
+
+const t1 = PV.pwaProvParse('SkakApp = {ktid} {geo} *\n\n  appheroes=*-{geo}-{ktid}  \nrubbish line\n= nothing');
+ok('список «постачальник = шаблон» читається, регістр назви не важить',
+  JSON.stringify(t1) === JSON.stringify({ skakapp: '{ktid} {geo} *', appheroes: '*-{geo}-{ktid}' }), t1);
+ok('і пишеться назад у тому ж вигляді', PV.pwaProvText(t1) === 'appheroes = *-{geo}-{ktid}\nskakapp = {ktid} {geo} *');
+
+const k1 = PV.pwaParseAny('SKAK4HE1 KG MPlay 0611 003', 'skakapp');
+ok('рядок Keitaro: шаблон свого постачальника', k1 && k1.ktid === 'SKAK4HE1' && k1.geo === 'KG' && k1._mask === '{ktid} {geo} *', k1);
+const k2 = PV.pwaParseAny('SKAK4HE1 KG MPlay 0611 003', 'SkakApp');
+ok('назва постачальника зі стовпця Source — у будь-якому регістрі', k2 && k2.ktid === 'SKAK4HE1');
+const f1 = PV.pwaParseAny('SKAK4HE1 KG MPlay 0611 003');
+ok('рядок Facebook постачальника не знає — шаблон знаходиться сам', f1 && f1.ktid === 'SKAK4HE1' && f1.geo === 'KG', f1);
+const f2 = PV.pwaParseAny('MPlayC_KG_10708-ry05_06/11 003');
+ok('стара назва через «_» читається загальним шаблоном', f2 && f2.ktid === '10708-ry05' && f2.geo === 'KG' && f2._mask === '*_{geo}_{ktid}', f2);
+const f3 = PV.pwaParseAny('vld-KG-1112919393');
+ok('третій постачальник — своїм шаблоном через дефіси', f3 && f3.ktid === '1112919393' && f3.geo === 'KG' && f3._mask === '*-{geo}-{ktid}', f3);
+const f4 = PV.pwaParseAny('SKAK4HE1 KG MPlay 0611 003', 'appheroes');
+ok('чужий постачальник у Source не заважає знайти правильний шаблон', f4 && f4.ktid === 'SKAK4HE1', f4);
+const f5 = PV.pwaParseAny('NEWONE1 TJ Something', 'skakapp');
+ok('нова воронка, якої ще немає в мапінгу, теж розбирається', f5 && f5.ktid === 'NEWONE1' && f5.geo === 'TJ', f5);
+const f6 = PV.pwaParseAny('just some words here');
+ok('назва не за жодним шаблоном — нічого не вигадуємо', !f6 || !/^[A-Za-z]{2}$/.test(String(f6.geo || '')), f6);
+
+const PLAIN = mkProv(FUN, '*_{geo}_{ktid}', {});
+const p1 = PLAIN.pwaParseAny('Melbet_EG_10864-9lm5_19/09_001');
+ok('без списку постачальників усе як раніше', p1 && p1.geo === 'EG' && p1.ktid === '10864-9lm5', p1);
+ok('порядок: свій, загальний, решта', JSON.stringify(PV.pwaMasksFor('skakapp')) === JSON.stringify(['{ktid} {geo} *', '*_{geo}_{ktid}', '*-{geo}-{ktid}']),
+  PV.pwaMasksFor('skakapp'));
+
+ok('Keitaro передає постачальника зі стовпця Source у розбір назви', /campParse\(campRaw, '', '', false, undefined, rowProv\)/.test(F));
+ok('визначення «PWA чи прілка» теж бачить усі шаблони', /const r = pwaParseAny\(campName\);/.test(F));
+ok('шаблони зберігаються разом із загальним', /tsSave\('pwa_parse', \{ mask, prov \}/.test(F));
+ok('шаблон постачальника без {ktid} зберегти не дасть', /has no \{ktid\}\. Add it before saving/.test(F));
+ok('у Form є поле зі списком і підказка', /id="pwa-prov"/.test(F) && /provider = pattern/.test(F));
+ok('перевірка на зразку каже, який шаблон спрацював', /matched by \$\{who \? 'provider '/.test(F));
+ok('дашборд теж читає шаблони постачальників', /pwMaskMore = Object\.keys\(pv\)/.test(L) && /for \(const m of pwMaskMore\)/.test(L));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
 if (fail) process.exit(1);

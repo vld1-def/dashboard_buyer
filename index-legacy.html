@@ -11113,6 +11113,7 @@ let pwShotErr = '';
    міняли, не змінюється. */
 const PW_DEFAULT_MASK = '*_{geo}_{ktid}';
 let pwMask = PW_DEFAULT_MASK;
+let pwMaskMore = [];           // шаблони постачальників, після загального
 
 const PW_MASK_CACHE = new Map();
 
@@ -11177,6 +11178,13 @@ const pwKtid = name => {
   const s = String(name || '').trim();
   if (!s) return '';
   const r = pwMaskParse(pwMask, s);
+  if (r && r.ktid && /^[A-Za-z]{2}$/.test(String(r.geo || '').trim())) return r.ktid;
+  /* Загальний шаблон не дав справжнього гео — можливо, це назва іншого
+     постачальника. Беремо перший його шаблон, що дав код країни. */
+  for (const m of pwMaskMore) {
+    const x = pwMaskParse(m, s);
+    if (x && x.ktid && /^[A-Za-z]{2}$/.test(String(x.geo || '').trim())) return x.ktid;
+  }
   if (r && r.ktid) return r.ktid;
   /* Шаблон не підійшов. Це НЕ привід мовчки взяти третій кусок: у
      команди зі своїм шаблоном він означає щось інше, і скрін ліг би
@@ -11193,7 +11201,11 @@ async function pwMaskLoad() {
     const v = await getTeamSetting('pwa_parse');
     const m = v && typeof v === 'object' ? String(v.mask || '').trim() : '';
     pwMask = m || PW_DEFAULT_MASK;
-  } catch (_e) { pwMask = PW_DEFAULT_MASK; }
+    /* Шаблони постачальників (Form → PWA parsing). Тут постачальник
+       назви невідомий, тому їх просто пробуємо після загального. */
+    const pv = v && typeof v === 'object' && v.prov && typeof v.prov === 'object' ? v.prov : {};
+    pwMaskMore = Object.keys(pv).sort().map(k => String(pv[k] || '').trim()).filter(Boolean);
+  } catch (_e) { pwMask = PW_DEFAULT_MASK; pwMaskMore = []; }
 }
 
 /* КІЛЬКА КАРТИНОК НА ОДНУ ВОРОНКУ.

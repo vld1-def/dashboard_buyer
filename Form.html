@@ -1020,6 +1020,15 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
                  placeholder="*_{geo}_{ktid}"
                  class="!font-mono !text-[13px] !py-3">
 
+          <label class="block text-[9px] font-black uppercase tracking-widest text-sky-400 mb-1.5 mt-4">Patterns per provider &middot; optional</label>
+          <textarea id="pwa-prov" oninput="renderPwaPreview()" spellcheck="false" rows="3"
+                    placeholder="skakapp = {ktid} {geo} *&#10;appheroes = *-{geo}-{ktid}"
+                    class="!font-mono !text-[12px] !py-2 w-full"></textarea>
+          <p class="text-[10px] text-slate-500 mt-1.5 leading-relaxed">One per line: <span class="font-mono text-sky-300">provider = pattern</span>.
+            The provider is what the <b>Source</b> column of Keitaro says (the same word as in the brackets of the funnel name); case does not matter.
+            A Keitaro row uses the pattern of its provider. A Facebook row does not know the provider, so every pattern is tried and the one
+            that gives a real geo and a KTID from your KTID Mappings wins. Names no pattern reads fall back to the pattern above.</p>
+
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
             <div class="bg-black/25 rounded-2xl border border-white/5 p-4">
               <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-2">How to write the pattern</p>
@@ -2046,7 +2055,11 @@ async function loadAppParse() {
       if (r.key === 'app_profiles') appProfiles = JSON.parse(r.value) || {};
       // Порожній рядок у базі не має стирати типовий шаблон — інакше
       // одне невдале збереження залишило б увесь імпорт без розбору.
-      if (r.key === 'pwa_parse')    pwaMask     = (JSON.parse(r.value) || {}).mask || PWA_DEFAULT_MASK;
+      if (r.key === 'pwa_parse') {
+        const pp = JSON.parse(r.value) || {};
+        pwaMask = pp.mask || PWA_DEFAULT_MASK;
+        pwaProvMasks = pwaProvShape(pp.prov);
+      }
     });
   } catch (e) { console.warn('app_parse:', e.message); }
   pwaFillForm();
@@ -2162,11 +2175,88 @@ async function saveAppParse() {
   } catch (e) { alert('Could not save: ' + e.message); }
 }
 
+
+/* ═══════════ PWA: СВІЙ ШАБЛОН У КОЖНОГО ПОСТАЧАЛЬНИКА ═══════════
+
+   «Можеш додати типу як постачальник і шаблон, в кейтаро якщо що ми в
+   source передаємо інфу про постачальника».
+
+   Шаблон був один на всі PWA-кампанії. Постачальники називають їх
+   по-різному, і під один шаблон лягав лише один із них.
+
+   Тепер поруч із загальним шаблоном — список «постачальник = шаблон».
+   Назва постачальника — та сама, що стоїть у стовпці Source у Keitaro
+   (і в квадратних дужках назви воронки); регістр не важить.
+
+   ЯК ВИБИРАЄМО ШАБЛОН.
+     • Рядок Keitaro знає постачальника зі стовпця Source — його шаблон
+       пробуємо першим.
+     • Рядок звіту Facebook постачальника не знає. Тому пробуємо всі по
+       черзі й беремо той, що дав СПРАВЖНІЙ код країни і ktid, який уже
+       є в KTID Mappings. Це не вгадування: випадковий шаблон обидві
+       перевірки разом не пройде.
+   Жоден не підійшов — лишається те, що було: загальний шаблон, а за ним
+   пошук відомого ktid у назві. */
+let pwaProvMasks = {};         // 'skakapp' → '{ktid} {geo} *'
+
+// «skakapp = {ktid} {geo} *» по рядку. Порожні рядки й рядки без «=» пропускаємо.
+function pwaProvParse(text) {
+  const out = {};
+  String(text || '').split(/\r?\n/).forEach(line => {
+    const i = line.indexOf('=');
+    if (i < 1) return;
+    const k = line.slice(0, i).trim().toLowerCase();
+    const m = line.slice(i + 1).trim();
+    if (k && m) out[k] = m;
+  });
+  return out;
+}
+function pwaProvText(map) {
+  return Object.keys(map || {}).sort().map(k => k + ' = ' + map[k]).join('\n');
+}
+function pwaProvShape(v) {
+  const out = {};
+  if (v && typeof v === 'object') Object.keys(v).forEach(k => {
+    const key = String(k).trim().toLowerCase(), m = String(v[k] || '').trim();
+    if (key && m) out[key] = m;
+  });
+  return out;
+}
+
+// У якому порядку пробувати: свій (якщо постачальник відомий), загальний, решта.
+function pwaMasksFor(prov, main, provs) {
+  const p = String(prov || '').trim().toLowerCase();
+  const all = provs || pwaProvMasks;
+  const own = p && all[p];
+  const rest = Object.keys(all).filter(k => k !== p).sort().map(k => all[k]);
+  return [...new Set([own, main || pwaMask, ...rest].filter(Boolean))];
+}
+
+function pwaParseAny(campName, prov, main, provs) {
+  const toks = String(campName || '').split('_');
+  const masks = pwaMasksFor(prov, main, provs);
+  let weak = null;
+  for (const m of masks) {
+    const r = apParseMask(m, toks, '', '');
+    if (!r || !String(r.ktid || '').trim()) continue;
+    const g = String(r.geo || '').trim();
+    if (!(/^[A-Za-z]{2}$/.test(g) || !!COUNTRY_TO_ISO[g.toLowerCase()])) continue;
+    r._mask = m;
+    if (mappingDB.funnels && mappingDB.funnels[ktidCanon(r.ktid)]) return r;   // і гео, і ktid справжні
+    if (!weak) weak = r;
+  }
+  /* Нічого певного — віддаємо те саме, що віддавав єдиний шаблон: інакше
+     команда без жодного списку постачальників помітила б різницю. */
+  return weak || apParseMask(masks[0], toks, '', '');
+}
+
 /* ═══════════ PWA: налаштування шаблону ═══════════ */
 
 function pwaFillForm() {
   const el = document.getElementById('pwa-mask');
   if (el) el.value = pwaMask;
+  const pv = document.getElementById('pwa-prov');
+  if (pv) pv.value = pwaProvText(pwaProvMasks);
   renderPwaPreview();
 }
 
@@ -2185,14 +2275,21 @@ function renderPwaPreview() {
   const mask = (document.getElementById('pwa-mask')?.value || '').trim() || PWA_DEFAULT_MASK;
   const sample = (document.getElementById('pwa-sample')?.value || '').trim()
     || 'Melbet_EG_10864-9lm5_19/09_001';
-  const r = apParseMask(mask, sample.split('_'), '', '');
+  const provs = pwaProvParse(document.getElementById('pwa-prov')?.value || '');
+  const r = pwaParseAny(sample, '', mask, provs);
   if (!r || !r.geo) {
-    el.innerHTML = `<span class="text-rose-400">The pattern does not match this name.</span>
+    el.innerHTML = `<span class="text-rose-400">No pattern matches this name.</span>
       Geo would be written as <b>??</b> and KTID as <b>0</b>. Check the literal parts — they must match exactly.`;
     return;
   }
   const v = x => `<b class="text-sky-300">${x}</b>`;
-  el.innerHTML = `geo: ${v(String(r.geo).toUpperCase())}<br>ktid: ${v(r.ktid || '0')}`;
+  /* Який саме шаблон спрацював — видно тут, а не після імпорту: із
+     кількома шаблонами «розібралось» ще не означає «розібралось тим». */
+  const used = r._mask || mask;
+  const who = Object.keys(provs).find(k => provs[k] === used);
+  el.innerHTML = `geo: ${v(String(r.geo).toUpperCase())}<br>ktid: ${v(r.ktid || '0')}`
+    + `<br><span class="text-slate-500">matched by ${who ? 'provider ' + v(who) : 'the main pattern'}: `
+    + `<span class="text-slate-300">${String(used).replace(/</g, '&lt;')}</span></span>`;
 }
 
 async function savePwaParse() {
@@ -2203,9 +2300,18 @@ async function savePwaParse() {
     alert('The pattern has no {geo} — geo would be empty for every row. Add it before saving.');
     return;
   }
+  const prov = pwaProvParse(document.getElementById('pwa-prov')?.value || '');
+  /* Шаблон постачальника без {ktid} не дасть ключа злиття — рядки цього
+     постачальника лягли б під «0», і помітили б це вже у звітах. */
+  const bad = Object.keys(prov).find(k => !apMaskCompile(prov[k]) || !prov[k].includes('{ktid}'));
+  if (bad) {
+    alert('The pattern for "' + bad + '" has no {ktid}. Add it before saving.');
+    return;
+  }
   try {
-    if (!await tsSave('pwa_parse', { mask }, 'PWA parsing saved')) return;
+    if (!await tsSave('pwa_parse', { mask, prov }, 'PWA parsing saved')) return;
     pwaMask = mask;
+    pwaProvMasks = prov;
     renderPwaPreview();
     // Уже розібраний звіт перечитуємо новим шаблоном — щоб результат було
     // видно одразу, а не після повторного завантаження файлу.
@@ -2531,7 +2637,8 @@ function tmRowMode(campName) {          // 'pwa' | 'app' | 'unknown'
      ньому виходить «8wxg7hf7». Тому перевіряємо ДАНИМИ, тим самим
      правилом, що й geoPick: на місці {geo} мусить стояти справжній код
      країни. Інакше це не PWA-назва, хоч шаблон і «збігся». */
-  const r = apParseMask(pwaMask, toks, '', '');
+  const r = pwaParseAny(campName);
+  void toks;
   /* Перевіряємо САМЕ значення, а не те, що з нього вийде після
      toGeoCode: той у безвиході віддає перші дві літери («xx1» → «XX»),
      і на класифікації така догадка означала б, що будь-яка назва з
@@ -2596,7 +2703,7 @@ function ktidFind(name) {
   return best;
 }
 
-function campParse(campName, adName, country, count, accHint) {
+function campParse(campName, adName, country, count, accHint, prov) {
   /* Рахуємо тут, бо саме через campParse проходить кожен рядок ЗВІТУ
      FB — тобто ті рядки, які й поїдуть у базу. Бік Keitaro рахує своє
      окремо: це інша множина рядків, і зливати їх в одне число
@@ -2610,7 +2717,7 @@ function campParse(campName, adName, country, count, accHint) {
     return { geo: geoPick(a.geo, country, count) || '??', ktid: ktidCanon(a.app) || '0',
              acc: a.acc || '', cid: a.cid || '', mode };
   }
-  const w = parsePwaCampaign(campName, country);
+  const w = parsePwaCampaign(campName, country, prov);
   return { geo: w.geo, ktid: w.ktid, acc: '', cid: '', mode };
 }
 
@@ -2679,8 +2786,8 @@ let offerFromNameHits = 0;
    «ua» — без toGeoCode це три різні гео, і жодне з трьох не збігається
    з тим, під яким лежить решта даних. APP через нього проганяє, PWA
    не проганяв. */
-function parsePwaCampaign(campName, country) {
-  const r = apParseMask(pwaMask, String(campName || '').split('_'), '', country || '');
+function parsePwaCampaign(campName, country, prov) {
+  const r = pwaParseAny(campName, prov);
   let geo = geoPick(r && r.geo, country);
   let ktid = ktidCanon(r && r.ktid);
   /* Шаблон не ліг (назва через дефіси) або дав шматок, якого в мапінгу
@@ -3276,7 +3383,8 @@ function parseKeitaro(content) {
       const ic = (pIdx && pIdx.country >= 0) ? pIdx.country : iCountry;
       geo = toGeoCode(ic >= 0 ? String(r[ic] || '').trim() : '') || '??';
     } else {
-      const cp = campParse(campRaw, '', '', false);
+      // Постачальник зі стовпця Source — його шаблон назви пробуємо першим.
+      const cp = campParse(campRaw, '', '', false, undefined, rowProv);
       geo = cp.geo; ktid = cp.ktid;
     }
     const cr = (r[(pIdx && pIdx.cr >= 0) ? pIdx.cr : iCr] || '').trim();
@@ -4109,7 +4217,7 @@ function geoFromNames(lines, map) {
     const two = [];
     if (trafficMode !== 'pwa') two.push(String(parseAppCampaign(camp, '', '').geo || ''));
     if (trafficMode !== 'app') {
-      const r = apParseMask(pwaMask, camp.split('_'), '', '');
+      const r = pwaParseAny(camp);
       two.push(String((r && r.geo) || ''));
     }
     if (two.some(g => /^[A-Za-z]{2}$/.test(g.trim()))) ok++;
