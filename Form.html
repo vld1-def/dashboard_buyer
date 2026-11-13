@@ -6330,6 +6330,17 @@ function recFunnelGeos() {
     if (!map.has(f)) map.set(f, new Set());
     map.get(f).add(g);
   });
+  /* І ГЕО З ДОВІДНИКА. Коментар вище писався, коли у funnels_mapping гео
+     не було; тепер воно там є — його ставлять, заводячи воронку. Без
+     нього нова воронка, яка ще жодного разу не крутилась, лишалась «без
+     гео» й не потрапляла у свій список. */
+  Object.keys((mappingDB && mappingDB.funnelGeo) || {}).forEach(k => {
+    const g = String(mappingDB.funnelGeo[k] || '').trim().toUpperCase();
+    const f = String(apFunnelData(k) || '').trim();
+    if (!f || !g) return;
+    if (!map.has(f)) map.set(f, new Set());
+    map.get(f).add(g);
+  });
   recFunGeoCache = { table: recCurrentTable, n: recRows.length, map };
   return map;
 }
@@ -6357,6 +6368,21 @@ function recFunnelOptions(rowGeo) {
              key: rank === 0 ? mine : (g[0] || '') };
   }).sort((a, b) => a.rank - b.rank || a.key.localeCompare(b.key)
                     || a.v.localeCompare(b.v, 'uk'));
+}
+
+/* СПИСОК ДЛЯ КЛІТИНКИ — ЛИШЕ ВОРОНКИ ГЕО ЦЬОГО РЯДКА.
+   «У форм щоб воронки підтягувались під гео яке виставленне коли руками
+   вписую». Доти свої воронки просто стояли першими, а за ними тягнувся
+   весь довідник — шістдесят рядків, із яких потрібні п'ять.
+
+   Є воронки цього гео — показуємо тільки їх. Гео в рядку не вибране або
+   для нього ще нічого не заведено — показуємо всі, як і було: порожній
+   список виглядав би як поломка. Вписати руками будь-яку воронку можна
+   й далі — поле не обмежене списком. */
+function recFunnelOptionsFor(rowGeo) {
+  const all = recFunnelOptions(rowGeo);
+  const mine = all.filter(o => o.rank === 0);
+  return mine.length ? mine : all;
 }
 
 /* ГЕО — СПИСОК, А НЕ ВІЛЬНИЙ РЯДОК.
@@ -6788,7 +6814,12 @@ document.addEventListener('focusin', (e) => {
   if (!inp || !dl) return;
   const at = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  dl.innerHTML = recFunnelOptions(inp.dataset.geo)
+  /* Гео беремо ЖИВЕ, з клітинки цього ж рядка: щойно змінене гео ще не
+     дійшло до data-geo, а список потрібен уже під нього. */
+  const row = inp.closest('tr');
+  const gsel = row && row.querySelector('.rec-geo');
+  const geo = gsel && gsel.value && gsel.value !== REC_GEO_NEW ? gsel.value : inp.dataset.geo;
+  dl.innerHTML = recFunnelOptionsFor(geo)
     .map(o => `<option value="${at(o.v)}">${tx(o.hint)}</option>`).join('');
 });
 
