@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-20';
+const FN_VERSION = 'rules-21';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -1032,7 +1032,11 @@ type Hit = { rule: string; ruleName: string; level: string; id: string; name: st
                 це сталось, можна було лише за довгим ID. */
              cabName: string; browser: string;
              // Яке з двох чисел стоїть під 📲. Див. convPick.
-             conv: 'leads' | 'installs' };
+             conv: 'leads' | 'installs';
+             /* ID кампанії сутності. Їде в журнал (metrics.campaign): за
+                ним серія рахує, скільки оголошень цієї кампанії вже
+                погашено. Див. seriesCamps. */
+             campaign: string };
 
 /* ═══ НОМЕР БРАУЗЕРА ═══
 
@@ -1102,6 +1106,76 @@ async function pauseAll(token: string, hits: Hit[]): Promise<void> {
   }
 }
 
+/* ═══════════ СЕРІЯ: ГАСИМО КАМПАНІЮ, А НЕ ДОБИВАЄМО ПО ОДНОМУ ═══════════
+
+   Кабінет ...7985, ніч на 2026-11-15: у кампанії шістнадцять однакових
+   оголошень. Правило гасило їх по одному, бюджет перетікав на ті, що
+   лишились, і вони розганялись дедалі швидше: стопи на $1.3, потім на
+   $3–5, а останні — на $7.69, $8.17 і $11.49 за один проміжок між
+   перевірками. Розклад при цьому не запізнювався.
+
+   Тому: щойно в одній кампанії набралось SERIES_N оголошень, погашених
+   правилом БЕЗ ЖОДНОГО РЕЗУЛЬТАТУ (ні ліда, ні інсталу), гасимо
+   кампанію цілком.
+
+   ДВА ЗАПОБІЖНИКИ, і обидва про те, щоб не вбити живе:
+     • рахуємо лише оголошення без результату — погашене за дорогий
+       лід до серії не входить;
+     • сама кампанія за сьогодні (усі її оголошення, і вимкнені теж)
+       мусить підпадати під ТЕ САМЕ правило. Якщо в неї в цілому ціна
+       нормальна — три невдалі оголошення нічого не означають.
+
+   Серія рахується за добу з журналу (metrics.campaign) плюс влучання
+   цього прогону. Потрібне хоча б одне свіже влучання: стара серія сама
+   нічого не гасить.
+
+   Звітні правила (dry) і перегляд Check now сюди не входять: серія —
+   це дія, а не звіт. На запасному аеродромі (знімок) теж мовчимо:
+   цифр кампанії там немає. */
+const SERIES_N = 3;
+const SERIES_WINDOW_MS = 24 * 3600_000;
+
+const noResult = (a: Json): boolean => !(Number(a?.leads) > 0) && !(Number(a?.installs) > 0);
+
+/* now — влучання цього прогону по одному кабінету; prior — рядки журналу
+   {entity_id, metrics}. Повертає кампанії, де серія набралась, із першим
+   свіжим влучанням (воно несе правило) і довжиною серії. */
+function seriesCamps(now: Hit[], prior: Json[], n = SERIES_N):
+    Map<string, { hit: Hit; count: number }> {
+  const ids = new Map<string, Set<string>>();
+  const first = new Map<string, Hit>();
+  const add = (camp: string, id: string) => {
+    if (!camp || !id) return;
+    if (!ids.has(camp)) ids.set(camp, new Set());
+    (ids.get(camp) as Set<string>).add(id);
+  };
+  now.forEach(h => {
+    if (h.level !== 'ad' || h.dry || !h.campaign || !noResult(h.agg)) return;
+    add(h.campaign, h.id);
+    if (!first.has(h.campaign)) first.set(h.campaign, h);
+  });
+  (prior || []).forEach(r => {
+    const m = r?.metrics || {};
+    const camp = String(m.campaign || '');
+    if (!first.has(camp) || !noResult(m)) return;
+    add(camp, String(r.entity_id || ''));
+  });
+  const out = new Map<string, { hit: Hit; count: number }>();
+  first.forEach((hit, camp) => {
+    const count = (ids.get(camp) as Set<string>).size;
+    if (count >= n) out.set(camp, { hit, count });
+  });
+  return out;
+}
+
+async function seriesPrior(base: string, hdr: Json, owner: string, account: string): Promise<Json[]> {
+  return await pgGet(base, hdr, 'fb_rule_log?select=entity_id,metrics&level=eq.ad&dry=is.false&ok=is.true'
+    + '&created_by=eq.' + encodeURIComponent(owner)
+    + '&account_id=eq.' + encodeURIComponent(account)
+    + '&at=gte.' + encodeURIComponent(new Date(Date.now() - SERIES_WINDOW_MS).toISOString())
+    + '&limit=500');
+}
+
 /* ═══════════ СЛІД ПРО САМ ПРОГІН ═══════════
 
    У журнал лягали лише ВЛУЧАННЯ. Тому сторінка Rules чесно писала
@@ -1151,7 +1225,8 @@ async function logHits(base: string, hdr: Json, hits: Hit[]): Promise<string> {
   const rows = hits.map(h => ({
     created_by: h.owner, team_name: h.team || null, rule_id: h.rule, rule_name: h.ruleName,
     level: h.level, entity_id: h.id, entity_name: h.name, account_id: h.account,
-    metrics: h.agg, dry: h.dry, ok: h.ok, error: h.error || null
+    metrics: { ...h.agg, campaign: h.campaign || undefined },
+    dry: h.dry, ok: h.ok, error: h.error || null
   }));
   try {
     const res = await fetch(base + '/rest/v1/fb_rule_log', {
@@ -1676,6 +1751,7 @@ Deno.serve(async (req) => {
             { what: 'кампанія',   name: String(e.campaignName || '') }]) : null;
           hits.push({ rule: r.id, ruleName: r.name, level: r.level, id: e.id,
                       name: e.name, account, campaignName: e.campaignName,
+                      campaign: e.campaign,
                       owner: String(t.created_by || ''), team: String(a.team_name || t.team_name || ''),
                       agg: e.agg, dry: forceDry || r.dry, ok: false, error: '', acted: false,
                       preview: forceDry, fromSnap: fellBack.has(account),
@@ -1692,6 +1768,36 @@ Deno.serve(async (req) => {
                       browser: browserOf(browsers, tokenOwner, account, String(t.label || '')),
                       conv: convPick(r, e.agg) });
         });
+      }
+
+      /* СЕРІЯ. Див. seriesCamps: три оголошення кампанії погашено без
+         результату — гасимо кампанію, якщо й вона сама підпадає під те
+         саме правило. */
+      if (!forceDry && !fellBack.has(account)) {
+        const fresh = hits.filter(h => h.account === account && h.level === 'ad'
+          && !h.dry && h.campaign && noResult(h.agg));
+        if (fresh.length) {
+          try {
+            const due = seriesCamps(fresh, await seriesPrior(base, hdr, tokenOwner, account));
+            if (due.size) {
+              const camps = await entsAt('campaign');
+              due.forEach((sr, cid) => {
+                const c = camps.find(x => x.id === cid);
+                const r = mine.find(x => x.id === sr.hit.rule);
+                if (!c || !r || !ruleHits(r, c.agg)) return;
+                if (hits.some(h => h.id === cid)) return;
+                hits.push({ ...sr.hit, level: 'campaign', id: cid, name: c.name || sr.hit.campaignName,
+                            campaignName: c.name || sr.hit.campaignName, campaign: cid,
+                            agg: c.agg, ok: false, error: '', acted: false,
+                            why: sr.count + ' ads stopped here with no result \u00b7 campaign '
+                               + whyHit(r, c.agg),
+                            conv: convPick(r, c.agg) });
+              });
+            }
+          } catch (e) {
+            problems.push(account + ': series check failed (' + (e as Error).message + ')');
+          }
+        }
       }
     }
 
