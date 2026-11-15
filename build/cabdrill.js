@@ -1205,7 +1205,14 @@ function cdNameCell(n, depth) {
     : '';
   const count = n.kind === 'ad' ? ''
     : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
-  return mark + twist + cdPicCell(n) + label + count + side;
+  /* Копія кампанії в інші кабінети. Лише на рядку кампанії: копіюється
+     вона цілком, з адсетами й оголошеннями. Див. cdCopy. */
+  const copy = n.kind === 'campaign'
+    ? `<button type="button" class="cd-copy" onclick="event.stopPropagation();cdCopy('${cdEsc(n.id)}','${
+        encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
+        title="Copy this campaign to other cabinets \u2014 created paused">\u29C9 Copy</button>`
+    : '';
+  return mark + twist + cdPicCell(n) + label + count + copy + side;
 };
 /* ═══════════ ІКОНКА КРЕАТИВА ═══════════
 
@@ -1922,4 +1929,78 @@ function cdSetOwn(id, state) {
     }
   });
 }
+
+/* ═══════════ ЗАПУСК ІЗ CRM: КОПІЯ КАМПАНІЇ ═══════════
+
+   «щоб воно просто робило копію, і я міг міняти назву. Але щоб не
+   публікувало».
+
+   Кнопка ⧉ Copy на рядку кампанії. Вікно питає нову назву й кабінети;
+   далі сторінка по одному кабінету кличе fb-launch, а та відтворює
+   кампанію з адсетами й оголошеннями — УСЕ НА ПАУЗІ. Увімкнути може
+   лише людина, і це межа самої функції, а не галочка тут.
+
+   По одному кабінету на виклик: так видно, що вийшло в кожному, і одна
+   відмова не зупиняє решту. */
+function cdCopyTargets(srcAcc) {
+  const num = v => String(v == null ? '' : v).replace(/\D/g, '');
+  const all = (typeof cabAll !== 'undefined' && Array.isArray(cabAll)) ? cabAll : [];
+  const live = all.filter(c => c && c.fb && (typeof CAB_LIVE !== 'function' || CAB_LIVE(c)));
+  const src = num(srcAcc);
+  // Свій кабінет першим: «зробити ще одну таку саму тут» — найчастіша копія.
+  return live.slice().sort((a, b) => Number(num(b.id) === src) - Number(num(a.id) === src))
+    .map(c => ({ id: num(c.id), here: num(c.id) === src,
+                 label: num(c.id) + (c.fb.name ? ' · ' + c.fb.name : '')
+                      + (num(c.id) === src ? ' · this cabinet' : '') }))
+    .filter(t => t.id);
+}
+
+window.cdCopy = async function (id, nameEnc) {
+  const name = decodeURIComponent(nameEnc || '');
+  const srcAcc = cdAcc;
+  if (!srcAcc || !id) return;
+  const targets = cdCopyTargets(srcAcc);
+  if (!targets.length) { toast('No live cabinets to copy into.', 'warn'); return; }
+
+  const v = await ask({ title: 'Copy campaign', ok: 'Copy paused',
+    body: '“' + name + '”\n\nThe campaign is re-created with its ad sets and ads in every cabinet you tick. '
+        + 'Everything is created PAUSED — nothing runs until you switch it on yourself.',
+    fields: [{ key: 'name', label: 'Name of the copy', need: true, full: true, value: name }]
+      .concat(targets.map((t, i) => ({ key: 't' + i, type: 'checkbox', full: true, label: t.label }))) });
+  if (!v) return;
+  const picked = targets.filter((t, i) => v['t' + i]);
+  if (!picked.length) { toast('Tick at least one cabinet.', 'warn'); return; }
+  const newName = String(v.name || '').trim() || name;
+
+  const step = typeof toastStep === 'function' ? toastStep() : null;
+  const lines = [];
+  let good = 0;
+  const { data: s } = await sb.auth.getSession();
+  for (let i = 0; i < picked.length; i++) {
+    const t = picked[i];
+    if (step) step.say('Copying to ' + t.id + ' (' + (i + 1) + '/' + picked.length + ')…');
+    try {
+      const res = await fetch(SUPABASE_URL + '/functions/v1/fb-launch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json',
+                   Authorization: 'Bearer ' + (s?.session?.access_token || '') },
+        body: JSON.stringify({ source_account: srcAcc, campaign_id: String(id),
+                               target_account: t.id, name: newName })
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.status === 404 && !j.error) throw new Error('the copy function is not deployed yet — deploy fb-launch');
+      if (!res.ok || !j.ok) throw new Error(j.error || 'HTTP ' + res.status);
+      good++;
+      lines.push((j.complete ? '✅ ' : '⚠ ') + t.id + ' — ' + j.adsets.made + '/' + j.adsets.of
+        + ' ad sets, ' + j.ads.made + '/' + j.ads.of + ' ads, paused'
+        + ((j.problems || []).length ? '\n' + j.problems.map(x => '   • ' + x).join('\n') : ''));
+    } catch (e) {
+      lines.push('⛔ ' + t.id + ' — not copied: ' + e.message);
+    }
+  }
+  if (step) step.done(good + ' of ' + picked.length + ' cabinet(s) copied', good ? 'ok' : 'error');
+  await ask({ title: 'Copy finished', only: true,
+    body: '“' + newName + '”\n\n' + lines.join('\n\n')
+        + '\n\nThe copies are paused. Press Sync now to see them here, then switch on what you need.' });
+};
 </script>
