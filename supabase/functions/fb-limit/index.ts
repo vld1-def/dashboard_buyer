@@ -102,7 +102,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-11.1';
+const FN_VERSION = '2026-11-13.1';
 
 /* Спільний секрет звіряємо по всій довжині, а не до першої розбіжності. */
 
@@ -220,8 +220,17 @@ Deno.serve(async (req) => {
     if (!sameSecret(cronKey, want)) return reply({ error: 'bad cron key' }, 401);
     const svcK = Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
     if (!svcK) return reply({ error: 'SERVICE_ROLE_KEY is not set' }, 400);
-    return await runPlans(base, { apikey: svcK, Authorization: 'Bearer ' + svcK,
-                                  'content-type': 'application/json' });
+    const cronHdr = { apikey: svcK, Authorization: 'Bearer ' + svcK,
+                      'content-type': 'application/json' };
+    /* Один розклад — дві роботи: ліміт за часом і драбинка. Драбинка
+       йде першою лише в тому сенсі, що її звіт дописується до звіту
+       планів; одна на одну вони не впливають. */
+    const plans = await runPlans(base, cronHdr);
+    const pj = await plans.json().catch(() => ({}));
+    let ladders: Json = { due: 0, done: [] };
+    try { ladders = await runLadders(base, cronHdr); }
+    catch (e) { ladders = { error: String((e as Error).message) }; }
+    return reply({ ...pj, ladders }, plans.status);
   }
 
   const auth = req.headers.get('Authorization') || '';
@@ -558,4 +567,181 @@ async function runPlans(base: string, svcHdr: Json): Promise<Response> {
     done.push({ id, status });
   }
   return reply({ ok: true, mode: 'plans', due: due.length, done });
+}
+
+/* ═══════════ ДРАБИНКА ЛІМІТІВ ═══════════
+
+   «Ти даєш кабінету $5 на пробу. Якщо він відкрутив їх із нормальною
+   ціною ліда чи інсталу, CRM сама дає наступні. Якщо ціна погана,
+   лишає стояти.»
+
+   Рядок у fb_limit_ladder кладе сторінка; далі все робить цей код за
+   тим самим розкладом, що й ліміт за часом. На кожному проході для
+   кожної живої драбинки одне питання: що робити зараз?
+
+     • сходинок ще не видавали        → видати першу;
+     • ліміт стоїть не той, що ми дали → хтось змінив руками: знімаємось;
+     • ліміт ще не відкручено          → чекати;
+     • відкручено, це була остання     → кінець;
+     • відкручено, ціна вклалась       → наступна сходинка;
+     • відкручено, ціна не вклалась    → чекаємо LAD_GRACE (результати
+       Facebook дописує із запізненням), потім зупиняємось.
+
+   Сходинка — це той самий capFlow зі скиданням лічильника, що й олівець
+   на сторінці: «ліміт 10 від нуля». Тому «відкручено за сходинку» —
+   просто amount_spent, а результати рахуємо різницею: скільки лідів та
+   інсталів було на кабінеті за весь час на старті сходинки і скільки
+   тепер.
+
+   РІШЕННЯ ОКРЕМОЮ ФУНКЦІЄЮ (ladDecide): тут арифметика про справжні
+   гроші, і її треба мати змогу перевірити без Facebook і без бази. */
+const LAD_BATCH = 20;
+const LAD_EVERY_MS = 4 * 60_000;      // одну драбинку питаємо не частіше
+const LAD_GRACE_MS = 30 * 60_000;     // скільки чекати результатів після відкруту
+const LAD_HIT = 0.95;                 // «відкручено» = 95% ліміту: рівно в стелю Facebook не б'є
+
+// Ліди й інстали з рядка insights. Одну подію Facebook віддає кількома
+// іменами — беремо найбільше з них, а не суму.
+function ladResults(actions: Json[]): number {
+  const pick = (t: string) => {
+    const a = (actions || []).find(x => String(x?.action_type || '') === t);
+    return a ? Number(a.value) || 0 : 0;
+  };
+  const leads = Math.max(pick('lead'), pick('offsite_conversion.fb_pixel_lead'),
+                         pick('onsite_conversion.lead_grouped'));
+  const inst = Math.max(pick('mobile_app_install'), pick('omni_app_install'));
+  return leads + inst;
+}
+
+type LadAct = { act: 'next' | 'wait' | 'hold' | 'done' | 'stop' | 'cancel'; why: string; cost?: number };
+
+/* spent і cap — мінорні одиниці, як їх віддає Graph. results — ліди та
+   інстали кабінета за весь час (null, якщо Facebook не відповів). */
+function ladDecide(l: Json, now: number, spent: number | null, cap: number | null,
+                   results: number | null): LadAct {
+  const done = Number(l.steps_done) || 0, total = Number(l.steps_total) || 0;
+  const step = Number(l.step_major) || 0, maxCost = Number(l.max_cost) || 0;
+  if (done <= 0) return { act: 'next', why: 'first step' };
+  if (spent === null || cap === null) return { act: 'wait', why: 'Facebook did not return the limit' };
+  const want = Math.round(step * MINOR);
+  if (Math.abs(cap - want) > Math.max(1, want * 0.01))
+    return { act: 'cancel', why: 'the limit was changed by hand (' + (cap / MINOR) + ' instead of ' + step + ')' };
+  if (spent < want * LAD_HIT) return { act: 'wait', why: 'still spending' };
+  if (done >= total) return { act: 'done', why: 'all ' + total + ' steps are spent' };
+
+  const base = l.base_results === null || l.base_results === undefined ? null : Number(l.base_results);
+  const got = base === null || results === null ? null : Math.max(0, results - base);
+  const cost = got && got > 0 ? (spent / MINOR) / got : null;
+  if (cost !== null && cost <= maxCost) return { act: 'next', why: 'cost ' + cost.toFixed(2), cost };
+
+  const hit = l.hit_at ? Date.parse(String(l.hit_at)) : 0;
+  if (!hit) return { act: 'hold', why: 'limit reached, waiting for results' };
+  if (now - hit < LAD_GRACE_MS) return { act: 'wait', why: 'limit reached, waiting for results' };
+  return { act: 'stop', cost: cost === null ? undefined : cost,
+           why: got === null ? 'Facebook did not return results'
+              : got === 0 ? 'no leads or installs for this step'
+              : 'cost ' + (cost as number).toFixed(2) + ' is above ' + maxCost };
+}
+
+async function ladSet(base: string, hdr: Json, id: number, patch: Json, onlyIf = ''): Promise<Json[]> {
+  const res = await fetch(base + '/rest/v1/fb_limit_ladder?id=eq.' + id + onlyIf, {
+    method: 'PATCH', headers: { ...hdr, Prefer: 'return=representation' },
+    body: JSON.stringify(patch)
+  });
+  return res.ok ? await res.json() : [];
+}
+
+async function runLadders(base: string, svcHdr: Json): Promise<Json> {
+  const cut = new Date(Date.now() - LAD_EVERY_MS).toISOString();
+  let due: Json[] = [];
+  try {
+    due = await rest(base, svcHdr, 'fb_limit_ladder?status=eq.active'
+      + '&or=(last_check_at.is.null,last_check_at.lt.' + encodeURIComponent(cut) + ')'
+      + '&order=last_check_at.asc.nullsfirst&limit=' + LAD_BATCH);
+  } catch (e) {
+    const m = String((e as Error).message);
+    // Таблиці ще немає — драбинок просто не існує; це не помилка розкладу.
+    if (/fb_limit_ladder|42P01|does not exist|schema cache/i.test(m)) return { due: 0, done: [], note: 'no table yet' };
+    throw e;
+  }
+  const out: Json[] = [];
+  for (const l of due) {
+    const id = Number(l.id);
+    const owner = String(l.created_by || '');
+    const bare = String(l.account_id || '').replace(/^act_/, '');
+    const nowIso = new Date().toISOString();
+    /* Забираємо прохід: два прогони, що наклались, не видадуть сходинку
+       двічі. Умова — що last_check_at досі той, який ми прочитали. */
+    const guard = l.last_check_at ? '&last_check_at=eq.' + encodeURIComponent(String(l.last_check_at))
+                                  : '&last_check_at=is.null';
+    const mine = await ladSet(base, svcHdr, id, { last_check_at: nowIso }, '&status=eq.active' + guard);
+    if (!mine.length) { out.push({ id, act: 'skipped' }); continue; }
+
+    const tag = '\u{1F3E6} ' + bare + ' · ladder ';
+    const finish = async (status: string, note: string, tell: string) => {
+      await ladSet(base, svcHdr, id, { status, note: note.slice(0, 300), done_at: nowIso });
+      if (tell) await tgTell(base, svcHdr, owner, tell);
+      out.push({ id, act: status, note });
+    };
+
+    try {
+      const accs = await rest(base, svcHdr, 'fb_accounts?account_id=eq.' + encodeURIComponent(bare)
+        + '&created_by=eq.' + encodeURIComponent(owner) + '&select=account_id,token_id,team_name&limit=1');
+      if (!accs.length || !accs[0].token_id) throw new Error('cabinet not found among the author’s cabinets');
+      const toks = await rest(base, svcHdr, 'fb_tokens?id=eq.' + Number(accs[0].token_id)
+        + '&team_name=eq.' + encodeURIComponent(String(accs[0].team_name || '')) + '&select=token,scopes&limit=1');
+      const token = String(toks[0]?.token || '');
+      if (!token) throw new Error('the cabinet’s token is gone');
+      const scopes = Array.isArray(toks[0]?.scopes) ? toks[0].scopes : [];
+      const act = 'act_' + bare;
+
+      const cur = await graph('/' + act, token, { fields: ACC_FIELDS });
+      const spent = num(cur?.amount_spent), cap = num(cur?.spend_cap);
+      let results: number | null = null;
+      try {
+        const ins = await graph('/' + act + '/insights', token,
+          { fields: 'actions', date_preset: 'maximum', level: 'account' });
+        const row = Array.isArray(ins?.data) ? ins.data[0] : null;
+        results = row ? ladResults(Array.isArray(row.actions) ? row.actions : []) : 0;
+      } catch (_e) { results = null; }
+
+      const d = ladDecide(l, Date.now(), spent, cap, results);
+      const stepNo = (Number(l.steps_done) || 0) + 1, total = Number(l.steps_total) || 0;
+      const money = '$' + Number(l.step_major);
+
+      if (d.act === 'wait') { out.push({ id, act: 'wait', why: d.why }); continue; }
+      if (d.act === 'hold') {
+        await ladSet(base, svcHdr, id, { hit_at: nowIso, note: d.why });
+        out.push({ id, act: 'hold' });
+        continue;
+      }
+      if (d.act === 'cancel') { await finish('cancelled', d.why, '⚠ ' + tag + 'stopped: ' + d.why + '.'); continue; }
+      if (d.act === 'done') { await finish('done', d.why, '✅ ' + tag + 'finished: ' + d.why + '.'); continue; }
+      if (d.act === 'stop') {
+        await finish('stopped', d.why, '⏸ ' + tag + 'stopped at step ' + (stepNo - 1) + '/' + total
+          + ': ' + d.why + '. The cabinet stays at its limit.');
+        continue;
+      }
+
+      // next: видаємо сходинку — той самий шлях, що й олівець зі скиданням лічильника.
+      const res = await capFlow(act, token, scopes, Number(l.step_major), true, true);
+      const j = await res.json().catch(() => ({}));
+      if (!(res.ok && j.ok)) {
+        const why = String(j.error || 'HTTP ' + res.status).slice(0, 200);
+        await finish('failed', why, '⚠ ' + tag + 'FAILED at step ' + stepNo + '/' + total + '\n' + why);
+        continue;
+      }
+      await ladSet(base, svcHdr, id, { steps_done: stepNo, base_results: results,
+        step_started_at: nowIso, hit_at: null,
+        note: 'step ' + stepNo + '/' + total + (d.cost !== undefined ? ', previous cost ' + d.cost.toFixed(2) : '') });
+      await tgTell(base, svcHdr, owner, '\u{1F4F6} ' + tag + 'step ' + stepNo + '/' + total + ': ' + money
+        + (d.cost !== undefined ? ' (previous step cost $' + d.cost.toFixed(2) + ' per result, limit $'
+            + Number(l.max_cost) + ')' : ''));
+      out.push({ id, act: 'next', step: stepNo });
+    } catch (e) {
+      const why = String((e as Error).message).slice(0, 200);
+      await finish('failed', why, '⚠ ' + tag + 'FAILED\n' + why);
+    }
+  }
+  return { due: due.length, done: out };
 }

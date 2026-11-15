@@ -1136,6 +1136,8 @@ async function cabSnapLoad() {
   /* Заплановані зміни ліміту — тим самим заходом: після Sync now
      виконане вже не має висіти в картці як «заплановане». */
   if (typeof cabPlansLoad === 'function') await cabPlansLoad();
+  // Драбинки лімітів — тим самим заходом: видана сходинка має бути видна одразу.
+  if (typeof cabLaddersLoad === 'function') await cabLaddersLoad();
   /* Знімок щойно переписали (Sync now або відкриття сторінки) —
      відкрите вікно Today перемальовується саме. */
   if (typeof tdOnSnap === 'function') tdOnSnap();
@@ -2468,6 +2470,10 @@ function cabGroupKey(c) {
        : cabGroup === 'state'   ? CAB_STATE[c.state].label
        : cabGroup === 'profile' ? (c.row.profile || c.tok.browser || '— no browser —')
        : cabGroup === 'bm'      ? (c.row.bm || c.tok.bm || '— no BM —')
+       /* Картка — як її назвав Facebook: «Mastercard *1736». Кабінети
+          без картки (передплата, ще не привʼязана, токен її не бачить)
+          збираються в одну групу, а не губляться. */
+       : cabGroup === 'card'    ? (String((c.fb && c.fb.card) || '').trim() || '— no card —')
        : '';
 }
 
@@ -2887,6 +2893,7 @@ function cabCardOld(fb) {
                \u0417\u0430\u043f\u043b\u0430\u043d\u043e\u0432\u0430\u043d\u0435 \u0432\u0438\u0434\u043d\u043e \u0442\u0443\u0442 \u0436\u0435, \u043f\u0456\u0434 \u043b\u0456\u043c\u0456\u0442\u043e\u043c, \u0456 \u043a\u043e\u0436\u043d\u0435 \u043c\u043e\u0436\u043d\u0430
                \u0441\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438: \u043f\u043b\u0430\u043d, \u044f\u043a\u043e\u0433\u043e \u043d\u0435 \u0432\u0438\u0434\u043d\u043e, \u2014 \u0446\u0435 \u0441\u044e\u0440\u043f\u0440\u0438\u0437 \u043e 19:00. */
             const plans = cabPlansFor(c);
+            const lad = cabLadderFor(c);
             /* \u041e\u0431\u0438\u0434\u0432\u0456 \u043a\u043d\u043e\u043f\u043a\u0438 \u2014 \u041e\u0414\u041d\u0418\u041c \u0440\u044f\u0434\u043a\u043e\u043c \u043f\u0456\u0434 \u0441\u0443\u043c\u043e\u044e: \u043f\u043e\u0440\u0443\u0447 \u0456\u0437 \u0447\u0438\u0441\u043b\u043e\u043c
                \u0432\u043e\u043d\u0438 \u043f\u0435\u0440\u0435\u043d\u043e\u0441\u0438\u043b\u0438\u0441\u044c \u043f\u043e \u043e\u0434\u043d\u0456\u0439, \u0456 \u270e \u0441\u0442\u043e\u044f\u0432 \u0432 \u043e\u0434\u043d\u043e\u043c\u0443 \u0440\u044f\u0434\u043a\u0443, \u0430
                \u23f0 \u0432 \u0456\u043d\u0448\u043e\u043c\u0443. */
@@ -2894,7 +2901,13 @@ function cabCardOld(fb) {
               + (can ? `<div class="cab-lim-acts"><button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
                    title="Change the spending limit in Facebook now">\u270e Edit</button><button type="button"
                    class="cab-lim-ed" onclick="cabLimitPlan('${enc}')"
-                   title="Change the limit at a set time">\u23f0 Schedule</button></div>` : '')
+                   title="Change the limit at a set time">\u23f0 Schedule</button><button type="button"
+                   class="cab-lim-ed" onclick="cabLadderAdd('${enc}')"
+                   title="Give the limit in steps: the next one only if a lead or install was cheap enough">\u{1F4F6} Ladder</button></div>` : '')
+              + (lad ? `<span class="cab-plan">\u{1F4F6} Ladder ${Number(lad.steps_done)}/${Number(lad.steps_total)} \u00b7 ${
+                  esc(cabMoneyCur(Number(lad.step_major), c.fb.currency))} each \u00b7 \u2264 ${
+                  esc(cabMoneyCents(Number(lad.max_cost), c.fb.currency))}<button type="button"
+                  class="cab-plan-x" onclick="cabLadderDrop(${Number(lad.id)})" title="Stop this ladder">\u2715</button></span>` : '')
               + plans.map(p => `<span class="cab-plan">\u23f0 ${esc(cabPlanWhen(p.run_at))} \u2192 ${
                   esc(cabMoneyCur(Number(p.set_major), c.fb.currency))}<button type="button"
                   class="cab-plan-x" onclick="cabPlanDrop(${Number(p.id)})" title="Cancel this scheduled change">\u2715</button></span>`).join(''),
@@ -3678,6 +3691,108 @@ window.cabPlanDrop = async function (planId) {
   await cabPlansLoad();
   cabRender();
   const c = cabAll.find(x => String(x.id).replace(/\D/g, '') === String(p.account_id).replace(/\D/g, ''));
+  if (c && typeof cabDetail === 'function') cabDetail(c);
+};
+
+/* ═══════════ ДРАБИНКА ЛІМІТІВ ═══════════
+
+   «Цікава ідея давай додамо». Кабінет дістає ліміт сходинками: відкрутив
+   сходинку з ціною ліда чи інсталу не вищою за задану — дістає наступну;
+   ціна не вклалась — лишається стояти.
+
+   Сторінка лише кладе рядок у fb_limit_ladder і показує його стан. Самі
+   сходинки видає fb-limit за розкладом (той самий код, що й олівець зі
+   скиданням лічильника), а про кожну пише в Telegram. Таблиці може ще
+   не бути — тоді кнопка каже, що виконати. */
+let cabLadders = [], cabLaddersErr = '';
+const CAB_LADDER_MAX = 8;      // Facebook: 10 змін ліміту на кабінет за добу
+
+async function cabLaddersLoad() {
+  try {
+    const { data, error } = await sb.from('fb_limit_ladder')
+      .select('id,account_id,step_major,steps_total,steps_done,max_cost,status,note')
+      .eq('status', 'active');
+    if (error) throw new Error(error.message);
+    cabLadders = data || []; cabLaddersErr = '';
+  } catch (e) {
+    cabLadders = [];
+    cabLaddersErr = /fb_limit_ladder|does not exist|schema cache/i.test(e.message || '')
+      ? 'not-set-up' : (e.message || 'error');
+  }
+}
+
+const cabLadderFor = c => (cabLadders || []).find(l =>
+  String(l.account_id).replace(/\D/g, '') === String(c.id).replace(/\D/g, '')) || null;
+
+window.cabLadderAdd = async function (enc) {
+  const id = decodeURIComponent(enc || '');
+  const c = cabAll.find(x => String(x.id) === String(id));
+  if (!c || !c.fb) return;
+  if (cabLaddersErr === 'not-set-up') {
+    toast('The limit ladder is not set up yet — run FB_LIMIT_LADDER.sql in Supabase.', 'warn', 9000);
+    return;
+  }
+  if (cabLadderFor(c)) {
+    toast('This cabinet already has a ladder. Cancel it first.', 'warn', 6000);
+    return;
+  }
+  const cur = c.fb.currency || '';
+  const m = v => cabMoneyCur(v, cur);
+  const v = await ask({ title: 'Limit ladder · ' + id, ok: 'Next',
+    body: 'The cabinet gets its limit in steps. When a step is spent and a lead or install cost no more '
+        + 'than your maximum, it gets the next step. Otherwise it stays at its limit.'
+        + '\n\nEach step resets Facebook’s spent counter, like the pencil does.',
+    fields: [
+      { key: 'step', label: 'Each step, ' + (cur || 'amount'), type: 'number', need: true, placeholder: '10' },
+      { key: 'steps', label: 'Steps', type: 'number', need: true, placeholder: '5', value: 5 },
+      { key: 'cost', label: 'Max cost per lead / install', type: 'number', need: true, full: true,
+        placeholder: '4', hint: 'Counted from Facebook: leads and app installs of this cabinet during the step.' }
+    ] });
+  if (!v) return;
+  const num = x => Number(String(x == null ? '' : x).replace(',', '.').replace(/[^\d.]/g, ''));
+  const step = Math.round(num(v.step)), steps = Math.round(num(v.steps)), cost = num(v.cost);
+  if (!(step >= 1)) { toast('Each step must be at least 1.', 'error'); return; }
+  if (!(steps >= 1 && steps <= CAB_LADDER_MAX)) {
+    toast('Steps: from 1 to ' + CAB_LADDER_MAX + ' — Facebook allows 10 limit changes per cabinet per day.', 'error', 8000);
+    return;
+  }
+  if (!(cost > 0)) { toast('Set the maximum cost per lead or install.', 'error'); return; }
+
+  const go = await ask({ title: 'Start the ladder?', ok: 'Start', danger: true,
+    body: id + '\n\n' + steps + ' step(s) of ' + m(step) + ' — up to ' + m(step * steps) + ' in total'
+        + '\nNext step only if a lead or install cost ' + cabMoneyCents(cost, cur) + ' or less'
+        + '\n\nThe first step starts within a minute: the spent counter is reset and the limit becomes '
+        + m(step) + '. Changing the limit by hand stops the ladder.' });
+  if (!go) return;
+
+  const { error } = await sb.from('fb_limit_ladder').insert({
+    team_name: currentTeam, account_id: String(id).replace(/\D/g, ''),
+    step_major: step, steps_total: steps, max_cost: cost
+  });
+  if (error) {
+    toast(/fb_limit_ladder_one_active|duplicate/i.test(error.message)
+      ? 'This cabinet already has a ladder.' : 'Could not start: ' + error.message, 'error', 9000);
+    return;
+  }
+  toast('Ladder started: ' + steps + ' × ' + m(step) + '. The first step comes within a minute.', 'ok', 6000);
+  await cabLaddersLoad();
+  cabRender();
+  if (typeof cabDetail === 'function') cabDetail(c);
+};
+
+window.cabLadderDrop = async function (ladderId) {
+  const l = (cabLadders || []).find(x => Number(x.id) === Number(ladderId));
+  if (!l) return;
+  const go = await ask({ title: 'Stop this ladder?', ok: 'Stop it', danger: true,
+    body: l.account_id + '\n\nStep ' + l.steps_done + ' of ' + l.steps_total
+        + '. The cabinet keeps the limit it has now; no further steps are given.' });
+  if (!go) return;
+  const { error } = await sb.from('fb_limit_ladder').update({ status: 'cancelled' })
+    .eq('id', Number(ladderId)).eq('status', 'active');
+  if (error) { toast('Could not stop: ' + error.message, 'error'); return; }
+  await cabLaddersLoad();
+  cabRender();
+  const c = cabAll.find(x => String(x.id).replace(/\D/g, '') === String(l.account_id).replace(/\D/g, ''));
   if (c && typeof cabDetail === 'function') cabDetail(c);
 };
 

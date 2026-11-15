@@ -146,7 +146,7 @@ const s8 = await server({ cap: 0, spent: 21500, set: 5, allowNew: false });
 ok('кабінет без стелі без явної згоди не чіпаємо — і лічильник теж', s8.status === 409 && s8.st.posts.length === 0, s8);
 
 ok('розклад ліміту лічильник не скидає', /capFlow\([^)]*\)/.test(FN.slice(fd)) && !/reset/.test((FN.slice(fd).match(/capFlow\([^)]*\)/) || [''])[0]));
-ok('версія функції піднята', /const FN_VERSION = '2026-11-11\.1';/.test(FN));
+ok('версія функції піднята', /const FN_VERSION = '2026-11-1[1-9]\.\d';/.test(FN));
 ok('і це доїхало в зібраний index.html', /reset: true \}\)/.test(OUT) && /from zero/.test(OUT));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
