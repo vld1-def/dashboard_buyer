@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 15.11 22:23">
+  <meta name="build" content="build 15.11 22:41">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7179,6 +7179,83 @@ p.fl-ap-empty { padding: 14px; font-size: 12px; color: var(--text-muted); margin
 }
 tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 .cd-copy:hover { color: #60a5fa; border-color: rgba(96,165,250,.55); }
+
+/* ═══ CABINETS: ШАПКА У ДВА РЯДИ, ЧИПИ, БІЛЬШИЙ МАСШТАБ ═══
+   «дизайн, розташування кнопок… щоб було комфортно» — пункти 1, 2, 3.
+
+   Десять елементів шапки стояли в один ряд з однаковою вагою, усе
+   було 10–12px, а статуси займали цілу смугу широких плиток.
+
+   ЛИШЕ ШИРОКИЙ ЕКРАН. На телефоні шапка згорнута окремими правилами
+   (вони тримаються за ту саму розмітку), тому розмітку не чіпаємо:
+   обидва внутрішні блоки стають display:contents, а порядок і перенос
+   на другий ряд задає order. */
+@media (min-width: 1101px) {
+  #cabinets-section > div:first-child {
+    display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
+    justify-content: flex-start; gap: 10px; margin-bottom: 14px;
+  }
+  #cabinets-section > div:first-child > div { display: contents; }
+  /* Перенос на другий ряд: псевдоелемент — теж елемент ряду. */
+  #cabinets-section > div:first-child::before { content: ''; flex-basis: 100%; height: 0; order: 6; }
+
+  /* Ряд 1: назва, сума зі Stat. Day поруч, пошук по центру — і Sync
+     праворуч, головною кнопкою. «пошук я б в перший рядок добавив по
+     центру. Stat. day я б поставив біля тотал спенда». */
+  #cabinets-section > div:first-child h2 { order: 1; font-size: 22px !important; line-height: 1.1; margin-right: 6px; }
+  #cab-sum { order: 2; padding: 8px 14px; }
+  #cab-sum .cab-sum-n { font-size: 17px; }
+  #cab-sum .cab-sum-k { font-size: 11px; }
+  #cab-sync {
+    order: 5; padding: 9px 16px; gap: 8px;
+    background: var(--accent, #7c3aed); border-color: transparent; color: #fff;
+  }
+  #cab-sync:hover:not(:disabled) { background: var(--accent, #7c3aed); filter: brightness(1.12); border-color: transparent; }
+  #cab-sync .cab-sync-w { display: inline; font-size: 13px; font-weight: 800; letter-spacing: .02em; }
+  #cab-sync .cab-syncago { font-size: 12px; color: rgba(255,255,255,.78); border-bottom-color: rgba(255,255,255,.35); }
+
+  #cab-today-btn { order: 3; }
+  /* Авто-відступи з обох боків ставлять пошук посередині вільного місця. */
+  #cab-search { order: 4; margin-left: auto; margin-right: auto; width: 340px; font-size: 13.5px; padding: 9px 14px; }
+
+  /* Ряд 2: зліва — що показуємо (період, групування), справа — інструменти. */
+  #cab-range { order: 7; }
+  #cab-group { order: 8; font-size: 12px; padding: 9px 12px; }
+  #cab-cols-btn { order: 9; margin-left: auto; }
+  #cab-rules-btn { order: 10; }
+  #cab-pages-btn { order: 11; }
+  #cabinets-section > div:first-child .cab-rules { font-size: 12.5px; padding: 9px 14px; }
+  #cabinets-section > div:first-child .cab-rules.cab-ico { padding: 9px 11px; }
+  #cabinets-section > div:first-child .cab-rules.cab-ico svg { width: 17px; height: 17px; }
+  #cab-range button, #cab-range .cab-range-b { font-size: 12.5px; padding: 8px 12px; }
+
+  /* Статуси — чипами свого розміру, без нульових; вкладки дерева — окремою групою праворуч. */
+  .flt-row-cab { gap: 8px; align-items: center; }
+  .flt-row-cab .flt { flex: 0 0 auto; padding: 7px 14px; gap: 8px; }
+  .flt-row-cab .flt-name { font-size: 11.5px; }
+  .flt-row-cab .flt-n { font-size: 14.5px; }
+  .flt-row-cab .flt.is-zero:not(.is-on) { display: none; }
+  .flt-row-cab .flt-tools { margin-left: auto; padding-left: 14px; border-left: 1px solid var(--border, rgba(255,255,255,.12)); }
+  .flt-row-cab .flt-tools .cd-tab { font-size: 12px; padding: 7px 12px; }
+  .flt-row-cab .flt-tools .cd-pick { font-size: 12px; padding: 7px 10px; }
+  .flt-row-cab .flt-sweep { font-size: 11.5px; }
+
+  /* Таблиця: більший текст і вищі рядки. */
+  /* Заголовки переносяться («Cost / install» — у два рядки): інакше
+     ширину колонок диктували б вони, і таблиця з більшим текстом не
+     влазила б у ті самі 1600px. */
+  #cab-list .cab-tbl td { font-size: 14px; padding: 11px 10px; }
+  #cab-list .cab-tbl th { font-size: 11px; padding: 9px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
+  #cab-list .cab-tbl .cab-who { font-size: 14px; }
+  #cab-list .cab-tbl .cab-id { font-size: 12px; }
+  #cab-list .cab-tbl td.cab-x { padding-left: 7px; padding-right: 7px; }
+  #cab-list .cab-tbl .cd-mk { width: 17px; height: 17px; }
+  #cab-list .cab-tbl .cab-exp, #cab-list .cab-tbl .cab-pin { font-size: 15px; min-width: 26px; min-height: 26px; }
+  #cab-list .cab-tbl .cab-dot { width: 9px; height: 9px; }
+  #cab-list .cab-tbl .cab-mini { font-size: 16px; min-width: 30px; min-height: 30px; }
+}
+/* Слово «Sync» на кнопці — лише там, де для нього є місце. */
+.cab-sync-w { display: none; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -7438,7 +7515,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.11 22:23</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.11 22:41</div>
     </div>
   </aside>
 
@@ -8370,6 +8447,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
         title="Sync now — ask Facebook right now instead of waiting for the hourly run"
         aria-label="Sync now"><span class="cab-sync-lbl" aria-hidden="true">↻</span><span
+          class="cab-sync-w" aria-hidden="true">Sync</span><span
           id="cab-sync-ago" class="cab-syncago"></span></button>
     </div>
   </div>
@@ -32333,16 +32411,37 @@ function evFeedPaint() {
   /* Три, а не чотири. Тостів на екрані вміщається чотири, і четвертим
      іде підсумок «…і ще N» — інакше він витісняв би найперший, тобто
      рівно той, що найгірший і стоїть угорі. Перевірка це й показала. */
-  const SHOW = 3;
   fresh.forEach(e => evShown[evKey(e)] = 1);
-  fresh.slice(0, SHOW).forEach(e => {
-    const T = EV_TONE[e.to_state] || EV_TONE.idle;
-    const kind = evRank(e.to_state) >= 2 ? 'error' : evRank(e.to_state) >= 1 ? 'warn' : 'ok';
-    toast(e.account_id + ' — ' + T.word + (e.note ? ' · ' + e.note : ''),
+  const kindOf = e => evRank(e.to_state) >= 2 ? 'error' : evRank(e.to_state) >= 1 ? 'warn' : 'ok';
+  const wordOf = e => (EV_TONE[e.to_state] || EV_TONE.idle).word;
+
+  /* ОДНЕ СПОВІЩЕННЯ, А НЕ СТОС.
+     Три тости й четвертий «…і ще 241» лягали при вході поверх таблиці
+     й нижньої панелі — і казали менше, ніж займали. Одна зміна й далі
+     йде окремим тостом, як була. Кілька — одним рядком: скільки всього
+     і яких саме, найгірші першими. Подробиці, як і раніше, у панелі
+     кабінета. */
+  if (fresh.length === 1) {
+    const e = fresh[0], kind = kindOf(e);
+    toast(e.account_id + ' — ' + wordOf(e) + (e.note ? ' · ' + e.note : ''),
       kind, kind === 'ok' ? 4000 : 9000);
+    return;
+  }
+  toast(evSummary(fresh, wordOf), kindOf(fresh[0]), 9000);
+}
+
+/* «12 changes: 3 banned, 2 in review, 7 running». fresh уже стоїть
+   найгіршим уперед, тож і слова йдуть у тому ж порядку. */
+function evSummary(fresh, wordOf) {
+  const order = [], by = {};
+  fresh.forEach(e => {
+    const w = wordOf(e);
+    if (!(w in by)) { by[w] = 0; order.push(w); }
+    by[w]++;
   });
-  if (fresh.length > SHOW)
-    toast('…and ' + (fresh.length - SHOW) + ' more change(s). Open a cabinet to see its history.', '', 9000);
+  return fresh.length + ' changes since your last visit: '
+    + order.map(w => by[w] + ' ' + w).join(', ')
+    + '. Open a cabinet to see its history.';
 }
 
 window.evBoot = evBoot;

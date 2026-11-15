@@ -6054,3 +6054,80 @@ p.fl-ap-empty { padding: 14px; font-size: 12px; color: var(--text-muted); margin
 }
 tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 .cd-copy:hover { color: #60a5fa; border-color: rgba(96,165,250,.55); }
+
+/* ═══ CABINETS: ШАПКА У ДВА РЯДИ, ЧИПИ, БІЛЬШИЙ МАСШТАБ ═══
+   «дизайн, розташування кнопок… щоб було комфортно» — пункти 1, 2, 3.
+
+   Десять елементів шапки стояли в один ряд з однаковою вагою, усе
+   було 10–12px, а статуси займали цілу смугу широких плиток.
+
+   ЛИШЕ ШИРОКИЙ ЕКРАН. На телефоні шапка згорнута окремими правилами
+   (вони тримаються за ту саму розмітку), тому розмітку не чіпаємо:
+   обидва внутрішні блоки стають display:contents, а порядок і перенос
+   на другий ряд задає order. */
+@media (min-width: 1101px) {
+  #cabinets-section > div:first-child {
+    display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
+    justify-content: flex-start; gap: 10px; margin-bottom: 14px;
+  }
+  #cabinets-section > div:first-child > div { display: contents; }
+  /* Перенос на другий ряд: псевдоелемент — теж елемент ряду. */
+  #cabinets-section > div:first-child::before { content: ''; flex-basis: 100%; height: 0; order: 6; }
+
+  /* Ряд 1: назва, сума зі Stat. Day поруч, пошук по центру — і Sync
+     праворуч, головною кнопкою. «пошук я б в перший рядок добавив по
+     центру. Stat. day я б поставив біля тотал спенда». */
+  #cabinets-section > div:first-child h2 { order: 1; font-size: 22px !important; line-height: 1.1; margin-right: 6px; }
+  #cab-sum { order: 2; padding: 8px 14px; }
+  #cab-sum .cab-sum-n { font-size: 17px; }
+  #cab-sum .cab-sum-k { font-size: 11px; }
+  #cab-sync {
+    order: 5; padding: 9px 16px; gap: 8px;
+    background: var(--accent, #7c3aed); border-color: transparent; color: #fff;
+  }
+  #cab-sync:hover:not(:disabled) { background: var(--accent, #7c3aed); filter: brightness(1.12); border-color: transparent; }
+  #cab-sync .cab-sync-w { display: inline; font-size: 13px; font-weight: 800; letter-spacing: .02em; }
+  #cab-sync .cab-syncago { font-size: 12px; color: rgba(255,255,255,.78); border-bottom-color: rgba(255,255,255,.35); }
+
+  #cab-today-btn { order: 3; }
+  /* Авто-відступи з обох боків ставлять пошук посередині вільного місця. */
+  #cab-search { order: 4; margin-left: auto; margin-right: auto; width: 340px; font-size: 13.5px; padding: 9px 14px; }
+
+  /* Ряд 2: зліва — що показуємо (період, групування), справа — інструменти. */
+  #cab-range { order: 7; }
+  #cab-group { order: 8; font-size: 12px; padding: 9px 12px; }
+  #cab-cols-btn { order: 9; margin-left: auto; }
+  #cab-rules-btn { order: 10; }
+  #cab-pages-btn { order: 11; }
+  #cabinets-section > div:first-child .cab-rules { font-size: 12.5px; padding: 9px 14px; }
+  #cabinets-section > div:first-child .cab-rules.cab-ico { padding: 9px 11px; }
+  #cabinets-section > div:first-child .cab-rules.cab-ico svg { width: 17px; height: 17px; }
+  #cab-range button, #cab-range .cab-range-b { font-size: 12.5px; padding: 8px 12px; }
+
+  /* Статуси — чипами свого розміру, без нульових; вкладки дерева — окремою групою праворуч. */
+  .flt-row-cab { gap: 8px; align-items: center; }
+  .flt-row-cab .flt { flex: 0 0 auto; padding: 7px 14px; gap: 8px; }
+  .flt-row-cab .flt-name { font-size: 11.5px; }
+  .flt-row-cab .flt-n { font-size: 14.5px; }
+  .flt-row-cab .flt.is-zero:not(.is-on) { display: none; }
+  .flt-row-cab .flt-tools { margin-left: auto; padding-left: 14px; border-left: 1px solid var(--border, rgba(255,255,255,.12)); }
+  .flt-row-cab .flt-tools .cd-tab { font-size: 12px; padding: 7px 12px; }
+  .flt-row-cab .flt-tools .cd-pick { font-size: 12px; padding: 7px 10px; }
+  .flt-row-cab .flt-sweep { font-size: 11.5px; }
+
+  /* Таблиця: більший текст і вищі рядки. */
+  /* Заголовки переносяться («Cost / install» — у два рядки): інакше
+     ширину колонок диктували б вони, і таблиця з більшим текстом не
+     влазила б у ті самі 1600px. */
+  #cab-list .cab-tbl td { font-size: 14px; padding: 11px 10px; }
+  #cab-list .cab-tbl th { font-size: 11px; padding: 9px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
+  #cab-list .cab-tbl .cab-who { font-size: 14px; }
+  #cab-list .cab-tbl .cab-id { font-size: 12px; }
+  #cab-list .cab-tbl td.cab-x { padding-left: 7px; padding-right: 7px; }
+  #cab-list .cab-tbl .cd-mk { width: 17px; height: 17px; }
+  #cab-list .cab-tbl .cab-exp, #cab-list .cab-tbl .cab-pin { font-size: 15px; min-width: 26px; min-height: 26px; }
+  #cab-list .cab-tbl .cab-dot { width: 9px; height: 9px; }
+  #cab-list .cab-tbl .cab-mini { font-size: 16px; min-width: 30px; min-height: 30px; }
+}
+/* Слово «Sync» на кнопці — лише там, де для нього є місце. */
+.cab-sync-w { display: none; }

@@ -331,16 +331,37 @@ function evFeedPaint() {
   /* Три, а не чотири. Тостів на екрані вміщається чотири, і четвертим
      іде підсумок «…і ще N» — інакше він витісняв би найперший, тобто
      рівно той, що найгірший і стоїть угорі. Перевірка це й показала. */
-  const SHOW = 3;
   fresh.forEach(e => evShown[evKey(e)] = 1);
-  fresh.slice(0, SHOW).forEach(e => {
-    const T = EV_TONE[e.to_state] || EV_TONE.idle;
-    const kind = evRank(e.to_state) >= 2 ? 'error' : evRank(e.to_state) >= 1 ? 'warn' : 'ok';
-    toast(e.account_id + ' — ' + T.word + (e.note ? ' · ' + e.note : ''),
+  const kindOf = e => evRank(e.to_state) >= 2 ? 'error' : evRank(e.to_state) >= 1 ? 'warn' : 'ok';
+  const wordOf = e => (EV_TONE[e.to_state] || EV_TONE.idle).word;
+
+  /* ОДНЕ СПОВІЩЕННЯ, А НЕ СТОС.
+     Три тости й четвертий «…і ще 241» лягали при вході поверх таблиці
+     й нижньої панелі — і казали менше, ніж займали. Одна зміна й далі
+     йде окремим тостом, як була. Кілька — одним рядком: скільки всього
+     і яких саме, найгірші першими. Подробиці, як і раніше, у панелі
+     кабінета. */
+  if (fresh.length === 1) {
+    const e = fresh[0], kind = kindOf(e);
+    toast(e.account_id + ' — ' + wordOf(e) + (e.note ? ' · ' + e.note : ''),
       kind, kind === 'ok' ? 4000 : 9000);
+    return;
+  }
+  toast(evSummary(fresh, wordOf), kindOf(fresh[0]), 9000);
+}
+
+/* «12 changes: 3 banned, 2 in review, 7 running». fresh уже стоїть
+   найгіршим уперед, тож і слова йдуть у тому ж порядку. */
+function evSummary(fresh, wordOf) {
+  const order = [], by = {};
+  fresh.forEach(e => {
+    const w = wordOf(e);
+    if (!(w in by)) { by[w] = 0; order.push(w); }
+    by[w]++;
   });
-  if (fresh.length > SHOW)
-    toast('…and ' + (fresh.length - SHOW) + ' more change(s). Open a cabinet to see its history.', '', 9000);
+  return fresh.length + ' changes since your last visit: '
+    + order.map(w => by[w] + ' ' + w).join(', ')
+    + '. Open a cabinet to see its history.';
 }
 
 window.evBoot = evBoot;
