@@ -22,13 +22,14 @@ function tabs(saved) {
   const mk = k => ({ k, hidden: true, on: false,
     classList: { toggle(c, v) { if (c === 'hidden') this.o.hidden = v; else this.o.on = v; }, o: null } });
   const panels = {}, btns = [];
+  const body = mk('body'); body.classList.o = body;
   ['placements', 'trend', 'funnels', 'accounts'].forEach(k => {
     const p = mk(k); p.classList.o = p; panels['cr-panel-' + k] = p;
     const bt = mk(k); bt.classList.o = bt; bt.dataset = { k }; btns.push(bt);
   });
   const env = {
     localStorage: { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = v; } },
-    document: { getElementById: id => panels[id] || null, querySelectorAll: () => btns },
+    document: { getElementById: id => id === 'cr-tabbody' ? body : (panels[id] || null), querySelectorAll: () => btns },
     crRenderPanels: null
   };
   const rendered = [];
@@ -41,23 +42,27 @@ function tabs(saved) {
     + '\ncrRenderPanels = () => { crTabPaint(); rendered.push([...crOpenPanels].join()); };'
     + '\nreturn { crTab, crTabPaint, now: () => crTabNow, open: () => [...crOpenPanels] };');
   void api;
-  return Object.assign(f(rendered, ...Object.values(env)), { panels, btns, store, rendered });
+  return Object.assign(f(rendered, ...Object.values(env)), { panels, btns, store, rendered, body });
 }
 
 const t0 = tabs();
-ok('перший раз відкрита Placement', t0.now() === 'placements' && t0.open().join() === 'placements');
+ok('за замовчуванням усе згорнуто', t0.now() === '' && t0.open().length === 0);
 t0.crTabPaint();
-ok('видно рівно одну панель, і її кнопка підсвічена', Object.values(t0.panels).filter(p => !p.hidden).length === 1
-  && !t0.panels['cr-panel-placements'].hidden && t0.btns.filter(x => x.on).map(x => x.k).join() === 'placements');
+ok('жодної панелі не видно, жодна кнопка не підсвічена, тіло сховане', Object.values(t0.panels).every(p => p.hidden)
+  && t0.btns.every(x => !x.on) && t0.body.hidden === true);
 t0.crTab('funnels');
-ok('клік перемикає вкладку: інші ховаються, малюється лише відкрита', !t0.panels['cr-panel-funnels'].hidden
+ok('клік відкриває вкладку: видно її одну, малюється лише вона', !t0.panels['cr-panel-funnels'].hidden
   && t0.panels['cr-panel-placements'].hidden && t0.rendered.join('|') === 'funnels'
-  && t0.btns.filter(x => x.on).map(x => x.k).join() === 'funnels', t0.rendered);
-ok('вибір памʼятається', t0.store.cr_tab === 'funnels');
-ok('наступний захід відкриває ту саму вкладку', tabs('accounts').now() === 'accounts');
-ok('сміття в памʼяті не ламає: знову Placement', tabs('zzz').now() === 'placements');
+  && t0.btns.filter(x => x.on).map(x => x.k).join() === 'funnels' && t0.body.hidden === false, t0.rendered);
+t0.crTab('trend');
+ok('інша вкладка замінює відкриту', t0.now() === 'trend' && !t0.panels['cr-panel-trend'].hidden
+  && t0.panels['cr-panel-funnels'].hidden);
+t0.crTab('trend');
+ok('клік по відкритій згортає її назад', t0.now() === '' && Object.values(t0.panels).every(p => p.hidden)
+  && t0.body.hidden === true && t0.btns.every(x => !x.on));
+ok('вибір не памʼятається: наступний захід знову згорнутий', tabs('accounts').now() === '' && !('cr_tab' in t0.store));
 t0.crTab('nope');
-ok('невідома вкладка нічого не міняє', t0.now() === 'funnels');
+ok('невідома вкладка нічого не міняє', t0.now() === '');
 
 ok('у розмітці чотири вкладки з англійськими назвами', /<div class="cr-tabs" id="cr-tabs"/.test(SRC)
   && ['Placement', 'Daily trend', 'Funnels', 'Cabinets'].every(n => new RegExp('onclick="crTab\\(\'[a-z]+\'\\)">' + n + '</button>').test(SRC)));

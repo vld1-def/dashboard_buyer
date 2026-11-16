@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 16.11 19:00">
+  <meta name="build" content="build 16.11 19:42">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7419,6 +7419,14 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   border: 1px solid var(--border, rgba(255,255,255,.08)); border-radius: 16px;
   background: rgba(0,0,0,.2); padding: 14px 16px; min-height: 72px;
 }
+
+/* ═══ CREATIVE ANALYZER: ЧЕРГА НА ТЕСТ ═══ */
+.cr-q-top.is-on { background: rgba(56,189,248,.18) !important; color: #7dd3fc !important; border-color: rgba(56,189,248,.45) !important; }
+#cr-queue-n:not(:empty) {
+  display: inline-block; margin-left: 4px; padding: 0 6px; border-radius: 999px;
+  background: rgba(56,189,248,.22); color: #7dd3fc; font-size: 10px; line-height: 16px;
+}
+.cr-q-btn { background: none; border: 0; cursor: pointer; padding: 0 1px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -7678,7 +7686,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 16.11 19:00</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 16.11 19:42</div>
     </div>
   </aside>
 
@@ -8267,6 +8275,15 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
                 class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">📁</button>
               <button id="cr-star-only" onclick="crToggleStarOnly()" title="Starred only"
                 class="h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">★</button>
+              <!-- ЧЕРГА НА ТЕСТ: кнопка показує лише чергу й скільки в ній;
+                   поруч — скопіювати назви й очистити (видно, коли черга
+                   не порожня). -->
+              <button id="cr-queue-only" onclick="crToggleQueueOnly()" title="Creatives queued to test next — click to show only them"
+                class="cr-q-top h-[34px] px-3 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white whitespace-nowrap">&#9201; Queue <span id="cr-queue-n"></span></button>
+              <button id="cr-queue-copy" onclick="crQueueCopy()" title="Copy the queued names, one per line"
+                class="hidden h-[34px] px-2.5 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-400 border-gray-500/20 hover:text-white">&#10697;</button>
+              <button id="cr-queue-clear" onclick="crQueueClear()" title="Empty the queue"
+                class="hidden h-[34px] px-2.5 rounded-xl text-[11px] font-black uppercase transition border bg-gray-500/10 text-slate-500 border-gray-500/20 hover:text-rose-300">&#10005;</button>
 
               <!-- ЧИСЛОВОГО ФІЛЬТРА «метрика / умова / значення» ТУТ БІЛЬШЕ
                    НЕМА. Три контролі в ряду заради питання, яке ставили
@@ -8434,16 +8451,16 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   </div>
 
   <!-- ВКЛАДКИ ЗАМІСТЬ ЧОТИРЬОХ РОЗГОРТАЙОК.
-       Placement, Daily trend, воронки й кабінети стояли згорнутими, і
-       відкривати їх доводилось щоразу наново. Тепер одна з них відкрита
-       завжди, а яка саме — памʼятається між заходами (див. crTab). -->
+       «Було б круто щоб по дефолту ці вкладки були приховані»: ряд
+       вкладок видно завжди, а вміст зʼявляється після кліку. Клік по
+       відкритій вкладці ховає його назад (див. crTab). -->
   <div class="cr-tabs" id="cr-tabs" role="tablist">
     <button type="button" data-k="placements" onclick="crTab('placements')">Placement</button>
     <button type="button" data-k="trend" onclick="crTab('trend')">Daily trend</button>
     <button type="button" data-k="funnels" onclick="crTab('funnels')">Funnels</button>
     <button type="button" data-k="accounts" onclick="crTab('accounts')">Cabinets</button>
   </div>
-  <div class="cr-tabbody mb-6">
+  <div class="cr-tabbody mb-6 hidden" id="cr-tabbody">
     <div id="cr-panel-placements" class="hidden"></div>
     <div id="cr-panel-trend" class="hidden"></div>
     <div id="cr-panel-funnels" class="hidden"></div>
@@ -9746,9 +9763,11 @@ async function sbAllRows(make) {
      запитах один за одним — чотири кругосвітки по одному рядку.
      Ключі відомі заздалегідь, тому беремо їх одним запитом. */
   const st = await getTeamSettings(['creative_stars', 'creative_tags',
-                                    'creative_format', 'report_tags']);
+                                    'creative_format', 'report_tags', 'creative_queue']);
   const parse = (v, def) => { try { return JSON.parse(v || '') || def; } catch (e) { return def; } };
   crStars = new Set(parse(st.creative_stars, []));
+  { const q = parse(st.creative_queue, []); crQueue = Array.isArray(q) ? q.map(String).filter(Boolean) : []; }
+  crQueuePaint();
   crTags  = parse(st.creative_tags, {});
   crFmt   = parse(st.creative_format, {});
   rpTags  = parse(st.report_tags, {});
@@ -10738,6 +10757,8 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
 
   // Starred only
   if (crStarOnly) list = list.filter(c => crStars.has(c.cid));
+  // Тільки черга на тест — у тому порядку, в якому її складали.
+  if (crQueueOnly) list = crQueueList(list);
 
   /* Формат ріже вже зведений список, а не рядки: відео чи статика — це
      про креатив цілком. «Format not set» окремим пунктом — щоб було
@@ -10823,7 +10844,8 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
         title="This file is in Drive but has never had a single impression — there is no row for it in the stats at all"
         class="w-full flex justify-between items-center gap-1.5 p-3 rounded-xl border border-dashed border-sky-500/25
                bg-sky-500/5 transition-all text-left uppercase cursor-pointer hover:bg-sky-500/10 no-underline">
-        <span class="text-[11px] font-black truncate text-sky-200">${nm}</span>
+        ${crQueueBtn(c.cid)}
+        <span class="text-[11px] font-black truncate text-sky-200 flex-1">${nm}</span>
         <span class="flex-shrink-0 text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded
                      bg-sky-500/20 text-sky-300">never ran</span>
         ${/* ТА САМА КНОПКА, ЩО Й У РЕШТИ РЯДКІВ.
@@ -10854,6 +10876,7 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
               ${isActive ? 'bg-blue-600 text-white shadow-lg scale-[1.02]' : 'hover:bg-white/5 text-slate-400'}">
         <button onclick="crToggleStar(event,'${cidEsc}')" title="${starred?'Remove star':'Add star'}"
                 class="flex-shrink-0 text-[13px] leading-none transition ${starred?'text-amber-400':'opacity-25 hover:opacity-70'}">${starred?'★':'☆'}</button>
+        ${crQueueBtn(c.cid)}
         ${(() => {
           /* Позначка в списку — щоб було видно, що саме вгадалось, не
              відкриваючи кожен креатив. Бліда — здогадка. */
@@ -11218,6 +11241,110 @@ function crToggleGroupTags() {
   searchCreative();
 }
 
+/* ═══════════ ЧЕРГА НА ТЕСТ ═══════════
+
+   «черга на тест сподобалось». Позначаєш креативи, які треба залити
+   наступними, — вони збираються в окремий список, і назви копіюються
+   одним кліком для запуску.
+
+   Лежить поруч із зірками, у team_settings (creative_queue), але це
+   СПИСОК, а не множина: порядок, у якому чергу складали, — і є порядок
+   заливу.
+
+   Ключ — назва без розширення файла. У чергу найчастіше кладуть те, що
+   ще НЕ лилось: такий креатив існує лише файлом у Drive («KG_JS_674.mp4»),
+   а коли поллється, прийде в статистику як «KG_JS_674». Без цього він
+   випадав би з черги рівно тоді, коли його нарешті запустили. */
+let crQueue = [];
+let crQueueOnly = false;
+const crQKey = v => String(v == null ? '' : v).trim()
+  .replace(/\.(mp4|mov|webm|m4v|avi|mkv|jpe?g|png|gif|webp)$/i, '');
+const crQueued = cid => crQueue.includes(crQKey(cid));
+
+// Кнопка в рядку списку: ＋ — покласти в чергу, ⏱ — уже там.
+function crQueueBtn(cid) {
+  const on = crQueued(cid);
+  const esc = String(cid).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  return `<button onclick="crToggleQueue(event,'${esc}')"
+    title="${on ? 'Remove from the test queue' : 'Queue to test next'}"
+    class="cr-q-btn flex-shrink-0 text-[12px] leading-none transition ${
+      on ? 'is-on text-sky-300' : 'opacity-25 hover:opacity-80'}">${on ? '\u23F1' : '\uFF0B'}</button>`;
+}
+
+/* Список у режимі «лише черга». Те, що в черзі є, а у відфільтрованому
+   списку немає (ще не лилось, або відсіялось фільтром), теж показуємо —
+   інакше черга мовчки коротшала б від сусіднього фільтра. */
+function crQueueList(list) {
+  const by = new Map();
+  list.forEach(c => { const k = crQKey(c.cid); if (!by.has(k)) by.set(k, c); });
+  return crQueue.map(k => by.get(k) || { cid: k, s: 0, cl: 0, ins: 0, r: 0, dp: 0, _q: true });
+}
+
+async function saveCreativeQueue() {
+  try { await setTeamSetting('creative_queue', JSON.stringify(crQueue)); }
+  catch (e) { console.warn('creative_queue save:', e.message); }
+}
+
+function crToggleQueue(ev, cid) {
+  // Рядок файла з Drive — це посилання: без preventDefault клік відкривав би вкладку.
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const k = crQKey(cid);
+  if (!k) return;
+  const i = crQueue.indexOf(k);
+  if (i >= 0) crQueue.splice(i, 1); else crQueue.push(k);
+  saveCreativeQueue();
+  crQueuePaint();
+  searchCreative();
+}
+
+function crToggleQueueOnly() {
+  crQueueOnly = !crQueueOnly;
+  crQueuePaint();
+  searchCreative();
+}
+
+// Шапка: скільки в черзі, чи ввімкнено режим, і чи є що копіювати.
+function crQueuePaint() {
+  const b = document.getElementById('cr-queue-only');
+  if (b) {
+    b.classList.toggle('is-on', crQueueOnly);
+    const n = document.getElementById('cr-queue-n');
+    if (n) n.textContent = crQueue.length ? String(crQueue.length) : '';
+  }
+  ['cr-queue-copy', 'cr-queue-clear'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !crQueue.length);
+  });
+}
+
+// Назви стовпчиком: так їх вставляють і в таблицю, і в нотатки до запуску.
+async function crQueueCopy() {
+  if (!crQueue.length) return;
+  const text = crQueue.join('\n');
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (_e) { /* нема чим — скажемо нижче */ }
+    ta.remove();
+  }
+  if (typeof toast === 'function') toast('Copied ' + crQueue.length + ' creative name(s) from the queue', 'ok');
+}
+
+async function crQueueClear() {
+  if (!crQueue.length) return;
+  const go = typeof ask === 'function'
+    ? await ask({ title: 'Empty the test queue?', ok: 'Empty', danger: true,
+        body: crQueue.length + ' creative(s) are queued. The creatives themselves stay; only the queue marks go.' })
+    : confirm('Empty the test queue?');
+  if (!go) return;
+  crQueue = [];
+  crQueueOnly = false;
+  saveCreativeQueue();
+  crQueuePaint();
+  searchCreative();
+}
+
 let crStars = new Set();
 let crStarOnly = false;
 
@@ -11247,14 +11374,14 @@ function crToggleStarOnly() {
   searchCreative();
 }
 // ===== Розгортайки в Creative Analyzer (за замовчуванням згорнуті) =====
-/* Одна вкладка відкрита завжди. crOpenPanels лишається множиною: нею
-   користується crRenderPanels, і малюється лише те, що видно. */
+/* ЗА ЗАМОВЧУВАННЯМ УСЕ ЗГОРНУТО — так попросили: спершу числа
+   креатива, а розріз відкривають, коли він потрібен. Тому вибір не
+   памʼятається між заходами: сторінка щоразу починає зі згорнутого.
+   crOpenPanels лишається множиною: нею користується crRenderPanels, і
+   малюється лише те, що видно. */
 const CR_TABS = ['placements', 'trend', 'funnels', 'accounts'];
-let crTabNow = (() => {
-  try { const v = localStorage.getItem('cr_tab'); return CR_TABS.includes(v) ? v : 'placements'; }
-  catch (e) { return 'placements'; }
-})();
-let crOpenPanels = new Set([crTabNow]);
+let crTabNow = '';
+let crOpenPanels = new Set();
 
 function crTabPaint() {
   CR_TABS.forEach(k => {
@@ -11263,13 +11390,15 @@ function crTabPaint() {
   });
   document.querySelectorAll('#cr-tabs button').forEach(b =>
     b.classList.toggle('is-on', b.dataset.k === crTabNow));
+  const body = document.getElementById('cr-tabbody');
+  if (body) body.classList.toggle('hidden', !crTabNow);
 }
 
 function crTab(kind) {
   if (!CR_TABS.includes(kind)) return;
-  crTabNow = kind;
-  crOpenPanels = new Set([kind]);
-  try { localStorage.setItem('cr_tab', kind); } catch (e) { /* без пам'яті теж працює */ }
+  // Клік по відкритій вкладці згортає її.
+  crTabNow = crTabNow === kind ? '' : kind;
+  crOpenPanels = new Set(crTabNow ? [crTabNow] : []);
   crRenderPanels();
 }
 
