@@ -6211,3 +6211,34 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 }
 /* Слово «Sync» на кнопці — лише там, де для нього є місце. */
 .cab-sync-w { display: none; }
+
+/* ═══ ТЕЛЕФОН: RULES І PAGES — ПОВЕРХ СПИСКУ; СТАТУСИ — В ОДИН РЯД ═══
+   «на телефоні rules … не включається, можливо просто десь за межами
+   екрану відкривається». Саме так: ряд із таблицею на вузькому екрані
+   переноситься, і панель ставала ПІД список кабінетів — тобто за
+   сорок карток униз від кнопки, якою її відкрили. Тепер вона, як і
+   картка кабінета, лягає поверх списку на весь екран; закривається
+   хрестиком у своїй шапці.
+
+   :not(.hidden) — бо id-селектор сильніший за Tailwind-івський .hidden:
+   без обмовки панель було б видно завжди. */
+@media (max-width: 720px) {
+  #rules-panel:not(.hidden), #pages-panel:not(.hidden) {
+    position: fixed; left: 8px; right: 8px; top: 8px; bottom: 64px;
+    z-index: 110; width: auto !important; display: flex;
+    max-height: none; overflow: hidden;
+  }
+  #rules-panel > .rl-wrap, #pages-panel > .rl-wrap {
+    flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto;
+  }
+}
+@media (max-width: 640px) {
+  /* Статуси ділять ОДИН ряд порівну, скільки б їх не було: нульові
+     ховаємо (як на компʼютері), назва за потреби обрізається трьома
+     крапками, число видно завжди. Вкладки дерева — рядом нижче. */
+  .flt-row-cab { gap: 6px; }
+  .flt-row-cab .flt { flex: 1 1 0; min-width: 0; padding: 7px 8px; gap: 5px; }
+  .flt-row-cab .flt.is-zero:not(.is-on) { display: none; }
+  .flt-row-cab .flt-name { font-size: 9px; letter-spacing: .04em; }
+  .flt-row-cab .flt-n { font-size: 13px; }
+}
