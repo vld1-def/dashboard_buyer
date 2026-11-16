@@ -223,6 +223,27 @@ const TD_VIEWS = {
   ]
 };
 
+/* ═══ ПОШУК ═══
+   «в stat.day додай пошук».
+
+   Шукає по всьому, що видно в рядку: гео, ID і назва кабінета, браузер,
+   воронка, креатив, кампанія. Кілька слів — усі мусять знайтись
+   (KG 674 — креатив 674 саме в KG). Дефіс, підкреслення й пробіл не
+   розрізняються: «10708 ry05» знаходить «10708-ry05», бо назви в
+   Facebook і в трекері пишуться по-різному.
+
+   Знайдене розкривається саме: шукали креатив — він і має бути видно,
+   а не сховано під трьома згорнутими рівнями. Великі числа вгорі й
+   далі кажуть про весь день; про знайдене каже рядок підсумку. */
+let tdQ = '';
+function tdHit(x, q) {
+  const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = [x.geo, x.acc, x.cab, x.br, x.fn, x.cr, x.camp].map(v => String(v == null ? '' : v)).join(' ').toLowerCase();
+  const loose = tdLoose(hay);
+  return words.every(w => hay.includes(w) || loose.includes(tdLoose(w)));
+}
+
 // Скільки відсотків спенду таблиці припадає на рядок (для смужки).
 const tdShare = s => (tdAvg && tdAvg.s > 0 ? Math.max(0, Math.min(100, Math.round(s / tdAvg.s * 1000) / 10)) : 0);
 
@@ -233,7 +254,7 @@ function tdTree(rows, levels) {
     const g = new Map();
     list.forEach(x => { const k = key(x); if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
     [...g.entries()].sort((a, b) => tdSum(b[1]).s - tdSum(a[1]).s).forEach(([k, l]) => {
-      const id = path + '/' + k, leaf = depth === levels.length - 1, open = tdOpenSet.has(id);
+      const id = path + '/' + k, leaf = depth === levels.length - 1, open = !!tdQ || tdOpenSet.has(id);
       html += `<tr class="td-l${Math.min(depth, 1)}${leaf ? '' : ' td-x'}${open ? ' is-open' : ''}" data-id="${tdEsc(id)}">`
         /* Смужка — частка рядка в спенді всієї таблиці: де йдуть гроші,
            видно без читання цифр. */
@@ -433,17 +454,23 @@ function tdRender() {
     return;
   }
   const head = tdMode === 'cre' ? 'Creative' : tdMode === 'fun' ? 'Funnel' : 'Geo › Cabinet › Funnel › Creative';
-  const body = tdTree(rows, TD_VIEWS[tdMode]);
+  const shown = tdQ ? rows.filter(x => tdHit(x, tdQ)) : rows;
+  if (!shown.length) {
+    box.innerHTML = '<p class="td-empty">Nothing matches \u201c' + tdEsc(tdQ) + '\u201d today.</p>';
+    return;
+  }
+  const body = tdTree(shown, TD_VIEWS[tdMode]);
   /* Підсумок не фарбуємо: він і є середня, з якою порівнюють решту, а
      червоний Total читався б як «усе погано» там, де це просто сума. */
   const avg = tdAvg;
   tdAvg = null;
-  const total = tdCells(t);
+  const total = tdCells(tdQ ? tdSum(shown) : t);
   tdAvg = avg;
   box.innerHTML = '<table class="td-tbl"><thead><tr><th>' + head + '</th>'
     + TD_COLS.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>'
     + body
-    + '<tr class="td-tot"><td>Total</td>' + total + '</tr></tbody></table>';
+    + '<tr class="td-tot"><td>' + (tdQ ? 'Found \u00b7 ' + shown.length + ' of ' + rows.length + ' ads' : 'Total')
+    + '</td>' + total + '</tr></tbody></table>';
 }
 
 /* Вікно створюємо при першому відкритті: на сторінці, де його ніхто не
@@ -457,6 +484,8 @@ function tdEnsure() {
     <div class="td-top">
       <h3 class="td-h">Stat. Day <span class="td-dim" id="td-sub">· live from Facebook</span></h3>
       <span id="td-when" class="td-when"></span>
+      <input id="td-q" class="td-q" type="search" spellcheck="false" autocomplete="off"
+        placeholder="Search: creative, cabinet, funnel, geo\u2026" aria-label="Search in Stat. Day">
       <div class="td-seg" id="td-mode">
         <button type="button" data-m="tree" class="is-on">Geo › Cabinet › Funnel › Creative</button>
         <button type="button" data-m="cre">Creatives</button>
@@ -517,8 +546,17 @@ function tdEnsure() {
     const id = tr.dataset.id; tdOpenSet.has(id) ? tdOpenSet.delete(id) : tdOpenSet.add(id);
     tdRender();
   });
+  ov.querySelector('#td-q').addEventListener('input', e => {
+    tdQ = String(e.target.value || '').trim();
+    tdRender();
+  });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !ov.classList.contains('hidden')) tdToggle(false);
+    if (e.key !== 'Escape' || ov.classList.contains('hidden')) return;
+    /* Esc спершу стирає пошук, і лише другим натиском закриває вікно:
+       закрити все через те, що хотів скинути фільтр, — прикро. */
+    const q = ov.querySelector('#td-q');
+    if (tdQ && q) { q.value = ''; tdQ = ''; tdRender(); return; }
+    tdToggle(false);
   });
   return ov;
 }
