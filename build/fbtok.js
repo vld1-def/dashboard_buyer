@@ -727,7 +727,7 @@ window.fbAdd = async function () {
   /* fbSync сам пише підсумок через say. Додаємо лише те, чого він не
      знає: куди тепер дивитись і що сторінку треба перечитати. */
   if (r && r.accounts) {
-    say(out.innerHTML + '<br><span class="opacity-60">The cabinets are in Cabinets now — '
+    say(out.innerHTML + '<br><span class="opacity-60">The cabinets are in FB Live now — '
       + 'reload that page if it is already open.</span>', 'var(--ok)');
   }
   fbLoad();

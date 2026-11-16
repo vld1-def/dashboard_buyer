@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 15.11 22:48">
+  <meta name="build" content="build 16.11 10:50">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -4126,9 +4126,33 @@ body[data-route="domains"] #dm-detail {
    Відступ за рівнем зсуває галочку разом із назвою — це навмисно: так
    видно, до якого рівня належить вибраний рядок. */
 .cd-mk {
-  width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
-  accent-color: var(--accent); cursor: pointer; flex: 0 0 auto;
+  width: 15px; height: 15px; margin-right: 6px; vertical-align: -3px;
+  cursor: pointer; flex: 0 0 auto;
+  /* СВОЯ ГАЛОЧКА, А НЕ СИСТЕМНА. Рідний чекбокс — сірий квадрат із
+     білою заливкою, який у темній таблиці світився яскравіше за числа
+     і в кожному браузері виглядав по-своєму. Тут — та сама рамка, що в
+     кнопок і полів (--border-2 на темному тлі, заокруглення), а
+     позначена — акцентом, як увімкнена кнопка. */
+  appearance: none; -webkit-appearance: none;
+  /* !important — бо старий шар стилів фарбує КОЖЕН input «склом» через
+     !important (index-legacy.html), і без нього галочка лишалась би
+     порожнім квадратом навіть позначеною. */
+  border: 1.5px solid var(--border-2) !important; border-radius: 5px;
+  background: rgba(0, 0, 0, .25) center / 11px 11px no-repeat !important;
+  backdrop-filter: none;
+  transition: border-color .12s, background-color .12s, box-shadow .12s;
 }
+.cd-mk:hover { border-color: var(--accent) !important; }
+.cd-mk:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent) !important; }
+.cd-mk:checked, .cd-mk:indeterminate { background-color: var(--accent) !important; border-color: var(--accent) !important; }
+.cd-mk:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.6 6.3l2.3 2.3 4.5-5'/%3E%3C/svg%3E") !important;
+}
+/* «Вибрано частину» — рискою, а не галочкою. */
+.cd-mk:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 6h6'/%3E%3C/svg%3E") !important;
+}
+.cd-mk:disabled { opacity: .4; cursor: default; }
 
 /* У КЛІТИНЦІ ТАБЛИЦІ та сама галочка стоїть сама, без назви поруч, —
    отже й відступ праворуч їй не потрібен: він зсував би її з центру
@@ -6794,7 +6818,7 @@ input.ui-in[type="range"] { padding: 0; }
 .ps-prev img { width: 92px; height: 56px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
 .ps-prev .ps-hint { margin: 0; }
 
-/* ══ Вікно Today: живі числа з останнього Sync now (today.js) ══
+/* ══ Вікно Stat. Day: числа за day, з календарем (today.js) ══
    Вікно на всю ширину, а не бічна панель: дерево гео › кабінет ›
    funnel › креатив з одинадцятьма колонками у 452px не влазить. */
 .td-ov {
@@ -6820,11 +6844,42 @@ input.ui-in[type="range"] { padding: 0; }
 }
 .td-seg button:hover { color: var(--text-main); }
 .td-seg button.is-on { background: var(--accent-soft); color: var(--text-main); font-weight: 700; }
-.td-sync, .td-close {
+.td-close {
   border: 1px solid var(--border); background: rgba(0,0,0,.25); color: var(--text-muted);
   border-radius: 10px; padding: 6px 10px; font-size: 12px; cursor: pointer;
 }
-.td-sync:hover, .td-close:hover { color: var(--text-main); border-color: var(--border-2); }
+.td-close:hover { color: var(--text-main); border-color: var(--border-2); }
+/* Календар у шапці вікна: стрілки й поле дати однією рамкою — тим
+   самим сегментом, що й перемикачі поруч. Рамку й тло з самого поля
+   знімаємо (!important — бо поля дат на сайті фарбуються через нього):
+   рамка в рамці читалась би як дві різні речі. */
+.td-cal {
+  display: inline-flex; align-items: stretch; border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; background: rgba(0,0,0,.25);
+}
+.td-cal:focus-within { border-color: var(--accent); }
+.td-cal button {
+  background: none; border: 0; padding: 0 10px; font-size: 15px; line-height: 1;
+  color: var(--text-muted); cursor: pointer;
+}
+.td-cal button:hover:not(:disabled) { color: var(--text-main); background: var(--surface-2); }
+.td-cal button:disabled { opacity: .3; cursor: default; }
+.td-cal .td-cal-now {
+  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent); border-left: 1px solid var(--border);
+}
+.td-cal .td-cal-now.hidden { display: none; }
+.td-cal input[type="date"] {
+  border: 0 !important; border-radius: 0 !important; background: transparent !important;
+  box-shadow: none !important; padding: 6px 4px; text-align: center; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+/* На минулому дні дерева немає — перемикачі його вигляду зникають:
+   погашені, вони виштовхували хрестик закриття на другий ряд. */
+.td-seg.is-off { display: none; }
+.td-close { flex: 0 0 auto; }
+.td-note { white-space: normal !important; opacity: .8; }
+.td-tbl.td-hist { min-width: 720px; }
 .td-kpis {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;
   padding: 12px 16px; border-bottom: 1px solid var(--border);
@@ -7001,21 +7056,21 @@ input.ui-in[type="range"] { padding: 0; }
 
 /* ШАПКА КАБІНЕТІВ НА ТЕЛЕФОНІ: ОДИН РЯД, РЕШТА ПІД «FILTERS».
    Було шість рядів і 300 пікселів до першого кабінета. */
-.cab-m-only, .cab-range-m { display: none; }
+.cab-m-only { display: none; }
+/* ШАПКА: ОДИН КОНТЕЙНЕР НА ВСІ ШИРИНИ. Обгортки лівої й правої частини
+   та блок інструментів за замовчуванням прозорі (display:contents) —
+   кнопки лягають у спільний ряд із переносом, і порядок на телефоні
+   задає order на них самих. Сіткою з трьох колонок шапка стає лише на
+   широкому екрані (блок «CABINETS: ШАПКА» нижче). */
+.cab-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.cab-hl, .cab-hr, .cab-tools { display: contents; }
+.cab-head .cab-title { flex: 0 0 100%; }
 @media (max-width: 640px) {
-  #cabinets-section > div:first-child { margin-bottom: 8px; }
-  #cabinets-section > div:first-child > div:first-child { display: none; }
-  #cabinets-section > div:first-child > div:last-child { gap: 6px; }
+  .cab-head { margin-bottom: 8px; gap: 6px; }
+  .cab-head .cab-title { display: none; }
   .cab-m-only { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; }
   #cab-sum { order: 1; }
   #cab-sum .cab-sum-k { display: none; }
-  #cab-range { order: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-  #cab-range .cab-srcsel { display: none; }
-  .cab-range-m {
-    display: block; min-height: 36px; padding: 0 8px; border-radius: 12px;
-    border: 1px solid var(--border); background: var(--surface-2); color: inherit;
-    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-  }
   #cab-q-btn { order: 3; margin-left: auto; min-width: 36px; justify-content: center; }
   #cab-flt-btn { order: 4; }
   #cab-search { order: 5; flex: 0 0 100%; width: 100%; min-height: 38px; font-size: 13px; }
@@ -7190,45 +7245,65 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
    (вони тримаються за ту саму розмітку), тому розмітку не чіпаємо:
    обидва внутрішні блоки стають display:contents, а порядок і перенос
    на другий ряд задає order. */
-@media (min-width: 1101px) {
-  #cabinets-section > div:first-child {
-    display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
-    justify-content: flex-start; gap: 10px; margin-bottom: 14px;
+/* Сітка — від 1280px: вужче трьом частинам в одному ряду тісно, і
+   шапка лишається звичайним рядом із переносом (назва — окремим
+   рядком над кнопками). */
+@media (min-width: 1280px) {
+  /* ТРИ КОЛОНКИ: ліва й права — рівні (1fr), пошук між ними. Тому він
+     стоїть рівно по центру картки, хоч би як мінялась ширина суми чи
+     підпис «5m ago» на кнопці Sync. Авто-відступи, якими він
+     центрувався раніше, ставили його посередині ВІЛЬНОГО місця — тобто
+     лівіше чи правіше залежно від сусідів. */
+  .cab-head {
+    /* Бічні колонки не вужчі за свій вміст (max-content): на тісному
+       екрані стискається пошук, а не зникають кнопки. */
+    display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(150px, 340px) minmax(max-content, 1fr);
+    align-items: center; column-gap: 16px; row-gap: 10px; margin-bottom: 14px;
   }
-  #cabinets-section > div:first-child > div { display: contents; }
-  /* Перенос на другий ряд: псевдоелемент — теж елемент ряду. */
-  #cabinets-section > div:first-child::before { content: ''; flex-basis: 100%; height: 0; order: 6; }
+  .cab-hl, .cab-hr { display: flex; align-items: center; gap: 8px; }
+  .cab-hl > *, .cab-hr > * { flex: 0 0 auto; }
+  .cab-hr { justify-content: flex-end; }
+  .cab-head .cab-title { flex: 0 0 auto; font-size: 19px !important; line-height: 1.1; margin-right: 6px; white-space: nowrap; }
 
-  /* Ряд 1: назва, сума зі Stat. Day поруч, пошук по центру — і Sync
-     праворуч, головною кнопкою. «пошук я б в перший рядок добавив по
-     центру. Stat. day я б поставив біля тотал спенда». */
-  #cabinets-section > div:first-child h2 { order: 1; font-size: 19px !important; line-height: 1.1; margin-right: 6px; }
-  #cab-sum { order: 2; padding: 5px 11px; }
+  /* Ліворуч — що це й скільки: назва, сума, Stat. Day. */
+  #cab-sum { padding: 5px 11px; white-space: nowrap; }
   #cab-sum .cab-sum-n { font-size: 15px; }
   #cab-sum .cab-sum-k { font-size: 10px; }
+
+  /* Пошук — на всю свою колонку; текст і підказка по центру. */
+  #cab-search {
+    width: 100%; font-size: 12px; padding: 7px 14px; text-align: center;
+  }
+  #cab-search::placeholder { text-align: center; }
+
+  /* Праворуч: групування, блок інструментів і Sync головною кнопкою. */
+  #cab-group { font-size: 11px; padding: 6px 10px; }
+  .cab-head .cab-rules { font-size: 11px; padding: 6px 12px; white-space: nowrap; }
+  .cab-head .cab-rules.cab-ico { padding: 6px 9px; }
+  .cab-head .cab-rules.cab-ico svg { width: 15px; height: 15px; }
+  /* Колонки, Rules і Pages — один сегментований блок: три окремі
+     рамки поспіль читались як три рівноважні кнопки, а це одна група
+     «налаштувати й подивитись поруч». */
+  .cab-tools {
+    display: inline-flex; align-items: stretch; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border); background: rgba(0, 0, 0, .25);
+  }
+  .cab-tools .cab-rules {
+    border: 0; border-radius: 0; background: transparent; height: auto;
+  }
+  .cab-tools .cab-rules.cab-ico { width: auto; padding: 6px 10px; }
+  .cab-tools .cab-rules + .cab-rules { border-left: 1px solid var(--border); }
+  .cab-tools .cab-rules:hover { background: var(--surface-2); }
+  .cab-tools .cab-rules.is-on { background: var(--accent); color: #fff; }
   #cab-sync {
-    order: 5; padding: 6px 13px; gap: 7px;
+    padding: 6px 13px; gap: 7px; white-space: nowrap;
     background: var(--accent, #7c3aed); border-color: transparent; color: #fff;
   }
   #cab-sync:hover:not(:disabled) { background: var(--accent, #7c3aed); filter: brightness(1.12); border-color: transparent; }
   #cab-sync .cab-sync-w { display: inline; font-size: 12px; font-weight: 800; letter-spacing: .02em; }
-  #cab-sync .cab-syncago { font-size: 11px; color: rgba(255,255,255,.78); border-bottom-color: rgba(255,255,255,.35); }
-
-  #cab-today-btn { order: 3; }
-  /* Авто-відступи з обох боків ставлять пошук посередині вільного місця. */
-  #cab-search { order: 4; margin-left: auto; margin-right: auto; width: 300px; font-size: 12px; padding: 6px 12px; }
-
-  /* Ряд 2: зліва — що показуємо (період, групування), справа — інструменти. */
-  #cab-range { order: 7; }
-  #cab-group { order: 8; font-size: 11px; padding: 6px 10px; }
-  #cab-cols-btn { order: 9; margin-left: auto; }
-  #cab-rules-btn { order: 10; }
-  #cab-pages-btn { order: 11; }
-  #cabinets-section > div:first-child .cab-rules { font-size: 11px; padding: 6px 12px; }
-  #cabinets-section > div:first-child .cab-rules.cab-ico { padding: 6px 9px; }
-  #cabinets-section > div:first-child .cab-rules.cab-ico svg { width: 15px; height: 15px; }
-  #cab-range button, #cab-range .cab-range-b { font-size: 11px; padding: 6px 10px; }
-
+  #cab-sync .cab-syncago { font-size: 11px; color: rgba(255,255,255,.78); border-bottom-color: rgba(255,255,255,.35); border-left-color: rgba(255,255,255,.3); }
+}
+@media (min-width: 1101px) {
   /* Статуси — чипами свого розміру, без нульових; вкладки дерева — окремою групою праворуч. */
   .flt-row-cab { gap: 8px; align-items: center; }
   .flt-row-cab .flt { flex: 0 0 auto; padding: 5px 11px; gap: 7px; }
@@ -7240,19 +7315,24 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   .flt-row-cab .flt-tools .cd-pick { font-size: 11px; padding: 5px 9px; }
   .flt-row-cab .flt-sweep { font-size: 11.5px; }
 
-  /* Таблиця: більший текст і вищі рядки. */
+  /* ТАБЛИЦЯ: КОМПАКТНА. «Зменшити розмір таблиці в кабінетах (і
+     кампанії)»: рядок у 58px показував вісім кабінетів на екран, тепер
+     їх у півтора раза більше. Назва з номером лишаються у два рядки
+     (номер копіюють кліком, і шукати його очима треба під назвою),
+     але щільніше: висоту рядка тримали відступи, а не текст. */
   /* Заголовки переносяться («Cost / install» — у два рядки): інакше
-     ширину колонок диктували б вони, і таблиця з більшим текстом не
-     влазила б у ті самі 1600px. */
-  #cab-list .cab-tbl td { font-size: 14px; padding: 11px 10px; }
-  #cab-list .cab-tbl th { font-size: 11px; padding: 9px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
-  #cab-list .cab-tbl .cab-who { font-size: 14px; }
-  #cab-list .cab-tbl .cab-id { font-size: 12px; }
-  #cab-list .cab-tbl td.cab-x { padding-left: 7px; padding-right: 7px; }
-  #cab-list .cab-tbl .cd-mk { width: 17px; height: 17px; }
-  #cab-list .cab-tbl .cab-exp, #cab-list .cab-tbl .cab-pin { font-size: 15px; min-width: 26px; min-height: 26px; }
-  #cab-list .cab-tbl .cab-dot { width: 9px; height: 9px; }
-  #cab-list .cab-tbl .cab-mini { font-size: 16px; min-width: 30px; min-height: 30px; }
+     ширину колонок диктували б вони. */
+  #cab-list .cab-tbl td { font-size: 12.5px; padding: 5px 9px; }
+  #cab-list .cab-tbl th { font-size: 10px; padding: 6px 9px; white-space: normal; line-height: 1.2; vertical-align: bottom; }
+  #cab-list .cab-tbl .cab-who { font-size: 12.5px; line-height: 1.25; }
+  #cab-list .cab-tbl .cab-id { font-size: 11px; line-height: 1.2; }
+  #cab-list .cab-tbl td.cab-x { padding-left: 5px; padding-right: 5px; }
+  #cab-list .cab-tbl .cab-exp, #cab-list .cab-tbl .cab-pin { font-size: 13px; min-width: 22px; min-height: 22px; }
+  #cab-list .cab-tbl .cab-dot { width: 8px; height: 8px; }
+  #cab-list .cab-tbl .cab-mini { font-size: 14px; min-width: 26px; min-height: 24px; }
+  /* Кампанії, адсети й оголошення під кабінетом — на крок дрібніші за
+     сам кабінет: так рівні читаються без відступів. */
+  #cab-list .cab-tbl .cab-node > td { font-size: 12px; padding-top: 4px; padding-bottom: 4px; }
 }
 /* Слово «Sync» на кнопці — лише там, де для нього є місце. */
 .cab-sync-w { display: none; }
@@ -7444,7 +7524,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <button class="sb-item" data-nav="cabinets" onclick="navGo('cabinets')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M2 12h20"/></svg>
-        <span class="sb-lbl">Cabinets</span>
+        <span class="sb-lbl">FB LIVE</span>
         <span id="cab-badge" class="sb-badge" style="display:none"></span>
       </button>
       <button class="sb-item" data-nav="domains" onclick="navGo('domains')">
@@ -7515,7 +7595,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 15.11 22:48</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 16.11 10:50</div>
     </div>
   </aside>
 
@@ -8374,17 +8454,47 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
     <table class="text-left border-separate border-spacing-0" id="rb-table"></table>
   </div>
 </div>
-<!-- ═══════════ CABINETS ═══════════ -->
+<!-- ═══════════ FB LIVE (кабінети) ═══════════ -->
 <div id="cabinets-section" class="card p-5 rounded-3xl shadow-xl">
-  <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
-    <div>
-      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Cabinets</h2>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- Скільки відкручено за вибраний період. Кнопка, а не підпис:
-           натиснув — і замість зведеного в долари числа видно, з яких
-           валют воно складене. -->
+  <!-- ШАПКА В ОДИН РЯД, ТРИ ЧАСТИНИ: зліва — що це й скільки
+       відкручено, по центру — пошук, праворуч — інструменти.
+       «по центру пусте місце»: пошук стояв посередині ВІЛЬНОГО місця,
+       а не картки, і з'їжджав щоразу, коли сусіди мінялись у ширині.
+       Тепер ліва й права частини — рівні колонки сітки, і пошук
+       лягає рівно в центр картки (див. .cab-head у design.css).
+
+       Обгортки .cab-hl / .cab-hr на телефоні — display:contents: там
+       шапка згорнута в один ряд, і порядок задає order на самих
+       кнопках, ніби обгорток немає.
+
+       Кнопок періоду (Today / Yesterday / This month / Custom) тут
+       більше немає: сторінка — FB LIVE, тобто сьогодні. Інший day
+       дивляться календарем у вікні Stat. Day. -->
+  <div class="cab-head">
+    <div class="cab-hl">
+      <h2 class="cab-title text-lg font-black uppercase tracking-tight text-dynamic">FB LIVE</h2>
+      <!-- Скільки відкручено сьогодні. Кнопка, а не підпис: натиснув —
+           і замість зведеного в долари числа видно, з яких валют воно
+           складене. -->
       <button type="button" id="cab-sum" class="cab-sum" onclick="cabSumToggle()"></button>
+      <!-- Числа за day, згруповані по гео, кабінетах, funnelх і
+           креативах; у вікні ж і календар на минулі дні. Вікно, а не
+           панель: таблиці потрібна вся ширина. -->
+      <button type="button" id="cab-today-btn" onclick="tdToggle()" class="cab-rules"
+        title="The day’s numbers by geo, cabinet, funnel and creative — with a calendar for earlier days">Stat. Day</button>
+    </div>
+    <!-- Лише телефон: лупа відкриває пошук, Filters — решту
+         (групування, кнопки, статуси). -->
+    <button type="button" id="cab-q-btn" onclick="cabQToggle()" class="cab-rules cab-ico cab-m-only"
+      title="Search" aria-label="Search"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none"
+        stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7"
+        r="4.4"/><path d="M10.4 10.4l3.4 3.4"/></svg></button>
+    <button type="button" id="cab-flt-btn" onclick="cabFltToggle()" class="cab-rules cab-m-only"
+      aria-expanded="false" title="Grouping, tools and status filters"><span
+        id="cab-flt-lbl">Filters</span> <span class="cab-flt-car" aria-hidden="true">▾</span></button>
+    <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
+      class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
+    <div class="cab-hr">
       <select id="cab-group" onchange="cabSetGroup(this.value)"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
         <option value="agent">Group: agent</option>
@@ -8397,53 +8507,20 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
         <option value="card">Group: card</option>
         <option value="" selected>No grouping</option>
       </select>
-      <!-- Перемикача зрізу тут більше немає. Сторінка показує кабінети,
-           які бачить токен, і тільки їх; решта ховається, а рядок над
-           таблицею каже, скільки їх і як подивитись. Три кнопки замість
-           цього змушували щоразу вибирати те, що й так має бути за
-           замовчуванням. -->
-      <!-- Period, за який рахуємо витрати. Малюється з cabinets.js:
-           вибір і його підпис мають жити в одному місці, інакше
-           заголовок стовпчика колись розійдеться з тим, що в ньому. -->
-      <div id="cab-range" class="cab-range"></div>
-      <!-- Лише телефон: шапка там згорнута в один ряд. Лупа відкриває
-           пошук, Filters — решту (групування, кнопки, статуси). -->
-      <button type="button" id="cab-q-btn" onclick="cabQToggle()" class="cab-rules cab-ico cab-m-only"
-        title="Search" aria-label="Search"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none"
-          stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7"
-          r="4.4"/><path d="M10.4 10.4l3.4 3.4"/></svg></button>
-      <button type="button" id="cab-flt-btn" onclick="cabFltToggle()" class="cab-rules cab-m-only"
-        aria-expanded="false" title="Grouping, tools and status filters"><span
-          id="cab-flt-lbl">Filters</span> <span class="cab-flt-car" aria-hidden="true">▾</span></button>
-      <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
-        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
-      <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
-           ходять сюди. У налаштуваннях така сама лишається навмисно: щойно додав
-           токен — хочеться натиснути відразу, не йдучи нікуди. -->
-      <!-- Правила автопаузи — сюди, а не окремим пунктом меню: вони
-           про цей самий парк, і відкривати їх ходять звідси. Панеллю
-           праворуч, як і картка кабінета. -->
-      <!-- Які колонки показувати. Кнопка поруч із пошуком, а не в
-           налаштуваннях: вмикають їх тоді, коли дивляться в таблицю. -->
-      <!-- Іконкою, а не словом: у ряду вже три кнопки й два фільтри,
-           і три підписи поспіль читаються довше, ніж три значки. Що
-           саме робить кожна — у підказці під курсором. -->
-      <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules cab-ico"
-        title="Which columns to show" aria-label="Columns"><svg viewBox="0 0 16 16" aria-hidden="true"
-          fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.8" y="2.4" width="12.4"
-          height="11.2" rx="1.6"/><path d="M6.4 2.4v11.2M9.6 2.4v11.2"/></svg></button>
-      <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
-        title="Rules that switch off ads on their own">Rules</button>
-      <!-- Todayшні живі числа з останнього Sync now, згруповані по
-           гео, кабінетах, funnelх і креативах. Вікно, а не панель:
-           таблиці потрібна вся ширина. -->
-      <button type="button" id="cab-today-btn" onclick="tdToggle()" class="cab-rules"
-        title="Today’s live numbers from the last Sync now — by geo, cabinet, funnel and creative">Stat. Day</button>
-      <!-- Сторінки — поруч із правилами, бо це така сама панель про той
-           самий парк. Accountний шлях до коментарів лишається в картці
-           кабінета: він відповідає на інше питання. -->
-      <button type="button" id="cab-pages-btn" onclick="pgPanel()" class="cab-rules"
-        title="Pages your tokens reach, and the comments under them">Pages</button>
+      <!-- Три інструменти одним блоком, а не трьома окремими кнопками:
+           колонки, правила автопаузи й Сторінки — це «налаштувати й
+           подивитись поруч», і разом вони читаються як одна група, а
+           не як ще три рівноважні кнопки в ряду. -->
+      <div class="cab-tools">
+        <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules cab-ico"
+          title="Which columns to show" aria-label="Columns"><svg viewBox="0 0 16 16" aria-hidden="true"
+            fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.8" y="2.4" width="12.4"
+            height="11.2" rx="1.6"/><path d="M6.4 2.4v11.2M9.6 2.4v11.2"/></svg></button>
+        <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
+          title="Rules that switch off ads on their own">Rules</button>
+        <button type="button" id="cab-pages-btn" onclick="pgPanel()" class="cab-rules"
+          title="Pages your tokens reach, and the comments under them">Pages</button>
+      </div>
       <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
         title="Sync now — ask Facebook right now instead of waiting for the hourly run"
         aria-label="Sync now"><span class="cab-sync-lbl" aria-hidden="true">↻</span><span
@@ -17744,8 +17821,8 @@ document.addEventListener('keydown', e => {
                 <span class="set-label"><span class="set-ico">&#127912;</span>Creatives</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-creatives" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
-              <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк">
-                <span class="set-label"><span class="set-ico">&#128452;</span>Cabinets</span>
+              <label class="set-row set-toggle" data-setting="fb live cabinets кабінети акаунти парк">
+                <span class="set-label"><span class="set-ico">&#128452;</span>FB Live</span>
                 <span class="toggle-switch"><input type="checkbox" id="toggle-cabinets" checked onchange="updateVisibility()"><span class="toggle-slider"></span></span>
               </label>
               <label class="set-row set-toggle" data-setting="domains домени">
@@ -17916,7 +17993,7 @@ document.addEventListener('keydown', e => {
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-heatmap" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="creatives creative analyzer креатив"><span class="set-label">Creatives</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-creatives" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
-              <label class="set-row set-toggle" data-setting="cabinets кабінети акаунти парк"><span class="set-label">Cabinets</span>
+              <label class="set-row set-toggle" data-setting="fb live cabinets кабінети акаунти парк"><span class="set-label">FB Live</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-cabinets" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
               <label class="set-row set-toggle" data-setting="domains домени"><span class="set-label">Domains</span>
                 <span class="toggle-switch"><input type="checkbox" id="tl-show-domains" onchange="saveTeamLeadAccess()"><span class="toggle-slider"></span></span></label>
@@ -17989,7 +18066,7 @@ document.addEventListener('keydown', e => {
             </p>
             <p class="set-hint opacity-60">
               What those tokens actually pull &mdash; cabinet state, today&#39;s spend, what is live inside &mdash; lives on the
-              Cabinets page, together with the Sync now button. Name a token
+              FB Live page, together with the Sync now button. Name a token
               <span class="font-mono">Agent_Browser_BMid</span> and the dashboard fills in the agent, the browser number and
               the BM for every cabinet it sees.
             </p>
@@ -25003,8 +25080,8 @@ function renderAccountsModal() {
      однаково, а різниця між ними — рівно та вада, з якої все
      почалось. */
   const warn = accOwnCol ? '' : `<div class="acc-warn">
-      <b>Statuses here are still shared with Cabinets.</b>
-      The database has no acc_status column yet, so this window reads the same one as the Cabinets page — and the archive from it shows up here. Run this in Supabase → SQL Editor:
+      <b>Statuses here are still shared with FB Live.</b>
+      The database has no acc_status column yet, so this window reads the same one as the FB Live page — and the archive from it shows up here. Run this in Supabase → SQL Editor:
       <code>ALTER TABLE public.accounts_mapping ADD COLUMN IF NOT EXISTS acc_status text;</code>
     </div>`;
 
@@ -25108,7 +25185,7 @@ function renderAccountsModal() {
            невідомо звідки, і казати про нього «це з Cabinets» —
            здогадка, яких ми тут якраз і позбуваємось. */
         const why = ACC_SEEN[st]
-          ? 'This is not a status of this window — it was set on the Cabinets page'
+          ? 'This is not a status of this window — it was set on the FB Live page'
           : 'This status is not in the list below — it came from somewhere else';
         return `<div class="acc-row ${GRID}" style="${COLS}">
           <span class="text-[13px] font-black text-white font-mono truncate" title="${r.account_id}">${r.account_id}</span>
@@ -26788,7 +26865,7 @@ window.fbAdd = async function () {
   /* fbSync сам пише підсумок через say. Додаємо лише те, чого він не
      знає: куди тепер дивитись і що сторінку треба перечитати. */
   if (r && r.accounts) {
-    say(out.innerHTML + '<br><span class="opacity-60">The cabinets are in Cabinets now — '
+    say(out.innerHTML + '<br><span class="opacity-60">The cabinets are in FB Live now — '
       + 'reload that page if it is already open.</span>', 'var(--ok)');
   }
   fbLoad();
@@ -28711,11 +28788,15 @@ function cabPopHide() {
    розкиданого по світу, край періоду може розійтись на добу — і це
    чесніше, ніж зводити все до однієї дати, якої немає в жодному
    звіті Facebook. */
+/* СТОРІНКА — FB LIVE, ТОБТО СЬОГОДНІ. Кнопки Today / Yesterday / This
+   month / Custom із шапки прибрано на прохання; інший day дивляться
+   календарем у вікні Stat. Day (today.js). Збережений колись у
+   браузері вибір більше не читаємо: людина з «Yesterday» у
+   localStorage лишилась би на вчорашніх числах без жодної кнопки,
+   якою з них вийти. Сам cabRange і функції довкола нього лишаються —
+   на них стоїть уся арифметика «day у поясі кабінета». */
 let cabRange = { key: 'today', since: '', until: '' };
-try {
-  const raw = JSON.parse(localStorage.getItem('cab_range') || 'null');
-  if (raw && raw.key) cabRange = { key: raw.key, since: raw.since || '', until: raw.until || '' };
-} catch (e) {}
+try { localStorage.removeItem('cab_range'); } catch (e) {}
 
 /* Пресети «7 days» і «30 days» прибрано на прохання: дивляться сюди
    майже завжди за сьогодні, а довші відрізки лишились у Custom, де їх
@@ -28767,25 +28848,6 @@ function cabRangeLabel() {
   const [a, b] = cabRangeDates();
   return a === b ? cabNiceDay(a) : cabNiceDay(a) + ' \u2013 ' + cabNiceDay(b);
 }
-
-window.cabSetRange = async function (key) {
-  cabRange = { key, since: cabRange.since, until: cabRange.until };
-  if (key === 'custom' && !cabRange.since && !cabRange.until) {
-    cabRange.since = cabDay(6);
-    cabRange.until = cabDay(0);
-  }
-  try { localStorage.setItem('cab_range', JSON.stringify(cabRange)); } catch (e) {}
-  await cabDaysLoad();
-  cabRender();
-};
-
-window.cabSetRangeDay = async function (which, value) {
-  cabRange = { key: 'custom', since: cabRange.since, until: cabRange.until };
-  cabRange[which] = value || '';
-  try { localStorage.setItem('cab_range', JSON.stringify(cabRange)); } catch (e) {}
-  await cabDaysLoad();
-  cabRender();
-};
 
 /* Те, що можна вивести з назви токена. Формат назви твій:
    Агент_Номербраузера_idBM. Facebook про агента й браузер не знає
@@ -30397,33 +30459,6 @@ function cabRender() {
       ? (cabFilter[0].toUpperCase() + cabFilter.slice(1)).replace(/_/g, ' ') : 'Filters';
     cabFltInit();
   }
-
-  /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:
-     підпис на кнопці, заголовок стовпчика й число в ньому беруться з
-     одного cabRange, і розійтись їм нема як. */
-  const rng = document.getElementById('cab-range');
-  if (rng) {
-    const [a, b] = cabRangeDates();
-    const rb = (k, l, tip) => `<button type="button" class="${cabRange.key === k ? 'is-on' : ''}"
-        onclick="cabSetRange('${k}')"${tip ? ` title="${cabEsc(tip)}"` : ''}>${cabEsc(l)}</button>`;
-    /* На телефоні чотири кнопки періоду — це цілий ряд шапки. Там той
-       самий вибір стоїть рідним списком; який із двох видно, вирішує CSS. */
-    const rsel = `<select class="cab-range-m" aria-label="Period" onchange="cabSetRange(this.value)">${
-        CAB_RANGES.concat([['custom', 'Custom']]).map(r =>
-          `<option value="${r[0]}"${cabRange.key === r[0] ? ' selected' : ''}>${cabEsc(r[1])}</option>`).join('')
-      }</select>`;
-    rng.innerHTML = rsel + `<div class="cab-srcsel">${
-        CAB_RANGES.map(r => rb(r[0], r[1])).join('')
-      }${rb('custom', 'Custom', 'Any two dates \u2014 history goes as deep as the sync has been running')}</div>`
-      + (cabRange.key === 'custom' ? `<span class="cab-range-days">
-          <input type="date" value="${a}" max="${cabDay(0)}"
-                 onchange="cabSetRangeDay('since', this.value)">
-          <span>\u2013</span>
-          <input type="date" value="${b}" max="${cabDay(0)}"
-                 onchange="cabSetRangeDay('until', this.value)">
-        </span>` : '');
-  }
-
 
   if (!shown.length) {
     /* «Nothing here» на порожньому зрізі — найгірша з відповідей:
@@ -38269,7 +38304,9 @@ async function psLoadPics() {
 
 <script>
 /* ══════════════════════════════════════════════════════════════════
-   TODAY — ЖИВІ ЧИСЛА З ОСТАННЬОГО SYNC NOW, ОДНІЄЮ ТАБЛИЦЕЮ
+   STAT. DAY — ЧИСЛА ЗА ДЕНЬ ОДНІЄЮ ТАБЛИЦЕЮ
+   (сьогодні — живі з останнього Sync now; минулі дні — з календаря,
+   див. «КАЛЕНДАР» нижче)
 
    «мені тільки лайв дані які тягнуться по апі … і кожен раз коли
    оновлюю каби оновлювати інформацію. Групування по гео, кабам,
@@ -38514,9 +38551,133 @@ function tdTree(rows, levels) {
   return html;
 }
 
+/* ═══ КАЛЕНДАР: БУДЬ-ЯКИЙ МИНУЛИЙ ДЕНЬ ═══
+
+   «кнопки TODAY YESTERDAY та інші видалимо. В модальному вікні STAT
+   DAY туди додамо календар замість sync now».
+
+   Today — живий знімок fb_ad_today: по оголошеннях, з лідами,
+   funnelми й креативами. Знімок ОДИН, і кожен Sync now його
+   переписує, тож за вчора в ньому вже нічого немає. Минулий day
+   лежить лише у fb_spend_daily — по кабінетах: спенд, покази, кліки.
+   Тому за минулий day вікно показує рівно це, і каже про це прямо:
+   порожні колонки лідів і депозитів на вчорашній даті читались би як
+   «учора нічого не прийшло».
+
+   Day у fb_spend_daily — у поясі САМОГО кабінета, як його бачить
+   Facebook; так само рахує й сторінка. */
+let tdDate = '';                       // '' — сьогодні; інакше YYYY-MM-DD
+let tdHist = { day: '', rows: [], err: '' };
+const tdNow = () => tdDay(Date.now());
+const tdShift = (d, n) => {
+  const t = new Date(d + 'T12:00:00');   // полудень: перехід на літній time не зсуне дату
+  t.setDate(t.getDate() + n);
+  return tdDay(t.getTime());
+};
+const tdNice = d => {
+  const t = new Date(d + 'T12:00:00');
+  return isNaN(t) ? d : t.toLocaleDateString('en-GB',
+    { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+async function tdHistLoad(day) {
+  const out = { day, rows: [], err: '' };
+  try {
+    const raw = await sbFetchAll('fb_spend_daily', q => q.eq('day', day));
+    out.rows = raw.filter(r => !r.team_name || r.team_name === currentTeam).map(r => {
+      const acc = String(r.account_id || '').replace(/^act_/, '');
+      const sp = Number(r.spend) || 0;
+      /* У долари — тим самим курсом, що й сума на сторінці. Курсу
+         немає — лишаємо як є: число без перерахунку чесніше за нуль. */
+      const usd = typeof fxToUsd === 'function' ? fxToUsd(sp, r.currency) : sp;
+      return { acc, cab: (tdMaps && tdMaps.cab.get(acc)) || '', br: (tdMaps && tdMaps.br.get(acc)) || '',
+        s: usd == null ? sp : usd, im: Number(r.impressions) || 0, lc: Number(r.clicks) || 0,
+        l: 0, i: 0, r: 0, d: 0 };
+    }).filter(x => x.s > 0 || x.im > 0);
+  } catch (e) {
+    out.err = /does not exist|42P01|schema cache/i.test(e.message || '')
+      ? 'the fb_spend_daily table is not set up yet — run its block from FB_SYNC.sql'
+      : (e.message || 'error');
+  }
+  /* Поки чекали відповіді, могли вибрати інший day — чужу відповідь
+     на екран не кладемо. */
+  if (tdDate === day) tdHist = out;
+}
+
+/* Стан календаря в шапці: дата в полі, «далі» гасне на сьогодні,
+   кнопка Today є лише тоді, коли ми не на сьогодні. Режими дерева й
+   Expand all на минулому дні ховаються: там один рівень — кабінети. */
+function tdCalPaint() {
+  const ov = document.getElementById('td-ov');
+  if (!ov) return;
+  const today = tdNow(), inp = ov.querySelector('#td-date');
+  inp.max = today;
+  inp.value = tdDate || today;
+  ov.querySelector('[data-d="1"]').disabled = !tdDate;
+  ov.querySelector('.td-cal-now').classList.toggle('hidden', !tdDate);
+  ov.querySelector('#td-mode').classList.toggle('is-off', !!tdDate);
+  ov.querySelector('#td-exp').classList.toggle('is-off', !!tdDate);
+  ov.querySelector('#td-sub').textContent = tdDate ? '· ' + tdNice(tdDate) : '· live from Facebook';
+}
+
+window.tdSetDate = async function (day) {
+  const today = tdNow();
+  day = /^\d{4}-\d{2}-\d{2}$/.test(String(day || '')) && day < today ? day : '';
+  tdDate = day;
+  tdCalPaint();
+  if (!day) { tdRender(); return; }
+  document.getElementById('td-body').innerHTML = '<p class="td-empty">Loading…</p>';
+  await tdHistLoad(day);
+  if (tdDate === day) tdRender();
+};
+
+function tdRenderHist() {
+  const box = document.getElementById('td-body');
+  const day = tdDate;
+  document.getElementById('td-when').innerHTML =
+    'Cabinet totals for the day, as Facebook reported them';
+  if (tdHist.day !== day) { box.innerHTML = '<p class="td-empty">Loading…</p>'; return; }
+  if (tdHist.err) {
+    document.getElementById('td-kpis').innerHTML = '';
+    box.innerHTML = '<p class="td-empty">Could not read ' + tdEsc(tdNice(day)) + ': ' + tdEsc(tdHist.err) + '</p>';
+    return;
+  }
+  const rows = tdHist.rows, t = tdSum(rows);
+  const ctr = t.im > 0 ? (Math.round(t.lc / t.im * 10000) / 100) + '%' : '—';
+  const hero = [
+    [tdMoney(t.s), 'Spend · ' + tdEsc(tdNice(day))],
+    [t.lc.toLocaleString('en-US'), 'Clicks · CPC ' + tdPer(t.s, t.lc)],
+    [t.im.toLocaleString('en-US'), 'Impressions · CTR ' + ctr]
+  ].map(([v, l]) => `<div class="td-hero"><div class="td-hv">${v}</div><div class="td-hl">${l}</div></div>`).join('');
+  document.getElementById('td-kpis').innerHTML = '<div class="td-heroes">' + hero + '</div>'
+    + '<div class="td-facts"><span>' + rows.length + ' cabinets</span>'
+    + '<span class="td-note">Leads, funnels and creatives are kept for today only — '
+    + 'earlier days hold cabinet totals. Clicks here are all clicks, not link clicks.</span></div>';
+  if (!rows.length) {
+    box.innerHTML = '<p class="td-empty">Nothing was spent on ' + tdEsc(tdNice(day))
+      + ' — or the sync was not running that day.</p>';
+    return;
+  }
+  const num = v => v > 0 ? v.toLocaleString('en-US') : '<span class="td-dim">—</span>';
+  const cells = x => `<td>${tdMoney(x.s)}</td><td>${num(x.im)}</td>`
+    + `<td>${x.im > 0 ? (Math.round(x.lc / x.im * 10000) / 100) + '%' : '<span class="td-dim">—</span>'}</td>`
+    + `<td>${x.im > 0 ? tdMoney(x.s / x.im * 1000) : '<span class="td-dim">—</span>'}</td>`
+    + `<td>${num(x.lc)}</td><td>${tdPer(x.s, x.lc)}</td>`;
+  const share = s => (t.s > 0 ? Math.max(0, Math.min(100, Math.round(s / t.s * 1000) / 10)) : 0);
+  box.innerHTML = '<table class="td-tbl td-hist"><thead><tr><th>Cabinet</th>'
+    + ['Spend', 'Impr.', 'CTR', 'CPM', 'Clicks', 'CPC'].map(c => '<th>' + c + '</th>').join('')
+    + '</tr></thead><tbody>'
+    + rows.slice().sort((a, b) => b.s - a.s).map(x =>
+        `<tr class="td-l1"><td style="padding-left:10px">${tdCab(x)}`
+        + (x.cab ? ' <span class="td-dim">· ' + tdEsc(x.cab) + '</span>' : '')
+        + `<div class="td-bar"><i style="width:${share(x.s)}%"></i></div></td>${cells(x)}</tr>`).join('')
+    + '<tr class="td-tot"><td>Total</td>' + cells(t) + '</tr></tbody></table>';
+}
+
 function tdRender() {
   const box = document.getElementById('td-body');
   if (!box) return;
+  if (tdDate) { tdRenderHist(); return; }
   if (typeof cabSnapErr !== 'undefined' && cabSnapErr) {
     box.innerHTML = '<p class="td-empty">Could not read today’s numbers: ' + tdEsc(cabSnapErr) + '</p>';
     return;
@@ -38536,7 +38697,7 @@ function tdRender() {
     : (sameDay ? 'Last Sync now: <b>' + (mins < 1 ? 'just now' : mins < 60 ? mins + ' min ago'
         : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min ago') + '</b>'
       : '<span class="td-warn">⚠ Numbers are from ' + new Date(newest).toLocaleDateString('en-GB')
-        + ' — press Sync now for today</span>')
+        + ' — close this window and press Sync for today</span>')
     + (oldCabs ? ' <span class="td-dim" title="These cabinets were last synced on an earlier day;'
         + ' their old numbers are not counted">· ' + oldCabs + ' cabinet(s) not synced today — hidden</span>' : '');
 
@@ -38598,7 +38759,7 @@ function tdEnsure() {
   ov.id = 'td-ov'; ov.className = 'td-ov hidden';
   ov.innerHTML = `<div class="td-win" role="dialog" aria-label="Stat. Day">
     <div class="td-top">
-      <h3 class="td-h">Stat. Day <span class="td-dim">· live from Facebook</span></h3>
+      <h3 class="td-h">Stat. Day <span class="td-dim" id="td-sub">· live from Facebook</span></h3>
       <span id="td-when" class="td-when"></span>
       <div class="td-seg" id="td-mode">
         <button type="button" data-m="tree" class="is-on">Geo › Cabinet › Funnel › Creative</button>
@@ -38608,7 +38769,16 @@ function tdEnsure() {
       <div class="td-seg" id="td-exp">
         <button type="button" data-e="1">Expand all</button><button type="button" data-e="0">Collapse</button>
       </div>
-      <button type="button" class="td-sync" onclick="cabSync()" title="Sync now">↻ Sync now</button>
+      <!-- Календар на місці кнопки Sync now. Синхронізація лишилась
+           одна — головною кнопкою на сторінці; друга така сама у вікні
+           лише питала «а котра з них справжня». Стрілки гортають по
+           дню: «що було вчора» — це один клік, а не вибір дати. -->
+      <div class="td-cal" id="td-cal">
+        <button type="button" data-d="-1" title="Previous day" aria-label="Previous day">‹</button>
+        <input type="date" id="td-date" aria-label="Day" title="Pick a day">
+        <button type="button" data-d="1" title="Next day" aria-label="Next day">›</button>
+        <button type="button" class="td-cal-now hidden" data-d="0" title="Back to today’s live numbers">Today</button>
+      </div>
       <button type="button" class="td-close" onclick="tdToggle(false)" aria-label="Close">✕</button>
     </div>
     <div id="td-kpis" class="td-kpis"></div>
@@ -38621,6 +38791,17 @@ function tdEnsure() {
     tdMode = b.dataset.m; tdOpenSet.clear();
     ov.querySelectorAll('#td-mode button').forEach(x => x.classList.toggle('is-on', x === b));
     tdRender();
+  });
+  ov.querySelector('#td-cal').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    const n = Number(b.dataset.d);
+    tdSetDate(n ? tdShift(tdDate || tdNow(), n) : '');
+  });
+  ov.querySelector('#td-date').addEventListener('change', e => tdSetDate(e.target.value));
+  /* Клік будь-де по полю відкриває календар, а не ставить курсор у
+     «day/місяць/рік»: сюди приходять вибрати day, а не друкувати. */
+  ov.querySelector('#td-date').addEventListener('click', e => {
+    try { e.target.showPicker(); } catch (err) { /* старий браузер — лишається рідна поведінка */ }
   });
   ov.querySelector('#td-exp').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -38652,6 +38833,10 @@ window.tdToggle = async function (want) {
   ov.classList.toggle('hidden', !open);
   document.getElementById('cab-today-btn')?.classList.toggle('is-on', open);
   if (!open) return;
+  /* Відкривається завжди на сьогодні: вчорашня дата, лишена з минулого
+     разу, показала б учорашні числа під кнопкою «Stat. Day». */
+  tdDate = '';
+  tdCalPaint();
   document.getElementById('td-body').innerHTML = '<p class="td-empty">Loading…</p>';
   await tdMapsLoad();
   /* Знімка ще немає (сторінку відкрили щойно) — читаємо; інакше беремо
@@ -43097,7 +43282,7 @@ window.aqAsk = async function () {
     ['Dashboard',      'nav:',                      'Page'],
     ['Heatmap',        'nav:heatmap',    'Page'],
     ['Creatives',      'nav:creatives',  'Page'],
-    ['Cabinets',       'nav:cabinets',   'Page'],
+    ['FB Live',        'nav:cabinets',   'Page'],
     ['Domains',        'nav:domains',    'Page'],
     ['Report Builder', 'nav:reports',     'Page'],
     ['Tasks',          'fn:toggleTaskModal',             'Tool'],

@@ -580,11 +580,15 @@ function cabPopHide() {
    розкиданого по світу, край періоду може розійтись на добу — і це
    чесніше, ніж зводити все до однієї дати, якої немає в жодному
    звіті Facebook. */
+/* СТОРІНКА — FB LIVE, ТОБТО СЬОГОДНІ. Кнопки Today / Yesterday / This
+   month / Custom із шапки прибрано на прохання; інший день дивляться
+   календарем у вікні Stat. Day (today.js). Збережений колись у
+   браузері вибір більше не читаємо: людина з «Yesterday» у
+   localStorage лишилась би на вчорашніх числах без жодної кнопки,
+   якою з них вийти. Сам cabRange і функції довкола нього лишаються —
+   на них стоїть уся арифметика «день у поясі кабінета». */
 let cabRange = { key: 'today', since: '', until: '' };
-try {
-  const raw = JSON.parse(localStorage.getItem('cab_range') || 'null');
-  if (raw && raw.key) cabRange = { key: raw.key, since: raw.since || '', until: raw.until || '' };
-} catch (e) {}
+try { localStorage.removeItem('cab_range'); } catch (e) {}
 
 /* Пресети «7 days» і «30 days» прибрано на прохання: дивляться сюди
    майже завжди за сьогодні, а довші відрізки лишились у Custom, де їх
@@ -636,25 +640,6 @@ function cabRangeLabel() {
   const [a, b] = cabRangeDates();
   return a === b ? cabNiceDay(a) : cabNiceDay(a) + ' \u2013 ' + cabNiceDay(b);
 }
-
-window.cabSetRange = async function (key) {
-  cabRange = { key, since: cabRange.since, until: cabRange.until };
-  if (key === 'custom' && !cabRange.since && !cabRange.until) {
-    cabRange.since = cabDay(6);
-    cabRange.until = cabDay(0);
-  }
-  try { localStorage.setItem('cab_range', JSON.stringify(cabRange)); } catch (e) {}
-  await cabDaysLoad();
-  cabRender();
-};
-
-window.cabSetRangeDay = async function (which, value) {
-  cabRange = { key: 'custom', since: cabRange.since, until: cabRange.until };
-  cabRange[which] = value || '';
-  try { localStorage.setItem('cab_range', JSON.stringify(cabRange)); } catch (e) {}
-  await cabDaysLoad();
-  cabRender();
-};
 
 /* Те, що можна вивести з назви токена. Формат назви твій:
    Агент_Номербраузера_idBM. Facebook про агента й браузер не знає
@@ -2266,33 +2251,6 @@ function cabRender() {
       ? (cabFilter[0].toUpperCase() + cabFilter.slice(1)).replace(/_/g, ' ') : 'Filters';
     cabFltInit();
   }
-
-  /* Перемикач періоду. Малюємо тут, поруч із рештою стану сторінки:
-     підпис на кнопці, заголовок стовпчика й число в ньому беруться з
-     одного cabRange, і розійтись їм нема як. */
-  const rng = document.getElementById('cab-range');
-  if (rng) {
-    const [a, b] = cabRangeDates();
-    const rb = (k, l, tip) => `<button type="button" class="${cabRange.key === k ? 'is-on' : ''}"
-        onclick="cabSetRange('${k}')"${tip ? ` title="${cabEsc(tip)}"` : ''}>${cabEsc(l)}</button>`;
-    /* На телефоні чотири кнопки періоду — це цілий ряд шапки. Там той
-       самий вибір стоїть рідним списком; який із двох видно, вирішує CSS. */
-    const rsel = `<select class="cab-range-m" aria-label="Period" onchange="cabSetRange(this.value)">${
-        CAB_RANGES.concat([['custom', 'Custom']]).map(r =>
-          `<option value="${r[0]}"${cabRange.key === r[0] ? ' selected' : ''}>${cabEsc(r[1])}</option>`).join('')
-      }</select>`;
-    rng.innerHTML = rsel + `<div class="cab-srcsel">${
-        CAB_RANGES.map(r => rb(r[0], r[1])).join('')
-      }${rb('custom', 'Custom', 'Any two dates \u2014 history goes as deep as the sync has been running')}</div>`
-      + (cabRange.key === 'custom' ? `<span class="cab-range-days">
-          <input type="date" value="${a}" max="${cabDay(0)}"
-                 onchange="cabSetRangeDay('since', this.value)">
-          <span>\u2013</span>
-          <input type="date" value="${b}" max="${cabDay(0)}"
-                 onchange="cabSetRangeDay('until', this.value)">
-        </span>` : '');
-  }
-
 
   if (!shown.length) {
     /* «Nothing here» на порожньому зрізі — найгірша з відповідей:

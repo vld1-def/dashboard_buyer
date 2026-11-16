@@ -25,13 +25,13 @@ LONG = {
  # НОВИЙ рядок інтерфейсу потребує запису тут — на цьому шві проєкт
  # ловився вже чотири рази, і щоразу це був один український рядок
  # серед англійських.
- "Статуси тут поки спільні з Cabinets.": "Statuses here are still shared with Cabinets.",
+ "Статуси тут поки спільні з Cabinets.": "Statuses here are still shared with FB Live.",
  "У базі ще немає колонки acc_status, тож вікно читає ту саму, що й сторінка кабінетів — і архів із неї видно тут. Виконай у Supabase → SQL Editor:":
-   "The database has no acc_status column yet, so this window reads the same one as the Cabinets page \u2014 and the archive from it shows up here. Run this in Supabase \u2192 SQL Editor:",
+   "The database has no acc_status column yet, so this window reads the same one as the FB Live page \u2014 and the archive from it shows up here. Run this in Supabase \u2192 SQL Editor:",
  "Цього статусу немає в списку нижче — він прийшов звідкись іще":
    "This status is not in the list below \u2014 it came from somewhere else",
  "Це не статус цього вікна — його поставили на сторінці Cabinets":
-   "This is not a status of this window \u2014 it was set on the Cabinets page",
+   "This is not a status of this window \u2014 it was set on the FB Live page",
  "Нічого не зійшлось: ": "Nothing matched: ",
  ". Перемкни стовпці вище.": ". Switch the columns above.",
  " рядків із файлу · ": " rows from the file · ",

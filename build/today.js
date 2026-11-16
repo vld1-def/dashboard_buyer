@@ -1,6 +1,8 @@
 <script>
 /* ══════════════════════════════════════════════════════════════════
-   TODAY — ЖИВІ ЧИСЛА З ОСТАННЬОГО SYNC NOW, ОДНІЄЮ ТАБЛИЦЕЮ
+   STAT. DAY — ЧИСЛА ЗА ДЕНЬ ОДНІЄЮ ТАБЛИЦЕЮ
+   (сьогодні — живі з останнього Sync now; минулі дні — з календаря,
+   див. «КАЛЕНДАР» нижче)
 
    «мені тільки лайв дані які тягнуться по апі … і кожен раз коли
    оновлюю каби оновлювати інформацію. Групування по гео, кабам,
@@ -245,9 +247,133 @@ function tdTree(rows, levels) {
   return html;
 }
 
+/* ═══ КАЛЕНДАР: БУДЬ-ЯКИЙ МИНУЛИЙ ДЕНЬ ═══
+
+   «кнопки TODAY YESTERDAY та інші видалимо. В модальному вікні STAT
+   DAY туди додамо календар замість sync now».
+
+   Сьогодні — живий знімок fb_ad_today: по оголошеннях, з лідами,
+   воронками й креативами. Знімок ОДИН, і кожен Sync now його
+   переписує, тож за вчора в ньому вже нічого немає. Минулий день
+   лежить лише у fb_spend_daily — по кабінетах: спенд, покази, кліки.
+   Тому за минулий день вікно показує рівно це, і каже про це прямо:
+   порожні колонки лідів і депозитів на вчорашній даті читались би як
+   «учора нічого не прийшло».
+
+   День у fb_spend_daily — у поясі САМОГО кабінета, як його бачить
+   Facebook; так само рахує й сторінка. */
+let tdDate = '';                       // '' — сьогодні; інакше YYYY-MM-DD
+let tdHist = { day: '', rows: [], err: '' };
+const tdNow = () => tdDay(Date.now());
+const tdShift = (d, n) => {
+  const t = new Date(d + 'T12:00:00');   // полудень: перехід на літній час не зсуне дату
+  t.setDate(t.getDate() + n);
+  return tdDay(t.getTime());
+};
+const tdNice = d => {
+  const t = new Date(d + 'T12:00:00');
+  return isNaN(t) ? d : t.toLocaleDateString('en-GB',
+    { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+async function tdHistLoad(day) {
+  const out = { day, rows: [], err: '' };
+  try {
+    const raw = await sbFetchAll('fb_spend_daily', q => q.eq('day', day));
+    out.rows = raw.filter(r => !r.team_name || r.team_name === currentTeam).map(r => {
+      const acc = String(r.account_id || '').replace(/^act_/, '');
+      const sp = Number(r.spend) || 0;
+      /* У долари — тим самим курсом, що й сума на сторінці. Курсу
+         немає — лишаємо як є: число без перерахунку чесніше за нуль. */
+      const usd = typeof fxToUsd === 'function' ? fxToUsd(sp, r.currency) : sp;
+      return { acc, cab: (tdMaps && tdMaps.cab.get(acc)) || '', br: (tdMaps && tdMaps.br.get(acc)) || '',
+        s: usd == null ? sp : usd, im: Number(r.impressions) || 0, lc: Number(r.clicks) || 0,
+        l: 0, i: 0, r: 0, d: 0 };
+    }).filter(x => x.s > 0 || x.im > 0);
+  } catch (e) {
+    out.err = /does not exist|42P01|schema cache/i.test(e.message || '')
+      ? 'the fb_spend_daily table is not set up yet — run its block from FB_SYNC.sql'
+      : (e.message || 'error');
+  }
+  /* Поки чекали відповіді, могли вибрати інший день — чужу відповідь
+     на екран не кладемо. */
+  if (tdDate === day) tdHist = out;
+}
+
+/* Стан календаря в шапці: дата в полі, «далі» гасне на сьогодні,
+   кнопка Today є лише тоді, коли ми не на сьогодні. Режими дерева й
+   Expand all на минулому дні ховаються: там один рівень — кабінети. */
+function tdCalPaint() {
+  const ov = document.getElementById('td-ov');
+  if (!ov) return;
+  const today = tdNow(), inp = ov.querySelector('#td-date');
+  inp.max = today;
+  inp.value = tdDate || today;
+  ov.querySelector('[data-d="1"]').disabled = !tdDate;
+  ov.querySelector('.td-cal-now').classList.toggle('hidden', !tdDate);
+  ov.querySelector('#td-mode').classList.toggle('is-off', !!tdDate);
+  ov.querySelector('#td-exp').classList.toggle('is-off', !!tdDate);
+  ov.querySelector('#td-sub').textContent = tdDate ? '· ' + tdNice(tdDate) : '· live from Facebook';
+}
+
+window.tdSetDate = async function (day) {
+  const today = tdNow();
+  day = /^\d{4}-\d{2}-\d{2}$/.test(String(day || '')) && day < today ? day : '';
+  tdDate = day;
+  tdCalPaint();
+  if (!day) { tdRender(); return; }
+  document.getElementById('td-body').innerHTML = '<p class="td-empty">Loading…</p>';
+  await tdHistLoad(day);
+  if (tdDate === day) tdRender();
+};
+
+function tdRenderHist() {
+  const box = document.getElementById('td-body');
+  const day = tdDate;
+  document.getElementById('td-when').innerHTML =
+    'Cabinet totals for the day, as Facebook reported them';
+  if (tdHist.day !== day) { box.innerHTML = '<p class="td-empty">Loading…</p>'; return; }
+  if (tdHist.err) {
+    document.getElementById('td-kpis').innerHTML = '';
+    box.innerHTML = '<p class="td-empty">Could not read ' + tdEsc(tdNice(day)) + ': ' + tdEsc(tdHist.err) + '</p>';
+    return;
+  }
+  const rows = tdHist.rows, t = tdSum(rows);
+  const ctr = t.im > 0 ? (Math.round(t.lc / t.im * 10000) / 100) + '%' : '—';
+  const hero = [
+    [tdMoney(t.s), 'Spend · ' + tdEsc(tdNice(day))],
+    [t.lc.toLocaleString('en-US'), 'Clicks · CPC ' + tdPer(t.s, t.lc)],
+    [t.im.toLocaleString('en-US'), 'Impressions · CTR ' + ctr]
+  ].map(([v, l]) => `<div class="td-hero"><div class="td-hv">${v}</div><div class="td-hl">${l}</div></div>`).join('');
+  document.getElementById('td-kpis').innerHTML = '<div class="td-heroes">' + hero + '</div>'
+    + '<div class="td-facts"><span>' + rows.length + ' cabinets</span>'
+    + '<span class="td-note">Leads, funnels and creatives are kept for today only — '
+    + 'earlier days hold cabinet totals. Clicks here are all clicks, not link clicks.</span></div>';
+  if (!rows.length) {
+    box.innerHTML = '<p class="td-empty">Nothing was spent on ' + tdEsc(tdNice(day))
+      + ' — or the sync was not running that day.</p>';
+    return;
+  }
+  const num = v => v > 0 ? v.toLocaleString('en-US') : '<span class="td-dim">—</span>';
+  const cells = x => `<td>${tdMoney(x.s)}</td><td>${num(x.im)}</td>`
+    + `<td>${x.im > 0 ? (Math.round(x.lc / x.im * 10000) / 100) + '%' : '<span class="td-dim">—</span>'}</td>`
+    + `<td>${x.im > 0 ? tdMoney(x.s / x.im * 1000) : '<span class="td-dim">—</span>'}</td>`
+    + `<td>${num(x.lc)}</td><td>${tdPer(x.s, x.lc)}</td>`;
+  const share = s => (t.s > 0 ? Math.max(0, Math.min(100, Math.round(s / t.s * 1000) / 10)) : 0);
+  box.innerHTML = '<table class="td-tbl td-hist"><thead><tr><th>Cabinet</th>'
+    + ['Spend', 'Impr.', 'CTR', 'CPM', 'Clicks', 'CPC'].map(c => '<th>' + c + '</th>').join('')
+    + '</tr></thead><tbody>'
+    + rows.slice().sort((a, b) => b.s - a.s).map(x =>
+        `<tr class="td-l1"><td style="padding-left:10px">${tdCab(x)}`
+        + (x.cab ? ' <span class="td-dim">· ' + tdEsc(x.cab) + '</span>' : '')
+        + `<div class="td-bar"><i style="width:${share(x.s)}%"></i></div></td>${cells(x)}</tr>`).join('')
+    + '<tr class="td-tot"><td>Total</td>' + cells(t) + '</tr></tbody></table>';
+}
+
 function tdRender() {
   const box = document.getElementById('td-body');
   if (!box) return;
+  if (tdDate) { tdRenderHist(); return; }
   if (typeof cabSnapErr !== 'undefined' && cabSnapErr) {
     box.innerHTML = '<p class="td-empty">Could not read today’s numbers: ' + tdEsc(cabSnapErr) + '</p>';
     return;
@@ -267,7 +393,7 @@ function tdRender() {
     : (sameDay ? 'Last Sync now: <b>' + (mins < 1 ? 'just now' : mins < 60 ? mins + ' min ago'
         : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min ago') + '</b>'
       : '<span class="td-warn">⚠ Numbers are from ' + new Date(newest).toLocaleDateString('en-GB')
-        + ' — press Sync now for today</span>')
+        + ' — close this window and press Sync for today</span>')
     + (oldCabs ? ' <span class="td-dim" title="These cabinets were last synced on an earlier day;'
         + ' their old numbers are not counted">· ' + oldCabs + ' cabinet(s) not synced today — hidden</span>' : '');
 
@@ -329,7 +455,7 @@ function tdEnsure() {
   ov.id = 'td-ov'; ov.className = 'td-ov hidden';
   ov.innerHTML = `<div class="td-win" role="dialog" aria-label="Stat. Day">
     <div class="td-top">
-      <h3 class="td-h">Stat. Day <span class="td-dim">· live from Facebook</span></h3>
+      <h3 class="td-h">Stat. Day <span class="td-dim" id="td-sub">· live from Facebook</span></h3>
       <span id="td-when" class="td-when"></span>
       <div class="td-seg" id="td-mode">
         <button type="button" data-m="tree" class="is-on">Geo › Cabinet › Funnel › Creative</button>
@@ -339,7 +465,16 @@ function tdEnsure() {
       <div class="td-seg" id="td-exp">
         <button type="button" data-e="1">Expand all</button><button type="button" data-e="0">Collapse</button>
       </div>
-      <button type="button" class="td-sync" onclick="cabSync()" title="Sync now">↻ Sync now</button>
+      <!-- Календар на місці кнопки Sync now. Синхронізація лишилась
+           одна — головною кнопкою на сторінці; друга така сама у вікні
+           лише питала «а котра з них справжня». Стрілки гортають по
+           дню: «що було вчора» — це один клік, а не вибір дати. -->
+      <div class="td-cal" id="td-cal">
+        <button type="button" data-d="-1" title="Previous day" aria-label="Previous day">‹</button>
+        <input type="date" id="td-date" aria-label="Day" title="Pick a day">
+        <button type="button" data-d="1" title="Next day" aria-label="Next day">›</button>
+        <button type="button" class="td-cal-now hidden" data-d="0" title="Back to today’s live numbers">Today</button>
+      </div>
       <button type="button" class="td-close" onclick="tdToggle(false)" aria-label="Close">✕</button>
     </div>
     <div id="td-kpis" class="td-kpis"></div>
@@ -352,6 +487,17 @@ function tdEnsure() {
     tdMode = b.dataset.m; tdOpenSet.clear();
     ov.querySelectorAll('#td-mode button').forEach(x => x.classList.toggle('is-on', x === b));
     tdRender();
+  });
+  ov.querySelector('#td-cal').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b || b.disabled) return;
+    const n = Number(b.dataset.d);
+    tdSetDate(n ? tdShift(tdDate || tdNow(), n) : '');
+  });
+  ov.querySelector('#td-date').addEventListener('change', e => tdSetDate(e.target.value));
+  /* Клік будь-де по полю відкриває календар, а не ставить курсор у
+     «день/місяць/рік»: сюди приходять вибрати день, а не друкувати. */
+  ov.querySelector('#td-date').addEventListener('click', e => {
+    try { e.target.showPicker(); } catch (err) { /* старий браузер — лишається рідна поведінка */ }
   });
   ov.querySelector('#td-exp').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -383,6 +529,10 @@ window.tdToggle = async function (want) {
   ov.classList.toggle('hidden', !open);
   document.getElementById('cab-today-btn')?.classList.toggle('is-on', open);
   if (!open) return;
+  /* Відкривається завжди на сьогодні: вчорашня дата, лишена з минулого
+     разу, показала б учорашні числа під кнопкою «Stat. Day». */
+  tdDate = '';
+  tdCalPaint();
   document.getElementById('td-body').innerHTML = '<p class="td-empty">Loading…</p>';
   await tdMapsLoad();
   /* Знімка ще немає (сторінку відкрили щойно) — читаємо; інакше беремо

@@ -3001,9 +3001,33 @@ body[data-route="domains"] #dm-detail {
    Відступ за рівнем зсуває галочку разом із назвою — це навмисно: так
    видно, до якого рівня належить вибраний рядок. */
 .cd-mk {
-  width: 13px; height: 13px; margin-right: 6px; vertical-align: -2px;
-  accent-color: var(--accent); cursor: pointer; flex: 0 0 auto;
+  width: 15px; height: 15px; margin-right: 6px; vertical-align: -3px;
+  cursor: pointer; flex: 0 0 auto;
+  /* СВОЯ ГАЛОЧКА, А НЕ СИСТЕМНА. Рідний чекбокс — сірий квадрат із
+     білою заливкою, який у темній таблиці світився яскравіше за числа
+     і в кожному браузері виглядав по-своєму. Тут — та сама рамка, що в
+     кнопок і полів (--border-2 на темному тлі, заокруглення), а
+     позначена — акцентом, як увімкнена кнопка. */
+  appearance: none; -webkit-appearance: none;
+  /* !important — бо старий шар стилів фарбує КОЖЕН input «склом» через
+     !important (index-legacy.html), і без нього галочка лишалась би
+     порожнім квадратом навіть позначеною. */
+  border: 1.5px solid var(--border-2) !important; border-radius: 5px;
+  background: rgba(0, 0, 0, .25) center / 11px 11px no-repeat !important;
+  backdrop-filter: none;
+  transition: border-color .12s, background-color .12s, box-shadow .12s;
 }
+.cd-mk:hover { border-color: var(--accent) !important; }
+.cd-mk:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); border-color: var(--accent) !important; }
+.cd-mk:checked, .cd-mk:indeterminate { background-color: var(--accent) !important; border-color: var(--accent) !important; }
+.cd-mk:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.6 6.3l2.3 2.3 4.5-5'/%3E%3C/svg%3E") !important;
+}
+/* «Вибрано частину» — рискою, а не галочкою. */
+.cd-mk:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M3 6h6'/%3E%3C/svg%3E") !important;
+}
+.cd-mk:disabled { opacity: .4; cursor: default; }
 
 /* У КЛІТИНЦІ ТАБЛИЦІ та сама галочка стоїть сама, без назви поруч, —
    отже й відступ праворуч їй не потрібен: він зсував би її з центру
@@ -5669,7 +5693,7 @@ input.ui-in[type="range"] { padding: 0; }
 .ps-prev img { width: 92px; height: 56px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
 .ps-prev .ps-hint { margin: 0; }
 
-/* ══ Вікно Today: живі числа з останнього Sync now (today.js) ══
+/* ══ Вікно Stat. Day: числа за день, з календарем (today.js) ══
    Вікно на всю ширину, а не бічна панель: дерево гео › кабінет ›
    воронка › креатив з одинадцятьма колонками у 452px не влазить. */
 .td-ov {
@@ -5695,11 +5719,42 @@ input.ui-in[type="range"] { padding: 0; }
 }
 .td-seg button:hover { color: var(--text-main); }
 .td-seg button.is-on { background: var(--accent-soft); color: var(--text-main); font-weight: 700; }
-.td-sync, .td-close {
+.td-close {
   border: 1px solid var(--border); background: rgba(0,0,0,.25); color: var(--text-muted);
   border-radius: 10px; padding: 6px 10px; font-size: 12px; cursor: pointer;
 }
-.td-sync:hover, .td-close:hover { color: var(--text-main); border-color: var(--border-2); }
+.td-close:hover { color: var(--text-main); border-color: var(--border-2); }
+/* Календар у шапці вікна: стрілки й поле дати однією рамкою — тим
+   самим сегментом, що й перемикачі поруч. Рамку й тло з самого поля
+   знімаємо (!important — бо поля дат на сайті фарбуються через нього):
+   рамка в рамці читалась би як дві різні речі. */
+.td-cal {
+  display: inline-flex; align-items: stretch; border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; background: rgba(0,0,0,.25);
+}
+.td-cal:focus-within { border-color: var(--accent); }
+.td-cal button {
+  background: none; border: 0; padding: 0 10px; font-size: 15px; line-height: 1;
+  color: var(--text-muted); cursor: pointer;
+}
+.td-cal button:hover:not(:disabled) { color: var(--text-main); background: var(--surface-2); }
+.td-cal button:disabled { opacity: .3; cursor: default; }
+.td-cal .td-cal-now {
+  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--accent); border-left: 1px solid var(--border);
+}
+.td-cal .td-cal-now.hidden { display: none; }
+.td-cal input[type="date"] {
+  border: 0 !important; border-radius: 0 !important; background: transparent !important;
+  box-shadow: none !important; padding: 6px 4px; text-align: center; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+/* На минулому дні дерева немає — перемикачі його вигляду зникають:
+   погашені, вони виштовхували хрестик закриття на другий ряд. */
+.td-seg.is-off { display: none; }
+.td-close { flex: 0 0 auto; }
+.td-note { white-space: normal !important; opacity: .8; }
+.td-tbl.td-hist { min-width: 720px; }
 .td-kpis {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;
   padding: 12px 16px; border-bottom: 1px solid var(--border);
@@ -5876,21 +5931,21 @@ input.ui-in[type="range"] { padding: 0; }
 
 /* ШАПКА КАБІНЕТІВ НА ТЕЛЕФОНІ: ОДИН РЯД, РЕШТА ПІД «FILTERS».
    Було шість рядів і 300 пікселів до першого кабінета. */
-.cab-m-only, .cab-range-m { display: none; }
+.cab-m-only { display: none; }
+/* ШАПКА: ОДИН КОНТЕЙНЕР НА ВСІ ШИРИНИ. Обгортки лівої й правої частини
+   та блок інструментів за замовчуванням прозорі (display:contents) —
+   кнопки лягають у спільний ряд із переносом, і порядок на телефоні
+   задає order на них самих. Сіткою з трьох колонок шапка стає лише на
+   широкому екрані (блок «CABINETS: ШАПКА» нижче). */
+.cab-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.cab-hl, .cab-hr, .cab-tools { display: contents; }
+.cab-head .cab-title { flex: 0 0 100%; }
 @media (max-width: 640px) {
-  #cabinets-section > div:first-child { margin-bottom: 8px; }
-  #cabinets-section > div:first-child > div:first-child { display: none; }
-  #cabinets-section > div:first-child > div:last-child { gap: 6px; }
+  .cab-head { margin-bottom: 8px; gap: 6px; }
+  .cab-head .cab-title { display: none; }
   .cab-m-only { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; }
   #cab-sum { order: 1; }
   #cab-sum .cab-sum-k { display: none; }
-  #cab-range { order: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
-  #cab-range .cab-srcsel { display: none; }
-  .cab-range-m {
-    display: block; min-height: 36px; padding: 0 8px; border-radius: 12px;
-    border: 1px solid var(--border); background: var(--surface-2); color: inherit;
-    font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-  }
   #cab-q-btn { order: 3; margin-left: auto; min-width: 36px; justify-content: center; }
   #cab-flt-btn { order: 4; }
   #cab-search { order: 5; flex: 0 0 100%; width: 100%; min-height: 38px; font-size: 13px; }
@@ -6065,45 +6120,65 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
    (вони тримаються за ту саму розмітку), тому розмітку не чіпаємо:
    обидва внутрішні блоки стають display:contents, а порядок і перенос
    на другий ряд задає order. */
-@media (min-width: 1101px) {
-  #cabinets-section > div:first-child {
-    display: flex; flex-direction: row; flex-wrap: wrap; align-items: center;
-    justify-content: flex-start; gap: 10px; margin-bottom: 14px;
+/* Сітка — від 1280px: вужче трьом частинам в одному ряду тісно, і
+   шапка лишається звичайним рядом із переносом (назва — окремим
+   рядком над кнопками). */
+@media (min-width: 1280px) {
+  /* ТРИ КОЛОНКИ: ліва й права — рівні (1fr), пошук між ними. Тому він
+     стоїть рівно по центру картки, хоч би як мінялась ширина суми чи
+     підпис «5m ago» на кнопці Sync. Авто-відступи, якими він
+     центрувався раніше, ставили його посередині ВІЛЬНОГО місця — тобто
+     лівіше чи правіше залежно від сусідів. */
+  .cab-head {
+    /* Бічні колонки не вужчі за свій вміст (max-content): на тісному
+       екрані стискається пошук, а не зникають кнопки. */
+    display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(150px, 340px) minmax(max-content, 1fr);
+    align-items: center; column-gap: 16px; row-gap: 10px; margin-bottom: 14px;
   }
-  #cabinets-section > div:first-child > div { display: contents; }
-  /* Перенос на другий ряд: псевдоелемент — теж елемент ряду. */
-  #cabinets-section > div:first-child::before { content: ''; flex-basis: 100%; height: 0; order: 6; }
+  .cab-hl, .cab-hr { display: flex; align-items: center; gap: 8px; }
+  .cab-hl > *, .cab-hr > * { flex: 0 0 auto; }
+  .cab-hr { justify-content: flex-end; }
+  .cab-head .cab-title { flex: 0 0 auto; font-size: 19px !important; line-height: 1.1; margin-right: 6px; white-space: nowrap; }
 
-  /* Ряд 1: назва, сума зі Stat. Day поруч, пошук по центру — і Sync
-     праворуч, головною кнопкою. «пошук я б в перший рядок добавив по
-     центру. Stat. day я б поставив біля тотал спенда». */
-  #cabinets-section > div:first-child h2 { order: 1; font-size: 19px !important; line-height: 1.1; margin-right: 6px; }
-  #cab-sum { order: 2; padding: 5px 11px; }
+  /* Ліворуч — що це й скільки: назва, сума, Stat. Day. */
+  #cab-sum { padding: 5px 11px; white-space: nowrap; }
   #cab-sum .cab-sum-n { font-size: 15px; }
   #cab-sum .cab-sum-k { font-size: 10px; }
+
+  /* Пошук — на всю свою колонку; текст і підказка по центру. */
+  #cab-search {
+    width: 100%; font-size: 12px; padding: 7px 14px; text-align: center;
+  }
+  #cab-search::placeholder { text-align: center; }
+
+  /* Праворуч: групування, блок інструментів і Sync головною кнопкою. */
+  #cab-group { font-size: 11px; padding: 6px 10px; }
+  .cab-head .cab-rules { font-size: 11px; padding: 6px 12px; white-space: nowrap; }
+  .cab-head .cab-rules.cab-ico { padding: 6px 9px; }
+  .cab-head .cab-rules.cab-ico svg { width: 15px; height: 15px; }
+  /* Колонки, Rules і Pages — один сегментований блок: три окремі
+     рамки поспіль читались як три рівноважні кнопки, а це одна група
+     «налаштувати й подивитись поруч». */
+  .cab-tools {
+    display: inline-flex; align-items: stretch; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border); background: rgba(0, 0, 0, .25);
+  }
+  .cab-tools .cab-rules {
+    border: 0; border-radius: 0; background: transparent; height: auto;
+  }
+  .cab-tools .cab-rules.cab-ico { width: auto; padding: 6px 10px; }
+  .cab-tools .cab-rules + .cab-rules { border-left: 1px solid var(--border); }
+  .cab-tools .cab-rules:hover { background: var(--surface-2); }
+  .cab-tools .cab-rules.is-on { background: var(--accent); color: #fff; }
   #cab-sync {
-    order: 5; padding: 6px 13px; gap: 7px;
+    padding: 6px 13px; gap: 7px; white-space: nowrap;
     background: var(--accent, #7c3aed); border-color: transparent; color: #fff;
   }
   #cab-sync:hover:not(:disabled) { background: var(--accent, #7c3aed); filter: brightness(1.12); border-color: transparent; }
   #cab-sync .cab-sync-w { display: inline; font-size: 12px; font-weight: 800; letter-spacing: .02em; }
-  #cab-sync .cab-syncago { font-size: 11px; color: rgba(255,255,255,.78); border-bottom-color: rgba(255,255,255,.35); }
-
-  #cab-today-btn { order: 3; }
-  /* Авто-відступи з обох боків ставлять пошук посередині вільного місця. */
-  #cab-search { order: 4; margin-left: auto; margin-right: auto; width: 300px; font-size: 12px; padding: 6px 12px; }
-
-  /* Ряд 2: зліва — що показуємо (період, групування), справа — інструменти. */
-  #cab-range { order: 7; }
-  #cab-group { order: 8; font-size: 11px; padding: 6px 10px; }
-  #cab-cols-btn { order: 9; margin-left: auto; }
-  #cab-rules-btn { order: 10; }
-  #cab-pages-btn { order: 11; }
-  #cabinets-section > div:first-child .cab-rules { font-size: 11px; padding: 6px 12px; }
-  #cabinets-section > div:first-child .cab-rules.cab-ico { padding: 6px 9px; }
-  #cabinets-section > div:first-child .cab-rules.cab-ico svg { width: 15px; height: 15px; }
-  #cab-range button, #cab-range .cab-range-b { font-size: 11px; padding: 6px 10px; }
-
+  #cab-sync .cab-syncago { font-size: 11px; color: rgba(255,255,255,.78); border-bottom-color: rgba(255,255,255,.35); border-left-color: rgba(255,255,255,.3); }
+}
+@media (min-width: 1101px) {
   /* Статуси — чипами свого розміру, без нульових; вкладки дерева — окремою групою праворуч. */
   .flt-row-cab { gap: 8px; align-items: center; }
   .flt-row-cab .flt { flex: 0 0 auto; padding: 5px 11px; gap: 7px; }
@@ -6115,19 +6190,24 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   .flt-row-cab .flt-tools .cd-pick { font-size: 11px; padding: 5px 9px; }
   .flt-row-cab .flt-sweep { font-size: 11.5px; }
 
-  /* Таблиця: більший текст і вищі рядки. */
+  /* ТАБЛИЦЯ: КОМПАКТНА. «Зменшити розмір таблиці в кабінетах (і
+     кампанії)»: рядок у 58px показував вісім кабінетів на екран, тепер
+     їх у півтора раза більше. Назва з номером лишаються у два рядки
+     (номер копіюють кліком, і шукати його очима треба під назвою),
+     але щільніше: висоту рядка тримали відступи, а не текст. */
   /* Заголовки переносяться («Cost / install» — у два рядки): інакше
-     ширину колонок диктували б вони, і таблиця з більшим текстом не
-     влазила б у ті самі 1600px. */
-  #cab-list .cab-tbl td { font-size: 14px; padding: 11px 10px; }
-  #cab-list .cab-tbl th { font-size: 11px; padding: 9px 10px; white-space: normal; line-height: 1.25; vertical-align: bottom; }
-  #cab-list .cab-tbl .cab-who { font-size: 14px; }
-  #cab-list .cab-tbl .cab-id { font-size: 12px; }
-  #cab-list .cab-tbl td.cab-x { padding-left: 7px; padding-right: 7px; }
-  #cab-list .cab-tbl .cd-mk { width: 17px; height: 17px; }
-  #cab-list .cab-tbl .cab-exp, #cab-list .cab-tbl .cab-pin { font-size: 15px; min-width: 26px; min-height: 26px; }
-  #cab-list .cab-tbl .cab-dot { width: 9px; height: 9px; }
-  #cab-list .cab-tbl .cab-mini { font-size: 16px; min-width: 30px; min-height: 30px; }
+     ширину колонок диктували б вони. */
+  #cab-list .cab-tbl td { font-size: 12.5px; padding: 5px 9px; }
+  #cab-list .cab-tbl th { font-size: 10px; padding: 6px 9px; white-space: normal; line-height: 1.2; vertical-align: bottom; }
+  #cab-list .cab-tbl .cab-who { font-size: 12.5px; line-height: 1.25; }
+  #cab-list .cab-tbl .cab-id { font-size: 11px; line-height: 1.2; }
+  #cab-list .cab-tbl td.cab-x { padding-left: 5px; padding-right: 5px; }
+  #cab-list .cab-tbl .cab-exp, #cab-list .cab-tbl .cab-pin { font-size: 13px; min-width: 22px; min-height: 22px; }
+  #cab-list .cab-tbl .cab-dot { width: 8px; height: 8px; }
+  #cab-list .cab-tbl .cab-mini { font-size: 14px; min-width: 26px; min-height: 24px; }
+  /* Кампанії, адсети й оголошення під кабінетом — на крок дрібніші за
+     сам кабінет: так рівні читаються без відступів. */
+  #cab-list .cab-tbl .cab-node > td { font-size: 12px; padding-top: 4px; padding-bottom: 4px; }
 }
 /* Слово «Sync» на кнопці — лише там, де для нього є місце. */
 .cab-sync-w { display: none; }

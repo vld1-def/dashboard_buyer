@@ -152,6 +152,16 @@ ok("і про сховане кажемо", /not synced today — hidden/.test(T
 const CJ = fs.readFileSync('build/cabinets.js', 'utf8');
 ok('cabSnapLoad тримає сирі рядки', /cabSnapRows = rows\.filter/.test(CJ));
 ok('і кличе tdOnSnap після кожного перечитування', /if \(typeof tdOnSnap === 'function'\) tdOnSnap\(\);/.test(CJ));
+/* КАЛЕНДАР ЗАМІСТЬ SYNC NOW. Минулий день — із fb_spend_daily. */
+{
+  const J = fs.readFileSync('build/today.js', 'utf8');
+  ok('у вікні календар, а кнопки Sync now немає', /id="td-date"/.test(J) && !/class="td-sync"/.test(J));
+  ok('минулий день читається з fb_spend_daily за цю дату', /sbFetchAll\('fb_spend_daily', q => q\.eq\('day', day\)\)/.test(J));
+  ok('сьогодні й майбутнє — це живий знімок, а не історія', /&& day < today \? day : '';/.test(J));
+  ok('чужа відповідь на екран не лягає', /if \(tdDate === day\) tdHist = out;/.test(J));
+  ok('вікно відкривається на сьогодні', /tdDate = '';\n  tdCalPaint\(\);/.test(J));
+  ok('про те, чого за минулий день немає, сказано', /kept for today only/.test(J));
+}
 ok('кнопка Today поруч із Rules', /id="cab-today-btn" onclick="tdToggle\(\)"/.test(fs.readFileSync('build/cabinets.html', 'utf8')));
 const built = fs.readFileSync('index.html', 'utf8');
 ok('усе це доїхало в зібраний index.html', /window\.tdToggle = async function/.test(built)

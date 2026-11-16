@@ -43,16 +43,27 @@ ok('картка кабінета на телефоні — поверх спи�
 const HT = fs.readFileSync('build/cabinets.html', 'utf8');
 ok('у шапці є лупа і Filters лише для телефона', /id="cab-q-btn" onclick="cabQToggle\(\)" class="cab-rules cab-ico cab-m-only"/.test(HT)
   && /id="cab-flt-btn" onclick="cabFltToggle\(\)" class="cab-rules cab-m-only"/.test(HT));
-ok('на компʼютері їх не видно', /\.cab-m-only, \.cab-range-m \{ display: none; \}/.test(CSS));
-ok('період на телефоні — рідним списком', /<select class="cab-range-m" aria-label="Period" onchange="cabSetRange\(this\.value\)">/.test(CB)
-  && /#cab-range \.cab-srcsel \{ display: none; \}/.test(CSS));
+ok('на компʼютері їх не видно', /\.cab-m-only \{ display: none; \}/.test(CSS));
+/* Перемикача періоду більше немає ніде: сторінка — FB LIVE (сьогодні),
+   інший день — календарем у Stat. Day. */
+ok('періоду в шапці немає — ні кнопками, ні списком', !/cab-range/.test(HT) && !/cabSetRange|cab-range-m/.test(CB)
+  && !/cab-range-m|#cab-range/.test(CSS));
+ok('збережений колись період не читається', /localStorage\.removeItem\('cab_range'\)/.test(CB)
+  && !/localStorage\.getItem\('cab_range'\)/.test(CB));
+ok('назва сторінки — FB LIVE', />FB LIVE<\/h2>/.test(HT)
+  && /<span class="sb-lbl">FB LIVE<\/span>/.test(fs.readFileSync('build/shell.html', 'utf8')));
+ok('обгортки шапки на телефоні прозорі', /\.cab-hl, \.cab-hr, \.cab-tools \{ display: contents; \}/.test(CSS));
+ok('пошук по центру — сіткою з рівними боками',
+  /grid-template-columns: minmax\(max-content, 1fr\) minmax\(150px, 340px\) minmax\(max-content, 1fr\);/.test(CSS));
+ok('галочка — своя, а не системна', /\.cd-mk \{[^}]*appearance: none;/.test(CSS)
+  && /\.cd-mk:checked, \.cd-mk:indeterminate \{ background-color: var\(--accent\) !important;/.test(CSS));
 ok('згорнуто: кнопки й плитки сховані, попередження про архів лишається',
   /#cabinets-section:not\(\.cab-flt-open\) #cab-tiles > :not\(\.cab-archlost\) \{ display: none; \}/.test(CSS)
   && /#cabinets-section:not\(\.cab-flt-open\) #cab-rules-btn,/.test(CSS));
 ok('пошук із текстом не ховається', /#cabinets-section:not\(\.cab-q-open\) #cab-search:placeholder-shown \{ display: none; \}/.test(CSS));
 ok('Filters показує вибраний статус', /fl\.textContent = cabFilter && cabFilter !== 'all'/.test(CB));
 ok('стан Filters памʼятається на пристрої', /localStorage\.setItem\('cab-flt-open', open \? '1' : '0'\)/.test(CB));
-ok('шапка доїхала в index.html', /id="cab-flt-btn"/.test(OUT) && /cabFltToggle = function/.test(OUT) && /\.cab-range-m \{/.test(OUT));
+ok('шапка доїхала в index.html', /id="cab-flt-btn"/.test(OUT) && /cabFltToggle = function/.test(OUT) && /class="cab-head"/.test(OUT));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
 if (fail) process.exit(1);

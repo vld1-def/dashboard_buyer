@@ -1,14 +1,44 @@
-<!-- ═══════════ CABINETS ═══════════ -->
+<!-- ═══════════ FB LIVE (кабінети) ═══════════ -->
 <div id="cabinets-section" class="card p-5 rounded-3xl shadow-xl">
-  <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4">
-    <div>
-      <h2 class="text-lg font-black uppercase tracking-tight text-dynamic">Cabinets</h2>
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-      <!-- Скільки відкручено за вибраний період. Кнопка, а не підпис:
-           натиснув — і замість зведеного в долари числа видно, з яких
-           валют воно складене. -->
+  <!-- ШАПКА В ОДИН РЯД, ТРИ ЧАСТИНИ: зліва — що це й скільки
+       відкручено, по центру — пошук, праворуч — інструменти.
+       «по центру пусте місце»: пошук стояв посередині ВІЛЬНОГО місця,
+       а не картки, і з'їжджав щоразу, коли сусіди мінялись у ширині.
+       Тепер ліва й права частини — рівні колонки сітки, і пошук
+       лягає рівно в центр картки (див. .cab-head у design.css).
+
+       Обгортки .cab-hl / .cab-hr на телефоні — display:contents: там
+       шапка згорнута в один ряд, і порядок задає order на самих
+       кнопках, ніби обгорток немає.
+
+       Кнопок періоду (Today / Yesterday / This month / Custom) тут
+       більше немає: сторінка — FB LIVE, тобто сьогодні. Інший день
+       дивляться календарем у вікні Stat. Day. -->
+  <div class="cab-head">
+    <div class="cab-hl">
+      <h2 class="cab-title text-lg font-black uppercase tracking-tight text-dynamic">FB LIVE</h2>
+      <!-- Скільки відкручено сьогодні. Кнопка, а не підпис: натиснув —
+           і замість зведеного в долари числа видно, з яких валют воно
+           складене. -->
       <button type="button" id="cab-sum" class="cab-sum" onclick="cabSumToggle()"></button>
+      <!-- Числа за день, згруповані по гео, кабінетах, воронках і
+           креативах; у вікні ж і календар на минулі дні. Вікно, а не
+           панель: таблиці потрібна вся ширина. -->
+      <button type="button" id="cab-today-btn" onclick="tdToggle()" class="cab-rules"
+        title="The day’s numbers by geo, cabinet, funnel and creative — with a calendar for earlier days">Stat. Day</button>
+    </div>
+    <!-- Лише телефон: лупа відкриває пошук, Filters — решту
+         (групування, кнопки, статуси). -->
+    <button type="button" id="cab-q-btn" onclick="cabQToggle()" class="cab-rules cab-ico cab-m-only"
+      title="Search" aria-label="Search"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none"
+        stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7"
+        r="4.4"/><path d="M10.4 10.4l3.4 3.4"/></svg></button>
+    <button type="button" id="cab-flt-btn" onclick="cabFltToggle()" class="cab-rules cab-m-only"
+      aria-expanded="false" title="Grouping, tools and status filters"><span
+        id="cab-flt-lbl">Filters</span> <span class="cab-flt-car" aria-hidden="true">▾</span></button>
+    <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
+      class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
+    <div class="cab-hr">
       <select id="cab-group" onchange="cabSetGroup(this.value)"
         class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-widest text-dynamic outline-none cursor-pointer">
         <option value="agent">Group: agent</option>
@@ -21,53 +51,20 @@
         <option value="card">Group: card</option>
         <option value="" selected>No grouping</option>
       </select>
-      <!-- Перемикача зрізу тут більше немає. Сторінка показує кабінети,
-           які бачить токен, і тільки їх; решта ховається, а рядок над
-           таблицею каже, скільки їх і як подивитись. Три кнопки замість
-           цього змушували щоразу вибирати те, що й так має бути за
-           замовчуванням. -->
-      <!-- Період, за який рахуємо витрати. Малюється з cabinets.js:
-           вибір і його підпис мають жити в одному місці, інакше
-           заголовок стовпчика колись розійдеться з тим, що в ньому. -->
-      <div id="cab-range" class="cab-range"></div>
-      <!-- Лише телефон: шапка там згорнута в один ряд. Лупа відкриває
-           пошук, Filters — решту (групування, кнопки, статуси). -->
-      <button type="button" id="cab-q-btn" onclick="cabQToggle()" class="cab-rules cab-ico cab-m-only"
-        title="Search" aria-label="Search"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none"
-          stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7"
-          r="4.4"/><path d="M10.4 10.4l3.4 3.4"/></svg></button>
-      <button type="button" id="cab-flt-btn" onclick="cabFltToggle()" class="cab-rules cab-m-only"
-        aria-expanded="false" title="Grouping, tools and status filters"><span
-          id="cab-flt-lbl">Filters</span> <span class="cab-flt-car" aria-hidden="true">▾</span></button>
-      <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
-        class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
-      <!-- Стоїть тут, а не в налаштуваннях, бо дивитись на стан кабінетів
-           ходять сюди. У налаштуваннях така сама лишається навмисно: щойно додав
-           токен — хочеться натиснути відразу, не йдучи нікуди. -->
-      <!-- Правила автопаузи — сюди, а не окремим пунктом меню: вони
-           про цей самий парк, і відкривати їх ходять звідси. Панеллю
-           праворуч, як і картка кабінета. -->
-      <!-- Які колонки показувати. Кнопка поруч із пошуком, а не в
-           налаштуваннях: вмикають їх тоді, коли дивляться в таблицю. -->
-      <!-- Іконкою, а не словом: у ряду вже три кнопки й два фільтри,
-           і три підписи поспіль читаються довше, ніж три значки. Що
-           саме робить кожна — у підказці під курсором. -->
-      <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules cab-ico"
-        title="Which columns to show" aria-label="Columns"><svg viewBox="0 0 16 16" aria-hidden="true"
-          fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.8" y="2.4" width="12.4"
-          height="11.2" rx="1.6"/><path d="M6.4 2.4v11.2M9.6 2.4v11.2"/></svg></button>
-      <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
-        title="Rules that switch off ads on their own">Rules</button>
-      <!-- Сьогоднішні живі числа з останнього Sync now, згруповані по
-           гео, кабінетах, воронках і креативах. Вікно, а не панель:
-           таблиці потрібна вся ширина. -->
-      <button type="button" id="cab-today-btn" onclick="tdToggle()" class="cab-rules"
-        title="Today’s live numbers from the last Sync now — by geo, cabinet, funnel and creative">Stat. Day</button>
-      <!-- Сторінки — поруч із правилами, бо це така сама панель про той
-           самий парк. Кабінетний шлях до коментарів лишається в картці
-           кабінета: він відповідає на інше питання. -->
-      <button type="button" id="cab-pages-btn" onclick="pgPanel()" class="cab-rules"
-        title="Pages your tokens reach, and the comments under them">Pages</button>
+      <!-- Три інструменти одним блоком, а не трьома окремими кнопками:
+           колонки, правила автопаузи й Сторінки — це «налаштувати й
+           подивитись поруч», і разом вони читаються як одна група, а
+           не як ще три рівноважні кнопки в ряду. -->
+      <div class="cab-tools">
+        <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules cab-ico"
+          title="Which columns to show" aria-label="Columns"><svg viewBox="0 0 16 16" aria-hidden="true"
+            fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.8" y="2.4" width="12.4"
+            height="11.2" rx="1.6"/><path d="M6.4 2.4v11.2M9.6 2.4v11.2"/></svg></button>
+        <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
+          title="Rules that switch off ads on their own">Rules</button>
+        <button type="button" id="cab-pages-btn" onclick="pgPanel()" class="cab-rules"
+          title="Pages your tokens reach, and the comments under them">Pages</button>
+      </div>
       <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
         title="Sync now — ask Facebook right now instead of waiting for the hourly run"
         aria-label="Sync now"><span class="cab-sync-lbl" aria-hidden="true">↻</span><span

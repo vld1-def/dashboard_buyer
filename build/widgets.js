@@ -1849,7 +1849,7 @@
     ['Dashboard',      'nav:',                      'Page'],
     ['Heatmap',        'nav:heatmap',    'Page'],
     ['Creatives',      'nav:creatives',  'Page'],
-    ['Cabinets',       'nav:cabinets',   'Page'],
+    ['FB Live',        'nav:cabinets',   'Page'],
     ['Domains',        'nav:domains',    'Page'],
     ['Report Builder', 'nav:reports',     'Page'],
     ['Tasks',          'fn:toggleTaskModal',             'Tool'],
