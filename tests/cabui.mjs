@@ -27,7 +27,7 @@ ok('блок не переноситься', /\.cab-lim-acts \{ display: flex; f
 
 /* ── групування ── */
 ok('за замовчуванням без групування', /cabGroup = '', cabSel = null;/.test(CJ));
-ok('і селект показує No grouping', /<option value="" selected>No grouping<\/option>/.test(CH)
+ok('і селект показує Group (без групування)', /<option value="" selected>Group<\/option>/.test(CH)
   && !/value="profile" selected/.test(CH));
 
 /* ── плитки ── */

@@ -57,16 +57,29 @@ const iNoCap  = FN.indexOf('!capNow && !allowNew');
 /* Порівнюється те, що СТАНЕ стелею в мінорних одиницях, із уже
    витраченим у тих самих: мішати тут валюту з центами означало б
    пропустити стелю, яка спиняє кабінет. */
-const iSpent  = FN.indexOf('wantBack <= spentNow');
+/* Після скидання лічильника (reset) порівнюємо з тим, що лишилось:
+   spentBase — це spentNow без скидання і прочитане назад після нього. */
+const iSpent  = FN.indexOf('wantBack <= spentBase');
 /* Єдиний запис живе у put(): і перший, і виправлення йдуть через
    нього, тож «до запису» рахується саме від цього місця. */
 const iWrite  = FN.indexOf("{ spend_cap: String(v) }, 'POST'");
 
-ok('запис у Graph у функції один', iWrite > 0
-  && (FN.match(/graph\([^;]*'POST'\)/g) || []).length === 1);
+/* Записів стало більше одного — «ліміт від нуля» спершу скидає
+   лічильник (а кабінету без стелі ще й ставить тимчасову), і лише тоді
+   пише стелю. Межа тепер інша: УСІ записи у Facebook живуть у capFlow,
+   і ніде більше — ні в обробнику, ні в розкладі, ні в драбинці. */
+const iFlow = FN.indexOf('async function capFlow(');
+const iFlowEnd = FN.indexOf('/* ═══════════ ЗМІНА ЛІМІТУ ЗА РОЗКЛАДОМ');
+// «, 'POST')» — саме аргумент запису; «req.method !== 'POST')» сюди не входить.
+const posts = [...FN.matchAll(/, 'POST'\)/g)].map(m => m.index);
+ok('усі записи у Graph живуть у capFlow', iWrite > 0 && posts.length >= 1
+  && posts.every(i => i > iFlow && i < iFlowEnd), posts);
 ok('ads_management перевіряється до запису', iScope > 0 && iScope < iWrite);
 ok('кабінет без стелі відсікається до запису', iNoCap > 0 && iNoCap < iWrite);
-ok('стеля нижче витраченого відсікається до запису', iSpent > 0 && iSpent < iWrite);
+/* Сама перевірка стоїть нижче за оголошення put() у файлі, тож
+   порівнюємо з місцем, де стелю справді пишуть. */
+ok('стеля нижче витраченого відсікається до запису стелі', iSpent > 0
+  && iSpent < FN.indexOf('capBack = await put(sent)'));
 
 ok('без set_major функція лише читає',
   /mode: 'read'/.test(FN) && FN.indexOf("mode: 'read'") < iWrite);
@@ -80,7 +93,9 @@ ok('без set_major функція лише читає',
    пояснення, чому перевірки немає. */
 const CODE = FN.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 ok('роль у коді не питається зовсім',
-  !/my_role/.test(CODE) && !/'lead'/.test(CODE) && !/403/.test(CODE));
+  /* 'lead' тут тепер є — це назва події Facebook у драбинці лімітів,
+     а не роль; перевіряємо саме звернення до ролей. */
+  !/my_role/.test(CODE) && !/team_members/.test(CODE) && !/403/.test(CODE));
 
 ok('один виклик — один кабінет, списку немає',
   !/for \(const .* of .*(accounts|accs|ids)\)/.test(FN) && /account_id is required/.test(FN));
@@ -101,7 +116,11 @@ ok('advertiser проти admin сказано там, де це болить',
    вміє: нуль у spend_cap ми не перевіряли жодним викликом. */
 ok('нуль не приймається за «прибери стелю»',
   /set_major має бути більше нуля/.test(FN));
-ok('видалення стелі функція не обіцяє', !/spend_cap_action/.test(FN));
+/* spend_cap_action тепер у коді є, але лише як reset — скидання
+   лічильника для «ліміту від нуля». Видалення стелі як не було, так і
+   немає. */
+ok('видалення стелі функція не обіцяє', !/spend_cap_action: 'delete'/.test(CODE)
+  && (CODE.match(/spend_cap_action: '(\w+)'/g) || []).every(x => /'reset'/.test(x)));
 
 /* САМОПЕРЕВІРКА. Функція більше не питає людину про одиниці: пише,
    читає назад і, якщо Facebook зрозумів число інакше, виправляє
