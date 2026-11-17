@@ -156,7 +156,9 @@ const geoNote = await page.evaluate(() => {
   i.value = ''; rlGeoNote();
   return (document.getElementById('rl-geo-note') || {}).textContent || '';
 });
-ok('примітка про порожнє гео попереджає', /EVERY geo/i.test(geoNote), geoNote);
+/* «Blank — the rule will touch EVERY geo…» прибрано на прохання:
+   порожнє поле більше нічого під собою не пише. */
+ok('під порожнім гео підказки немає', geoNote === '', geoNote);
 ok('і вона англійською, як решта інтерфейсу',
   !/[Ѐ-ӿ]/.test(geoNote), geoNote);
 

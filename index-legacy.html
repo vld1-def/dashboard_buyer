@@ -3985,8 +3985,11 @@ async function crRuleBadge(cid) {
 }
 
 const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs'];
-let crTabNow = '';
-let crOpenPanels = new Set();
+/* ЗА ЗАМОВЧУВАННЯМ ВІДКРИТИЙ DAILY TREND. «по дефолту щоб графік був
+   відкритий, коли відкриваю креатив». Вибір і далі не памʼятається між
+   заходами: сторінка щоразу починає з графіка. */
+let crTabNow = 'trend';
+let crOpenPanels = new Set(['trend']);
 
 function crTabPaint() {
   CR_TABS.forEach(k => {
@@ -4401,10 +4404,27 @@ function crRenderAccountsPanel() {
 }
 
 // ── Динаміка по днях (чи вигорає) ──
+/* ═══ DAILY TREND: ГРАФІК ЯК НА ДАШБОРДІ + ТАБЛИЦЯ, ЩО З НИМ ЗВʼЯЗАНА ═══
+
+   «щоб графік був красивішим, такий як в дашборді, і при наведенні на
+   рядки щоб підсвічувалось пунктирною лінією на графіку, і навпаки».
+
+   Графік — той самий Chart.js і ті самі деталі, що в Cashflow Overview:
+   жовтий спенд із градієнтною заливкою, пунктирна вертикаль під
+   курсором (cfCrosshair), темна підказка. Поруч — CPA на правій осі:
+   саме він відповідає на питання «вигорає чи ні». День без депозитів
+   для CPA — розрив лінії, а не нуль: нуль читався б як найдешевший день.
+
+   Звʼязок в обидва боки: курсор на рядку таблиці ставить пунктир і
+   підказку на цей день графіка; курсор на графіку підсвічує рядок і
+   прокручує до нього таблицю. */
+let crTrendChart = null;
+
 function crRenderTrendPanel() {
   const el = document.getElementById('cr-panel-trend');
   if (!el) return;
   const rows = crCurrentRows();
+  if (crTrendChart) { crTrendChart.destroy(); crTrendChart = null; }
   if (!rows.length) { el.innerHTML = '<p class="text-[12px] opacity-40 py-3">No data.</p>'; return; }
   const days = crTrendDays();
   // Порівнюємо CPA першої та другої половини періоду — прямий сигнал вигорання
@@ -4423,31 +4443,144 @@ function crRenderTrendPanel() {
   } else if (days.length >= 4 && cpaA && !cpaB) {
     verdict = `<span class="text-red-400">⚠ No deposits in the second half of the period</span>`;
   }
+  const tot = days.reduce((a, [, m]) => ({ s: a.s + m.s, i: a.i + m.i, r: a.r + m.r, d: a.d + m.d }),
+    { s: 0, i: 0, r: 0, d: 0 });
+  const money = v => '$' + Math.round(v).toLocaleString('en-US');
 
   el.innerHTML = `
-    <div class="flex justify-end -mt-1 mb-1">
-      <button onclick="crOpenTrendModal()" title="Розгорнути на весь екран — графіки CPI/CPL/CPA і повна таблиця"
-        class="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-cyan-400 transition
-               px-2 py-1 rounded-lg border border-white/10 hover:border-cyan-500/40">⤢ Expand</button>
+    <div class="cr-tr-head">
+      ${verdict ? `<p class="cr-tr-verdict">${verdict}</p>` : '<span></span>'}
+      <button onclick="crOpenTrendModal()" title="Full screen — CPI/CPL/CPA charts and the whole table"
+        class="cr-tr-exp">⤢ Expand</button>
     </div>
-    <div class="grid grid-cols-5 gap-1 text-[11px] uppercase tracking-widest text-slate-500 font-black pb-1 border-b border-white/5 mt-1">
-      <span>Day</span><span class="text-right">Spend</span><span class="text-right">Inst</span>
-      <span class="text-right">Reg</span><span class="text-right">Dep / CPA</span>
-    </div>
-    <div class="max-h-52 overflow-y-auto custom-scrollbar">
-      ${days.slice().reverse().map(([d,m]) => `
-        <div class="grid grid-cols-5 gap-1 text-[13px] py-1.5 items-center">
-          <span class="font-mono text-slate-400">${d.slice(5)}</span>
-          <span class="text-right font-black text-white font-mono">$${Math.round(m.s)}</span>
-          <span class="text-right font-mono text-cyan-300">${m.i}</span>
-          <span class="text-right font-mono text-blue-400">${m.r}</span>
-          <span class="text-right font-mono"><b class="${m.d?'text-green-500':'text-slate-600'}">${m.d}</b>
-            <span class="text-slate-500">${m.d?'$'+(m.s/m.d).toFixed(0):'—'}</span></span>
-        </div>`).join('')}
-    </div>
-    ${verdict ? `<p class="text-[12px] font-bold mt-2.5 pt-2 border-t border-white/5">${verdict}</p>` : ''}
-    ${crSpendSparkline(days)}`;
+    <div class="cr-tr-chart"><canvas id="cr-trend-canvas"></canvas></div>
+    <div class="cr-tr-tbl custom-scrollbar" id="cr-trend-tbl">
+      <table>
+        <thead><tr><th>Day</th><th>Spend</th><th>Inst</th><th>Reg</th><th>Dep</th><th>CPA</th></tr></thead>
+        <tbody>${days.map(([d, m], i) => `
+          <tr data-i="${i}" onmouseenter="crTrendHover(${i}, 'row')" onmouseleave="crTrendHover(-1, 'row')">
+            <td class="cr-tr-d">${d.slice(5)}</td>
+            <td class="cr-tr-s">${money(m.s)}</td>
+            <td class="text-cyan-300">${m.i}</td>
+            <td class="text-blue-400">${m.r}</td>
+            <td class="${m.d ? 'text-green-500 font-black' : 'text-slate-600'}">${m.d}</td>
+            <td class="${m.d ? '' : 'text-slate-600'}">${m.d ? '$' + (m.s / m.d).toFixed(0) : '—'}</td>
+          </tr>`).reverse().join('')}</tbody>
+        <tfoot><tr><td>Total</td><td>${money(tot.s)}</td><td>${tot.i}</td><td>${tot.r}</td><td>${tot.d}</td>
+          <td>${tot.d ? '$' + (tot.s / tot.d).toFixed(0) : '—'}</td></tr></tfoot>
+      </table>
+    </div>`;
+  crTrendDraw(days);
 }
+
+function crTrendDraw(days) {
+  const cv = document.getElementById('cr-trend-canvas');
+  if (!cv) return;
+  /* Бібліотека графіків тягнеться на вимогу (див. cfLib). */
+  if (typeof cfWait === 'function' && !cfWait(cv, () => crTrendDraw(days))) return;
+  if (typeof Chart === 'undefined') return;
+  if (crTrendChart) { crTrendChart.destroy(); crTrendChart = null; }
+  const css = getComputedStyle(document.documentElement);
+  const muted = css.getPropertyValue('--text-muted').trim() || '#8A8A95';
+  const SP = typeof CF_SPEND !== 'undefined' ? CF_SPEND : '#EAB308';
+  const CPA = '#A78BFA';
+  const alpha = (c, a) => typeof cfAlpha === 'function' ? cfAlpha(c, a) : c;
+  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const labels = days.map(([d]) => { const t = new Date(d + 'T12:00:00');
+    return isNaN(t) ? d : t.getDate() + ' (' + wd[t.getDay()] + ')'; });
+  /* Підпис осі з одним знаком після коми для тисяч: cfMoney округлює до
+     цілих тисяч, і на кроці $500 виходило «$3K» двічі поспіль. */
+  const fmt = v => Math.abs(v) >= 1000
+    ? '$' + (v / 1000).toFixed(v % 1000 ? 1 : 0).replace(/\.0$/, '') + 'K' : '$' + Math.round(v);
+  const fmt2 = v => Math.abs(v) >= 1000
+    ? '$' + (v / 1000).toFixed(v % 1000 ? 1 : 0).replace(/\.0$/, '') + 'K' : '$' + v;
+
+  crTrendChart = new Chart(cv.getContext('2d'), {
+    type: 'line',
+    plugins: window.cfCrosshair ? [window.cfCrosshair] : [],
+    data: { labels, datasets: [
+      { label: 'Spend', data: days.map(([, m]) => Math.round(m.s)), yAxisID: 'y',
+        borderColor: SP, borderWidth: 2.5, tension: 0.38, fill: true,
+        backgroundColor: c => typeof cfGradient === 'function' ? cfGradient(c.chart, SP) : alpha(SP, .18),
+        pointRadius: 2.5, pointHoverRadius: 5, pointBackgroundColor: SP, pointBorderWidth: 0,
+        datalabels: { display: false } },
+      { label: 'CPA', data: days.map(([, m]) => m.d ? Math.round(m.s / m.d) : null), yAxisID: 'y2',
+        spanGaps: false, borderColor: CPA, borderWidth: 2, tension: 0.3, fill: false,
+        backgroundColor: alpha(CPA, .18),
+        pointRadius: days.map(([, m]) => m.d ? 3 : 0), pointHoverRadius: 5,
+        pointBackgroundColor: CPA, pointBorderWidth: 0, datalabels: { display: false } }
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      interaction: { mode: 'index', intersect: false },
+      layout: { padding: { top: 8, right: 4, left: 2 } },
+      onHover: (evt, els) => crTrendHover(els && els.length ? els[0].index : -1, 'chart'),
+      plugins: {
+        legend: { position: 'top', align: 'end', labels: { color: muted, usePointStyle: true,
+          pointStyle: 'rectRounded', boxWidth: 8, boxHeight: 8, padding: 14, font: { weight: '700', size: 11 } } },
+        datalabels: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(18, 18, 22, 0.97)', borderColor: 'rgba(139, 92, 246, 0.35)',
+          borderWidth: 1, padding: 12, displayColors: false,
+          bodyFont: { family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', size: 11 },
+          callbacks: {
+            title: items => items.length ? days[items[0].dataIndex][0] : '',
+            label: c => {
+              if (c.datasetIndex !== 0) return null;
+              const m = days[c.dataIndex][1];
+              return [` 💰 Spend: $${Math.round(m.s).toLocaleString('en-US')}`,
+                      ` 📲 Inst: ${m.i}   📝 Reg: ${m.r}   🎯 Dep: ${m.d}`,
+                      ` 💵 CPI: ${m.i ? '$' + (m.s / m.i).toFixed(2) : '—'} | CPL: ${m.r ? '$' + (m.s / m.r).toFixed(1) : '—'} | CPA: ${m.d ? '$' + (m.s / m.d).toFixed(1) : '—'}`];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: muted, font: { weight: '600', size: 11 }, maxRotation: 0, autoSkipPadding: 12 },
+             grid: { display: false }, border: { display: false } },
+        y: { position: 'left', beginAtZero: true,
+             ticks: { color: muted, font: { weight: '600', size: 11 }, callback: v => fmt(v) },
+             grid: { color: 'rgba(255,255,255,.055)' }, border: { display: false } },
+        y2: { position: 'right', beginAtZero: true,
+              ticks: { color: alpha(CPA, .85), font: { weight: '600', size: 11 }, callback: v => fmt2(v) },
+              grid: { display: false }, border: { display: false } }
+      }
+    }
+  });
+  cv.addEventListener('mouseleave', () => crTrendHover(-1, 'chart'));
+}
+
+/* Один день — і на графіку, і в таблиці. from каже, звідки прийшов
+   курсор: графік сам малює свою підказку, тож із графіка ми лише
+   підсвічуємо рядок; із рядка — ставимо пунктир і підказку на графік. */
+window.crTrendHover = function (i, from) {
+  const tbl = document.getElementById('cr-trend-tbl');
+  if (tbl) tbl.querySelectorAll('tr.is-hot').forEach(r => r.classList.toggle('is-hot', false));
+  if (i >= 0 && tbl) {
+    const row = tbl.querySelector('tr[data-i="' + i + '"]');
+    if (row) {
+      row.classList.add('is-hot');
+      if (from === 'chart') {
+        // Прокручуємо лише саму таблицю, а не сторінку.
+        const top = row.offsetTop - tbl.clientHeight / 2 + row.offsetHeight / 2;
+        tbl.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      }
+    }
+  }
+  const ch = crTrendChart;
+  if (!ch || from !== 'row') return;
+  if (i < 0) {
+    ch.setActiveElements([]);
+    ch.tooltip.setActiveElements([], { x: 0, y: 0 });
+  } else {
+    const act = ch.data.datasets.map((ds, di) => ({ datasetIndex: di, index: i }))
+      .filter(a => ch.data.datasets[a.datasetIndex].data[i] != null);
+    const pt = ch.getDatasetMeta(0).data[i];
+    ch.setActiveElements(act);
+    ch.tooltip.setActiveElements(act, { x: pt ? pt.x : 0, y: pt ? pt.y : 0 });
+  }
+  ch.update('none');
+};
 
 // Компактний графік спенду по днях (інлайновий SVG — без зайвих інстансів Chart.js)
 function crSpendSparkline(days) {

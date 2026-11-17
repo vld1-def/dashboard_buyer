@@ -46,10 +46,12 @@ function tabs(saved) {
 }
 
 const t0 = tabs();
-ok('за замовчуванням усе згорнуто', t0.now() === '' && t0.open().length === 0);
+/* «по дефолту щоб якраз графік був відкритий, коли відкриваю креатив». */
+ok('за замовчуванням відкритий Daily trend', t0.now() === 'trend' && t0.open().join() === 'trend');
 t0.crTabPaint();
-ok('жодної панелі не видно, жодна кнопка не підсвічена, тіло сховане', Object.values(t0.panels).every(p => p.hidden)
-  && t0.btns.every(x => !x.on) && t0.body.hidden === true);
+ok('видно лише графік, підсвічена його вкладка', !t0.panels['cr-panel-trend'].hidden
+  && Object.entries(t0.panels).every(([k, p]) => k === 'cr-panel-trend' || p.hidden)
+  && t0.btns.filter(x => x.on).map(x => x.k).join() === 'trend' && t0.body.hidden === false);
 t0.crTab('funnels');
 ok('клік відкриває вкладку: видно її одну, малюється лише вона', !t0.panels['cr-panel-funnels'].hidden
   && t0.panels['cr-panel-placements'].hidden && t0.rendered.join('|') === 'funnels'
@@ -60,7 +62,16 @@ ok('інша вкладка замінює відкриту', t0.now() === 'tren
 t0.crTab('trend');
 ok('клік по відкритій згортає її назад', t0.now() === '' && Object.values(t0.panels).every(p => p.hidden)
   && t0.body.hidden === true && t0.btns.every(x => !x.on));
-ok('вибір не памʼятається: наступний захід знову згорнутий', tabs('accounts').now() === '' && !('cr_tab' in t0.store));
+ok('вибір не памʼятається: наступний захід знову з графіком', tabs('accounts').now() === 'trend' && !('cr_tab' in t0.store));
+
+/* ═══ DAILY TREND: ГРАФІК І ТАБЛИЦЯ ЗВʼЯЗАНІ ═══ */
+ok('графік — Chart.js із пунктиром дашборду', /plugins: window\.cfCrosshair \? \[window\.cfCrosshair\] : \[\]/.test(SRC)
+  && /cfWait\(cv, \(\) => crTrendDraw\(days\)\)/.test(SRC));
+ok('рядок таблиці ставить день на графіку', /onmouseenter="crTrendHover\(\$\{i\}, 'row'\)"/.test(SRC)
+  && /ch\.tooltip\.setActiveElements\(act,/.test(SRC));
+ok('графік підсвічує рядок', /onHover: \(evt, els\) => crTrendHover\(els && els\.length \? els\[0\]\.index : -1, 'chart'\)/.test(SRC)
+  && /row\.classList\.add\('is-hot'\)/.test(SRC));
+ok('день без депозитів — розрив CPA, а не нуль', /m\.d \? Math\.round\(m\.s \/ m\.d\) : null/.test(SRC));
 t0.crTab('nope');
 ok('невідома вкладка нічого не міняє', t0.now() === '');
 

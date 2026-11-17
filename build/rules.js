@@ -213,7 +213,7 @@ window.rlCabNote = function () {
   if (!el || !inp) return;
   const ids = String(inp.value || '').split(/[,\s]+/)
     .map(x => x.replace(/^act_/, '').trim()).filter(Boolean);
-  if (!ids.length) { el.className = 'rl-note'; el.textContent = 'Blank — every cabinet of yours.'; return; }
+  if (!ids.length) { el.className = 'rl-note'; el.textContent = ''; return; }
   if (!rlCabs) { el.className = 'rl-note'; el.textContent = ''; return; }
   const r = rlCabCheck(ids);
   const parts = [];
@@ -453,7 +453,7 @@ window.rlCrNote = function () {
   if (!el) return;
   const n = document.querySelectorAll('#rl-f-crs .rl-cr').length;
   el.textContent = n ? 'Only ads of these creatives — and general rules will leave them alone.'
-    : 'Blank — any creative.';
+    : '';
 };
 function rlCrList() {
   const all = (window.creativesRawDataAll || window.creativesRawData || []).map(d => String(d.cid || '').trim());
@@ -620,8 +620,8 @@ window.rlGeoNote = function () {
     return;
   }
   if (!good.length) {
-    el.className = 'rl-note is-warn';
-    el.textContent = 'Blank — the rule will touch EVERY geo. The rule name does not narrow it.';
+    el.className = 'rl-note';
+    el.textContent = '';
     return;
   }
   el.className = 'rl-note';
