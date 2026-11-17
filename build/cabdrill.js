@@ -1206,8 +1206,11 @@ function cdNameCell(n, depth) {
   const count = n.kind === 'ad' ? ''
     : `<span class="cd-cnt">${n.ads} ad${n.ads === 1 ? '' : 's'}</span>`;
   /* Копія кампанії в інші кабінети. Лише на рядку кампанії: копіюється
-     вона цілком, з адсетами й оголошеннями. Див. cdCopy. */
-  const copy = n.kind === 'campaign'
+     вона цілком, з адсетами й оголошеннями. Див. cdCopy.
+     ПОКИ ЩО ВИМКНЕНО на прохання («давай поки що її видалимо»): кнопки
+     в рядку немає, а cdCopy і функція fb-launch лишаються — повернути
+     можна, поставивши CD_COPY_ON = true. */
+  const copy = CD_COPY_ON && n.kind === 'campaign'
     ? `<button type="button" class="cd-copy" onclick="event.stopPropagation();cdCopy('${cdEsc(n.id)}','${
         encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
         title="Copy this campaign to other cabinets \u2014 created paused">\u29C9 Copy</button>`
@@ -1942,6 +1945,9 @@ function cdSetOwn(id, state) {
 
    По одному кабінету на виклик: так видно, що вийшло в кожному, і одна
    відмова не зупиняє решту. */
+// Кнопка Copy на рядку кампанії (див. cdNodeLabel). Вимкнено на прохання.
+const CD_COPY_ON = false;
+
 function cdCopyTargets(srcAcc) {
   const num = v => String(v == null ? '' : v).replace(/\D/g, '');
   const all = (typeof cabAll !== 'undefined' && Array.isArray(cabAll)) ? cabAll : [];

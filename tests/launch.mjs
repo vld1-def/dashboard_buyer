@@ -204,7 +204,10 @@ const p5 = await page({ answers: [{ name: 'X', t0: true }, true],
 ok('неповна копія позначена й каже, чого бракує', /⚠ 111 — 1\/2 ad sets, 1\/3 ads/.test(p5.asked[1].body)
   && /pixel is not shared/.test(p5.asked[1].body), p5.asked[1].body);
 
-ok('кнопка стоїть лише на рядку кампанії', /n\.kind === 'campaign'\s*\? `<button type="button" class="cd-copy"/.test(CD));
+ok('кнопка стоїть лише на рядку кампанії', /CD_COPY_ON && n\.kind === 'campaign'\s*\? `<button type="button" class="cd-copy"/.test(CD));
+/* «давай поки що її видалимо»: кнопки в рядку немає, а копіювання
+   лишилось — вмикається одним прапорцем. */
+ok('поки що кнопку вимкнено', /const CD_COPY_ON = false;/.test(CD));
 ok('і це доїхало в зібраний index.html', /cdCopy = async function/.test(OUT) && /\.cd-copy \{/.test(OUT));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
