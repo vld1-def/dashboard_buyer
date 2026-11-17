@@ -6457,3 +6457,23 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   position: sticky; bottom: 0; background: var(--surface-2); font-weight: 900; color: var(--text-main);
   border-top: 1px solid var(--border-2);
 }
+
+/* ═══ СПИСОК КРЕАТИВІВ: ВІЛЬНА ВИСОТА І РОЗМИТТЯ ЗНИЗУ ═══
+   Колонка тягнеться за рядком сітки, а мінімум — до низу екрана
+   (мінус шапка сторінки й нижня панель), щоб під списком не лишалось
+   порожньої смуги, коли картка праворуч коротка. */
+@media (min-width: 1024px) {
+  #cr-list-col { min-height: max(500px, calc(100vh - 210px)); align-self: stretch; }
+}
+/* Розмиття внизу: рядки, що йдуть під край, не обрізаються різко, а
+   розчиняються. Видно, лише поки є куди гортати (crListFade). */
+#cr-list-wrap::after {
+  content: ''; position: absolute; left: 0; right: 8px; bottom: 0; height: 64px;
+  pointer-events: none; opacity: 0; transition: opacity .2s;
+  background: linear-gradient(to bottom, transparent, var(--surface) 92%);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 70%);
+  mask-image: linear-gradient(to bottom, transparent, #000 70%);
+  border-radius: 0 0 12px 12px;
+}
+#cr-list-wrap.is-more::after { opacity: 1; }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 17.11 14:08">
+  <meta name="build" content="build 17.11 14:23">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7582,6 +7582,26 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   position: sticky; bottom: 0; background: var(--surface-2); font-weight: 900; color: var(--text-main);
   border-top: 1px solid var(--border-2);
 }
+
+/* ═══ СПИСОК КРЕАТИВІВ: ВІЛЬНА ВИСОТА І РОЗМИТТЯ ЗНИЗУ ═══
+   Колонка тягнеться за рядком сітки, а мінімум — до низу екрана
+   (мінус шапка сторінки й нижня панель), щоб під списком не лишалось
+   порожньої смуги, коли картка праворуч коротка. */
+@media (min-width: 1024px) {
+  #cr-list-col { min-height: max(500px, calc(100vh - 210px)); align-self: stretch; }
+}
+/* Розмиття внизу: рядки, що йдуть під край, не обрізаються різко, а
+   розчиняються. Видно, лише поки є куди гортати (crListFade). */
+#cr-list-wrap::after {
+  content: ''; position: absolute; left: 0; right: 8px; bottom: 0; height: 64px;
+  pointer-events: none; opacity: 0; transition: opacity .2s;
+  background: linear-gradient(to bottom, transparent, var(--surface) 92%);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 70%);
+  mask-image: linear-gradient(to bottom, transparent, #000 70%);
+  border-radius: 0 0 12px 12px;
+}
+#cr-list-wrap.is-more::after { opacity: 1; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -7841,7 +7861,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 17.11 14:08</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 17.11 14:23</div>
     </div>
   </aside>
 
@@ -8481,8 +8501,14 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 
        500px лишаються для вузьких екранів, де колонки стають одна під
        одною й три чверті екрана забрали б усе, що під ними. -->
-  <div class="lg:col-span-3 p-0 flex flex-col min-h-[500px] lg:h-[75vh]">
-     <div class="relative flex-1 min-h-0">
+  <!-- ВИСОТА ВІЛЬНА. «дай свободу у висоті, бо він не на повний екран,
+       є невелика частина внизу». Стала висота 75vh обривала список
+       вище за низ блока. Тепер колонка тягнеться за рядком сітки (тобто
+       за карткою праворуч), а мінімум — до низу екрана (#cr-list-col у
+       design.css). Список усередині й далі absolute: його довжина на
+       висоту блока не впливає. Внизу — розмиття, поки є що гортати. -->
+  <div id="cr-list-col" class="lg:col-span-3 p-0 flex flex-col min-h-[500px]">
+     <div id="cr-list-wrap" class="relative flex-1 min-h-0">
        <div id="creative-list-sidebar" class="absolute inset-0 space-y-2 overflow-y-auto pr-1 custom-scrollbar"></div>
      </div>
   </div>
@@ -10969,11 +10995,28 @@ function renderCreativeSidebar(query = "", geoFilter = "", formatFilter = "") {
       </div>`;
     }).join('');
     document.getElementById('creative-placeholder')?.classList.add('hidden');
+    crListFade();
     return;
   }
 
   sidebar.innerHTML = list.map(c => crSidebarRow(c, qEsc, gEsc, fEsc)).join('');
+  crListFade();
   document.getElementById('creative-placeholder')?.classList.add('hidden');
+}
+
+/* Розмиття внизу списку видно, лише поки нижче ще є креативи: на
+   самому кінці воно ховало б останній рядок, і здавалося б, що там
+   щось обрізано. */
+function crListFade() {
+  const sb = document.getElementById('creative-list-sidebar');
+  const wrap = document.getElementById('cr-list-wrap');
+  if (!sb || !wrap) return;
+  if (!sb.dataset.fade) {
+    sb.dataset.fade = '1';
+    sb.addEventListener('scroll', crListFade, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(crListFade).observe(sb);
+  }
+  wrap.classList.toggle('is-more', sb.scrollHeight - sb.scrollTop - sb.clientHeight > 4);
 }
 
 // Один рядок списку креативів — винесено, щоб звичайний режим і режим папок

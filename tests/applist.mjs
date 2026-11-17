@@ -185,12 +185,17 @@ const floor = await page.evaluate(() => {
     .closest('[class*="col-span-3"]');
   return w.className;
 });
-ok('на широкому екрані колонка має висоту екрана, а не 500px',
-  /\blg:(min-)?h-\[75vh\]/.test(floor), floor);
-/* Саме ЗАДАНА, а не мінімальна: з min-height сусідня картка знову
-   вирішувала б, де закінчиться список. */
-ok('і сусідня картка її не вкорочує',
-  /\blg:h-\[75vh\]/.test(floor), floor);
+/* Тепер мінімум — до низу екрана (CSS #cr-list-col), а не 75vh:
+   коротка картка праворуч колонку не вкорочує, довга — тягне за
+   собою. Перевіряємо на самій сторінці, широкому вікні. */
+const tall = await page.evaluate(() => {
+  const col = document.getElementById('cr-list-col');
+  return { id: !!col, min: col ? getComputedStyle(col).minHeight : '', vh: innerHeight };
+});
+ok('на широкому екрані колонка не нижча за екран, а не 500px',
+  tall.id && /calc|px/.test(tall.min) && !/\blg:h-\[75vh\]/.test(floor), tall);
+ok('і сусідня картка її не вкорочує: висота не задана жорстко',
+  !/\blg:h-\[/.test(floor), floor);
 ok('а для вузьких лишається 500px: там колонки стають одна під одною',
   /\bmin-h-\[500px\]/.test(floor), floor);
 
