@@ -1625,6 +1625,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
       <button id="cr-star-toggle" onclick="crToggleStar(event, currentCreativeID)" title="Add star"
               class="text-2xl leading-none transition text-slate-600 hover:text-amber-400">☆</button>
       <span id="stats-scope-label" class="text-base font-black text-blue-400 uppercase tracking-widest text-white">Total Stats Analysis</span>
+      <!-- 🛡 — у креатива є своє правило автопаузи, і загальні правила
+           його не чіпають. Клік відкриває це правило (FB LIVE → Rules). -->
+      <span id="cr-rule-badge"></span>
     </div>
     <!-- Кнопки Reset Filter тут більше немає: функції resetCreativeScope
          не існувало, тож натискання лише кидало помилку в консоль. -->
@@ -3963,6 +3966,24 @@ if (window.ResizeObserver) {
   });
 }
 
+/* ЧИ Є В КРЕАТИВА СВОЄ ПРАВИЛО. Правила живуть у rules.js; тут лише
+   значок, і правила читаються один раз, тихо, коли вперше потрібні. */
+async function crRuleBadge(cid) {
+  const el = document.getElementById('cr-rule-badge');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!cid || typeof rlRulesFor !== 'function') return;
+  if (typeof rlRulesPeek === 'function') await rlRulesPeek();
+  if (cid !== currentCreativeID) return;              // поки читали, вибрали інший
+  const idx = rlRulesFor(cid);
+  if (!idx.length) return;
+  const names = idx.map(i => String((rlRules[i] || {}).name || 'rule'));
+  const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  el.innerHTML = `<button type="button" class="cr-rule-badge" onclick="rlOpenRule(${idx[0]})"
+    title="${esc('Own auto-pause rule: ' + names.join(', ') + '. General rules leave this creative alone. Click to open.')}">🛡 ${
+    esc(names.length > 1 ? names.length + ' own rules' : names[0])}</button>`;
+}
+
 const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs'];
 let crTabNow = '';
 let crOpenPanels = new Set();
@@ -4659,6 +4680,7 @@ function selectCreative(cid) {
     crSyncStarBtn();
     crRenderPanels();
     crFitNums();
+    crRuleBadge(currentCreativeID);
     loadCreativePreview(currentCreativeID);
   }
 

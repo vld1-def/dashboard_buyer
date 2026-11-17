@@ -193,7 +193,35 @@ type Rule = {
   cabs: string[];      // порожньо — усі кабінети
   nameHas: string;     // спадок: порожньо — будь-яка назва
   geo: string[];       // порожньо — будь-яке гео
+  crs: string[];       // креативи (ключі crKey); порожньо — будь-який
 };
+
+/* ═══════════ ПРАВИЛО ПІД КРЕАТИВ ═══════════
+
+   «правило створене окремо під якийсь креатив, але так щоб інше
+   правило не вимикало цей креатив, якщо в іншому правилі воно
+   включене».
+
+   Тобто КОНКРЕТНЕ ПЕРЕБИВАЄ ЗАГАЛЬНЕ. Правило з полем Creatives
+   стосується лише оголошень цих креативів, а загальні правила (поле
+   порожнє) такі оголошення пропускають — вимикати їх може тільки їхнє
+   власне правило. Два власні правила на один креатив діють обидва.
+
+   «Покрито» рахуємо з УСІМА фільтрами власного правила: кабінети, гео,
+   назва. Правило під креатив лише в KG не забирає той самий креатив у
+   TJ із-під загальних — там його ніхто інший не стереже.
+
+   Креатив — це назва оголошення. Звіряємо так само, як скрізь у CRM:
+   без регістру, «-» і «_» однакові, без розширення файлу, і лише
+   цілим шматком: KG_JS_674_1 не чіпає KG_JS_674_10. */
+const crKey = (v: unknown) => String(v == null ? '' : v).trim().toLowerCase()
+  .replace(/\.(mp4|mov|m4v|webm|avi|jpe?g|png|gif|webp)$/, '').replace(/[-\s]+/g, '_');
+function crHit(crs: string[], name: unknown): boolean {
+  const n = crKey(name);
+  if (!n || !crs.length) return false;
+  return crs.some(c => n === c || new RegExp('(^|[^a-z0-9])'
+    + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)').test(n));
+}
 
 /* ГЕО — З НАЗВИ, І ЦЕ ЄДИНЕ МІСЦЕ, ДЕ ВОНО Є.
 
@@ -436,7 +464,8 @@ async function loadRules(base: string, hdr: Json, owner: string):
         nameHas: String(x.nameHas || '').trim().toLowerCase(),
         geo: (Array.isArray(x.geo) ? x.geo : [])
           .map((g: unknown) => String(g).trim().toUpperCase())
-          .filter((g: string) => /^[A-Z]{2}$/.test(g))
+          .filter((g: string) => /^[A-Z]{2}$/.test(g)),
+        crs: [...new Set((Array.isArray(x.crs) ? x.crs : []).map(crKey).filter(Boolean))]
       });
     });
   });
@@ -1723,17 +1752,37 @@ Deno.serve(async (req) => {
         return got;
       };
 
+      /* Фільтр за назвою дивиться і на БАТЬКІВ. Гео в цих назвах і
+         живе: оголошення зветься KG_3166698, а кампанія —
+         MPlayC_KG_10708. Поки дивились лише на власну назву, «тільки
+         KG» на рівні оголошення не спрацьовувало там, де гео стоїть у
+         кампанії, — тобто майже скрізь. */
+      const scopeOk = (r: Rule, e: Ent) => {
+        const names = [e.name, e.adsetName, e.campaignName];
+        if (r.nameHas && !names.some(n => String(n || '').toLowerCase().includes(r.nameHas)))
+          return false;
+        return !r.geo.length || geoHit(r.geo, names);
+      };
+      // Активні оголошення під адсетом чи кампанією — по них і
+      // видно, які креативи там крутяться.
+      const adsUnder = (level: string, e: Ent): Ent[] => level === 'ad' ? [e]
+        : (ads as Ent[]).filter(a => (level === 'adset' ? a.adset : a.campaign) === e.id);
+      // Правила під креатив, що діють у цьому кабінеті.
+      const own = mine.filter(x => (x.crs || []).length);
+      const coveredByOwn = (a: Ent) => own.some(o => scopeOk(o, a) && crHit(o.crs, a.name));
+
       for (const r of mine) {
-        /* Фільтр за назвою дивиться і на БАТЬКІВ. Гео в цих назвах і
-           живе: оголошення зветься KG_3166698, а кампанія —
-           MPlayC_KG_10708. Поки дивились лише на власну назву,
-           «тільки KG» на рівні оголошення не спрацьовувало там, де гео
-           стоїть у кампанії, — тобто майже скрізь. */
+        const crs = r.crs || [];
         const ents = (await entsAt(r.level)).filter(e => {
-          const names = [e.name, e.adsetName, e.campaignName];
-          if (r.nameHas && !names.some(n => String(n || '').toLowerCase().includes(r.nameHas)))
-            return false;
-          return !r.geo.length || geoHit(r.geo, names);
+          if (!scopeOk(r, e)) return false;
+          const under = adsUnder(r.level, e);
+          /* Своє правило — лише те, де крутиться його креатив. На рівні
+             адсету чи кампанії це ті, під якими є його оголошення. */
+          if (crs.length) return under.some(a => crHit(crs, a.name));
+          /* Загальне — пропускає все, що стереже власне правило. Адсет
+             чи кампанію теж: вимкнувши їх, загальне правило вимкнуло б
+             і захищений креатив під ними. */
+          return !own.length || !under.some(coveredByOwn);
         });
         ents.forEach(e => {
           if (!ruleHits(r, e.agg)) return;

@@ -75,6 +75,50 @@ const RL_LEVELS = [
    інше (перегляди, реакції) лідом не є, і мовчки додавати його в
    знаменник ціни ліда означало б робити правила безглуздими. */
 let rlRules = [], rlEdit = null, rlLog = [], rlLoaded = false;
+
+/* ═══ ПРАВИЛО ПІД КРЕАТИВ ═══
+   Пара до fb-rules (crKey/crHit там): правило з полем Creatives діє
+   лише на оголошення цих креативів, а загальні правила такі оголошення
+   пропускають — вимикати їх може тільки власне правило. Звіряння те
+   саме, що на сервері: без регістру, «-» = «_», без розширення файлу,
+   цілим шматком (KG_JS_674_1 не чіпає KG_JS_674_10). */
+const rlCrKey = v => String(v == null ? '' : v).trim().toLowerCase()
+  .replace(/\.(mp4|mov|m4v|webm|avi|jpe?g|png|gif|webp)$/, '').replace(/[-\s]+/g, '_');
+function rlCrHit(crs, name) {
+  const n = rlCrKey(name);
+  if (!n || !crs || !crs.length) return false;
+  return crs.some(c => { const k = rlCrKey(c);
+    return n === k || new RegExp('(^|[^a-z0-9])' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      + '([^a-z0-9]|$)').test(n); });
+}
+const rlOwn = r => r && r.on !== false && Array.isArray(r.crs) && r.crs.length > 0;
+/* Які ввімкнені правила стережуть цей креатив — для значка 🛡 у
+   Creative Analyzer. Повертає індекси в rlRules. */
+window.rlRulesFor = function (cid) {
+  return rlRules.map((r, i) => rlOwn(r) && rlCrHit(r.crs, cid) ? i : -1).filter(i => i >= 0);
+};
+/* Правила для значка в Creative Analyzer — без панелі, без журналу й
+   без кабінетів: лише сам список. rlLoaded не чіпаємо, тож коли панель
+   відкриють, вона завантажить усе своє як звичайно. */
+let rlPeek = null;
+window.rlRulesPeek = function () {
+  if (rlLoaded) return Promise.resolve();
+  if (!rlPeek) rlPeek = (async () => {
+    try {
+      const raw = await getTeamSetting('fb_rules');
+      const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
+      if (!rlLoaded) rlRules = Array.isArray(v.rules) ? v.rules : [];
+    } catch (e) { /* немає правил — значка не буде */ }
+  })();
+  return rlPeek;
+};
+/* Відкрити правило з іншої сторінки: FB LIVE → Rules → форма. */
+window.rlOpenRule = async function (i) {
+  if (typeof navGo === 'function') navGo('cabinets');
+  rlPanel(true);
+  await rlInit();
+  if (rlRules[i] && typeof rlOpen === 'function') rlOpen(i);
+};
 /* Рядки про сам прогін (level='run'). Лежать у тому самому журналі,
    але показуються окремо: вони не дія, а відповідь на питання «а чи
    воно взагалі ходить». */
@@ -337,6 +381,7 @@ function rlPaint() {
         <span class="rl-tag ${r.dry === false ? 'is-live' : ''}">${r.dry === false ? 'live' : 'report only'}</span>
         <span class="rl-tag">${rlEsc((RL_LEVELS.find(l => l.k === r.level) || RL_LEVELS[0]).label)}</span>
         ${r.on === false ? '<span class="rl-tag is-dim">off</span>' : ''}
+        ${rlOwn({ ...r, on: true }) ? '<span class="rl-tag is-own" title="Only these creatives — and general rules leave them alone">🎨 own rule</span>' : ''}
         <span class="rl-row-acts">
           <button type="button" class="rl-mini" onclick="rlToggle(${i})">${r.on === false ? 'Enable' : 'Disable'}</button>
           <button type="button" class="rl-mini" onclick="rlOpen(${i})">Edit</button>
@@ -347,7 +392,7 @@ function rlPaint() {
       <div class="rl-scope">from $${rlEsc(r.minSpend == null ? 10 : r.minSpend)} spent${
         (r.geo || []).length ? ' · geo ' + rlEsc(r.geo.join('/')) : ' · any geo'}${
         r.nameHas ? ' · FB name has “' + rlEsc(r.nameHas) + '”' : ''}${
-        rlCabScope(r.cabs)}</div>
+        rlCabScope(r.cabs)}${rlCrScope(r)}</div>
     </div>`).join('') + (rlEdit === -1 ? rlForm(rlBlank(), -1) : '');
 }
 
@@ -363,10 +408,62 @@ function rlCabScope(cabs) {
         + ' unknown cabinet ID' + (r.unknown.length > 1 ? 's' : '') + '</b>' : '');
 }
 
+/* Креативи в рядку правила. Своє правило каже, які саме; загальне —
+   скільки креативів воно НЕ чіпає, бо в них своє правило. Без цього
+   «чому загальне правило не вимкнуло KG_JS_674» не мало б відповіді. */
+function rlCrScope(r) {
+  if (Array.isArray(r.crs) && r.crs.length) {
+    const shown = r.crs.slice(0, 3).map(rlEsc).join(', ');
+    return ' · creatives <b>' + shown + '</b>' + (r.crs.length > 3 ? ' +' + (r.crs.length - 3) : '');
+  }
+  const kept = new Set();
+  rlRules.forEach(o => { if (rlOwn(o)) o.crs.forEach(c => kept.add(rlCrKey(c))); });
+  return kept.size ? ' · <span class="rl-skip" title="'
+    + rlEsc([...kept].join(', ')) + '">skips ' + kept.size + ' creative' + (kept.size > 1 ? 's' : '')
+    + ' with their own rule</span>' : '';
+}
+
+/* Поле Creatives у формі: чипи + рядок із підказками з бази креативів.
+   Enter, кома чи вибір із підказки додає чип, ✕ — прибирає. */
+function rlCrChip(c) {
+  return `<span class="rl-cr" data-v="${rlEsc(c)}">${rlEsc(c)}<button type="button"
+    onclick="this.parentElement.remove(); rlCrNote()" aria-label="Remove">✕</button></span>`;
+}
+window.rlCrAdd = function (inp) {
+  const box = document.getElementById('rl-f-crs');
+  if (!box || !inp) return;
+  const have = new Set([...box.querySelectorAll('.rl-cr')].map(x => rlCrKey(x.dataset.v)));
+  String(inp.value || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean).forEach(v => {
+    if (have.has(rlCrKey(v))) return;
+    have.add(rlCrKey(v));
+    inp.insertAdjacentHTML('beforebegin', rlCrChip(v));
+  });
+  inp.value = '';
+  rlCrNote();
+};
+window.rlCrKeyDown = function (ev) {
+  if (ev.key === 'Enter' || ev.key === ',') { ev.preventDefault(); rlCrAdd(ev.target); }
+  else if (ev.key === 'Backspace' && !ev.target.value) {
+    const chips = document.querySelectorAll('#rl-f-crs .rl-cr');
+    if (chips.length) { chips[chips.length - 1].remove(); rlCrNote(); }
+  }
+};
+window.rlCrNote = function () {
+  const el = document.getElementById('rl-cr-note');
+  if (!el) return;
+  const n = document.querySelectorAll('#rl-f-crs .rl-cr').length;
+  el.textContent = n ? 'Only ads of these creatives — and general rules will leave them alone.'
+    : 'Blank — any creative.';
+};
+function rlCrList() {
+  const all = (window.creativesRawDataAll || window.creativesRawData || []).map(d => String(d.cid || '').trim());
+  return [...new Set(all.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+}
+
 function rlBlank() {
   return { id: 'r' + Date.now().toString(36), name: '', on: true, dry: true,
            level: 'ad', match: 'all', minSpend: 10,
-           when: [{ m: 'cpc_link', op: '>', v: 1.5 }], cabs: [], nameHas: '', geo: [] };
+           when: [{ m: 'cpc_link', op: '>', v: 1.5 }], cabs: [], nameHas: '', geo: [], crs: [] };
 }
 
 function rlForm(r, i) {
@@ -432,6 +529,12 @@ function rlForm(r, i) {
           <input class="rl-in is-wide" id="rl-f-cabs" placeholder="1149896616961527, 778"
             oninput="rlCabNote()" value="${rlEsc((r.cabs || []).join(', '))}"></label>
         <span id="rl-cab-note" class="rl-note"></span>
+        <label class="rl-f"><span class="rl-f-l">Creatives (blank = all)</span>
+          <span class="rl-in is-wide rl-crs" id="rl-f-crs" onclick="this.querySelector('input').focus()">${
+            (r.crs || []).map(rlCrChip).join('')}<input list="rl-cr-all" placeholder="KG_JS_674, …"
+              onkeydown="rlCrKeyDown(event)" onchange="rlCrAdd(this)" onblur="rlCrAdd(this)"></span></label>
+        <datalist id="rl-cr-all">${rlCrList().map(c => `<option value="${rlEsc(c)}">`).join('')}</datalist>
+        <span id="rl-cr-note" class="rl-note"></span>
       </div>
     </div>
 
@@ -476,6 +579,11 @@ function rlFromForm() {
       .filter(x => /^[A-Z]{2}$/.test(x)),
     cabs: String(document.getElementById('rl-f-cabs')?.value || '')
       .split(/[,\s]+/).map(x => x.replace(/^act_/, '').trim()).filter(Boolean),
+    /* Креативи — і з чипів, і те, що ще лишилось недописаним у рядку:
+       натиснути Save, не тиснучи Enter, — звична річ. */
+    crs: [...new Set([...document.querySelectorAll('#rl-f-crs .rl-cr')].map(x => x.dataset.v)
+      .concat(String(document.querySelector('#rl-f-crs input')?.value || '').split(/[,;\n]+/))
+      .map(x => String(x || '').trim()).filter(Boolean))],
     when: conds
   };
 }
@@ -525,8 +633,8 @@ window.rlDropHas = function () {
   if (rlEdit >= 0 && rlRules[rlEdit]) { rlRules[rlEdit].nameHas = ''; rlPaint(); }
 };
 
-window.rlAdd = function () { rlEdit = -1; rlPaint(); rlGeoNote(); rlCabNote(); };
-window.rlOpen = function (i) { rlEdit = i; rlPaint(); rlGeoNote(); rlCabNote(); };
+window.rlAdd = function () { rlEdit = -1; rlPaint(); rlGeoNote(); rlCabNote(); rlCrNote(); };
+window.rlOpen = function (i) { rlEdit = i; rlPaint(); rlGeoNote(); rlCabNote(); rlCrNote(); };
 window.rlCancel = function () { rlEdit = null; rlPaint(); };
 
 /* AND/OR підписаний між умовами, тож зміна селекта мусить перемалювати
@@ -550,7 +658,7 @@ function rlDraft(draft) {
   const keep = i >= 0 ? { ...rlRules[i], ...draft } : { ...rlBlank(), ...draft };
   const box = document.getElementById('rl-form');
   if (box) box.outerHTML = rlForm(keep, i);
-  rlGeoNote(); rlCabNote();
+  rlGeoNote(); rlCabNote(); rlCrNote();
 }
 
 window.rlPut = async function (i) {
