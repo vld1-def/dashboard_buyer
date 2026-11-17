@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 17.11 17:11">
+  <meta name="build" content="build 17.11 17:28">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7637,6 +7637,21 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   flex-shrink: 0; font-size: 9px; font-weight: 900; padding: 1px 5px; border-radius: 6px;
   background: rgba(239, 68, 68, .16); color: #fca5a5; letter-spacing: .02em;
 }
+/* Іконки модерації: галочка й хрестик SVG замість емодзі. */
+.cr-mod-ico { width: 1em; height: 1em; display: inline-block; vertical-align: -.12em; flex: 0 0 auto; }
+.cr-mod-dot {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  margin-right: 6px; border-radius: 6px; font-style: normal; vertical-align: -4px;
+}
+.cr-mod-dot .cr-mod-ico { width: 12px; height: 12px; }
+.cr-mod-k.is-ok .cr-mod-dot { background: rgba(34, 197, 94, .16); color: #4ade80; }
+.cr-mod-k.is-bad .cr-mod-dot { background: rgba(239, 68, 68, .16); color: #f87171; }
+.cr-mod-mini { display: inline-flex; align-items: center; gap: 2px; }
+.cr-mod-mini .cr-mod-ico { width: 9px; height: 9px; }
+.cr-mod-tn { display: inline-flex; align-items: center; gap: 3px; }
+.cr-mod-tn .cr-mod-ico { width: 10px; height: 10px; }
+.cr-mod-tn.is-bad { color: #f87171; }
+.cr-mod-tn.is-ok { color: #4ade80; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -7896,7 +7911,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 17.11 17:11</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 17.11 17:28</div>
     </div>
   </aside>
 
@@ -11649,8 +11664,18 @@ function crModCount(list) {
 function crModBadge(cid) {
   const { a, r } = crModCount(crModOf(cid));
   if (!r) return '';
-  return `<span class="cr-mod-mini" title="${r} rejected, ${a} passed moderation">❌${r}</span>`;
+  return `<span class="cr-mod-mini" title="${r} rejected, ${a} passed moderation">${CR_MOD_ICO.bad}${r}</span>`;
 }
+
+/* ІКОНКИ, А НЕ СМАЙЛИКИ. «хрестик і галочку зробити як іконки». Емодзі
+   в кожній системі малюються по-своєму й не беруть колір теми; тут —
+   тонкий SVG, що бере колір тексту (currentColor). */
+const CR_MOD_ICO = {
+  ok: '<svg class="cr-mod-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" '
+    + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.2 8.4l3 3 6.6-7"/></svg>',
+  bad: '<svg class="cr-mod-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" '
+    + 'stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>'
+};
 
 const crModEsc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -11687,8 +11712,8 @@ async function crRenderModerationPanel() {
   el.innerHTML = `
     <div class="cr-mod-top">
       <div class="cr-mod-kpis">
-        <span class="cr-mod-k is-ok">✅ <b>${a}</b> passed</span>
-        <span class="cr-mod-k is-bad">❌ <b>${r}</b> rejected</span>
+        <span class="cr-mod-k is-ok"><i class="cr-mod-dot">${CR_MOD_ICO.ok}</i><b>${a}</b> passed</span>
+        <span class="cr-mod-k is-bad"><i class="cr-mod-dot">${CR_MOD_ICO.bad}</i><b>${r}</b> rejected</span>
         ${rate != null ? `<span class="cr-mod-k">${rate}% pass rate</span>` : ''}
         ${last ? `<span class="cr-mod-k is-dim">last: ${crModEsc(last.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span>` : ''}
       </div>
@@ -11968,7 +11993,8 @@ async function crModNote() {
   if (!n) return;
   if (!crModRows) { await crModLoad(); if (!crModErr) searchCreative(); }
   const { a, r } = crModCount(crModOf(currentCreativeID));
-  n.textContent = r ? '· ❌' + r : a ? '· ✅' + a : '';
+  n.innerHTML = r ? '· <span class="cr-mod-tn is-bad">' + CR_MOD_ICO.bad + r + '</span>'
+    : a ? '· <span class="cr-mod-tn is-ok">' + CR_MOD_ICO.ok + a + '</span>' : '';
 }
 
 // ── Placement × креатив ──

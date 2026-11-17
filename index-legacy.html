@@ -4026,8 +4026,18 @@ function crModCount(list) {
 function crModBadge(cid) {
   const { a, r } = crModCount(crModOf(cid));
   if (!r) return '';
-  return `<span class="cr-mod-mini" title="${r} rejected, ${a} passed moderation">❌${r}</span>`;
+  return `<span class="cr-mod-mini" title="${r} rejected, ${a} passed moderation">${CR_MOD_ICO.bad}${r}</span>`;
 }
+
+/* ІКОНКИ, А НЕ СМАЙЛИКИ. «хрестик і галочку зробити як іконки». Емодзі
+   в кожній системі малюються по-своєму й не беруть колір теми; тут —
+   тонкий SVG, що бере колір тексту (currentColor). */
+const CR_MOD_ICO = {
+  ok: '<svg class="cr-mod-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" '
+    + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.2 8.4l3 3 6.6-7"/></svg>',
+  bad: '<svg class="cr-mod-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" '
+    + 'stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>'
+};
 
 const crModEsc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -4064,8 +4074,8 @@ async function crRenderModerationPanel() {
   el.innerHTML = `
     <div class="cr-mod-top">
       <div class="cr-mod-kpis">
-        <span class="cr-mod-k is-ok">✅ <b>${a}</b> passed</span>
-        <span class="cr-mod-k is-bad">❌ <b>${r}</b> rejected</span>
+        <span class="cr-mod-k is-ok"><i class="cr-mod-dot">${CR_MOD_ICO.ok}</i><b>${a}</b> passed</span>
+        <span class="cr-mod-k is-bad"><i class="cr-mod-dot">${CR_MOD_ICO.bad}</i><b>${r}</b> rejected</span>
         ${rate != null ? `<span class="cr-mod-k">${rate}% pass rate</span>` : ''}
         ${last ? `<span class="cr-mod-k is-dim">last: ${crModEsc(last.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span>` : ''}
       </div>
@@ -4345,7 +4355,8 @@ async function crModNote() {
   if (!n) return;
   if (!crModRows) { await crModLoad(); if (!crModErr) searchCreative(); }
   const { a, r } = crModCount(crModOf(currentCreativeID));
-  n.textContent = r ? '· ❌' + r : a ? '· ✅' + a : '';
+  n.innerHTML = r ? '· <span class="cr-mod-tn is-bad">' + CR_MOD_ICO.bad + r + '</span>'
+    : a ? '· <span class="cr-mod-tn is-ok">' + CR_MOD_ICO.ok + a + '</span>' : '';
 }
 
 // ── Плейсмент × креатив ──
