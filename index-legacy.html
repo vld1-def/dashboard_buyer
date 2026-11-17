@@ -1731,6 +1731,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
          клік — фільтр по кабінету, повторний — зняти. Скільки їх і
          який вибрано, видно на самій вкладці, навіть згорнутій. -->
     <button type="button" data-k="cabs" onclick="crTab('cabs')">Active cabinets <span id="cr-cabs-note" class="cr-tab-n"></span></button>
+    <!-- МОДЕРАЦІЯ: журнал reject / active з fb-sync (fb_ad_moderation).
+         На вкладці — скільки реджектів, видно й згорнутою. -->
+    <button type="button" data-k="mod" onclick="crTab('mod')">Moderation <span id="cr-mod-note" class="cr-tab-n"></span></button>
   </div>
   <div class="cr-tabbody mb-6 hidden" id="cr-tabbody">
     <div id="cr-panel-placements" class="hidden"></div>
@@ -1738,6 +1741,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     <div id="cr-panel-funnels" class="hidden"></div>
     <div id="cr-panel-accounts" class="hidden"></div>
     <div id="cr-panel-cabs" class="hidden"><div id="cr-account-list" class="cr-cab-tiles"></div></div>
+    <div id="cr-panel-mod" class="hidden"></div>
   </div>
 </div>
 </div>
@@ -3495,6 +3499,7 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
             : 'No funnel in the data'}">${c.cid}${crTagsOf(c.cid).length
           ? `<span class="ml-1.5 normal-case font-bold text-[9px] px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 align-middle">${crTagsOf(c.cid)[0]}${crTagsOf(c.cid).length>1?' +'+(crTagsOf(c.cid).length-1):''}</span>`
           : ''}</span>
+        ${crModBadge(c.cid)}
         <span class="text-[10px] font-bold opacity-60 flex-shrink-0">$${Math.round(c.s)}</span>
         <button onclick="copyID(event, '${cidEsc}')" title="Copy creative ID"
                 class="flex-shrink-0 opacity-40 hover:opacity-100 transition p-0.5 rounded hover:bg-white/10">
@@ -3958,6 +3963,129 @@ function crToggleStarOnly() {
    памʼятається між заходами: сторінка щоразу починає зі згорнутого.
    crOpenPanels лишається множиною: нею користується crRenderPanels, і
    малюється лише те, що видно. */
+/* ═══ МОДЕРАЦІЯ КРЕАТИВА: ЖУРНАЛ REJECT / ACTIVE ═══
+
+   «розділ, де буде список reject, active і дата, і буде лічильник; з
+   FB LIVE тягнути статуси; інший статус не потрібен, дублікатів не
+   робити; прописувати, на якому кабінеті реджект».
+
+   Журнал пише fb-sync (таблиця fb_ad_moderation, CREATIVE_MODERATION.sql):
+   одне оголошення з одним статусом — один запис, назавжди. Тут лише
+   читаємо його й показуємо по креативу. Креатив шукаємо в назві
+   оголошення тим самим правилом, що й правила під креатив: без
+   регістру, «-» = «_», без розширення, цілим шматком. */
+let crModRows = null, crModErr = '', crModBusy = null, crModFilter = '', crModMemo = new Map();
+
+const crModKey = v => String(v == null ? '' : v).trim().toLowerCase()
+  .replace(/\.(mp4|mov|m4v|webm|avi|jpe?g|png|gif|webp)$/, '').replace(/[-\s]+/g, '_');
+function crModHit(k, rk) {
+  if (!k || !rk) return false;
+  if (rk === k) return true;
+  if (!rk.includes(k)) return false;                 // швидкий відсів до регулярки
+  return new RegExp('(^|[^a-z0-9])' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z0-9]|$)').test(rk);
+}
+
+function crModLoad(force) {
+  if (crModRows && !force) return Promise.resolve();
+  if (crModBusy) return crModBusy;
+  crModBusy = (async () => {
+    try {
+      const rows = await sbFetchAll('fb_ad_moderation', q => q.order('first_seen', { ascending: false }));
+      crModRows = rows.filter(r => !r.team_name || typeof currentTeam === 'undefined' || r.team_name === currentTeam)
+        .map(r => ({ ...r, _k: r.cr_key || crModKey(r.ad_name) }));
+      crModErr = '';
+    } catch (e) {
+      crModRows = [];
+      crModErr = /fb_ad_moderation|does not exist|42P01|schema cache/i.test(e.message || '')
+        ? 'not-set-up' : (e.message || 'error');
+    }
+    crModMemo = new Map();
+    crModBusy = null;
+  })();
+  return crModBusy;
+}
+
+// Записи одного креатива, найсвіжіші першими. Памʼятаємо: список
+// креативів зліва питає це для кожного рядка.
+function crModOf(cid) {
+  if (!crModRows) return [];
+  const k = crModKey(cid);
+  if (crModMemo.has(k)) return crModMemo.get(k);
+  const out = crModRows.filter(r => crModHit(k, r._k));
+  crModMemo.set(k, out);
+  return out;
+}
+function crModCount(list) {
+  const a = list.filter(r => r.status === 'ACTIVE').length;
+  const r = list.filter(x => x.status === 'DISAPPROVED').length;
+  return { a, r, rate: a + r ? Math.round(a / (a + r) * 100) : null };
+}
+
+// Позначка в рядку списку креативів: скільки реджектів. Без реджектів —
+// нічого: зелені позначки на кожному рядку лише шуміли б.
+function crModBadge(cid) {
+  const { a, r } = crModCount(crModOf(cid));
+  if (!r) return '';
+  return `<span class="cr-mod-mini" title="${r} rejected, ${a} passed moderation">❌${r}</span>`;
+}
+
+const crModEsc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function crModCab(id) {
+  const fb = (typeof cabFb !== 'undefined' && Array.isArray(cabFb))
+    ? cabFb.find(x => String(x.account_id) === String(id)) : null;
+  return fb && fb.name ? crModEsc(fb.name) + ' <span class="cr-mod-id">' + crModEsc(id) + '</span>'
+    : '<span class="cr-mod-id">' + crModEsc(id) + '</span>';
+}
+
+window.crModSet = function (f) { crModFilter = f; crRenderModerationPanel(); };
+window.crModReload = async function () { await crModLoad(true); crRenderModerationPanel(); searchCreative(); };
+
+async function crRenderModerationPanel() {
+  const el = document.getElementById('cr-panel-mod');
+  if (!el) return;
+  if (!crModRows) {
+    el.innerHTML = '<p class="cr-mod-empty">Loading…</p>';
+    await crModLoad();
+    if (crTabNow !== 'mod') return;
+  }
+  if (crModErr === 'not-set-up') {
+    el.innerHTML = '<p class="cr-mod-empty">The moderation log is not set up yet — run '
+      + '<b>CREATIVE_MODERATION.sql</b> in Supabase → SQL Editor. Statuses start '
+      + 'coming in with the next Sync.</p>';
+    return;
+  }
+  if (crModErr) { el.innerHTML = '<p class="cr-mod-empty">Could not read the log: ' + crModEsc(crModErr) + '</p>'; return; }
+  const all = crModOf(currentCreativeID);
+  const { a, r, rate } = crModCount(all);
+  const last = all[0] ? new Date(all[0].first_seen) : null;
+  const list = crModFilter ? all.filter(x => x.status === crModFilter) : all;
+  const seg = (f, label) => `<button type="button" class="${crModFilter === f ? 'is-on' : ''}" onclick="crModSet('${f}')">${label}</button>`;
+  el.innerHTML = `
+    <div class="cr-mod-top">
+      <div class="cr-mod-kpis">
+        <span class="cr-mod-k is-ok">✅ <b>${a}</b> passed</span>
+        <span class="cr-mod-k is-bad">❌ <b>${r}</b> rejected</span>
+        ${rate != null ? `<span class="cr-mod-k">${rate}% pass rate</span>` : ''}
+        ${last ? `<span class="cr-mod-k is-dim">last: ${crModEsc(last.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span>` : ''}
+      </div>
+      <div class="seg-box cr-mod-seg">${seg('', 'All')}${seg('DISAPPROVED', 'Rejected')}${seg('ACTIVE', 'Active')}
+        <button type="button" onclick="crModReload()" title="Read the log again">↻</button></div>
+    </div>
+    ${!all.length ? '<p class="cr-mod-empty">No moderation events for this creative yet. They are written on every Sync — '
+        + 'an ad named after this creative that passes review or gets rejected will show up here.</p>'
+      : !list.length ? '<p class="cr-mod-empty">Nothing with this status.</p>'
+      : `<div class="cr-mod-list custom-scrollbar"><table>
+          <thead><tr><th>Date</th><th>Status</th><th>Cabinet</th><th>Ad</th><th>Reason</th></tr></thead>
+          <tbody>${list.map(x => `<tr>
+            <td class="cr-mod-d">${crModEsc(new Date(x.first_seen).toLocaleString(undefined, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }))}</td>
+            <td>${x.status === 'DISAPPROVED' ? '<span class="cr-mod-st is-bad">Rejected</span>' : '<span class="cr-mod-st is-ok">Active</span>'}</td>
+            <td>${crModCab(x.account_id)}</td>
+            <td class="cr-mod-ad">${crModEsc(x.ad_name || x.ad_id)}</td>
+            <td class="cr-mod-why">${x.reason ? crModEsc(x.reason) : '<span class="cr-mod-id">—</span>'}</td>
+          </tr>`).join('')}</tbody></table></div>`}`;
+}
+
 /* ЧИСЛА В КАРТЦІ КРЕАТИВА НЕ ВИЛАЗЯТЬ ЗА СВОЮ КОЛОНКУ.
    «спенд не влазиться … коли спенда більше 6 цифр»: $1,300,000.00 у
    шрифті 30px ширший за п'яту частину картки й наповзав на Clicks.
@@ -4007,7 +4135,7 @@ async function crRuleBadge(cid) {
     esc(names.length > 1 ? names.length + ' own rules' : names[0])}</button>`;
 }
 
-const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs'];
+const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod'];
 /* ЗА ЗАМОВЧУВАННЯМ ВІДКРИТИЙ DAILY TREND. «по дефолту щоб графік був
    відкритий, коли відкриваю креатив». Вибір і далі не памʼятається між
    заходами: сторінка щоразу починає з графіка. */
@@ -4206,6 +4334,18 @@ function crRenderPanels() {
   if (crOpenPanels.has('trend'))      crRenderTrendPanel();
   if (crOpenPanels.has('funnels'))    crRenderFunnelsPanel();
   if (crOpenPanels.has('accounts'))   crRenderAccountsPanel();
+  if (crOpenPanels.has('mod'))        crRenderModerationPanel();
+  crModNote();
+}
+
+/* Скільки реджектів у вибраного креатива — на самій вкладці. Журнал
+   читаємо один раз за відкриття сторінки, тихо. */
+async function crModNote() {
+  const n = document.getElementById('cr-mod-note');
+  if (!n) return;
+  if (!crModRows) { await crModLoad(); if (!crModErr) searchCreative(); }
+  const { a, r } = crModCount(crModOf(currentCreativeID));
+  n.textContent = r ? '· ❌' + r : a ? '· ✅' + a : '';
 }
 
 // ── Плейсмент × креатив ──

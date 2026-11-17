@@ -49,14 +49,15 @@ const CORS = {
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
 
-// Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 7 запитів
-// на кабінет виходить 7 кабінетів за виклик.
+// Скільки запитів в одному пакеті Graph. Їхня стеля — 50. По 8 запитів
+// на кабінет (восьмий — причини реджекту для журналу модерації)
+// виходить 6 кабінетів за виклик.
 //
 // Число мусить збігатися з довжиною urlsFor(): пакет ріжеться на
 // кабінети саме по ньому, і розбіжність тихо роз'їхала б відповіді —
 // кабінет читав би чужі цифри, не подавши знаку.
-const PER_ACC = 7;
-const BATCH_MAX = 50;   // 7 кабінетів за виклик
+const PER_ACC = 8;
+const BATCH_MAX = 50;   // 6 кабінетів за виклик (48 запитів)
 
 /* СКІЛЬКИ ПАКЕТІВ ТРИМАЄМО В ПОВІТРІ ОДНОЧАСНО.
 
@@ -572,6 +573,13 @@ function urlsFor(actId: string, tz: string): string[] {
       + '&fields=' + encodeURIComponent(
         'id,creative{object_story_spec,asset_feed_spec,object_url,'
         + 'thumbnail_url,image_url}'),
+    /* ПРИЧИНА РЕДЖЕКТУ — для журналу модерації креативів
+       (fb_ad_moderation). ОКРЕМИМ запитом і лише по відхилених: якщо
+       Facebook відмовить саме в цьому полі, втратиться тільки причина, а
+       знімок, на якому стоять правила, лишиться цілим. */
+    act + '/ads?effective_status=' + encodeURIComponent('["DISAPPROVED"]')
+      + '&limit=' + LIST_LIMIT
+      + '&fields=' + encodeURIComponent('id,ad_review_feedback'),
   ];
 }
 
@@ -692,6 +700,7 @@ type Day = { day: string; spend: number | null;
    на цьому рівні». Своя копія тієї самої функції не лише зайва, а й
    просто не компілювалась: ім'я вже зайняте. */
 type AdSnap = { ad_id: string; name: string; status: string; own: string;
+                reason: string;   // причина реджекту, якщо Facebook її дав
                 adset_id: string; adset_name: string; adset_status: string;
                 adset_own: string;
                 /* Старт і кінець адсета — з них «Scheduled»: ACTIVE з датою
@@ -941,6 +950,20 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
     picErr = linkErr;
   }
 
+  /* Причини реджекту: { id → «Reason text; …» }. Facebook кладе їх у
+     ad_review_feedback.global як { "Назва правила": "пояснення" }. */
+  const reasons = new Map<string, string>();
+  const revPart = parts[7];
+  if (revPart && revPart.code === 200) {
+    (Array.isArray(revPart.body?.data) ? revPart.body.data : []).forEach((r: Json) => {
+      const g = r?.ad_review_feedback?.global;
+      if (!r?.id || !g || typeof g !== 'object') return;
+      const txt = Object.entries(g).map(([k, v]) => (v ? String(k) + ': ' + String(v) : String(k)))
+        .join('; ').slice(0, 500);
+      if (txt) reasons.set(String(r.id), txt);
+    });
+  }
+
   const livePart = parts[5];
   let live: AdSnap[] | null = null;
   if (livePart && livePart.code === 200) {
@@ -970,6 +993,7 @@ function readParts(parts: (Json | null)[], ours: Set<string>):
         link_clicks: Number(row.inline_link_clicks) || 0,
         actions: Array.isArray(row.actions) ? row.actions : [],
         host: hosts.get(String(r.id || '')) || '',
+        reason: reasons.get(String(r.id || '')) || '',
         thumb: (pics.get(String(r.id || '')) || { th: '' }).th,
         pic: (pics.get(String(r.id || '')) || { im: '' }).im
       };
@@ -1207,6 +1231,10 @@ type Outcome = { accounts: number; failed: number; changed: number;
                     треба: інакше іконки просто не зʼявляться, і шукати
                     причину буде ніде. */
                  picNote: string;
+                 /* Журнал модерації креативів: скільки ACTIVE/DISAPPROVED
+                    побачили цього разу (нові й старі разом) і що
+                    завадило записати. */
+                 moderation: number; moderationError: string;
                  /* ЯКІ САМЕ КАБІНЕТИ ОБІЙШЛИ. Підсумок казав «40 ad
                     account(s) from 3 token(s)» — число, з якого не
                     видно, чи твій кабінет серед тих сорока. Саме це й
@@ -1271,7 +1299,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   const out: Outcome = { accounts: 0, failed: 0, changed: 0, error: '', throttled: false,
                         days: 0, noHistory: 0, historyError: '', knownError: '',
                         snapshot: 0, snapshotError: '', linkError: '', archived: 0,
-                        picNote: '', touched: [], graphMs: 0 };
+                        picNote: '', moderation: 0, moderationError: '', touched: [], graphMs: 0 };
 
   let accs: Json[];
   try {
@@ -1353,6 +1381,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
      кабінет, до якого не дійшла черга, лишився б без знімка, і правила
      вважали б, що в ньому нічого не крутиться. */
   const snapRows: Json[] = [];
+  const modRows: Json[] = [];
   const snapSeen: string[] = [];
   // кабінет -> Сторінка -> скільки оголошень і постів
   const pageUse = new Map<string, Map<string, PageUse>>();
@@ -1412,7 +1441,9 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
   const work = archived.size ? base_.filter(x => !archived.has(x.id)) : base_;
   out.archived = base_.length - work.length;
 
-  const CHUNK = BATCH_MAX / PER_ACC;
+  /* Ціле число кабінетів: 50 / 8 = 6.25, і дробовий крок різав би
+     пакети по 6, 6, 6, 7 — тобто 56 запитів при стелі 50. */
+  const CHUNK = Math.floor(BATCH_MAX / PER_ACC);
   const slices: (typeof work)[] = [];
   for (let i = 0; i < work.length; i += CHUNK) slices.push(work.slice(i, i + CHUNK));
 
@@ -1456,6 +1487,14 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
       if (pages) pageUse.set(x.id, pages);
       if (live) {
         snapSeen.push(x.id);
+        live.forEach(a => {
+          if (a.status === 'ACTIVE' || a.status === 'DISAPPROVED') modRows.push({
+            created_by: t.created_by, team_name: t.team_name, ad_id: a.ad_id,
+            status: a.status, account_id: x.id, ad_name: a.name || null,
+            cr_key: crKey(a.name) || null,
+            reason: a.status === 'DISAPPROVED' ? (a.reason || null) : null,
+            first_seen: now });
+        });
         live.forEach(a => snapRows.push({
           created_by: t.created_by, team_name: t.team_name, account_id: x.id,
           ad_id: a.ad_id, name: a.name, effective_status: a.status || null,
@@ -1558,6 +1597,7 @@ async function syncToken(base: string, hdr: Json, t: TokenRow,
     out.historyError = (e as Error).message;
   }
   await saveSnap(base, hdr, t, snapRows, snapSeen, now, out);
+  await saveModeration(base, hdr, modRows, out);
   await savePages(base, hdr, t, pageUse, now);
   /* Саме тут і була б вада: у звуженому прогоні цей виклик оголосив би
      втраченими всі кабінети токена, крім обраного. */
@@ -1702,6 +1742,36 @@ async function saveSnap(base: string, hdr: Json, t: TokenRow, rows: Json[],
     out.snapshot = rows.length;
   } catch (e) {
     out.snapshotError = (e as Error).message;
+  }
+}
+
+/* ── журнал модерації креативів ──
+   Дописуємо лише НОВЕ: ключ (created_by, ad_id, status), і на
+   повторі база мовчки пропускає рядок (ignore-duplicates). Тож перша
+   дата, коли оголошення побачили з цим статусом, не переписується.
+
+   Таблиці може ще не бути (CREATIVE_MODERATION.sql не виконано) — це
+   не привід валити синк: кабінети й правила важливіші. Причина їде у
+   відповідь функції. */
+const crKey = (v: unknown) => String(v == null ? '' : v).trim().toLowerCase()
+  .replace(/\.(mp4|mov|m4v|webm|avi|jpe?g|png|gif|webp)$/, '').replace(/[-\s]+/g, '_');
+
+async function saveModeration(base: string, hdr: Json, rows: Json[], out: Outcome): Promise<void> {
+  if (!rows.length) return;
+  try {
+    for (let i = 0; i < rows.length; i += 500) {
+      const res = await fetch(base + '/rest/v1/fb_ad_moderation?on_conflict=created_by,ad_id,status', {
+        method: 'POST',
+        headers: { ...hdr, Prefer: 'resolution=ignore-duplicates,return=minimal' },
+        body: JSON.stringify(rows.slice(i, i + 500))
+      });
+      if (!res.ok) throw new Error(await res.text().catch(() => 'HTTP ' + res.status));
+    }
+    out.moderation = rows.length;
+  } catch (e) {
+    const m = (e as Error).message || '';
+    out.moderationError = /fb_ad_moderation|does not exist|42P01/i.test(m)
+      ? 'no moderation log yet — run CREATIVE_MODERATION.sql' : m;
   }
 }
 
