@@ -22,7 +22,7 @@ function mount({ answers = [] } = {}) {
   const el = () => ({ cls: new Set(['hidden']), textContent: '',
     classList: { toggle(c, v) { v ? this.s.add(c) : this.s.delete(c); }, s: null } });
   const dom = {};
-  ['cr-queue-only', 'cr-queue-n', 'cr-queue-copy', 'cr-queue-clear'].forEach(id => {
+  ['cr-queue-only', 'cr-queue-n', 'cr-queue-clear'].forEach(id => {
     const e = el(); e.classList.s = e.cls; dom[id] = e; });
   const env = {
     document: { getElementById: id => dom[id] || null },
@@ -33,7 +33,7 @@ function mount({ answers = [] } = {}) {
     navigator: { clipboard: { writeText: async t => { log.copied.push(t); } } }
   };
   const api = new Function(...Object.keys(env), code
-    + '\nreturn { crQKey, crQueued, crQueueBtn, crQueueList, crToggleQueue, crToggleQueueOnly, crQueuePaint, crQueueCopy, crQueueClear,'
+    + '\nreturn { crQKey, crQueued, crQueueBtn, crQueueList, crToggleQueue, crToggleQueueOnly, crQueuePaint, crQueueClear,'
     + ' q: () => crQueue.slice(), only: () => crQueueOnly, set: v => { crQueue = v; } };')(...Object.values(env));
   return Object.assign(api, { log, dom });
 }
@@ -50,8 +50,8 @@ ok('клік кладе в чергу й зберігає її списком', 
   && m.log.saved.at(-1)[0] === 'creative_queue' && m.log.saved.at(-1)[1] === '["KG_JS_674","TJ_6nI2a"]', m.log.saved);
 ok('клік у рядку не відкриває посилання й не вибирає креатив', e1.n === 2);
 ok('файл із Drive і той самий креатив зі статистики — один запис', m.crQueued('KG_JS_674') && m.crQueued('KG_JS_674.mp4'));
-ok('лічильник у шапці й кнопки копіювання/очищення зʼявились', m.dom['cr-queue-n'].textContent === '2'
-  && !m.dom['cr-queue-copy'].cls.has('hidden') && !m.dom['cr-queue-clear'].cls.has('hidden'));
+ok('лічильник у шапці й кнопка очищення зʼявились', m.dom['cr-queue-n'].textContent === '2'
+  && !m.dom['cr-queue-clear'].cls.has('hidden'));
 ok('список перемальовується після кожної зміни', m.log.searched === 2);
 
 m.crToggleQueue(ev(), 'KG_JS_674');
@@ -76,10 +76,8 @@ ok('кнопка шапки вмикає режим і підсвічуєтьс�
 m.crToggleQueueOnly();
 ok('і вимикає', m.only() === false && !m.dom['cr-queue-only'].cls.has('is-on'));
 
-/* ── копіювання ── */
-await m.crQueueCopy();
-ok('копіюються назви стовпчиком, у порядку черги', m.log.copied[0] === 'TJ_6nI2a\nKG_AB_570'
-  && m.log.toasts.some(t => /Copied 2 creative name/.test(t)), m.log);
+/* ── копіювання всіх назв прибрано на прохання ── */
+ok('кнопки «скопіювати всі назви черги» більше немає', !/cr-queue-copy|crQueueCopy/.test(SRC));
 
 /* ── очищення ── */
 const no = mount({ answers: [false] });
@@ -90,17 +88,17 @@ const yes = mount({ answers: [true] });
 yes.set(['A', 'B']);
 await yes.crQueueClear();
 ok('згода спорожнює чергу й зберігає це', yes.q().length === 0 && yes.log.saved.at(-1)[1] === '[]'
-  && yes.dom['cr-queue-copy'].cls.has('hidden') && yes.dom['cr-queue-n'].textContent === '');
+  && yes.dom['cr-queue-clear'].cls.has('hidden') && yes.dom['cr-queue-n'].textContent === '');
 const empty = mount();
-await empty.crQueueCopy(); await empty.crQueueClear();
-ok('порожня черга: копіювати й очищати нема чого', empty.log.copied.length === 0 && empty.log.asked.length === 0);
+await empty.crQueueClear();
+ok('порожня черга: очищати нема чого', empty.log.asked.length === 0);
 
 /* ── як це вшито ── */
 ok('черга читається тим самим запитом, що й зірки', /'creative_format', 'report_tags', 'creative_queue'\]/.test(SRC)
   && /crQueue = Array\.isArray\(q\)/.test(SRC));
 ok('фільтр «лише черга» стоїть у збиранні списку', /if \(crQueueOnly\) list = crQueueList\(list\);/.test(SRC));
 ok('кнопка є в обох рядках: і в креатива зі статистикою, і у файла з Drive', (SRC.match(/\$\{crQueueBtn\(c\.cid\)\}/g) || []).length === 2);
-ok('у шапці — Queue, копіювання й очищення', /id="cr-queue-only"/.test(SRC) && /id="cr-queue-copy"/.test(SRC) && /id="cr-queue-clear"/.test(SRC));
+ok('у шапці — Queue й очищення', /id="cr-queue-only"/.test(SRC) && /id="cr-queue-clear"/.test(SRC));
 ok('і це доїхало в зібраний index.html', /function crQueueList\(list\)/.test(OUT) && /\.cr-q-top\.is-on/.test(OUT));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');

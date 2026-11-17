@@ -29,7 +29,7 @@ const row = await page.evaluate(() => {
   const d = document.createElement('div');
   d.innerHTML = html;
   const a = d.firstElementChild;
-  const btn = a.querySelector('button');
+  const btn = a.querySelector('button[onclick^="copyID"]');
   return { tag: a.tagName.toLowerCase(), href: a.getAttribute('href'),
            hasBtn: !!btn, onclick: btn ? btn.getAttribute('onclick') : '',
            title: btn ? btn.getAttribute('title') : '',
@@ -60,7 +60,7 @@ const stopped = await page.evaluate(() => {
     '', '', '');
   document.body.appendChild(d);
   const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
-  d.querySelector('button').dispatchEvent(ev);
+  d.querySelector('button[onclick^="copyID"]').dispatchEvent(ev);
   const out = { prevented: ev.defaultPrevented, copied };
   d.remove();
   return out;

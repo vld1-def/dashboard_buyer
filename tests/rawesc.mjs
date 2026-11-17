@@ -57,14 +57,15 @@ ok('і немає \\n, який нічого не переносить', nls.len
    аудиторія — щоразу інше. */
 const btn = HTML.slice(HTML.indexOf('id="cr-cold"'), HTML.indexOf('id="cr-cold"') + 500);
 const label = (btn.match(/>([^<>]+)<\/button>/) || [])[1] || '';
-ok('кнопка підписана словами', /barely ran/i.test(label.trim()), label.trim());
+ok('кнопка підписана словами', /not launched/i.test(label.trim()), label.trim());
 ok('і без сніжинки', !/❄|\\u2744/.test(label), label.trim());
 /* Підказка лишається: вона каже те, чого в двох словах не скажеш —
    що фільтр не зважає на вибраний період. */
 ok('а підказка пояснює, що період не діє',
   /ignores the date range/i.test(btn), btn.slice(0, 200));
 
-/* ── ЗНАК ПОРІВНЯННЯ ПОРУЧ ── */
-ok('поріг підписаний справжнім «≤»', bare.includes('≤ $'), '≤ $');
+/* Порогу «≤ $5» більше немає: кнопка показує лише те, що не
+   запускалось жодного разу. */
+ok('порогу поруч немає', !/id="cr-cold-max"/.test(HTML));
 
 await done(null, null, []);

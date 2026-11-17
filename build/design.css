@@ -6302,3 +6302,96 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   background: rgba(56,189,248,.22); color: #7dd3fc; font-size: 10px; line-height: 16px;
 }
 .cr-q-btn { background: none; border: 0; cursor: pointer; padding: 0 1px; }
+
+/* ═══ GROUP У FB LIVE — БЕЗ «КОРОБКИ В КОРОБЦІ» ═══
+   Старий шар фарбує кожен select своїм світлішим тлом і рамкою через
+   !important, тож у блоці інструментів Group стояв окремою сірою
+   плашкою з власним заокругленням поруч із пласкими Rules і Pages.
+   Окремо (вужче 1280px) він має ту саму рамку й тло, що й кнопки
+   поруч; у блоці — жодних, як сусідні сегменти. */
+.cab-grp {
+  background-color: rgba(0, 0, 0, .25) !important; border: 1px solid var(--border) !important;
+  border-radius: 12px !important; box-shadow: none !important; backdrop-filter: none !important;
+  font-weight: 900; text-transform: uppercase;
+}
+@media (min-width: 1280px) {
+  .cab-tools > .cab-grp {
+    background-color: transparent !important; border: 0 !important; border-radius: 0 !important;
+    height: auto;
+  }
+  .cab-tools > .cab-grp:hover { background-color: var(--surface-2) !important; }
+}
+
+/* ═══ СЕГМЕНТОВАНИЙ БЛОК ДЛЯ ФІЛЬТРІВ КРЕАТИВІВ ═══
+   «зроби щоб ці випадаючі списки були як одна велика кнопка (так як в
+   fb live Rules pages)». Рамка навколо всього блока, сегменти без
+   власних рамок, тонкі риски між ними. !important на випадайках — бо
+   старий шар фарбує КОЖЕН select своїм тлом і рамкою. */
+.seg-box {
+  display: inline-flex; align-items: stretch; flex-wrap: nowrap; max-width: 100%;
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  background: rgba(0, 0, 0, .25);
+}
+.seg-box > select, .seg-box > button {
+  height: 34px; margin: 0; padding: 0 12px; cursor: pointer; white-space: nowrap;
+  border: 0 !important; border-radius: 0 !important; background-color: transparent !important;
+  box-shadow: none !important; backdrop-filter: none !important; outline: none;
+  font-size: 11px !important; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted) !important; transition: color .12s, background-color .12s;
+}
+/* Випадайка — з тією самою стрілкою, що в Group у FB LIVE, і шириною
+   за вибраним словом, а не за найдовшим у списку. */
+.seg-box > select {
+  appearance: none; -webkit-appearance: none; field-sizing: content; padding-right: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.45)'%3E%3Cpath stroke-linecap='round' stroke-width='3' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important; background-position: right 8px center !important; background-size: 9px !important;
+}
+/* Вибране значення (не «All …») — акцентом: видно, що фільтр діє. */
+.seg-box > select:has(option:checked:not([value=""])) { color: var(--accent, #a78bfa) !important; }
+.seg-box > * + * { border-left: 1px solid var(--border) !important; }
+.seg-box > select:hover, .seg-box > button:hover { background-color: var(--surface-2) !important; color: var(--text-main) !important; }
+.seg-box > select:focus-visible, .seg-box > button:focus-visible { box-shadow: inset 0 0 0 2px var(--accent) !important; }
+.seg-box > button.is-on { background-color: var(--accent) !important; color: #fff !important; }
+.seg-box > select option { background: #16161c; color: #e5e7eb; text-transform: none; letter-spacing: 0; }
+.seg-box > button.hidden { display: none; }
+
+/* Окрема кнопка-перемикач того самого вигляду (Not launched). */
+.seg-btn {
+  height: 36px; padding: 0 14px; border-radius: 12px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--border); background: rgba(0, 0, 0, .25); color: var(--text-muted);
+  font-size: 11px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.seg-btn:hover { color: var(--text-main); border-color: var(--border-2); }
+.seg-btn.is-on { background: var(--accent); border-color: transparent; color: #fff; }
+
+/* На телефоні блок фільтрів гортається вбік, а не ламає ряд. */
+@media (max-width: 640px) {
+  .cr-filters { overflow-x: auto; scrollbar-width: none; }
+  .cr-filters::-webkit-scrollbar { display: none; }
+}
+
+/* ═══ АКТИВНІ КАБІНЕТИ КРЕАТИВА — ПЛИТКАМИ У ВКЛАДЦІ ═══ */
+.cr-tab-n { opacity: .6; font-weight: 700; letter-spacing: .04em; }
+.cr-cab-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.cr-cab-tile {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 8px;
+  padding: 9px 11px 8px; border-radius: 12px; text-align: left; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  transition: border-color .12s, background .12s;
+}
+.cr-cab-tile:hover { border-color: var(--border-2); background: var(--surface-3); }
+.cr-cab-tile.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.cr-cab-n { font-size: 11.5px; font-weight: 800; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-cab-s { font-size: 12px; font-weight: 800; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cr-cab-tile.is-on .cr-cab-s { color: var(--text-main); }
+.cr-cab-bar { grid-column: 1 / -1; height: 3px; margin-top: 5px; border-radius: 2px; background: rgba(255, 255, 255, .06); overflow: hidden; }
+.cr-cab-bar i { display: block; height: 100%; background: var(--accent); opacity: .8; border-radius: 2px; }
+
+/* ═══ ЧИСЛА В КАРТЦІ КРЕАТИВА ═══
+   Спенд — перша колонка, і на широкому екрані вона ширша за решту:
+   саме його число найдовше. Решту підганяє crFitNums(). */
+#cr-metrics > div { min-width: 0; }
+@media (min-width: 1024px) {
+  #cr-metrics { grid-template-columns: minmax(0, 1.5fr) repeat(4, minmax(0, 1fr)) !important; }
+}

@@ -13,7 +13,7 @@ const SRC = fs.readFileSync('index-legacy.html', 'utf8').replace(/\r\n/g, '\n');
 const OUT = fs.readFileSync('index.html', 'utf8');
 
 /* ═══ ВКЛАДКИ ═══ */
-const a = SRC.indexOf("const CR_TABS = ['placements', 'trend', 'funnels', 'accounts'];");
+const a = SRC.indexOf("const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs'];");
 const b = SRC.indexOf('// Стара назва — щоб нічого, що її ще кличе, не впало.');
 const code = SRC.slice(a, b);
 
@@ -23,7 +23,7 @@ function tabs(saved) {
     classList: { toggle(c, v) { if (c === 'hidden') this.o.hidden = v; else this.o.on = v; }, o: null } });
   const panels = {}, btns = [];
   const body = mk('body'); body.classList.o = body;
-  ['placements', 'trend', 'funnels', 'accounts'].forEach(k => {
+  ['placements', 'trend', 'funnels', 'accounts', 'cabs'].forEach(k => {
     const p = mk(k); p.classList.o = p; panels['cr-panel-' + k] = p;
     const bt = mk(k); bt.classList.o = bt; bt.dataset = { k }; btns.push(bt);
   });
@@ -64,8 +64,31 @@ ok('вибір не памʼятається: наступний захід зн
 t0.crTab('nope');
 ok('невідома вкладка нічого не міняє', t0.now() === '');
 
-ok('у розмітці чотири вкладки з англійськими назвами', /<div class="cr-tabs" id="cr-tabs"/.test(SRC)
-  && ['Placement', 'Daily trend', 'Funnels', 'Cabinets'].every(n => new RegExp('onclick="crTab\\(\'[a-z]+\'\\)">' + n + '</button>').test(SRC)));
+ok('у розмітці вкладки з англійськими назвами', /<div class="cr-tabs" id="cr-tabs"/.test(SRC)
+  && ['Placement', 'Daily trend', 'Funnels', 'Cabinet or random'].every(n => new RegExp('onclick="crTab\\(\'[a-z]+\'\\)">' + n + '</button>').test(SRC)));
+
+/* ═══ АКТИВНІ КАБІНЕТИ — ВКЛАДКОЮ З ПЛИТКАМИ ═══ */
+ok('активні кабінети — п\'ята вкладка', /data-k="cabs" onclick="crTab\('cabs'\)">Active cabinets <span id="cr-cabs-note"/.test(SRC)
+  && /<div id="cr-panel-cabs" class="hidden"><div id="cr-account-list" class="cr-cab-tiles"><\/div><\/div>/.test(SRC));
+ok('стіни кнопок під карткою більше немає', !/Active Cabinets:<\/p>/.test(SRC));
+ok('плитка: назва, спенд, частка; клік — фільтр', /class="cr-cab-tile\$\{activeCrAcc===name \? ' is-on' : ''\}"/.test(SRC)
+  && /<span class="cr-cab-bar"><i style="width:\$\{pct\}%"><\/i><\/span>/.test(SRC));
+
+/* ═══ ШАПКА: ФІЛЬТРИ ОДНИМ БЛОКОМ, NOT LAUNCHED ═══ */
+{
+  const box = (SRC.match(/<div class="seg-box cr-filters">[\s\S]*?\n              <\/div>/) || [''])[0];
+  ok('гео, формат, теги, папки й зірки — в одному блоці', ['creative-geo-filter', 'creative-format-filter', 'creative-tag-filter', 'cr-group-tags', 'cr-star-only']
+    .every(id => box.includes('id="' + id + '"')), box.slice(0, 200));
+  ok('кнопки блока вмикаються класом is-on', /getElementById\('cr-group-tags'\)\?\.classList\.toggle\('is-on', crGroupTags\)/.test(SRC)
+    && /getElementById\('cr-star-only'\)\?\.classList\.toggle\('is-on', crStarOnly\)/.test(SRC));
+  ok('Not launched — кнопка без порогу', /class="seg-btn">Not launched<\/button>/.test(SRC) && !/cr-cold-max|crColdMax/.test(SRC));
+  ok('у режимі Not launched лише файли, що не лились', /if \(crCold\) \{\n    list = \[\];/.test(SRC));
+  ok('порожній список каже чому', /Every file in Drive has been launched/.test(SRC) && /Drive folder is not set/.test(SRC));
+}
+const CSS = fs.readFileSync('build/design.css', 'utf8');
+ok('спенд не вилазить: перша колонка ширша, шрифт підганяється', /function crFitNums\(\)/.test(SRC)
+  && /#cr-metrics \{ grid-template-columns: minmax\(0, 1\.5fr\) repeat\(4, minmax\(0, 1fr\)\) !important; \}/.test(CSS));
+ok('Group у FB LIVE без власної плашки в блоці', /\.cab-tools > \.cab-grp \{\n    background-color: transparent !important; border: 0 !important;/.test(CSS));
 ok('стрілок розгортайок більше немає', !/cr-arrow-/.test(SRC));
 ok('панелі малюються разом із фарбуванням вкладок', /function crRenderPanels\(\) \{\n  crTabPaint\(\);/.test(SRC));
 
