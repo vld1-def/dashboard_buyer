@@ -6459,21 +6459,25 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 }
 
 /* ═══ СПИСОК КРЕАТИВІВ: ВІЛЬНА ВИСОТА І РОЗМИТТЯ ЗНИЗУ ═══
-   Колонка тягнеться за рядком сітки, а мінімум — до низу екрана
-   (мінус шапка сторінки й нижня панель), щоб під списком не лишалось
-   порожньої смуги, коли картка праворуч коротка. */
+   Сам розділ — flex-елемент сторінки й займає її висоту до низу. Тому
+   список рахуємо не від екрана (100vh під body{zoom:.9} — інше число,
+   і внизу лишалась смуга), а від розділу: розділ стає колонкою, сітка
+   забирає все місце під шапкою, а колонка списку тягнеться за рядком
+   сітки. Довша картка праворуч тягне рядок за собою — і список теж. */
 @media (min-width: 1024px) {
-  #cr-list-col { min-height: max(500px, calc(100vh - 210px)); align-self: stretch; }
+  #creative-analyzer-section { display: flex; flex-direction: column; }
+  #creative-analyzer-section > #creative-result-area { flex: 1 0 auto; align-content: stretch; }
+  #cr-list-col { min-height: 500px; align-self: stretch; }
 }
 /* Розмиття внизу: рядки, що йдуть під край, не обрізаються різко, а
    розчиняються. Видно, лише поки є куди гортати (crListFade). */
 #cr-list-wrap::after {
-  content: ''; position: absolute; left: 0; right: 8px; bottom: 0; height: 64px;
+  content: ''; position: absolute; left: 0; right: 8px; bottom: 0; height: 96px;
   pointer-events: none; opacity: 0; transition: opacity .2s;
   background: linear-gradient(to bottom, transparent, var(--surface) 92%);
-  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 70%);
-  mask-image: linear-gradient(to bottom, transparent, #000 70%);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 60%);
+  mask-image: linear-gradient(to bottom, transparent, #000 60%);
   border-radius: 0 0 12px 12px;
 }
 #cr-list-wrap.is-more::after { opacity: 1; }

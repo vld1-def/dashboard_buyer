@@ -84,7 +84,8 @@ ok('лінії стовпців на 70%',
    більше немає — колонка тягнеться за рядком, а мінімум — до низу
    екрана, тож коротка картка праворуч список не вкорочує. */
 ok('висота списку вільна, але не нижча за екран',
-  !/lg:h-\[75vh\]/.test(HTML) && /#cr-list-col \{ min-height: max\(500px, calc\(100vh - 210px\)\); align-self: stretch; \}/.test(HTML),
+  !/lg:h-\[75vh\]/.test(HTML) && /#creative-analyzer-section > #creative-result-area \{ flex: 1 0 auto; align-content: stretch; \}/.test(HTML)
+    && /#cr-list-col \{ min-height: 500px; align-self: stretch; \}/.test(HTML),
   '#cr-list-col');
 ok('а на вузькому екрані лишається нижня межа',
   /min-h-\[500px\]/.test(HTML), 'min-h-[500px]');
