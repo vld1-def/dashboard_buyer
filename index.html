@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 18.11 18:02">
+  <meta name="build" content="build 18.11 18:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7980,7 +7980,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 18.11 18:02</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 18.11 18:17</div>
     </div>
   </aside>
 
@@ -29539,10 +29539,15 @@ const CAB_COLS = [
      дерева. Разом із деревом вони й переїхали сюди з його власної
      таблиці — інакше результати, ліди й реєстрації просто зникли б з
      екрана. Вимкнені за замовчуванням. */
+  /* Result і його ціна читаються й у рядку кабінета — зі знімка, як
+     Lead і Reg нижче (див. cdCabResult): одна ціль — число й ціна,
+     кілька — кожна окремо. */
   { key: 'result', label: 'Result', ta: 'r', node: 1,
-    tip: 'What the ad set optimizes for \u2014 campaign level', get: () => null },
+    tip: 'What the ad sets optimize for, today, from the latest snapshot',
+    get: c => cabSnapRes(c), cell: v => v ? v.text : null, tipOf: c => (cabSnapRes(c) || {}).tip || '' },
   { key: 'cpr', label: 'Cost / result', ta: 'r', node: 1,
-    tip: 'Spend \u00f7 results \u2014 campaign level', get: () => null },
+    tip: 'Spend \u00f7 results of the same goal',
+    get: c => cabSnapRes(c), cell: v => v ? v.per : null, tipOf: c => (cabSnapRes(c) || {}).tip || '' },
   { key: 'cpm', label: 'CPM', ta: 'r', node: 1,
     tip: 'Cost per 1000 impressions \u2014 campaign level', get: () => null },
   /* ЦІ ЧОТИРИ ЧИТАЮТЬСЯ Й У РЯДКУ КАБІНЕТА. Facebook рахує їх на
@@ -30318,6 +30323,11 @@ async function cabSnapLoad() {
 /* Число зі знімка. null означає «не знаємо» — знімка ще немає або
    кабінет у ньому не згадується; нуль означав би «порахували, вийшло
    нуль», а це різні відповіді. */
+function cabSnapRes(c) {
+  const o = cabSnap[String(c.id || '')];
+  return o && typeof cdCabResult === 'function' ? cdCabResult(o) : null;
+}
+
 function cabSnapOf(c, key) {
   const o = cabSnap[String(c.id || '')];
   return o ? o[key] : null;
@@ -37602,13 +37612,52 @@ window.cdSumRows = function (rows) {
     const id = String(r.account_id || '').trim();
     if (!id) return;
     const o = by[id] || (by[id] = { spend: 0, imps: 0, clicks: 0,
-                                    leads: 0, regs: 0, installs: 0, buys: 0, ads: 0 });
+                                    leads: 0, regs: 0, installs: 0, buys: 0, ads: 0,
+                                    res: {}, resSpend: {}, goals: new Set() });
     const m = cdMetrics(r);
     o.spend += m.spend; o.imps += m.imps; o.clicks += m.clicks;
     o.leads += m.leads; o.regs += m.regs; o.installs += m.installs;
     o.buys += m.buys; o.ads++;
+    /* Result по кабінету — окремо за кожною одиницею (лід, інстал, клік…):
+       скласти різні цілі в одне число означало б кашу. Spend теж за
+       одиницею — з нього ціна результату саме цієї цілі. */
+    if (m.result != null) {
+      const u = m.unit || '';
+      o.res[u] = (o.res[u] || 0) + m.result;
+      o.resSpend[u] = (o.resSpend[u] || 0) + m.spend;
+    }
+    if (m.goal) o.goals.add(m.goal);
   });
   return by;
+};
+
+/* RESULT У РЯДКУ КАБІНЕТА. «в кабінеті не показується result, тільки
+   окремо по кампаніях». Порожньо було свідомо: у кабінеті адсети можуть
+   рахувати різне, і їхня сума — не число. Тепер так:
+     • одна ціль на весь кабінет — число з одиницею і ціна, як у кампанії;
+     • кілька — кожна окремо: «40 install · 12 lead», найбільша першою;
+       ціна тоді в підказці по кожній, бо одна ціна на різне — неправда. */
+window.cdCabResult = function (o) {
+  const units = Object.keys((o && o.res) || {});
+  if (!units.length) return null;
+  const goals = [...(o.goals || [])];
+  const said = goals.length ? '\nFacebook calls the goal: ' + goals.join(', ') : '';
+  const word = u => cdUnitWord(u) || 'result';
+  if (units.length === 1) {
+    const u = units[0], n = o.res[u];
+    return { text: String(n) + (u ? '<span class="cd-unit">' + cdEsc(word(u)) + '</span>' : ''),
+             per: cdPer(o.resSpend[u], n),
+             tip: 'Today, all ads of the cabinet from the latest snapshot. Counted: ' + word(u) + said };
+  }
+  units.sort((a, b) => o.res[b] - o.res[a]);
+  return {
+    text: units.map(u => String(o.res[u]) + '<span class="cd-unit">' + cdEsc(word(u)) + '</span>')
+      .join('<span class="cd-dot"> · </span>'),
+    per: '<span class="cd-na">—</span>',
+    tip: 'Ad sets of this cabinet optimize for different things, so each is counted on its own:\n'
+      + units.map(u => word(u) + ': ' + o.res[u] + ' · cost '
+        + (o.res[u] > 0 ? '$' + (o.resSpend[u] / o.res[u]).toFixed(2) : '—')).join('\n') + said
+  };
 };
 
 /* Чи є в знімку хоч один інстал. Питаємо СИРІ рядки, а не складене

@@ -352,10 +352,15 @@ const CAB_COLS = [
      дерева. Разом із деревом вони й переїхали сюди з його власної
      таблиці — інакше результати, ліди й реєстрації просто зникли б з
      екрана. Вимкнені за замовчуванням. */
+  /* Result і його ціна читаються й у рядку кабінета — зі знімка, як
+     Lead і Reg нижче (див. cdCabResult): одна ціль — число й ціна,
+     кілька — кожна окремо. */
   { key: 'result', label: 'Result', ta: 'r', node: 1,
-    tip: 'What the ad set optimizes for \u2014 campaign level', get: () => null },
+    tip: 'What the ad sets optimize for, today, from the latest snapshot',
+    get: c => cabSnapRes(c), cell: v => v ? v.text : null, tipOf: c => (cabSnapRes(c) || {}).tip || '' },
   { key: 'cpr', label: 'Cost / result', ta: 'r', node: 1,
-    tip: 'Spend \u00f7 results \u2014 campaign level', get: () => null },
+    tip: 'Spend \u00f7 results of the same goal',
+    get: c => cabSnapRes(c), cell: v => v ? v.per : null, tipOf: c => (cabSnapRes(c) || {}).tip || '' },
   { key: 'cpm', label: 'CPM', ta: 'r', node: 1,
     tip: 'Cost per 1000 impressions \u2014 campaign level', get: () => null },
   /* ЦІ ЧОТИРИ ЧИТАЮТЬСЯ Й У РЯДКУ КАБІНЕТА. Facebook рахує їх на
@@ -1131,6 +1136,11 @@ async function cabSnapLoad() {
 /* Число зі знімка. null означає «не знаємо» — знімка ще немає або
    кабінет у ньому не згадується; нуль означав би «порахували, вийшло
    нуль», а це різні відповіді. */
+function cabSnapRes(c) {
+  const o = cabSnap[String(c.id || '')];
+  return o && typeof cdCabResult === 'function' ? cdCabResult(o) : null;
+}
+
 function cabSnapOf(c, key) {
   const o = cabSnap[String(c.id || '')];
   return o ? o[key] : null;

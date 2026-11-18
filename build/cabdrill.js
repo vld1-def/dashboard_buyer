@@ -1177,13 +1177,52 @@ window.cdSumRows = function (rows) {
     const id = String(r.account_id || '').trim();
     if (!id) return;
     const o = by[id] || (by[id] = { spend: 0, imps: 0, clicks: 0,
-                                    leads: 0, regs: 0, installs: 0, buys: 0, ads: 0 });
+                                    leads: 0, regs: 0, installs: 0, buys: 0, ads: 0,
+                                    res: {}, resSpend: {}, goals: new Set() });
     const m = cdMetrics(r);
     o.spend += m.spend; o.imps += m.imps; o.clicks += m.clicks;
     o.leads += m.leads; o.regs += m.regs; o.installs += m.installs;
     o.buys += m.buys; o.ads++;
+    /* Result по кабінету — окремо за кожною одиницею (лід, інстал, клік…):
+       скласти різні цілі в одне число означало б кашу. Спенд теж за
+       одиницею — з нього ціна результату саме цієї цілі. */
+    if (m.result != null) {
+      const u = m.unit || '';
+      o.res[u] = (o.res[u] || 0) + m.result;
+      o.resSpend[u] = (o.resSpend[u] || 0) + m.spend;
+    }
+    if (m.goal) o.goals.add(m.goal);
   });
   return by;
+};
+
+/* RESULT У РЯДКУ КАБІНЕТА. «в кабінеті не показується result, тільки
+   окремо по кампаніях». Порожньо було свідомо: у кабінеті адсети можуть
+   рахувати різне, і їхня сума — не число. Тепер так:
+     • одна ціль на весь кабінет — число з одиницею і ціна, як у кампанії;
+     • кілька — кожна окремо: «40 install · 12 lead», найбільша першою;
+       ціна тоді в підказці по кожній, бо одна ціна на різне — неправда. */
+window.cdCabResult = function (o) {
+  const units = Object.keys((o && o.res) || {});
+  if (!units.length) return null;
+  const goals = [...(o.goals || [])];
+  const said = goals.length ? '\nFacebook calls the goal: ' + goals.join(', ') : '';
+  const word = u => cdUnitWord(u) || 'result';
+  if (units.length === 1) {
+    const u = units[0], n = o.res[u];
+    return { text: String(n) + (u ? '<span class="cd-unit">' + cdEsc(word(u)) + '</span>' : ''),
+             per: cdPer(o.resSpend[u], n),
+             tip: 'Today, all ads of the cabinet from the latest snapshot. Counted: ' + word(u) + said };
+  }
+  units.sort((a, b) => o.res[b] - o.res[a]);
+  return {
+    text: units.map(u => String(o.res[u]) + '<span class="cd-unit">' + cdEsc(word(u)) + '</span>')
+      .join('<span class="cd-dot"> · </span>'),
+    per: '<span class="cd-na">—</span>',
+    tip: 'Ad sets of this cabinet optimize for different things, so each is counted on its own:\n'
+      + units.map(u => word(u) + ': ' + o.res[u] + ' · cost '
+        + (o.res[u] > 0 ? '$' + (o.resSpend[u] / o.res[u]).toFixed(2) : '—')).join('\n') + said
+  };
 };
 
 /* Чи є в знімку хоч один інстал. Питаємо СИРІ рядки, а не складене
