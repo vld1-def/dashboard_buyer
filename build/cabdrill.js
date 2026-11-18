@@ -540,27 +540,54 @@ function cdHeadBits() {
   /* «Expand all» і «Collapse» прибрані: розкриття живе в самих
      трикутниках рядків, а дві кнопки на цю ж дію щоразу питали, чим
      вони відрізняються від кліку по рядку. */
+  /* ПЕРЕМИКАЧІ, А НЕ ОКРЕМІ КНОПКИ. «редизайнути, щоб красивіше
+     виглядали, можливо як перемикач». Два перемикачі з бігунком:
+       • вигляд — Campaign | Ads only (акцентний);
+       • рядки — All | Live | Spend (спокійніший: він не міняє вигляд,
+         а ховає рядки, і плутати ці дві речі не варто).
+     Випадайка All/Live/Spend стала перемикачем на три положення: так
+     видно всі варіанти одразу, а не лише вибраний.
+     Бігунок переїжджає плавно (cdSwGo): спершу рухаємо його, і лише
+     потім перемальовуємо дерево — інакше нова розмітка з'являлась би
+     одразу на місці, без руху. */
+  const FILT = [['', 'All'], ['live', 'Live'], ['spend', 'Spend']];
+  const fi = Math.max(0, FILT.findIndex(f => f[0] === (cdFilt || '')));
+  const sw = (cls, i, n, label, items, w) => `<div class="cd-seg2${cls}" style="--n:${n};--i:${i};--w:${w}px"
+      role="radiogroup" aria-label="${label}">${items.join('')}</div>`;
+  const opt = (on, i, call, text, title) => `<button type="button" role="radio" aria-checked="${on}"
+      class="${on ? 'is-on' : ''}" onclick="cdSwGo(this, ${i}, () => ${call})" title="${cdEsc(title)}">${text}</button>`;
   return `<div class="cd-tabs"${tip ? ` title="${cdEsc(tip)}"` : ''}>
-      <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
-        onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Campaign</button>
-      <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
-        onclick="cdSetFlat(true)" title="Just the ads, most expensive first${
-          cdScopeWords() ? ' \u2014 of what you picked, while something is picked' : ''}">Ads only</button>
+      ${sw('', cdFlat ? 1 : 0, 2, 'View', [
+        opt(!cdFlat, 0, 'cdSetFlat(false)', 'Campaign', 'Campaign, then its ad sets, then their ads'),
+        opt(cdFlat, 1, 'cdSetFlat(true)', 'Ads only', 'Just the ads, most expensive first'
+          + (cdScopeWords() ? ' \u2014 of what you picked, while something is picked' : ''))], 92)}
       ${/* Межа від вибору — ТІЛЬКИ тут: у дереві вибір нічого не ховає,
            і підпис про звуження там брехав би. */ ''}
       ${cdFlat && cdScopeWords() ? `<span class="cd-scope"
         title="Only the ads of what you picked. Clear the selection below to see every ad again.">
         \u21b3 ${cdScopeWords()}</span>` : ''}
-      <select class="cd-pick" id="cd-filt" onchange="cdSetFilt(this.value)"
-        title="All \u2014 everything in the snapshot.
-Live \u2014 only what Facebook is actually showing: rejected, blocked, in-review and switched-off rows are hidden.
-Spend \u2014 only rows that have cost something, whatever state they are in now.">
-        <option value=""${cdFilt ? '' : ' selected'}>All</option>
-        <option value="live"${cdFilt === 'live' ? ' selected' : ''}>Live</option>
-        <option value="spend"${cdFilt === 'spend' ? ' selected' : ''}>Spend</option>
-      </select>
+      ${sw(' is-quiet' + (fi ? ' is-narrowed' : ''), fi, 3, 'Rows', FILT.map((f, i) => opt(fi === i, i,
+        `cdSetFilt('${f[0]}')`, f[1],
+        i === 0 ? 'Everything in the snapshot'
+        : i === 1 ? 'Only what Facebook is actually showing: rejected, blocked, in-review and switched-off rows are hidden'
+        : 'Only rows that have cost something, whatever state they are in now')), 56)}
     </div>`;
 }
+
+/* Бігунок перемикача — спершу переїжджає, потім дія. Без цього нова
+   розмітка з'являлась би одразу з бігунком на новому місці. */
+window.cdSwGo = function (btn, i, go) {
+  const box = btn && btn.closest('.cd-seg2');
+  if (!box || btn.classList.contains('is-on')) { if (box && !btn.classList.contains('is-on')) go(); return; }
+  box.style.setProperty('--i', i);
+  box.querySelectorAll('button').forEach(b => {
+    const on = b === btn;
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-checked', on);
+  });
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(go, reduce ? 0 : 190);
+};
 
 // Рядок стану збирався з розмітки — у підказку йде сам текст.
 function cdPlain(html) {

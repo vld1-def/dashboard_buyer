@@ -6527,3 +6527,51 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 .cr-mod-tn .cr-mod-ico { width: 10px; height: 10px; }
 .cr-mod-tn.is-bad { color: #f87171; }
 .cr-mod-tn.is-ok { color: #4ade80; }
+
+/* ═══ ПЕРЕМИКАЧІ FB LIVE: CAMPAIGN | ADS ONLY  і  ALL | LIVE | SPEND ═══
+   Бігунок — псевдоелемент під кнопками; його місце задає --i, ширину —
+   --n (скільки положень). Кнопки однакової ширини (сітка), тож бігунок
+   стає рівно на вибране. Переїзд плавний; хто просить менше руху —
+   без анімації. */
+.cd-seg2 {
+  position: relative; isolation: isolate;
+  /* Колонки СТАЛОЇ ширини (--w), а не 1fr: у рядку статусів «гнучкі»
+     колонки стискались до нуля, і перемикач ставав крихтою. Стала
+     ширина ще й гарантує, що бігунок (ширина / --n) лягає рівно на
+     кнопку. */
+  display: inline-grid; grid-template-columns: repeat(var(--n, 2), var(--w, 90px));
+  padding: 3px; border-radius: 11px; flex: 0 0 auto;
+  background: rgba(0, 0, 0, .3); border: 1px solid var(--border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35);
+  transition: border-color .2s;
+}
+.cd-seg2::before {
+  content: ''; position: absolute; z-index: -1; top: 3px; bottom: 3px; left: 3px;
+  width: calc((100% - 6px) / var(--n, 2));
+  transform: translateX(calc(100% * var(--i, 0)));
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+  box-shadow: 0 2px 10px rgba(139, 92, 246, .4), inset 0 1px 0 rgba(255, 255, 255, .18);
+  transition: transform .22s cubic-bezier(.3, .7, .2, 1);
+}
+.cd-seg2 > button {
+  background: none; border: 0; cursor: pointer; white-space: nowrap;
+  padding: 5px 6px; border-radius: 8px; text-align: center;
+  font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-muted); transition: color .18s;
+}
+.cd-seg2 > button:hover:not(.is-on) { color: var(--text-main); }
+.cd-seg2 > button.is-on { color: #fff; }
+.cd-seg2 > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Фільтр рядків — тихіший: бігунок нейтральний. Вибрано не «All» —
+   рамка акцентна, бо частину рядків зараз не видно. */
+.cd-seg2.is-quiet::before {
+  background: var(--surface-3); box-shadow: 0 1px 4px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.cd-seg2.is-quiet > button.is-on { color: var(--text-main); }
+.cd-seg2.is-quiet.is-narrowed { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.cd-seg2.is-quiet.is-narrowed > button.is-on { color: #c4b5fd; }
+.cd-tabs { gap: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .cd-seg2::before, .cd-seg2 > button { transition: none; }
+}

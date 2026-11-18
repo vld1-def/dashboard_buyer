@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 18.11 14:30">
+  <meta name="build" content="build 18.11 18:00">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7652,6 +7652,54 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 .cr-mod-tn .cr-mod-ico { width: 10px; height: 10px; }
 .cr-mod-tn.is-bad { color: #f87171; }
 .cr-mod-tn.is-ok { color: #4ade80; }
+
+/* ═══ ПЕРЕМИКАЧІ FB LIVE: CAMPAIGN | ADS ONLY  і  ALL | LIVE | SPEND ═══
+   Бігунок — псевдоелемент під кнопками; його місце задає --i, ширину —
+   --n (скільки положень). Кнопки однакової ширини (сітка), тож бігунок
+   стає рівно на вибране. Переїзд плавний; хто просить менше руху —
+   без анімації. */
+.cd-seg2 {
+  position: relative; isolation: isolate;
+  /* Колонки СТАЛОЇ ширини (--w), а не 1fr: у рядку статусів «гнучкі»
+     колонки стискались до нуля, і перемикач ставав крихтою. Стала
+     ширина ще й гарантує, що бігунок (ширина / --n) лягає рівно на
+     кнопку. */
+  display: inline-grid; grid-template-columns: repeat(var(--n, 2), var(--w, 90px));
+  padding: 3px; border-radius: 11px; flex: 0 0 auto;
+  background: rgba(0, 0, 0, .3); border: 1px solid var(--border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35);
+  transition: border-color .2s;
+}
+.cd-seg2::before {
+  content: ''; position: absolute; z-index: -1; top: 3px; bottom: 3px; left: 3px;
+  width: calc((100% - 6px) / var(--n, 2));
+  transform: translateX(calc(100% * var(--i, 0)));
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+  box-shadow: 0 2px 10px rgba(139, 92, 246, .4), inset 0 1px 0 rgba(255, 255, 255, .18);
+  transition: transform .22s cubic-bezier(.3, .7, .2, 1);
+}
+.cd-seg2 > button {
+  background: none; border: 0; cursor: pointer; white-space: nowrap;
+  padding: 5px 6px; border-radius: 8px; text-align: center;
+  font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-muted); transition: color .18s;
+}
+.cd-seg2 > button:hover:not(.is-on) { color: var(--text-main); }
+.cd-seg2 > button.is-on { color: #fff; }
+.cd-seg2 > button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Фільтр рядків — тихіший: бігунок нейтральний. Вибрано не «All» —
+   рамка акцентна, бо частину рядків зараз не видно. */
+.cd-seg2.is-quiet::before {
+  background: var(--surface-3); box-shadow: 0 1px 4px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+.cd-seg2.is-quiet > button.is-on { color: var(--text-main); }
+.cd-seg2.is-quiet.is-narrowed { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.cd-seg2.is-quiet.is-narrowed > button.is-on { color: #c4b5fd; }
+.cd-tabs { gap: 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .cd-seg2::before, .cd-seg2 > button { transition: none; }
+}
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -7911,7 +7959,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 18.11 14:30</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 18.11 18:00</div>
     </div>
   </aside>
 
@@ -36839,27 +36887,54 @@ function cdHeadBits() {
   /* «Expand all» і «Collapse» прибрані: розкриття живе в самих
      трикутниках рядків, а дві кнопки на цю ж дію щоразу питали, чим
      вони відрізняються від кліку по рядку. */
+  /* ПЕРЕМИКАЧІ, А НЕ ОКРЕМІ КНОПКИ. «редизайнути, щоб красивіше
+     виглядали, можливо як перемикач». Два перемикачі з бігунком:
+       • вигляд — Campaign | Ads only (акцентний);
+       • рядки — All | Live | Spend (спокійніший: він не міняє вигляд,
+         а ховає рядки, і плутати ці дві речі не варто).
+     Випадайка All/Live/Spend стала перемикачем на три положення: так
+     видно всі варіанти одразу, а не лише вибраний.
+     Бігунок переїжджає плавно (cdSwGo): спершу рухаємо його, і лише
+     потім перемальовуємо дерево — інакше нова розмітка з'являлась би
+     одразу на місці, без руху. */
+  const FILT = [['', 'All'], ['live', 'Live'], ['spend', 'Spend']];
+  const fi = Math.max(0, FILT.findIndex(f => f[0] === (cdFilt || '')));
+  const sw = (cls, i, n, label, items, w) => `<div class="cd-seg2${cls}" style="--n:${n};--i:${i};--w:${w}px"
+      role="radiogroup" aria-label="${label}">${items.join('')}</div>`;
+  const opt = (on, i, call, text, title) => `<button type="button" role="radio" aria-checked="${on}"
+      class="${on ? 'is-on' : ''}" onclick="cdSwGo(this, ${i}, () => ${call})" title="${cdEsc(title)}">${text}</button>`;
   return `<div class="cd-tabs"${tip ? ` title="${cdEsc(tip)}"` : ''}>
-      <button type="button" class="cd-tab${cdFlat ? '' : ' is-on'}"
-        onclick="cdSetFlat(false)" title="Campaign, then its ad sets, then their ads">Campaign</button>
-      <button type="button" class="cd-tab${cdFlat ? ' is-on' : ''}"
-        onclick="cdSetFlat(true)" title="Just the ads, most expensive first${
-          cdScopeWords() ? ' \u2014 of what you picked, while something is picked' : ''}">Ads only</button>
+      ${sw('', cdFlat ? 1 : 0, 2, 'View', [
+        opt(!cdFlat, 0, 'cdSetFlat(false)', 'Campaign', 'Campaign, then its ad sets, then their ads'),
+        opt(cdFlat, 1, 'cdSetFlat(true)', 'Ads only', 'Just the ads, most expensive first'
+          + (cdScopeWords() ? ' \u2014 of what you picked, while something is picked' : ''))], 92)}
       ${/* Межа від вибору — ТІЛЬКИ тут: у дереві вибір нічого не ховає,
            і підпис про звуження там брехав би. */ ''}
       ${cdFlat && cdScopeWords() ? `<span class="cd-scope"
         title="Only the ads of what you picked. Clear the selection below to see every ad again.">
         \u21b3 ${cdScopeWords()}</span>` : ''}
-      <select class="cd-pick" id="cd-filt" onchange="cdSetFilt(this.value)"
-        title="All \u2014 everything in the snapshot.
-Live \u2014 only what Facebook is actually showing: rejected, blocked, in-review and switched-off rows are hidden.
-Spend \u2014 only rows that have cost something, whatever state they are in now.">
-        <option value=""${cdFilt ? '' : ' selected'}>All</option>
-        <option value="live"${cdFilt === 'live' ? ' selected' : ''}>Live</option>
-        <option value="spend"${cdFilt === 'spend' ? ' selected' : ''}>Spend</option>
-      </select>
+      ${sw(' is-quiet' + (fi ? ' is-narrowed' : ''), fi, 3, 'Rows', FILT.map((f, i) => opt(fi === i, i,
+        `cdSetFilt('${f[0]}')`, f[1],
+        i === 0 ? 'Everything in the snapshot'
+        : i === 1 ? 'Only what Facebook is actually showing: rejected, blocked, in-review and switched-off rows are hidden'
+        : 'Only rows that have cost something, whatever state they are in now')), 56)}
     </div>`;
 }
+
+/* Бігунок перемикача — спершу переїжджає, потім дія. Без цього нова
+   розмітка з'являлась би одразу з бігунком на новому місці. */
+window.cdSwGo = function (btn, i, go) {
+  const box = btn && btn.closest('.cd-seg2');
+  if (!box || btn.classList.contains('is-on')) { if (box && !btn.classList.contains('is-on')) go(); return; }
+  box.style.setProperty('--i', i);
+  box.querySelectorAll('button').forEach(b => {
+    const on = b === btn;
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-checked', on);
+  });
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  setTimeout(go, reduce ? 0 : 190);
+};
 
 // Рядок стану збирався з розмітки — у підказку йде сам текст.
 function cdPlain(html) {

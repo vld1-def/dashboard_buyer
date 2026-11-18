@@ -47,7 +47,11 @@ ok('сортування за станом не зачеплене', /const CAB_
 ok('кнопки дерева стоять завжди', /const tools = typeof cdHeadBits === 'function'/.test(CJ));
 ok('без відкритого кабінета — сірі й неактивні', /flt-tools\$\{cabTreeId \? '' : ' is-off'\}/.test(CJ)
   && /\.flt-tools\.is-off \{ opacity: \.35;[^}]*pointer-events: none;/.test(CSS));
-ok('Camp → Campaign', />Campaign<\/button>/.test(CD) && !/>Camp<\/button>/.test(CD));
+ok('Camp → Campaign', /'cdSetFlat\(false\)', 'Campaign'/.test(CD) && !/>Camp<\/button>/.test(CD));
+/* Вигляд і фільтр рядків — перемикачами з бігунком, а не кнопками й
+   випадайкою. */
+ok('Campaign | Ads only і All | Live | Spend — перемикачі', /class="cd-seg2\$\{cls\}"/.test(CD)
+  && /\['', 'All'\], \['live', 'Live'\], \['spend', 'Spend'\]/.test(CD) && !/id="cd-filt"/.test(CD));
 
 /* ── репорт-білдер ── */
 ok('розкрита група з одним дочірнім — без цифр',
