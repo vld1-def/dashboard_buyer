@@ -391,6 +391,34 @@ function tdRenderHist() {
     + '<tr class="td-tot"><td>Total</td>' + cells(t) + '</tr></tbody></table>';
 }
 
+/* ВИТРАТИ В АРХІВНИХ КАБІНЕТАХ. «чому в Today 681$, а в Stat. Day 671?»
+   Архівні кабінети вікно не читає (знімок їх відсікає — див.
+   cabSnapLoad), а сума на сторінці FB LIVE рахує сьогоднішній спенд по
+   всіх кабінетах. Обидва числа правдиві, але різниця без пояснення
+   читається як вада. Тому кажемо, скільки витрачено сьогодні в
+   архівних і в яких — тим самим числом, що й FB LIVE (cabSpendToday). */
+function tdArchNote() {
+  if (typeof cabSnapArchIds !== 'function' || typeof cabSpendToday !== 'function'
+      || typeof cabFb === 'undefined') return '';
+  const arch = new Set(cabSnapArchIds());
+  if (!arch.size) return '';
+  const hit = (cabFb || []).filter(fb => arch.has(String(fb.account_id || '').replace(/\D/g, '')))
+    .map(fb => ({ id: String(fb.account_id), name: String(fb.name || ''), v: Number(cabSpendToday(fb)) || 0,
+                  cur: String(fb.currency || 'USD').toUpperCase() }))
+    .filter(x => x.v > 0);
+  if (!hit.length) return '';
+  const usd = hit.reduce((a, x) => {
+    const u = typeof fxToUsd === 'function' ? fxToUsd(x.v, x.cur) : (x.cur === 'USD' ? x.v : null);
+    return a + (u == null ? 0 : u);
+  }, 0);
+  const list = hit.map(x => (x.name && x.name !== x.id ? x.name + ' ' : '') + x.id + ': ' + tdMoney(x.v)
+    + (x.cur !== 'USD' ? ' ' + x.cur : '')).join('\n');
+  return ' <span class="td-warn" title="' + tdEsc('Archived cabinets are not in this table, but they spent today:\n'
+    + list + '\n\nThe total on the FB LIVE page includes them. Archived cabinets are not synced any more — '
+    + 'if one is still running, take it out of the archive.') + '">· +' + tdMoney(usd) + ' in ' + hit.length
+    + ' archived cabinet' + (hit.length > 1 ? 's' : '') + ' — not in this table</span>';
+}
+
 function tdRender() {
   const box = document.getElementById('td-body');
   if (!box) return;
@@ -416,7 +444,8 @@ function tdRender() {
       : '<span class="td-warn">⚠ Numbers are from ' + new Date(newest).toLocaleDateString('en-GB')
         + ' — close this window and press Sync for today</span>')
     + (oldCabs ? ' <span class="td-dim" title="These cabinets were last synced on an earlier day;'
-        + ' their old numbers are not counted">· ' + oldCabs + ' cabinet(s) not synced today — hidden</span>' : '');
+        + ' their old numbers are not counted">· ' + oldCabs + ' cabinet(s) not synced today — hidden</span>' : '')
+    + tdArchNote();
 
   const t = tdSum(rows);
   const crs = new Set(rows.map(x => x.cr)), multi = [...crs]

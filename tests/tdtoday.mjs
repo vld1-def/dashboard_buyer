@@ -162,6 +162,14 @@ ok('і кличе tdOnSnap після кожного перечитування'
   ok('вікно відкривається на сьогодні', /tdDate = '';\n  tdCalPaint\(\);/.test(J));
   ok('про те, чого за минулий день немає, сказано', /kept for today only/.test(J));
 }
+/* Архівні кабінети вікно не читає, а сума FB LIVE — читає. Різниця
+   мусить бути названа: «+$10.27 in 1 archived cabinet». */
+{
+  const J = fs.readFileSync('build/today.js', 'utf8');
+  ok('витрати в архівних — окремим рядком', /function tdArchNote\(\)/.test(J) && /archived cabinet/.test(J)
+    && /\+ tdArchNote\(\);/.test(J));
+  ok('і тим самим числом, що й FB LIVE', /cabSpendToday\(fb\)/.test(J) && /cabSnapArchIds\(\)/.test(J));
+}
 ok('кнопка Today поруч із Rules', /id="cab-today-btn" onclick="tdToggle\(\)"/.test(fs.readFileSync('build/cabinets.html', 'utf8')));
 const built = fs.readFileSync('index.html', 'utf8');
 ok('усе це доїхало в зібраний index.html', /window\.tdToggle = async function/.test(built)
