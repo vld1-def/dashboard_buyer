@@ -414,7 +414,8 @@ function ruleNum(v: unknown, lo: number, hi: number, fallback: number): number {
    «Check now» рахував би в «rules: N» чужі правила, яких ця людина не
    бачить і змінити не може. */
 async function loadRules(base: string, hdr: Json, owner: string):
-    Promise<{ rules: Rule[]; leads: string[]; teams: string[]; orphan: number }> {
+    Promise<{ rules: Rule[]; leads: string[]; teams: string[]; orphan: number;
+              skip: Map<string, Set<string>> }> {
   let rows: Json[] = [];
   const q = 'team_settings?select=team_name,value,created_by&key=eq.fb_rules'
     + (owner ? '&created_by=eq.' + encodeURIComponent(owner) : '');
@@ -427,6 +428,10 @@ async function loadRules(base: string, hdr: Json, owner: string):
   const leads = LEAD_ACTIONS_DEFAULT;
   const teams: string[] = [];
 
+  /* КАБІНЕТИ, ЯКІ ПРАВИЛА НЕ ПЕРЕВІРЯЮТЬ — список власника поруч із
+     правилами ({ rules, skip }). Свій у кожного власника: виключає він
+     лише свої кабінети. */
+  const skip = new Map<string, Set<string>>();
   rows.forEach(r => {
     let v: Json = {};
     try { v = typeof r.value === 'string' ? JSON.parse(String(r.value)) : (r.value || {}); }
@@ -437,6 +442,11 @@ async function loadRules(base: string, hdr: Json, owner: string):
        це вголос: мовчки зниклі правила читались би як поламана
        функція. Лікується кроком 3 SECURITY_BUYERS.sql. */
     const ruleOwner = String(r.created_by || '');
+    if (ruleOwner && Array.isArray(v.skip)) {
+      const set = skip.get(ruleOwner) || new Set<string>();
+      v.skip.forEach((c: unknown) => { const id = String(c).replace(/^act_/, '').trim(); if (id) set.add(id); });
+      skip.set(ruleOwner, set);
+    }
     if (!ruleOwner) {
       orphan += (Array.isArray(v.rules) ? v.rules : []).length;
       return;
@@ -469,7 +479,7 @@ async function loadRules(base: string, hdr: Json, owner: string):
       });
     });
   });
-  return { rules: rules.filter(r => r.on), leads, teams, orphan };
+  return { rules: rules.filter(r => r.on), leads, teams, orphan, skip };
 }
 
 /* ЧИЇ ПРАВИЛА МОЖНА ЗАСТОСУВАТИ ДО ЦИХ КАБІНЕТІВ. Окремою функцією, а
@@ -1538,7 +1548,8 @@ Deno.serve(async (req) => {
     onlyRule = String(body?.rule_id || '');
   } catch (_e) { /* тіла може не бути */ }
 
-  const { rules, leads, orphan } = await loadRules(base, hdr, owner);
+  const { rules, leads, orphan, skip } = await loadRules(base, hdr, owner);
+  let skippedCabs = 0;
   const maxAge = await snapLimit(base, hdr);
   const use = onlyRule ? rules.filter(r => r.id === onlyRule) : rules;
   if (!use.length) return reply({ fn: FN_VERSION, cron, rules: 0, note: 'no rules switched on' });
@@ -1635,6 +1646,8 @@ Deno.serve(async (req) => {
       const account = String(a.account_id || '');
       // Не лише active: grace і unsettled теж під наглядом. Див. CAB_WATCH.
       if (!account || !cabWatched(String(a.status || ''))) continue;
+      // «Never check» власника токена: такий кабінет жодне правило не чіпає.
+      if (skip.get(tokenOwner)?.has(account)) { skippedCabs++; continue; }
       // Бойові першими — інакше звітне правило затуляє їх. Див. ruleOrder.
       const mine = ruleOrder(ours.filter(r => !r.cabs.length || r.cabs.includes(account)));
       if (!mine.length) continue;
@@ -1894,6 +1907,8 @@ Deno.serve(async (req) => {
        «до кабінета не дійшла черга» виглядають однаково. */
     skipped: tokens.filter(t => !walked.has(Number(t.id))).slice(0, 20).map(t => t.label),
     skipped_total: tokens.length - walked.size,
+    // Скільки кабінетів пропущено за списком «Never check».
+    never_check: skippedCabs,
     /* Кабінети, які померли просто під час прогону. Окремим числом, бо
        «нічого не вимкнулось» через бан і через те, що нічого не
        підпало, — різні новини. */

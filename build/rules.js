@@ -75,6 +75,12 @@ const RL_LEVELS = [
    інше (перегляди, реакції) лідом не є, і мовчки додавати його в
    знаменник ціни ліда означало б робити правила безглуздими. */
 let rlRules = [], rlEdit = null, rlLog = [], rlLoaded = false;
+/* КАБІНЕТИ, ЯКІ ПРАВИЛА НЕ ПЕРЕВІРЯЮТЬ. «додав би в rules, які каби не
+   перевіряти». Один список на всі правила (а не поле в кожному): кабінет
+   на тесті чи під ручним контролем виключають цілком, і правити заради
+   цього кожне правило — зайве. Лежить поруч із правилами, у тому самому
+   записі fb_rules: { rules, skip }. fb-rules такі кабінети пропускає. */
+let rlSkip = [];
 
 /* ═══ ПРАВИЛО ПІД КРЕАТИВ ═══
    Пара до fb-rules (crKey/crHit там): правило з полем Creatives діє
@@ -153,6 +159,7 @@ window.rlInit = async function () {
     const raw = await getTeamSetting('fb_rules');
     const v = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : {};
     rlRules = Array.isArray(v.rules) ? v.rules : [];
+    rlSkip = Array.isArray(v.skip) ? v.skip.map(x => String(x).replace(/^act_/, '').trim()).filter(Boolean) : [];
   } catch (e) { /* немає налаштування — починаємо з чистого */ }
   rlPaint();
   rlLogLoad();
@@ -228,7 +235,7 @@ window.rlCabNote = function () {
 };
 
 async function rlSave() {
-  await setTeamSetting('fb_rules', JSON.stringify({ rules: rlRules }));
+  await setTeamSetting('fb_rules', JSON.stringify({ rules: rlRules, skip: rlSkip }));
   if (typeof setSaved === 'function') setSaved();
 }
 
@@ -367,7 +374,53 @@ function rlWords(r) {
   return (r.when || []).map(one).join(r.match === 'any' ? '  OR  ' : '  AND  ');
 }
 
+/* Блок «Never check» угорі панелі: чипи кабінетів і рядок з
+   підказками з твоїх кабінетів. Додати — Enter, вибір підказки або
+   кнопка; прибрати — ✕ на чипі. Зберігається одразу. */
+function rlSkipPaint() {
+  const box = document.getElementById('rl-skip');
+  if (!box) return;
+  const opts = rlCabs ? [...rlCabs.entries()].filter(([id]) => !rlSkip.includes(id))
+    .sort((a, b) => String(a[1].name).localeCompare(String(b[1].name), 'en', { numeric: true })) : [];
+  box.innerHTML = `<div class="rl-skip-top"><span class="rl-skip-h">Never check</span>
+      <span class="rl-skip-s">${rlSkip.length ? rlSkip.length + ' cabinet' + (rlSkip.length > 1 ? 's' : '')
+        + ' — no rule looks at ' + (rlSkip.length > 1 ? 'them' : 'it') : 'every rule looks at every cabinet'}</span></div>
+    <div class="rl-skip-row">${rlSkip.map(id => `<span class="rl-skip-chip" title="${rlEsc(id)}">${
+        rlEsc(rlCabLabel(id))}<button type="button" onclick="rlSkipDrop('${rlEsc(id)}')" aria-label="Remove">✕</button></span>`).join('')}
+      <input id="rl-skip-in" list="rl-skip-all" placeholder="Cabinet name or ID…"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();rlSkipAdd(this)}" onchange="rlSkipAdd(this)">
+      <datalist id="rl-skip-all">${opts.map(([id, c]) =>
+        `<option value="${rlEsc(id)}">${rlEsc(c.name || id)}</option>`).join('')}</datalist>
+    </div>`;
+}
+window.rlSkipAdd = async function (inp) {
+  const raw = String(inp && inp.value || '').trim();
+  if (!raw) return;
+  /* Вписали назву, а не ID — шукаємо кабінет за назвою. */
+  let ids = raw.split(/[,\s]+/).map(x => x.replace(/^act_/, '').trim()).filter(Boolean);
+  if (rlCabs && !ids.every(id => /^\d+$/.test(id))) {
+    const hit = [...rlCabs.entries()].find(([, c]) => String(c.name || '').toLowerCase() === raw.toLowerCase());
+    ids = hit ? [hit[0]] : ids.filter(id => /^\d+$/.test(id));
+  }
+  ids = ids.filter(id => !rlSkip.includes(id));
+  inp.value = '';
+  if (!ids.length) return;
+  rlSkip.push(...ids);
+  await rlSave();
+  rlSkipPaint();
+  const bad = rlCabCheck(ids).unknown;
+  if (bad.length && typeof toast === 'function')
+    toast('Saved, but ' + bad.join(', ') + ' is not one of your cabinets', 'warn');
+  document.getElementById('rl-skip-in')?.focus();
+};
+window.rlSkipDrop = async function (id) {
+  rlSkip = rlSkip.filter(x => x !== id);
+  await rlSave();
+  rlSkipPaint();
+};
+
 function rlPaint() {
+  rlSkipPaint();
   const box = document.getElementById('rl-list');
   if (!box) return;
   if (!rlRules.length && rlEdit == null) {
@@ -399,7 +452,8 @@ function rlPaint() {
 /* У списку правил — назви кабінетів, а не «2 cabinet(s)», і голосно
    про ті, яких немає: саме такий рядок і ховав мовчазне правило. */
 function rlCabScope(cabs) {
-  if (!cabs || !cabs.length) return ' · all cabinets';
+  if (!cabs || !cabs.length) return ' · all cabinets'
+    + (rlSkip.length ? ' except ' + rlSkip.length + ' in Never check' : '');
   const r = rlCabCheck(cabs);
   const names = rlCabs ? cabs.filter(id => rlCabs.has(id)).map(rlCabLabel) : [];
   const label = names.length ? names.join(', ') : cabs.length + ' cabinet(s)';
