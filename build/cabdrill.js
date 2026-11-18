@@ -1200,8 +1200,7 @@ window.cdSumRows = function (rows) {
    окремо по кампаніях». Порожньо було свідомо: у кабінеті адсети можуть
    рахувати різне, і їхня сума — не число. Тепер так:
      • одна ціль на весь кабінет — число з одиницею і ціна, як у кампанії;
-     • кілька — кожна окремо: «40 install · 12 lead», найбільша першою;
-       ціна тоді в підказці по кожній, бо одна ціна на різне — неправда. */
+     • кілька — прочерк (і в ціні теж); що там намішано — у підказці. */
 window.cdCabResult = function (o) {
   const units = Object.keys((o && o.res) || {});
   if (!units.length) return null;
@@ -1214,12 +1213,13 @@ window.cdCabResult = function (o) {
              per: cdPer(o.resSpend[u], n),
              tip: 'Today, all ads of the cabinet from the latest snapshot. Counted: ' + word(u) + said };
   }
+  /* Різні цілі — прочерк і в Result, і в ціні: «просто прочерк». Що
+     саме там намішано й почім кожне — у підказці. */
   units.sort((a, b) => o.res[b] - o.res[a]);
   return {
-    text: units.map(u => String(o.res[u]) + '<span class="cd-unit">' + cdEsc(word(u)) + '</span>')
-      .join('<span class="cd-dot"> · </span>'),
+    text: '<span class="cd-na">—</span>',
     per: '<span class="cd-na">—</span>',
-    tip: 'Ad sets of this cabinet optimize for different things, so each is counted on its own:\n'
+    tip: 'Ad sets of this cabinet optimize for different things, so there is no single result:\n'
       + units.map(u => word(u) + ': ' + o.res[u] + ' · cost '
         + (o.res[u] > 0 ? '$' + (o.resSpend[u] / o.res[u]).toFixed(2) : '—')).join('\n') + said
   };
