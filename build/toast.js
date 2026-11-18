@@ -347,6 +347,9 @@ window.ask = function (opts) {
         // Дужки в кінці — те саме місце, куди тег і ставлять.
         const base = String(el.value || '').replace(/\s*\[[^\]]*\]\s*$/, '').trim();
         el.value = base ? base + ' ' + tag : tag;
+        // Програмна зміна подій не шле — а від назви можуть залежати
+        // інші поля (KTID апки рахується з назви й постачальника).
+        el.dispatchEvent(new Event('input', { bubbles: true }));
         el.focus();
         /* Курсор ставимо ПЕРЕД дужками: далі найчастіше дописують
            назву, а не тег. Кінець рядка змусив би щоразу клікати. */
@@ -370,6 +373,13 @@ window.ask = function (opts) {
     document.addEventListener('keydown', key, true);
 
     document.body.appendChild(wrap);
+    /* Вікну, яке має «живі» поля (одне заповнюється з іншого, як KTID
+       апки з її назви), даємо доступ до них після появи. get(key) —
+       поле за ключем. Помилка в цьому гачку вікна не ламає. */
+    if (typeof o.onOpen === 'function') {
+      try { o.onOpen({ wrap, get: k => wrap.querySelector(`[data-k="${k}"]`) }); }
+      catch (e) { console.warn('ask onOpen:', e); }
+    }
     // Є поле — курсор туди: інакше перше, що робить людина, це клік у нього.
     (wrap.querySelector('.ask-in') || wrap.querySelector('.ask-yes')).focus();
   });

@@ -10209,6 +10209,113 @@ function apAddNew() { if (apMode === 'pwa') pwNew(); else apNew(); }
 
    isApp лише ВИСТАВЛЯЄ позначку, а не вирішує за людину: з PWA теж
    буває потрібна апка, і галочка лишається видимою. */
+/* ═══════════ KTID АПКИ — САМ, З НАЗВИ ═══════════
+
+   «в назва апки / KTID прописувались букви і цифри: цифри — з інших
+   апок на цьому гео, букви — з назви воронки (Lucky App Best → LAB…);
+   якщо така вже є — Lu Ap Be».
+
+   ЦИФРИ. У KTID апок число — це номер офера, і він залежить не лише
+   від гео, а й від постачальника: у TJ satorapps — 11003, у TJ
+   trident — 11012. Тому беремо найчастіше число серед апок ЦЬОГО гео
+   й ЦЬОГО постачальника; немає таких — найчастіше серед апок гео;
+   немає й того — цифр не додаємо (краще порожньо, ніж вигадане).
+
+   БУКВИ. Перші літери слів назви без [постачальника]: «Lucky Tower
+   Rush» → LTR, «Joker 777» → J7. Зайнято — по дві літери на слово
+   (LuToRu), далі по три, а вже потім номер у кінці.
+
+   Назви бувають набрані «схожими» літерами (кириличні і, о, е, А;
+   ĉ, ō): їх зводимо до латиниці, щоб KTID лишався латинським. */
+const AP_LOOK = { 'а': 'a', 'А': 'A', 'в': 'B', 'В': 'B', 'е': 'e', 'Е': 'E', 'і': 'i', 'І': 'I',
+  'ї': 'i', 'к': 'k', 'К': 'K', 'м': 'm', 'М': 'M', 'н': 'h', 'Н': 'H', 'о': 'o', 'О': 'O',
+  'р': 'p', 'Р': 'P', 'с': 'c', 'С': 'C', 'т': 't', 'Т': 'T', 'у': 'y', 'У': 'Y', 'х': 'x', 'Х': 'X' };
+function apLatin(s) {
+  return String(s || '').replace(/[А-Яа-яІіЇї]/g, c => AP_LOOK[c] || c)
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+// Слова назви: без [постачальника], без розділових знаків.
+function apKtidWords(name) {
+  return apLatin(String(name || '').replace(/\[[^\]]*\]?/g, ' '))
+    .split(/[^A-Za-z0-9]+/).filter(Boolean);
+}
+const apKtidProv = name => ((String(name || '').match(/\[([^\]]+)\]/) || [])[1] || '').trim().toLowerCase();
+
+// Найчастіше число в кінці KTID серед апок; рівні — більше (новіше).
+function apKtidNum(geo, prov) {
+  const g = String(geo || '').trim().toUpperCase();
+  if (!g) return { num: '', from: '' };
+  const pick = list => {
+    const cnt = new Map();
+    list.forEach(f => {
+      const m = String(f.ktid || '').match(/(\d{4,})$/);
+      if (m) cnt.set(m[1], (cnt.get(m[1]) || 0) + 1);
+    });
+    let best = '', n = 0;
+    cnt.forEach((c, k) => { if (c > n || (c === n && Number(k) > Number(best))) { best = k; n = c; } });
+    return best;
+  };
+  const onGeo = (apFunnels || []).filter(f => f.is_app && String(f.geo || '').toUpperCase() === g);
+  if (prov) {
+    const num = pick(onGeo.filter(f => apKtidProv(f.funnel_name) === prov));
+    if (num) return { num, from: g + ' · ' + prov };
+  }
+  const num = pick(onGeo);
+  return { num, from: num ? g : '' };
+}
+
+function apKtidSuggest(name, geo) {
+  const words = apKtidWords(name);
+  if (!words.length) return { ktid: '', why: '' };
+  const { num, from } = apKtidNum(geo, apKtidProv(name));
+  const taken = new Set((apFunnels || []).map(f => String(f.ktid || '').toLowerCase()));
+  const cap = w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  const head = n => words.map(w => /^\d/.test(w) ? w.charAt(0) : (n === 1 ? w.charAt(0).toUpperCase() : cap(w.slice(0, n)))).join('');
+  let ktid = '';
+  for (const n of [1, 2, 3]) {
+    const k = head(n) + num;
+    if (!taken.has(k.toLowerCase())) { ktid = k; break; }
+  }
+  if (!ktid) {                                 // і по три літери зайнято — номер у кінці
+    const base = head(1) + num;
+    for (let i = 2; i < 100 && !ktid; i++) if (!taken.has((base + '_' + i).toLowerCase())) ktid = base + '_' + i;
+  }
+  const why = num ? 'Літери з назви + ' + num + ' — число апок ' + from + '.'
+    : String(geo || '').trim() ? 'Літери з назви. В апок ' + String(geo).toUpperCase() + ' числа ще немає — допиши руками.'
+    : 'Літери з назви. Вкажи гео — додасться число його апок.';
+  return { ktid, why };
+}
+
+/* Підключається до вікна «Додати апку»: KTID оновлюється, поки
+   друкують назву, міняють гео чи постачальника — і тільки доки
+   людина не поправила KTID сама. Поправила — більше не чіпаємо. */
+function apKtidLive(f) {
+  const nameEl = f.get('name'), geoEl = f.get('geo'), ktEl = f.get('ktid'), appEl = f.get('is_app');
+  if (!nameEl || !ktEl) return;
+  let auto = !String(ktEl.value || '').trim();
+  let hint = ktEl.parentElement && ktEl.parentElement.querySelector('.ask-f-hint');
+  if (!hint && ktEl.parentElement) {
+    hint = document.createElement('span');
+    hint.className = 'ask-f-hint';
+    ktEl.parentElement.appendChild(hint);
+  }
+  const fill = () => {
+    if (!auto) return;
+    if (appEl && !appEl.checked) { if (hint) hint.textContent = ''; return; }
+    const s = apKtidSuggest(nameEl.value, geoEl ? geoEl.value : '');
+    ktEl.value = s.ktid;
+    if (hint) hint.textContent = s.why;
+  };
+  ktEl.addEventListener('input', () => {
+    auto = !String(ktEl.value || '').trim();      // стерли — знову рахуємо самі
+    if (auto) fill(); else if (hint) hint.textContent = 'Вписано руками — більше не підставляю.';
+  });
+  nameEl.addEventListener('input', fill);
+  if (geoEl) geoEl.addEventListener('input', fill);
+  if (appEl) appEl.addEventListener('change', fill);
+  fill();
+}
+
 async function apAddFunnel(isApp) {
   if (typeof ask !== 'function') {
     alert('Воронку можна завести в Settings → Funnels.');
@@ -10227,6 +10334,11 @@ async function apAddFunnel(isApp) {
     ...apItems.map(i => String(i.provider || '').trim())
   ].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
 
+  /* ГЕО — З ВІДКРИТОГО ДЕРЕВА. Відкрив TJ і тиснеш «додати» — апка
+     майже завжди саме для TJ, і друкувати його вдруге зайве.
+     «—» — це гілка «без гео», її не підставляємо. */
+  const openGeo = String((apMode === 'pwa' ? pwGeo : apGeo) || '').trim();
+  const geoNow = /^[A-Za-z]{2}$/.test(openGeo) ? openGeo.toUpperCase() : '';
   const v = await ask({
     title: isApp ? 'Додати апку' : 'Додати воронку',
     body: isApp
@@ -10246,8 +10358,8 @@ async function apAddFunnel(isApp) {
              + 'Нового можна вписати руками — там же, у дужках.' }] : []),
       { key: 'ktid', label: isApp ? 'Назва апки / KTID' : 'KTID', need: true,
         placeholder: 'як у Keitaro' },
-      { key: 'geo', label: 'Гео', upper: true, placeholder: 'KG',
-        hint: 'Без гео список апок у прілках не звузиться.' },
+      { key: 'geo', label: 'Гео', upper: true, placeholder: 'KG', value: geoNow,
+        hint: geoNow ? 'Взято з відкритого гео.' : 'Без гео список апок у прілках не звузиться.' },
       /* Посилання на Play — НЕОБОВ'ЯЗКОВЕ, і це не формальність: без
          нього апка живе як жила, просто бан по ній ніхто не помітить
          раніше за людину. Із ним щоденний обхід сам ставить ban, коли
@@ -10258,7 +10370,9 @@ async function apAddFunnel(isApp) {
             + 'Якщо вписати — щодня перевірятиметься, чи апку не забанили, '
             + 'і поруч з неймінгом стане її іконка.' }] : []),
       { key: 'is_app', label: 'Це APP (апка)', type: 'checkbox', value: !!isApp, full: true }
-    ]
+    ],
+    // KTID апки — сам, із назви й гео (див. apKtidLive).
+    onOpen: apKtidLive
   });
   if (!v) return;
 
