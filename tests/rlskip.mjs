@@ -27,6 +27,9 @@ ok('на картці правила видно виняток', /' except ' \+ 
 ok('сервер збирає список по власнику', /if \(ruleOwner && Array\.isArray\(v\.skip\)\)/.test(TS) && /skip: Map<string, Set<string>>/.test(TS));
 ok('і пропускає кабінет до правил', /if \(skip\.get\(tokenOwner\)\?\.has\(account\)\) \{ skippedCabs\+\+; continue; \}/.test(TS));
 ok('і каже, скільки пропустив', /never_check: skippedCabs,/.test(TS));
+/* Довгі назви правил і рядків журналу не роздувають панель за край
+   екрана: min-width: 0 по ланцюжку flex-елементів. */
+ok('панель не ширша за своє місце', /#rules-panel > \.rl-wrap \{ width: 100%; box-sizing: border-box; overflow: hidden; \}/.test(fs.readFileSync('build/design.css', 'utf8')));
 ok('і це доїхало в зібраний index.html', /window\.rlSkipAdd = async function/.test(OUT) && /\.rl-skip-chip \{/.test(OUT));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
