@@ -41,14 +41,12 @@ let parses = true;
 try { new Function('(async () => {' + code + '})'); } catch (e) { parses = String(e); }
 ok('код віджета — валідний скрипт', parses === true, parses);
 ok('ключ і адреса функції — у коді', /const API = "https:\/\/x\.supabase\.co\/functions\/v1\/widget\?k=(ab){32}"/.test(code));
-ok('оновлення — через 2 години після синку', /const EVERY = 2 \* 3600 \* 1000;/.test(code)
-  && /w\.refreshAfterDate = new Date\(Math\.max\(Date\.now\(\) \+ 60000, next\)\)/.test(code));
-/* «коли я натискаю Sync now — від цього моменту рахувати 2 години для
-   віджета». Наступне отримання — синк + 2 години; не було нового
-   синку — ще раз через 2 години, а не щохвилини. */
-ok('віджет тягне в момент «синк + 2 години»', /const due = !cache \|\| !cache\.next \|\| Date\.now\(\) >= cache\.next;/.test(code)
-  && /const next = synced \+ EVERY > Date\.now\(\) \+ 60000 \? synced \+ EVERY : Date\.now\(\) \+ EVERY;/.test(code));
-ok('ручний запуск у Scriptable тягне завжди', /if \(manual \|\| due\)/.test(code) && /const manual = !config\.runsInWidget;/.test(code));
+/* «коли я натискаю Sync now — щоб це одразу було у віджеті». Сервер не
+   може оновити віджет iOS, тож віджет питає сам на кожному пробудженні
+   (~15 хв): після Sync now свіже число з'являється за хвилини. */
+ok('віджет питає на кожному пробудженні, раз на ~15 хв', /const EVERY = 15 \* 60 \* 1000;/.test(code)
+  && /w\.refreshAfterDate = new Date\(Date\.now\(\) \+ EVERY\);/.test(code) && !/cache\.next/.test(code));
+ok('без звʼязку — останні збережені числа', /let d = cache && cache\.d/.test(code) && /fm\.writeString\(CACHE/.test(code));
 ok('спенд по центру віджета', /row\.addSpacer\(\);\n  const t = row\.addText\(text\);/.test(code)
   && /center\(money\(d\.spend\)/.test(code));
 ok('тап відкриває FB LIVE', /const OPEN = "https:\/\/site\/#\/cabinets"/.test(code) && /w\.url = OPEN/.test(code));

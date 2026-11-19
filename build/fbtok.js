@@ -66,14 +66,15 @@ function wgCode(key) {
   const url = SUPABASE_URL + '/functions/v1/widget?k=' + key;
   const open = location.origin + location.pathname + '#/cabinets';
   return `// FB LIVE — spend today. Scriptable, small widget.
-// Refreshes 2 hours after the last sync in the CRM (your Sync now, or the
-// scheduled one): press Sync now at 10:17 and the widget pulls at 12:17.
-// No new sync by then — it looks again 2 hours later.
-// Running the script by hand in Scriptable always fetches.
+// iOS does not let a server push into a home-screen widget, so the widget
+// asks for the numbers itself every time iOS wakes it — about every
+// 15 minutes. After Sync now in the CRM the fresh total shows up within
+// minutes (iOS decides the exact moment; the line at the bottom says how
+// old the sync is). Running the script by hand in Scriptable always fetches.
 // Tap opens FB LIVE in the CRM.
 const API = "${url}";
 const OPEN = "${open}";
-const EVERY = 2 * 3600 * 1000;
+const EVERY = 15 * 60 * 1000;
 const money = v => "$" + Math.round(Number(v) || 0).toLocaleString("en-US");
 const ago = iso => {
   if (!iso) return "never";
@@ -81,18 +82,16 @@ const ago = iso => {
   return m < 60 ? m + "m ago" : Math.round(m / 60) + "h ago";
 };
 
-// Last result, kept in a Scriptable file: { at, next, d }.
+// Last result, kept in a Scriptable file: shown if there is no connection.
 const fm = FileManager.local();
 const CACHE = fm.joinPath(fm.documentsDirectory(), "fb-live-widget.json");
 let cache = null;
 try { if (fm.fileExists(CACHE)) cache = JSON.parse(fm.readString(CACHE)); } catch (e) {}
 
-// Run by hand in the app: always fetch. As a widget: only when the
-// planned moment (last sync + 2 hours) has come.
-const manual = !config.runsInWidget;
-const due = !cache || !cache.next || Date.now() >= cache.next;
+// Every wake fetches: one small request, so the widget is never behind
+// the CRM by more than one wake.
 let d = cache && cache.d, err = "";
-if (manual || due) {
+{
   try {
     const r = new Request(API);
     r.timeoutInterval = 20;
@@ -100,11 +99,7 @@ if (manual || due) {
     if (j && j.error) err = j.error;
     else {
       d = j;
-      // Next fetch: 2 hours after the last sync. If that moment has
-      // already passed (no new sync since), look again in 2 hours.
-      const synced = Date.parse(j.synced_at || "") || 0;
-      const next = synced + EVERY > Date.now() + 60000 ? synced + EVERY : Date.now() + EVERY;
-      cache = { at: Date.now(), next, d: j };
+      cache = { at: Date.now(), d: j };
       fm.writeString(CACHE, JSON.stringify(cache));
     }
   } catch (e) { err = "no connection"; }
@@ -136,9 +131,8 @@ if (d) {
   center(err || "no data", Font.mediumSystemFont(11), new Color("#F87171"));
   w.addSpacer();
 }
-// Ask iOS to wake the widget at the planned moment.
-const next = cache && cache.next ? cache.next : Date.now() + EVERY;
-w.refreshAfterDate = new Date(Math.max(Date.now() + 60000, next));
+// Ask iOS to wake the widget again in about 15 minutes.
+w.refreshAfterDate = new Date(Date.now() + EVERY);
 if (config.runsInWidget) Script.setWidget(w); else await w.presentSmall();
 Script.complete();
 `;
