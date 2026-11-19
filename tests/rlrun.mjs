@@ -39,7 +39,10 @@ await page.evaluate(() => {
 const paint = runs => page.evaluate(r => {
   rlRuns = r; rlLog = [];
   rlRunPaint(); rlLogPaint();
-  return { run: document.getElementById('rl-run').textContent.replace(/\s+/g, ' ').trim(),
+  /* Рядок прогону компактний: подробиці — у підказці (title). Читаємо
+     обидва: питання стенда — чи сказано, а не чи займає це місце. */
+  const el = document.getElementById('rl-run'), p = el.querySelector('p');
+  return { run: (el.textContent + ' ' + (p && p.title || '')).replace(/\s+/g, ' ').trim(),
            log: document.getElementById('rl-log').textContent.replace(/\s+/g, ' ').trim() };
 }, runs);
 
@@ -158,7 +161,8 @@ ok('і через пʼять хвилин після синку',
 const runWith = m => page.evaluate(mm => {
   rlRuns = [{ at: new Date().toISOString(), metrics: mm }];
   rlRunPaint();
-  return document.getElementById('rl-run').textContent.replace(/\s+/g, ' ').trim();
+  const el = document.getElementById('rl-run'), p = el.querySelector('p');
+  return (el.textContent + ' ' + (p && p.title || '')).replace(/\s+/g, ' ').trim();
 }, m);
 
 const fresh = await runWith({ cabinets: 3, ads: 40, live: 3, fell_back: 0, paused: 1 });

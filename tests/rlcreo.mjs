@@ -60,7 +60,8 @@ ok('власні правила — лише ті, що діють у цьому
 ok('у формі є поле Creatives з чипами й підказками', /id="rl-f-crs"/.test(RL) && /<datalist id="rl-cr-all">/.test(RL)
   && /onkeydown="rlCrKeyDown\(event\)"/.test(RL));
 ok('недописане в рядку теж зберігається', /querySelector\('#rl-f-crs input'\)\?\.value/.test(RL));
-ok('на картці — «own rule» і які креативи', /🎨 own rule/.test(RL) && /' · creatives <b>'/.test(RL));
+ok('на картці — позначка свого правила, а креативи — у підказці', /🎨 ' \+ r\.crs\.length/.test(RL)
+  && /Only these creatives/.test(RL) && /' · creatives <b>'/.test(RL));
 ok('на загальному — скільки креативів він пропускає', /with their own rule<\/span>/.test(RL));
 ok('у креативі — значок 🛡 зі своїм правилом', /id="cr-rule-badge"/.test(LEG) && /crRuleBadge\(currentCreativeID\);/.test(LEG)
   && /onclick="rlOpenRule\(\$\{idx\[0\]\}\)"/.test(LEG));

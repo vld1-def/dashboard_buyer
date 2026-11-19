@@ -132,8 +132,9 @@ ok('перемикач пояснює, що без нього правило л�
   /report/i.test(ax) && /touches nothing/i.test(ax), ax);
 
 /* ── 10. ПІДЗАГОЛОВОК ПАНЕЛІ ── */
-const sub = await page.$eval('.rl-sub', e => e.textContent.replace(/\s+/g, ' ').trim());
-ok('під заголовком сказано, як часто вони ходять', /15/.test(sub), sub);
+/* Підзаголовок переїхав у підказку назви панелі: компактний вигляд. */
+const sub = await page.$eval('#rules-panel .rl-head h2', e => e.title || '');
+ok('у підказці назви сказано, як часто вони ходять', /15/.test(sub), sub);
 ok('і що нове правило нічого не вимикає', /report/i.test(sub), sub);
 
 /* ── 11. ПОПЕРЕДЖЕННЯ «НЕ ХОДИЛИ» — ПЛАШКА, А НЕ СТІНА ТЕКСТУ ── */

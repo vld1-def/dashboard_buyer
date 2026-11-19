@@ -330,9 +330,17 @@ function rlRunPaint() {
         + ' being checked now</b>'
       : ' \u2014 <b class="rl-run-warn">that is a while ago; the schedule may have'
         + ' stopped</b>';
-  box.innerHTML = '<p class="rl-run-ok">\u2713 Checked <b>' + when + '</b>: '
-    + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)' + did + gone + fell + stale
-    + late + '</p>';
+  /* Коротко: коли, скільки, що зроблено. Довгі пояснення (чому
+     пропущено, на чому судили) — у підказці; видно лише короткі
+     попередження, щоб рядок не перетворювався на абзац. */
+  const warn = [n(m.stale) ? n(m.stale) + ' stale' : '', n(m.fell_back) ? n(m.fell_back) + ' on snapshot' : '',
+    n(m.dead) ? n(m.dead) + ' banned' : ''].filter(Boolean).join(' · ');
+  const full = ('Checked ' + when + ': ' + n(m.cabinets) + ' cabinet(s), ' + n(m.ads) + ' ad(s)'
+    + did + gone + fell + stale + late).replace(/<[^>]*>/g, '');
+  box.innerHTML = '<p class="rl-run-ok" title="' + rlEsc(full) + '">\u2713 <b>' + when + '</b> · '
+    + n(m.cabinets) + ' cabs · ' + n(m.ads) + ' ads' + did
+    + (warn ? ' · <b class="rl-run-warn">' + warn + '</b>' : '')
+    + (late ? ' · <b class="rl-run-warn">' + (!anyOn && (rlRules || []).length ? 'all rules off' : 'schedule late?') + '</b>' : '') + '</p>';
 }
 
 function rlLogPaint() {
@@ -352,14 +360,18 @@ function rlLogPaint() {
     const cpc = Number(m.linkClicks) > 0 ? money(m.spend / m.linkClicks) : '∞';
     const cpl = Number(m.leads) > 0 ? money(m.spend / m.leads) : '∞';
     const mark = r.dry ? '\u{1F441}' : r.ok ? '⛔' : '⚠';
-    return `<div class="rl-log-row ${r.dry ? 'is-dry' : r.ok ? '' : 'is-bad'}">
+    /* Рядок на дію: знак, назва, спенд, час. Решта — у підказці. */
+    const mins = Math.max(0, Math.round((Date.now() - Date.parse(r.at || '')) / 60000));
+    const ago = !Number.isFinite(mins) ? '' : mins < 60 ? mins + 'm' : mins < 1440 ? Math.round(mins / 60) + 'h' : Math.round(mins / 1440) + 'd';
+    const tip = [r.entity_name || r.entity_id, r.level + (r.account_id ? ' · cab ' + r.account_id : ''),
+      'Rule: ' + (r.rule_name || ''), money(m.spend) + ' · click ' + cpc + ' · lead ' + cpl + ' · ' + (Number(m.leads) || 0) + ' lead(s)',
+      String(r.at || '').slice(0, 16).replace('T', ' '), r.error ? '⚠ ' + r.error : '',
+      r.dry ? 'Report only — nothing was touched' : ''].filter(Boolean).join('\n');
+    return `<div class="rl-log-row ${r.dry ? 'is-dry' : r.ok ? '' : 'is-bad'}" title="${rlEsc(tip)}">
       <span class="rl-log-m">${mark}</span>
-      <span class="rl-log-n" title="${rlEsc(r.entity_id)}${r.account_id ? ' · cab ' + rlEsc(r.account_id) : ''}">${rlEsc(r.entity_name || r.entity_id)}</span>
-      <span class="rl-log-lv">${rlEsc(r.level)}</span>
-      <span class="rl-log-x">${money(m.spend)} · click ${cpc} · lead ${cpl} · ${Number(m.leads) || 0} lead(s)</span>
-      <span class="rl-log-r">${rlEsc(r.rule_name)}</span>
-      <span class="rl-log-t">${String(r.at || '').slice(0, 16).replace('T', ' ')}</span>
-      ${r.error ? `<span class="rl-log-e">${rlEsc(r.error)}</span>` : ''}
+      <span class="rl-log-n">${rlEsc(r.entity_name || r.entity_id)}</span>
+      <span class="rl-log-x">${money(m.spend)}</span>
+      <span class="rl-log-t">${ago}</span>
     </div>`;
   }).join('');
 }
@@ -382,12 +394,10 @@ function rlSkipPaint() {
   if (!box) return;
   const opts = rlCabs ? [...rlCabs.entries()].filter(([id]) => !rlSkip.includes(id))
     .sort((a, b) => String(a[1].name).localeCompare(String(b[1].name), 'en', { numeric: true })) : [];
-  box.innerHTML = `<div class="rl-skip-top"><span class="rl-skip-h">Never check</span>
-      <span class="rl-skip-s">${rlSkip.length ? rlSkip.length + ' cabinet' + (rlSkip.length > 1 ? 's' : '')
-        + ' — no rule looks at ' + (rlSkip.length > 1 ? 'them' : 'it') : 'every rule looks at every cabinet'}</span></div>
-    <div class="rl-skip-row">${rlSkip.map(id => `<span class="rl-skip-chip" title="${rlEsc(id)}">${
+  box.title = 'Cabinets no rule looks at';
+  box.innerHTML = `<div class="rl-skip-row"><span class="rl-skip-h">Never check</span>${rlSkip.map(id => `<span class="rl-skip-chip" title="${rlEsc(id)}">${
         rlEsc(rlCabLabel(id))}<button type="button" onclick="rlSkipDrop('${rlEsc(id)}')" aria-label="Remove">✕</button></span>`).join('')}
-      <input id="rl-skip-in" list="rl-skip-all" placeholder="Cabinet name or ID…"
+      <input id="rl-skip-in" list="rl-skip-all" placeholder="${rlSkip.length ? '+ cabinet' : 'Cabinet name or ID…'}"
         onkeydown="if(event.key==='Enter'){event.preventDefault();rlSkipAdd(this)}" onchange="rlSkipAdd(this)">
       <datalist id="rl-skip-all">${opts.map(([id, c]) =>
         `<option value="${rlEsc(id)}">${rlEsc(c.name || id)}</option>`).join('')}</datalist>
@@ -427,26 +437,41 @@ function rlPaint() {
     box.innerHTML = '<p class="rl-empty">No rules yet. Press “+ Rule” — the first one starts in report-only mode.</p>';
     return;
   }
-  box.innerHTML = rlRules.map((r, i) => i === rlEdit ? rlForm(r, i) : `
-    <div class="rl-row ${r.on === false ? 'is-off' : ''}">
+  /* КОМПАКТНО. «інформативний шум у цьому блоці». Правило — два рядки:
+     вимикач · назва · мітка live/report · рівень, і під ними умова.
+     Поріг спенду, гео, кабінети й креативи — у підказці рядка (вони
+     потрібні, коли питають «чому», а не щоразу). Edit і Delete —
+     іконками при наведенні. Попередження (невідомий кабінет) лишається
+     видимим: його мовчання й ховало правило, що не діяло ніде. */
+  const plain = h => String(h || '').replace(/<[^>]*>/g, '').replace(/^\s*·\s*/, '');
+  box.innerHTML = rlRules.map((r, i) => {
+    if (i === rlEdit) return rlForm(r, i);
+    const lvl = (RL_LEVELS.find(l => l.k === r.level) || RL_LEVELS[0]).label;
+    const scope = ['from $' + (r.minSpend == null ? 10 : r.minSpend) + ' spent',
+      (r.geo || []).length ? 'geo ' + r.geo.join('/') : 'any geo',
+      r.nameHas ? 'FB name has “' + r.nameHas + '”' : '',
+      plain(rlCabScope(r.cabs)), plain(rlCrScope(r))].filter(Boolean).join(' · ');
+    const bad = (r.cabs || []).length ? rlCabCheck(r.cabs).unknown.length : 0;
+    const geo = (r.geo || []).length ? r.geo.join('/') : '';
+    return `<div class="rl-row ${r.on === false ? 'is-off' : ''}" title="${rlEsc(scope)}">
       <div class="rl-row-top">
+        <button type="button" class="rl-tog${r.on === false ? '' : ' is-on'}" onclick="rlToggle(${i})"
+          role="switch" aria-checked="${r.on !== false}" title="${r.on === false ? 'Switched off — click to switch on' : 'Switched on — click to switch off'}"><i></i></button>
         <span class="rl-name">${rlEsc(r.name || 'rule')}</span>
-        <span class="rl-tag ${r.dry === false ? 'is-live' : ''}">${r.dry === false ? 'live' : 'report only'}</span>
-        <span class="rl-tag">${rlEsc((RL_LEVELS.find(l => l.k === r.level) || RL_LEVELS[0]).label)}</span>
-        ${r.on === false ? '<span class="rl-tag is-dim">off</span>' : ''}
-        ${rlOwn({ ...r, on: true }) ? '<span class="rl-tag is-own" title="Only these creatives — and general rules leave them alone">🎨 own rule</span>' : ''}
+        <span class="rl-mode ${r.dry === false ? 'is-live' : ''}" title="${r.dry === false
+          ? 'Live: switches things off' : 'Report only: writes a line, touches nothing'}">${r.dry === false ? 'live' : 'report'}</span>
+        <span class="rl-lvl">${rlEsc(lvl)}</span>
+        ${geo ? `<span class="rl-lvl">${rlEsc(geo)}</span>` : ''}
+        ${rlOwn({ ...r, on: true }) ? '<span class="rl-lvl is-own" title="Only these creatives — general rules leave them alone">🎨 ' + r.crs.length + '</span>' : ''}
+        ${bad ? `<span class="rl-warn" title="${bad} cabinet ID(s) are not yours — the rule will not touch them">⚠</span>` : ''}
         <span class="rl-row-acts">
-          <button type="button" class="rl-mini" onclick="rlToggle(${i})">${r.on === false ? 'Enable' : 'Disable'}</button>
-          <button type="button" class="rl-mini" onclick="rlOpen(${i})">Edit</button>
-          <button type="button" class="rl-mini is-bad" onclick="rlDrop(${i})">Delete</button>
+          <button type="button" class="rl-ico" onclick="rlOpen(${i})" title="Edit" aria-label="Edit"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.8l2.7 2.7-7.4 7.4H3.1v-2.7z"/></svg></button>
+          <button type="button" class="rl-ico is-bad" onclick="rlDrop(${i})" title="Delete" aria-label="Delete"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.3 4.5V3h3.4v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg></button>
         </span>
       </div>
       <div class="rl-when">${rlEsc(rlWords(r))}</div>
-      <div class="rl-scope">from $${rlEsc(r.minSpend == null ? 10 : r.minSpend)} spent${
-        (r.geo || []).length ? ' · geo ' + rlEsc(r.geo.join('/')) : ' · any geo'}${
-        r.nameHas ? ' · FB name has “' + rlEsc(r.nameHas) + '”' : ''}${
-        rlCabScope(r.cabs)}${rlCrScope(r)}</div>
-    </div>`).join('') + (rlEdit === -1 ? rlForm(rlBlank(), -1) : '');
+    </div>`;
+  }).join('') + (rlEdit === -1 ? rlForm(rlBlank(), -1) : '');
 }
 
 /* У списку правил — назви кабінетів, а не «2 cabinet(s)», і голосно
@@ -472,7 +497,7 @@ function rlCrScope(r) {
   }
   const kept = new Set();
   rlRules.forEach(o => { if (rlOwn(o)) o.crs.forEach(c => kept.add(rlCrKey(c))); });
-  return kept.size ? ' · <span class="rl-skip" title="'
+  return kept.size ? ' · <span class="rl-skipcr" title="'
     + rlEsc([...kept].join(', ')) + '">skips ' + kept.size + ' creative' + (kept.size > 1 ? 's' : '')
     + ' with their own rule</span>' : '';
 }
