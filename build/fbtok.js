@@ -66,54 +66,79 @@ function wgCode(key) {
   const url = SUPABASE_URL + '/functions/v1/widget?k=' + key;
   const open = location.origin + location.pathname + '#/cabinets';
   return `// FB LIVE — spend today. Scriptable, small widget.
-// Refreshes about every 2 hours (iOS decides the exact moment).
+// Refreshes 2 hours after the last sync in the CRM (your Sync now, or the
+// scheduled one): press Sync now at 10:17 and the widget pulls at 12:17.
+// No new sync by then — it looks again 2 hours later.
+// Running the script by hand in Scriptable always fetches.
 // Tap opens FB LIVE in the CRM.
 const API = "${url}";
 const OPEN = "${open}";
+const EVERY = 2 * 3600 * 1000;
 const money = v => "$" + Math.round(Number(v) || 0).toLocaleString("en-US");
 const ago = iso => {
+  if (!iso) return "never";
   const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
-  return !iso ? "never" : m < 60 ? m + "m ago" : Math.round(m / 60) + "h ago";
+  return m < 60 ? m + "m ago" : Math.round(m / 60) + "h ago";
 };
-let d = null, err = "";
-try {
-  const r = new Request(API);
-  r.timeoutInterval = 20;
-  d = await r.loadJSON();
-  if (d && d.error) { err = d.error; d = null; }
-} catch (e) { err = "no connection"; }
+
+// Last result, kept in a Scriptable file: { at, next, d }.
+const fm = FileManager.local();
+const CACHE = fm.joinPath(fm.documentsDirectory(), "fb-live-widget.json");
+let cache = null;
+try { if (fm.fileExists(CACHE)) cache = JSON.parse(fm.readString(CACHE)); } catch (e) {}
+
+// Run by hand in the app: always fetch. As a widget: only when the
+// planned moment (last sync + 2 hours) has come.
+const manual = !config.runsInWidget;
+const due = !cache || !cache.next || Date.now() >= cache.next;
+let d = cache && cache.d, err = "";
+if (manual || due) {
+  try {
+    const r = new Request(API);
+    r.timeoutInterval = 20;
+    const j = await r.loadJSON();
+    if (j && j.error) err = j.error;
+    else {
+      d = j;
+      // Next fetch: 2 hours after the last sync. If that moment has
+      // already passed (no new sync since), look again in 2 hours.
+      const synced = Date.parse(j.synced_at || "") || 0;
+      const next = synced + EVERY > Date.now() + 60000 ? synced + EVERY : Date.now() + EVERY;
+      cache = { at: Date.now(), next, d: j };
+      fm.writeString(CACHE, JSON.stringify(cache));
+    }
+  } catch (e) { err = "no connection"; }
+}
 
 const w = new ListWidget();
 w.backgroundColor = new Color("#131316");
-w.setPadding(14, 14, 12, 14);
+w.setPadding(12, 12, 12, 12);
 w.url = OPEN;
-const head = w.addText("FB LIVE");
-head.font = Font.heavySystemFont(11);
-head.textColor = new Color("#A78BFA");
-w.addSpacer(4);
+// A centered line: a stack with a spacer on each side.
+const center = (text, font, color) => {
+  const row = w.addStack();
+  row.addSpacer();
+  const t = row.addText(text);
+  t.font = font; t.textColor = color; t.lineLimit = 1; t.minimumScaleFactor = 0.5;
+  row.addSpacer();
+  return t;
+};
+center("FB LIVE", Font.heavySystemFont(11), new Color("#A78BFA"));
+w.addSpacer();
 if (d) {
-  const v = w.addText(money(d.spend));
-  v.font = Font.heavyRoundedSystemFont(30);
-  v.textColor = Color.white();
-  v.minimumScaleFactor = 0.5;
-  v.lineLimit = 1;
-  const s = w.addText("spend today");
-  s.font = Font.mediumSystemFont(11);
-  s.textColor = new Color("#8A8A95");
+  center(money(d.spend), Font.heavyRoundedSystemFont(32), Color.white());
+  w.addSpacer(2);
+  center("spend today", Font.mediumSystemFont(11), new Color("#8A8A95"));
   w.addSpacer();
-  const y = w.addText("yesterday " + money(d.yesterday));
-  y.font = Font.semiboldSystemFont(11);
-  y.textColor = new Color("#C9C9D1");
-  const c = w.addText(d.cabinets + " cabs · " + ago(d.synced_at));
-  c.font = Font.mediumSystemFont(10);
-  c.textColor = new Color("#6C6C76");
+  center("yesterday " + money(d.yesterday), Font.semiboldSystemFont(10), new Color("#C9C9D1"));
+  center(d.cabinets + " cabs · " + ago(d.synced_at), Font.mediumSystemFont(9), new Color("#6C6C76"));
 } else {
+  center(err || "no data", Font.mediumSystemFont(11), new Color("#F87171"));
   w.addSpacer();
-  const e = w.addText(err || "no data");
-  e.font = Font.mediumSystemFont(11);
-  e.textColor = new Color("#F87171");
 }
-w.refreshAfterDate = new Date(Date.now() + 2 * 3600 * 1000);
+// Ask iOS to wake the widget at the planned moment.
+const next = cache && cache.next ? cache.next : Date.now() + EVERY;
+w.refreshAfterDate = new Date(Math.max(Date.now() + 60000, next));
 if (config.runsInWidget) Script.setWidget(w); else await w.presentSmall();
 Script.complete();
 `;
