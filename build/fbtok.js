@@ -23,7 +23,7 @@
 /* ── підвкладки розділу «Інтеграції» ──
    Живуть тут, а не у віджетах, бо єдиний їхній споживач — цей розділ,
    і саме токени змусили його розділити. */
-const ISUB = ['fb', 'tg', 'drive'];
+const ISUB = ['fb', 'tg', 'drive', 'widget'];
 
 window.setSubTab = function (which) {
   if (!ISUB.includes(which)) which = ISUB[0];
@@ -32,7 +32,143 @@ window.setSubTab = function (which) {
     document.getElementById('isub-pane-' + k)?.classList.toggle('sub-off', k !== which);
     document.getElementById('isub-' + k)?.classList.toggle('is-on', k === which);
   });
+  if (which === 'widget' && typeof wgPaint === 'function') wgPaint();
 };
+/* ═══════════ ВІДЖЕТ НА ТЕЛЕФОН (SCRIPTABLE) ═══════════
+
+   «маленький віджет, щоб кожні 2–3 години підтягувало спенд» і «щоб
+   можна було копіювати код віджета в інтеграціях».
+
+   Ключ віджета — випадкові 32 байти. У базу йде лише його SHA-256
+   (team_settings, 'widget_key', свій у кожного власника); сам ключ
+   живе в коді віджета і, щоб скопіювати код удруге, — у цьому браузері
+   (localStorage). Новий ключ замінює старий: попередній віджет одразу
+   перестає отримувати числа. «Відкликати» — порожнє значення. */
+const WG_LS = 'widget_key_plain';
+
+async function wgSha(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function wgLocal() { try { return localStorage.getItem(WG_LS) || ''; } catch (e) { return ''; } }
+
+// Чи є в мене живий ключ — читаємо СВІЙ рядок, а не командний.
+async function wgHasKey() {
+  try {
+    let q = sb.from('team_settings').select('value').eq('key', 'widget_key');
+    if (window.myUid) q = q.eq('created_by', window.myUid);
+    const { data } = await q.limit(1);
+    return !!(data && data[0] && String(data[0].value || '').length === 64);
+  } catch (e) { return false; }
+}
+
+function wgCode(key) {
+  const url = SUPABASE_URL + '/functions/v1/widget?k=' + key;
+  const open = location.origin + location.pathname + '#/cabinets';
+  return `// FB LIVE — spend today. Scriptable, small widget.
+// Refreshes about every 2 hours (iOS decides the exact moment).
+// Tap opens FB LIVE in the CRM.
+const API = "${url}";
+const OPEN = "${open}";
+const money = v => "$" + Math.round(Number(v) || 0).toLocaleString("en-US");
+const ago = iso => {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  return !iso ? "never" : m < 60 ? m + "m ago" : Math.round(m / 60) + "h ago";
+};
+let d = null, err = "";
+try {
+  const r = new Request(API);
+  r.timeoutInterval = 20;
+  d = await r.loadJSON();
+  if (d && d.error) { err = d.error; d = null; }
+} catch (e) { err = "no connection"; }
+
+const w = new ListWidget();
+w.backgroundColor = new Color("#131316");
+w.setPadding(14, 14, 12, 14);
+w.url = OPEN;
+const head = w.addText("FB LIVE");
+head.font = Font.heavySystemFont(11);
+head.textColor = new Color("#A78BFA");
+w.addSpacer(4);
+if (d) {
+  const v = w.addText(money(d.spend));
+  v.font = Font.heavyRoundedSystemFont(30);
+  v.textColor = Color.white();
+  v.minimumScaleFactor = 0.5;
+  v.lineLimit = 1;
+  const s = w.addText("spend today");
+  s.font = Font.mediumSystemFont(11);
+  s.textColor = new Color("#8A8A95");
+  w.addSpacer();
+  const y = w.addText("yesterday " + money(d.yesterday));
+  y.font = Font.semiboldSystemFont(11);
+  y.textColor = new Color("#C9C9D1");
+  const c = w.addText(d.cabinets + " cabs · " + ago(d.synced_at));
+  c.font = Font.mediumSystemFont(10);
+  c.textColor = new Color("#6C6C76");
+} else {
+  w.addSpacer();
+  const e = w.addText(err || "no data");
+  e.font = Font.mediumSystemFont(11);
+  e.textColor = new Color("#F87171");
+}
+w.refreshAfterDate = new Date(Date.now() + 2 * 3600 * 1000);
+if (config.runsInWidget) Script.setWidget(w); else await w.presentSmall();
+Script.complete();
+`;
+}
+
+window.wgPaint = async function () {
+  const st = document.getElementById('wg-status');
+  if (!st) return;
+  const has = await wgHasKey(), local = wgLocal();
+  document.getElementById('wg-copy')?.classList.toggle('hidden', !(has && local));
+  document.getElementById('wg-revoke')?.classList.toggle('hidden', !has);
+  const mk = document.getElementById('wg-make');
+  if (mk) mk.textContent = has ? 'New key' : 'Create widget';
+  st.textContent = !has ? 'No widget yet. Create one — the code is copied for you.'
+    : local ? 'The widget is on. Copy the code again any time on this device.'
+    : 'A widget key exists, but it was made on another device. Make a new key to copy the code here — the old widget will stop.';
+};
+
+window.wgCreate = async function () {
+  if (await wgHasKey() && typeof ask === 'function' && !await ask({
+      title: 'Make a new widget key?', ok: 'New key', danger: true,
+      body: 'The widget that uses the current key stops getting numbers until you paste the new code into it.' })) return;
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const key = [...raw].map(b => b.toString(16).padStart(2, '0')).join('');
+  if (!await setTeamSetting('widget_key', await wgSha(key))) return;
+  try { localStorage.setItem(WG_LS, key); } catch (e) {}
+  await wgCopy();
+  wgPaint();
+};
+
+window.wgCopy = async function () {
+  const key = wgLocal();
+  if (!key) return;
+  const code = wgCode(key);
+  let ok = true;
+  try { await navigator.clipboard.writeText(code); }
+  catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = code; document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand('copy'); } catch (_e) { ok = false; }
+    ta.remove();
+  }
+  if (typeof toast === 'function')
+    toast(ok ? 'Widget code copied — paste it into a new Scriptable script' : 'Could not copy — your browser refused the clipboard', ok ? 'ok' : 'warn');
+};
+
+window.wgRevoke = async function () {
+  if (typeof ask === 'function' && !await ask({ title: 'Switch the widget off?', ok: 'Switch off', danger: true,
+      body: 'The widget stops getting numbers. You can make a new key later.' })) return;
+  if (!await setTeamSetting('widget_key', '')) return;
+  try { localStorage.removeItem(WG_LS); } catch (e) {}
+  wgPaint();
+  if (typeof toast === 'function') toast('Widget switched off', 'ok');
+};
+
 
 window.setSubTabInit = function () {
   let saved = 'fb';
