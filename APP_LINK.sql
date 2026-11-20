@@ -190,9 +190,12 @@ begin
   end loop;
 end $$;
 
+-- Щогодини о :40. Доти — тричі на ніч (00:40, 03:40, 06:40 Київ), і бан,
+-- який стався вдень, CRM бачила лише наступної ночі. Апок кілька десятків,
+-- обхід — секунди, тож щогодинний розклад нічого відчутно не коштує.
 select cron.schedule(
   'apps-check',
-  '40 22,1,4 * * *',
+  '40 * * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets
