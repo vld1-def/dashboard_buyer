@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 13:49">
+  <meta name="build" content="build 20.11 14:30">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8115,7 +8115,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 13:49</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 14:30</div>
     </div>
   </aside>
 
@@ -35602,6 +35602,26 @@ window.uqMode = function (m) {
    чергу ffmpeg, картинка — у режим зображень. Байти нікуди, крім цього
    браузера, не йдуть. */
 let uqDriveBusy = false;
+/* ОБРИВ ПІД ЧАС УНІКАЛІЗАЦІЇ. «Could not add GE_03jek: Failed to fetch»
+   — коли поруч кодує ffmpeg. Він забирає пам'ять і потоки вкладки
+   (Parallel: Auto — кілька копій одразу), і браузер обриває велике
+   завантаження без коду й причини. Після кодування той самий файл
+   качається нормально. Тому такий креатив стає в чергу й докачується
+   сам, щойно унікалізація закінчиться; без унікалізації — одна повторна
+   спроба за кілька секунд. */
+let uqDriveWait = [], uqDriveTimer = null;
+function uqDriveLater(cid) {
+  if (!uqDriveWait.includes(cid)) uqDriveWait.push(cid);
+  uqDriveSay('Uniqueizing is using the browser right now — ' + uqDriveWait.join(', ')
+    + ' will be added as soon as it finishes.');
+  if (uqDriveTimer) return;
+  uqDriveTimer = setInterval(async () => {
+    if (typeof uqBusy !== 'undefined' && uqBusy) return;
+    clearInterval(uqDriveTimer); uqDriveTimer = null;
+    const list = uqDriveWait.splice(0);
+    for (const c of list) await uqDriveAdd(c, true);
+  }, 3000);
+}
 
 function uqDriveSay(t, bad) {
   const el = document.getElementById('uq-drive-st');
@@ -35622,7 +35642,7 @@ window.uqDriveList = function () {
     .map(n => `<option value="${String(n).replace(/"/g, '&quot;')}">`).join('');
 };
 
-window.uqDriveAdd = async function (name) {
+window.uqDriveAdd = async function (name, retried) {
   const inp = document.getElementById('uq-drive-in');
   const cid = String(name != null ? name : (inp && inp.value) || '').trim();
   if (!cid || uqDriveBusy) return;
@@ -35670,7 +35690,22 @@ window.uqDriveAdd = async function (name) {
     }
     if (inp && name == null) inp.value = '';
   } catch (e) {
-    uqDriveSay('Could not add ' + cid + ': ' + (e.message || e), true);
+    const net = e instanceof TypeError;          // «Failed to fetch»: відповіді не було взагалі
+    if (inp && name == null) inp.value = '';
+    if (net && typeof uqBusy !== 'undefined' && uqBusy) {
+      uqDriveBusy = false;
+      uqDriveLater(cid);
+      return;
+    }
+    if (net && !retried) {
+      uqDriveBusy = false;
+      uqDriveSay('The download broke off — trying ' + cid + ' once more…');
+      await new Promise(r => setTimeout(r, 4000));
+      return uqDriveAdd(cid, true);
+    }
+    uqDriveSay('Could not add ' + cid + ': ' + (net
+      ? 'the download broke off (network or not enough memory in this tab). Try again in a moment.'
+      : (e.message || e)), true);
   } finally {
     uqDriveBusy = false;
   }

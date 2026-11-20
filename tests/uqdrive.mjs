@@ -61,4 +61,29 @@ ok('без Drive блок сірий і неактивний', lock.off.off && l
 ok('посилання веде в Settings → Integrations → Google Drive', lock.go, lock);
 ok('з Drive — знову активний', lock.on, lock);
 
+/* «Failed to fetch» поки кодує ffmpeg — у чергу й докачати після; без
+   кодування — одна повторна спроба. */
+const net = await page.evaluate(async () => {
+  teamDriveFolderId = 'F';
+  driveFindCreative = async cid => ({ id: 'n-' + cid, name: cid + '.mp4', mimeType: 'video/mp4' });
+  let fail = 0;
+  window.fetch = async () => { if (fail > 0) { fail--; throw new TypeError('Failed to fetch'); }
+    return new Response(new Uint8Array(500), { headers: { 'content-type': 'video/mp4' } }); };
+  uqFiles.length = 0;
+  fail = 1; uqBusy = true;
+  await uqDriveAdd('GE_03jek');
+  const queued = document.getElementById('uq-drive-st').textContent;
+  const before = uqFiles.length;
+  uqBusy = false;
+  await new Promise(r => setTimeout(r, 3600));
+  const after = uqFiles.map(f => f.name).join();
+  fail = 1;
+  const t = Date.now();
+  await uqDriveAdd('TJ_1');
+  return { queued, before, after, retried: uqFiles.map(f => f.name).join(), waited: Date.now() - t };
+});
+ok('обрив під час унікалізації — креатив у черзі, а не помилка', /will be added as soon as it finishes/.test(net.queued) && net.before === 0, net);
+ok('і докачується сам, щойно кодування скінчилось', net.after === 'GE_03jek.mp4', net);
+ok('разовий обрив без кодування — повторна спроба', /TJ_1\.mp4/.test(net.retried) && net.waited >= 3500, net);
+
 await done(browser, srv, errs);
