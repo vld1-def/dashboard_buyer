@@ -362,6 +362,53 @@ function flCabSpend(id) {
   return seen ? { sum, first, last } : null;
 }
 
+/* СТАТУС КАБІНЕТА ПОРУЧ ІЗ СПЕНДОМ. «при наведенні підтягувати ще й
+   статус: бан, актив». Беремо той самий стан, що на сторінці FB LIVE
+   (cabAll, CAB_STATE). Якщо FB LIVE у цій сесії не відкривали, один раз
+   дочитуємо статуси з бази й запам'ятовуємо — наведення не мусить щоразу
+   ходити в мережу. */
+let flCabSt = null, flCabStP = null;
+const FL_ST = {
+  running: ['Active', '#22C55E'], banned: ['Banned', '#EF4444'], review: ['In review', '#38BDF8'],
+  notoken: ['No token', '#A855F7'], idle: ['Active · idle', '#8A8A95'], archived: ['Archived', '#6C6C76']
+};
+function flCabStateNow(id) {
+  const digits = v => String(v == null ? '' : v).replace(/\D/g, '');
+  if (typeof cabAll !== 'undefined' && Array.isArray(cabAll) && cabAll.length) {
+    const c = cabAll.find(c2 => digits(c2.fb && c2.fb.account_id) === id || digits(c2.id) === id);
+    if (c && FL_ST[c.state]) return FL_ST[c.state];
+  }
+  return flCabSt ? (flCabSt.get(id) || null) : undefined;      // undefined — ще не читали
+}
+function flCabStLoad() {
+  if (flCabStP) return flCabStP;
+  flCabStP = (async () => {
+    const m = new Map();
+    try {
+      const [a, b] = await Promise.all([
+        sb.from('fb_accounts').select('account_id,status,missing_since'),
+        sb.from('accounts_mapping').select('account_id,status')]);
+      const arch = new Set((b.data || []).filter(r => String(r.status || '').toLowerCase() === 'archive')
+        .map(r => String(r.account_id || '').replace(/\D/g, '')));
+      (a.data || []).forEach(r => {
+        const id = String(r.account_id || '').replace(/\D/g, '');
+        const st = String(r.status || '').toLowerCase();
+        m.set(id, arch.has(id) ? FL_ST.archived
+          : r.missing_since ? FL_ST.notoken
+          : ['banned', 'closed', 'closing', 'disabled'].includes(st) ? FL_ST.banned
+          : st === 'review' ? FL_ST.review
+          : st === 'unsettled' || st === 'grace' ? ['Payment issue', '#F59E0B']
+          : st === 'active' ? FL_ST.running : [st || 'Unknown', '#8A8A95']);
+      });
+    } catch (e) { /* без статусу підказка однаково показує спенд */ }
+    flCabSt = m;
+  })();
+  return flCabStP;
+}
+const flStHtml = st => st
+  ? '<span class="fl-tip-st"><i style="background:' + st[1] + '"></i>' + flEsc(st[0]) + '</span>'
+  : '<span class="fl-tip-st is-none">Not in your cabinets</span>';
+
 window.flCabTip = function (el) {
   const id = el && el.dataset ? el.dataset.cab : '';
   if (!id) return;
@@ -378,6 +425,15 @@ window.flCabTip = function (el) {
       + (f.first ? ' <span class="fl-tip-k" style="margin:0 0 0 6px">' + day(f.first)
         + (f.last && f.last !== f.first ? '–' + day(f.last) : '') + '</span>' : '')
     : '<span class="fl-tip-k" style="margin:0">No spend in daily stats</span>';
+  const st = flCabStateNow(id);
+  tip.dataset.cab = id;
+  tip.innerHTML = (st === undefined ? '<span class="fl-tip-st is-none">…</span>' : flStHtml(st)) + tip.innerHTML;
+  if (st === undefined) flCabStLoad().then(() => {
+    // Курсор ще на тому самому кабінеті — дописуємо статус.
+    if (tip.dataset.cab !== id || tip.classList.contains('hidden')) return;
+    const s0 = tip.querySelector('.fl-tip-st');
+    if (s0) s0.outerHTML = flStHtml(flCabStateNow(id));
+  });
   tip.classList.remove('hidden');
   const r = el.getBoundingClientRect();
   const w = tip.offsetWidth, h = tip.offsetHeight;
