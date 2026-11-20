@@ -57,6 +57,10 @@ await page.waitForTimeout(200);
   ok('зупинене гео (DE) не показуємо', g && !g.flags.includes('de.svg'), g);
   ok('у підказці — оголошення й спенд по гео', g && /PL · 1 active ad · \$60/.test(g.tip), g && g.tip);
   ok('кабінет без активних оголошень — без міток', (await geoOf('1002')) === null);
+  const head = await page.evaluate(() => [...document.querySelectorAll('#cab-list thead th')].map(x => x.textContent.replace(/[↑↓]/g, '').trim()));
+  ok('гео — окремий стовпчик одразу перед Status', head.indexOf('Geo') >= 0 && head.indexOf('Geo') + 1 === head.indexOf('Status'), head);
+  const td = await page.evaluate(() => { const g = document.querySelector('#cab-list .cab-tr .cab-geo'); return g && g.closest('td').className; });
+  ok('мітки в своїй клітинці, не в клітинці статусу', /cab-geo-td/.test(td || '') && !/cab-fz-end/.test(td || ''), td);
 }
 await setup('code');
 {
@@ -65,6 +69,7 @@ await setup('code');
 }
 await setup('off');
 ok('сховано — міток немає', (await geoOf('1001')) === null);
+ok('сховано — і стовпчика немає', !(await page.evaluate(() => [...document.querySelectorAll('#cab-list thead th')].some(x => /^Geo/.test(x.textContent.trim())))));
 
 {
   await page.evaluate(() => { cabView.geo = 'flag'; cabColsMenu(); });

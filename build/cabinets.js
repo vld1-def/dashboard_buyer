@@ -1184,7 +1184,7 @@ async function cabSnapLoad() {
    (tdRow). Рахуємо лише АКТИВНІ оголошення знімка: зупинене вчора гео
    — це вже не «тут зараз». Мапінг воронок довантажуємо у фоні й
    перемальовуємо, щойно він приїде: таблиця не чекає на нього. */
-let cabGeo = {};
+let cabGeo = {}, cabGeoWait = false;
 function cabGeoBuild() {
   const m = {};
   if (typeof tdRow !== 'function') { cabGeo = m; return; }
@@ -1199,19 +1199,23 @@ function cabGeoBuild() {
     x.ads++; x.spend += Number(r.spend) || 0;
   });
   cabGeo = m;
-  if (typeof tdMaps !== 'undefined' && !tdMaps && typeof tdMapsLoad === 'function' && !cabGeo._wait) {
-    cabGeo._wait = true;
+  if (typeof tdMaps !== 'undefined' && !tdMaps && typeof tdMapsLoad === 'function' && !cabGeoWait) {
+    cabGeoWait = true;
     tdMapsLoad().then(() => { cabGeoBuild(); if (cabLoaded) cabRender(); }).catch(() => {});
   }
 }
-/* Мітки для рядка: більше спенду — лівіше. Три видно, решта «+N». */
+const cabGeoOn = () => (cabView.geo || 'flag') !== 'off';
+/* Гео кабінета: більше спенду — лівіше. */
+function cabGeoList(c) {
+  const o = cabGeo[String(c.id || '').replace(/\D/g, '')];
+  return o ? Object.keys(o).sort((a, b) => o[b].spend - o[a].spend || o[b].ads - o[a].ads) : [];
+}
+/* Мітки для рядка. Три видно, решта «+N». */
 function cabGeoHtml(c) {
   const mode = cabView.geo || 'flag';
   if (mode === 'off') return '';
   const o = cabGeo[String(c.id || '').replace(/\D/g, '')];
-  if (!o) return '';
-  const list = Object.keys(o).filter(k => k !== '_wait')
-    .sort((a, b) => o[b].spend - o[a].spend || o[b].ads - o[a].ads);
+  const list = cabGeoList(c);
   if (!list.length) return '';
   const cur = c.fb && c.fb.currency;
   const tip = 'Running now:\n' + list.map(g => g + ' · ' + o[g].ads + ' active ad'
@@ -2444,7 +2448,8 @@ function cabSection(items) {
   const val = { state: c => rank(c.state), id: c => c.id,
                 agent: c => String(c.row.provider_name || c.tok.agent || ''),
                 today: c => (c.fb ? Number(cabSpendIn(c.fb)) || 0 : 0),
-                spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '' };
+                spend: c => c.x.spend, age: c => c.age, last: c => c.x.last || '',
+                geo: c => cabGeoList(c).join(' ') };
   CAB_COLS.forEach(col => { if (!val[col.key]) val[col.key] = c => {
     const v = col.get(c);
     return (v == null || v === false || Number.isNaN(v)) ? (typeof v === 'string' ? '' : -1) : v;
@@ -2475,7 +2480,7 @@ function cabSection(items) {
   // Скільки клітинок у рядку: галочка, стрілка, шпилька, крапка,
   // кабінет, світчер, статус, витрати за період, дії — і стільки ж,
   // скільки увімкнено колонок.
-  const COLS = 9 + cols.length;
+  const COLS = 9 + cols.length + (cabGeoOn() ? 1 : 0);
 
   /* Галочка в шапці бере рівно те, що намальовано: під фільтром
      «Banned» це всі забанені, а не весь парк. Інакше вона тихо
@@ -2496,6 +2501,9 @@ function cabSection(items) {
            перед статусом — поїде разом з усіма, додасться після —
            лишиться в прокрутці, і нічого не треба правити у двох
            місцях. */ ''}
+      ${/* ГЕО — ОКРЕМИЙ СТОВПЧИК ПЕРЕД СТАТУСОМ. Ховається перемикачем
+           у меню колонок (Flags / Codes / Hide). */
+        cabGeoOn() ? th('geo', 'Geo', 'cab-geo-td', 'Countries of the ads running in the cabinet right now') : ''}
       ${th('state', 'Status', 'cab-fz-end')}
       ${/* Підпис сталий — «Spend», — а період написаний у підказці.
            Дата в самій шапці міняла ширину стовпця на кожен фільтр, і
@@ -2634,7 +2642,8 @@ function cabRowHtml(c, COLS) {
         title="Click to copy">${cabEsc(c.id)}</span></div>
     </td>
     <td class="cab-x"></td>
-    <td class="cab-fz-end"><span class="cab-st-wrap">${cabGeoHtml(c)}<span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></span></td>
+    ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : ''}
+    <td class="cab-fz-end"><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${today}</td>
     ${cabColsShown().map(cell).join('')}
     <td class="ta-r cab-act">
@@ -2749,6 +2758,7 @@ function cabNodeRow(n, depth, band, cols) {
     <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="5"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
+    ${cabGeoOn() ? '<td class="cab-geo-td"></td>' : ''}
     <td class="cab-nd-st cab-fz-end">${f.status}</td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${f.spend}</td>
     ${cols.map(col => { const tip = cabNodeTip(f, col.key);

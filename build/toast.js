@@ -36,94 +36,114 @@ window.toast = function (msg, kind, ms, raw) {
            : text.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]))
                  .replace(/\n/g, '<br>'));
 
+  /* КЛІК — ВІДКРИТИ, ХРЕСТИК — ПРИБРАТИ.
+
+     «клікаючи на нього щоб відкривалось типу як міні вікно, щоб можна
+     було прочитати». Доти короткий дотик прибирав тост, а прочитати
+     довгий підсумок синку можна було лише затиснувши його. Тепер тост
+     короткий (кілька рядків), а клік відкриває міні-вікно з повним
+     текстом, який можна виділити й скопіювати, і зі списком попередніх
+     сповіщень цього сеансу — щоб згаслий тост можна було дочитати.
+     Прибрати тост, не відкриваючи, — хрестик. Поки на тост наведено,
+     він не гасне. */
+  const entry = { at: new Date(), kind: kind || '', title, html: el.innerHTML };
+  TOAST_LOG.unshift(entry);
+  if (TOAST_LOG.length > 40) TOAST_LOG.length = 40;
+  el._log = entry;
+
+  const body = document.createElement('div');
+  body.className = 'toast-body';
+  while (el.firstChild) body.appendChild(el.firstChild);
+  el.appendChild(body);
+  const x = document.createElement('button');
+  x.type = 'button'; x.className = 'toast-x'; x.title = 'Dismiss'; x.setAttribute('aria-label', 'Dismiss');
+  x.textContent = '×';
+  el.appendChild(x);
+
   let lifeTimer = 0;
-  let kill = () => {
+  const kill = () => {
     if (el.dataset.gone) return;
     el.dataset.gone = '1';
+    if (lifeTimer) { clearTimeout(lifeTimer); lifeTimer = 0; }
     el.classList.add('out');
     setTimeout(() => el.remove(), 180);
   };
-  /* ЗАТИСНУТИ — ЧИТАТИ, КОРОТКИЙ ДОТИК — ПРИБРАТИ.
+  el._kill = kill;
 
-     Підсумок синку буває на двадцять рядків: чиї токени впали, що
-     саме сказала база, які кабінети найповільніші. Прочитати це за
-     сім секунд не можна, а найменший рух пальцем по ньому — це клік,
-     тобто текст зникав рівно тоді, коли в нього вдивлялись.
-
-     Тому довге натискання (350 мс) ТРИМАЄ тост: лічильник згасання
-     знімається, зʼявляється смуга прокрутки, текст можна виділяти й
-     копіювати. Відпускання його не прибирає — прибере наступний
-     короткий дотик.
-
-     350 мс, а не менше: при 200 швидкий клік по довгому тексту вже
-     час від часу «затискався», і тост не зникав, коли його хотіли
-     прибрати. Менше 300 людина не відчуває як «затиснув». */
-  const HOLD_MS = 350;
-  let justHeld = false;    // затискання СКІНЧИЛОСЬ щойно — клік за ним не рахується
-  let grabbing = false;    // затискання відбулось у ЦЬОМУ натисканні
-  let holdTimer = 0;
-
-  const grab = () => {
-    grabbing = true;
-    el.classList.add('is-held');
-    if (lifeTimer) { clearTimeout(lifeTimer); lifeTimer = 0; }
-  };
-
-  el.addEventListener('pointerdown', e => {
-    // Правою кнопкою не тримаємо: там контекстне меню.
-    if (e.button && e.button !== 0) return;
-    grabbing = false;
-    holdTimer = setTimeout(grab, HOLD_MS);
-  });
-
-  /* Відпускання ловимо на ВІКНІ: палець часто з'їжджає за межі тоста,
-     і подія до нього вже не доходить — лічильник затискання лишався б
-     увімкненим і спрацював би на порожньому місці. */
-  const up = () => {
-    if (holdTimer) { clearTimeout(holdTimer); holdTimer = 0; }
-    /* Клік приходить одразу за відпусканням. Якщо саме ЦЕ натискання
-       було затисканням, ним людина щойно відкрила текст — прибирати
-       його тим самим рухом означало б, що затиснути неможливо.
-
-       Питаємо про поточне натискання, а не про стан тоста. Поки тут
-       стояло «тост затиснутий», позначка вмикалась на КОЖНОМУ
-       наступному відпусканні — і затиснутий тост не прибирався вже
-       ніколи, тобто лишався на екрані назавжди. */
-    if (grabbing) justHeld = true;
-    grabbing = false;
-  };
-  window.addEventListener('pointerup', up);
-  window.addEventListener('pointercancel', up);
-
+  x.addEventListener('click', e => { e.stopPropagation(); kill(); });
   el.addEventListener('click', () => {
-    if (justHeld) { justHeld = false; return; }
-    /* Виділення тексту — не клік. Без цього спроба скопіювати рядок
-       помилки прибирала б той самий рядок. */
+    /* Виділення тексту — не клік: інакше спроба скопіювати рядок
+       відкривала б вікно. */
     const sel = window.getSelection && window.getSelection();
     if (sel && String(sel).length && el.contains(sel.anchorNode)) return;
+    toastBox(entry);
     kill();
   });
 
-  /* Слухачі вікна знімаємо разом із тостом: їх стільки ж, скільки
-     тостів за сеанс, і самі вони не зникли б. */
-  const bare = kill;
-  kill = () => {
-    window.removeEventListener('pointerup', up);
-    window.removeEventListener('pointercancel', up);
-    bare();
-  };
-
   wrap.appendChild(el);
-
   // Більш ніж чотири тости на екрані — це вже стіна тексту
   while (wrap.children.length > 4) wrap.firstElementChild.remove();
+  // Обрізаний текст позначаємо: видно, що відкрити варто.
+  requestAnimationFrame(() => { if (body.scrollHeight > body.clientHeight + 2) el.classList.add('is-cut'); });
 
   // Помилку лишаємо довше: її треба встигнути прочитати
   const life = ms != null ? ms : (kind === 'error' ? 7000 : 3500);
-  /* Тримаємо номер лічильника: без нього затискання не мало б чого
-     скасовувати, і тост усе одно згас би посеред читання. */
-  if (life > 0) lifeTimer = setTimeout(() => kill(), life);
+  const arm = () => { if (life > 0 && !el.dataset.gone) lifeTimer = setTimeout(kill, life); };
+  el.addEventListener('mouseenter', () => { if (lifeTimer) { clearTimeout(lifeTimer); lifeTimer = 0; } });
+  el.addEventListener('mouseleave', () => { if (!lifeTimer) arm(); });
+  arm();
   return el;
+};
+
+/* Сповіщення цього сеансу, найновіше першим. */
+const TOAST_LOG = [];
+
+/* МІНІ-ВІКНО. Одне на сторінку, у тому ж куті, що й тости. Зверху —
+   відкрите сповіщення повністю, нижче — попередні; клік по
+   попередньому відкриває його. Esc або клік поза вікном — закрити. */
+window.toastBox = function (entry) {
+  let box = document.getElementById('toast-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'toast-box';
+    box.setAttribute('role', 'dialog');
+    document.body.appendChild(box);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') toastBoxClose(); });
+    document.addEventListener('pointerdown', e => {
+      const b = document.getElementById('toast-box');
+      if (b && !b.classList.contains('hidden') && !b.contains(e.target)
+          && !(e.target.closest && e.target.closest('#toast-wrap'))) toastBoxClose();
+    }, true);
+  }
+  const cur = entry || TOAST_LOG[0];
+  if (!cur) return;
+  const hm = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const plain = h => { const d = document.createElement('div'); d.innerHTML = h; return d.innerText || d.textContent || ''; };
+  const rest = TOAST_LOG.filter(e => e !== cur);
+  box.innerHTML = `
+    <div class="tb-head">
+      <span class="tb-kind is-${cur.kind || 'info'}">${cur.title || 'Notice'}</span>
+      <span class="tb-time">${hm(cur.at)}</span>
+      <button type="button" class="tb-btn" data-act="copy" title="Copy the text">Copy</button>
+      <button type="button" class="tb-btn tb-close" data-act="close" title="Close (Esc)">×</button>
+    </div>
+    <div class="tb-text">${cur.html.replace(/^<span class="tt">[^<]*<\/span>/, '')}</div>
+    ${rest.length ? `<p class="tb-h">Earlier</p><div class="tb-list">${rest.map((e, i) =>
+      `<button type="button" class="tb-item is-${e.kind || 'info'}" data-i="${TOAST_LOG.indexOf(e)}">
+        <span class="tb-item-t">${hm(e.at)}</span>
+        <span class="tb-item-x">${plain(e.html.replace(/^<span class="tt">[^<]*<\/span>/, '')).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])).slice(0, 140)}</span>
+      </button>`).join('')}</div>` : ''}`;
+  box.querySelector('[data-act="close"]').onclick = toastBoxClose;
+  box.querySelector('[data-act="copy"]').onclick = ev => {
+    const t = plain(cur.html.replace(/^<span class="tt">[^<]*<\/span>/, '')).trim();
+    try { navigator.clipboard.writeText(t); ev.target.textContent = 'Copied'; } catch (e) {}
+  };
+  box.querySelectorAll('.tb-item').forEach(b => { b.onclick = () => toastBox(TOAST_LOG[Number(b.dataset.i)]); });
+  box.classList.remove('hidden');
+};
+window.toastBoxClose = function () {
+  const b = document.getElementById('toast-box');
+  if (b) b.classList.add('hidden');
 };
 
 // Кваліфікуємо повідомлення за текстом: у коді alert() викликається і для
@@ -397,7 +417,12 @@ window.tell = (title, body) => window.ask({ title, body, only: true });
 window.toastStep = function () {
   let el = null;
   const put = (html, kind, ms, raw) => {
-    if (el && !el.dataset.gone) el.remove();
+    if (el && !el.dataset.gone) {
+      // Проміжний крок у списку сповіщень не лишаємо — лише підсумок.
+      const i = TOAST_LOG.indexOf(el._log);
+      if (i >= 0) TOAST_LOG.splice(i, 1);
+      el.remove();
+    }
     el = html ? window.toast(html, kind, ms, raw) : null;
   };
   return {
