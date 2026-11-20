@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 20:35">
+  <meta name="build" content="build 20.11 21:49">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7870,6 +7870,22 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 .fl-price-note { margin: 0; font-size: 12px; font-weight: 700; color: #4ade80; min-height: 0; }
 .fl-price-note:empty { display: none; }
 .fl-form .fl-price-note { flex: 1 1 100%; }
+
+/* FB LIVE: гео, яке зараз крутиться, — перед статусом. */
+.cab-st-wrap { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cab-geo { display: inline-flex; align-items: center; gap: 3px; }
+.cab-geo .td-flag { margin-right: 0; width: 18px; height: 13px; }
+.cab-geo-c, .cab-geo-more {
+  font: 800 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em;
+  padding: 3px 4px; border-radius: 4px; background: var(--surface-3); color: var(--text-muted);
+}
+.cab-geo-more { background: transparent; padding: 3px 1px; }
+.cab-geo-sws { display: flex; gap: 4px; padding: 2px 8px 6px; }
+.cab-geo-sw {
+  flex: 1; font-size: 11px; font-weight: 800; padding: 4px 6px; border-radius: 6px;
+  background: var(--surface-2); color: var(--text-muted); border: 1px solid transparent;
+}
+.cab-geo-sw.is-on { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8129,7 +8145,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 20:35</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 21:49</div>
     </div>
   </aside>
 
@@ -29739,14 +29755,17 @@ function cabViewShape(raw) {
   const o = raw && typeof raw === 'object' ? raw : {};
   return { pins: Array.isArray(o.pins) ? o.pins.map(String) : [],
            cols: (o.cols && typeof o.cols === 'object') ? o.cols : null,
-           order: Array.isArray(o.order) ? o.order.map(String) : [] };
+           order: Array.isArray(o.order) ? o.order.map(String) : [],
+           // Гео перед статусом: прапори, двобуквені коди або сховано.
+           geo: ['flag', 'code', 'off'].includes(o.geo) ? o.geo : 'flag' };
 }
 
 /* Порожній вигляд і збережений «усе типове» — різні речі, і друге
    треба вміти відрізнити, інакше локальна копія «нічого не вибрано»
    виглядала б як відсутня. */
 function cabViewEmpty(v) {
-  return !v || (!v.cols && !(v.pins || []).length && !(v.order || []).length);
+  return !v || (!v.cols && !(v.pins || []).length && !(v.order || []).length
+    && (!v.geo || v.geo === 'flag'));
 }
 
 function cabViewLocal(v) {
@@ -30093,7 +30112,13 @@ function cabColsMenu(keep) {
         <span class="cab-pop-tick">${cabColOn(col.key) || cabColAuto(col.key) ? '✓' : ''}</span>${
         cabEsc(col.label)}</button>
     </div>`;
-  box.innerHTML = `<p class="cab-pop-h">Columns · drag to reorder</p>`
+  const gm = cabView.geo || 'flag';
+  const gb = (k, t) => `<button type="button" class="cab-geo-sw ${gm === k ? 'is-on' : ''}"
+      onclick="cabGeoMode('${k}')">${t}</button>`;
+  box.innerHTML = `<p class="cab-pop-h">Geo before status</p>
+    <div class="cab-geo-sws" title="Countries of the ads running in the cabinet right now">${
+      gb('flag', 'Flags')}${gb('code', 'Codes')}${gb('off', 'Hide')}</div>`
+    + `<p class="cab-pop-h">Columns · drag to reorder</p>`
     + on.map(row).join('')
     + (off.length ? `<p class="cab-pop-h">Off</p>` + off.map(row).join('') : '');
   const btn = document.getElementById('cab-cols-btn');
@@ -30696,6 +30721,7 @@ async function cabSnapLoad() {
       ? q.not('account_id', 'in', '(' + arch.join(',') + ')') : q);
     cabSnapRows = rows.filter(r => !r.team_name || r.team_name === currentTeam);
     cabSnap = cdSumRows(cabSnapRows);
+    cabGeoBuild();
   } catch (e) {
     cabSnapRows = [];
     cabSnapErr = CAB_NO_TABLE.test(e.message || '') ? 'not-set-up' : (e.message || 'error');
@@ -30708,6 +30734,59 @@ async function cabSnapLoad() {
   /* Знімок щойно переписали (Sync now або відкриття сторінки) —
      відкрите вікно Today перемальовується саме. */
   if (typeof tdOnSnap === 'function') tdOnSnap();
+}
+
+/* ГЕО, ЯКЕ ЗАРАЗ КРУТИТЬСЯ В КАБІНЕТІ. «перед статусом ставити мітки,
+   які гео тут зараз активні». Те саме гео, що й у Stat. Day: маска
+   назви кампанії → funnel з мапінгу → дволітерний шматок назви
+   (tdRow). Рахуємо лише АКТИВНІ оголошення знімка: зупинене вчора гео
+   — це вже не «тут зараз». Мапінг воронок довантажуємо у фоні й
+   перемальовуємо, щойно він приїде: таблиця не чекає на нього. */
+let cabGeo = {};
+function cabGeoBuild() {
+  const m = {};
+  if (typeof tdRow !== 'function') { cabGeo = m; return; }
+  (cabSnapRows || []).forEach(r => {
+    if (String(r.effective_status || '').toUpperCase() !== 'ACTIVE') return;
+    let g = '';
+    try { g = tdRow(r).geo; } catch (e) { g = ''; }
+    if (!/^[A-Z]{2}$/.test(g)) return;
+    const id = String(r.account_id || '').replace(/\D/g, '');
+    const o = (m[id] = m[id] || {});
+    const x = (o[g] = o[g] || { ads: 0, spend: 0 });
+    x.ads++; x.spend += Number(r.spend) || 0;
+  });
+  cabGeo = m;
+  if (typeof tdMaps !== 'undefined' && !tdMaps && typeof tdMapsLoad === 'function' && !cabGeo._wait) {
+    cabGeo._wait = true;
+    tdMapsLoad().then(() => { cabGeoBuild(); if (cabLoaded) cabRender(); }).catch(() => {});
+  }
+}
+/* Мітки для рядка: більше спенду — лівіше. Три видно, решта «+N». */
+function cabGeoHtml(c) {
+  const mode = cabView.geo || 'flag';
+  if (mode === 'off') return '';
+  const o = cabGeo[String(c.id || '').replace(/\D/g, '')];
+  if (!o) return '';
+  const list = Object.keys(o).filter(k => k !== '_wait')
+    .sort((a, b) => o[b].spend - o[a].spend || o[b].ads - o[a].ads);
+  if (!list.length) return '';
+  const cur = c.fb && c.fb.currency;
+  const tip = 'Running now:\n' + list.map(g => g + ' · ' + o[g].ads + ' active ad'
+    + (o[g].ads === 1 ? '' : 's') + ' · ' + cabMoneyCur(o[g].spend, cur) + ' today').join('\n');
+  const one = g => mode === 'code' || typeof tdFlag !== 'function'
+    ? `<span class="cab-geo-c">${g}</span>`
+    : tdFlag(g).replace('onerror="this.remove()"',
+        `onerror="this.outerHTML='<span class=&quot;cab-geo-c&quot;>${g}</span>'"`);
+  return `<span class="cab-geo has-tip" title="${cabEsc(tip)}">${list.slice(0, 3).map(one).join('')}${
+    list.length > 3 ? `<span class="cab-geo-more">+${list.length - 3}</span>` : ''}</span>`;
+}
+async function cabGeoMode(m) {
+  const was = cabView.geo;
+  cabView.geo = m;
+  cabRender();
+  cabColsMenu(true);
+  if (!await cabViewSave()) { cabView.geo = was; cabRender(); cabColsMenu(true); }
 }
 
 /* Число зі знімка. null означає «не знаємо» — знімка ще немає або
@@ -32113,7 +32192,7 @@ function cabRowHtml(c, COLS) {
         title="Click to copy">${cabEsc(c.id)}</span></div>
     </td>
     <td class="cab-x"></td>
-    <td class="cab-fz-end"><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
+    <td class="cab-fz-end"><span class="cab-st-wrap">${cabGeoHtml(c)}<span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></span></td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${today}</td>
     ${cabColsShown().map(cell).join('')}
     <td class="ta-r cab-act">
