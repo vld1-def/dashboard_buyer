@@ -47,4 +47,18 @@ ok('немає папки Drive — сказано, де її вказати', /
 ok('кнопка в рядку списку креативів', /onclick="crToUniq\(event, '\$\{cidEsc\}'\)"/.test(LEG));
 ok('і в шапці картки креатива', /onclick="crToUniq\(event, currentCreativeID\)"/.test(LEG));
 
+/* Без папки Drive блок сірий і неактивний, із посиланням на налаштування. */
+const lock = await page.evaluate(() => {
+  teamDriveFolderId = null; openUniqModal();
+  const off = { off: document.getElementById('uq-drive').classList.contains('is-off'), dis: document.getElementById('uq-drive-in').disabled };
+  document.querySelector('.uq-drive-go').click();
+  const go = !document.getElementById('spanel-integrations').classList.contains('hidden')
+    && !document.getElementById('isub-pane-drive').classList.contains('sub-off');
+  teamDriveFolderId = 'F'; openUniqModal();
+  return { off, go, on: !document.getElementById('uq-drive').classList.contains('is-off') };
+});
+ok('без Drive блок сірий і неактивний', lock.off.off && lock.off.dis, lock);
+ok('посилання веде в Settings → Integrations → Google Drive', lock.go, lock);
+ok('з Drive — знову активний', lock.on, lock);
+
 await done(browser, srv, errs);

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 13:38">
+  <meta name="build" content="build 20.11 13:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7830,6 +7830,23 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   font-size: 10.5px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
 }
 .cr-uq-head:hover { background: var(--accent); color: #fff; }
+/* Drive не підключений — блок сірий, кнопки неактивні, видно підказку. */
+.uq-drive-lock { display: none; flex: 1 1 100%; font-size: 11px; color: var(--text-muted); }
+.uq-drive.is-off .uq-drive-lock { display: block; }
+.uq-drive.is-off input, .uq-drive.is-off > button { opacity: .4; cursor: not-allowed; filter: grayscale(1); }
+.uq-drive.is-off .uq-drive-st { display: none; }
+.uq-drive-go {
+  background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 800;
+  color: #c4b5fd; text-decoration: underline; text-underline-offset: 2px;
+}
+.uq-drive-go:hover { color: #fff; }
+.cr-uq-head.is-off { opacity: .4; filter: grayscale(1); }
+/* Посилання в підказці — текстом, а не кнопкою блока. */
+.uq-drive .uq-drive-go {
+  height: auto; padding: 0; background: none; border-radius: 0; filter: none;
+  font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: none; color: #c4b5fd;
+}
+.uq-drive .uq-drive-go:hover { color: #fff; filter: none; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8089,7 +8106,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 13:38</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 13:46</div>
     </div>
   </aside>
 
@@ -12811,6 +12828,7 @@ function selectCreative(cid) {
     crRenderPanels();
     crFitNums();
     crRuleBadge(currentCreativeID);
+    if (typeof uqDrivePaint === 'function') uqDrivePaint();
     loadCreativePreview(currentCreativeID);
   }
 
@@ -23005,13 +23023,17 @@ async function pwBulkApply() {
 
       <!-- З DRIVE ЗА НАЗВОЮ: пишеш назву креатива — файл сам
            підтягується з папки команди в потрібний режим (uqDriveAdd). -->
-      <div class="uq-drive">
+      <div class="uq-drive" id="uq-drive">
         <input id="uq-drive-in" list="uq-drive-list" spellcheck="false" autocomplete="off"
           placeholder="Creative from Drive, e.g. KG_JS_674"
           onfocus="uqDriveList()" onkeydown="if(event.key==='Enter'){event.preventDefault();uqDriveAdd()}">
         <datalist id="uq-drive-list"></datalist>
-        <button type="button" onclick="uqDriveAdd()">Add from Drive</button>
+        <button type="button" id="uq-drive-btn" onclick="uqDriveAdd()">Add from Drive</button>
         <span id="uq-drive-st" class="uq-drive-st"></span>
+        <!-- Drive не підключений — блок сірий, а тут сказано, де його
+             підключити (uqDrivePaint). -->
+        <span class="uq-drive-lock">🔒 Connect Google Drive to add creatives by name —
+          <button type="button" class="uq-drive-go" onclick="uqDriveSetup()">Settings → Integrations → Google Drive</button></span>
       </div>
 
 <!-- ═══════════ УНІКАЛІЗАТОР: ЗОБРАЖЕННЯ ═══════════
@@ -35627,12 +35649,46 @@ window.uqDriveAdd = async function (name) {
   }
 };
 
+/* БЕЗ DRIVE — СІРИМ, А НЕ ПРИХОВАНИМ. «показувати тільки якщо в
+   налаштуваннях доданий Google Drive, або сірим, щоб люди розуміли, що
+   функція заблокована». Сховати означало б, що про неї ніхто не дізнається;
+   сірий блок із підказкою й посиланням на налаштування каже і що вона є,
+   і що зробити. Перевіряємо щоразу, як відкривається вікно: папку могли
+   щойно додати. */
+const uqDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
+window.uqDrivePaint = function () {
+  const on = uqDriveOn();
+  document.getElementById('uq-drive')?.classList.toggle('is-off', !on);
+  ['uq-drive-in', 'uq-drive-btn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !on; });
+  document.querySelectorAll('.cr-uq-head').forEach(b => {
+    b.classList.toggle('is-off', !on);
+    b.title = on ? 'Open the Uniqueizer with this creative from Drive'
+      : 'Connect Google Drive in Settings → Integrations to use this';
+  });
+};
+// Відкрити налаштування одразу на вкладці Google Drive.
+window.uqDriveSetup = function () {
+  if (typeof closeUniqModal === 'function') closeUniqModal();
+  if (typeof openSettingsModal === 'function') openSettingsModal();
+  if (typeof switchSettingsTab === 'function') switchSettingsTab('integrations');
+  if (typeof setSubTab === 'function') setSubTab('drive');
+};
+// Щоразу, як відкривається вікно унікалізатора, — свіжий стан Drive.
+if (typeof openUniqModal === 'function' && !openUniqModal.__drive) {
+  const open0 = openUniqModal;
+  window.openUniqModal = function () { const r = open0.apply(this, arguments); uqDrivePaint(); return r; };
+  window.openUniqModal.__drive = true;
+}
+
 /* Кнопка в Creative Analyzer: відкрити унікалізатор і одразу додати
-   туди цей креатив з Drive. */
+   туди цей креатив з Drive. Без Drive — відкриваємо вікно з сірим
+   блоком і підказкою, а не тихо нічого. */
 window.crToUniq = function (ev, cid) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
   if (!cid) return;
   if (typeof openUniqModal === 'function') openUniqModal();
+  uqDrivePaint();
+  if (!uqDriveOn()) return;
   uqDriveList();
   uqDriveAdd(cid);
 };

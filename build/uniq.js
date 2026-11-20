@@ -598,12 +598,46 @@ window.uqDriveAdd = async function (name) {
   }
 };
 
+/* БЕЗ DRIVE — СІРИМ, А НЕ ПРИХОВАНИМ. «показувати тільки якщо в
+   налаштуваннях доданий Google Drive, або сірим, щоб люди розуміли, що
+   функція заблокована». Сховати означало б, що про неї ніхто не дізнається;
+   сірий блок із підказкою й посиланням на налаштування каже і що вона є,
+   і що зробити. Перевіряємо щоразу, як відкривається вікно: папку могли
+   щойно додати. */
+const uqDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
+window.uqDrivePaint = function () {
+  const on = uqDriveOn();
+  document.getElementById('uq-drive')?.classList.toggle('is-off', !on);
+  ['uq-drive-in', 'uq-drive-btn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = !on; });
+  document.querySelectorAll('.cr-uq-head').forEach(b => {
+    b.classList.toggle('is-off', !on);
+    b.title = on ? 'Open the Uniqueizer with this creative from Drive'
+      : 'Connect Google Drive in Settings → Integrations to use this';
+  });
+};
+// Відкрити налаштування одразу на вкладці Google Drive.
+window.uqDriveSetup = function () {
+  if (typeof closeUniqModal === 'function') closeUniqModal();
+  if (typeof openSettingsModal === 'function') openSettingsModal();
+  if (typeof switchSettingsTab === 'function') switchSettingsTab('integrations');
+  if (typeof setSubTab === 'function') setSubTab('drive');
+};
+// Щоразу, як відкривається вікно унікалізатора, — свіжий стан Drive.
+if (typeof openUniqModal === 'function' && !openUniqModal.__drive) {
+  const open0 = openUniqModal;
+  window.openUniqModal = function () { const r = open0.apply(this, arguments); uqDrivePaint(); return r; };
+  window.openUniqModal.__drive = true;
+}
+
 /* Кнопка в Creative Analyzer: відкрити унікалізатор і одразу додати
-   туди цей креатив з Drive. */
+   туди цей креатив з Drive. Без Drive — відкриваємо вікно з сірим
+   блоком і підказкою, а не тихо нічого. */
 window.crToUniq = function (ev, cid) {
   if (ev) { ev.stopPropagation(); ev.preventDefault(); }
   if (!cid) return;
   if (typeof openUniqModal === 'function') openUniqModal();
+  uqDrivePaint();
+  if (!uqDriveOn()) return;
   uqDriveList();
   uqDriveAdd(cid);
 };

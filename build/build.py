@@ -2523,13 +2523,17 @@ rest = sub(rest,
 
       <!-- З DRIVE ЗА НАЗВОЮ: пишеш назву креатива — файл сам
            підтягується з папки команди в потрібний режим (uqDriveAdd). -->
-      <div class="uq-drive">
+      <div class="uq-drive" id="uq-drive">
         <input id="uq-drive-in" list="uq-drive-list" spellcheck="false" autocomplete="off"
           placeholder="Creative from Drive, e.g. KG_JS_674"
           onfocus="uqDriveList()" onkeydown="if(event.key==='Enter'){event.preventDefault();uqDriveAdd()}">
         <datalist id="uq-drive-list"></datalist>
-        <button type="button" onclick="uqDriveAdd()">Add from Drive</button>
+        <button type="button" id="uq-drive-btn" onclick="uqDriveAdd()">Add from Drive</button>
         <span id="uq-drive-st" class="uq-drive-st"></span>
+        <!-- Drive не підключений — блок сірий, а тут сказано, де його
+             підключити (uqDrivePaint). -->
+        <span class="uq-drive-lock">🔒 Connect Google Drive to add creatives by name —
+          <button type="button" class="uq-drive-go" onclick="uqDriveSetup()">Settings → Integrations → Google Drive</button></span>
       </div>
 
 ''' + uqhtml.rstrip() + '''
