@@ -510,4 +510,101 @@ window.uqMode = function (m) {
     if (files.length) uiPick(files);
   });
 })();
+
+/* ═══════════ УНІКАЛІЗАТОР: ДОДАТИ КРЕАТИВ З DRIVE ЗА НАЗВОЮ ═══════════
+
+   «в унікалізаторі додавання через назву: вибираємо крео — і воно
+   тягне з Google Drive» і «в Creative Analyzer кнопка до кожного крео,
+   яка автоматично додає в унікалізатор».
+
+   Файл шукаємо тим самим шляхом, що й прев'ю креатива (driveFindCreative:
+   підпапки гео, корінь папки команди, решта підпапок, точний збіг
+   назви), і качаємо його з Drive за API-ключем — папка й так мусить
+   бути відкрита за посиланням, інакше не було б і прев'ю. Відео йде в
+   чергу ffmpeg, картинка — у режим зображень. Байти нікуди, крім цього
+   браузера, не йдуть. */
+let uqDriveBusy = false;
+
+function uqDriveSay(t, bad) {
+  const el = document.getElementById('uq-drive-st');
+  if (!el) return;
+  el.textContent = t || '';
+  el.classList.toggle('is-bad', !!bad);
+}
+
+// Підказки: креативи зі статистики й файли з Drive, якщо їх уже обходили.
+window.uqDriveList = function () {
+  const dl = document.getElementById('uq-drive-list');
+  if (!dl) return;
+  const names = new Set();
+  (window.creativesRawDataAll || window.creativesRawData || []).forEach(d => { if (d && d.cid) names.add(String(d.cid).trim()); });
+  if (typeof crColdFiles !== 'undefined' && Array.isArray(crColdFiles))
+    crColdFiles.forEach(f => names.add(String(f.name || '').replace(/\.[^.]+$/, '').trim()));
+  dl.innerHTML = [...names].filter(Boolean).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+    .map(n => `<option value="${String(n).replace(/"/g, '&quot;')}">`).join('');
+};
+
+window.uqDriveAdd = async function (name) {
+  const inp = document.getElementById('uq-drive-in');
+  const cid = String(name != null ? name : (inp && inp.value) || '').trim();
+  if (!cid || uqDriveBusy) return;
+  if (typeof teamDriveFolderId === 'undefined' || !teamDriveFolderId) {
+    uqDriveSay('The Drive folder is not set — add it in Settings → Integrations → Google Drive.', true);
+    return;
+  }
+  uqDriveBusy = true;
+  uqDriveSay('Looking for ' + cid + ' in Drive…');
+  try {
+    const f = await driveFindCreative(cid);
+    if (!f || !f.id) { uqDriveSay('No file named ' + cid + ' in the Drive folder.', true); return; }
+    const res = await fetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(f.id)
+      + '?alt=media&key=' + _driveKey());
+    if (!res.ok) throw new Error(res.status === 403 || res.status === 404
+      ? 'Drive did not give the file (' + res.status + ') — the folder must be shared with anyone who has the link'
+      : 'Drive ' + res.status);
+    // Читаємо шматками — щоб показувати, скільки вже скачано.
+    const total = Number(res.headers.get('content-length')) || 0;
+    const parts = []; let got = 0;
+    const rd = res.body && res.body.getReader ? res.body.getReader() : null;
+    if (rd) {
+      for (;;) {
+        const { done, value } = await rd.read();
+        if (done) break;
+        parts.push(value); got += value.length;
+        uqDriveSay('Downloading ' + f.name + ' · ' + (total ? Math.round(got / total * 100) + '%' : (got / 1048576).toFixed(1) + ' MB'));
+      }
+    } else parts.push(new Uint8Array(await res.arrayBuffer()));
+    const type = String(f.mimeType || res.headers.get('content-type') || '');
+    const file = new File(parts, f.name, { type });
+    if (/^video\//.test(type) || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(f.name)) {
+      uqMode('video');
+      const seen = new Set(uqFiles.map(x => x.name + '|' + x.size));
+      if (!seen.has(file.name + '|' + file.size)) uqFiles.push(file);
+      if (uqBusy) uqQueueDirty = true;
+      uqRenderFileList();
+      uqDriveSay('Added ' + f.name + ' to the video queue.');
+    } else if (/^image\//.test(type) || /\.(png|jpe?g|webp)$/i.test(f.name)) {
+      uqMode('image');
+      await uiPick([file]);
+      uqDriveSay('Added ' + f.name + ' to images.');
+    } else {
+      uqDriveSay(f.name + ' is neither a video nor an image.', true);
+    }
+    if (inp && name == null) inp.value = '';
+  } catch (e) {
+    uqDriveSay('Could not add ' + cid + ': ' + (e.message || e), true);
+  } finally {
+    uqDriveBusy = false;
+  }
+};
+
+/* Кнопка в Creative Analyzer: відкрити унікалізатор і одразу додати
+   туди цей креатив з Drive. */
+window.crToUniq = function (ev, cid) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  if (!cid) return;
+  if (typeof openUniqModal === 'function') openUniqModal();
+  uqDriveList();
+  uqDriveAdd(cid);
+};
 </script>

@@ -2521,6 +2521,17 @@ rest = sub(rest,
         <button type="button" id="uq-tab-image" class="uq-tab" onclick="uqMode('image')">Зображення</button>
       </div>
 
+      <!-- З DRIVE ЗА НАЗВОЮ: пишеш назву креатива — файл сам
+           підтягується з папки команди в потрібний режим (uqDriveAdd). -->
+      <div class="uq-drive">
+        <input id="uq-drive-in" list="uq-drive-list" spellcheck="false" autocomplete="off"
+          placeholder="Creative from Drive, e.g. KG_JS_674"
+          onfocus="uqDriveList()" onkeydown="if(event.key==='Enter'){event.preventDefault();uqDriveAdd()}">
+        <datalist id="uq-drive-list"></datalist>
+        <button type="button" onclick="uqDriveAdd()">Add from Drive</button>
+        <span id="uq-drive-st" class="uq-drive-st"></span>
+      </div>
+
 ''' + uqhtml.rstrip() + '''
 
       <div id="uq-pane" class="space-y-5">
