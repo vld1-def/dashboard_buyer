@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 13:46">
+  <meta name="build" content="build 20.11 13:49">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7847,6 +7847,15 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   font-size: 11px; font-weight: 800; letter-spacing: 0; text-transform: none; color: #c4b5fd;
 }
 .uq-drive .uq-drive-go:hover { color: #fff; filter: none; }
+/* «Video files»: кнопка вибору й поле «з Drive» одним рядком. */
+.uq-filerow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.uq-filerow > input[type="file"] { flex: 0 0 auto; }
+.uq-drive-slot { flex: 1 1 320px; min-width: 0; }
+.uq-drive-slot:empty { display: none; }
+#uq-drive-slot-image { margin-bottom: 10px; }
+.uq-drive-slot .uq-drive { padding: 5px 6px 5px 8px; gap: 6px; border-radius: 11px; }
+.uq-drive-slot .uq-drive input { height: 30px; flex: 1 1 160px; }
+.uq-drive-slot .uq-drive > button { height: 30px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8106,7 +8115,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 13:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 13:49</div>
     </div>
   </aside>
 
@@ -23053,6 +23062,9 @@ async function pwBulkApply() {
 
     <div>
 
+      <!-- Сюди переїжджає блок «з Drive», коли відкритий режим зображень. -->
+      <div id="uq-drive-slot-image" class="uq-drive-slot"></div>
+
       <label class="ui-drop" id="ui-drop">
         <input type="file" id="ui-files" accept="image/png,image/jpeg,image/webp" multiple
                onchange="uiPick(this.files)" hidden>
@@ -23112,8 +23124,13 @@ async function pwBulkApply() {
       <div id="uq-pane" class="space-y-5">
       <div>
         <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Video files</label>
+        <!-- Вибір файлів і «з Drive за назвою» — одним рядком (блок Drive
+             переносить сюди uqDrivePlace). -->
+        <div class="uq-filerow">
         <input type="file" id="uq-files" accept="video/*" multiple onchange="uqOnFiles()"
           class="text-[11px] font-bold text-slate-300 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-violet-600 file:text-white file:font-black file:uppercase file:text-[10px] file:cursor-pointer">
+        <div id="uq-drive-slot-video" class="uq-drive-slot"></div>
+        </div>
         <div id="uq-filelist" class="mt-2"></div>
       </div>
 
@@ -35532,8 +35549,18 @@ window.uiZip = async function () {
    Відео крутить ffmpeg (старий код, нижче в документі), статику —
    canvas. Перемикач лише показує потрібну панель: спільного стану в них
    немає, і робота одного не чіпає інший. */
+/* Блок «з Drive» один на обидва режими: стоїть у рядку вибору файлів
+   того режиму, який зараз відкритий. */
+window.uqDrivePlace = function (m) {
+  const box = document.getElementById('uq-drive');
+  const slot = document.getElementById(m === 'image' ? 'uq-drive-slot-image' : 'uq-drive-slot-video');
+  if (box && slot && box.parentElement !== slot) slot.appendChild(box);
+};
+document.addEventListener('DOMContentLoaded', () => uqDrivePlace('video'));
+
 window.uqMode = function (m) {
   const img = m === 'image';
+  uqDrivePlace(img ? 'image' : 'video');
   document.getElementById('ui-pane')?.classList.toggle('hidden', !img);
   document.getElementById('uq-pane')?.classList.toggle('hidden', img);
   document.getElementById('uq-tab-image')?.classList.toggle('is-on', img);

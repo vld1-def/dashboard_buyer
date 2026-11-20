@@ -481,8 +481,18 @@ window.uiZip = async function () {
    Відео крутить ffmpeg (старий код, нижче в документі), статику —
    canvas. Перемикач лише показує потрібну панель: спільного стану в них
    немає, і робота одного не чіпає інший. */
+/* Блок «з Drive» один на обидва режими: стоїть у рядку вибору файлів
+   того режиму, який зараз відкритий. */
+window.uqDrivePlace = function (m) {
+  const box = document.getElementById('uq-drive');
+  const slot = document.getElementById(m === 'image' ? 'uq-drive-slot-image' : 'uq-drive-slot-video');
+  if (box && slot && box.parentElement !== slot) slot.appendChild(box);
+};
+document.addEventListener('DOMContentLoaded', () => uqDrivePlace('video'));
+
 window.uqMode = function (m) {
   const img = m === 'image';
+  uqDrivePlace(img ? 'image' : 'video');
   document.getElementById('ui-pane')?.classList.toggle('hidden', !img);
   document.getElementById('uq-pane')?.classList.toggle('hidden', img);
   document.getElementById('uq-tab-image')?.classList.toggle('is-on', img);
