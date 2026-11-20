@@ -343,6 +343,13 @@ const CAB_COLS = [
     tip: 'Our spend ÷ our deposits over the selected period, from the imports',
     get: c => (c.x.deps > 0 ? c.x.spend / c.x.deps : null),
     cell: v => v == null ? null : cabMoney(v) },
+  /* Скільки коштував кабінет — з файла, де він стоїть із ціною. */
+  { key: 'buy', label: 'Cab cost', ta: 'r',
+    tip: 'What this cabinet cost: the price of the file it came in, divided by the cabinets or rows in it (Files → Edit → Price)',
+    get: c => { const b = cabBuyOf(c); return b ? b.per : null; },
+    // Ціна кабінета — це $2.50, а не «$3»: центи тут мають значення.
+    cell: v => v == null ? null : cabMoneyCents(v, 'USD'),
+    tipOf: c => { const b = cabBuyOf(c); return b ? b.title + ' · $' + b.price + ' ÷ ' + b.units : ''; } },
   { key: 'age', label: 'Days', ta: 'r', tip: 'Days since the first spend we know of',
     get: c => c.age },
   /* ── КОЛОНКИ РІВНЯ КАМПАНІЇ ──
@@ -847,6 +854,33 @@ function cabMoneyCents(n, cur) {
   return sign ? sign + v : v + (cur ? ' ' + cur : '');
 }
 
+/* ЦІНА КАБІНЕТА — З ФАЙЛІВ. «суму ми зробили, але її десь треба
+   показувати ще». Файл із ціною (Files → Edit → Price) і @кабінетами в
+   ньому дає ціну одного кабінета: price / units. Тут вона стає колонкою
+   «Cab cost» і рядком «Bought for» у картці кабінета. Кабінет у кількох
+   файлах — беремо найсвіжіший. Колонок price/units ще немає
+   (FILES_PRICE.sql) — тихо без ціни. */
+let cabBuy = new Map();
+async function cabBuyLoad() {
+  const m = new Map();
+  try {
+    const { data, error } = await sb.from('file_links').select('title,cabs,price,units,at')
+      .eq('team_name', currentTeam).not('price', 'is', null).order('at', { ascending: true }).limit(1000);
+    if (error) throw error;
+    (data || []).forEach(f => {
+      const p = Number(f.price), n = Number(f.units);
+      if (!(p > 0 && n > 0)) return;
+      (f.cabs || []).forEach(id => m.set(String(id), { per: p / n, title: String(f.title || ''), price: p, units: n }));
+    });
+  } catch (e) { /* без колонок ціни — без ціни */ }
+  cabBuy = m;
+}
+const cabBuyOf = c => {
+  if (!c) return null;
+  const d = v => String(v == null ? '' : v).replace(/\D/g, '');
+  return cabBuy.get(d(c.id)) || (c.fb ? cabBuy.get(d(c.fb.account_id)) : null) || null;
+};
+
 async function cabInit() {
   /* Закріплення й набір колонок — перше, що має бути відоме: інакше
      перший малюнок таблиці показав би типовий вигляд, а за мить
@@ -878,6 +912,7 @@ async function cabInit() {
   await cabDaysLoad();
   await cabSnapLoad();
   if (typeof fpLoad === 'function') await fpLoad();
+  await cabBuyLoad();
   cabLoaded = true;
   cabRender();
   /* Підписи дописуємо ПІСЛЯ малювання, не до: сторінка не мусить чекати
@@ -2910,6 +2945,8 @@ function cabCardOld(fb) {
                  ? 'Facebook did not send the balance for this cabinet'
                  : 'Spent but not yet taken from the card. Facebook charges it '
                    + 'when it reaches the billing threshold, or on the monthly date.')}
+        ${(() => { const b = cabBuyOf(c); return b
+          ? cell('Bought for', '$' + b.per.toFixed(2), b.title + ' · $' + b.price + ' ÷ ' + b.units) : ''; })()}
         ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns),
                cabByStatus(c.fb.campaigns_by_status))}
         ${cell('Ad sets', pair(c.fb.adsets_active, c.fb.adsets),

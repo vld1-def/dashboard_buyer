@@ -972,6 +972,8 @@ window.flPut = async function (i) {
   }
   flViewClose();
   await flLoad();
+  // Ціна кабінета у FB LIVE — одразу нова.
+  if (typeof cabBuyLoad === 'function') { await cabBuyLoad(); if (typeof cabRender === 'function' && cabLoaded) cabRender(); }
 };
 
 window.flDrop = async function (i) {
