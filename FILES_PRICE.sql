@@ -14,6 +14,11 @@
 --
 -- Виконати в Supabase → SQL Editor. Повторний запуск нічого не ламає.
 
+-- units_fixed — кількість поправили руками. Тоді файл її не перебиває;
+-- інакше units перераховується щоразу, як файл відкривають чи
+-- зберігають: дописав ще кабінети — ціна одного сама стала меншою.
+
 alter table public.file_links
   add column if not exists price numeric,
-  add column if not exists units integer;
+  add column if not exists units integer,
+  add column if not exists units_fixed boolean not null default false;

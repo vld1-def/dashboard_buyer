@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 20:11">
+  <meta name="build" content="build 20.11 20:31">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8129,7 +8129,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 20:11</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 20:31</div>
     </div>
   </aside>
 
@@ -40857,8 +40857,9 @@ async function flLoad() {
     const ask = cols => sb.from('file_links').select(cols)
       .eq('team_name', currentTeam).order('at', { ascending: false }).limit(500);
     const base = 'id,title,path,mime,size,kind,account_id,note,at,tags,cabs';
-    let { data, error } = await ask(base + ',price,units');
+    let { data, error } = await ask(base + ',price,units,units_fixed');
     flPriceCols = !error;
+    if (error && /units_fixed/i.test(error.message || '')) ({ data, error } = await ask(base + ',price,units'));
     if (error && /price|units/i.test(error.message || '')) ({ data, error } = await ask(base));
     if (error) throw new Error(error.message);
     flRows = data || [];
@@ -41073,9 +41074,11 @@ async function flIndex(i, text, cut) {
   const r = flRows[i];
   if (!r || cut) return;
   const { tags, cabs } = flTags(text);
-  /* Кількість одиниць — лише поки її не задали руками (units порожнє):
-     поправлене людиною число файл не перебиває. */
-  const units = r.units == null && flPriceCols ? flUnitsOf(text).n : null;
+  /* Кількість одиниць ПЕРЕРАХОВУЄМО щоразу, доки її не поправили руками
+     (units_fixed): «зараз 8 @кабінетів, пізніше додасться решта» — ціна
+     одного має стати меншою сама. Поправлене людиною число не чіпаємо. */
+  const auto = flPriceCols && !r.units_fixed ? flUnitsOf(text).n : null;
+  const units = auto && auto !== r.units ? auto : null;
   if (flSameTags(tags, r.tags) && flSameTags(cabs, r.cabs) && !units) return;
   r.tags = tags; r.cabs = cabs;
   if (units) r.units = units;
@@ -41567,11 +41570,15 @@ async function flTxtPut(text) {
     // Мітки — разом із ним: дописав @кабінет і зберіг, а пошук його не
     // бачить до наступного відкриття — це той самий різновид тиші.
     const { tags, cabs } = flTags(text);
+    const row0 = flRows[flTxt.i];
+    // Дописав @кабінети — кількість і ціна одного перераховуються одразу.
+    const units = flPriceCols && row0 && !row0.units_fixed ? flUnitsOf(text).n : null;
     const { error } = await sb.from('file_links')
-      .update({ size: blob.size, tags, cabs }).eq('id', flRows[flTxt.i]?.id);
+      .update(units ? { size: blob.size, tags, cabs, units } : { size: blob.size, tags, cabs })
+      .eq('id', row0?.id);
     if (error) throw new Error(error.message);
     const row = flRows[flTxt.i];
-    if (row) { row.tags = tags; row.cabs = cabs; }
+    if (row) { row.tags = tags; row.cabs = cabs; if (units) row.units = units; }
   } catch (e) {
     /* Який саме крок відмовив — ми знаємо, і це вся різниця між
        порадою і загадкою. */
@@ -41624,6 +41631,7 @@ window.flEditOpen = function (i) {
       <label class="fl-f"><span class="fl-f-l">Cabinets / rows</span>
         <input class="fl-in" id="fl-f-units" type="number" min="1" step="1" placeholder="counting…"
           data-what="${(r.cabs || []).length ? 'cabinets' : 'rows'}"
+          data-auto="${r.units_fixed ? '' : (r.units != null ? flEsc(r.units) : '')}"
           value="${r.units != null ? flEsc(r.units) : ''}" oninput="flPriceNote()"></label>
       <p class="fl-price-note is-wide" id="fl-f-pnote"></p>
       <div class="fl-form-acts">
@@ -41634,13 +41642,18 @@ window.flEditOpen = function (i) {
   flPriceNote();
   /* Скільки одиниць — ще не рахували: читаємо файл і рахуємо. Лише для
      текстових файлів; решта чекає, що число впишуть руками. */
-  if (r.units == null && flKindOf(r) === 'text') (async () => {
+  // Порахувати свіжо — файл могли доповнити (лише текстові файли).
+  if (!r.units_fixed && flKindOf(r) === 'text') (async () => {
     try {
       const url = await flSigned(r, false);
       const got = await flText(url);
       const u = flUnitsOf(got.text);
       const inp = document.getElementById('fl-f-units');
-      if (inp && !inp.value) { inp.value = u.n; inp.dataset.what = u.what; flPriceNote(); }
+      if (inp) {
+        inp.dataset.auto = u.n; inp.dataset.what = u.what;
+        if (!inp.value) inp.value = u.n;
+        flPriceNote();
+      }
     } catch (e) { /* не вийшло — впишуть руками */ }
   })();
 };
@@ -41652,8 +41665,11 @@ window.flPriceNote = function () {
   const inp = document.getElementById('fl-f-units');
   const n = Number(inp?.value);
   const what = (inp && inp.dataset.what) || 'unit';
-  el.textContent = !flPriceCols ? 'Price needs two new columns — run FILES_PRICE.sql in Supabase.'
+  const autoN = inp && inp.dataset.auto !== '' ? Number(inp.dataset.auto) : null;
+  const fixed = n > 0 && autoN != null && n !== autoN;
+  el.textContent = !flPriceCols ? 'Price needs new columns — run FILES_PRICE.sql in Supabase.'
     : p > 0 && n > 0 ? flMoney(p) + ' ÷ ' + n + ' = ' + flMoney2(p / n) + ' per ' + what.replace(/s$/, '')
+      + (fixed ? ' · set by hand (counted ' + autoN + '), stays as is' : ' · counted from the file, updates as it grows')
     : p > 0 ? 'How many cabinets or rows are in the file? Then the price of one is clear.'
     : '';
 };
@@ -41668,12 +41684,17 @@ window.flPut = async function (i) {
       account_id: val('fl-f-cab') || null, note: val('fl-f-note') || null };
     if (flPriceCols) {
       const p = Number(val('fl-f-price')), n = Math.round(Number(val('fl-f-units')));
+      const ui = document.getElementById('fl-f-units');
+      const autoN = ui && ui.dataset.auto !== '' ? Number(ui.dataset.auto) : null;
       patch.price = val('fl-f-price') !== '' && p >= 0 ? p : null;
-      patch.units = n > 0 ? n : null;
+      /* Порожньо або так само, як порахував файл, — автоматичне число, і
+         воно далі перераховується. Інше — поправлене руками: фіксуємо. */
+      patch.units = n > 0 ? n : autoN;
+      patch.units_fixed = n > 0 && autoN != null && n !== autoN;
     }
     const { error } = await sb.from('file_links').update(patch).eq('id', r.id);
     if (error) throw new Error(/price|units/i.test(error.message || '')
-      ? 'price needs two new columns — run FILES_PRICE.sql in Supabase' : error.message);
+      ? 'price needs new columns — run FILES_PRICE.sql in Supabase' : error.message);
   } catch (e) {
     if (typeof toast === 'function')
       toast(flRls(e)

@@ -51,4 +51,24 @@ ok('без @міток — рядки з акаунтами', r.rowsN === 2, r.r
 ok('без колонок список читається як раніше', /if \(error && \/price\|units\/i\.test\(error\.message \|\| ''\)\) \(\{ data, error \} = await ask\(base\)\);/.test(FL));
 ok('SQL додає price і units', /add column if not exists price numeric/.test(SQL) && /add column if not exists units integer/.test(SQL));
 
+/* «зараз 8 акаунтів @, пізніше решту добавиться — воно перерахує?»
+   Автоматичне число перераховується; поправлене руками — ні. */
+const grow = await page.evaluate(async () => {
+  const cabs = n => Array.from({ length: n }, (_, i) => '@10000000' + String(i).padStart(2, '0')).join('\n');
+  const writes = [];
+  sb.from = () => ({ update: p => { writes.push(p); return { eq: async () => ({ error: null }) }; } });
+  flPriceCols = true;
+  flRows = [{ id: 7, title: 'batch.txt', tags: [], cabs: [], price: 10, units: null, units_fixed: false }];
+  await flIndex(0, cabs(8), false);
+  const at8 = [flRows[0].units, flMoney2(flPer(flRows[0]))];
+  await flIndex(0, cabs(10), false);
+  const at10 = [flRows[0].units, flMoney2(flPer(flRows[0]))];
+  flRows[0].units = 12; flRows[0].units_fixed = true;
+  await flIndex(0, cabs(14), false);
+  return { at8, at10, fixed: flRows[0].units, wrote: writes.map(w => w.units) };
+});
+ok('8 @кабінетів — $10 ÷ 8', grow.at8[0] === 8 && grow.at8[1] === '$1.25', grow);
+ok('дописали ще 2 — перераховано: $10 ÷ 10', grow.at10[0] === 10 && grow.at10[1] === '$1.00', grow);
+ok('поправлене руками число файл не перебиває', grow.fixed === 12, grow);
+
 await done(browser, srv, errs);
