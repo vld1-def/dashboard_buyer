@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 20:05">
+  <meta name="build" content="build 20.11 20:11">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7860,6 +7860,16 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 #fl-tip .fl-tip-st { display: inline-flex; align-items: center; gap: 5px; margin-right: 10px; font-weight: 800; }
 #fl-tip .fl-tip-st i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 #fl-tip .fl-tip-st.is-none { color: var(--text-muted); font-weight: 600; }
+
+/* ═══ ЦІНА ФАЙЛА І ЦІНА ОДНОГО КАБІНЕТА ═══ */
+.fl-price {
+  display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 7px; white-space: nowrap;
+  background: rgba(34, 197, 94, .12); color: #4ade80; font-size: 11px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.fl-price-note { margin: 0; font-size: 12px; font-weight: 700; color: #4ade80; min-height: 0; }
+.fl-price-note:empty { display: none; }
+.fl-form .fl-price-note { flex: 1 1 100%; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8119,7 +8129,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 20:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 20:11</div>
     </div>
   </aside>
 
@@ -40810,13 +40820,46 @@ window.closeFilesModal = function () {
   flViewClose();
 };
 
+/* ═══ ЦІНА ФАЙЛА → ЦІНА ОДНОГО КАБІНЕТА ═══
+   «вказую ціну 10$, і якщо там 10 кабінетів — уже зрозуміло, яка ціна
+   одного». Одиниця — кабінет, якщо у файлі стоять @мітки; інакше —
+   рядок з акаунтом (той самий розбір, що й для AdsPower: заголовки,
+   нотатки й порожні рядки не рахуються). У формі число можна поправити.
+   Ціна одиниці = price / units і не зберігається окремо. */
+let flPriceCols = true;
+function flUnitsOf(text) {
+  const t = String(text || '');
+  const cabs = new Set();
+  let m; FL_CAB_RE.lastIndex = 0;
+  while ((m = FL_CAB_RE.exec(t)) !== null) cabs.add(m[1]);
+  if (cabs.size) return { n: cabs.size, what: cabs.size === 1 ? 'cabinet' : 'cabinets' };
+  let rows = 0;
+  try { rows = flApParse(t).rows.length; } catch (e) { rows = 0; }
+  if (!rows) rows = t.split(/\r?\n/).filter(l => l.trim()).length;
+  return { n: rows, what: rows === 1 ? 'row' : 'rows' };
+}
+const flMoney = v => '$' + (Math.round(Number(v) * 100) / 100).toLocaleString('en-US',
+  { minimumFractionDigits: Number(v) % 1 ? 2 : 0, maximumFractionDigits: 2 });
+// Ціна одиниці — завжди з копійками: так її легше порівнювати між файлами.
+const flMoney2 = v => '$' + (Math.round(Number(v) * 100) / 100).toLocaleString('en-US',
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function flPer(r) {
+  const p = Number(r && r.price), n = Number(r && r.units);
+  return p > 0 && n > 0 ? p / n : null;
+}
+
 async function flLoad() {
   const box = document.getElementById('fl-list');
   if (box) box.innerHTML = '<p class="fl-empty">Loading…</p>';
   try {
-    const { data, error } = await sb.from('file_links')
-      .select('id,title,path,mime,size,kind,account_id,note,at,tags,cabs')
+    /* Ціна й кількість (FILES_PRICE.sql) — необов'язкові: поки колонок
+       немає, читаємо як раніше, а не лишаємо людину без списку файлів. */
+    const ask = cols => sb.from('file_links').select(cols)
       .eq('team_name', currentTeam).order('at', { ascending: false }).limit(500);
+    const base = 'id,title,path,mime,size,kind,account_id,note,at,tags,cabs';
+    let { data, error } = await ask(base + ',price,units');
+    flPriceCols = !error;
+    if (error && /price|units/i.test(error.message || '')) ({ data, error } = await ask(base));
     if (error) throw new Error(error.message);
     flRows = data || [];
   } catch (e) {
@@ -40952,7 +40995,11 @@ function flRender() {
       /* Мітки видно в рядку — інакше, щоб дізнатись, що в файлі, його
          щоразу треба відкривати, а вся користь тегів саме в тому, щоб
          не відкривати. */
-      + '<span class="fl-note">' + flTagChips(r) + flEsc(r.note || '') + '</span>'
+      + '<span class="fl-note">' + flTagChips(r)
+      + (Number(r.price) > 0 ? '<span class="fl-price" title="Paid for the file'
+          + (flPer(r) != null ? ' · ' + r.units + ' unit(s)' : '') + '">' + flMoney(r.price)
+          + (flPer(r) != null ? ' · ' + flMoney2(flPer(r)) + ' each' : '') + '</span>' : '')
+      + flEsc(r.note || '') + '</span>'
       + '<span class="fl-at">' + flSize(r.size) + '</span>'
       + '<span class="fl-at">' + String(r.at || '').slice(0, 10) + '</span>'
       + '<span class="fl-acts">'
@@ -41026,10 +41073,14 @@ async function flIndex(i, text, cut) {
   const r = flRows[i];
   if (!r || cut) return;
   const { tags, cabs } = flTags(text);
-  if (flSameTags(tags, r.tags) && flSameTags(cabs, r.cabs)) return;
+  /* Кількість одиниць — лише поки її не задали руками (units порожнє):
+     поправлене людиною число файл не перебиває. */
+  const units = r.units == null && flPriceCols ? flUnitsOf(text).n : null;
+  if (flSameTags(tags, r.tags) && flSameTags(cabs, r.cabs) && !units) return;
   r.tags = tags; r.cabs = cabs;
+  if (units) r.units = units;
   try {
-    await sb.from('file_links').update({ tags, cabs }).eq('id', r.id);
+    await sb.from('file_links').update(units ? { tags, cabs, units } : { tags, cabs }).eq('id', r.id);
   } catch (_e) {
     /* Колонок ще немає — FILES.sql не виконаний. Мітки на екрані від
        цього працюють, не працює лише пошук по них, і валити через це
@@ -41176,6 +41227,10 @@ window.flCabTip = function (el) {
       + (f.first ? ' <span class="fl-tip-k" style="margin:0 0 0 6px">' + day(f.first)
         + (f.last && f.last !== f.first ? '–' + day(f.last) : '') + '</span>' : '')
     : '<span class="fl-tip-k" style="margin:0">No spend in daily stats</span>';
+  /* Скільки коштував цей кабінет: файл із ціною, у якому він стоїть. */
+  const bought = (flRows || []).find(x => (x.cabs || []).includes(id) && flPer(x) != null);
+  if (bought) tip.innerHTML += ' <span class="fl-tip-k" style="margin:0 0 0 8px">Cost</span>'
+    + flMoney2(flPer(bought)) + ' <span class="fl-tip-k" style="margin:0">· ' + flEsc(bought.title) + '</span>';
   const st = flCabStateNow(id);
   tip.dataset.cab = id;
   tip.innerHTML = (st === undefined ? '<span class="fl-tip-st is-none">…</span>' : flStHtml(st)) + tip.innerHTML;
@@ -41563,11 +41618,44 @@ window.flEditOpen = function (i) {
       <label class="fl-f is-wide"><span class="fl-f-l">Note</span>
         <input class="fl-in" id="fl-f-note" placeholder="bought 12.09, farmed"
           value="${flEsc(r.note || '')}"></label>
+      <label class="fl-f"><span class="fl-f-l">Price, $</span>
+        <input class="fl-in" id="fl-f-price" type="number" min="0" step="0.01" placeholder="10"
+          value="${r.price != null ? flEsc(r.price) : ''}" oninput="flPriceNote()"></label>
+      <label class="fl-f"><span class="fl-f-l">Cabinets / rows</span>
+        <input class="fl-in" id="fl-f-units" type="number" min="1" step="1" placeholder="counting…"
+          data-what="${(r.cabs || []).length ? 'cabinets' : 'rows'}"
+          value="${r.units != null ? flEsc(r.units) : ''}" oninput="flPriceNote()"></label>
+      <p class="fl-price-note is-wide" id="fl-f-pnote"></p>
       <div class="fl-form-acts">
         <button type="button" class="fl-btn is-main" onclick="flPut(${i})">Save</button>
         <button type="button" class="fl-btn" onclick="flViewClose()">Cancel</button>
       </div>
     </div>`;
+  flPriceNote();
+  /* Скільки одиниць — ще не рахували: читаємо файл і рахуємо. Лише для
+     текстових файлів; решта чекає, що число впишуть руками. */
+  if (r.units == null && flKindOf(r) === 'text') (async () => {
+    try {
+      const url = await flSigned(r, false);
+      const got = await flText(url);
+      const u = flUnitsOf(got.text);
+      const inp = document.getElementById('fl-f-units');
+      if (inp && !inp.value) { inp.value = u.n; inp.dataset.what = u.what; flPriceNote(); }
+    } catch (e) { /* не вийшло — впишуть руками */ }
+  })();
+};
+
+window.flPriceNote = function () {
+  const el = document.getElementById('fl-f-pnote');
+  if (!el) return;
+  const p = Number(document.getElementById('fl-f-price')?.value);
+  const inp = document.getElementById('fl-f-units');
+  const n = Number(inp?.value);
+  const what = (inp && inp.dataset.what) || 'unit';
+  el.textContent = !flPriceCols ? 'Price needs two new columns — run FILES_PRICE.sql in Supabase.'
+    : p > 0 && n > 0 ? flMoney(p) + ' ÷ ' + n + ' = ' + flMoney2(p / n) + ' per ' + what.replace(/s$/, '')
+    : p > 0 ? 'How many cabinets or rows are in the file? Then the price of one is clear.'
+    : '';
 };
 
 window.flPut = async function (i) {
@@ -41576,11 +41664,16 @@ window.flPut = async function (i) {
   const val = (id) => String(document.getElementById(id)?.value || '').trim();
   const title = val('fl-f-title') || r.title;
   try {
-    const { error } = await sb.from('file_links').update({
-      title, kind: val('fl-f-kind') || 'other',
-      account_id: val('fl-f-cab') || null, note: val('fl-f-note') || null
-    }).eq('id', r.id);
-    if (error) throw new Error(error.message);
+    const patch = { title, kind: val('fl-f-kind') || 'other',
+      account_id: val('fl-f-cab') || null, note: val('fl-f-note') || null };
+    if (flPriceCols) {
+      const p = Number(val('fl-f-price')), n = Math.round(Number(val('fl-f-units')));
+      patch.price = val('fl-f-price') !== '' && p >= 0 ? p : null;
+      patch.units = n > 0 ? n : null;
+    }
+    const { error } = await sb.from('file_links').update(patch).eq('id', r.id);
+    if (error) throw new Error(/price|units/i.test(error.message || '')
+      ? 'price needs two new columns — run FILES_PRICE.sql in Supabase' : error.message);
   } catch (e) {
     if (typeof toast === 'function')
       toast(flRls(e)
