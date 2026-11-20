@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 22:00">
+  <meta name="build" content="build 20.11 22:09">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8198,7 +8198,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 22:00</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 22:09</div>
     </div>
   </aside>
 
@@ -14592,7 +14592,7 @@ function renderGeoPayoutSettings(data) {
           <button class="pay-mod${spend ? ' is-pct' : ''}"
             onclick="togglePayoutModel('${p.id}', '${spend ? 'cpa' : 'spend'}')"
             title="${spend
-              ? 'Spend model: revenue = spend × percent. Click to switch back to CPA'
+              ? 'Spend-модель: чистий профіт = спенд × відсоток (1000$ при 10% → 100$). Клік — повернути на CPA'
               : 'CPA: revenue = deposits × rate. Click to switch to % of spend'}">${spend ? '%' : 'CPA'}</button>
           <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
           <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
@@ -17060,7 +17060,8 @@ async function deleteDbAll(tab) {
 // ===== END Feature 5 =====
 
 // ===== МОДЕЛЬ ОФФЕРА =====
-// CPA: виручка = депозити × ставка. Spend %: виручка = спенд × відсоток.
+// CPA: виручка = депозити × ставка. Spend %: профіт = спенд × відсоток,
+// тобто виручка = спенд × (1 + відсоток).
 // Усе інше (CPA, ROI, депозити) рахується і показується так само, як було —
 // щоб цифри по обох моделях лежали в одних і тих самих колонках.
 // Одна функція на всі місця: раніше формула була продубльована в 11 точках,
@@ -17078,7 +17079,11 @@ function payoutInfo(geo, offer) {
 // Виручка одного рядка статистики
 function revenueOf(row) {
   const p = payoutInfo(row.geo, row.offer);
-  if (p.model === 'spend') return (Number(row.spend) || 0) * p.value / 100;
+  /* SPEND %: ЧИСТИЙ ПРОФІТ = СПЕНД × %. «спенд 1000$ при 10% — чистий
+     прибуток 100$». Net Profit усюди рахується як виручка − спенд, тож
+     виручка тут = спенд + спенд × % (спенд нам повертають плюс відсоток).
+     Доти виручкою було лише спенд × %, і 1000$ при 10% давали −900$. */
+  if (p.model === 'spend') return (Number(row.spend) || 0) * (1 + p.value / 100);
   return (Number(row.deposits ?? row.deps) || 0) * p.value;
 }
 
@@ -19513,7 +19518,8 @@ function gcAggregate(team, geo, from, to) {
     acc.r += Number(row.regs)||0;
     acc.d += Number(row.deposits)||0;
     acc.rev += pmodel === 'spend'
-      ? (Number(row.spend)||0) * payout / 100
+      // Spend %: профіт = спенд × % → виручка = спенд × (1 + %).
+      ? (Number(row.spend)||0) * (1 + payout / 100)
       : (Number(row.deposits)||0) * payout;
     acc.rows++;
   });

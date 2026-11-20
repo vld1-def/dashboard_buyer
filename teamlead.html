@@ -382,7 +382,11 @@ function payoutOf(geo, offer) {
 }
 function revenueOf(r) {
   const p = payoutOf(r.geo, r.offer);
-  if (p.model === 'spend') return (Number(r.spend) || 0) * p.value / 100;
+  /* SPEND %: ЧИСТИЙ ПРОФІТ = СПЕНД × %. «спенд 1000$ при 10% — чистий
+     прибуток 100$». Net Profit усюди рахується як виручка − спенд, тож
+     виручка тут = спенд + спенд × % (спенд нам повертають плюс відсоток).
+     Доти виручкою було лише спенд × %, і 1000$ при 10% давали −900$. */
+  if (p.model === 'spend') return (Number(r.spend) || 0) * (1 + p.value / 100);
   return (Number(r.deposits ?? r.deps) || 0) * p.value;
 }
 

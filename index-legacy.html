@@ -6430,7 +6430,7 @@ function renderGeoPayoutSettings(data) {
           <button class="pay-mod${spend ? ' is-pct' : ''}"
             onclick="togglePayoutModel('${p.id}', '${spend ? 'cpa' : 'spend'}')"
             title="${spend
-              ? 'Спенд-модель: виручка = спенд × відсоток. Клік — повернути на CPA'
+              ? 'Спенд-модель: чистий профіт = спенд × відсоток (1000$ при 10% → 100$). Клік — повернути на CPA'
               : 'CPA: виручка = депозити × ставка. Клік — перевести на % від спенду'}">${spend ? '%' : 'CPA'}</button>
           <span class="pay-val">${spend ? p.value + '%' : '$' + p.value}</span>
           <button class="pay-del" onclick="deletePayoutFromSQL('${p.id}')" title="Видалити виплату">✕</button>
@@ -8289,7 +8289,8 @@ async function deleteDbAll(tab) {
 // ===== END Feature 5 =====
 
 // ===== МОДЕЛЬ ОФФЕРА =====
-// CPA: виручка = депозити × ставка. Spend %: виручка = спенд × відсоток.
+// CPA: виручка = депозити × ставка. Spend %: профіт = спенд × відсоток,
+// тобто виручка = спенд × (1 + відсоток).
 // Усе інше (CPA, ROI, депозити) рахується і показується так само, як було —
 // щоб цифри по обох моделях лежали в одних і тих самих колонках.
 // Одна функція на всі місця: раніше формула була продубльована в 11 точках,
@@ -8307,7 +8308,11 @@ function payoutInfo(geo, offer) {
 // Виручка одного рядка статистики
 function revenueOf(row) {
   const p = payoutInfo(row.geo, row.offer);
-  if (p.model === 'spend') return (Number(row.spend) || 0) * p.value / 100;
+  /* SPEND %: ЧИСТИЙ ПРОФІТ = СПЕНД × %. «спенд 1000$ при 10% — чистий
+     прибуток 100$». Net Profit усюди рахується як виручка − спенд, тож
+     виручка тут = спенд + спенд × % (спенд нам повертають плюс відсоток).
+     Доти виручкою було лише спенд × %, і 1000$ при 10% давали −900$. */
+  if (p.model === 'spend') return (Number(row.spend) || 0) * (1 + p.value / 100);
   return (Number(row.deposits ?? row.deps) || 0) * p.value;
 }
 
@@ -9518,7 +9523,8 @@ function gcAggregate(team, geo, from, to) {
     acc.r += Number(row.regs)||0;
     acc.d += Number(row.deposits)||0;
     acc.rev += pmodel === 'spend'
-      ? (Number(row.spend)||0) * payout / 100
+      // Spend %: профіт = спенд × % → виручка = спенд × (1 + %).
+      ? (Number(row.spend)||0) * (1 + payout / 100)
       : (Number(row.deposits)||0) * payout;
     acc.rows++;
   });
