@@ -2276,10 +2276,42 @@ const CF_TIP_ICON = (() => {
 })();
 const CF_TIP_RE = new RegExp(Object.keys(CF_TIP_ICON).join('|'), 'gu');
 /* Мінус у профіті — іконка червона і дивиться вниз. */
-const cfTipIcons = line => line.replace(CF_TIP_RE, (m, at, str) => {
-  if (m === '📈' && /Net Profit:\s*[−-]/.test(str)) return CF_TIP_ICON[m].replace('#4ade80', '#f87171').replace('class="gt-ic"', 'class="gt-ic is-down"');
+const cfTipIcons = (line, ctx) => line.replace(CF_TIP_RE, (m, at, str) => {
+  if (m === '📈' && /Net Profit:\s*[−-]/.test(ctx || str)) return CF_TIP_ICON[m].replace('#4ade80', '#f87171').replace('class="gt-ic"', 'class="gt-ic is-down"');
   return CF_TIP_ICON[m];
 });
+
+/* ЧИТАННЯ, А НЕ РОЗГЛЯДАННЯ. «важко це читати, придумай щось». Рядок
+   «💰 Spend: $610» розкладаємо на три частини: іконка, назва сірим
+   ліворуч, ЧИСЛО великим жирним праворуч — числа стоять одним стовпцем
+   і читаються згори вниз, а не вишукуються в тексті. Складений рядок
+   («CPI: $7.6 | CPL: $17.8 | CPA: $64») стає рядком клітинок: назва
+   дрібно зверху, число під нею. Рядок без «:» (TOTAL, назва гео) —
+   підзаголовок. Моноширинну таблицю гео не чіпаємо: там стовпці вже
+   вирівняні пробілами. */
+function cfTipLine(raw, esc) {
+  const line = String(raw).replace(/\s+$/, '');
+  if (!line.trim()) return '';
+  const segs = line.trim().split(/\s+\|\s+|\s{3,}/).filter(Boolean);
+  const icoOf = t => { const m = t.match(CF_TIP_RE); return m ? m[0] : ''; };
+  const part = t => {
+    const ico = icoOf(t);
+    const rest = (ico ? t.replace(ico, '') : t).trim();
+    const k = rest.indexOf(':');
+    return { ico, label: k > 0 ? rest.slice(0, k).trim() : '', value: k > 0 ? rest.slice(k + 1).trim() : rest };
+  };
+  const ic = p => p.ico ? cfTipIcons(p.ico, p.label + ': ' + p.value) : '';
+  /* Профіт фарбуємо: плюс — зелений, мінус — червоний. */
+  const tone = p => /profit/i.test(p.label) ? (/^[−-]/.test(p.value) ? ' is-bad' : ' is-good') : '';
+  if (segs.length > 1) {
+    return `<div class="gt-cells" style="grid-template-columns:repeat(${segs.length},minmax(0,1fr))">${segs.map(part).map(p => `<div class="gt-cell">
+      <span class="gt-cl">${ic(p)}${esc(p.label)}</span><b class="gt-cv${tone(p)}">${esc(p.value)}</b></div>`).join('')}</div>`;
+  }
+  const p = part(segs[0]);
+  if (/^geo$/i.test(p.label)) return `<div class="gt-sub">${ic(p)}<span>${esc(p.value)}</span></div>`;
+  if (!p.label) return `<div class="gt-sub">${ic(p)}<span>${esc(p.value)}</span></div>`;
+  return `<div class="gt-kv">${ic(p) || '<i class="gt-ic"></i>'}<span class="gt-k">${esc(p.label)}</span><b class="gt-v${tone(p)}">${esc(p.value)}</b></div>`;
+}
 
 window.cfGlassTip = function () {
   if (typeof Chart === 'undefined' || Chart.__glass) return;
@@ -2312,7 +2344,13 @@ window.cfGlassTip = function () {
       if (!lines.length) return;
       const col = (tooltip.labelColors || [])[i];
       const dot = showDots && col ? `<i class="gt-dot" style="background:${esc(col.backgroundColor || col.borderColor)}"></i>` : '';
-      rows += lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${cfTipIcons(esc(l))}</span></div>`).join('');
+      rows += mono
+        ? lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${cfTipIcons(esc(l))}</span></div>`).join('')
+        : (dot && lines.length === 1 && /:/.test(lines[0]) && !CF_TIP_RE.test(lines[0])
+            // Звичайна серія з кольоровою крапкою: «Spend: $520» — крапка замість іконки.
+            ? lines.map(l => cfTipLine(l, esc).replace('<i class="gt-ic"></i>', dot)).join('')
+            : lines.map(l => cfTipLine(l, esc)).join(''));
+      CF_TIP_RE.lastIndex = 0;
     });
     const foot = (tooltip.footer || []).filter(Boolean);
     if (!title.length && !rows) { el.classList.remove('is-on'); return; }

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.11 19:10">
+  <meta name="build" content="build 22.11 19:31">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7989,6 +7989,41 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 }
 #cd-mkfloat .cd-mkn { font-size: 11px; white-space: nowrap; }
 @media (max-width: 760px) { #cd-mkfloat { bottom: 92px; max-width: calc(100vw - 20px); } }
+
+/* Тултіп: назва сірим ліворуч, число жирним праворуч (cfTipLine). */
+#cf-glass-tip { min-width: 236px; }
+#cf-glass-tip .gt-title { font-size: 13.5px; }
+#cf-glass-tip .gt-body { gap: 2px; }
+#cf-glass-tip .gt-kv {
+  display: grid; grid-template-columns: 16px 1fr auto; align-items: center; column-gap: 8px;
+  padding: 3px 0; white-space: nowrap;
+}
+#cf-glass-tip .gt-kv + .gt-kv { border-top: 1px solid rgba(255,255,255,.06); }
+#cf-glass-tip .gt-k { font-size: 11.5px; font-weight: 600; color: rgba(226,232,240,.68); }
+#cf-glass-tip .gt-v, #cf-glass-tip .gt-cv {
+  font-size: 14px; font-weight: 800; color: #fff; text-align: right;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+}
+#cf-glass-tip .is-good { color: #4ade80; }
+#cf-glass-tip .is-bad { color: #f87171; }
+#cf-glass-tip .gt-kv .gt-dot { margin: 0 auto; }
+#cf-glass-tip .gt-sub {
+  display: flex; align-items: center; gap: 8px; margin: 2px 0 3px;
+  font-size: 10.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: rgba(226,232,240,.85);
+}
+#cf-glass-tip .gt-cells {
+  display: grid; gap: 6px; margin-top: 6px;
+}
+#cf-glass-tip .gt-cell {
+  display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 10px;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.07);
+}
+#cf-glass-tip .gt-cl {
+  display: flex; align-items: center; gap: 4px; white-space: nowrap;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: rgba(226,232,240,.6);
+}
+#cf-glass-tip .gt-cl .gt-ic { width: 12px; height: 12px; }
+#cf-glass-tip .gt-cv { text-align: left; font-size: 13.5px; white-space: nowrap; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8248,7 +8283,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 19:10</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 19:31</div>
     </div>
   </aside>
 
@@ -9973,10 +10008,42 @@ const CF_TIP_ICON = (() => {
 })();
 const CF_TIP_RE = new RegExp(Object.keys(CF_TIP_ICON).join('|'), 'gu');
 /* Мінус у профіті — іконка червона і дивиться вниз. */
-const cfTipIcons = line => line.replace(CF_TIP_RE, (m, at, str) => {
-  if (m === '📈' && /Net Profit:\s*[−-]/.test(str)) return CF_TIP_ICON[m].replace('#4ade80', '#f87171').replace('class="gt-ic"', 'class="gt-ic is-down"');
+const cfTipIcons = (line, ctx) => line.replace(CF_TIP_RE, (m, at, str) => {
+  if (m === '📈' && /Net Profit:\s*[−-]/.test(ctx || str)) return CF_TIP_ICON[m].replace('#4ade80', '#f87171').replace('class="gt-ic"', 'class="gt-ic is-down"');
   return CF_TIP_ICON[m];
 });
+
+/* ЧИТАННЯ, А НЕ РОЗГЛЯДАННЯ. «важко це читати, придумай щось». Рядок
+   «💰 Spend: $610» розкладаємо на три частини: іконка, назва сірим
+   ліворуч, ЧИСЛО великим жирним праворуч — числа стоять одним стовпцем
+   і читаються згори вниз, а не вишукуються в тексті. Складений рядок
+   («CPI: $7.6 | CPL: $17.8 | CPA: $64») стає рядком клітинок: назва
+   дрібно зверху, число під нею. Рядок без «:» (TOTAL, назва гео) —
+   підзаголовок. Моноширинну таблицю гео не чіпаємо: там стовпці вже
+   вирівняні пробілами. */
+function cfTipLine(raw, esc) {
+  const line = String(raw).replace(/\s+$/, '');
+  if (!line.trim()) return '';
+  const segs = line.trim().split(/\s+\|\s+|\s{3,}/).filter(Boolean);
+  const icoOf = t => { const m = t.match(CF_TIP_RE); return m ? m[0] : ''; };
+  const part = t => {
+    const ico = icoOf(t);
+    const rest = (ico ? t.replace(ico, '') : t).trim();
+    const k = rest.indexOf(':');
+    return { ico, label: k > 0 ? rest.slice(0, k).trim() : '', value: k > 0 ? rest.slice(k + 1).trim() : rest };
+  };
+  const ic = p => p.ico ? cfTipIcons(p.ico, p.label + ': ' + p.value) : '';
+  /* Профіт фарбуємо: плюс — зелений, мінус — червоний. */
+  const tone = p => /profit/i.test(p.label) ? (/^[−-]/.test(p.value) ? ' is-bad' : ' is-good') : '';
+  if (segs.length > 1) {
+    return `<div class="gt-cells" style="grid-template-columns:repeat(${segs.length},minmax(0,1fr))">${segs.map(part).map(p => `<div class="gt-cell">
+      <span class="gt-cl">${ic(p)}${esc(p.label)}</span><b class="gt-cv${tone(p)}">${esc(p.value)}</b></div>`).join('')}</div>`;
+  }
+  const p = part(segs[0]);
+  if (/^geo$/i.test(p.label)) return `<div class="gt-sub">${ic(p)}<span>${esc(p.value)}</span></div>`;
+  if (!p.label) return `<div class="gt-sub">${ic(p)}<span>${esc(p.value)}</span></div>`;
+  return `<div class="gt-kv">${ic(p) || '<i class="gt-ic"></i>'}<span class="gt-k">${esc(p.label)}</span><b class="gt-v${tone(p)}">${esc(p.value)}</b></div>`;
+}
 
 window.cfGlassTip = function () {
   if (typeof Chart === 'undefined' || Chart.__glass) return;
@@ -10009,7 +10076,13 @@ window.cfGlassTip = function () {
       if (!lines.length) return;
       const col = (tooltip.labelColors || [])[i];
       const dot = showDots && col ? `<i class="gt-dot" style="background:${esc(col.backgroundColor || col.borderColor)}"></i>` : '';
-      rows += lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${cfTipIcons(esc(l))}</span></div>`).join('');
+      rows += mono
+        ? lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${cfTipIcons(esc(l))}</span></div>`).join('')
+        : (dot && lines.length === 1 && /:/.test(lines[0]) && !CF_TIP_RE.test(lines[0])
+            // Normal серія з кольоровою крапкою: «Spend: $520» — крапка замість іконки.
+            ? lines.map(l => cfTipLine(l, esc).replace('<i class="gt-ic"></i>', dot)).join('')
+            : lines.map(l => cfTipLine(l, esc)).join(''));
+      CF_TIP_RE.lastIndex = 0;
     });
     const foot = (tooltip.footer || []).filter(Boolean);
     if (!title.length && !rows) { el.classList.remove('is-on'); return; }
