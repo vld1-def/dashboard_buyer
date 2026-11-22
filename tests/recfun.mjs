@@ -20,7 +20,7 @@ ok('функції є у Form.html', a > 0 && b > a);
 const mk = (rows, funnels, funnelGeo) => new Function('recRows', 'recCurrentTable', 'mappingDB',
   'const apFunnelData = k => mappingDB.funnels[k] || "";\n'
   + 'const recListValues = () => [...new Set([...Object.values(mappingDB.funnels), ...recRows.map(r => r.funnel).filter(Boolean)])].sort();\n'
-  + F.slice(a, b) + '\nreturn { recFunnelOptions, recFunnelOptionsFor, recFunnelGeos };')(rows, 'daily_stats', { funnels, funnelGeo });
+  + F.slice(a, b) + '\nreturn { recFunnelOptions, recFunnelOptionsFor, recFunnelGeos, recFunnelByKtid };')(rows, 'daily_stats', { funnels, funnelGeo });
 
 const FUN = { '10708-ry05': 'MPlayCasino_KG_vld', '10708-y3wz': 'MPlay_KG_vld', 'CFR11003': 'Chicken Fortune Road [satorapps]',
   '11115-yre8': 'Mega Slots GE', 'NEW1': 'Brand New TJ', 'NOGEO': 'Somewhere' };
@@ -48,6 +48,15 @@ ok('повний список, як і раніше, починається зі
 ok('клітинка бере відфільтрований список', /dl\.innerHTML = recFunnelOptionsFor\(geo\)/.test(F));
 ok('гео читається живим із клітинки рядка', /row\.querySelector\('\.rec-geo'\)/.test(F));
 ok('масова правка лишилась із повним списком', /\? recFunnelOptions\(''\)/.test(F));
+
+/* «в воронці прописувати також кт айді і щоб шукало» */
+const hintKG = R.recFunnelOptionsFor('KG').find(o => o.v === 'MPlay_KG_vld').hint;
+ok('у підписі воронки є її KTID — за ним шукає список', /KTID 10708-y3wz/.test(hintKG) && /KG/.test(hintKG), hintKG);
+ok('вписаний KTID → назва воронки (регістр і дефіси не важать)', R.recFunnelByKtid('10708_Y3WZ') === 'MPlay_KG_vld'
+  && R.recFunnelByKtid('cfr11003') === 'Chicken Fortune Road [satorapps]', [R.recFunnelByKtid('10708_Y3WZ')]);
+ok('невідомий текст — не чіпаємо', R.recFunnelByKtid('blah') === '' && R.recFunnelByKtid('') === '');
+ok('вписаний KTID підміняється в клітинці перед збереженням', /col === 'funnel' && value && typeof recFunnelByKtid/.test(F));
+ok('KTID іншого гео — список розширюється до всіх', /dl\.innerHTML = recFunnelOptions\(inp\.dataset\.geo\)/.test(F));
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
 if (fail) process.exit(1);

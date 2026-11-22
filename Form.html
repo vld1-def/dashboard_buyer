@@ -6384,16 +6384,42 @@ function recFunnelGeos() {
    пошук: набрав KG — у списку лишились воронки KG. Через це він і
    datalist, а не select: select шукає лише за початком рядка, а назви
    воронок починаються з бренду, не з гео. */
+/* KTID ВОРОНКИ — У ПІДПИСІ, І ЗА НИМ ТЕЖ ШУКАЄ. «в воронці прописувати
+   також кт айді і щоб шукало». Браузер фільтрує datalist і за значенням,
+   і за підписом, тож KTID у підписі — це і пошук, і підказка, яка саме
+   воронка. Назва → її KTID (у довіднику їх може бути кілька). */
+function recFunnelKtids() {
+  const m = new Map();
+  Object.keys(mappingDB.funnels || {}).forEach(k => {
+    const n = apFunnelData(k);
+    if (!n) return;
+    if (!m.has(n)) m.set(n, []);
+    m.get(n).push(String(k).trim());
+  });
+  return m;
+}
+/* Вписали чи вставили KTID цілим — ставимо назву воронки. Без
+   урахування регістру й дефісів/підкреслень, як і пошук KTID деінде. */
+function recFunnelByKtid(v) {
+  const loose = x => String(x ?? '').toLowerCase().replace(/[-_\s]+/g, '');
+  const t = loose(v);
+  if (!t) return '';
+  const k = Object.keys(mappingDB.funnels || {}).find(x => loose(x) === t);
+  return k ? apFunnelData(k) : '';
+}
+
 function recFunnelOptions(rowGeo) {
   const geos = recFunnelGeos();
+  const ktids = recFunnelKtids();
   const mine = String(rowGeo || '').trim().toUpperCase();
   const of = f => [...(geos.get(f) || [])].sort();
   return recListValues('funnels', 'funnel').map(f => {
     const g = of(f);
     const rank = !g.length ? 2 : (mine && g.includes(mine) ? 0 : 1);
+    const kt = (ktids.get(f) || []).join(', ');
     // Підпис одразу з готовим «немає гео»: інакше кожне місце, що малює
     // цей список, домальовувало б заглушку по-своєму.
-    return { v: f, hint: g.join(', ') || 'no geo yet', rank,
+    return { v: f, hint: (kt ? 'KTID ' + kt + ' · ' : '') + (g.join(', ') || 'no geo yet'), rank,
              key: rank === 0 ? mine : (g[0] || '') };
   }).sort((a, b) => a.rank - b.rank || a.key.localeCompare(b.key)
                     || a.v.localeCompare(b.v, 'uk'));
@@ -6852,6 +6878,23 @@ document.addEventListener('focusin', (e) => {
     .map(o => `<option value="${at(o.v)}">${tx(o.hint)}</option>`).join('');
 });
 
+/* Друкують у клітинку воронки те, чого немає серед воронок цього гео
+   (KTID чи назва воронки іншого гео), — список розширюємо до всіх
+   воронок, інакше пошук нічого б не знайшов. */
+document.addEventListener('input', (e) => {
+  const inp = e.target.closest && e.target.closest('.rec-list');
+  const dl = document.getElementById('rec-fun-dl');
+  if (!inp || !dl) return;
+  const q = String(inp.value || '').toLowerCase().trim();
+  if (q.length < 2) return;
+  const hit = [...dl.options].some(o => (o.value + ' ' + o.textContent).toLowerCase().includes(q));
+  if (hit) return;
+  const at = v => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const tx = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  dl.innerHTML = recFunnelOptions(inp.dataset.geo)
+    .map(o => `<option value="${at(o.v)}">${tx(o.hint)}</option>`).join('');
+});
+
 // Збереження вибору у випадаючих клітинках «Бази»
 document.addEventListener('change', async (e) => {
   const sel = e.target.closest && (e.target.closest('.rec-select') || e.target.closest('.rec-list'));
@@ -6863,6 +6906,14 @@ document.addEventListener('change', async (e) => {
      виплатах, ні в рядках. Питаємо, зберігаємо й перемальовуємо всю
      таблицю: нове гео має стати в списку кожного рядка, а не лишитись
      в одній клітинці. */
+  /* У клітинку воронки вписали KTID — підставляємо назву воронки. */
+  if (col === 'funnel' && value && typeof recFunnelByKtid === 'function') {
+    const name = recFunnelByKtid(value);
+    if (name && name !== value) {
+      sel.value = name;
+      return sel.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
   if (col === 'geo' && value === REC_GEO_NEW) {
     const prev = String(sel.dataset.orig ?? '');
     const v = recUp(prompt('New GEO code:', prev) || '');
