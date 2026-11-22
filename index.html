@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.11 19:31">
+  <meta name="build" content="build 22.11 19:35">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8024,6 +8024,16 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 }
 #cf-glass-tip .gt-cl .gt-ic { width: 12px; height: 12px; }
 #cf-glass-tip .gt-cv { text-align: left; font-size: 13.5px; white-space: nowrap; }
+
+/* Компактна підказка на малих графіках і «число + пояснення». */
+#cf-glass-tip .gt-main { display: flex; flex-direction: column; gap: 1px; }
+#cf-glass-tip .gt-main .gt-v { text-align: left; font-size: 15px; }
+#cf-glass-tip .gt-note { font-size: 10.5px; font-weight: 600; color: rgba(226,232,240,.62); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#cf-glass-tip.is-small { min-width: 0; padding: 7px 10px 8px; border-radius: 12px; }
+#cf-glass-tip.is-small .gt-title { font-size: 10.5px; margin-bottom: 4px; padding-bottom: 4px; letter-spacing: .04em; color: rgba(226,232,240,.75); }
+#cf-glass-tip.is-small .gt-main .gt-v { font-size: 13.5px; }
+#cf-glass-tip.is-small .gt-v, #cf-glass-tip.is-small .gt-cv { font-size: 12.5px; }
+#cf-glass-tip.is-small .gt-k { font-size: 10.5px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8283,7 +8293,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 19:31</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 19:35</div>
     </div>
   </aside>
 
@@ -10035,6 +10045,12 @@ function cfTipLine(raw, esc) {
   const ic = p => p.ico ? cfTipIcons(p.ico, p.label + ': ' + p.value) : '';
   /* Профіт фарбуємо: плюс — зелений, мінус — червоний. */
   const tone = p => /profit/i.test(p.label) ? (/^[−-]/.test(p.value) ? ' is-bad' : ' is-good') : '';
+  /* «$123   ($500 − $400)» — число й пояснення до нього (малі графіки
+     у вікні гео). Не клітинки: число велике, пояснення дрібно під ним. */
+  if (segs.length === 2 && /^\(/.test(segs[1]) && !icoOf(segs[0]) && segs[0].indexOf(':') < 0) {
+    return `<div class="gt-main"><b class="gt-v${/^[−-]/.test(segs[0]) ? ' is-bad' : ''}">${esc(segs[0])}</b>`
+      + `<span class="gt-note">${esc(segs[1].replace(/^\(|\)$/g, ''))}</span></div>`;
+  }
   if (segs.length > 1) {
     return `<div class="gt-cells" style="grid-template-columns:repeat(${segs.length},minmax(0,1fr))">${segs.map(part).map(p => `<div class="gt-cell">
       <span class="gt-cl">${ic(p)}${esc(p.label)}</span><b class="gt-cv${tone(p)}">${esc(p.value)}</b></div>`).join('')}</div>`;
@@ -10087,7 +10103,11 @@ window.cfGlassTip = function () {
     const foot = (tooltip.footer || []).filter(Boolean);
     if (!title.length && !rows) { el.classList.remove('is-on'); return; }
     const wasOn = el.classList.contains('is-on');
-    el.className = 'is-on' + (mono ? ' is-mono' : '') + (wasOn && el._chart === chart ? '' : ' is-jump');
+    /* Малий графік (картки у вікні гео) — компактна підказка: велика
+       на ньому закривала половину лінії. */
+    const small = (chart.height || 0) < 240;
+    el.className = 'is-on' + (mono ? ' is-mono' : '') + (small ? ' is-small' : '')
+      + (wasOn && el._chart === chart ? '' : ' is-jump');
     el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
       + `<div class="gt-body">${rows}</div>`

@@ -2303,6 +2303,12 @@ function cfTipLine(raw, esc) {
   const ic = p => p.ico ? cfTipIcons(p.ico, p.label + ': ' + p.value) : '';
   /* Профіт фарбуємо: плюс — зелений, мінус — червоний. */
   const tone = p => /profit/i.test(p.label) ? (/^[−-]/.test(p.value) ? ' is-bad' : ' is-good') : '';
+  /* «$123   ($500 − $400)» — число й пояснення до нього (малі графіки
+     у вікні гео). Не клітинки: число велике, пояснення дрібно під ним. */
+  if (segs.length === 2 && /^\(/.test(segs[1]) && !icoOf(segs[0]) && segs[0].indexOf(':') < 0) {
+    return `<div class="gt-main"><b class="gt-v${/^[−-]/.test(segs[0]) ? ' is-bad' : ''}">${esc(segs[0])}</b>`
+      + `<span class="gt-note">${esc(segs[1].replace(/^\(|\)$/g, ''))}</span></div>`;
+  }
   if (segs.length > 1) {
     return `<div class="gt-cells" style="grid-template-columns:repeat(${segs.length},minmax(0,1fr))">${segs.map(part).map(p => `<div class="gt-cell">
       <span class="gt-cl">${ic(p)}${esc(p.label)}</span><b class="gt-cv${tone(p)}">${esc(p.value)}</b></div>`).join('')}</div>`;
@@ -2355,7 +2361,11 @@ window.cfGlassTip = function () {
     const foot = (tooltip.footer || []).filter(Boolean);
     if (!title.length && !rows) { el.classList.remove('is-on'); return; }
     const wasOn = el.classList.contains('is-on');
-    el.className = 'is-on' + (mono ? ' is-mono' : '') + (wasOn && el._chart === chart ? '' : ' is-jump');
+    /* Малий графік (картки у вікні гео) — компактна підказка: велика
+       на ньому закривала половину лінії. */
+    const small = (chart.height || 0) < 240;
+    el.className = 'is-on' + (mono ? ' is-mono' : '') + (small ? ' is-small' : '')
+      + (wasOn && el._chart === chart ? '' : ' is-jump');
     el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
       + `<div class="gt-body">${rows}</div>`
