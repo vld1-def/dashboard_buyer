@@ -2699,8 +2699,26 @@ function cabTreeRows(COLS) {
   /* ПІДСУМКУ ТУТ НЕМАЄ. «Разом по кабінету» стоїть у самому рядку
      кабінета, прямо над деревом, — і повторювати його ще раз унизу
      означало б показати те саме число двічі, та ще й іншими словами. */
-  return head + v.list.map(x => cabNodeRow(x.n, x.depth, x.band, cols)).join('');
+  /* АНІМАЦІЯ ПОЯВИ. «Хочу анімацію появлення кампаній і оголошень».
+     Таблиця перемальовується цілком на кожен Sync, галочку, фільтр — і
+     анімація на всіх рядках смикала б екран щоразу. Тому граються лише
+     рядки, яких ДОСІ не було на екрані: відкрив кабінет — виїжджають
+     кампанії, розгорнув кампанію — її адсети й оголошення. Затримка
+     сходинкою, щоб список «розсипався» згори вниз, але не довше
+     ~0.35 с на весь список. */
+  const tree = String(cabTreeId || '');
+  if (cabNodeSeenFor !== tree) { cabNodeSeen = new Set(); cabNodeSeenFor = tree; }
+  let k = 0;
+  const html = v.list.map(x => {
+    const key = (x.n && (x.n.kind + ':' + x.n.id)) || '';
+    const fresh = key && !cabNodeSeen.has(key);
+    if (key) cabNodeSeen.add(key);
+    return cabNodeRow(x.n, x.depth, x.band, cols, fresh ? Math.min(k++, 14) : -1);
+  }).join('');
+  return head + html;
 }
+let cabNodeSeen = new Set(), cabNodeSeenFor = '';
+const cabReduceMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
 
 /* Що з вузла йде в який стовпець кабінета. Ключ той самий, що й у
    CAB_COLS, — отже вмикання колонки в кабінетах одразу вмикає її і в
@@ -2742,14 +2760,15 @@ function cabNodeTip(f, key) {
   return '';
 }
 
-function cabNodeRow(n, depth, band, cols) {
+function cabNodeRow(n, depth, band, cols, enter = -1) {
   const f = cdFields(n, depth);
   const key = String(f.key || '').replace(/'/g, '&#39;');
   /* Розкриває вся клітинка назви, а не сам трикутник: цілитись у
      чотирнадцять пікселів на тісному рядку — заняття, а не клік. */
   const hit = f.kids ? ` onclick="cdToggle('${cabEsc(key)}')"` : '';
+  const anim = enter >= 0 && !cabReduceMotion() ? ` cd-in" style="--cd-i:${enter}` : '';
   return `<tr class="cab-node cd-r cd-d${depth}${band ? ' is-band' : ''}${
-      f.marked ? ' is-mk' : ''}">
+      f.marked ? ' is-mk' : ''}${anim}">
     <!-- Чотири перші стовпці (галочка, стрілка, шпилька, кружок) у дереві порожні —
          і це були ~70 пікселів пустого поля ліворуч від кожної назви,
          щодня. Забираємо їх під саму назву: colspan лишає сітку
@@ -3909,11 +3928,28 @@ window.cabMarkClear = function () { cabMark.clear(); cabRender(); };
 
 /* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
    нулем вибраних забирає висоту й нічого не каже. */
+/* Док для плаваючих смуг вибору — один на кабінети й на кампанії. */
+function mkDock() {
+  let d = document.getElementById('mk-dock');
+  if (!d) { d = document.createElement('div'); d.id = 'mk-dock'; document.body.appendChild(d); }
+  return d;
+}
+
+/* Смуга тепер ВНИЗУ ЕКРАНА, як у кампаній: «щоб 1 picked був так само
+   внизу». Над таблицею її не було видно, щойно вибирали щось нижче. */
 function cabBulkPaint() {
-  const box = document.getElementById('cab-bulk');
-  if (!box) return;
+  const old = document.getElementById('cab-bulk');
+  if (old) old.innerHTML = '';
+  let box = document.getElementById('cab-mkfloat');
   const picked = cabAll.filter(c => cabMarked(c.id));
-  if (!picked.length) { box.innerHTML = ''; return; }
+  if (!box) {
+    if (!picked.length) return;
+    box = document.createElement('div');
+    box.id = 'cab-mkfloat'; box.className = 'mk-float';
+    mkDock().appendChild(box);
+  }
+  if (!picked.length) { box.classList.remove('is-on'); box.innerHTML = ''; return; }
+  requestAnimationFrame(() => { if (cabAll.some(c => cabMarked(c.id))) box.classList.add('is-on'); });
 
   const arch = picked.filter(c => c.state === 'archived');
   const live = picked.filter(c => c.state !== 'archived');

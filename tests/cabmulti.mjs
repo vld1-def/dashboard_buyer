@@ -92,7 +92,7 @@ const rowsOf = () => page.evaluate(() =>
   })));
 
 const bar = () => page.evaluate(() => {
-  const b = document.getElementById('cab-bulk');
+  const b = document.getElementById('cab-mkfloat') || document.createElement('div');
   return { text: (b.textContent || '').replace(/\s+/g, ' ').trim(),
            btns: [...b.querySelectorAll('button')].map(x => x.textContent.trim()) };
 });
@@ -131,7 +131,7 @@ ok('повернення з архіву не показано, бо нема ч
 const all = await page.evaluate(() => {
   document.getElementById('cab-mkall').click();
   return { n: cabMark.size, shown: cabShown.length,
-           bar: (document.getElementById('cab-bulk').textContent || '').replace(/\s+/g, ' ') };
+           bar: ((document.getElementById('cab-mkfloat') || {}).textContent || '').replace(/\s+/g, ' ') };
 });
 ok('«вибрати все» бере всі намальовані', all.n === 3 && all.shown === 3, all);
 /* Архівний кабінет у зріз «All» не потрапляє, тож і у вибір не має. */
@@ -155,7 +155,7 @@ ok('під фільтром вибирається тільки його зрі�
 /* ── 4. вибір переживає фільтр, і смуга про це каже ── */
 const away = await page.evaluate(() => {
   cabFilter = 'running'; cabRender();
-  const b = document.getElementById('cab-bulk');
+  const b = document.getElementById('cab-mkfloat');
   return { text: (b.textContent || '').replace(/\s+/g, ' ').trim(),
            tip: (b.querySelector('.cab-mkaway') || {}).title || '' };
 });
@@ -218,7 +218,7 @@ await setup();
 const back = await page.evaluate(async () => {
   cabFilter = 'archived'; cabRender();
   document.getElementById('cab-mkall').click();
-  const b = document.getElementById('cab-bulk');
+  const b = document.getElementById('cab-mkfloat');
   const btns = [...b.querySelectorAll('button')].map(x => x.textContent.trim());
   window.__m.wrote = [];
   await cabBulkArch('active');

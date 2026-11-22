@@ -6847,23 +6847,29 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
   #cf-glass-tip { background: rgba(20,20,28,.94); }
 }
 
-/* Плаваюча смуга вибору в дереві FB LIVE (cdMarkFloat). Знизу по центру,
-   над доком; виїжджає плавно. */
-#cd-mkfloat {
-  position: fixed; left: 50%; bottom: 104px; z-index: 9990;
-  transform: translate(-50%, 16px); opacity: 0; pointer-events: none;
-  transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .15s ease;
+/* Плаваючі смуги вибору FB LIVE — кабінети (cabBulkPaint) і кампанії/
+   оголошення (cdMarkFloat). Обидві в одному доку знизу по центру, над
+   доком сторінки: вибрав і те, і те — стоять стовпчиком, не одна на
+   одній. Виїжджають плавно. */
+#mk-dock {
+  position: fixed; left: 50%; bottom: 104px; z-index: 9990; transform: translateX(-50%);
+  display: flex; flex-direction: column-reverse; align-items: center; gap: 8px; pointer-events: none;
+  max-width: calc(100vw - 20px);
 }
-#cd-mkfloat.is-on { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
-#cd-mkfloat .cd-mkbar {
+.mk-float {
+  transform: translateY(16px); opacity: 0; pointer-events: none; max-height: 0;
+  transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .15s ease, max-height .18s ease;
+}
+.mk-float.is-on { transform: none; opacity: 1; pointer-events: auto; max-height: 120px; }
+.mk-float .cd-mkbar {
   margin: 0; padding: 8px 10px 8px 14px; gap: 8px; flex-wrap: nowrap; border-radius: 14px;
   background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.04)), rgba(16,16,24,.72);
   -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%);
   border: 1px solid rgba(255,255,255,.16);
   box-shadow: 0 18px 40px -14px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.22);
 }
-#cd-mkfloat .cd-mkn { font-size: 11px; white-space: nowrap; }
-@media (max-width: 760px) { #cd-mkfloat { bottom: 92px; max-width: calc(100vw - 20px); } }
+.mk-float .cd-mkn { font-size: 11px; white-space: nowrap; }
+@media (max-width: 760px) { #mk-dock { bottom: 92px; } .mk-float .cd-mkbar { flex-wrap: wrap; } }
 
 /* Тултіп: назва сірим ліворуч, число жирним праворуч (cfTipLine). */
 #cf-glass-tip { min-width: 236px; }
@@ -7061,3 +7067,15 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 .lt-mode button:hover:not(:disabled) { color: var(--text-main); border-color: rgba(255,255,255,.18); }
 .lt-mode button.is-on { color: #fff; background: var(--accent-soft); border-color: var(--accent); }
 .lt-mode em { font-style: normal; font-size: 10.5px; font-weight: 600; color: var(--text-muted); margin-left: 4px; }
+
+/* Поява нових рядків дерева FB LIVE (cabTreeRows): виїжджають згори,
+   сходинкою. Лише рядки, яких щойно не було — перемальовка не смикає. */
+@keyframes cd-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+#cab-list tr.cd-in > td { animation: cd-in .26s cubic-bezier(.22, 1, .36, 1) both; animation-delay: calc(var(--cd-i, 0) * 22ms); }
+@media (prefers-reduced-motion: reduce) { #cab-list tr.cd-in > td { animation: none; } }
+/* Пішов із FB LIVE — смуги вибору не висять над іншими сторінками. */
+body:has(#cabinets-section.hidden) #mk-dock, body:has(#cabinets-section.route-off) #mk-dock,
+body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-section) #mk-dock { display: none; }

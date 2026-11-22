@@ -677,6 +677,8 @@ window.cdHide = function () {
      наступний «Switch off» вимкне те, чого вона зараз не бачить. */
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set();
   cdMarkFloat();
+  // Відкриється знову — кампанії знову виїдуть з анімацією.
+  if (typeof cabNodeSeenFor !== 'undefined') cabNodeSeenFor = '';
   /* Відкрите око не переживає закриття: інакше показаний домен
      дочекався б наступної людини за цим екраном. */
   cdEyed = new Set();
@@ -1439,7 +1441,8 @@ function cdMarkFloat() {
     if (!n) return;
     el = document.createElement('div');
     el.id = 'cd-mkfloat';
-    document.body.appendChild(el);
+    el.className = 'mk-float';
+    mkDock().appendChild(el);
   }
   if (!n) { el.classList.remove('is-on'); return; }
   el.innerHTML = cdMarkBarHtml(n);
