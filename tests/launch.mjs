@@ -171,12 +171,38 @@ ok('чужі аудиторії — попередження', lv('custom audien
 const noPage = await run({ body: { spec: SPEC, target_account: '222', check: true },
   lists: { '/act_222/promote_pages': [{ id: '99', name: 'Other' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 const lv2 = t => (noPage.body.checks || []).find(c => c.text.includes(t)) || {};
-ok('Сторінка недоступна — fail з поясненням, що робити', lv2('page 77').level === 'fail' && /business/.test(lv2('page 77').text), noPage.body.checks);
+ok('Сторінка недоступна — не блокує: випадкова Сторінка кабінета', lv2('page 77').level === 'warn' && /Other/.test(lv2('page 77').text) && /random/.test(lv2('page 77').text), noPage.body.checks);
 ok('піксель не розшарений — підміна власним, warn', lv2('Own px').level === 'warn', noPage.body.checks);
 
-const refuse = await run({ body: { spec: SPEC, target_account: '222' },
-  lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
-ok('з fail запуск відмовляє ДО першого запису', refuse.status === 409 && refuse.posts.length === 0 && /page 77/.test(refuse.body.error), refuse.body);
+/* «рандомно ставило page або взагалі не ставило, а піксель — той що є». */
+const rnd = await run({ body: { spec: SPEC, target_account: '222', page_mode: 'random' },
+  lists: { '/act_222/promote_pages': [{ id: '99', name: 'Their page' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
+const rcr = rnd.posts.filter(x => x.path === '/act_222/adcreatives');
+ok('random: запуск іде, хоч Сторінка шаблону недоступна', rnd.status === 200 && rnd.body.ok, rnd.body);
+ok('random: креатив з описом перевʼязано на Сторінку кабінета', rcr.some(x => JSON.parse(x.p.object_story_spec).page_id === '99'
+  && JSON.parse(x.p.object_story_spec).video_data) && rcr.every(x => !x.p.object_story_id), rcr);
+ok('random: пост чужої Сторінки — оголошення-заготовка з поясненням', (rnd.body.warnings || []).some(w => /KG_1.*placeholder/.test(w))
+  && rcr.length === 2 && JSON.parse(rcr[0].p.object_story_spec).link_data.message.startsWith('Placeholder'), rcr);
+const none = await run({ body: { spec: SPEC, target_account: '222', page_mode: 'none' },
+  lists: { '/act_222/promote_pages': [{ id: '77' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
+const ncr = none.posts.filter(x => x.path === '/act_222/adcreatives').map(x => JSON.parse(x.p.object_story_spec));
+const nads = none.posts.filter(x => x.path === '/act_222/ads');
+ok('пустишки: кампанія, адсети й оголошення з тими самими назвами', none.body.ok
+  && none.posts.filter(x => x.path === '/act_222/adsets').length === 2 && nads.length === 3
+  && nads.map(x => x.p.name).join() === 'KG_1,KG_2,KG_3' && nads.every(x => x.p.status === 'PAUSED'), nads.map(x => x.p));
+ok('пустишки: креатив — посилання на Сторінці кабінета з написом Placeholder', ncr.length === 3
+  && ncr.every(o => o.page_id === '77' && o.link_data && /^Placeholder/.test(o.link_data.message)), ncr);
+const none0 = await run({ body: { spec: SPEC, target_account: '222', page_mode: 'none' },
+  lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
+ok('пустишки без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok
+  && !none0.posts.some(x => /\/ads$/.test(x.path)) && (none0.body.warnings || []).some(w => /no page/.test(w)), none0.body);
+const nopx = await run({ body: { spec: SPEC, target_account: '222', check: true },
+  lists: { '/act_222/promote_pages': [{ id: '77' }], '/act_222/adspixels': [] } });
+ok('кабінет без пікселя — попередження, не блок', !(nopx.body.checks || []).some(c => c.level === 'fail')
+  && (nopx.body.checks || []).some(c => c.level === 'warn' && /no pixel/.test(c.text)), nopx.body.checks);
+const eurGo = await run({ body: { spec: SPEC, target_account: '222' }, lists: LISTS_OK,
+  accounts: { '222': { token_id: 2, team_name: 'T', currency: 'EUR' } } });
+ok('інша валюта — єдине, що блокує запуск, до першого запису', eurGo.status === 409 && eurGo.posts.length === 0 && /currency/.test(eurGo.body.error), eurGo.body);
 
 const go = await run({ body: { spec: SPEC, target_account: '222', name: 'TPL_KG', overrides: { daily_budget: 35, countries: ['tj', 'xx1'] } },
   lists: { '/act_222/promote_pages': [{ id: '77' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });

@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-22.1';
+const FN_VERSION = '2026-11-22.3';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -175,7 +175,10 @@ function adsetParams(a: Json, campaignId: string, now: number): Json {
    й зламає запуск). Якщо Facebook не віддав список (немає прав на
    читання) — пункт «unknown»: не блокуємо, але й не обіцяємо. */
 type Check = { level: 'ok' | 'warn' | 'fail' | 'unknown'; text: string };
-type Fix = { pixel?: string };
+/* page: випадкова Сторінка цільового кабінета для оголошень, чия Сторінка
+   йому недоступна; lost: Сторінки, яких він не бачить; noAds: оголошень
+   не створюємо зовсім — «сам зайду й запущусь». */
+type Fix = { pixel?: string; page?: string; pageName?: string; lost?: string[]; noAds?: boolean; placeholder?: boolean };
 
 const pageOf = (cr: Json): string => {
   const story = String(cr?.effective_object_story_id || cr?.object_story_id || '');
@@ -191,9 +194,13 @@ async function listIds(path: string, token: string): Promise<Map<string, string>
 }
 
 async function preflight(spec: Json, T: { token: string; currency: string; status: string },
-                         tgt: string, same: boolean): Promise<{ checks: Check[]; fix: Fix }> {
+                         tgt: string, same: boolean, pageMode = 'random'): Promise<{ checks: Check[]; fix: Fix }> {
   const checks: Check[] = [];
   const fix: Fix = {};
+  /* none = «оголошення теж хай створює, просто пустишку»: оголошення є,
+     з тими самими назвами, але креатив — заготовка на Сторінці кабінета,
+     яку людина міняє сама. */
+  if (pageMode === 'none') fix.placeholder = true;
   const adsets: Json[] = spec.adsets || [], ads: Json[] = spec.ads || [];
   if (!adsets.length) checks.push({ level: 'fail', text: 'the template has no ad sets — nothing to launch' });
   if (spec.currency && T.currency && spec.currency !== T.currency)
@@ -202,15 +209,47 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
   else checks.push({ level: 'ok', text: 'currency ' + (T.currency || spec.currency || '—') });
   if (same) return { checks, fix };
 
-  // Сторінки постів
+  /* Сторінки постів. «рандомно ставило page або взагалі не ставило»:
+     недоступна Сторінка більше не зупиняє запуск. Режим random —
+     оголошення беруть випадкову Сторінку цього кабінета; none — лише
+     кампанія й адсети, креативи людина додає сама. */
   const pages = [...new Set(ads.map(a => pageOf(a.creative || {})).filter(Boolean))];
-  if (pages.length) {
+  if (fix.placeholder && ads.length) {
     const can = await listIds('/act_' + tgt + '/promote_pages', T.token);
-    for (const pg of pages) {
-      if (!can) checks.push({ level: 'unknown', text: 'page ' + pg + ': could not read which pages this cabinet can use' });
-      else if (can.has(pg)) checks.push({ level: 'ok', text: 'page ' + can.get(pg) });
-      else checks.push({ level: 'fail', text: 'page ' + pg + ' is not available to this cabinet — add it to the cabinet’s business, '
-        + 'or its ads will not be created' });
+    const own = pages.find(pg => can && can.has(pg));
+    if (can && (own || can.size)) {
+      const ids = [...can.keys()];
+      fix.page = own || ids[Math.floor(Math.random() * ids.length)];
+      fix.pageName = can.get(fix.page) || fix.page;
+      checks.push({ level: 'ok', text: 'placeholder ads on page “' + fix.pageName + '” — replace the creatives in the cabinet' });
+    } else if (can) {
+      fix.noAds = true;
+      checks.push({ level: 'warn', text: 'this cabinet has no page — Facebook needs one even for a placeholder ad, so campaign and ad sets only' });
+    } else {
+      fix.noAds = true;
+      checks.push({ level: 'unknown', text: 'could not read this cabinet’s pages — campaign and ad sets only' });
+    }
+  } else if (pages.length) {
+    const can = await listIds('/act_' + tgt + '/promote_pages', T.token);
+    if (!can) checks.push({ level: 'unknown', text: 'could not read which pages this cabinet can use — ads will try the template’s page' });
+    else {
+      const lost = pages.filter(pg => !can.has(pg));
+      pages.filter(pg => can.has(pg)).forEach(pg => checks.push({ level: 'ok', text: 'page ' + can.get(pg) }));
+      if (lost.length) {
+        fix.lost = lost;
+        if (can.size) {
+          const ids = [...can.keys()];
+          fix.page = ids[Math.floor(Math.random() * ids.length)];
+          fix.pageName = can.get(fix.page) || fix.page;
+          checks.push({ level: 'warn', text: 'page ' + lost.join(', ') + ' is not in this cabinet — ads go to its page “'
+            + fix.pageName + '” (picked at random)' });
+        } else {
+          fix.noAds = true;
+          checks.push({ level: 'warn', text: 'this cabinet has no page — campaign and ad sets only, add the ads yourself' });
+        }
+        // Пост чужої Сторінки без опису креатива — стане заготовкою.
+        fix.placeholder = false;
+      }
     }
   }
   // Пікселі
@@ -224,7 +263,7 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
         const [id, name] = [...own.entries()][0];
         fix.pixel = id;
         checks.push({ level: 'warn', text: 'pixel ' + px + ' is not shared with this cabinet — its own pixel “' + name + '” will be used' });
-      } else checks.push({ level: 'fail', text: 'pixel ' + px + ' is not shared with this cabinet, and it has no pixel of its own' });
+      } else checks.push({ level: 'warn', text: 'this cabinet has no pixel — conversion ad sets may be refused by Facebook; pick one in the cabinet' });
     }
   }
   // Апки
@@ -234,7 +273,7 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
     for (const ap of apps) {
       if (!can) checks.push({ level: 'unknown', text: 'app ' + ap + ': could not read which apps this cabinet can advertise' });
       else if (can.has(ap)) checks.push({ level: 'ok', text: 'app ' + can.get(ap) });
-      else checks.push({ level: 'fail', text: 'app ' + ap + ' is not connected to this cabinet — link it in the app’s settings (advertising accounts)' });
+      else checks.push({ level: 'warn', text: 'app ' + ap + ' is not connected to this cabinet — its ad sets may be refused; link the app to the cabinet' });
     }
   }
   // Власні аудиторії старого кабінета
@@ -245,7 +284,8 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
 
 /* Підготувати знімок під цільовий кабінет: назва, бюджет, гео, підміна
    пікселя, без чужих аудиторій. Сам знімок не міняємо — копія. */
-function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; adsets: Json[]; ads: Json[] } {
+function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; adsets: Json[]; ads: Json[]; notes: string[] } {
+  const notes: string[] = [];
   const camp: Json = { ...(spec.campaign || {}) };
   const budget = Number(ov?.daily_budget);
   const cents = Number.isFinite(budget) && budget > 0 ? String(Math.round(budget * 100)) : '';
@@ -262,8 +302,43 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
     if (fix.pixel && a.promoted_object?.pixel_id) a.promoted_object.pixel_id = fix.pixel;
     return a;
   });
-  const ads = (spec.ads || []).map((d: Json) => same ? d : { ...d, tracking_specs: undefined });
-  return { camp, adsets, ads };
+  /* Оголошення: без них зовсім (noAds), або з креативом, перевʼязаним на
+     Сторінку цього кабінета. Пост чужої Сторінки перевикористати не
+     можна — тоді беремо опис креатива (object_story_spec) з новою
+     Сторінкою; немає опису — оголошення пропускаємо з поясненням. */
+  /* Заготовка: найпростіший креатив, який Facebook прийме, — посилання
+     на Сторінці кабінета. Посилання беремо з шаблону, якщо воно там є. */
+  const linkOf = (cr: Json, d: Json): string => {
+    const o = cr.object_story_spec || {};
+    const l = o.link_data?.link || o.video_data?.call_to_action?.value?.link || o.template_data?.link || '';
+    if (l) return String(l);
+    const dom = String(d.conversion_domain || '').trim();
+    return dom ? 'https://' + dom.replace(/^https?:\/\//, '') : 'https://www.facebook.com';
+  };
+  const placeholder = (d: Json): Json => ({ ...d, tracking_specs: undefined,
+    creative: { name: 'Placeholder · ' + String(d.name || '').slice(0, 150),
+      object_story_spec: { page_id: fix.page, link_data: { link: linkOf(d.creative || {}, d),
+        message: 'Placeholder — replace the creative', name: String(d.name || 'Placeholder').slice(0, 100) } } } });
+  let ads: Json[] = [];
+  if (!fix.noAds) {
+    ads = (spec.ads || []).flatMap((d: Json) => {
+      if (same) return [d];
+      if (fix.placeholder && fix.page) return [placeholder(d)];
+      const cr: Json = d.creative || {};
+      const pg = pageOf(cr);
+      if (!fix.page || !fix.lost || !fix.lost.includes(pg)) return [{ ...d, tracking_specs: undefined }];
+      if (!cr.object_story_spec) {
+        notes.push('ad “' + String(d.name || d.id) + '”: its post belongs to page ' + pg + ' — created as a placeholder, replace the creative');
+        return [placeholder(d)];
+      }
+      const oss: Json = JSON.parse(JSON.stringify(cr.object_story_spec));
+      oss.page_id = fix.page;
+      delete oss.instagram_actor_id; delete oss.instagram_user_id;
+      return [{ ...d, tracking_specs: undefined,
+        creative: { name: cr.name, url_tags: cr.url_tags, object_story_spec: oss } }];
+    });
+  }
+  return { camp, adsets, ads, notes };
 }
 
 Deno.serve(async (req) => {
@@ -352,15 +427,15 @@ Deno.serve(async (req) => {
   if (T.scopes.length && !T.scopes.includes('ads_management'))
     return reply({ error: 'the token of cabinet ' + tgt + ' has no ads_management — it can only read' }, 400);
 
-  let shaped: { camp: Json; adsets: Json[]; ads: Json[] };
+  let shaped: { camp: Json; adsets: Json[]; ads: Json[]; notes?: string[] };
   let warns: string[] = [];
   if (fromSpec) {
-    const pf = await preflight(spec, T, tgt, same);
+    const pf = await preflight(spec, T, tgt, same, String(body.page_mode || 'random'));
     if (body.check) return reply({ ok: true, mode: 'check', target_account: tgt, sample, checks: pf.checks });
     const bad = pf.checks.filter(c => c.level === 'fail');
     if (bad.length) return reply({ error: 'not launched: ' + bad.map(c => c.text).join('; '), checks: pf.checks }, 409);
     shaped = shape(spec, body.overrides || {}, pf.fix, same);
-    warns = pf.checks.filter(c => c.level === 'warn').map(c => c.text);
+    warns = pf.checks.filter(c => c.level === 'warn').map(c => c.text).concat(shaped.notes || []);
   } else {
     if (S && S.currency && T.currency && S.currency !== T.currency)
       return reply({ error: 'different currencies (' + S.currency + ' → ' + T.currency
