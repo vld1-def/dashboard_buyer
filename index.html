@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.11 19:35">
+  <meta name="build" content="build 22.11 19:45">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8034,6 +8034,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 #cf-glass-tip.is-small .gt-main .gt-v { font-size: 13.5px; }
 #cf-glass-tip.is-small .gt-v, #cf-glass-tip.is-small .gt-cv { font-size: 12.5px; }
 #cf-glass-tip.is-small .gt-k { font-size: 10.5px; }
+#cf-glass-tip .gt-thead { font-size: 10px !important; font-weight: 800 !important; color: rgba(226,232,240,.55); letter-spacing: .04em; padding-bottom: 3px; border-bottom: 1px solid rgba(255,255,255,.1); margin-bottom: 2px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8293,7 +8294,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 19:35</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 19:45</div>
     </div>
   </aside>
 
@@ -10083,7 +10084,15 @@ window.cfGlassTip = function () {
     }
     if (!tooltip || tooltip.opacity === 0 || !chart.canvas.isConnected) { el.classList.remove('is-on'); return; }
     const esc = v => String(v == null ? '' : v).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-    const mono = /mono|menlo|consolas/i.test(String((tooltip.options.bodyFont || {}).family || ''));
+    /* Моноширинна таблиця — лише коли рядки справді таблиця (у головного
+       графіка від 5 гео: рядок на гео, без іконок). Інакше той самий
+       моношрифт у налаштуваннях графіка тримав би старий вигляд і там,
+       де підказка звичайна. */
+    const monoFont = /mono|menlo|consolas/i.test(String((tooltip.options.bodyFont || {}).family || ''));
+    const allLines = (tooltip.body || []).flatMap(b => [].concat(b.lines || []));
+    const mono = monoFont && !allLines.some(l => { CF_TIP_RE.lastIndex = 0; return CF_TIP_RE.test(String(l)); });
+    CF_TIP_RE.lastIndex = 0;
+    const before = mono ? [].concat(tooltip.beforeBody || []).filter(x => x !== '' && x != null) : [];
     const showDots = tooltip.options.displayColors !== false;
     const title = (tooltip.title || []).filter(x => x !== '' && x != null);
     let rows = '';
@@ -10105,12 +10114,12 @@ window.cfGlassTip = function () {
     const wasOn = el.classList.contains('is-on');
     /* Малий графік (картки у вікні гео) — компактна підказка: велика
        на ньому закривала половину лінії. */
-    const small = (chart.height || 0) < 240;
+    const small = !!chart.canvas.closest('.gm-canvas-box') || (chart.height || 0) < 200;
     el.className = 'is-on' + (mono ? ' is-mono' : '') + (small ? ' is-small' : '')
       + (wasOn && el._chart === chart ? '' : ' is-jump');
     el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
-      + `<div class="gt-body">${rows}</div>`
+      + `<div class="gt-body">${before.map(l => `<div class="gt-row gt-thead"><span>${esc(l)}</span></div>`).join('')}${rows}</div>`
       + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '');
     /* Позиція: біля точки, праворуч; не влазить — ліворуч; і завжди в
        межах вікна. Сторінка має zoom на body, тож координати ділимо

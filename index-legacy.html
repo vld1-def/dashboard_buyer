@@ -2341,7 +2341,15 @@ window.cfGlassTip = function () {
     }
     if (!tooltip || tooltip.opacity === 0 || !chart.canvas.isConnected) { el.classList.remove('is-on'); return; }
     const esc = v => String(v == null ? '' : v).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-    const mono = /mono|menlo|consolas/i.test(String((tooltip.options.bodyFont || {}).family || ''));
+    /* Моноширинна таблиця — лише коли рядки справді таблиця (у головного
+       графіка від 5 гео: рядок на гео, без іконок). Інакше той самий
+       моношрифт у налаштуваннях графіка тримав би старий вигляд і там,
+       де підказка звичайна. */
+    const monoFont = /mono|menlo|consolas/i.test(String((tooltip.options.bodyFont || {}).family || ''));
+    const allLines = (tooltip.body || []).flatMap(b => [].concat(b.lines || []));
+    const mono = monoFont && !allLines.some(l => { CF_TIP_RE.lastIndex = 0; return CF_TIP_RE.test(String(l)); });
+    CF_TIP_RE.lastIndex = 0;
+    const before = mono ? [].concat(tooltip.beforeBody || []).filter(x => x !== '' && x != null) : [];
     const showDots = tooltip.options.displayColors !== false;
     const title = (tooltip.title || []).filter(x => x !== '' && x != null);
     let rows = '';
@@ -2363,12 +2371,12 @@ window.cfGlassTip = function () {
     const wasOn = el.classList.contains('is-on');
     /* Малий графік (картки у вікні гео) — компактна підказка: велика
        на ньому закривала половину лінії. */
-    const small = (chart.height || 0) < 240;
+    const small = !!chart.canvas.closest('.gm-canvas-box') || (chart.height || 0) < 200;
     el.className = 'is-on' + (mono ? ' is-mono' : '') + (small ? ' is-small' : '')
       + (wasOn && el._chart === chart ? '' : ' is-jump');
     el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
-      + `<div class="gt-body">${rows}</div>`
+      + `<div class="gt-body">${before.map(l => `<div class="gt-row gt-thead"><span>${esc(l)}</span></div>`).join('')}${rows}</div>`
       + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '');
     /* Позиція: біля точки, праворуч; не влазить — ліворуч; і завжди в
        межах вікна. Сторінка має zoom на body, тож координати ділимо
