@@ -81,4 +81,30 @@ const stt = await page.evaluate(() => { ltCur.start = '2030-05-01T09:30'; const 
   return { o, field: !!document.getElementById('lt-f-start') }; });
 ok("поле Start є, і старт іде у перекриття точною миттю", stt.field && stt.o.start_time === new Date("2030-05-01T09:30").toISOString(), stt);
 
+/* Календар у нашому стилі замість системного. */
+const cal = await page.evaluate(() => {
+  ltDtpOpen(document.getElementById('lt-f-start'));
+  const pop = document.getElementById('lt-dtp');
+  const on = pop.classList.contains('is-on');
+  ltDtpMonth(1);
+  const day = [...pop.querySelectorAll('.lt-dtp-d:not(:disabled)')].find(b => b.textContent.trim() === '15');
+  day.click();
+  ltDtpTime(9); ltDtpStep('mi', 1); ltDtpStep('mi', 1);
+  ltDtpSave();
+  const v = ltCur.start, label = document.getElementById('lt-f-start').innerText.trim();
+  ltDtpOpen(document.getElementById('lt-f-start'));
+  const pastOff = [...document.querySelectorAll('#lt-dtp .lt-dtp-nav')][0].disabled === false || true;
+  ltDtpQuick('clear');
+  return { on, v, label, cleared: ltCur.start, closed: !document.querySelector('#lt-dtp.is-on'), lbl2: document.getElementById('lt-f-start').innerText.trim() };
+});
+ok('календар відкривається', cal.on, cal);
+ok('день + час → значення 15-го о 09:10', /-15T09:10$/.test(cal.v), cal);
+ok('поле показує вибране коротко', /15 \w{3}, 09:10/.test(cal.label), cal.label);
+ok('«When switched on» очищає старт і закриває', cal.cleared === '' && cal.closed && /When switched on/.test(cal.lbl2), cal);
+const past = await page.evaluate(() => { ltDtpOpen(document.getElementById('lt-f-start'));
+  const t = new Date(); const prev = t.getDate() > 1 ? String(t.getDate() - 1) : null;
+  const b = prev && [...document.querySelectorAll('#lt-dtp .lt-dtp-d')].find(x => x.textContent.trim() === prev);
+  ltDtpClose(); return prev ? !!(b && b.disabled) : true; });
+ok('минулі дні недоступні', past);
+
 await done(browser, srv, errs);

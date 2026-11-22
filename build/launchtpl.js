@@ -254,8 +254,11 @@ function ltPaintLaunch() {
       <label><span>Campaign name</span><input id="lt-f-name" value="${ltEsc(ltCur.name)}" oninput="ltCur.name=this.value"></label>
       <label title="Daily budget${s.cbo ? ' of the campaign' : ' of each ad set'}"><span>Budget / day</span><input id="lt-f-budget" inputmode="decimal" value="${ltEsc(ltCur.budget)}" oninput="ltCur.budget=this.value" placeholder="as in template"></label>
       <label><span>Countries</span><input id="lt-f-geo" value="${ltEsc(ltCur.countries)}" oninput="ltCur.countries=this.value" placeholder="as in template"></label>
-      <label class="lt-f-start"><span>Start (your time)</span><input id="lt-f-start" type="datetime-local" value="${ltEsc(ltCur.start || '')}"
-        oninput="ltCur.start=this.value" title="When the ad sets may start. Empty — as soon as you switch them on. Set it here: after publishing Facebook does not let you change it"></label>
+      <label class="lt-f-start"><span>Start (your time)</span><button type="button" id="lt-f-start" class="lt-dt-btn${ltCur.start ? ' is-set' : ''}"
+        onclick="ltDtpOpen(this)" ${ltBusy ? 'disabled' : ''}
+        title="When the ad sets may start. Empty — as soon as you switch them on. Set it here: after publishing Facebook does not let you change it">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+        <span>${ltEsc(ltDtLabel(ltCur.start))}</span></button></label>
     </div>
     <div class="lt-pick-h"><span>Cabinets · ${picked.length} picked</span></div>
     <div class="lt-cabs">${shown.length ? shown.map(t => `
@@ -340,4 +343,113 @@ window.ltLaunch = async function () {
     toast('Launched paused in ' + good + ' cabinet(s). Press Sync now to see them in FB LIVE.', 'ok', 6000);
   }
   ltPaintLaunch();
+};
+
+
+/* ── КАЛЕНДАР У НАШОМУ СТИЛІ ──
+   «календар і час зроби в нашому стилі дизайну». Системний
+   datetime-local у кожному браузері свій і з темою сторінки не
+   дружить. Тут — склянна панель: місяць зі стрілками, дні (минулі
+   недоступні), час годинами й хвилинами, і швидкі кнопки. Значення —
+   той самий рядок 'YYYY-MM-DDTHH:mm' у поясі браузера, що й раніше. */
+const LT_MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ltPad = n => String(n).padStart(2, '0');
+const ltDtStr = d => d.getFullYear() + '-' + ltPad(d.getMonth() + 1) + '-' + ltPad(d.getDate()) + 'T' + ltPad(d.getHours()) + ':' + ltPad(d.getMinutes());
+function ltDtLabel(v) {
+  if (!v) return 'When switched on';
+  const d = new Date(v);
+  if (isNaN(d)) return 'When switched on';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ', ' + ltPad(d.getHours()) + ':' + ltPad(d.getMinutes());
+}
+let ltDtp = null;   // { y, m, d: Date|null, h, mi, anchor }
+
+window.ltDtpOpen = function (btn) {
+  const cur = ltCur.start ? new Date(ltCur.start) : null;
+  const base = cur && !isNaN(cur) ? cur : new Date(Date.now() + 864e5);
+  ltDtp = { y: base.getFullYear(), m: base.getMonth(), d: cur && !isNaN(cur) ? new Date(cur) : null,
+            h: cur && !isNaN(cur) ? cur.getHours() : 0, mi: cur && !isNaN(cur) ? cur.getMinutes() : 0, anchor: btn };
+  let el = document.getElementById('lt-dtp');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'lt-dtp';
+    document.body.appendChild(el);
+    document.addEventListener('pointerdown', e => {
+      const p = document.getElementById('lt-dtp');
+      if (p && p.classList.contains('is-on') && !p.contains(e.target) && !(e.target.closest && e.target.closest('#lt-f-start'))) ltDtpClose();
+    }, true);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.querySelector('#lt-dtp.is-on')) { e.stopPropagation(); ltDtpClose(); } }, true);
+  }
+  ltDtpPaint();
+  el.classList.add('is-on');
+  ltDtpPlace();
+};
+window.ltDtpClose = function () { const el = document.getElementById('lt-dtp'); if (el) el.classList.remove('is-on'); };
+
+function ltDtpPlace() {
+  const el = document.getElementById('lt-dtp'), btn = ltDtp && document.getElementById('lt-f-start');
+  if (!el || !btn) return;
+  const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+  const r = btn.getBoundingClientRect();
+  const w = el.offsetWidth, h = el.offsetHeight, vw = innerWidth / z, vh = innerHeight / z;
+  let left = r.right / z - w, top = r.bottom / z + 8;
+  if (top + h > vh - 8) top = r.top / z - h - 8;
+  el.style.left = Math.max(8, Math.min(vw - w - 8, left)) + 'px';
+  el.style.top = Math.max(8, top) + 'px';
+}
+
+function ltDtpPaint() {
+  const el = document.getElementById('lt-dtp'); if (!el || !ltDtp) return;
+  const { y, m, d, h, mi } = ltDtp;
+  const first = new Date(y, m, 1), days = new Date(y, m + 1, 0).getDate();
+  const lead = (first.getDay() + 6) % 7;                   // тиждень з понеділка
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span></span>');
+  for (let n = 1; n <= days; n++) {
+    const dt = new Date(y, m, n);
+    const past = dt < today;
+    const sel = d && d.getFullYear() === y && d.getMonth() === m && d.getDate() === n;
+    const isT = dt.getTime() === today.getTime();
+    cells.push(`<button type="button" class="lt-dtp-d${sel ? ' is-sel' : ''}${isT ? ' is-today' : ''}" ${past ? 'disabled' : ''}
+      onclick="ltDtpDay(${n})">${n}</button>`);
+  }
+  const canPrev = new Date(y, m, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
+  el.innerHTML = `
+    <div class="lt-dtp-h">
+      <button type="button" class="lt-dtp-nav" onclick="ltDtpMonth(-1)" ${canPrev ? '' : 'disabled'} aria-label="Previous month">‹</button>
+      <b>${LT_MON[m]} ${y}</b>
+      <button type="button" class="lt-dtp-nav" onclick="ltDtpMonth(1)" aria-label="Next month">›</button>
+    </div>
+    <div class="lt-dtp-w">${['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(x => `<span>${x}</span>`).join('')}</div>
+    <div class="lt-dtp-g">${cells.join('')}</div>
+    <div class="lt-dtp-t">
+      <span class="lt-dtp-tl">Time</span>
+      <div class="lt-dtp-spin"><button type="button" onclick="ltDtpStep('h',-1)">−</button><b>${ltPad(h)}</b><button type="button" onclick="ltDtpStep('h',1)">+</button></div>
+      <span class="lt-dtp-colon">:</span>
+      <div class="lt-dtp-spin"><button type="button" onclick="ltDtpStep('mi',-1)">−</button><b>${ltPad(mi)}</b><button type="button" onclick="ltDtpStep('mi',1)">+</button></div>
+      <div class="lt-dtp-q">${[0, 6, 9, 12, 18].map(x => `<button type="button" class="${h === x && mi === 0 ? 'is-on' : ''}" onclick="ltDtpTime(${x})">${ltPad(x)}:00</button>`).join('')}</div>
+    </div>
+    <div class="lt-dtp-f">
+      <button type="button" class="lt-dtp-l" onclick="ltDtpQuick('tomorrow')">Tomorrow 00:00</button>
+      <button type="button" class="lt-dtp-l" onclick="ltDtpQuick('clear')">When switched on</button>
+      <button type="button" class="lt-btn is-go lt-dtp-ok" onclick="ltDtpSave()" ${d ? '' : 'disabled'}>Set</button>
+    </div>`;
+}
+window.ltDtpMonth = function (k) { const t = new Date(ltDtp.y, ltDtp.m + k, 1); ltDtp.y = t.getFullYear(); ltDtp.m = t.getMonth(); ltDtpPaint(); };
+window.ltDtpDay = function (n) { ltDtp.d = new Date(ltDtp.y, ltDtp.m, n); ltDtpPaint(); };
+window.ltDtpStep = function (k, s) {
+  if (k === 'h') ltDtp.h = (ltDtp.h + s + 24) % 24;
+  else ltDtp.mi = (ltDtp.mi + s * 5 + 60) % 60 - ((ltDtp.mi + s * 5 + 60) % 60) % 5;
+  ltDtpPaint();
+};
+window.ltDtpTime = function (h) { ltDtp.h = h; ltDtp.mi = 0; ltDtpPaint(); };
+window.ltDtpQuick = function (q) {
+  if (q === 'clear') { ltCur.start = ''; ltDtpClose(); ltPaintLaunch(); return; }
+  const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(0, 0, 0, 0);
+  ltCur.start = ltDtStr(t); ltDtpClose(); ltPaintLaunch();
+};
+window.ltDtpSave = function () {
+  if (!ltDtp.d) return;
+  const t = new Date(ltDtp.d); t.setHours(ltDtp.h, ltDtp.mi, 0, 0);
+  if (t.getTime() < Date.now()) { toast('That time has already passed — pick a later one.', 'warn'); return; }
+  ltCur.start = ltDtStr(t); ltDtpClose(); ltPaintLaunch();
 };
