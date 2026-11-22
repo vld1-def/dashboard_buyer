@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-22.5';
+const FN_VERSION = '2026-11-22.6';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -150,9 +150,13 @@ function campaignParams(c: Json, name: string): Json {
   return p;
 }
 
-function adsetParams(a: Json, campaignId: string, now: number): Json {
+/* Статус адсета й оголошення. Копія (Copy) — усе на паузі. Шаблон —
+   «адсет не вимикай, тільки кампанію»: на паузі лише КАМПАНІЯ, адсети й
+   оголошення увімкнені, тож увімкнув кампанію — і все пішло. Нічого не
+   крутиться, поки кампанія на паузі. */
+function adsetParams(a: Json, campaignId: string, now: number, status = 'PAUSED'): Json {
   const p: Json = {
-    name: a.name, campaign_id: campaignId, status: 'PAUSED',
+    name: a.name, campaign_id: campaignId, status,
     optimization_goal: a.optimization_goal, billing_event: a.billing_event,
     targeting: a.targeting, promoted_object: a.promoted_object,
     attribution_spec: a.attribution_spec, destination_type: a.destination_type,
@@ -443,6 +447,8 @@ Deno.serve(async (req) => {
 
   const deadline = Date.now() + DEADLINE_MS;
   const act = '/act_' + tgt;
+  // Кампанія — завжди PAUSED (campaignParams). Усередині: шаблон — увімкнено.
+  const inner = fromSpec ? 'ACTIVE' : 'PAUSED';
   const problems: string[] = [];
   let newCamp = '';
   try {
@@ -459,7 +465,7 @@ Deno.serve(async (req) => {
   for (const a of adsets.slice(0, MAX_ADSETS)) {
     if (Date.now() > deadline) { timedOut = true; break; }
     try {
-      const id = String((await graph(act + '/adsets', T.token, adsetParams(a, newCamp, Date.now()), 'POST')).id || '');
+      const id = String((await graph(act + '/adsets', T.token, adsetParams(a, newCamp, Date.now(), inner), 'POST')).id || '');
       if (!id) throw new Error('no id returned');
       setMap.set(String(a.id), id);
       setsMade++;
@@ -479,7 +485,7 @@ Deno.serve(async (req) => {
         const creativeId = cr.creative_id ? String(cr.creative_id)
           : String((await graph(act + '/adcreatives', T.token, cr, 'POST')).id || '');
         if (!creativeId) throw new Error('no creative id returned');
-        await graph(act + '/ads', T.token, { name: ad.name, adset_id: setId, status: 'PAUSED',
+        await graph(act + '/ads', T.token, { name: ad.name, adset_id: setId, status: inner,
           creative: { creative_id: creativeId }, conversion_domain: ad.conversion_domain }, 'POST');
       };
       let done = -1, last = '';
@@ -512,7 +518,7 @@ Deno.serve(async (req) => {
       else creativeId = String((await graph(act + '/adcreatives', T.token, cp.params, 'POST')).id || '');
       if (!creativeId) throw new Error('no creative id returned');
       await graph(act + '/ads', T.token, {
-        name: ad.name, adset_id: setId, status: 'PAUSED',
+        name: ad.name, adset_id: setId, status: inner,
         creative: { creative_id: creativeId },
         tracking_specs: ad.tracking_specs, conversion_domain: ad.conversion_domain
       }, 'POST');

@@ -71,7 +71,7 @@ ok('запуск лише в кабінет без проблем', calls.length
 ok('у функцію йде знімок, назва й перекриття', calls[0] && calls[0].spec.campaign.id === '900' && calls[0].name === 'NEW_KG'
   && calls[0].overrides.daily_budget === 35 && calls[0].overrides.countries.join() === 'KG,TJ', calls[0]);
 const after = await page.evaluate(() => ({ t: document.querySelector('.lt-cab.is-on').innerText, upd: __upd }));
-ok('результат видно на кабінеті', /launched/.test(after.t) && /Created paused: 1\/1 ad sets/.test(after.t), after.t);
+ok('результат видно на кабінеті', /launched/.test(after.t) && /Campaign created paused: 1\/1 ad sets/.test(after.t), after.t);
 ok('лічильник запусків оновлено', after.upd.some(u => u.uses === 3 && u.last_used_at), after.upd);
 
 await page.evaluate(() => { ltCur.budget = '20'; ltCur.countries = 'KG'; });

@@ -102,8 +102,9 @@ ok('оголошення — на паузі, у своїх нових адсе�
   && newAds[0].p.adset_id === 'new2' && newAds[1].p.adset_id === 'new3' && newAds[0].p.name === 'KG_1', newAds);
 ok('оголошення без креатива пропущене з поясненням, решта створена', c.body.ads.made === 2 && c.body.ads.of === 3
   && c.body.complete === false && c.body.problems.some(x => /KG_3.*neither a post nor/.test(x)), c.body);
-ok('НІДЕ немає статусу, відмінного від PAUSED', P.filter(x => 'status' in x.p).every(x => x.p.status === 'PAUSED')
-  && !/status: 'ACTIVE'|status=ACTIVE/.test(FN));
+ok('копія: НІДЕ немає статусу, відмінного від PAUSED', P.filter(x => 'status' in x.p).every(x => x.p.status === 'PAUSED'));
+const CP = FN.slice(FN.indexOf('function campaignParams'), FN.indexOf('function adsetParams'));
+ok('кампанія — завжди PAUSED, у самому коді', /status: 'PAUSED'/.test(CP) && !/ACTIVE/.test(CP));
 
 const same = await run({ body: { source_account: '111', campaign_id: '900', target_account: '111', name: 'Dup' } });
 ok('у тому самому кабінеті креатив береться за ID, без нового', same.posts.filter(x => /adcreatives/.test(x.path)).length === 0
@@ -215,7 +216,10 @@ const go = await run({ body: { spec: SPEC, target_account: '222', name: 'TPL_KG'
   lists: { '/act_222/promote_pages': [{ id: '77' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 const GP = go.posts;
 ok('шаблон запущено — режим launch, на паузі', go.status === 200 && go.body.mode === 'launch' && GP[0].p.name === 'TPL_KG'
-  && GP.filter(x => 'status' in x.p).every(x => x.p.status === 'PAUSED'), go.body);
+  && GP[0].p.status === 'PAUSED'
+  && GP.filter(x => x.path !== '/act_222/campaigns' && 'status' in x.p).every(x => x.p.status === 'ACTIVE'), go.body);
+ok('шаблон: на паузі лише кампанія, адсети й оголошення увімкнені', GP.filter(x => /adsets$/.test(x.path)).every(x => x.p.status === 'ACTIVE')
+  && GP.filter(x => /\/ads$/.test(x.path)).every(x => x.p.status === 'ACTIVE') && GP.filter(x => /\/ads$/.test(x.path)).length > 0, GP.map(x => [x.path, x.p.status]));
 ok('бюджет перекрито (на кампанії, бо бюджет там) — у центах', GP[0].p.daily_budget === '3500', GP[0].p);
 const gs = GP.filter(x => x.path === '/act_222/adsets').map(x => ({ t: JSON.parse(x.p.targeting), po: JSON.parse(x.p.promoted_object) }));
 ok('гео перекрито для всіх адсетів, сміття відкинуто', gs.every(x => JSON.stringify(x.t.geo_locations) === '{"countries":["TJ"]}'), gs);
