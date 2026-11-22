@@ -1306,7 +1306,14 @@ function cdNameCell(n, depth) {
         encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
         title="Copy this campaign to other cabinets \u2014 created paused">\u29C9 Copy</button>`
     : '';
-  return mark + twist + cdPicCell(n) + label + count + copy + side;
+  /* Зберегти кампанію як ШАБЛОН запуску (launchtpl.js): знімок у базі,
+     запуск у будь-який кабінет — з вікна Templates. */
+  const tpl = n.kind === 'campaign' && typeof ltSave === 'function'
+    ? `<button type="button" class="cd-copy cd-tpl" onclick="event.stopPropagation();ltSave('${cdEsc(n.id)}','${
+        encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
+        title="Save this campaign as a launch template — launch it into other cabinets later, paused">\u2606 Template</button>`
+    : '';
+  return mark + twist + cdPicCell(n) + label + count + copy + tpl + side;
 };
 /* ═══════════ ІКОНКА КРЕАТИВА ═══════════
 

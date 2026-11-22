@@ -34,7 +34,7 @@ const ADS = [
   { id: 'a3', name: 'KG_3', adset_id: 's2', creative: { id: 'c3' } }
 ];
 
-async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', camp = CAMP, sets = SETS, ads = ADS, method = 'POST' }) {
+async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', camp = CAMP, sets = SETS, ads = ADS, method = 'POST', lists = null }) {
   const posts = [];
   let n = 0;
   const accs = accounts || { '111': { token_id: 1, team_name: 'T', currency: 'USD' }, '222': { token_id: 2, team_name: 'T', currency: 'USD' } };
@@ -54,6 +54,7 @@ async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', cam
       if (path === '/900') return J(camp);
       if (path === '/900/adsets') return J({ data: sets });
       if (path === '/900/ads') return J({ data: ads });
+      if (lists && lists[path]) return J({ data: lists[path] });
       return J({ error: { message: 'unknown ' + path } }, 400);
     }
     const p = Object.fromEntries(opt.body.entries());
@@ -147,6 +148,61 @@ const bad = await run({ body: { source_account: '111', campaign_id: 'abc' } });
 ok('без ID кампанії — 400', bad.status === 400);
 const empty = await run({ body: { source_account: '111', campaign_id: '900', target_account: '222' }, sets: [], ads: [] });
 ok('кампанія без адсетів — нічого не створюємо', empty.status === 400 && empty.posts.length === 0);
+
+/* ═══ ШАБЛОНИ: знімок → перевірка → запуск ═══
+   «ми пробували, але щось нічого не вийшло» — копія ламалась на
+   доступах. Тепер шаблон — збережений знімок, а перед запуском іде
+   перевірка того, що цільовий кабінет бачить. */
+const snap = await run({ body: { source_account: '111', campaign_id: '900', snapshot: true } });
+ok('знімок віддає повний spec і нічого не пише', snap.status === 200 && snap.body.mode === 'snapshot'
+  && snap.posts.length === 0 && snap.body.spec.campaign.id === '900' && snap.body.spec.adsets.length === 2
+  && snap.body.spec.ads.length === 3 && snap.body.spec.source_account === '111' && snap.body.spec.currency === 'USD', snap.body);
+const SPEC = snap.body.spec;
+SPEC.adsets[0].targeting.custom_audiences = [{ id: 'aud1' }];
+
+const LISTS_OK = { '/act_222/promote_pages': [{ id: '77', name: 'My Page' }],
+  '/act_222/adspixels': [{ id: '5', name: 'Main pixel' }] };
+const chk = await run({ body: { spec: SPEC, target_account: '222', check: true }, lists: LISTS_OK });
+const lv = t => (chk.body.checks || []).find(c => c.text.includes(t)) || {};
+ok('перевірка нічого не створює', chk.status === 200 && chk.body.mode === 'check' && chk.posts.length === 0, chk.body);
+ok('Сторінка й піксель — ok, з назвами', lv('My Page').level === 'ok' && lv('Main pixel').level === 'ok', chk.body.checks);
+ok('чужі аудиторії — попередження', lv('custom audiences').level === 'warn', chk.body.checks);
+
+const noPage = await run({ body: { spec: SPEC, target_account: '222', check: true },
+  lists: { '/act_222/promote_pages': [{ id: '99', name: 'Other' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
+const lv2 = t => (noPage.body.checks || []).find(c => c.text.includes(t)) || {};
+ok('Сторінка недоступна — fail з поясненням, що робити', lv2('page 77').level === 'fail' && /business/.test(lv2('page 77').text), noPage.body.checks);
+ok('піксель не розшарений — підміна власним, warn', lv2('Own px').level === 'warn', noPage.body.checks);
+
+const refuse = await run({ body: { spec: SPEC, target_account: '222' },
+  lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
+ok('з fail запуск відмовляє ДО першого запису', refuse.status === 409 && refuse.posts.length === 0 && /page 77/.test(refuse.body.error), refuse.body);
+
+const go = await run({ body: { spec: SPEC, target_account: '222', name: 'TPL_KG', overrides: { daily_budget: 35, countries: ['tj', 'xx1'] } },
+  lists: { '/act_222/promote_pages': [{ id: '77' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
+const GP = go.posts;
+ok('шаблон запущено — режим launch, на паузі', go.status === 200 && go.body.mode === 'launch' && GP[0].p.name === 'TPL_KG'
+  && GP.filter(x => 'status' in x.p).every(x => x.p.status === 'PAUSED'), go.body);
+ok('бюджет перекрито (на кампанії, бо бюджет там) — у центах', GP[0].p.daily_budget === '3500', GP[0].p);
+const gs = GP.filter(x => x.path === '/act_222/adsets').map(x => ({ t: JSON.parse(x.p.targeting), po: JSON.parse(x.p.promoted_object) }));
+ok('гео перекрито для всіх адсетів, сміття відкинуто', gs.every(x => JSON.stringify(x.t.geo_locations) === '{"countries":["TJ"]}'), gs);
+ok('чужі аудиторії прибрано з таргетингу', gs.every(x => !x.t.custom_audiences), gs);
+ok('піксель підмінено власним пікселем кабінета', gs.every(x => x.po.pixel_id === '6'), gs);
+ok('попередження повернуто людині', (go.body.warnings || []).some(w => /Own px/.test(w)), go.body);
+ok('сам знімок не зіпсовано підміною', SPEC.adsets[0].promoted_object.pixel_id === '5' && SPEC.adsets[0].targeting.custom_audiences.length === 1);
+
+const nocbo = JSON.parse(JSON.stringify(SPEC)); delete nocbo.campaign.daily_budget;
+const go2 = await run({ body: { spec: nocbo, target_account: '222', overrides: { daily_budget: 12.5 } }, lists: LISTS_OK });
+ok('без бюджету на кампанії — бюджет іде в кожен адсет', !('daily_budget' in go2.posts[0].p)
+  && go2.posts.filter(x => x.path === '/act_222/adsets').every(x => x.p.daily_budget === '1250'), go2.posts.map(x => x.p.daily_budget));
+const eur = await run({ body: { spec: SPEC, target_account: '222', check: true }, lists: LISTS_OK,
+  accounts: { '222': { token_id: 2, team_name: 'T', currency: 'EUR' } } });
+ok('інша валюта — fail у перевірці', (eur.body.checks || []).some(c => c.level === 'fail' && /currency/.test(c.text)), eur.body);
+const unk = await run({ body: { spec: SPEC, target_account: '222', check: true } });
+ok('не вдалось прочитати доступи — unknown, не блокує', (unk.body.checks || []).filter(c => c.level === 'unknown').length >= 2
+  && !(unk.body.checks || []).some(c => c.level === 'fail'), unk.body.checks);
+const noTgt = await run({ body: { spec: SPEC } });
+ok('шаблон без цільового кабінета — 400', noTgt.status === 400);
 
 /* ═══ СТОРІНКА ═══ */
 const a = CD.indexOf('function cdCopyTargets(srcAcc) {');

@@ -31,6 +31,21 @@
      {"source_account":"1","campaign_id":"2"}                      — лише прочитати зразок
      {"source_account":"1","campaign_id":"2","target_account":"3",
       "name":"New name"}                                            — створити копію на паузі
+     {"source_account":"1","campaign_id":"2","snapshot":true}      — знімок для ШАБЛОНУ
+     {"spec":{…},"target_account":"3","name":"…",
+      "overrides":{"daily_budget":20,"countries":["KG"]},
+      "check":true}                                                 — перевірка перед запуском
+     те саме без check                                              — запуск шаблону на паузі
+
+   ШАБЛОНИ. «ми пробували, але щось нічого не вийшло». Копія між
+   кабінетами ламається не в нашому коді, а на доступах: Сторінка поста
+   не видана новому кабінету, піксель чи апка не розшарені, аудиторії
+   належать старому кабінету. Facebook каже про це лише ПІСЛЯ спроби —
+   і кампанія вже наполовину створена. Тому перед запуском іде
+   ПЕРЕВІРКА: що з потрібного новий кабінет справді бачить (Сторінки,
+   пікселі, апки), і людина бачить це списком до першого запису.
+   Піксель, якого новий кабінет не бачить, підміняється його власним;
+   власні аудиторії старого кабінета прибираються з таргетингу.
 
    Один виклик — один цільовий кабінет: сторінка сама йде по списку й
    показує, що вийшло в кожному.
@@ -46,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-15.1';
+const FN_VERSION = '2026-11-22.1';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -154,6 +169,103 @@ function adsetParams(a: Json, campaignId: string, now: number): Json {
   return p;
 }
 
+/* ── ПЕРЕВІРКА ПЕРЕД ЗАПУСКОМ ──
+   Що з потрібного шаблону цільовий кабінет справді бачить. Кожен пункт:
+   ok / warn (запустимо, але з підміною чи без чогось) / fail (саме це
+   й зламає запуск). Якщо Facebook не віддав список (немає прав на
+   читання) — пункт «unknown»: не блокуємо, але й не обіцяємо. */
+type Check = { level: 'ok' | 'warn' | 'fail' | 'unknown'; text: string };
+type Fix = { pixel?: string };
+
+const pageOf = (cr: Json): string => {
+  const story = String(cr?.effective_object_story_id || cr?.object_story_id || '');
+  if (story.includes('_')) return story.split('_')[0];
+  return String(cr?.object_story_spec?.page_id || '');
+};
+
+async function listIds(path: string, token: string): Promise<Map<string, string> | null> {
+  try {
+    const j = await graph(path, token, { fields: 'id,name', limit: 200 });
+    return new Map((j.data || []).map((x: Json) => [String(x.id), String(x.name || x.id)]));
+  } catch (_e) { return null; }
+}
+
+async function preflight(spec: Json, T: { token: string; currency: string; status: string },
+                         tgt: string, same: boolean): Promise<{ checks: Check[]; fix: Fix }> {
+  const checks: Check[] = [];
+  const fix: Fix = {};
+  const adsets: Json[] = spec.adsets || [], ads: Json[] = spec.ads || [];
+  if (!adsets.length) checks.push({ level: 'fail', text: 'the template has no ad sets — nothing to launch' });
+  if (spec.currency && T.currency && spec.currency !== T.currency)
+    checks.push({ level: 'fail', text: 'currency ' + T.currency + ' ≠ ' + spec.currency
+      + ' of the template: budgets are numbers in the cabinet’s currency' });
+  else checks.push({ level: 'ok', text: 'currency ' + (T.currency || spec.currency || '—') });
+  if (same) return { checks, fix };
+
+  // Сторінки постів
+  const pages = [...new Set(ads.map(a => pageOf(a.creative || {})).filter(Boolean))];
+  if (pages.length) {
+    const can = await listIds('/act_' + tgt + '/promote_pages', T.token);
+    for (const pg of pages) {
+      if (!can) checks.push({ level: 'unknown', text: 'page ' + pg + ': could not read which pages this cabinet can use' });
+      else if (can.has(pg)) checks.push({ level: 'ok', text: 'page ' + can.get(pg) });
+      else checks.push({ level: 'fail', text: 'page ' + pg + ' is not available to this cabinet — add it to the cabinet’s business, '
+        + 'or its ads will not be created' });
+    }
+  }
+  // Пікселі
+  const pixels = [...new Set(adsets.map(a => String(a.promoted_object?.pixel_id || '')).filter(Boolean))];
+  if (pixels.length) {
+    const own = await listIds('/act_' + tgt + '/adspixels', T.token);
+    for (const px of pixels) {
+      if (!own) checks.push({ level: 'unknown', text: 'pixel ' + px + ': could not read this cabinet’s pixels' });
+      else if (own.has(px)) checks.push({ level: 'ok', text: 'pixel ' + own.get(px) });
+      else if (own.size) {
+        const [id, name] = [...own.entries()][0];
+        fix.pixel = id;
+        checks.push({ level: 'warn', text: 'pixel ' + px + ' is not shared with this cabinet — its own pixel “' + name + '” will be used' });
+      } else checks.push({ level: 'fail', text: 'pixel ' + px + ' is not shared with this cabinet, and it has no pixel of its own' });
+    }
+  }
+  // Апки
+  const apps = [...new Set(adsets.map(a => String(a.promoted_object?.application_id || '')).filter(Boolean))];
+  if (apps.length) {
+    const can = await listIds('/act_' + tgt + '/advertisable_applications', T.token);
+    for (const ap of apps) {
+      if (!can) checks.push({ level: 'unknown', text: 'app ' + ap + ': could not read which apps this cabinet can advertise' });
+      else if (can.has(ap)) checks.push({ level: 'ok', text: 'app ' + can.get(ap) });
+      else checks.push({ level: 'fail', text: 'app ' + ap + ' is not connected to this cabinet — link it in the app’s settings (advertising accounts)' });
+    }
+  }
+  // Власні аудиторії старого кабінета
+  const aud = adsets.some(a => (a.targeting?.custom_audiences || []).length || (a.targeting?.excluded_custom_audiences || []).length);
+  if (aud) checks.push({ level: 'warn', text: 'custom audiences belong to the old cabinet — they are left out of targeting' });
+  return { checks, fix };
+}
+
+/* Підготувати знімок під цільовий кабінет: назва, бюджет, гео, підміна
+   пікселя, без чужих аудиторій. Сам знімок не міняємо — копія. */
+function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; adsets: Json[]; ads: Json[] } {
+  const camp: Json = { ...(spec.campaign || {}) };
+  const budget = Number(ov?.daily_budget);
+  const cents = Number.isFinite(budget) && budget > 0 ? String(Math.round(budget * 100)) : '';
+  const cbo = Number(camp.daily_budget) > 0 || Number(camp.lifetime_budget) > 0;
+  if (cents && cbo) { camp.daily_budget = cents; delete camp.lifetime_budget; }
+  const countries = Array.isArray(ov?.countries)
+    ? ov.countries.map((c: unknown) => String(c).toUpperCase().trim()).filter((c: string) => /^[A-Z]{2}$/.test(c)) : [];
+  const adsets = (spec.adsets || []).map((a0: Json) => {
+    const a: Json = { ...a0, targeting: a0.targeting ? JSON.parse(JSON.stringify(a0.targeting)) : a0.targeting,
+                      promoted_object: a0.promoted_object ? { ...a0.promoted_object } : a0.promoted_object };
+    if (cents && !cbo) { a.daily_budget = cents; delete a.lifetime_budget; }
+    if (countries.length && a.targeting) a.targeting.geo_locations = { countries };
+    if (!same && a.targeting) { delete a.targeting.custom_audiences; delete a.targeting.excluded_custom_audiences; }
+    if (fix.pixel && a.promoted_object?.pixel_id) a.promoted_object.pixel_id = fix.pixel;
+    return a;
+  });
+  const ads = (spec.ads || []).map((d: Json) => same ? d : { ...d, tracking_specs: undefined });
+  return { camp, adsets, ads };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return reply({ error: 'POST only' }, 405);
@@ -170,7 +282,10 @@ Deno.serve(async (req) => {
   const src = bare(body.source_account), tgt = bare(body.target_account);
   const campaignId = String(body.campaign_id ?? '').trim();
   const newName = String(body.name ?? '').trim().slice(0, 250);
-  if (!src || !/^\d+$/.test(campaignId)) return reply({ error: 'source_account and campaign_id are required' }, 400);
+  const fromSpec = body.spec && typeof body.spec === 'object' ? body.spec as Json : null;
+  if (!fromSpec && (!src || !/^\d+$/.test(campaignId)))
+    return reply({ error: 'source_account and campaign_id are required' }, 400);
+  if (fromSpec && !tgt) return reply({ error: 'target_account is required to launch a template' }, 400);
 
   const hdr = { apikey: anon, Authorization: auth, 'content-type': 'application/json' };
   const svcHdr = { apikey: svc, Authorization: 'Bearer ' + svc, 'content-type': 'application/json' };
@@ -192,46 +307,67 @@ Deno.serve(async (req) => {
              currency: String(accs[0].currency || ''), status: String(accs[0].status || '') };
   };
 
-  let S: Awaited<ReturnType<typeof tokenOf>>;
-  try { S = await tokenOf(src); } catch (e) { return reply({ error: String((e as Error).message) }, 400); }
-
-  // ── зразок ──
-  let camp: Json, adsets: Json[], ads: Json[];
-  try {
-    camp = await graph('/' + campaignId, S.token, { fields: CAMP_FIELDS });
-    if (bare(camp.account_id) !== src)
-      return reply({ error: 'this campaign belongs to cabinet ' + bare(camp.account_id) + ', not ' + src }, 400);
-    adsets = (await graph('/' + campaignId + '/adsets', S.token, { fields: ADSET_FIELDS, limit: 100 })).data || [];
-    ads = (await graph('/' + campaignId + '/ads', S.token, { fields: AD_FIELDS, limit: 200 })).data || [];
-  } catch (e) {
-    return reply({ error: 'Facebook did not return the campaign: ' + String((e as Error).message) }, 400);
+  // ── зразок: живий (Copy / знімок) або збережений (шаблон) ──
+  let spec: Json;
+  let S: Awaited<ReturnType<typeof tokenOf>> | null = null;
+  if (fromSpec) {
+    spec = fromSpec;
+  } else {
+    try { S = await tokenOf(src); } catch (e) { return reply({ error: String((e as Error).message) }, 400); }
+    try {
+      const camp = await graph('/' + campaignId, S.token, { fields: CAMP_FIELDS });
+      if (bare(camp.account_id) !== src)
+        return reply({ error: 'this campaign belongs to cabinet ' + bare(camp.account_id) + ', not ' + src }, 400);
+      const adsets = (await graph('/' + campaignId + '/adsets', S.token, { fields: ADSET_FIELDS, limit: 100 })).data || [];
+      const ads = (await graph('/' + campaignId + '/ads', S.token, { fields: AD_FIELDS, limit: 200 })).data || [];
+      spec = { v: 1, source_account: src, currency: S.currency, campaign: camp, adsets, ads };
+    } catch (e) {
+      return reply({ error: 'Facebook did not return the campaign: ' + String((e as Error).message) }, 400);
+    }
   }
+  const specSrc = bare(spec.source_account);
+  const same = !!tgt && tgt === specSrc;
+  const camp0: Json = spec.campaign || {}, adsets0: Json[] = spec.adsets || [], ads0: Json[] = spec.ads || [];
 
-  const same = !!tgt && tgt === src;
-  const plan = ads.map(a => ({ id: String(a.id), name: String(a.name || ''), adset: String(a.adset_id || ''),
-                               how: creativePlan(a.creative || {}, same).how }));
   const sample = {
-    campaign: { id: String(camp.id), name: String(camp.name || ''), objective: String(camp.objective || ''),
-                daily_budget: camp.daily_budget || null, lifetime_budget: camp.lifetime_budget || null },
-    currency: S.currency,
-    adsets: adsets.map(a => ({ id: String(a.id), name: String(a.name || ''),
+    campaign: { id: String(camp0.id || ''), name: String(camp0.name || ''), objective: String(camp0.objective || ''),
+                daily_budget: camp0.daily_budget || null, lifetime_budget: camp0.lifetime_budget || null },
+    currency: String(spec.currency || ''),
+    adsets: adsets0.map(a => ({ id: String(a.id), name: String(a.name || ''),
       daily_budget: a.daily_budget || null, optimization_goal: a.optimization_goal || null,
-      promoted_object: a.promoted_object || null })),
-    ads: plan,
-    too_many: adsets.length > MAX_ADSETS || ads.length > MAX_ADS
+      promoted_object: a.promoted_object || null,
+      countries: a.targeting?.geo_locations?.countries || null })),
+    ads: ads0.map(a => ({ id: String(a.id), name: String(a.name || ''), adset: String(a.adset_id || ''),
+                          how: creativePlan(a.creative || {}, same).how })),
+    too_many: adsets0.length > MAX_ADSETS || ads0.length > MAX_ADS
       ? 'only the first ' + MAX_ADSETS + ' ad sets and ' + MAX_ADS + ' ads are copied' : undefined
   };
 
+  if (!fromSpec && body.snapshot) return reply({ ok: true, mode: 'snapshot', sample, spec });
   if (!tgt) return reply({ ok: true, mode: 'read', sample });
 
   // ── запис ──
   let T: Awaited<ReturnType<typeof tokenOf>>;
-  try { T = same ? S : await tokenOf(tgt); } catch (e) { return reply({ error: String((e as Error).message) }, 400); }
+  try { T = same && S ? S : await tokenOf(tgt); } catch (e) { return reply({ error: String((e as Error).message) }, 400); }
   if (T.scopes.length && !T.scopes.includes('ads_management'))
     return reply({ error: 'the token of cabinet ' + tgt + ' has no ads_management — it can only read' }, 400);
-  if (S.currency && T.currency && S.currency !== T.currency)
-    return reply({ error: 'different currencies (' + S.currency + ' → ' + T.currency
-      + '): a budget is a number in the cabinet’s currency, so the copy would get the wrong budget' }, 409);
+
+  let shaped: { camp: Json; adsets: Json[]; ads: Json[] };
+  let warns: string[] = [];
+  if (fromSpec) {
+    const pf = await preflight(spec, T, tgt, same);
+    if (body.check) return reply({ ok: true, mode: 'check', target_account: tgt, sample, checks: pf.checks });
+    const bad = pf.checks.filter(c => c.level === 'fail');
+    if (bad.length) return reply({ error: 'not launched: ' + bad.map(c => c.text).join('; '), checks: pf.checks }, 409);
+    shaped = shape(spec, body.overrides || {}, pf.fix, same);
+    warns = pf.checks.filter(c => c.level === 'warn').map(c => c.text);
+  } else {
+    if (S && S.currency && T.currency && S.currency !== T.currency)
+      return reply({ error: 'different currencies (' + S.currency + ' → ' + T.currency
+        + '): a budget is a number in the cabinet’s currency, so the copy would get the wrong budget' }, 409);
+    shaped = { camp: camp0, adsets: adsets0, ads: ads0 };
+  }
+  const { camp, adsets, ads } = shaped;
   if (!adsets.length) return reply({ error: 'the campaign has no ad sets — nothing to copy' }, 400);
 
   const deadline = Date.now() + DEADLINE_MS;
@@ -286,12 +422,13 @@ Deno.serve(async (req) => {
   if (sample.too_many) problems.push(sample.too_many);
 
   return reply({
-    ok: true, mode: 'copy', target_account: tgt, campaign_id: newCamp,
+    ok: true, mode: fromSpec ? 'launch' : 'copy', target_account: tgt, campaign_id: newCamp,
     name: newName || String(camp.name || ''), status: 'PAUSED',
     adsets: { made: setsMade, of: Math.min(adsets.length, MAX_ADSETS) },
     ads: { made: adsMade, of: Math.min(ads.length, MAX_ADS) },
     complete: setsMade === Math.min(adsets.length, MAX_ADSETS)
       && adsMade === Math.min(ads.length, MAX_ADS) && !timedOut,
+    warnings: warns,
     problems: problems.slice(0, 20)
   });
 });

@@ -2371,13 +2371,15 @@ window.cfGlassTip = function () {
     const wasOn = el.classList.contains('is-on');
     /* Малий графік (картки у вікні гео) — компактна підказка: велика
        на ньому закривала половину лінії. */
-    const small = !!chart.canvas.closest('.gm-canvas-box') || (chart.height || 0) < 200;
+    const small = chart !== window.chart1 && (!!chart.canvas.closest('.gm-canvas-box') || (chart.height || 0) < 200);
     el.className = 'is-on' + (mono ? ' is-mono' : '') + (small ? ' is-small' : '')
       + (wasOn && el._chart === chart ? '' : ' is-jump');
     el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
       + `<div class="gt-body">${before.map(l => `<div class="gt-row gt-thead"><span>${esc(l)}</span></div>`).join('')}${rows}</div>`
-      + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '');
+      + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '')
+      // Події цього дня на головному графіку (chartev.js).
+      + (typeof ceTipHtml === 'function' ? ceTipHtml(chart, tooltip) : '');
     /* Позиція: біля точки, праворуч; не влазить — ліворуч; і завжди в
        межах вікна. Сторінка має zoom на body, тож координати ділимо
        на нього — інакше підказка з'їжджала б від курсора. */

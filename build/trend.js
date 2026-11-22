@@ -330,16 +330,21 @@ function renderTrend(data) {
     });
   }
 
+  // Події під датами (chartev.js): рейка внизу, лінії, блок у тултіпі.
+  const ceOn = !!window.ceRail && (typeof ceView !== 'function' || ceView().on);
   window.chart1 = new Chart(ctx, {
     type: isBar ? 'bar' : 'line',
-    plugins: [cfCrosshair],
+    plugins: window.ceRail ? [cfCrosshair, window.ceRail] : [cfCrosshair],
     data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
-      layout: { padding: { top: 18, bottom: 0, left: padL, right: padR } },
+      layout: { padding: { top: 18, bottom: ceOn ? 26 : 0, left: padL, right: padR } },
+      onClick: (e, els, ch) => { if (window.ceClick) ceClick(e, ch); },
+      onHover: (e, els, ch) => { if (window.ceHover) ceHover(e, ch); },
       plugins: {
+        ceRail: { days: sd },
         legend: {
           position: 'top',
           align: 'end',
@@ -436,4 +441,6 @@ function renderTrend(data) {
       }
     }
   });
+  window.chart1.$ceData = data;
+  if (window.ceAttach) ceAttach(window.chart1, data);
 }
