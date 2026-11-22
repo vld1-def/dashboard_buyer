@@ -2401,7 +2401,17 @@ window.cfGlassTip = function () {
   };
   // Курсор пішов з графіка або сторінку гортають — підказку ховаємо.
   const hide = () => { const el = document.getElementById('cf-glass-tip'); if (el) el.classList.remove('is-on'); };
-  window.addEventListener('scroll', hide, true);
+  /* Ховаємо лише коли їде сама сторінка або блок, у якому графік.
+     Сусідня прокрутка — не привід: у Creative Analyzer наведення на
+     графік саме прокручує таблицю днів під ним, і тултіп зникав, щойно
+     з'явившись. */
+  window.addEventListener('scroll', e => {
+    const el = document.getElementById('cf-glass-tip');
+    const cv = el && el._chart && el._chart.canvas;
+    const t = e.target;
+    if (!cv || t === document || t === document.documentElement || t === document.body
+        || (t && t.contains && t.contains(cv))) hide();
+  }, true);
   document.addEventListener('pointerdown', e => { if (!(e.target && e.target.tagName === 'CANVAS')) hide(); }, true);
 };
 if (typeof Chart !== 'undefined') cfGlassTip();
