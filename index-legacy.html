@@ -2257,6 +2257,30 @@ window.cfLib = function () {
    callbacks/filter, а вигляд бере звідси. Рядки й заголовок — ті самі,
    що дав би Chart.js; моноширинне тіло там, де графік його просить
    (стовпці в гео-підказці тримаються пробілами). */
+/* ІКОНКИ ЗАМІСТЬ СМАЙЛИКІВ. Емодзі в кожній ОС малюються по-своєму (а у
+   Windows частина — пласкими літерами). Тут — ті самі лінійні іконки,
+   вбудованим SVG: нічого не вантажиться, рядок у тултіпі не міняється
+   (callbacks і далі пишуть «💰 Spend»), заміну робить сам тултіп. */
+const CF_TIP_ICON = (() => {
+  const svg = (d, c) => `<svg class="gt-ic" style="color:${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  return {
+    '📍': svg('<path d="M20 10c0 5-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 15 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>', '#f87171'),
+    '💰': svg('<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>', '#a78bfa'),
+    '🏦': svg('<path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M12 2 20 7H4z"/>', '#38bdf8'),
+    '📈': svg('<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>', '#4ade80'),
+    '📲': svg('<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/>', '#f472b6'),
+    '📝': svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/>', '#fbbf24'),
+    '🎯': svg('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>', '#34d399'),
+    '💵': svg('<path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z"/><circle cx="7.5" cy="7.5" r="1"/>', '#94a3b8')
+  };
+})();
+const CF_TIP_RE = new RegExp(Object.keys(CF_TIP_ICON).join('|'), 'gu');
+/* Мінус у профіті — іконка червона і дивиться вниз. */
+const cfTipIcons = line => line.replace(CF_TIP_RE, (m, at, str) => {
+  if (m === '📈' && /Net Profit:\s*[−-]/.test(str)) return CF_TIP_ICON[m].replace('#4ade80', '#f87171').replace('class="gt-ic"', 'class="gt-ic is-down"');
+  return CF_TIP_ICON[m];
+});
+
 window.cfGlassTip = function () {
   if (typeof Chart === 'undefined' || Chart.__glass) return;
   Chart.__glass = true;
@@ -2265,6 +2289,10 @@ window.cfGlassTip = function () {
   Chart.defaults.font.weight = '600';
   const t = Chart.defaults.plugins.tooltip;
   t.enabled = false;
+  /* Своя анімація тултіпа в Chart.js рухає caretX кадр за кадром, а
+     external чує лише перший кадр — тобто стару позицію. Вимикаємо її:
+     координати приходять одразу кінцеві, а плавність дає CSS. */
+  t.animation = false;
   t.external = function (ctx) {
     const { chart, tooltip } = ctx;
     let el = document.getElementById('cf-glass-tip');
@@ -2284,11 +2312,13 @@ window.cfGlassTip = function () {
       if (!lines.length) return;
       const col = (tooltip.labelColors || [])[i];
       const dot = showDots && col ? `<i class="gt-dot" style="background:${esc(col.backgroundColor || col.borderColor)}"></i>` : '';
-      rows += lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${esc(l)}</span></div>`).join('');
+      rows += lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${cfTipIcons(esc(l))}</span></div>`).join('');
     });
     const foot = (tooltip.footer || []).filter(Boolean);
     if (!title.length && !rows) { el.classList.remove('is-on'); return; }
-    el.className = 'is-on' + (mono ? ' is-mono' : '');
+    const wasOn = el.classList.contains('is-on');
+    el.className = 'is-on' + (mono ? ' is-mono' : '') + (wasOn && el._chart === chart ? '' : ' is-jump');
+    el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
       + `<div class="gt-body">${rows}</div>`
       + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '');
@@ -2299,12 +2329,17 @@ window.cfGlassTip = function () {
     const r = chart.canvas.getBoundingClientRect();
     const w = el.offsetWidth, h = el.offsetHeight;
     const vw = window.innerWidth / z, vh = window.innerHeight / z;
-    let x = r.left / z + tooltip.caretX + 14, y = r.top / z + tooltip.caretY - h / 2;
-    if (x + w > vw - 8) x = r.left / z + tooltip.caretX - w - 14;
+    /* ПЛАВНО, А НЕ СТРИБКАМИ. По висоті тултіп не скаче за точками: він
+       тримається верху області графіка, а від дати до дати їде лише
+       вбік — і їде, а не перескакує (transform з переходом у CSS).
+       Перша поява чи інший графік — ставимо одразу, без польоту з кута. */
+    const top = (chart.chartArea ? chart.chartArea.top : 0) + 6;
+    let x = r.left / z + tooltip.caretX + 16, y = r.top / z + top;
+    if (x + w > vw - 8) x = r.left / z + tooltip.caretX - w - 16;
     x = Math.max(8, Math.min(vw - w - 8, x));
     y = Math.max(8, Math.min(vh - h - 8, y));
-    el.style.left = x + 'px';
-    el.style.top = y + 'px';
+    el.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+    if (el.classList.contains('is-jump')) requestAnimationFrame(() => el.classList.remove('is-jump'));
   };
   // Курсор пішов з графіка або сторінку гортають — підказку ховаємо.
   const hide = () => { const el = document.getElementById('cf-glass-tip'); if (el) el.classList.remove('is-on'); };
