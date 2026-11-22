@@ -116,8 +116,18 @@ ok('і каже, що саме ховає рядки', /\(live\) is hiding them/
 /* Смуга з Clear мусить лишитись: порожнім екран став саме через
    вибір, і прибрати разом із рядками єдину кнопку, якою його
    знімають, означало б зачинити двері зсередини. */
+/* Смуга тепер плаваюча (внизу екрана), а не рядок над деревом — тож
+   перевіряємо її саму: вона на місці, з лічильником і Clear. */
+const floatBar = () => page.evaluate(async () => {
+  if (!cdAcc) cdAcc = 'act_test';
+  cdMarkFloat();
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const el = document.getElementById('cd-mkfloat');
+  return el && el.classList.contains('is-on') ? el.innerText.replace(/\s+/g, ' ') : '';
+});
+const emptyBar = await floatBar();
 ok('смуга вибору лишається на порожньому екрані',
-  /picked/.test(empty.bar) && /Clear/.test(empty.bar), empty.bar);
+  /picked/i.test(emptyBar) && /clear/i.test(emptyBar), emptyBar);
 
 /* ── 8. те саме для порожнього фільтра без вибору ── */
 const dead = await view(['a1'], { flat: true, filt: 'spend' });
@@ -129,7 +139,8 @@ const none = await page.evaluate(rows => {
   const v = cdView();
   return { msg: v.msg || '', bar: String(v.bar || '').replace(/\s+/g, ' ').trim() };
 }, ROWS);
+const noneBar = await floatBar();
 ok('і на його порожнечі смуга вибору теж лишається',
-  /picked/.test(none.bar) && /Nothing is live here/.test(none.msg), none);
+  /picked/i.test(noneBar) && /Nothing is live here/.test(none.msg), { none, noneBar });
 
 await done(browser, srv, errs);

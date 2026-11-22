@@ -334,11 +334,35 @@ let cdFilt = (() => {
    ж секунди стає чужим об'єктом. */
 let cdMarked = new Set();
 
+/* ГАЛОЧКА — МИТТЄВО. «коли вибираю кампанію, воно секунду думає, і
+   тоді вже зверху 1 picked». Доти кожна галочка перемальовувала всю
+   таблицю FB LIVE з усім деревом — на великому парку це й була та
+   секунда. Тепер галочка міняє лише свій рядок і плаваючу смугу дії.
+   Повна перемальовка лишається тільки там, де вибір справді міняє
+   список: у режимі «лише оголошення» вибрана кампанія чи адсет звужує
+   показане (cdScope). */
 window.cdMark = function (id, on) {
+  const before = cdFlat ? cdScopeWords() : '';
   if (on) cdMarked.add(String(id)); else cdMarked.delete(String(id));
-  cdPaint();
+  if (cdFlat && cdScopeWords() !== before) return cdPaint();
+  const sel = 'input.cd-mk[onchange*="cdMark(\'' + String(id).replace(/["\\]/g, '') + '\'"]';
+  document.querySelectorAll(sel).forEach(b => {
+    b.checked = !!on;
+    const tr = b.closest('tr');
+    if (tr) tr.classList.toggle('is-mk', !!on);
+  });
+  cdMarkFloat();
 };
-window.cdMarkClear = function () { cdMarked = new Set(); cdPaint(); };
+window.cdMarkClear = function () {
+  const scoped = cdFlat && cdScopeWords();
+  cdMarked = new Set();
+  if (scoped) return cdPaint();
+  document.querySelectorAll('#cab-list tr.cd-r.is-mk').forEach(tr => {
+    tr.classList.remove('is-mk');
+    const b = tr.querySelector('input.cd-mk'); if (b) b.checked = false;
+  });
+  cdMarkFloat();
+};
 
 window.cdSetFilt = function (key) {
   cdFilt = (key === 'live' || key === 'spend') ? key : '';
@@ -652,6 +676,7 @@ window.cdHide = function () {
      пастка: смуги дії на екрані немає, людина про них не памʼятає, а
      наступний «Switch off» вимкне те, чого вона зараз не бачить. */
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set();
+  cdMarkFloat();
   /* Відкрите око не переживає закриття: інакше показаний домен
      дочекався б наступної людини за цим екраном. */
   cdEyed = new Set();
@@ -679,7 +704,7 @@ async function cdLoad(account) {
      взагалі. */
   const id = String(account || '').trim();
   if (!id) return cdHide();
-  if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set(); }
+  if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set(); cdMarkFloat(); }
   cdAcc = id;
   cdBtnSync();
   cdPaint();
@@ -1391,9 +1416,31 @@ function cdPaint() {
 
 /* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
    нулем вибраних забирає висоту й нічого не каже. */
+/* СМУГА ДІЇ — ПЛАВАЮЧА, ВНИЗУ ЕКРАНА. «і можливо десь краще це
+   перенести?» Над деревом її не було видно, щойно вибирали щось нижче
+   першого екрана: галочку ставиш унизу, а «Switch off» десь угорі.
+   Тепер вона виїжджає знизу по центру й лишається на місці, хоч як
+   гортай. У дереві під неї більше нічого не малюємо. */
 function cdMarkBar() {
-  const n = cdMarked.size;
-  if (!n) return '';
+  Promise.resolve().then(cdMarkFloat);
+  return '';
+}
+function cdMarkFloat() {
+  let el = document.getElementById('cd-mkfloat');
+  const n = cdAcc ? cdMarked.size : 0;
+  if (!el) {
+    if (!n) return;
+    el = document.createElement('div');
+    el.id = 'cd-mkfloat';
+    document.body.appendChild(el);
+  }
+  if (!n) { el.classList.remove('is-on'); return; }
+  el.innerHTML = cdMarkBarHtml(n);
+  // Наступний кадр — щоб перехід спрацював і на першій появі.
+  // Перевіряємо ще раз: за цей кадр вибір могли зняти або дерево закрити.
+  requestAnimationFrame(() => { if (cdAcc && cdMarked.size) el.classList.add('is-on'); });
+}
+function cdMarkBarHtml(n) {
   return `<div class="cd-mkbar">
       <span class="cd-mkn">${n} picked</span>
       <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}

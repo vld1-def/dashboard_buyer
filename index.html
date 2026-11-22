@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 20.11 22:09">
+  <meta name="build" content="build 22.11 19:03">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7939,6 +7939,52 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
 .tb-item-t { flex: 0 0 auto; font-family: ui-monospace, monospace; }
 .tb-item-x { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) { #toast-box { right: 10px; left: 10px; width: auto; bottom: 92px; } }
+
+/* ── Тултіп графіків: рідке скло (index-legacy.html, cfGlassTip) ── */
+#cf-glass-tip {
+  position: fixed; left: 0; top: 0; z-index: 99990; pointer-events: none;
+  min-width: 140px; max-width: min(420px, calc(100vw - 16px));
+  padding: 11px 14px 12px; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(255,255,255,.16), rgba(255,255,255,.03) 55%, rgba(255,255,255,.09)), rgba(14,14,22,.5);
+  -webkit-backdrop-filter: blur(18px) saturate(180%); backdrop-filter: blur(18px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 18px 40px -12px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(255,255,255,.05);
+  color: #f8fafc; font-family: inherit;
+  opacity: 0; transform: translateY(4px) scale(.98);
+  transition: opacity .12s ease, transform .12s ease, left .08s ease-out, top .08s ease-out;
+}
+#cf-glass-tip.is-on { opacity: 1; transform: none; }
+#cf-glass-tip .gt-title {
+  font-size: 12.5px; font-weight: 900; letter-spacing: .01em; margin-bottom: 6px;
+  padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.12);
+}
+#cf-glass-tip .gt-body { display: flex; flex-direction: column; gap: 3px; }
+#cf-glass-tip .gt-row { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; line-height: 1.45; white-space: pre; }
+#cf-glass-tip.is-mono .gt-row { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; font-weight: 600; }
+#cf-glass-tip .gt-dot { width: 8px; height: 8px; border-radius: 3px; flex: 0 0 auto; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+#cf-glass-tip .gt-dot.is-gap { visibility: hidden; }
+#cf-glass-tip .gt-foot { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.12); font-size: 11px; font-weight: 800; color: rgba(248,250,252,.75); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #cf-glass-tip { background: rgba(20,20,28,.94); }
+}
+
+/* Плаваюча смуга вибору в дереві FB LIVE (cdMarkFloat). Знизу по центру,
+   над доком; виїжджає плавно. */
+#cd-mkfloat {
+  position: fixed; left: 50%; bottom: 104px; z-index: 9990;
+  transform: translate(-50%, 16px); opacity: 0; pointer-events: none;
+  transition: transform .18s cubic-bezier(.2,.8,.2,1), opacity .15s ease;
+}
+#cd-mkfloat.is-on { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+#cd-mkfloat .cd-mkbar {
+  margin: 0; padding: 8px 10px 8px 14px; gap: 8px; flex-wrap: nowrap; border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.04)), rgba(16,16,24,.72);
+  -webkit-backdrop-filter: blur(16px) saturate(170%); backdrop-filter: blur(16px) saturate(170%);
+  border: 1px solid rgba(255,255,255,.16);
+  box-shadow: 0 18px 40px -14px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.22);
+}
+#cd-mkfloat .cd-mkn { font-size: 11px; white-space: nowrap; }
+@media (max-width: 760px) { #cd-mkfloat { bottom: 92px; max-width: calc(100vw - 20px); } }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8198,7 +8244,7 @@ tr:hover .cd-copy, .cd-copy:focus-visible { opacity: 1; }
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 20.11 22:09</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 19:03</div>
     </div>
   </aside>
 
@@ -9886,6 +9932,7 @@ window.cfLib = function () {
   cfLibP = (async () => {
     for (const src of CF_LIB) await cfScript(src);
     Chart.register(ChartDataLabels);
+    cfGlassTip();
     cfLibOk = true;
     return true;
   })();
@@ -9894,6 +9941,70 @@ window.cfLib = function () {
   cfLibP.catch(() => { cfLibP = null; });
   return cfLibP;
 };
+
+/* ТУЛТІП ГРАФІКІВ — РІДКЕ СКЛО. «тултіп в графіках хочу в стилі рідкого
+   скла, і трішки шрифти змінити, десь жирніший текст». Canvas не вміє
+   розмивати те, що під ним, тож підказку малюємо HTML-блоком поверх
+   графіка (external) з backdrop-filter, а свою, намальовану, вимикаємо.
+   Ставиться ОДИН раз у Chart.defaults: кожен графік і далі задає свої
+   callbacks/filter, а вигляд бере звідси. Рядки й заголовок — ті самі,
+   що дав би Chart.js; моноширинне тіло там, де графік його просить
+   (стовпці в гео-підказці тримаються пробілами). */
+window.cfGlassTip = function () {
+  if (typeof Chart === 'undefined' || Chart.__glass) return;
+  Chart.__glass = true;
+  // Підписи осей і легенди — шрифтом сторінки й жирніше за типовий.
+  try { Chart.defaults.font.family = getComputedStyle(document.body).fontFamily || Chart.defaults.font.family; } catch (e) {}
+  Chart.defaults.font.weight = '600';
+  const t = Chart.defaults.plugins.tooltip;
+  t.enabled = false;
+  t.external = function (ctx) {
+    const { chart, tooltip } = ctx;
+    let el = document.getElementById('cf-glass-tip');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'cf-glass-tip';
+      document.body.appendChild(el);
+    }
+    if (!tooltip || tooltip.opacity === 0 || !chart.canvas.isConnected) { el.classList.remove('is-on'); return; }
+    const esc = v => String(v == null ? '' : v).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const mono = /mono|menlo|consolas/i.test(String((tooltip.options.bodyFont || {}).family || ''));
+    const showDots = tooltip.options.displayColors !== false;
+    const title = (tooltip.title || []).filter(x => x !== '' && x != null);
+    let rows = '';
+    (tooltip.body || []).forEach((b, i) => {
+      const lines = [].concat(b.before || [], b.lines || [], b.after || []).filter(x => x !== '' && x != null);
+      if (!lines.length) return;
+      const col = (tooltip.labelColors || [])[i];
+      const dot = showDots && col ? `<i class="gt-dot" style="background:${esc(col.backgroundColor || col.borderColor)}"></i>` : '';
+      rows += lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${esc(l)}</span></div>`).join('');
+    });
+    const foot = (tooltip.footer || []).filter(Boolean);
+    if (!title.length && !rows) { el.classList.remove('is-on'); return; }
+    el.className = 'is-on' + (mono ? ' is-mono' : '');
+    el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
+      + `<div class="gt-body">${rows}</div>`
+      + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '');
+    /* Позиція: біля точки, праворуч; не влазить — ліворуч; і завжди в
+       межах вікна. Сторінка має zoom на body, тож координати ділимо
+       на нього — інакше підказка з'їжджала б від курсора. */
+    const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    const r = chart.canvas.getBoundingClientRect();
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const vw = window.innerWidth / z, vh = window.innerHeight / z;
+    let x = r.left / z + tooltip.caretX + 14, y = r.top / z + tooltip.caretY - h / 2;
+    if (x + w > vw - 8) x = r.left / z + tooltip.caretX - w - 14;
+    x = Math.max(8, Math.min(vw - w - 8, x));
+    y = Math.max(8, Math.min(vh - h - 8, y));
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+  };
+  // Курсор пішов з графіка або сторінку гортають — підказку ховаємо.
+  const hide = () => { const el = document.getElementById('cf-glass-tip'); if (el) el.classList.remove('is-on'); };
+  window.addEventListener('scroll', hide, true);
+  document.addEventListener('pointerdown', e => { if (!(e.target && e.target.tagName === 'CANVAS')) hide(); }, true);
+};
+if (typeof Chart !== 'undefined') cfGlassTip();
 
 /* Сказати на місці графіка, чому його немає. Порожня рамка читається
    як «даних немає», а це зовсім інша новина. */
@@ -37535,11 +37646,35 @@ let cdFilt = (() => {
    ж секунди стає чужим об'єктом. */
 let cdMarked = new Set();
 
+/* ГАЛОЧКА — МИТТЄВО. «коли вибираю кампанію, воно секунду думає, і
+   тоді вже зверху 1 picked». Доти кожна галочка перемальовувала всю
+   таблицю FB LIVE з усім деревом — на великому парку це й була та
+   секунда. Тепер галочка міняє лише свій рядок і плаваючу смугу дії.
+   Повна перемальовка лишається тільки там, де вибір справді міняє
+   список: у режимі «лише оголошення» вибрана кампанія чи адсет звужує
+   показане (cdScope). */
 window.cdMark = function (id, on) {
+  const before = cdFlat ? cdScopeWords() : '';
   if (on) cdMarked.add(String(id)); else cdMarked.delete(String(id));
-  cdPaint();
+  if (cdFlat && cdScopeWords() !== before) return cdPaint();
+  const sel = 'input.cd-mk[onchange*="cdMark(\'' + String(id).replace(/["\\]/g, '') + '\'"]';
+  document.querySelectorAll(sel).forEach(b => {
+    b.checked = !!on;
+    const tr = b.closest('tr');
+    if (tr) tr.classList.toggle('is-mk', !!on);
+  });
+  cdMarkFloat();
 };
-window.cdMarkClear = function () { cdMarked = new Set(); cdPaint(); };
+window.cdMarkClear = function () {
+  const scoped = cdFlat && cdScopeWords();
+  cdMarked = new Set();
+  if (scoped) return cdPaint();
+  document.querySelectorAll('#cab-list tr.cd-r.is-mk').forEach(tr => {
+    tr.classList.remove('is-mk');
+    const b = tr.querySelector('input.cd-mk'); if (b) b.checked = false;
+  });
+  cdMarkFloat();
+};
 
 window.cdSetFilt = function (key) {
   cdFilt = (key === 'live' || key === 'spend') ? key : '';
@@ -37853,6 +37988,7 @@ window.cdHide = function () {
      пастка: смуги дії на екрані немає, людина про них не памʼятає, а
      наступний «Switch off» вимкне те, чого вона зараз не бачить. */
   cdAcc = ''; cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set();
+  cdMarkFloat();
   /* Відкрите око не переживає закриття: інакше показаний домен
      дочекався б наступної людини за цим екраном. */
   cdEyed = new Set();
@@ -37880,7 +38016,7 @@ async function cdLoad(account) {
      взагалі. */
   const id = String(account || '').trim();
   if (!id) return cdHide();
-  if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set(); }
+  if (id !== cdAcc) { cdRows = []; cdErr = ''; cdOpenIds = new Set(); cdMarked = new Set(); cdMarkFloat(); }
   cdAcc = id;
   cdBtnSync();
   cdPaint();
@@ -38592,9 +38728,31 @@ function cdPaint() {
 
 /* Смуга дії. Зʼявляється лише коли щось вибрано: постійна смуга з
    нулем вибраних забирає висоту й нічого не каже. */
+/* СМУГА ДІЇ — ПЛАВАЮЧА, ВНИЗУ ЕКРАНА. «і можливо десь краще це
+   перенести?» Над деревом її не було видно, щойно вибирали щось нижче
+   першого екрана: галочку ставиш унизу, а «Switch off» десь угорі.
+   Тепер вона виїжджає знизу по центру й лишається на місці, хоч як
+   гортай. У дереві під неї більше нічого не малюємо. */
 function cdMarkBar() {
-  const n = cdMarked.size;
-  if (!n) return '';
+  Promise.resolve().then(cdMarkFloat);
+  return '';
+}
+function cdMarkFloat() {
+  let el = document.getElementById('cd-mkfloat');
+  const n = cdAcc ? cdMarked.size : 0;
+  if (!el) {
+    if (!n) return;
+    el = document.createElement('div');
+    el.id = 'cd-mkfloat';
+    document.body.appendChild(el);
+  }
+  if (!n) { el.classList.remove('is-on'); return; }
+  el.innerHTML = cdMarkBarHtml(n);
+  // Наступний кадр — щоб перехід спрацював і на першій появі.
+  // Перевіряємо ще раз: за цей кадр вибір могли зняти або дерево закрити.
+  requestAnimationFrame(() => { if (cdAcc && cdMarked.size) el.classList.add('is-on'); });
+}
+function cdMarkBarHtml(n) {
   return `<div class="cd-mkbar">
       <span class="cd-mkn">${n} picked</span>
       <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}

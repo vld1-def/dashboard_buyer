@@ -2239,6 +2239,7 @@ window.cfLib = function () {
   cfLibP = (async () => {
     for (const src of CF_LIB) await cfScript(src);
     Chart.register(ChartDataLabels);
+    cfGlassTip();
     cfLibOk = true;
     return true;
   })();
@@ -2247,6 +2248,70 @@ window.cfLib = function () {
   cfLibP.catch(() => { cfLibP = null; });
   return cfLibP;
 };
+
+/* ТУЛТІП ГРАФІКІВ — РІДКЕ СКЛО. «тултіп в графіках хочу в стилі рідкого
+   скла, і трішки шрифти змінити, десь жирніший текст». Canvas не вміє
+   розмивати те, що під ним, тож підказку малюємо HTML-блоком поверх
+   графіка (external) з backdrop-filter, а свою, намальовану, вимикаємо.
+   Ставиться ОДИН раз у Chart.defaults: кожен графік і далі задає свої
+   callbacks/filter, а вигляд бере звідси. Рядки й заголовок — ті самі,
+   що дав би Chart.js; моноширинне тіло там, де графік його просить
+   (стовпці в гео-підказці тримаються пробілами). */
+window.cfGlassTip = function () {
+  if (typeof Chart === 'undefined' || Chart.__glass) return;
+  Chart.__glass = true;
+  // Підписи осей і легенди — шрифтом сторінки й жирніше за типовий.
+  try { Chart.defaults.font.family = getComputedStyle(document.body).fontFamily || Chart.defaults.font.family; } catch (e) {}
+  Chart.defaults.font.weight = '600';
+  const t = Chart.defaults.plugins.tooltip;
+  t.enabled = false;
+  t.external = function (ctx) {
+    const { chart, tooltip } = ctx;
+    let el = document.getElementById('cf-glass-tip');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'cf-glass-tip';
+      document.body.appendChild(el);
+    }
+    if (!tooltip || tooltip.opacity === 0 || !chart.canvas.isConnected) { el.classList.remove('is-on'); return; }
+    const esc = v => String(v == null ? '' : v).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const mono = /mono|menlo|consolas/i.test(String((tooltip.options.bodyFont || {}).family || ''));
+    const showDots = tooltip.options.displayColors !== false;
+    const title = (tooltip.title || []).filter(x => x !== '' && x != null);
+    let rows = '';
+    (tooltip.body || []).forEach((b, i) => {
+      const lines = [].concat(b.before || [], b.lines || [], b.after || []).filter(x => x !== '' && x != null);
+      if (!lines.length) return;
+      const col = (tooltip.labelColors || [])[i];
+      const dot = showDots && col ? `<i class="gt-dot" style="background:${esc(col.backgroundColor || col.borderColor)}"></i>` : '';
+      rows += lines.map((l, k) => `<div class="gt-row">${k === 0 ? dot : (dot ? '<i class="gt-dot is-gap"></i>' : '')}<span>${esc(l)}</span></div>`).join('');
+    });
+    const foot = (tooltip.footer || []).filter(Boolean);
+    if (!title.length && !rows) { el.classList.remove('is-on'); return; }
+    el.className = 'is-on' + (mono ? ' is-mono' : '');
+    el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
+      + `<div class="gt-body">${rows}</div>`
+      + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '');
+    /* Позиція: біля точки, праворуч; не влазить — ліворуч; і завжди в
+       межах вікна. Сторінка має zoom на body, тож координати ділимо
+       на нього — інакше підказка з'їжджала б від курсора. */
+    const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    const r = chart.canvas.getBoundingClientRect();
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const vw = window.innerWidth / z, vh = window.innerHeight / z;
+    let x = r.left / z + tooltip.caretX + 14, y = r.top / z + tooltip.caretY - h / 2;
+    if (x + w > vw - 8) x = r.left / z + tooltip.caretX - w - 14;
+    x = Math.max(8, Math.min(vw - w - 8, x));
+    y = Math.max(8, Math.min(vh - h - 8, y));
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+  };
+  // Курсор пішов з графіка або сторінку гортають — підказку ховаємо.
+  const hide = () => { const el = document.getElementById('cf-glass-tip'); if (el) el.classList.remove('is-on'); };
+  window.addEventListener('scroll', hide, true);
+  document.addEventListener('pointerdown', e => { if (!(e.target && e.target.tagName === 'CANVAS')) hide(); }, true);
+};
+if (typeof Chart !== 'undefined') cfGlassTip();
 
 /* Сказати на місці графіка, чому його немає. Порожня рамка читається
    як «даних немає», а це зовсім інша новина. */
