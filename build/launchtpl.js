@@ -246,16 +246,18 @@ function ltPaintLaunch() {
       <button type="button" class="lt-back-btn" onclick="ltPaintList()" ${ltBusy ? 'disabled' : ''}>← Templates</button>
       <h3>${ltFlag(r.geo)} ${ltEsc(r.name)}</h3>
       <p>${s.sets} ad set${s.sets === 1 ? '' : 's'} · ${s.ads} ad${s.ads === 1 ? '' : 's'}${s.budget ? ' · ' + ltEsc(s.budget) + '/day' : ''}${s.cur ? ' · ' + ltEsc(s.cur) : ''} · everything is created <b>paused</b></p></div>
-      <button type="button" class="lt-x" onclick="ltClose()" title="Close (Esc)" ${ltBusy ? 'disabled' : ''}>×</button></div>
+      <div class="lt-head-r">
+        <button type="button" class="lt-x" onclick="ltClose()" title="Close (Esc)" ${ltBusy ? 'disabled' : ''}>×</button>
+        <input class="lt-search" placeholder="Search cabinet…" value="${ltEsc(ltCur.q)}" oninput="ltCur.q=this.value;ltPaintLaunch();document.querySelector('.lt-search').focus();document.querySelector('.lt-search').setSelectionRange(this.value.length,this.value.length)">
+      </div></div>
     <div class="lt-form">
       <label><span>Campaign name</span><input id="lt-f-name" value="${ltEsc(ltCur.name)}" oninput="ltCur.name=this.value"></label>
-      <label><span>Budget / day${s.cbo ? ' (campaign)' : ' (each ad set)'}</span><input id="lt-f-budget" inputmode="decimal" value="${ltEsc(ltCur.budget)}" oninput="ltCur.budget=this.value" placeholder="as in template"></label>
+      <label title="Daily budget${s.cbo ? ' of the campaign' : ' of each ad set'}"><span>Budget / day</span><input id="lt-f-budget" inputmode="decimal" value="${ltEsc(ltCur.budget)}" oninput="ltCur.budget=this.value" placeholder="as in template"></label>
       <label><span>Countries</span><input id="lt-f-geo" value="${ltEsc(ltCur.countries)}" oninput="ltCur.countries=this.value" placeholder="as in template"></label>
-      <label class="lt-f-start"><span>Start · your time</span><input id="lt-f-start" type="datetime-local" value="${ltEsc(ltCur.start || '')}"
+      <label class="lt-f-start"><span>Start (your time)</span><input id="lt-f-start" type="datetime-local" value="${ltEsc(ltCur.start || '')}"
         oninput="ltCur.start=this.value" title="When the ad sets may start. Empty — as soon as you switch them on. Set it here: after publishing Facebook does not let you change it"></label>
     </div>
-    <div class="lt-pick-h"><span>Cabinets · ${picked.length} picked</span>
-      <input class="lt-search" placeholder="Search cabinet…" value="${ltEsc(ltCur.q)}" oninput="ltCur.q=this.value;ltPaintLaunch();document.querySelector('.lt-search').focus();document.querySelector('.lt-search').setSelectionRange(this.value.length,this.value.length)"></div>
+    <div class="lt-pick-h"><span>Cabinets · ${picked.length} picked</span></div>
     <div class="lt-cabs">${shown.length ? shown.map(t => `
       <div class="lt-cab${ltCur.picked.has(t.id) ? ' is-on' : ''}">
         <label class="lt-cab-row"><input type="checkbox" ${ltCur.picked.has(t.id) ? 'checked' : ''} ${ltBusy ? 'disabled' : ''} onchange="ltPick('${t.id}', this.checked)">
