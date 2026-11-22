@@ -77,4 +77,8 @@ ok('лічильник запусків оновлено', after.upd.some(u => u
 await page.evaluate(() => { ltCur.budget = '20'; ltCur.countries = 'KG'; });
 ok('без змін — перекриттів немає', await page.evaluate(() => JSON.stringify(ltOverrides()) === '{}'));
 
+const stt = await page.evaluate(() => { ltCur.start = '2030-05-01T09:30'; const o = ltOverrides(); ltCur.start = '';
+  return { o, field: !!document.getElementById('lt-f-start') }; });
+ok("поле Start є, і старт іде у перекриття точною миттю", stt.field && stt.o.start_time === new Date("2030-05-01T09:30").toISOString(), stt);
+
 await done(browser, srv, errs);

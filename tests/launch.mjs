@@ -224,6 +224,13 @@ ok('піксель підмінено власним пікселем кабін
 ok('попередження повернуто людині', (go.body.warnings || []).some(w => /Own px/.test(w)), go.body);
 ok('сам знімок не зіпсовано підміною', SPEC.adsets[0].promoted_object.pixel_id === '5' && SPEC.adsets[0].targeting.custom_audiences.length === 1);
 
+const fut = new Date(Date.now() + 3 * 864e5).toISOString();
+const st = await run({ body: { spec: SPEC, target_account: '222', overrides: { start_time: fut } }, lists: LISTS_OK });
+ok('Start date: старт іде в кожен адсет', st.posts.filter(x => x.path === '/act_222/adsets').every(x => x.p.start_time === fut), st.posts.map(x => x.p.start_time));
+const st0 = await run({ body: { spec: SPEC, target_account: '222' }, lists: LISTS_OK });
+ok('без Start — старту немає', st0.posts.filter(x => x.path === '/act_222/adsets').every(x => !('start_time' in x.p)));
+const stPast = await run({ body: { spec: SPEC, target_account: '222', overrides: { start_time: '2020-01-01T00:00:00Z' } }, lists: LISTS_OK });
+ok('старт у минулому не відправляється', stPast.posts.filter(x => x.path === '/act_222/adsets').every(x => !('start_time' in x.p)));
 const nocbo = JSON.parse(JSON.stringify(SPEC)); delete nocbo.campaign.daily_budget;
 const go2 = await run({ body: { spec: nocbo, target_account: '222', overrides: { daily_budget: 12.5 } }, lists: LISTS_OK });
 ok('без бюджету на кампанії — бюджет іде в кожен адсет', !('daily_budget' in go2.posts[0].p)

@@ -251,6 +251,8 @@ function ltPaintLaunch() {
       <label><span>Campaign name</span><input id="lt-f-name" value="${ltEsc(ltCur.name)}" oninput="ltCur.name=this.value"></label>
       <label><span>Budget / day${s.cbo ? ' (campaign)' : ' (each ad set)'}</span><input id="lt-f-budget" inputmode="decimal" value="${ltEsc(ltCur.budget)}" oninput="ltCur.budget=this.value" placeholder="as in template"></label>
       <label><span>Countries</span><input id="lt-f-geo" value="${ltEsc(ltCur.countries)}" oninput="ltCur.countries=this.value" placeholder="as in template"></label>
+      <label class="lt-f-start"><span>Start · your time</span><input id="lt-f-start" type="datetime-local" value="${ltEsc(ltCur.start || '')}"
+        oninput="ltCur.start=this.value" title="When the ad sets may start. Empty — as soon as you switch them on. Set it here: after publishing Facebook does not let you change it"></label>
     </div>
     <div class="lt-pick-h"><span>Cabinets · ${picked.length} picked</span>
       <input class="lt-search" placeholder="Search cabinet…" value="${ltEsc(ltCur.q)}" oninput="ltCur.q=this.value;ltPaintLaunch();document.querySelector('.lt-search').focus();document.querySelector('.lt-search').setSelectionRange(this.value.length,this.value.length)"></div>
@@ -281,6 +283,9 @@ function ltOverrides() {
   const o = {};
   if (b > 0 && Math.abs(b - s.budgetVal) > 0.004) o.daily_budget = b;
   if (countries.length && countries.join(',') !== s.countries.join(',')) o.countries = countries;
+  /* «Schedule, Start date — бо міняти не можу, кампанія опублікована».
+     Час із поля — у поясі браузера; у Facebook іде точна мить (ISO). */
+  if (ltCur.start) { const t = new Date(ltCur.start); if (!isNaN(t)) o.start_time = t.toISOString(); }
   return o;
 }
 
@@ -305,7 +310,8 @@ window.ltLaunch = async function () {
   const ids = [...ltCur.picked];
   const name = String(ltCur.name || '').trim() || ltCur.r.name;
   const ov = ltOverrides();
-  const extra = [ov.daily_budget ? 'budget ' + ov.daily_budget + '/day' : '', ov.countries ? 'countries ' + ov.countries.join(', ') : ''].filter(Boolean).join(', ');
+  const extra = [ov.daily_budget ? 'budget ' + ov.daily_budget + '/day' : '', ov.countries ? 'countries ' + ov.countries.join(', ') : '',
+    ov.start_time ? 'start ' + new Date(ov.start_time).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(', ');
   if (!await ask({ title: 'Launch paused?', ok: 'Launch paused',
     body: '“' + name + '” into ' + ids.length + ' cabinet(s)' + (extra ? ' — ' + extra : '') + '.\n\n'
       + 'Ads are always created: from the template’s posts where the cabinet has the page, otherwise placeholders you swap. '

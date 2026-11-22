@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-22.4';
+const FN_VERSION = '2026-11-22.5';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -163,9 +163,12 @@ function adsetParams(a: Json, campaignId: string, now: number): Json {
   if (Number(a.daily_budget) > 0) p.daily_budget = a.daily_budget;
   if (Number(a.lifetime_budget) > 0) p.lifetime_budget = a.lifetime_budget;
   if (p.daily_budget || p.lifetime_budget) p.bid_strategy = a.bid_strategy || undefined;
+  // Старт — лише майбутній (з шаблону його не беремо: там він давно минув).
+  const start = Date.parse(String(a.start_time || ''));
+  if (Number.isFinite(start) && start > now) p.start_time = new Date(start).toISOString();
   // Кінець у минулому Facebook не прийме; майбутній переносимо як є.
   const end = Date.parse(String(a.end_time || ''));
-  if (Number.isFinite(end) && end > now) p.end_time = a.end_time;
+  if (Number.isFinite(end) && end > now && (!p.start_time || end > start)) p.end_time = a.end_time;
   return p;
 }
 
@@ -274,6 +277,10 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
     const a: Json = { ...a0, targeting: a0.targeting ? JSON.parse(JSON.stringify(a0.targeting)) : a0.targeting,
                       promoted_object: a0.promoted_object ? { ...a0.promoted_object } : a0.promoted_object };
     if (cents && !cbo) { a.daily_budget = cents; delete a.lifetime_budget; }
+    /* Старт адсетів — «Schedule, Start date»: після публікації Facebook не
+       дає його змінити, тож ставимо одразу. Без перекриття — без старту. */
+    delete a.start_time;
+    if (ov?.start_time && Number.isFinite(Date.parse(String(ov.start_time)))) a.start_time = String(ov.start_time);
     if (countries.length && a.targeting) a.targeting.geo_locations = { countries };
     if (!same && a.targeting) { delete a.targeting.custom_audiences; delete a.targeting.excluded_custom_audiences; }
     if (fix.pixel && a.promoted_object?.pixel_id) a.promoted_object.pixel_id = fix.pixel;
