@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-22.3';
+const FN_VERSION = '2026-11-22.4';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -178,7 +178,7 @@ type Check = { level: 'ok' | 'warn' | 'fail' | 'unknown'; text: string };
 /* page: випадкова Сторінка цільового кабінета для оголошень, чия Сторінка
    йому недоступна; lost: Сторінки, яких він не бачить; noAds: оголошень
    не створюємо зовсім — «сам зайду й запущусь». */
-type Fix = { pixel?: string; page?: string; pageName?: string; lost?: string[]; noAds?: boolean; placeholder?: boolean };
+type Fix = { pixel?: string; page?: string; pageName?: string; lost?: string[]; noAds?: boolean };
 
 const pageOf = (cr: Json): string => {
   const story = String(cr?.effective_object_story_id || cr?.object_story_id || '');
@@ -194,13 +194,9 @@ async function listIds(path: string, token: string): Promise<Map<string, string>
 }
 
 async function preflight(spec: Json, T: { token: string; currency: string; status: string },
-                         tgt: string, same: boolean, pageMode = 'random'): Promise<{ checks: Check[]; fix: Fix }> {
+                         tgt: string, same: boolean): Promise<{ checks: Check[]; fix: Fix }> {
   const checks: Check[] = [];
   const fix: Fix = {};
-  /* none = «оголошення теж хай створює, просто пустишку»: оголошення є,
-     з тими самими назвами, але креатив — заготовка на Сторінці кабінета,
-     яку людина міняє сама. */
-  if (pageMode === 'none') fix.placeholder = true;
   const adsets: Json[] = spec.adsets || [], ads: Json[] = spec.ads || [];
   if (!adsets.length) checks.push({ level: 'fail', text: 'the template has no ad sets — nothing to launch' });
   if (spec.currency && T.currency && spec.currency !== T.currency)
@@ -209,47 +205,27 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
   else checks.push({ level: 'ok', text: 'currency ' + (T.currency || spec.currency || '—') });
   if (same) return { checks, fix };
 
-  /* Сторінки постів. «рандомно ставило page або взагалі не ставило»:
-     недоступна Сторінка більше не зупиняє запуск. Режим random —
-     оголошення беруть випадкову Сторінку цього кабінета; none — лише
-     кампанія й адсети, креативи людина додає сама. */
+  /* Сторінки. «завжди треба створювати оголошення, всерівно що там».
+     Оголошенню потрібна Сторінка — без неї Facebook не створить навіть
+     заготовку. Беремо Сторінку шаблону, якщо кабінет її бачить; інакше
+     випадкову Сторінку цього кабінета. */
   const pages = [...new Set(ads.map(a => pageOf(a.creative || {})).filter(Boolean))];
-  if (fix.placeholder && ads.length) {
+  if (!same && ads.length) {
     const can = await listIds('/act_' + tgt + '/promote_pages', T.token);
-    const own = pages.find(pg => can && can.has(pg));
-    if (can && (own || can.size)) {
+    if (!can) {
+      checks.push({ level: 'unknown', text: 'could not read which pages this cabinet can use — ads will try the template’s page' });
+    } else if (!can.size) {
+      fix.noAds = true;
+      checks.push({ level: 'warn', text: 'this cabinet has no page — Facebook cannot create an ad without one, so campaign and ad sets only' });
+    } else {
+      const own = pages.find(pg => can.has(pg));
       const ids = [...can.keys()];
       fix.page = own || ids[Math.floor(Math.random() * ids.length)];
       fix.pageName = can.get(fix.page) || fix.page;
-      checks.push({ level: 'ok', text: 'placeholder ads on page “' + fix.pageName + '” — replace the creatives in the cabinet' });
-    } else if (can) {
-      fix.noAds = true;
-      checks.push({ level: 'warn', text: 'this cabinet has no page — Facebook needs one even for a placeholder ad, so campaign and ad sets only' });
-    } else {
-      fix.noAds = true;
-      checks.push({ level: 'unknown', text: 'could not read this cabinet’s pages — campaign and ad sets only' });
-    }
-  } else if (pages.length) {
-    const can = await listIds('/act_' + tgt + '/promote_pages', T.token);
-    if (!can) checks.push({ level: 'unknown', text: 'could not read which pages this cabinet can use — ads will try the template’s page' });
-    else {
-      const lost = pages.filter(pg => !can.has(pg));
+      fix.lost = pages.filter(pg => !can.has(pg));
       pages.filter(pg => can.has(pg)).forEach(pg => checks.push({ level: 'ok', text: 'page ' + can.get(pg) }));
-      if (lost.length) {
-        fix.lost = lost;
-        if (can.size) {
-          const ids = [...can.keys()];
-          fix.page = ids[Math.floor(Math.random() * ids.length)];
-          fix.pageName = can.get(fix.page) || fix.page;
-          checks.push({ level: 'warn', text: 'page ' + lost.join(', ') + ' is not in this cabinet — ads go to its page “'
-            + fix.pageName + '” (picked at random)' });
-        } else {
-          fix.noAds = true;
-          checks.push({ level: 'warn', text: 'this cabinet has no page — campaign and ad sets only, add the ads yourself' });
-        }
-        // Пост чужої Сторінки без опису креатива — стане заготовкою.
-        fix.placeholder = false;
-      }
+      if (fix.lost.length) checks.push({ level: 'warn', text: 'page ' + fix.lost.join(', ') + ' is not in this cabinet — ads go to its page “'
+        + fix.pageName + '”; where the post cannot be reused, the ad is a placeholder' });
     }
   }
   // Пікселі
@@ -286,6 +262,7 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
    пікселя, без чужих аудиторій. Сам знімок не міняємо — копія. */
 function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; adsets: Json[]; ads: Json[]; notes: string[] } {
   const notes: string[] = [];
+  let dyn = false;
   const camp: Json = { ...(spec.campaign || {}) };
   const budget = Number(ov?.daily_budget);
   const cents = Number.isFinite(budget) && budget > 0 ? String(Math.round(budget * 100)) : '';
@@ -300,42 +277,54 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
     if (countries.length && a.targeting) a.targeting.geo_locations = { countries };
     if (!same && a.targeting) { delete a.targeting.custom_audiences; delete a.targeting.excluded_custom_audiences; }
     if (fix.pixel && a.promoted_object?.pixel_id) a.promoted_object.pixel_id = fix.pixel;
+    if (!same && a.is_dynamic_creative) { delete a.is_dynamic_creative; dyn = true; }
     return a;
   });
-  /* Оголошення: без них зовсім (noAds), або з креативом, перевʼязаним на
-     Сторінку цього кабінета. Пост чужої Сторінки перевикористати не
-     можна — тоді беремо опис креатива (object_story_spec) з новою
-     Сторінкою; немає опису — оголошення пропускаємо з поясненням. */
-  /* Заготовка: найпростіший креатив, який Facebook прийме, — посилання
-     на Сторінці кабінета. Посилання беремо з шаблону, якщо воно там є. */
+  if (dyn) notes.push('dynamic creative is off in the copy, so ordinary ads fit in the ad set — switch it back on when you set the creatives');
+  /* ОГОЛОШЕННЯ — ЗАВЖДИ. Для кожного — черга креативів, від найкращого
+     до заготовки: пост шаблону (якщо Сторінка є в кабінеті) → опис
+     креатива на Сторінці кабінета → посилання-заготовка з картинкою
+     Сторінки → те саме без картинки. Створення бере перший, який
+     Facebook прийняв; не прийняв жоден — бере будь-який креатив, що вже є
+     в кабінеті (див. цикл нижче). Динамічний креатив у копії вимкнено:
+     у такому адсеті лише одне оголошення і лише з набором чужих відео. */
   const linkOf = (cr: Json, d: Json): string => {
     const o = cr.object_story_spec || {};
-    const l = o.link_data?.link || o.video_data?.call_to_action?.value?.link || o.template_data?.link || '';
+    const l = o.link_data?.link || o.video_data?.call_to_action?.value?.link || o.template_data?.link
+      || cr.asset_feed_spec?.link_urls?.[0]?.website_url || '';
     if (l) return String(l);
     const dom = String(d.conversion_domain || '').trim();
     return dom ? 'https://' + dom.replace(/^https?:\/\//, '') : 'https://www.facebook.com';
   };
-  const placeholder = (d: Json): Json => ({ ...d, tracking_specs: undefined,
-    creative: { name: 'Placeholder · ' + String(d.name || '').slice(0, 150),
-      object_story_spec: { page_id: fix.page, link_data: { link: linkOf(d.creative || {}, d),
-        message: 'Placeholder — replace the creative', name: String(d.name || 'Placeholder').slice(0, 100) } } } });
   let ads: Json[] = [];
   if (!fix.noAds) {
-    ads = (spec.ads || []).flatMap((d: Json) => {
-      if (same) return [d];
-      if (fix.placeholder && fix.page) return [placeholder(d)];
+    ads = (spec.ads || []).map((d: Json) => {
+      if (same) return d;
       const cr: Json = d.creative || {};
       const pg = pageOf(cr);
-      if (!fix.page || !fix.lost || !fix.lost.includes(pg)) return [{ ...d, tracking_specs: undefined }];
-      if (!cr.object_story_spec) {
-        notes.push('ad “' + String(d.name || d.id) + '”: its post belongs to page ' + pg + ' — created as a placeholder, replace the creative');
-        return [placeholder(d)];
+      const P = fix.page || pg;
+      const lost = !!(fix.lost && fix.lost.includes(pg));
+      const tags = cr.url_tags ? { url_tags: String(cr.url_tags) } : {};
+      const nm = { name: String(cr.name || d.name || 'Creative').slice(0, 200) };
+      const cands: Json[] = [];
+      const story = String(cr.effective_object_story_id || cr.object_story_id || '');
+      if (story && !lost) cands.push({ ...nm, object_story_id: story, ...tags });
+      const oss = cr.object_story_spec;
+      if (oss && (oss.link_data || oss.video_data || oss.photo_data || oss.template_data) && !cr.asset_feed_spec) {
+        const o: Json = JSON.parse(JSON.stringify(oss));
+        if (P) o.page_id = P;
+        delete o.instagram_actor_id; delete o.instagram_user_id;
+        cands.push({ ...nm, object_story_spec: o, ...tags });
       }
-      const oss: Json = JSON.parse(JSON.stringify(cr.object_story_spec));
-      oss.page_id = fix.page;
-      delete oss.instagram_actor_id; delete oss.instagram_user_id;
-      return [{ ...d, tracking_specs: undefined,
-        creative: { name: cr.name, url_tags: cr.url_tags, object_story_spec: oss } }];
+      if (P) {
+        const link = linkOf(cr, d);
+        const ph = (pic: boolean): Json => ({ name: ('Placeholder · ' + String(d.name || '')).slice(0, 200), ...tags,
+          object_story_spec: { page_id: P, link_data: { link, message: 'Placeholder — replace the creative',
+            name: String(d.name || 'Placeholder').slice(0, 100),
+            ...(pic ? { picture: 'https://graph.facebook.com/' + P + '/picture?type=large' } : {}) } } });
+        cands.push(ph(true), ph(false));
+      }
+      return { ...d, tracking_specs: undefined, cands };
     });
   }
   return { camp, adsets, ads, notes };
@@ -430,7 +419,7 @@ Deno.serve(async (req) => {
   let shaped: { camp: Json; adsets: Json[]; ads: Json[]; notes?: string[] };
   let warns: string[] = [];
   if (fromSpec) {
-    const pf = await preflight(spec, T, tgt, same, String(body.page_mode || 'random'));
+    const pf = await preflight(spec, T, tgt, same);
     if (body.check) return reply({ ok: true, mode: 'check', target_account: tgt, sample, checks: pf.checks });
     const bad = pf.checks.filter(c => c.level === 'fail');
     if (bad.length) return reply({ error: 'not launched: ' + bad.map(c => c.text).join('; '), checks: pf.checks }, 409);
@@ -459,6 +448,7 @@ Deno.serve(async (req) => {
 
   const setMap = new Map<string, string>();
   let setsMade = 0, adsMade = 0, timedOut = false;
+  let anyCreative: string | null = null;
   for (const a of adsets.slice(0, MAX_ADSETS)) {
     if (Date.now() > deadline) { timedOut = true; break; }
     try {
@@ -476,6 +466,37 @@ Deno.serve(async (req) => {
     const setId = setMap.get(String(ad.adset_id || ''));
     if (!setId) continue;                       // адсет не створився — про це вже сказано
     const label = 'ad “' + String(ad.name || ad.id) + '”';
+    if (Array.isArray(ad.cands)) {
+      // Черга креативів: перший, з яким Facebook створив оголошення.
+      const mk = async (cr: Json) => {
+        const creativeId = cr.creative_id ? String(cr.creative_id)
+          : String((await graph(act + '/adcreatives', T.token, cr, 'POST')).id || '');
+        if (!creativeId) throw new Error('no creative id returned');
+        await graph(act + '/ads', T.token, { name: ad.name, adset_id: setId, status: 'PAUSED',
+          creative: { creative_id: creativeId }, conversion_domain: ad.conversion_domain }, 'POST');
+      };
+      let done = -1, last = '';
+      for (let k = 0; k < ad.cands.length && done < 0; k++) {
+        try { await mk(ad.cands[k]); done = k; } catch (e) { last = String((e as Error).message); }
+      }
+      if (done < 0) {
+        // Останній шанс — креатив, який уже є в цьому кабінеті.
+        if (anyCreative === null) {
+          const l = await listIds(act + '/adcreatives', T.token);
+          anyCreative = l && l.size ? [...l.keys()][0] : '';
+        }
+        if (anyCreative) {
+          try { await mk({ creative_id: anyCreative }); done = 99; } catch (e) { last = String((e as Error).message); }
+        }
+      }
+      if (done < 0) problems.push(label + ': Facebook refused every creative, even a placeholder — ' + last);
+      else {
+        adsMade++;
+        if (done === 99) warns.push(label + ': made with a creative already in this cabinet — replace it');
+        else if (ad.cands[done].name && String(ad.cands[done].name).startsWith('Placeholder')) warns.push(label + ': created as a placeholder — replace the creative');
+      }
+      continue;
+    }
     try {
       const cp = creativePlan(ad.creative || {}, same);
       let creativeId = '';

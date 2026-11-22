@@ -201,20 +201,7 @@ window.ltOpen = function (id) {
   const r = ltRows.find(x => x.id === id); if (!r) return;
   const s = ltSummary(r.spec || {});
   ltCur = { r, s, picked: new Set(), q: '', name: r.name, budget: s.budgetVal ? String(Math.round(s.budgetVal * 100) / 100) : '',
-            countries: s.countries.join(', '), pageMode: ltPageMode() };
-  ltRes = {};
-  ltPaintLaunch();
-};
-
-/* Що робити з оголошеннями, коли Сторінка шаблону кабінету недоступна:
-   random — випадкова Сторінка кабінета; none — оголошення-пустишки
-   («я просто зайду на акаунт, виберу те, що там є, і сам запущусь»;
-   «а оголошення також хай створює, просто пустишку»).
-   Вибір памʼятається. */
-function ltPageMode() { try { return localStorage.getItem('lt_page_mode') === 'none' ? 'none' : 'random'; } catch (e) { return 'random'; } }
-window.ltSetPageMode = function (m) {
-  ltCur.pageMode = m === 'none' ? 'none' : 'random';
-  try { localStorage.setItem('lt_page_mode', ltCur.pageMode); } catch (e) {}
+            countries: s.countries.join(', ') };
   ltRes = {};
   ltPaintLaunch();
 };
@@ -245,8 +232,8 @@ function ltPaintLaunch() {
     (x.checks || []).forEach(c => rows.push(`<li class="is-${c.level}"><i>${icon[c.level] || '·'}</i>${ltEsc(c.text)}</li>`));
     if (x.done) {
       const d = x.done;
-      (d.warnings || []).filter(w => /placeholder|no page/.test(w)).forEach(w => rows.push(`<li class="is-warn"><i>!</i>${ltEsc(w)}</li>`));
-      rows.push(d.ok ? `<li class="is-ok"><i>✓</i>Created paused: ${d.adsets.made}/${d.adsets.of} ad sets${d.ads.of ? ', ' + d.ads.made + '/' + d.ads.of + ' ads' + (ltCur.pageMode === 'none' ? ' (placeholders — swap the creatives)' : '') : ', no ads'}</li>`
+      (d.warnings || []).filter(w => /placeholder|no page|already in this cabinet|dynamic creative/.test(w)).forEach(w => rows.push(`<li class="is-warn"><i>!</i>${ltEsc(w)}</li>`));
+      rows.push(d.ok ? `<li class="is-ok"><i>✓</i>Created paused: ${d.adsets.made}/${d.adsets.of} ad sets${d.ads.of ? ', ' + d.ads.made + '/' + d.ads.of + ' ads' : ', no ads'}</li>`
         : `<li class="is-fail"><i>✕</i>${ltEsc(d.error || 'not launched')}</li>`);
       (d.problems || []).forEach(p => rows.push(`<li class="is-warn"><i>!</i>${ltEsc(p)}</li>`));
     }
@@ -264,14 +251,6 @@ function ltPaintLaunch() {
       <label><span>Campaign name</span><input id="lt-f-name" value="${ltEsc(ltCur.name)}" oninput="ltCur.name=this.value"></label>
       <label><span>Budget / day${s.cbo ? ' (campaign)' : ' (each ad set)'}</span><input id="lt-f-budget" inputmode="decimal" value="${ltEsc(ltCur.budget)}" oninput="ltCur.budget=this.value" placeholder="as in template"></label>
       <label><span>Countries</span><input id="lt-f-geo" value="${ltEsc(ltCur.countries)}" oninput="ltCur.countries=this.value" placeholder="as in template"></label>
-    </div>
-    <div class="lt-mode">
-      <span>Ads</span>
-      <button type="button" class="${ltCur.pageMode === 'random' ? 'is-on' : ''}" onclick="ltSetPageMode('random')" ${ltBusy ? 'disabled' : ''}
-        title="Ads keep the template’s page when the cabinet has it; otherwise they get a random page of this cabinet">With ads · random page if needed</button>
-      <button type="button" class="${ltCur.pageMode === 'none' ? 'is-on' : ''}" onclick="ltSetPageMode('none')" ${ltBusy ? 'disabled' : ''}
-        title="Ads with the same names, but each one is a placeholder link on the cabinet’s page — you open the cabinet and swap in the creatives">Placeholder ads · I swap creatives myself</button>
-      <em>Pixel: the cabinet’s own, if the template’s is not shared</em>
     </div>
     <div class="lt-pick-h"><span>Cabinets · ${picked.length} picked</span>
       <input class="lt-search" placeholder="Search cabinet…" value="${ltEsc(ltCur.q)}" oninput="ltCur.q=this.value;ltPaintLaunch();document.querySelector('.lt-search').focus();document.querySelector('.lt-search').setSelectionRange(this.value.length,this.value.length)"></div>
@@ -313,7 +292,7 @@ window.ltCheck = async function () {
   ltPaintLaunch();
   await Promise.all(ids.map(async id => {
     try {
-      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, check: true, page_mode: ltCur.pageMode });
+      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, check: true });
       ltRes[id] = r.ok ? { checks: r.j.checks || [] } : { err: r.j.error || 'HTTP ' + r.status, checks: r.j.checks || [] };
     } catch (e) { ltRes[id] = { err: e.message }; }
   }));
@@ -329,7 +308,7 @@ window.ltLaunch = async function () {
   const extra = [ov.daily_budget ? 'budget ' + ov.daily_budget + '/day' : '', ov.countries ? 'countries ' + ov.countries.join(', ') : ''].filter(Boolean).join(', ');
   if (!await ask({ title: 'Launch paused?', ok: 'Launch paused',
     body: '“' + name + '” into ' + ids.length + ' cabinet(s)' + (extra ? ' — ' + extra : '') + '.\n\n'
-      + (ltCur.pageMode === 'none' ? 'Ads are placeholders on the cabinet’s page — you swap in the creatives. ' : '')
+      + 'Ads are always created: from the template’s posts where the cabinet has the page, otherwise placeholders you swap. '
       + 'Everything is created PAUSED. Cabinets in another currency are skipped.' })) return;
   ltBusy = true;
   let good = 0;
@@ -339,7 +318,7 @@ window.ltLaunch = async function () {
     ltRes[id] = Object.assign({}, prev, { busy: true });
     ltPaintLaunch();
     try {
-      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, name, overrides: ov, page_mode: ltCur.pageMode });
+      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, name, overrides: ov });
       ltRes[id] = { checks: r.j.checks || prev.checks || [], done: r.ok ? r.j : { ok: false, error: r.j.error || 'HTTP ' + r.status } };
       if (r.ok) good++;
     } catch (e) { ltRes[id] = { checks: prev.checks || [], done: { ok: false, error: e.message } }; }

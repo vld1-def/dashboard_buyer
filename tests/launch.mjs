@@ -171,30 +171,37 @@ ok('чужі аудиторії — попередження', lv('custom audien
 const noPage = await run({ body: { spec: SPEC, target_account: '222', check: true },
   lists: { '/act_222/promote_pages': [{ id: '99', name: 'Other' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 const lv2 = t => (noPage.body.checks || []).find(c => c.text.includes(t)) || {};
-ok('Сторінка недоступна — не блокує: випадкова Сторінка кабінета', lv2('page 77').level === 'warn' && /Other/.test(lv2('page 77').text) && /random/.test(lv2('page 77').text), noPage.body.checks);
+ok('Сторінка недоступна — не блокує: Сторінка кабінета, решта заготовки', lv2('page 77').level === 'warn' && /Other/.test(lv2('page 77').text) && /placeholder/.test(lv2('page 77').text), noPage.body.checks);
 ok('піксель не розшарений — підміна власним, warn', lv2('Own px').level === 'warn', noPage.body.checks);
 
-/* «рандомно ставило page або взагалі не ставило, а піксель — той що є». */
-const rnd = await run({ body: { spec: SPEC, target_account: '222', page_mode: 'random' },
+/* «завжди треба створювати оголошення, всерівно що там». */
+const DSPEC = JSON.parse(JSON.stringify(SPEC)); DSPEC.adsets.forEach(a => { a.is_dynamic_creative = true; });
+const rnd = await run({ body: { spec: DSPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [{ id: '99', name: 'Their page' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
-const rcr = rnd.posts.filter(x => x.path === '/act_222/adcreatives');
-ok('random: запуск іде, хоч Сторінка шаблону недоступна', rnd.status === 200 && rnd.body.ok, rnd.body);
-ok('random: креатив з описом перевʼязано на Сторінку кабінета', rcr.some(x => JSON.parse(x.p.object_story_spec).page_id === '99'
-  && JSON.parse(x.p.object_story_spec).video_data) && rcr.every(x => !x.p.object_story_id), rcr);
-ok('random: пост чужої Сторінки — оголошення-заготовка з поясненням', (rnd.body.warnings || []).some(w => /KG_1.*placeholder/.test(w))
-  && rcr.length === 2 && JSON.parse(rcr[0].p.object_story_spec).link_data.message.startsWith('Placeholder'), rcr);
-const none = await run({ body: { spec: SPEC, target_account: '222', page_mode: 'none' },
-  lists: { '/act_222/promote_pages': [{ id: '77' }], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
-const ncr = none.posts.filter(x => x.path === '/act_222/adcreatives').map(x => JSON.parse(x.p.object_story_spec));
-const nads = none.posts.filter(x => x.path === '/act_222/ads');
-ok('пустишки: кампанія, адсети й оголошення з тими самими назвами', none.body.ok
-  && none.posts.filter(x => x.path === '/act_222/adsets').length === 2 && nads.length === 3
-  && nads.map(x => x.p.name).join() === 'KG_1,KG_2,KG_3' && nads.every(x => x.p.status === 'PAUSED'), nads.map(x => x.p));
-ok('пустишки: креатив — посилання на Сторінці кабінета з написом Placeholder', ncr.length === 3
-  && ncr.every(o => o.page_id === '77' && o.link_data && /^Placeholder/.test(o.link_data.message)), ncr);
-const none0 = await run({ body: { spec: SPEC, target_account: '222', page_mode: 'none' },
+const rcr = rnd.posts.filter(x => x.path === '/act_222/adcreatives').map(x => x.p);
+const rads = rnd.posts.filter(x => x.path === '/act_222/ads');
+ok('Сторінки шаблону немає — оголошення однаково створені, всі три', rnd.status === 200 && rnd.body.ads.made === 3 && rads.length === 3, rnd.body);
+ok('опис креатива — на Сторінці кабінета; решта — заготовки з посиланням', rcr.every(x => JSON.parse(x.object_story_spec).page_id === '99')
+  && rcr.filter(x => /^Placeholder/.test(x.name)).length === 2 && rcr.every(x => !x.object_story_id), rcr);
+ok('заготовка з картинкою Сторінки', rcr.some(x => /99\/picture/.test(JSON.parse(x.object_story_spec).link_data?.picture || '')), rcr);
+ok('динамічний креатив у копії вимкнено, і про це сказано', rnd.posts.filter(x => x.path === '/act_222/adsets').every(x => !('is_dynamic_creative' in x.p))
+  && (rnd.body.warnings || []).some(w => /dynamic creative is off/.test(w)), rnd.body.warnings);
+ok('про заготовки сказано', (rnd.body.warnings || []).filter(w => /placeholder/.test(w)).length >= 2, rnd.body.warnings);
+
+// Пост відхилено — наступна в черзі заготовка; картинку відхилено — без картинки.
+const fb1 = await run({ body: { spec: SPEC, target_account: '222' }, lists: LISTS_OK,
+  failOn: (p, q) => p.endsWith('/adcreatives') && (q.object_story_id || /picture/.test(q.object_story_spec || '')) ? 'nope' : '' });
+ok('відмова на пості й картинці — оголошення однаково є (заготовка без картинки)', fb1.body.ads.made === 3, fb1.body);
+// Відмова на всьому — креатив, що вже є в кабінеті.
+const fb2 = await run({ body: { spec: SPEC, target_account: '222' },
+  lists: { ...LISTS_OK, '/act_222/adcreatives': [{ id: 'cr9', name: 'old' }] },
+  failOn: p => p.endsWith('/adcreatives') ? 'refused' : '' });
+const f2ads = fb2.posts.filter(x => x.path === '/act_222/ads');
+ok('Facebook відмовив у всіх креативах — береться наявний креатив кабінета', fb2.body.ads.made === 3
+  && f2ads.every(x => JSON.parse(x.p.creative).creative_id === 'cr9') && (fb2.body.warnings || []).some(w => /already in this cabinet/.test(w)), fb2.body);
+const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
-ok('пустишки без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok
+ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok
   && !none0.posts.some(x => /\/ads$/.test(x.path)) && (none0.body.warnings || []).some(w => /no page/.test(w)), none0.body);
 const nopx = await run({ body: { spec: SPEC, target_account: '222', check: true },
   lists: { '/act_222/promote_pages': [{ id: '77' }], '/act_222/adspixels': [] } });
