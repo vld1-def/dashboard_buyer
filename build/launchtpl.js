@@ -503,9 +503,11 @@ function ltPaintEdit() {
       <div class="lt-ed-main">
         <input class="lt-ed-in is-name" value="${ltEsc(d.name || '')}" oninput="ltEd.spec.ads[${i}].name=this.value" placeholder="Ad name">
         <div class="lt-ed-fields">
-          <label class="is-wide"><span>Post ID — a ready post the cabinet can use (optional)</span><input class="lt-ed-in" value="${ltEsc(d.post_id || '')}" oninput="ltEd.spec.ads[${i}].post_id=this.value.trim()" placeholder="PAGEID_POSTID"></label>
-          <span class="lt-ed-meta">creative: ${ltEsc(ltCreativeKind(d.creative))}${sets.length > 1 ? ' · in “' + ltEsc((sets.find(s2 => String(s2.id) === String(d.adset_id)) || {}).name || '?') + '”' : ''}</span>
+          <span class="lt-ed-meta">template creative: ${ltEsc(ltCreativeKind(d.creative))}${sets.length > 1 ? ' · in “' + ltEsc((sets.find(s2 => String(s2.id) === String(d.adset_id)) || {}).name || '?') + '”' : ''}</span>
         </div>
+        ${ltMediaBlock(d, i, ads.length)}
+        <details class="lt-ed-more"><summary>Post ID instead (optional)</summary>
+          <input class="lt-ed-in" value="${ltEsc(d.post_id || '')}" oninput="ltEd.spec.ads[${i}].post_id=this.value.trim()" placeholder="PAGEID_POSTID — a ready post the cabinet can use"></details>
       </div></div>`;
   };
   card.innerHTML = `<div class="lt-head"><div>
@@ -565,4 +567,82 @@ window.ltEdSave = async function () {
   Object.assign(r, patch);
   toast('Template saved: ' + keepSets.length + ' ad set(s), ' + keepAds.length + ' ad(s)', 'ok');
   ltPaintList();
+};
+
+
+/* ── СВІЙ КРЕАТИВ ОГОЛОШЕННЯ ──
+   «з пост айді щось треба придумати, це зайоб кожен раз створювати й
+   витягувати айді». Відео чи картинку заливаєш ОДИН раз у шаблон (у
+   сховище launch-media), поруч — текст, заголовок, посилання, кнопка. При
+   кожному запуску fb-launch сама заливає файл у новий кабінет і робить
+   справжнє оголошення на Сторінці цього кабінета. Текст і посилання
+   спершу підставляються з креатива шаблону, якщо там вони були. */
+const LT_CTA = ['LEARN_MORE', 'SIGN_UP', 'PLAY_GAME', 'DOWNLOAD', 'GET_OFFER', 'SHOP_NOW', 'APPLY_NOW', 'CONTACT_US'];
+function ltAdDefaults(d) {
+  const cr = d.creative || {}, af = cr.asset_feed_spec || {}, o = cr.object_story_spec || {};
+  const ld = o.link_data || {}, vd = o.video_data || {};
+  return {
+    text: (af.bodies && af.bodies[0] && af.bodies[0].text) || ld.message || vd.message || '',
+    title: (af.titles && af.titles[0] && af.titles[0].text) || ld.name || vd.title || '',
+    link: (af.link_urls && af.link_urls[0] && af.link_urls[0].website_url) || ld.link || (vd.call_to_action && vd.call_to_action.value && vd.call_to_action.value.link) || '',
+    cta: (af.call_to_action_types && af.call_to_action_types[0]) || (vd.call_to_action && vd.call_to_action.type) || (ld.call_to_action && ld.call_to_action.type) || 'LEARN_MORE'
+  };
+}
+function ltMd(i) {
+  const d = ltEd.spec.ads[i];
+  if (!d.media) d.media = ltAdDefaults(d);
+  return d.media;
+}
+function ltMediaBlock(d, i, total) {
+  const m = d.media || ltAdDefaults(d);
+  const file = m.path
+    ? `<div class="lt-md-file"><span class="lt-md-ic">${m.kind === 'video' ? '▶' : '▣'}</span>
+        <span class="lt-md-name">${ltEsc(m.name || m.path.split('/').pop())}${m.size ? ' · ' + (m.size / 1048576).toFixed(1) + ' MB' : ''}</span>
+        <label class="lt-md-btn">Replace<input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>
+        <button type="button" class="lt-md-btn" onclick="ltMediaDrop(${i})">Remove</button></div>`
+    : `<label class="lt-md-up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        <span>Upload video or image — CRM puts it into every new cabinet</span><input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>`;
+  return `<div class="lt-md">
+    ${file}
+    <div class="lt-ed-fields">
+      <label class="is-wide"><span>Text</span><input class="lt-ed-in" value="${ltEsc(m.text || '')}" oninput="ltMd(${i}).text=this.value"></label>
+      <label><span>Headline</span><input class="lt-ed-in" value="${ltEsc(m.title || '')}" oninput="ltMd(${i}).title=this.value"></label>
+      <label class="is-wide"><span>Link</span><input class="lt-ed-in" value="${ltEsc(m.link || '')}" oninput="ltMd(${i}).link=this.value.trim()" placeholder="https://"></label>
+      <label><span>Button</span><select class="lt-ed-in" onchange="ltMd(${i}).cta=this.value">${LT_CTA.map(c =>
+        `<option value="${c}"${(m.cta || 'LEARN_MORE') === c ? ' selected' : ''}>${c.replace(/_/g, ' ').toLowerCase()}</option>`).join('')}</select></label>
+    </div>
+    ${m.path && total > 1 ? `<button type="button" class="lt-md-all" onclick="ltMediaAll(${i})">Use this creative for all ${total} ads</button>` : ''}
+  </div>`;
+}
+
+window.ltMediaPick = async function (i, input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const kind = /^video\//.test(file.type) ? 'video' : /^image\//.test(file.type) ? 'image' : '';
+  if (!kind) { toast('Pick a video or an image.', 'warn'); return; }
+  if (file.size > 200 * 1048576) { toast('The file is over 200 MB — too big to keep in a template.', 'warn'); return; }
+  const step = toastStep();
+  step.say('Uploading ' + file.name + '…');
+  try {
+    const ext = (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg')).toLowerCase().slice(0, 5);
+    const path = String(currentTeam || 'team') + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+    const { error } = await sb.storage.from('launch-media').upload(path, file, { contentType: file.type, upsert: false });
+    if (error) throw new Error(/bucket/i.test(error.message) ? 'storage is not set up — run LAUNCH_MEDIA.sql' : error.message);
+    Object.assign(ltMd(i), { path, kind, name: file.name, size: file.size });
+    step.done('Uploaded — press Save to keep it in the template', 'ok');
+    ltPaintEdit();
+  } catch (e) {
+    step.done('Not uploaded: ' + e.message, 'error');
+  }
+};
+window.ltMediaDrop = function (i) {
+  const m = ltMd(i); delete m.path; delete m.kind; delete m.name; delete m.size;
+  ltPaintEdit();
+};
+window.ltMediaAll = function (i) {
+  const src = ltMd(i);
+  ltEd.spec.ads.forEach((d, k) => { if (k !== i) d.media = JSON.parse(JSON.stringify(src)); });
+  ltPaintEdit();
+  toast('The same creative is now on every ad — press Save', 'ok', 2500);
 };

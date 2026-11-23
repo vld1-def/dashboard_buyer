@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-23.3';
+const FN_VERSION = '2026-11-23.4';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -330,6 +330,11 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
          у черзі: готовий допис не блокує режим розробки додатка. */
       const own = String(d.post_id || '').trim();
       if (own) cands.push({ ...nm, object_story_id: own, ...tags });
+      /* СВІЙ КРЕАТИВ ІЗ ШАБЛОНУ (d.media): відео чи картинка, залиті один
+         раз у редакторі, з текстом, заголовком, посиланням і кнопкою.
+         Файл заливається в цей кабінет при запуску (див. buildMedia). */
+      const md = d.media;
+      if (md && md.path && P) cands.unshift({ __media: { ...md, page: P }, ...nm, ...tags });
       if (story && !lost && story !== own) cands.push({ ...nm, object_story_id: story, ...tags });
       const oss = cr.object_story_spec;
       if (oss && (oss.link_data || oss.video_data || oss.photo_data || oss.template_data) && !cr.asset_feed_spec) {
@@ -472,6 +477,73 @@ Deno.serve(async (req) => {
 
   const setMap = new Map<string, string>();
   let setsMade = 0, adsMade = 0, timedOut = false;
+  /* ── СВІЙ КРЕАТИВ: файл зі сховища launch-media → у кабінет ──
+     Картинка — байтами в adimages (image_hash). Відео — посиланням у
+     advideos (Facebook качає сам), потім чекаємо, поки обробить, і
+     беремо мініатюру. Один файл заливається в кабінет один раз за
+     запуск, навіть якщо він на всіх оголошеннях. */
+  const mediaCache = new Map<string, Json>();
+  const stHdr = { apikey: svc, Authorization: 'Bearer ' + svc };
+  const stUrl = (path: string) => base + '/storage/v1/object/launch-media/' + path.split('/').map(encodeURIComponent).join('/');
+  const toB64 = (buf: ArrayBuffer) => {
+    const b = new Uint8Array(buf); let out = '';
+    for (let i = 0; i < b.length; i += 0x8000) out += String.fromCharCode(...b.subarray(i, i + 0x8000));
+    return btoa(out);
+  };
+  const uploadMedia = async (md: Json): Promise<Json> => {
+    const key = String(md.path);
+    if (mediaCache.has(key)) return mediaCache.get(key)!;
+    let got: Json;
+    if (md.kind === 'video') {
+      const sr = await fetch(base + '/storage/v1/object/sign/launch-media/' + key.split('/').map(encodeURIComponent).join('/'),
+        { method: 'POST', headers: { ...stHdr, 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 }) });
+      const sj = await sr.json().catch(() => ({}));
+      if (!sr.ok || !sj.signedURL) throw new Error('could not read the video from storage');
+      const fileUrl = base + '/storage/v1' + String(sj.signedURL);
+      const vid = String((await graph(act + '/advideos', T.token, { file_url: fileUrl, name: String(md.name || 'video') }, 'POST')).id || '');
+      if (!vid) throw new Error('Facebook returned no video id');
+      // Чекаємо обробку: без готового відео креатив Facebook не прийме.
+      let thumb = '';
+      for (let i = 0; i < 20 && Date.now() < deadline - 15_000; i++) {
+        const v = await graph('/' + vid, T.token, { fields: 'status,picture' }).catch(() => ({} as Json));
+        thumb = String(v.picture || thumb);
+        const st = String(v.status?.video_status || '');
+        if (st === 'ready') break;
+        if (st === 'error') throw new Error('Facebook could not process the video');
+        await new Promise(r => setTimeout(r, 3000));
+      }
+      try {
+        const th = await graph('/' + vid + '/thumbnails', T.token, { fields: 'uri,is_preferred' });
+        const list: Json[] = th.data || [];
+        thumb = String((list.find(x => x.is_preferred) || list[0] || {}).uri || thumb);
+      } catch (_e) { /* мініатюра з picture */ }
+      got = { video_id: vid, thumb };
+    } else {
+      const r = await fetch(stUrl(key), { headers: stHdr });
+      if (!r.ok) throw new Error('could not read the image from storage');
+      const up = await graph(act + '/adimages', T.token, { bytes: toB64(await r.arrayBuffer()), name: String(md.name || 'image') }, 'POST');
+      const first = Object.values(up.images || {})[0] as Json | undefined;
+      if (!first?.hash) throw new Error('Facebook returned no image hash');
+      got = { image_hash: String(first.hash) };
+    }
+    mediaCache.set(key, got);
+    return got;
+  };
+  const mediaCreative = async (c0: Json): Promise<Json> => {
+    const md: Json = c0.__media;
+    const got = await uploadMedia(md);
+    const link = String(md.link || '').trim() || 'https://www.facebook.com';
+    const cta = String(md.cta || '').trim();
+    const ctaObj = cta ? { type: cta, value: { link } } : undefined;
+    const oss: Json = { page_id: md.page };
+    if (got.video_id) oss.video_data = { video_id: got.video_id, image_url: got.thumb || undefined,
+      message: md.text || undefined, title: md.title || undefined, call_to_action: ctaObj || { type: 'LEARN_MORE', value: { link } } };
+    else oss.link_data = { link, image_hash: got.image_hash, message: md.text || undefined, name: md.title || undefined, call_to_action: ctaObj };
+    const out: Json = { name: c0.name, object_story_spec: oss };
+    if (c0.url_tags) out.url_tags = c0.url_tags;
+    return out;
+  };
+
   /* Пул готових дописів і креативів кабінета — збираємо раз на запуск. */
   let reuse: { kind: 'post' | 'creative'; id: string }[] | null = null;
   let reuseGood: { kind: 'post' | 'creative'; id: string } | null = null;
@@ -514,7 +586,8 @@ Deno.serve(async (req) => {
       const tried: string[] = [];
       const mk = async (cr0: Json) => {
         let cr: Json = cr0;
-        if (cr0.__ph) {
+        if (cr0.__media) cr = await mediaCreative(cr0);
+        else if (cr0.__ph) {
           cr = JSON.parse(JSON.stringify(cr0)); delete cr.__ph;
           if (cr0.__ph === 'img') {
             if (phHash === null) {
@@ -543,7 +616,7 @@ Deno.serve(async (req) => {
         }
       };
       let done = -1, last = '';
-      const kind = (c: Json) => c.creative_id ? 'existing creative' : c.__ph ? 'placeholder (' + c.__ph + ')'
+      const kind = (c: Json) => c.creative_id ? 'existing creative' : c.__media ? 'your ' + (c.__media.kind || 'file') : c.__ph ? 'placeholder (' + c.__ph + ')'
         : c.object_story_id ? 'post' : 'creative description';
       for (let k = 0; k < ad.cands.length && done < 0; k++) {
         try { await mk(ad.cands[k]); done = k; }

@@ -40,7 +40,10 @@ async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', cam
   const accs = accounts || { '111': { token_id: 1, team_name: 'T', currency: 'USD' }, '222': { token_id: 2, team_name: 'T', currency: 'USD' } };
   const fetch = async (url, opt = {}) => {
     const u = new URL(url);
-    const J = (o, status = 200) => ({ ok: status < 400, status, json: async () => o, text: async () => JSON.stringify(o) });
+    const J = (o, status = 200) => ({ ok: status < 400, status, json: async () => o, text: async () => JSON.stringify(o),
+      arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(o)).buffer });
+    if (u.pathname.startsWith('/storage/v1/object/sign/')) { posts.push({ path: u.pathname, p: {}, tok: '' }); return J({ signedURL: '/object/sign/launch-media/T/v.mp4?token=abc' }); }
+    if (u.pathname.startsWith('/storage/v1/object/launch-media/')) { posts.push({ path: u.pathname, p: {}, tok: '' }); return J({ fake: 'image bytes' }); }
     if (u.pathname.startsWith('/rest/v1/fb_accounts')) {
       const id = (u.searchParams.get('account_id') || '').replace('eq.', '');
       return J(accs[id] ? [Object.assign({ account_id: id }, accs[id])] : []);
@@ -55,6 +58,8 @@ async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', cam
       if (path === '/900/adsets') return J({ data: sets });
       if (path === '/900/ads') return J({ data: ads });
       if (lists && lists[path]) return J({ data: lists[path] });
+      if (/^\/vid\d+$/.test(path)) return J({ status: { video_status: 'ready' }, picture: 'https://p/pic.jpg' });
+      if (/^\/vid\d+\/thumbnails$/.test(path)) return J({ data: [{ uri: 'https://p/thumb.jpg', is_preferred: true }] });
       return J({ error: { message: 'unknown ' + path } }, 400);
     }
     const p = Object.fromEntries(opt.body.entries());
@@ -63,6 +68,7 @@ async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', cam
     const why = failOn(path, p);
     if (why) return J({ error: { message: why, error_user_msg: 'user text' } }, 400);
     if (path.endsWith('/adimages')) return J({ images: { 'placeholder.png': { hash: 'PHHASH' } } });
+    if (path.endsWith('/advideos')) return J({ id: 'vid' + (++n) });
     return J({ id: 'new' + (++n) });
   };
   let handler;
@@ -234,6 +240,24 @@ const PSPEC = JSON.parse(JSON.stringify(SPEC)); PSPEC.ads[0].post_id = '99_700';
 const pid = await run({ body: { spec: PSPEC, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
 const pcr = pid.posts.filter(x => x.path === '/act_222/adcreatives');
 ok('Post ID з редактора — креатив саме з цього допису, першою спробою', pcr[0] && pcr[0].p.object_story_id === '99_700' && pid.body.ads.made === 3, pcr.map(x => x.p.object_story_id || 'spec'));
+/* Свій креатив із шаблону: відео чи картинка, текст, посилання, кнопка. */
+const VSPEC = JSON.parse(JSON.stringify(SPEC));
+VSPEC.ads.forEach(d => { d.media = { path: 'T/v.mp4', kind: 'video', name: 'v.mp4', text: 'Play now', title: 'Big win', link: 'https://land.top/x', cta: 'SIGN_UP' }; });
+const vid = await run({ body: { spec: VSPEC, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99', name: 'P' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+const vcr = vid.posts.filter(x => x.path === '/act_222/adcreatives').map(x => JSON.parse(x.p.object_story_spec));
+ok('своє відео: залито в кабінет ОДИН раз за посиланням зі сховища', vid.posts.filter(x => x.path === '/act_222/advideos').length === 1
+  && /\/storage\/v1\/object\/sign\/launch-media\/T\/v\.mp4/.test(vid.posts.find(x => x.path.startsWith('/storage/v1/object/sign')).path)
+  && /^https:\/\/x\/storage\/v1\/object\/sign/.test(vid.posts.find(x => x.path === '/act_222/advideos').p.file_url), vid.posts.map(x => x.path));
+ok('креатив: відео, мініатюра, текст, заголовок, кнопка з посиланням, Сторінка кабінета', vcr.length === 3 && vcr.every(o => o.page_id === '99'
+  && o.video_data.video_id && o.video_data.image_url === 'https://p/thumb.jpg' && o.video_data.message === 'Play now'
+  && o.video_data.title === 'Big win' && o.video_data.call_to_action.type === 'SIGN_UP' && o.video_data.call_to_action.value.link === 'https://land.top/x'), vcr);
+ok('усі оголошення створені, без заготовок', vid.body.ads.made === 3 && !(vid.body.warnings || []).some(w => /created as a placeholder/.test(w)), vid.body);
+const ISPEC = JSON.parse(JSON.stringify(SPEC));
+ISPEC.ads.forEach(d => { d.media = { path: 'T/i.jpg', kind: 'image', text: 'Hi', link: 'https://land.top' }; });
+const img = await run({ body: { spec: ISPEC, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+const icr = img.posts.filter(x => x.path === '/act_222/adcreatives').map(x => JSON.parse(x.p.object_story_spec));
+ok('своя картинка: байтами в adimages, у креативі image_hash і посилання', img.posts.filter(x => x.path === '/act_222/adimages').length === 1
+  && icr.length === 3 && icr.every(o => o.link_data.image_hash === 'PHHASH' && o.link_data.link === 'https://land.top' && o.link_data.message === 'Hi'), icr);
 const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok

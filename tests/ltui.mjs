@@ -127,4 +127,27 @@ ok('збережено: назва, бюджет кампанії, країни,
   && sp.adsets[0].targeting.geo_locations.countries.join() === 'TJ,KZ' && sp.adsets[0].targeting.age_min === 21 && sp.ads[0].post_id === '77_999', ed.upd[0]);
 ok('зняте галочкою — прибрано зі шаблону', sp.ads && sp.ads.length === 1 && !sp.ads.some(x => x.name === 'extra'), sp.ads);
 
+/* Свій креатив: залив файл один раз, текст/посилання/кнопка, «для всіх». */
+const md = await page.evaluate(async () => {
+  window.__upd = []; const ups = [];
+  sb.storage = { from: b => ({ upload: async (path, f, o) => { ups.push({ b, path, type: o.contentType }); return { error: null }; } }) };
+  ltRows[0].spec.ads.push({ id: 'a9', name: 'KG_9', adset_id: 's1', creative: { asset_feed_spec: { bodies: [{ text: 'Spin & win' }], link_urls: [{ website_url: 'https://land.top' }], call_to_action_types: ['SIGN_UP'] } } });
+  ltEdit(1);
+  const blk = document.querySelector('#lt-modal .lt-md');
+  const defaults = { text: document.querySelectorAll('#lt-modal .lt-md')[1].innerHTML.includes('Spin &amp; win'), link: document.querySelectorAll('#lt-modal .lt-md')[1].innerHTML.includes('https://land.top') };
+  const f = new File([new Uint8Array(1000)], 'win.mp4', { type: 'video/mp4' });
+  await ltMediaPick(0, { files: [f], value: '' });
+  const shown = document.querySelector('#lt-modal .lt-md-name').innerText;
+  ltMd(0).link = 'https://my.land'; ltMd(0).cta = 'PLAY_GAME';
+  ltMediaAll(0);
+  await ltEdSave();
+  return { ups, shown, defaults, saved: (__upd[0] || {}).spec, hasUp: !!blk };
+});
+ok('у редакторі є блок завантаження креатива', md.hasUp);
+ok('текст і посилання підставлені з креатива шаблону', md.defaults.text && md.defaults.link, md.defaults);
+ok('файл іде в launch-media у теку команди', md.ups.length === 1 && md.ups[0].b === 'launch-media' && /\.mp4$/.test(md.ups[0].path) && md.ups[0].type === 'video/mp4', md.ups);
+ok('після заливки видно файл', /win\.mp4/.test(md.shown), md.shown);
+ok('«для всіх» — однаковий креатив на кожному оголошенні, зберігається в шаблоні', md.saved && md.saved.ads.length === 2
+  && md.saved.ads.every(d => d.media && d.media.kind === 'video' && d.media.link === 'https://my.land' && d.media.cta === 'PLAY_GAME' && d.media.path === md.ups[0].path), md.saved && md.saved.ads);
+
 await done(browser, srv, errs);
