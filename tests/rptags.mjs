@@ -31,4 +31,33 @@ ok('збережені мітки видно після відкриття', r.l
 ok('мітка додається й без Enter (вибір із підказки / вихід з поля)', (r.after.r1 || []).includes('launch'), r.after);
 ok('нова мітка не стирає старі', (r.after.r2 || []).includes('old'), r.after);
 
+/* Цифри дня біля міток і календар біля PDF. */
+const c = await page.evaluate(async () => {
+  window.rawData = [{ date: '2026-11-23', geo: 'KG', spend: 1200 }, { date: '2026-11-23', geo: 'TJ', spend: 300 }];
+  try { rawData = window.rawData; } catch (e) {}
+  try { globalPayouts = { KG_DEFAULT: 0 }; } catch (e) {}
+  reportData = [{ id: 'r1', date: '2026-11-23', comment: 'hi' }, { id: 'r2', date: '2026-11-22', comment: '' }, { id: 'r3', date: '2026-10-05', comment: 'oct' }];
+  currentMonthFilter = '2026-11'; rpMonth = null;
+  document.getElementById('report-modal').classList.remove('hidden');
+  renderReports();
+  const day = (document.querySelector('#report-list-container .rp-day') || {}).innerText || '';
+  const noDay = document.querySelectorAll('#report-list-container .rp-day').length;
+  rpCalOpen(document.getElementById('rp-cal-btn'));
+  const marked = [...document.querySelectorAll('#rp-cal .has-rp')].map(b => b.innerText);
+  rpCalGo('2026-11-22');
+  const open22 = !document.getElementById('report-content-r2').classList.contains('hidden');
+  rpCalOpen(document.getElementById('rp-cal-btn')); rpCalMove(-1);
+  const oct = [...document.querySelectorAll('#rp-cal .has-rp')].map(b => b.innerText);
+  rpCalGo('2026-10-05');
+  const octShown = !!document.getElementById('report-content-r3') && !document.getElementById('report-content-r3').classList.contains('hidden');
+  const helpBg = getComputedStyle(document.querySelector('.rp-help-box')).backgroundColor;
+  return { day, noDay, marked, open22, oct, octShown, helpBg };
+});
+ok('біля міток — спенд і профіт дня', /\$1,500/.test(c.day) && /−\$1,500/.test(c.day), c.day);
+ok('день без статистики — без цифр, а не нулі', c.noDay === 1, c.noDay);
+ok('календар позначає дні зі звітом', c.marked.join() === '22,23', c.marked);
+ok('клік по даті відкриває звіт цього дня', c.open22, c);
+ok('інший місяць — теж відкривається, фільтр дашборду не чіпаємо', c.oct.join() === '5' && c.octShown, c);
+ok('підказка «i» має щільний фон', !/rgba\(0, 0, 0, 0\)|transparent/.test(c.helpBg), c.helpBg);
+
 await done(browser, srv, errs);

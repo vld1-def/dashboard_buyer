@@ -1987,6 +1987,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           Copy
         </button>
+        <button onclick="rpCalOpen(this)" id="rp-cal-btn" title="Calendar — days with a report are marked; click one to open it" class="rp-cal-btn">
+          <svg fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+          Calendar
+        </button>
         <button onclick="exportReportsPDF()" id="pdf-export-btn" title="Export to PDF" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-rose-400 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 rounded-xl transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
           PDF
@@ -6136,12 +6140,86 @@ async function deleteTaskRow(id) {
   if (!error) refreshTasks();
 }
 
+/* ЦИФРИ ДНЯ БІЛЯ МІТОК — «легкі показники, щоб не заважали»: спенд і
+   профіт за цю дату з тієї ж статистики, що й на дашборді. Немає
+   рядків за день — нічого не показуємо, а не нулі. */
+function rpDayStats(day) {
+  const rows = (typeof rawData !== 'undefined' && Array.isArray(rawData) ? rawData : []).filter(x => x && x.date === day);
+  if (!rows.length) return '';
+  let sp = 0, rev = 0;
+  rows.forEach(x => { sp += Number(x.spend) || 0; rev += (typeof revenueOf === 'function' ? revenueOf(x) : 0); });
+  const pr = rev - sp;
+  const m = v => '$' + Math.round(Math.abs(v)).toLocaleString('en-US');
+  return `<span class="rp-day" title="That day: spend ${m(sp)}, profit ${pr < 0 ? '−' : ''}${m(pr)}">`
+    + `<b>${m(sp)}</b><span class="${pr >= 0 ? 'is-up' : 'is-down'}">${pr >= 0 ? '+' : '−'}${m(pr)}</span></span>`;
+}
+
+/* МІСЯЦЬ ЗВІТІВ. Типово — місяць дашборду; календар уміє перейти на
+   інший місяць, не чіпаючи фільтр дашборду. */
+let rpMonth = null;
+
+/* КАЛЕНДАР ЗВІТІВ — біля PDF. Дні, коли є звіт, мають мітку; клік
+   відкриває звіт цього дня (і місяць, якщо він інший). */
+let rpCalYM = null;
+window.rpCalOpen = function (btn) {
+  let el = document.getElementById('rp-cal');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'rp-cal';
+    document.body.appendChild(el);
+    document.addEventListener('pointerdown', e => {
+      const c = document.getElementById('rp-cal');
+      if (c && c.classList.contains('is-on') && !c.contains(e.target) && !(e.target.closest && e.target.closest('#rp-cal-btn'))) c.classList.remove('is-on');
+    }, true);
+  }
+  if (el.classList.contains('is-on')) { el.classList.remove('is-on'); return; }
+  const m = String(rpMonth || currentMonthFilter || new Date().toISOString().slice(0, 7));
+  rpCalYM = { y: Number(m.slice(0, 4)), m: Number(m.slice(5, 7)) - 1 };
+  rpCalPaint();
+  el.classList.add('is-on');
+  const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+  const r = btn.getBoundingClientRect();
+  el.style.left = Math.max(8, Math.min(innerWidth / z - el.offsetWidth - 8, r.right / z - el.offsetWidth)) + 'px';
+  el.style.top = (r.bottom / z + 8) + 'px';
+};
+function rpCalPaint() {
+  const el = document.getElementById('rp-cal'); if (!el || !rpCalYM) return;
+  const { y, m } = rpCalYM;
+  const pad = n => String(n).padStart(2, '0');
+  const ym = y + '-' + pad(m + 1);
+  const have = new Set(reportData.map(r => normalizeDate(r.date)).filter(d => d && d.startsWith(ym)));
+  const lead = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
+  const today = new Date().toISOString().slice(0, 10);
+  const cells = Array.from({ length: lead }, () => '<span></span>');
+  for (let d = 1; d <= days; d++) {
+    const key = ym + '-' + pad(d);
+    cells.push(`<button type="button" class="lt-dtp-d${have.has(key) ? ' has-rp' : ''}${key === today ? ' is-today' : ''}"
+      ${have.has(key) ? `onclick="rpCalGo('${key}')" title="Open the report of ${key}"` : 'disabled'}>${d}</button>`);
+  }
+  const mon = new Date(y, m, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  el.innerHTML = `<div class="lt-dtp-h"><button type="button" class="lt-dtp-nav" onclick="rpCalMove(-1)">‹</button><b>${mon}</b>
+      <button type="button" class="lt-dtp-nav" onclick="rpCalMove(1)">›</button></div>
+    <div class="lt-dtp-w">${['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(x => `<span>${x}</span>`).join('')}</div>
+    <div class="lt-dtp-g">${cells.join('')}</div>
+    <div class="rp-cal-foot"><i></i>${have.size} day${have.size === 1 ? '' : 's'} with a report</div>`;
+}
+window.rpCalMove = function (k) { const t = new Date(rpCalYM.y, rpCalYM.m + k, 1); rpCalYM = { y: t.getFullYear(), m: t.getMonth() }; rpCalPaint(); };
+window.rpCalGo = function (day) {
+  const r = reportData.find(x => normalizeDate(x.date) === day); if (!r) return;
+  const month = day.slice(0, 7);
+  if (month !== (rpMonth || currentMonthFilter)) { rpMonth = month === currentMonthFilter ? null : month; renderReports(); }
+  const content = document.getElementById('report-content-' + r.id);
+  if (content && content.classList.contains('hidden')) toggleReportVisibility(r.id);
+  const card = content && content.parentElement;
+  if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.remove('rp-flash'); void card.offsetWidth; card.classList.add('rp-flash'); }
+  document.getElementById('rp-cal').classList.remove('is-on');
+};
+
 // --- 3. РЕНДЕР ЗВІТІВ (Daily Reports) ---
 function renderReports() {
   const container = document.getElementById('report-list-container');
   if (!container) return;
   
-  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(rpMonth || currentMonthFilter));
   if (!filtered.length) {
     container.innerHTML = `<div class="text-center py-20 opacity-20 italic">No reports for this period</div>`;
     return;
@@ -6159,7 +6237,7 @@ function renderReports() {
           <span class="rp-tags" onclick="event.stopPropagation()">${
             rpTagsOf(r.id).map(t => `<span class="rp-chip">${escapeHtml(t)}<button
               onclick="rpRemoveTag('${r.id}','${t.replace(/'/g, "\\'")}')">\u2715</button></span>`).join('')
-          }<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
+          }${rpDayStats(normalizeDate(r.date))}<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
               title="Type a tag and press Enter — or pick one from the list"
               onkeydown="if(event.key==='Enter'){rpAddTag('${r.id}',this.value);this.value='';}else if(event.key==='Escape'){this.value='';this.blur();}"
               onchange="if(this.value.trim()){rpAddTag('${r.id}',this.value);this.value='';}"></span>
@@ -8005,7 +8083,7 @@ document.addEventListener('keydown', (e) => {
 
 // ===== EXPORT REPORTS =====
 function exportReports() {
-  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(rpMonth || currentMonthFilter));
   if (!filtered.length) { alert('No reports for this period.'); return; }
 
   const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -8047,7 +8125,7 @@ function exportReports() {
 }
 // ===== PDF EXPORT =====
 function exportReportsPDF() {
-  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(rpMonth || currentMonthFilter));
   if (!filtered.length) { alert('No reports for this period.'); return; }
 
   const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));

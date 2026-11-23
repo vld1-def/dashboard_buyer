@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 19:41">
+  <meta name="build" content="build 23.11 19:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1150,6 +1150,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
   /* Наведення — світліше за обидві смуги: курсор має бути видно і на
      звичайному рядку, і на смузі. */
   --cd-hov:      #26262E;
+  /* --surface-1 використовували три місця (підказка «i» у звітах,
+     прев'ю звіту FB, askbox), а визначене воно не було — фон виходив
+     прозорим і текст під ним читався крізь сторінку. */
+  --surface-1:   #16161C;
   --border:      rgba(255,255,255,.07);
   --border-2:    rgba(255,255,255,.13);
   --text-main:   #E9E9EC;
@@ -8409,6 +8413,40 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .lt-md-drv { font-style: normal; font-size: 9.5px; font-weight: 900; padding: 1px 5px; margin-right: 5px; border-radius: 5px; background: #1a73e8; color: #fff; }
 
 .cd-tab-tpl { color: #fbbf24 !important; }
+
+/* Підказка «i» у Daily Reports: щільне скло, щоб читалось поверх звітів. */
+.rp-help-box {
+  background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02)), rgba(18,18,24,.96) !important;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-color: rgba(255,255,255,.14) !important;
+}
+
+/* Цифри дня біля міток звіту — ледь помітні, щоб не відволікали. */
+.rp-day { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0; text-transform: none; color: var(--text-muted); opacity: .7; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-day b { font-weight: 800; color: var(--text-muted); }
+.rp-day .is-up { color: rgba(74,222,128,.8); }
+.rp-day .is-down { color: rgba(248,113,113,.8); }
+
+/* Календар звітів (біля PDF) */
+.rp-cal-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em;
+  color: #a5b4fc; border: 1px solid rgba(129,140,248,.3); background: rgba(129,140,248,.1); padding: 6px 12px; border-radius: 12px; transition: background .15s; }
+.rp-cal-btn:hover { background: rgba(129,140,248,.2); }
+.rp-cal-btn svg { width: 14px; height: 14px; }
+#rp-cal { position: fixed; z-index: 9100; width: 286px; display: none; padding: 12px; border-radius: 18px; color: #f8fafc; text-transform: none; letter-spacing: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.02) 55%, rgba(255,255,255,.07)), rgba(14,14,22,.92);
+  -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%);
+  border: 1px solid rgba(255,255,255,.16); box-shadow: 0 24px 60px -16px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.2); }
+#rp-cal.is-on { display: block; animation: toast-in .16s ease-out; }
+#rp-cal .lt-dtp-d { position: relative; }
+#rp-cal .lt-dtp-d.has-rp::after { content: ''; position: absolute; left: 50%; bottom: 4px; width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
+#rp-cal .lt-dtp-d.is-sel::after { background: #fff; box-shadow: none; }
+#rp-cal .lt-dtp-d:not(.has-rp) { color: rgba(226,232,240,.4); }
+#rp-cal .lt-dtp-d.has-rp { color: #fff; font-weight: 900; }
+.rp-cal-foot { margin-top: 8px; font-size: 10.5px; font-weight: 600; color: rgba(226,232,240,.5); display: flex; align-items: center; gap: 6px; }
+.rp-cal-foot i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #60a5fa; }
+.rp-flash { animation: rp-flash 1.2s ease; }
+@keyframes rp-flash { 0%, 40% { box-shadow: 0 0 0 2px #60a5fa; } 100% { box-shadow: 0 0 0 0 transparent; } }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8668,7 +8706,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 19:41</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 19:46</div>
     </div>
   </aside>
 
@@ -10104,6 +10142,10 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
         <button onclick="exportReports()" title="Copy to clipboard" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-xl transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
           Copy
+        </button>
+        <button onclick="rpCalOpen(this)" id="rp-cal-btn" title="Calendar — days with a report are marked; click one to open it" class="rp-cal-btn">
+          <svg fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+          Calendar
         </button>
         <button onclick="exportReportsPDF()" id="pdf-export-btn" title="Export to PDF" class="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-rose-400 border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 rounded-xl transition">
           <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
@@ -14780,12 +14822,86 @@ async function deleteTaskRow(id) {
   if (!error) refreshTasks();
 }
 
+/* ЦИФРИ ДНЯ БІЛЯ МІТОК — «легкі показники, щоб не заважали»: спенд і
+   профіт за цю дату з тієї ж статистики, що й на дашборді. Немає
+   рядків за day — нічого не показуємо, а не нулі. */
+function rpDayStats(day) {
+  const rows = (typeof rawData !== 'undefined' && Array.isArray(rawData) ? rawData : []).filter(x => x && x.date === day);
+  if (!rows.length) return '';
+  let sp = 0, rev = 0;
+  rows.forEach(x => { sp += Number(x.spend) || 0; rev += (typeof revenueOf === 'function' ? revenueOf(x) : 0); });
+  const pr = rev - sp;
+  const m = v => '$' + Math.round(Math.abs(v)).toLocaleString('en-US');
+  return `<span class="rp-day" title="That day: spend ${m(sp)}, profit ${pr < 0 ? '−' : ''}${m(pr)}">`
+    + `<b>${m(sp)}</b><span class="${pr >= 0 ? 'is-up' : 'is-down'}">${pr >= 0 ? '+' : '−'}${m(pr)}</span></span>`;
+}
+
+/* МІСЯЦЬ ЗВІТІВ. Типово — місяць дашборду; календар уміє перейти на
+   інший місяць, не чіпаючи фільтр дашборду. */
+let rpMonth = null;
+
+/* КАЛЕНДАР ЗВІТІВ — біля PDF. Дні, коли є звіт, мають мітку; клік
+   відкриває звіт цього дня (і місяць, якщо він інший). */
+let rpCalYM = null;
+window.rpCalOpen = function (btn) {
+  let el = document.getElementById('rp-cal');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'rp-cal';
+    document.body.appendChild(el);
+    document.addEventListener('pointerdown', e => {
+      const c = document.getElementById('rp-cal');
+      if (c && c.classList.contains('is-on') && !c.contains(e.target) && !(e.target.closest && e.target.closest('#rp-cal-btn'))) c.classList.remove('is-on');
+    }, true);
+  }
+  if (el.classList.contains('is-on')) { el.classList.remove('is-on'); return; }
+  const m = String(rpMonth || currentMonthFilter || new Date().toISOString().slice(0, 7));
+  rpCalYM = { y: Number(m.slice(0, 4)), m: Number(m.slice(5, 7)) - 1 };
+  rpCalPaint();
+  el.classList.add('is-on');
+  const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+  const r = btn.getBoundingClientRect();
+  el.style.left = Math.max(8, Math.min(innerWidth / z - el.offsetWidth - 8, r.right / z - el.offsetWidth)) + 'px';
+  el.style.top = (r.bottom / z + 8) + 'px';
+};
+function rpCalPaint() {
+  const el = document.getElementById('rp-cal'); if (!el || !rpCalYM) return;
+  const { y, m } = rpCalYM;
+  const pad = n => String(n).padStart(2, '0');
+  const ym = y + '-' + pad(m + 1);
+  const have = new Set(reportData.map(r => normalizeDate(r.date)).filter(d => d && d.startsWith(ym)));
+  const lead = (new Date(y, m, 1).getDay() + 6) % 7, days = new Date(y, m + 1, 0).getDate();
+  const today = new Date().toISOString().slice(0, 10);
+  const cells = Array.from({ length: lead }, () => '<span></span>');
+  for (let d = 1; d <= days; d++) {
+    const key = ym + '-' + pad(d);
+    cells.push(`<button type="button" class="lt-dtp-d${have.has(key) ? ' has-rp' : ''}${key === today ? ' is-today' : ''}"
+      ${have.has(key) ? `onclick="rpCalGo('${key}')" title="Open the report of ${key}"` : 'disabled'}>${d}</button>`);
+  }
+  const mon = new Date(y, m, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  el.innerHTML = `<div class="lt-dtp-h"><button type="button" class="lt-dtp-nav" onclick="rpCalMove(-1)">‹</button><b>${mon}</b>
+      <button type="button" class="lt-dtp-nav" onclick="rpCalMove(1)">›</button></div>
+    <div class="lt-dtp-w">${['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(x => `<span>${x}</span>`).join('')}</div>
+    <div class="lt-dtp-g">${cells.join('')}</div>
+    <div class="rp-cal-foot"><i></i>${have.size} day${have.size === 1 ? '' : 's'} with a report</div>`;
+}
+window.rpCalMove = function (k) { const t = new Date(rpCalYM.y, rpCalYM.m + k, 1); rpCalYM = { y: t.getFullYear(), m: t.getMonth() }; rpCalPaint(); };
+window.rpCalGo = function (day) {
+  const r = reportData.find(x => normalizeDate(x.date) === day); if (!r) return;
+  const month = day.slice(0, 7);
+  if (month !== (rpMonth || currentMonthFilter)) { rpMonth = month === currentMonthFilter ? null : month; renderReports(); }
+  const content = document.getElementById('report-content-' + r.id);
+  if (content && content.classList.contains('hidden')) toggleReportVisibility(r.id);
+  const card = content && content.parentElement;
+  if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.classList.remove('rp-flash'); void card.offsetWidth; card.classList.add('rp-flash'); }
+  document.getElementById('rp-cal').classList.remove('is-on');
+};
+
 // --- 3. РЕНДЕР ЗВІТІВ (Daily Reports) ---
 function renderReports() {
   const container = document.getElementById('report-list-container');
   if (!container) return;
   
-  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(rpMonth || currentMonthFilter));
   if (!filtered.length) {
     container.innerHTML = `<div class="text-center py-20 opacity-20 italic">No reports for this period</div>`;
     return;
@@ -14803,7 +14919,7 @@ function renderReports() {
           <span class="rp-tags" onclick="event.stopPropagation()">${
             rpTagsOf(r.id).map(t => `<span class="rp-chip">${escapeHtml(t)}<button
               onclick="rpRemoveTag('${r.id}','${t.replace(/'/g, "\\'")}')">\u2715</button></span>`).join('')
-          }<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
+          }${rpDayStats(normalizeDate(r.date))}<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
               title="Type a tag and press Enter — or pick one from the list"
               onkeydown="if(event.key==='Enter'){rpAddTag('${r.id}',this.value);this.value='';}else if(event.key==='Escape'){this.value='';this.blur();}"
               onchange="if(this.value.trim()){rpAddTag('${r.id}',this.value);this.value='';}"></span>
@@ -16653,7 +16769,7 @@ document.addEventListener('keydown', (e) => {
 
 // ===== EXPORT REPORTS =====
 function exportReports() {
-  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(rpMonth || currentMonthFilter));
   if (!filtered.length) { alert('No reports for this period.'); return; }
 
   const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -16695,7 +16811,7 @@ function exportReports() {
 }
 // ===== PDF EXPORT =====
 function exportReportsPDF() {
-  const filtered = reportData.filter(r => r.date && r.date.startsWith(currentMonthFilter));
+  const filtered = reportData.filter(r => r.date && r.date.startsWith(rpMonth || currentMonthFilter));
   if (!filtered.length) { alert('No reports for this period.'); return; }
 
   const sorted = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
