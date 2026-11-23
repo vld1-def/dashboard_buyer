@@ -59,6 +59,7 @@ async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', cam
       if (path === '/900/ads') return J({ data: ads });
       if (lists && lists[path]) return J({ data: lists[path] });
       if (/^\/vid\d+$/.test(path)) return J({ status: { video_status: 'ready' }, picture: 'https://p/pic.jpg' });
+      if (/^\/src\d+$/.test(path)) return J({ source: 'https://cdn.fb' + path + '.mp4' });
       if (/^\/vid\d+\/thumbnails$/.test(path)) return J({ data: [{ uri: 'https://p/thumb.jpg', is_preferred: true }] });
       return J({ error: { message: 'unknown ' + path } }, 400);
     }
@@ -258,6 +259,34 @@ const img = await run({ body: { spec: ISPEC, target_account: '222' }, lists: { '
 const icr = img.posts.filter(x => x.path === '/act_222/adcreatives').map(x => JSON.parse(x.p.object_story_spec));
 ok('своя картинка: байтами в adimages, у креативі image_hash і посилання', img.posts.filter(x => x.path === '/act_222/adimages').length === 1
   && icr.length === 3 && icr.every(o => o.link_data.image_hash === 'PHHASH' && o.link_data.link === 'https://land.top' && o.link_data.message === 'Hi'), icr);
+/* Мовне оголошення (Languages): тексти, посилання й правила мов — з
+   шаблону, відео — скопійовані з кабінета-зразка, мітки — за назвами. */
+const LSPEC = JSON.parse(JSON.stringify(SPEC));
+LSPEC.ads = [{ id: 'l1', name: 'KG_lang', adset_id: 's1', creative: {
+  object_story_spec: { page_id: '77', instagram_user_id: '178' },
+  asset_feed_spec: { optimization_type: 'LANGUAGE', ad_formats: ['SINGLE_VIDEO'], call_to_action_types: ['DOWNLOAD'], shops_bundle: true,
+    bodies: [{ text: 'EN text', adlabels: [{ id: '1', name: 'en_US' }] }, { text: 'RU text', adlabels: [{ id: '2', name: 'ru_RU' }] }],
+    link_urls: [{ website_url: 'https://a', adlabels: [{ id: '1', name: 'en_US' }] }, { website_url: 'https://b', adlabels: [{ id: '2', name: 'ru_RU' }] }],
+    videos: [{ video_id: 'src1', adlabels: [{ id: '1', name: 'en_US' }] }, { video_id: 'src2', adlabels: [{ id: '2', name: 'ru_RU' }] }],
+    asset_customization_rules: [{ is_default: true, body_label: { id: '1', name: 'en_US' }, video_label: { id: '1', name: 'en_US' }, customization_spec: { locales: [6] } },
+      { body_label: { id: '2', name: 'ru_RU' }, video_label: { id: '2', name: 'ru_RU' }, customization_spec: { locales: [17] } }] } } }];
+const lang = await run({ body: { spec: LSPEC, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+const lcr = lang.posts.filter(x => x.path === '/act_222/adcreatives')[0];
+const LAF = lcr && JSON.parse(lcr.p.asset_feed_spec);
+ok('мовне оголошення створене як мовне (LANGUAGE), з правилами мов', lang.body.ads.made === 1 && LAF && LAF.optimization_type === 'LANGUAGE'
+  && LAF.asset_customization_rules.length === 2 && LAF.asset_customization_rules[1].customization_spec.locales[0] === 17, lang.body);
+ok('тексти й посилання кожної мови збережені, мітки — за назвами, без чужих id', LAF.bodies.map(b => b.text).join() === 'EN text,RU text'
+  && LAF.link_urls[1].website_url === 'https://b' && LAF.bodies.every(b => b.adlabels.every(l => l.name && !l.id))
+  && LAF.asset_customization_rules.every(r => !r.body_label.id), LAF);
+ok('відео кабінета-зразка скопійовані в новий кабінет', lang.posts.filter(x => x.path === '/act_222/advideos').map(x => x.p.file_url).join() === 'https://cdn.fb/src1.mp4,https://cdn.fb/src2.mp4'
+  && LAF.videos.every(v => /^vid/.test(v.video_id) && v.adlabels[0].name), LAF.videos);
+ok('Сторінка — цього кабінета, без чужого Instagram і зайвих полів', JSON.parse(lcr.p.object_story_spec).page_id === '99'
+  && !JSON.parse(lcr.p.object_story_spec).instagram_user_id && !('shops_bundle' in LAF));
+const LSPEC2 = JSON.parse(JSON.stringify(LSPEC)); LSPEC2.ads[0].media = { path: 'T/v.mp4', kind: 'video', link: 'https://mine' };
+const lang2 = await run({ body: { spec: LSPEC2, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+const LAF2 = JSON.parse(lang2.posts.filter(x => x.path === '/act_222/adcreatives')[0].p.asset_feed_spec);
+ok('своє відео з редактора — на всі мови, своє посилання — теж', lang2.posts.filter(x => x.path === '/act_222/advideos').length === 1
+  && new Set(LAF2.videos.map(v => v.video_id)).size === 1 && LAF2.link_urls.every(u => u.website_url === 'https://mine'), LAF2);
 const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok

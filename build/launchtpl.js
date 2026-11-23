@@ -505,6 +505,7 @@ function ltPaintEdit() {
         <div class="lt-ed-fields">
           <span class="lt-ed-meta">template creative: ${ltEsc(ltCreativeKind(d.creative))}${sets.length > 1 ? ' · in “' + ltEsc((sets.find(s2 => String(s2.id) === String(d.adset_id)) || {}).name || '?') + '”' : ''}</span>
         </div>
+        ${ltLangBlock(d, i)}
         ${ltMediaBlock(d, i, ads.length)}
         <details class="lt-ed-more"><summary>Post ID instead (optional)</summary>
           <input class="lt-ed-in" value="${ltEsc(d.post_id || '')}" oninput="ltEd.spec.ads[${i}].post_id=this.value.trim()" placeholder="PAGEID_POSTID — a ready post the cabinet can use"></details>
@@ -593,18 +594,51 @@ function ltMd(i) {
   if (!d.media) d.media = ltAdDefaults(d);
   return d.media;
 }
+/* МОВИ ОГОЛОШЕННЯ (Languages у Ads Manager). «глянь, чи шаблон
+   створився з мовами». Видно кожну мову з її текстом, заголовком і
+   посиланням — їх можна правити; при запуску оголошення відтворюється
+   мовним, а не одномовною копією. */
+const ltIsLang = d => !!(d.creative && d.creative.asset_feed_spec && d.creative.asset_feed_spec.optimization_type === 'LANGUAGE');
+function ltLangs(d) {
+  const af = d.creative.asset_feed_spec;
+  const rules = af.asset_customization_rules || [];
+  const names = [];
+  rules.slice().sort((a, b) => Number(!!b.is_default) - Number(!!a.is_default)).forEach(r => {
+    const n = (r.body_label || r.title_label || r.link_url_label || {}).name;
+    if (n && !names.includes(n)) names.push(n);
+  });
+  const of = (arr, n) => (arr || []).find(e => (e.adlabels || []).some(l => l.name === n));
+  return names.map((n, k) => ({ n, def: k === 0 && rules.some(r => r.is_default),
+    body: of(af.bodies, n), title: of(af.titles, n), link: of(af.link_urls, n) }));
+}
+function ltLangBlock(d, i) {
+  if (!ltIsLang(d)) return '';
+  const langs = ltLangs(d);
+  window.__ltLang = window.__ltLang || {};
+  window.__ltLang[i] = langs;
+  return `<div class="lt-lang"><div class="lt-lang-h">Languages · ${langs.length} — kept on launch</div>
+    ${langs.map((L, k) => `<div class="lt-lang-row">
+      <span class="lt-lang-n">${ltEsc(L.n)}${L.def ? '<em>default</em>' : ''}</span>
+      <input class="lt-ed-in" value="${ltEsc(L.body ? L.body.text : '')}" placeholder="Text" ${L.body ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].body.text=this.value">
+      <input class="lt-ed-in" value="${ltEsc(L.title ? L.title.text : '')}" placeholder="Headline" ${L.title ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].title.text=this.value">
+      <input class="lt-ed-in" value="${ltEsc(L.link ? L.link.website_url : '')}" placeholder="Link" ${L.link ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].link.website_url=this.value.trim()">
+    </div>`).join('')}</div>`;
+}
+
 function ltMediaBlock(d, i, total) {
   const m = d.media || ltAdDefaults(d);
+  const lang = ltIsLang(d);
   const file = m.path
     ? `<div class="lt-md-file"><span class="lt-md-ic">${m.kind === 'video' ? '▶' : '▣'}</span>
         <span class="lt-md-name">${ltEsc(m.name || m.path.split('/').pop())}${m.size ? ' · ' + (m.size / 1048576).toFixed(1) + ' MB' : ''}</span>
         <label class="lt-md-btn">Replace<input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>
         <button type="button" class="lt-md-btn" onclick="ltMediaDrop(${i})">Remove</button></div>`
     : `<label class="lt-md-up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-        <span>Upload video or image — CRM puts it into every new cabinet</span><input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>`;
+        <span>${ltIsLang(d) ? 'Upload a video for all languages (optional)' : 'Upload video or image — CRM puts it into every new cabinet'}</span><input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>`;
   return `<div class="lt-md">
     ${file}
-    <div class="lt-ed-fields">
+    ${lang ? `<p class="lt-md-note">${m.path ? 'This video goes to every language.' : 'No video here — the template’s own videos are copied from its cabinet while that cabinet is alive. Upload one to be safe.'}</p>` : ''}
+    <div class="lt-ed-fields"${lang ? ' hidden' : ''}>
       <label class="is-wide"><span>Text</span><input class="lt-ed-in" value="${ltEsc(m.text || '')}" oninput="ltMd(${i}).text=this.value"></label>
       <label><span>Headline</span><input class="lt-ed-in" value="${ltEsc(m.title || '')}" oninput="ltMd(${i}).title=this.value"></label>
       <label class="is-wide"><span>Link</span><input class="lt-ed-in" value="${ltEsc(m.link || '')}" oninput="ltMd(${i}).link=this.value.trim()" placeholder="https://"></label>

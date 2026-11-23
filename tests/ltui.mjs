@@ -150,4 +150,22 @@ ok('після заливки видно файл', /win\.mp4/.test(md.shown), m
 ok('«для всіх» — однаковий креатив на кожному оголошенні, зберігається в шаблоні', md.saved && md.saved.ads.length === 2
   && md.saved.ads.every(d => d.media && d.media.kind === 'video' && d.media.link === 'https://my.land' && d.media.cta === 'PLAY_GAME' && d.media.path === md.ups[0].path), md.saved && md.saved.ads);
 
+/* Мови оголошення в редакторі: видно й можна правити. */
+const lg = await page.evaluate(async () => {
+  window.__upd = [];
+  ltRows[0].spec.ads = [{ id: 'l1', name: 'KG_lang', adset_id: 's1', creative: { asset_feed_spec: { optimization_type: 'LANGUAGE',
+    bodies: [{ text: 'RU', adlabels: [{ name: 'ru_RU' }] }, { text: 'AF', adlabels: [{ name: 'af_ZA' }] }],
+    link_urls: [{ website_url: 'https://r', adlabels: [{ name: 'ru_RU' }] }, { website_url: 'https://a', adlabels: [{ name: 'af_ZA' }] }],
+    asset_customization_rules: [{ body_label: { name: 'ru_RU' }, customization_spec: { locales: [17] } }, { is_default: true, body_label: { name: 'af_ZA' }, customization_spec: { locales: [36] } }] } } }];
+  ltEdit(1);
+  const rows = [...document.querySelectorAll('#lt-modal .lt-lang-row')].map(r => r.querySelector('.lt-lang-n').innerText.replace(/\s+/g, ' '));
+  const inp = document.querySelectorAll('#lt-modal .lt-lang-row')[1].querySelector('input');
+  inp.value = 'RU edited'; inp.dispatchEvent(new Event('input'));
+  await ltEdSave();
+  const b = (__upd[0] || {}).spec.ads[0].creative.asset_feed_spec.bodies;
+  return { rows, b };
+});
+ok('мови оголошення видно, основна — першою', lg.rows.length === 2 && /af_ZA/.test(lg.rows[0]) && /default/i.test(lg.rows[0]) && /ru_RU/.test(lg.rows[1]), lg.rows);
+ok('текст мови правиться й зберігається в шаблоні', lg.b && lg.b[0].text === 'RU edited' && lg.b[1].text === 'AF', lg.b);
+
 await done(browser, srv, errs);

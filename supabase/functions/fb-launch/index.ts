@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-23.4';
+const FN_VERSION = '2026-11-23.5';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -335,6 +335,13 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
          Файл заливається в цей кабінет при запуску (див. buildMedia). */
       const md = d.media;
       if (md && md.path && P) cands.unshift({ __media: { ...md, page: P }, ...nm, ...tags });
+      /* МОВНЕ ОГОЛОШЕННЯ (Languages у Ads Manager): asset_feed_spec з
+         optimization_type LANGUAGE — свій текст, заголовок, посилання й
+         відео на кожну мову та правила «яка мова кому». Відтворюємо його
+         цілком, а не одномовною копією. Найперше в черзі. */
+      const af = cr.asset_feed_spec;
+      if (af && String(af.optimization_type || '') === 'LANGUAGE' && P)
+        cands.unshift({ __lang: { afs: af, media: md && md.path ? md : null, page: P }, ...nm, ...tags });
       if (story && !lost && story !== own) cands.push({ ...nm, object_story_id: story, ...tags });
       const oss = cr.object_story_spec;
       if (oss && (oss.link_data || oss.video_data || oss.photo_data || oss.template_data) && !cr.asset_feed_spec) {
@@ -499,25 +506,8 @@ Deno.serve(async (req) => {
         { method: 'POST', headers: { ...stHdr, 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 }) });
       const sj = await sr.json().catch(() => ({}));
       if (!sr.ok || !sj.signedURL) throw new Error('could not read the video from storage');
-      const fileUrl = base + '/storage/v1' + String(sj.signedURL);
-      const vid = String((await graph(act + '/advideos', T.token, { file_url: fileUrl, name: String(md.name || 'video') }, 'POST')).id || '');
-      if (!vid) throw new Error('Facebook returned no video id');
-      // Чекаємо обробку: без готового відео креатив Facebook не прийме.
-      let thumb = '';
-      for (let i = 0; i < 20 && Date.now() < deadline - 15_000; i++) {
-        const v = await graph('/' + vid, T.token, { fields: 'status,picture' }).catch(() => ({} as Json));
-        thumb = String(v.picture || thumb);
-        const st = String(v.status?.video_status || '');
-        if (st === 'ready') break;
-        if (st === 'error') throw new Error('Facebook could not process the video');
-        await new Promise(r => setTimeout(r, 3000));
-      }
-      try {
-        const th = await graph('/' + vid + '/thumbnails', T.token, { fields: 'uri,is_preferred' });
-        const list: Json[] = th.data || [];
-        thumb = String((list.find(x => x.is_preferred) || list[0] || {}).uri || thumb);
-      } catch (_e) { /* мініатюра з picture */ }
-      got = { video_id: vid, thumb };
+      // Чекаємо обробку всередині: без готового відео креатив Facebook не прийме.
+      got = await uploadVideoUrl(base + '/storage/v1' + String(sj.signedURL), String(md.name || 'video'));
     } else {
       const r = await fetch(stUrl(key), { headers: stHdr });
       if (!r.ok) throw new Error('could not read the image from storage');
@@ -528,6 +518,64 @@ Deno.serve(async (req) => {
     }
     mediaCache.set(key, got);
     return got;
+  };
+  /* Відео кабінета-зразка → у цей кабінет. Потрібен живий токен зразка:
+     беремо в Facebook адресу файлу (source) і віддаємо її advideos. */
+  let srcTok: string | null | undefined;
+  const videoCache = new Map<string, Json>();
+  const copySourceVideo = async (vid: string): Promise<Json> => {
+    if (videoCache.has(vid)) return videoCache.get(vid)!;
+    if (srcTok === undefined) { try { srcTok = (await tokenOf(specSrc)).token; } catch (_e) { srcTok = null; } }
+    if (!srcTok) throw new Error('the template’s cabinet is gone, so its videos cannot be copied — upload a video in the template editor');
+    const v = await graph('/' + vid, srcTok, { fields: 'source' });
+    if (!v.source) throw new Error('Facebook did not give the video file of the template');
+    const got = await uploadVideoUrl(String(v.source), 'video ' + vid);
+    videoCache.set(vid, got);
+    return got;
+  };
+  const uploadVideoUrl = async (fileUrl: string, name: string): Promise<Json> => {
+    const id = String((await graph(act + '/advideos', T.token, { file_url: fileUrl, name }, 'POST')).id || '');
+    if (!id) throw new Error('Facebook returned no video id');
+    let thumb = '';
+    for (let i = 0; i < 20 && Date.now() < deadline - 15_000; i++) {
+      const v = await graph('/' + id, T.token, { fields: 'status,picture' }).catch(() => ({} as Json));
+      thumb = String(v.picture || thumb);
+      const st = String(v.status?.video_status || '');
+      if (st === 'ready') break;
+      if (st === 'error') throw new Error('Facebook could not process the video');
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    try {
+      const th = await graph('/' + id + '/thumbnails', T.token, { fields: 'uri,is_preferred' });
+      const list: Json[] = th.data || [];
+      thumb = String((list.find(x => x.is_preferred) || list[0] || {}).uri || thumb);
+    } catch (_e) { /* мініатюра з picture */ }
+    return { video_id: id, thumb };
+  };
+  /* Мовний креатив: мітки мов — за назвами (id міток належать старому
+     кабінету), відео — своє з редактора на всі мови або скопійовані з
+     кабінета-зразка, Сторінка — цього кабінета. */
+  const langCreative = async (c0: Json): Promise<Json> => {
+    const L: Json = c0.__lang;
+    const afs: Json = JSON.parse(JSON.stringify(L.afs));
+    const lab = (x: Json) => x ? { name: String(x.name || '') } : x;
+    const fixLabels = (arr: Json[] | undefined) => (arr || []).map(e => ({ ...e, adlabels: (e.adlabels || []).map(lab) }));
+    ['bodies', 'titles', 'descriptions', 'link_urls', 'images'].forEach(k => { if (afs[k]) afs[k] = fixLabels(afs[k]); });
+    (afs.asset_customization_rules || []).forEach((r: Json) => {
+      Object.keys(r).forEach(k => { if (/_label$/.test(k)) r[k] = lab(r[k]); });
+    });
+    const own = L.media && L.media.kind === 'video' ? await uploadMedia(L.media) : null;
+    if (L.media && L.media.link) (afs.link_urls || []).forEach((u: Json) => { u.website_url = L.media.link; });
+    const vids: Json[] = [];
+    for (const v of (afs.videos || [])) {
+      const got = own || await copySourceVideo(String(v.video_id));
+      vids.push({ video_id: got.video_id, thumbnail_url: got.thumb || undefined, adlabels: (v.adlabels || []).map(lab) });
+    }
+    afs.videos = vids;
+    ['shops_bundle', 'reasons_to_shop', 'additional_data'].forEach(k => delete afs[k]);
+    const out: Json = { name: c0.name, object_story_spec: { page_id: L.page }, asset_feed_spec: afs };
+    if (c0.url_tags) out.url_tags = c0.url_tags;
+    return out;
   };
   const mediaCreative = async (c0: Json): Promise<Json> => {
     const md: Json = c0.__media;
@@ -586,7 +634,8 @@ Deno.serve(async (req) => {
       const tried: string[] = [];
       const mk = async (cr0: Json) => {
         let cr: Json = cr0;
-        if (cr0.__media) cr = await mediaCreative(cr0);
+        if (cr0.__lang) cr = await langCreative(cr0);
+        else if (cr0.__media) cr = await mediaCreative(cr0);
         else if (cr0.__ph) {
           cr = JSON.parse(JSON.stringify(cr0)); delete cr.__ph;
           if (cr0.__ph === 'img') {
@@ -616,7 +665,7 @@ Deno.serve(async (req) => {
         }
       };
       let done = -1, last = '';
-      const kind = (c: Json) => c.creative_id ? 'existing creative' : c.__media ? 'your ' + (c.__media.kind || 'file') : c.__ph ? 'placeholder (' + c.__ph + ')'
+      const kind = (c: Json) => c.creative_id ? 'existing creative' : c.__lang ? 'languages creative' : c.__media ? 'your ' + (c.__media.kind || 'file') : c.__ph ? 'placeholder (' + c.__ph + ')'
         : c.object_story_id ? 'post' : 'creative description';
       for (let k = 0; k < ad.cands.length && done < 0; k++) {
         try { await mk(ad.cands[k]); done = k; }
