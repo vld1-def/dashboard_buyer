@@ -3404,7 +3404,13 @@ const m = {};
 
   async function refreshReports() {
     if (isEditingReport) return;
-    const { data } = await sb.from('daily_reports').select('*').eq('team_name', currentTeam);
+    /* МІТКИ ЗВІТІВ ТЕЖ ЧИТАЄМО. Їх ніхто не завантажував: після
+       перезаходу мітки зникали, а перша ж нова мітка перезаписувала
+       збережений список порожнім плюс собою — тобто стирала всі старі. */
+    const [{ data }] = await Promise.all([
+      sb.from('daily_reports').select('*').eq('team_name', currentTeam),
+      rpTagsLoadedFor === currentTeam ? null : loadReportTags().then(() => { rpTagsLoadedFor = currentTeam; })
+    ]);
     reportData = data || [];
     renderReports();
   }
@@ -3706,12 +3712,22 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
    ALTER заради списку рядків означало б вимагати похід у SQL перед
    тим, як щось запрацює. */
 let rpTags = {};          // { report_id: [мітки] }
+let rpTagsLoadedFor = null;  // для якої команди мітки вже прочитані (null — ще ні)
 
 async function loadReportTags() {
   try { rpTags = JSON.parse(await getTeamSetting('report_tags') || '{}') || {}; }
   catch (e) { rpTags = {}; }
 }
 async function saveReportTags() {
+  // Не прочитали з бази — не пишемо: інакше порожній список затер би збережені.
+  if (rpTagsLoadedFor !== currentTeam) {
+    const mine = rpTags;
+    try { await loadReportTags(); rpTagsLoadedFor = currentTeam; } catch (e) { return; }
+    // Щойно додане — поверх збереженого, без дублів.
+    Object.entries(mine).forEach(([id, list]) => {
+      rpTags[id] = [...new Set([...(rpTags[id] || []), ...list])];
+    });
+  }
   try { await setTeamSetting('report_tags', JSON.stringify(rpTags)); }
   catch (e) { console.warn('Не вдалось зберегти мітки звіту:', e.message); }
 }
@@ -6144,7 +6160,9 @@ function renderReports() {
             rpTagsOf(r.id).map(t => `<span class="rp-chip">${escapeHtml(t)}<button
               onclick="rpRemoveTag('${r.id}','${t.replace(/'/g, "\\'")}')">\u2715</button></span>`).join('')
           }<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
-              onkeydown="if(event.key==='Enter'){rpAddTag('${r.id}',this.value);this.value='';}"></span>
+              title="Type a tag and press Enter — or pick one from the list"
+              onkeydown="if(event.key==='Enter'){rpAddTag('${r.id}',this.value);this.value='';}else if(event.key==='Escape'){this.value='';this.blur();}"
+              onchange="if(this.value.trim()){rpAddTag('${r.id}',this.value);this.value='';}"></span>
           <span id="report-status-${r.id}" class="status-icon flex items-center ml-2"></span>
         </div>
         <div class="flex items-center gap-1" onclick="event.stopPropagation()">
