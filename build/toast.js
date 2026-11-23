@@ -426,8 +426,10 @@ window.toastStep = function () {
     el = html ? window.toast(html, kind, ms, raw) : null;
   };
   return {
-    // Проміжний крок живе, поки не скажуть інше: ms = 0.
-    say: (html, kind, raw) => put(html, kind, 0, raw),
+    /* Проміжний крок живе, поки не скажуть інше: ms = 0. І крутиться:
+       «в сповіщеннях додати анімацію прогрузки» — видно, що робота йде,
+       а не що повідомлення застигло. */
+    say: (html, kind, raw) => { put(html, kind, 0, raw); if (el) el.classList.add('is-busy'); },
     // Останній — звичайний тост, який сам згасне.
     done: (html, kind, raw) => put(html, kind, undefined, raw)
   };

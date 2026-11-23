@@ -1481,7 +1481,9 @@ window.cdFlipMany = async function (on) {
     : confirm((on ? 'Switch on ' : 'Switch off ') + what + '?');
   if (!go) return;
 
-  cdBusy = true; cdPaint();
+  cdBusy = true; ids.forEach(x => cdPending.add(String(x))); cdPaint();
+  const step = typeof toastStep === 'function' ? toastStep() : null;
+  if (step) step.say('Switching ' + (on ? 'on' : 'off') + ' ' + ids.length + ' item(s)…');
   try {
     const { data: s } = await sb.auth.getSession();
     const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
@@ -1490,6 +1492,7 @@ window.cdFlipMany = async function (on) {
                  Authorization: 'Bearer ' + (s?.session?.access_token || '') },
       body: JSON.stringify({ account_id: cdAcc, ids, on: !!on })
     });
+    if (step) step.done('');
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
     const done = Number(j.paused) || 0;
@@ -1514,8 +1517,10 @@ window.cdFlipMany = async function (on) {
         + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
     }
   } catch (e) {
+    if (step) step.done('');
     if (typeof toast === 'function') toast('Could not switch: ' + e.message, 'error');
   }
+  ids.forEach(x => cdPending.delete(String(x)));
   cdBusy = false;
   cdPaint();
 };
@@ -1864,8 +1869,14 @@ function cdSwitch(n, named) {
       + ' yet — deploy fb-sync, run block 1 of FB_RULES.sql, then press Sync now'
     : on ? 'Switched on. Click to switch off in Facebook'
          : 'Switched off. Click to switch on in Facebook';
-  return `<button type="button" class="cd-sw${on ? ' is-on' : ''}${known ? '' : ' is-na'}"
-      role="switch" aria-checked="${on}" ${cdBusy ? 'disabled' : ''}
+  /* ОЧІКУВАННЯ ВИДНО НА САМОМУ ВИМИКАЧІ. «я клікаю включити чи
+     виключити і не розумію, чи воно працює». Поки Facebook відповідає,
+     вимикач уже стоїть у новому положенні, але блідий і з крутилкою в
+     повзунку — видно, що запит пішов і чого чекати. */
+  const wait = cdPending.has(String(n.id));
+  const shown = wait ? !on : on;
+  return `<button type="button" class="cd-sw${shown ? ' is-on' : ''}${known ? '' : ' is-na'}${wait ? ' is-wait' : ''}"
+      role="switch" aria-checked="${shown}" aria-busy="${wait}" ${cdBusy ? 'disabled' : ''}
       onclick="cdFlip('${cdEsc(n.id)}', '${n.kind}', '${encodeURIComponent(named || n.id)}', ${on})"
       title="${cdEsc(title)}"><span class="cd-sw-k"></span></button>`;
 }
@@ -1892,7 +1903,9 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
     : confirm((off ? 'Switch off ' : 'Switch on ') + kind + ' "' + name + '"?');
   if (!go) return;
 
-  cdBusy = true; cdPaint();
+  cdBusy = true; cdPending.add(String(id)); cdPaint();
+  const step = typeof toastStep === 'function' ? toastStep() : null;
+  if (step) step.say('Switching ' + (off ? 'off' : 'on') + ': ' + name + '…');
   try {
     const { data: s } = await sb.auth.getSession();
     const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
@@ -1904,6 +1917,7 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
     const word = off ? 'off' : 'on';
+    if (step) step.done('');
     if (j.paused) {
       /* Знімок про це ще не знає — він приїде наступною синхронізацією.
          Але лишити рядок у старому положенні означало б показати
@@ -1916,12 +1930,16 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
         + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
     }
   } catch (e) {
+    if (step) step.done('');
     if (typeof toast === 'function')
       toast('Could not switch ' + (off ? 'off' : 'on') + ': ' + e.message, 'error');
   }
+  cdPending.delete(String(id));
   cdBusy = false;
   cdPaint();
 };
+// Що зараз перемикається у Facebook (id) — вимикач показує очікування.
+const cdPending = new Set();
 
 /* Правимо стан у себе, у знімку в памʼяті. Рядків на одну кампанію
    багато — по одному на кожне оголошення, — тож правити треба всі, що
@@ -1984,6 +2002,8 @@ window.cdBudgetEdit = async function (id, nameEnc) {
   if (!go) return;
 
   cdBusy = true; cdPaint();
+  const step = typeof toastStep === 'function' ? toastStep() : null;
+  if (step) step.say('Changing the budget: ' + name + '…');
   try {
     const { data: s } = await sb.auth.getSession();
     const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
@@ -1993,6 +2013,7 @@ window.cdBudgetEdit = async function (id, nameEnc) {
       body: JSON.stringify({ account_id: cdAcc, ids: [id], budget: v })
     });
     const j = await res.json().catch(() => ({}));
+    if (step) step.done('');
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
     if (j.changed) {
       /* Знімок про це ще не знає — він приїде наступною синхронізацією.
@@ -2005,6 +2026,7 @@ window.cdBudgetEdit = async function (id, nameEnc) {
       toast(j.note || 'Budget not changed', 'error');
     }
   } catch (e) {
+    if (step) step.done('');
     if (typeof toast === 'function') toast('Budget not changed: ' + (e.message || e), 'error');
   } finally {
     cdBusy = false; cdPaint();

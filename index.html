@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 22.11 23:12">
+  <meta name="build" content="build 23.11 09:53">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8255,6 +8255,32 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .lt-dtp-l:hover { color: #fff; }
 .lt-dtp-ok { margin-left: auto; height: 30px; }
 .lt-form .lt-dt-btn span { text-transform: none; letter-spacing: normal; font-size: 12.5px; font-weight: 700; color: inherit; }
+
+/* ── Очікування ──
+   Тост проміжного кроку (toastStep.say): крутилка ліворуч і смужка, що
+   біжить знизу. Вимикач у дереві FB LIVE, поки Facebook відповідає:
+   уже в новому положенні, блідий, з крутилкою в повзунку. */
+.toast.is-busy { padding-left: 38px; overflow: hidden; }
+.toast.is-busy::before {
+  content: ''; position: absolute; left: 13px; top: 13px; width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.16); border-top-color: var(--accent, #8b5cf6);
+  animation: busy-spin .7s linear infinite;
+}
+.toast.is-busy::after {
+  content: ''; position: absolute; left: 0; bottom: 0; height: 2px; width: 40%;
+  background: linear-gradient(90deg, transparent, var(--accent, #8b5cf6), transparent);
+  animation: busy-run 1.1s ease-in-out infinite;
+}
+@keyframes busy-spin { to { transform: rotate(360deg); } }
+@keyframes busy-run { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.cd-sw.is-wait { opacity: .75 !important; cursor: progress; }
+.cd-sw.is-wait .cd-sw-k { position: relative; }
+.cd-sw.is-wait .cd-sw-k::after {
+  content: ''; position: absolute; inset: 1.5px; border-radius: 50%;
+  border: 1.5px solid rgba(0,0,0,.25); border-top-color: rgba(0,0,0,.75);
+  animation: busy-spin .6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .toast.is-busy::before, .toast.is-busy::after, .cd-sw.is-wait .cd-sw-k::after { animation-duration: 2.4s; } }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8514,7 +8540,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 22.11 23:12</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 09:53</div>
     </div>
   </aside>
 
@@ -18864,8 +18890,10 @@ window.toastStep = function () {
     el = html ? window.toast(html, kind, ms, raw) : null;
   };
   return {
-    // Проміжний крок живе, поки не скажуть інше: ms = 0.
-    say: (html, kind, raw) => put(html, kind, 0, raw),
+    /* Проміжний крок живе, поки не скажуть інше: ms = 0. І крутиться:
+       «в сповіщеннях додати анімацію прогрузки» — видно, що робота йде,
+       а не що повідомлення застигло. */
+    say: (html, kind, raw) => { put(html, kind, 0, raw); if (el) el.classList.add('is-busy'); },
     // Останній — звичайний тост, який сам згасне.
     done: (html, kind, raw) => put(html, kind, undefined, raw)
   };
@@ -39215,7 +39243,9 @@ window.cdFlipMany = async function (on) {
     : confirm((on ? 'Switch on ' : 'Switch off ') + what + '?');
   if (!go) return;
 
-  cdBusy = true; cdPaint();
+  cdBusy = true; ids.forEach(x => cdPending.add(String(x))); cdPaint();
+  const step = typeof toastStep === 'function' ? toastStep() : null;
+  if (step) step.say('Switching ' + (on ? 'on' : 'off') + ' ' + ids.length + ' item(s)…');
   try {
     const { data: s } = await sb.auth.getSession();
     const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
@@ -39224,6 +39254,7 @@ window.cdFlipMany = async function (on) {
                  Authorization: 'Bearer ' + (s?.session?.access_token || '') },
       body: JSON.stringify({ account_id: cdAcc, ids, on: !!on })
     });
+    if (step) step.done('');
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
     const done = Number(j.paused) || 0;
@@ -39248,8 +39279,10 @@ window.cdFlipMany = async function (on) {
         + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
     }
   } catch (e) {
+    if (step) step.done('');
     if (typeof toast === 'function') toast('Could not switch: ' + e.message, 'error');
   }
+  ids.forEach(x => cdPending.delete(String(x)));
   cdBusy = false;
   cdPaint();
 };
@@ -39598,8 +39631,14 @@ function cdSwitch(n, named) {
       + ' yet — deploy fb-sync, run block 1 of FB_RULES.sql, then press Sync now'
     : on ? 'Switched on. Click to switch off in Facebook'
          : 'Switched off. Click to switch on in Facebook';
-  return `<button type="button" class="cd-sw${on ? ' is-on' : ''}${known ? '' : ' is-na'}"
-      role="switch" aria-checked="${on}" ${cdBusy ? 'disabled' : ''}
+  /* ОЧІКУВАННЯ ВИДНО НА САМОМУ ВИМИКАЧІ. «я клікаю включити чи
+     виключити і не розумію, чи воно працює». Поки Facebook відповідає,
+     вимикач уже стоїть у новому положенні, але блідий і з крутилкою в
+     повзунку — видно, що запит пішов і чого чекати. */
+  const wait = cdPending.has(String(n.id));
+  const shown = wait ? !on : on;
+  return `<button type="button" class="cd-sw${shown ? ' is-on' : ''}${known ? '' : ' is-na'}${wait ? ' is-wait' : ''}"
+      role="switch" aria-checked="${shown}" aria-busy="${wait}" ${cdBusy ? 'disabled' : ''}
       onclick="cdFlip('${cdEsc(n.id)}', '${n.kind}', '${encodeURIComponent(named || n.id)}', ${on})"
       title="${cdEsc(title)}"><span class="cd-sw-k"></span></button>`;
 }
@@ -39626,7 +39665,9 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
     : confirm((off ? 'Switch off ' : 'Switch on ') + kind + ' "' + name + '"?');
   if (!go) return;
 
-  cdBusy = true; cdPaint();
+  cdBusy = true; cdPending.add(String(id)); cdPaint();
+  const step = typeof toastStep === 'function' ? toastStep() : null;
+  if (step) step.say('Switching ' + (off ? 'off' : 'on') + ': ' + name + '…');
   try {
     const { data: s } = await sb.auth.getSession();
     const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
@@ -39638,6 +39679,7 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
     const word = off ? 'off' : 'on';
+    if (step) step.done('');
     if (j.paused) {
       /* Знімок про це ще не знає — він приїде наступною синхронізацією.
          Але лишити рядок у старому положенні означало б показати
@@ -39650,12 +39692,16 @@ window.cdFlip = async function (id, kind, nameEnc, isOn) {
         + ((j.problems || [])[0] || j.note || 'Facebook refused'), 'error');
     }
   } catch (e) {
+    if (step) step.done('');
     if (typeof toast === 'function')
       toast('Could not switch ' + (off ? 'off' : 'on') + ': ' + e.message, 'error');
   }
+  cdPending.delete(String(id));
   cdBusy = false;
   cdPaint();
 };
+// Що зараз перемикається у Facebook (id) — вимикач показує очікування.
+const cdPending = new Set();
 
 /* Правимо стан у себе, у знімку в памʼяті. Рядків на одну кампанію
    багато — по одному на кожне оголошення, — тож правити треба всі, що
@@ -39718,6 +39764,8 @@ window.cdBudgetEdit = async function (id, nameEnc) {
   if (!go) return;
 
   cdBusy = true; cdPaint();
+  const step = typeof toastStep === 'function' ? toastStep() : null;
+  if (step) step.say('Changing the budget: ' + name + '…');
   try {
     const { data: s } = await sb.auth.getSession();
     const res = await fetch(SUPABASE_URL + '/functions/v1/fb-pause', {
@@ -39727,6 +39775,7 @@ window.cdBudgetEdit = async function (id, nameEnc) {
       body: JSON.stringify({ account_id: cdAcc, ids: [id], budget: v })
     });
     const j = await res.json().catch(() => ({}));
+    if (step) step.done('');
     if (!res.ok) throw new Error(j.error || 'HTTP ' + res.status);
     if (j.changed) {
       /* Знімок про це ще не знає — він приїде наступною синхронізацією.
@@ -39739,6 +39788,7 @@ window.cdBudgetEdit = async function (id, nameEnc) {
       toast(j.note || 'Budget not changed', 'error');
     }
   } catch (e) {
+    if (step) step.done('');
     if (typeof toast === 'function') toast('Budget not changed: ' + (e.message || e), 'error');
   } finally {
     cdBusy = false; cdPaint();
