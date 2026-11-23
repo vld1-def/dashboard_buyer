@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 12:54">
+  <meta name="build" content="build 23.11 15:43">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8407,6 +8407,8 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .lc-kind, .lc-folder { z-index: 2; }
 .lc-folder { position: absolute; right: 6px; top: 6px; font-size: 9.5px; font-weight: 900; letter-spacing: .06em; padding: 2px 6px; border-radius: 6px; background: var(--accent); color: #fff; }
 .lt-md-drv { font-style: normal; font-size: 9.5px; font-weight: 900; padding: 1px 5px; margin-right: 5px; border-radius: 5px; background: #1a73e8; color: #fff; }
+
+.cd-tab-tpl { color: #fbbf24 !important; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8666,7 +8668,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 12:54</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 15:43</div>
     </div>
   </aside>
 
@@ -39196,14 +39198,9 @@ function cdNameCell(n, depth) {
         encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
         title="Copy this campaign to other cabinets \u2014 created paused">\u29C9 Copy</button>`
     : '';
-  /* Save кампанію як ШАБЛОН запуску (launchtpl.js): знімок у базі,
-     запуск у будь-який кабінет — з вікна Templates. */
-  const tpl = n.kind === 'campaign' && typeof ltSave === 'function'
-    ? `<button type="button" class="cd-copy cd-tpl" onclick="event.stopPropagation();ltSave('${cdEsc(n.id)}','${
-        encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
-        title="Save this campaign as a launch template — launch it into other cabinets later, paused">\u2606 Template</button>`
-    : '';
-  return mark + twist + cdPicCell(n) + label + count + copy + tpl + side;
+  /* «☆ Template» переїхав на смугу вибору (cdMarkBarHtml): у рядку він
+     закривав назву кампанії. */
+  return mark + twist + cdPicCell(n) + label + count + copy + side;
 };
 /* ═══════════ ІКОНКА КРЕАТИВА ═══════════
 
@@ -39338,9 +39335,25 @@ function cdMarkFloat() {
   // Перевіряємо ще раз: за цей кадр вибір могли зняти або дерево закрити.
   requestAnimationFrame(() => { if (cdAcc && cdMarked.size) el.classList.add('is-on'); });
 }
+/* Вибрані КАМПАНІЇ з назвами — для «Save as template» на смузі. */
+function cdPickedCampaigns() {
+  const out = new Map();
+  (cdRows || []).forEach(r => {
+    const id = String(r.campaign_id || '');
+    if (id && cdMarked.has(id) && !out.has(id)) out.set(id, String(r.campaign_name || id));
+  });
+  return [...out.entries()];
+}
+window.cdSaveTemplates = async function () {
+  for (const [id, name] of cdPickedCampaigns()) await ltSave(id, encodeURIComponent(name));
+};
+
 function cdMarkBarHtml(n) {
+  const camps = typeof ltSave === 'function' ? cdPickedCampaigns() : [];
   return `<div class="cd-mkbar">
       <span class="cd-mkn">${n} picked</span>
+      ${camps.length ? `<button type="button" class="cd-tab cd-tab-tpl" onclick="cdSaveTemplates()"
+        title="Save the picked campaign${camps.length > 1 ? 's' : ''} as launch template${camps.length > 1 ? 's' : ''} — launch into other cabinets later">\u2606 Save as template${camps.length > 1 ? 's (' + camps.length + ')' : ''}</button>` : ''}
       <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}
         onclick="cdFlipMany(false)">Switch off</button>
       <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}

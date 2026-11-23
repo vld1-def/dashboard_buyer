@@ -52,4 +52,22 @@ await page.evaluate(() => { cdMarked = new Set(['c1']); cdMarkFloat(); cdHide();
 await page.waitForTimeout(100);
 ok('закрили дерево — смуги немає', await page.evaluate(() => !document.querySelector('#cd-mkfloat.is-on')));
 
+/* «☆ Template» — на смузі вибору, а не в рядку (там закривав назву). */
+const tp = await page.evaluate(async () => {
+  cdAcc = 'act_1'; cdRows = [{ campaign_id: 'c1', campaign_name: 'MPlay KG 001', adset_id: 's1', ad_id: 'a1' }];
+  const saved = []; window.ltSave = async (id, n) => { saved.push([id, decodeURIComponent(n)]); };
+  cdMarked = new Set(['c1']); cdMarkFloat();
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const btn = [...document.querySelectorAll('#cd-mkfloat button')].find(b => /Save as template/.test(b.textContent));
+  if (btn) btn.click();
+  await new Promise(r => setTimeout(r, 50));
+  cdMarked = new Set(['a1']); cdMarkFloat();
+  const noBtn = ![...document.querySelectorAll('#cd-mkfloat button')].some(b => /Save as template/.test(b.textContent));
+  const row = typeof cdNameCell === 'function' ? cdNameCell({ kind: 'campaign', id: 'c1', name: 'X', kids: [], ads: 1 }, 0) : '';
+  return { has: !!btn, saved, noBtn, rowHasTpl: /Template/.test(row) };
+});
+ok('вибрана кампанія — на смузі «Save as template»', tp.has && tp.saved.length === 1 && tp.saved[0][0] === 'c1' && tp.saved[0][1] === 'MPlay KG 001', tp);
+ok('вибране оголошення — кнопки шаблону немає', tp.noBtn, tp);
+ok('у рядку кампанії кнопки Template більше немає', !tp.rowHasTpl, tp);
+
 await done(browser, srv, errs);

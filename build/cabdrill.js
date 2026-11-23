@@ -1308,14 +1308,9 @@ function cdNameCell(n, depth) {
         encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
         title="Copy this campaign to other cabinets \u2014 created paused">\u29C9 Copy</button>`
     : '';
-  /* Зберегти кампанію як ШАБЛОН запуску (launchtpl.js): знімок у базі,
-     запуск у будь-який кабінет — з вікна Templates. */
-  const tpl = n.kind === 'campaign' && typeof ltSave === 'function'
-    ? `<button type="button" class="cd-copy cd-tpl" onclick="event.stopPropagation();ltSave('${cdEsc(n.id)}','${
-        encodeURIComponent(n.name || '').replace(/'/g, '%27')}')"
-        title="Save this campaign as a launch template — launch it into other cabinets later, paused">\u2606 Template</button>`
-    : '';
-  return mark + twist + cdPicCell(n) + label + count + copy + tpl + side;
+  /* «☆ Template» переїхав на смугу вибору (cdMarkBarHtml): у рядку він
+     закривав назву кампанії. */
+  return mark + twist + cdPicCell(n) + label + count + copy + side;
 };
 /* ═══════════ ІКОНКА КРЕАТИВА ═══════════
 
@@ -1450,9 +1445,25 @@ function cdMarkFloat() {
   // Перевіряємо ще раз: за цей кадр вибір могли зняти або дерево закрити.
   requestAnimationFrame(() => { if (cdAcc && cdMarked.size) el.classList.add('is-on'); });
 }
+/* Вибрані КАМПАНІЇ з назвами — для «Save as template» на смузі. */
+function cdPickedCampaigns() {
+  const out = new Map();
+  (cdRows || []).forEach(r => {
+    const id = String(r.campaign_id || '');
+    if (id && cdMarked.has(id) && !out.has(id)) out.set(id, String(r.campaign_name || id));
+  });
+  return [...out.entries()];
+}
+window.cdSaveTemplates = async function () {
+  for (const [id, name] of cdPickedCampaigns()) await ltSave(id, encodeURIComponent(name));
+};
+
 function cdMarkBarHtml(n) {
+  const camps = typeof ltSave === 'function' ? cdPickedCampaigns() : [];
   return `<div class="cd-mkbar">
       <span class="cd-mkn">${n} picked</span>
+      ${camps.length ? `<button type="button" class="cd-tab cd-tab-tpl" onclick="cdSaveTemplates()"
+        title="Save the picked campaign${camps.length > 1 ? 's' : ''} as launch template${camps.length > 1 ? 's' : ''} — launch into other cabinets later">\u2606 Save as template${camps.length > 1 ? 's (' + camps.length + ')' : ''}</button>` : ''}
       <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}
         onclick="cdFlipMany(false)">Switch off</button>
       <button type="button" class="cd-tab" ${cdBusy ? 'disabled' : ''}
