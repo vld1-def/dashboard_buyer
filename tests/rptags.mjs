@@ -41,7 +41,7 @@ const c = await page.evaluate(async () => {
   document.getElementById('report-modal').classList.remove('hidden');
   renderReports();
   const day = (document.querySelector('#report-list-container .rp-day') || {}).innerText || '';
-  const noDay = document.querySelectorAll('#report-list-container .rp-day').length;
+  const noDay = document.querySelectorAll('#report-list-container .rp-day:not(.is-empty)').length;
   rpCalOpen(document.getElementById('rp-cal-btn'));
   const marked = [...document.querySelectorAll('#rp-cal .has-rp')].map(b => b.innerText);
   rpCalGo('2026-11-22');

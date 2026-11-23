@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 19:46">
+  <meta name="build" content="build 23.11 19:48">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8422,7 +8422,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 }
 
 /* Цифри дня біля міток звіту — ледь помітні, щоб не відволікали. */
-.rp-day { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; font-size: 10px; font-weight: 700;
+.rp-day { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 104px; margin-right: 6px; font-size: 10px; font-weight: 700;
   letter-spacing: 0; text-transform: none; color: var(--text-muted); opacity: .7; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rp-day b { font-weight: 800; color: var(--text-muted); }
 .rp-day .is-up { color: rgba(74,222,128,.8); }
@@ -8706,7 +8706,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 19:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 19:48</div>
     </div>
   </aside>
 
@@ -14919,13 +14919,14 @@ function renderReports() {
           <span class="rp-tags" onclick="event.stopPropagation()">${
             rpTagsOf(r.id).map(t => `<span class="rp-chip">${escapeHtml(t)}<button
               onclick="rpRemoveTag('${r.id}','${t.replace(/'/g, "\\'")}')">\u2715</button></span>`).join('')
-          }${rpDayStats(normalizeDate(r.date))}<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
+          }<input class="rp-tag-add" list="rp-tag-all" placeholder="+ tag"
               title="Type a tag and press Enter — or pick one from the list"
               onkeydown="if(event.key==='Enter'){rpAddTag('${r.id}',this.value);this.value='';}else if(event.key==='Escape'){this.value='';this.blur();}"
               onchange="if(this.value.trim()){rpAddTag('${r.id}',this.value);this.value='';}"></span>
           <span id="report-status-${r.id}" class="status-icon flex items-center ml-2"></span>
         </div>
         <div class="flex items-center gap-1" onclick="event.stopPropagation()">
+          ${/* Цифри дня — праворуч, в одному стовпці в кожному рядку. */ rpDayStats(normalizeDate(r.date)) || '<span class="rp-day is-empty"></span>'}
           <button onclick="triggerAddPhotos('${r.id}')" title="Attach photos" class="text-indigo-400 hover:text-indigo-300 transition px-1.5 py-1 rounded-lg hover:bg-indigo-500/10 text-xs">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
           </button>
