@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 20:05">
+  <meta name="build" content="build 23.11 21:52">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8759,7 +8759,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 20:05</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 21:52</div>
     </div>
   </aside>
 
@@ -26999,6 +26999,21 @@ function accFillMonths() {
   sel.value = months.includes(was) ? was : '';
 }
 
+/* РЯДКИ, ЯКІ ЗАВІВ АРХІВ FB LIVE, — НЕ ДЛЯ ЦЬОГО ВІКНА.
+     Архівуючи кабінет, якого ще не було в списку, FB LIVE мусить
+     завести йому рядок (статусу треба десь лежати). Вікно Accounts
+     такого рядка ніколи не торкалось — acc_status порожній — і
+     читало його як «Active»: після масового архіву тут з'являлись
+     десятки «нових активних». Порожній власний статус + архів у FB
+     LIVE означає: вікно про цей кабінет нічого не вирішувало, тож і
+     показувати його нема чого. Щойно вікно поставить йому свій
+     статус — він тут з'явиться. */
+function accDropLiveArch(rows) {
+  if (!accOwnCol) return rows;
+  return rows.filter(r => String(r[ACC_OWN] || '').trim()
+    || String(r.status || '').toLowerCase().trim() !== 'archive');
+}
+
 async function openAccountsModal() {
   document.getElementById('accounts-modal').classList.remove('hidden');
   accFilter = ACC_FILTER_DEFAULT;
@@ -27019,6 +27034,7 @@ async function openAccountsModal() {
     /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
        є, тож наявність поля в рядку — це і є відповідь. */
     accOwnCol = !accRows.length || ACC_OWN in accRows[0];
+    accRows = accDropLiveArch(accRows);
   } catch (e) {
     // З кешем на екрані помилка фонового оновлення не має стирати список —
     // краще трохи застарілі дані, ніж порожнє вікно.
@@ -34743,6 +34759,8 @@ async function evBoot() {
          секунду запит це виправить, але саме такий кадр — «усе
          активне» — з цієї вади й починався. */
       accOwnCol = !rows.length || ACC_OWN in rows[0];
+      // Рядки, заведені архівом FB LIVE, вікну не показуємо (див. accDropLiveArch).
+      if (typeof accDropLiveArch === 'function') accRows = accDropLiveArch(rows);
     }
   } catch (e) { return; }
 

@@ -15379,6 +15379,21 @@ function accFillMonths() {
   sel.value = months.includes(was) ? was : '';
 }
 
+/* РЯДКИ, ЯКІ ЗАВІВ АРХІВ FB LIVE, — НЕ ДЛЯ ЦЬОГО ВІКНА.
+     Архівуючи кабінет, якого ще не було в списку, FB LIVE мусить
+     завести йому рядок (статусу треба десь лежати). Вікно Accounts
+     такого рядка ніколи не торкалось — acc_status порожній — і
+     читало його як «Активний»: після масового архіву тут з'являлись
+     десятки «нових активних». Порожній власний статус + архів у FB
+     LIVE означає: вікно про цей кабінет нічого не вирішувало, тож і
+     показувати його нема чого. Щойно вікно поставить йому свій
+     статус — він тут з'явиться. */
+function accDropLiveArch(rows) {
+  if (!accOwnCol) return rows;
+  return rows.filter(r => String(r[ACC_OWN] || '').trim()
+    || String(r.status || '').toLowerCase().trim() !== 'archive');
+}
+
 async function openAccountsModal() {
   document.getElementById('accounts-modal').classList.remove('hidden');
   accFilter = '';
@@ -15391,6 +15406,7 @@ async function openAccountsModal() {
     /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
        є, тож наявність поля в рядку — це і є відповідь. */
     accOwnCol = !accRows.length || ACC_OWN in accRows[0];
+    accRows = accDropLiveArch(accRows);
   } catch (e) {
     body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Помилка: ${e.message}</p>`;
     return;

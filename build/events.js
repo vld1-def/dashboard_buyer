@@ -190,6 +190,8 @@ async function evBoot() {
          секунду запит це виправить, але саме такий кадр — «усе
          активне» — з цієї вади й починався. */
       accOwnCol = !rows.length || ACC_OWN in rows[0];
+      // Рядки, заведені архівом FB LIVE, вікну не показуємо (див. accDropLiveArch).
+      if (typeof accDropLiveArch === 'function') accRows = accDropLiveArch(rows);
     }
   } catch (e) { return; }
 

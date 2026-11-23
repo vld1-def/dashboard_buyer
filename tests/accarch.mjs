@@ -74,6 +74,7 @@ const draw = (rows, flt) => page.evaluate(([rs, f]) => {
   accRows = rs.map(r => ({ ...r }));
   accHasStatusCol = true;
   accOwnCol = ACC_OWN in accRows[0];
+  accRows = accDropLiveArch(accRows);
   accFilter = f;
   document.getElementById('accounts-modal').classList.remove('hidden');
   renderAccountsModal();
@@ -104,14 +105,15 @@ ok('власну колонку видно з рядка', own.own === true, own
 /* Головне в цій зміні: архів зі сторінки Cabinets сюди не доходить
    ЗОВСІМ. Доти він доходив і прикидався активом. */
 ok('архів із Cabinets у списку не з’являється',
-  own.ids.length === 4, own.ids);
+  own.ids.length === 3, own.ids);
 ok('і плитки «Архів» немає', tile(own, 'Archive') === undefined, own.tiles.map(t => t.l));
 ok('смужки про спільну колонку немає', own.warn === '', own.warn);
-/* Кабінет r3 архівний у Cabinets, але власного статусу не має —
-   вікно читає його активним, і це правильна відповідь: тут його
-   ніхто не оцінював. */
-ok('рядок без власного статусу читається активним',
-  own.rows.find(r => r.id === '1003').on === 'Active', own.rows);
+/* Кабінет r3 архівний у FB LIVE і власного статусу не має — такий
+   рядок заводить сам архів FB LIVE («багато активних появилось після
+   того як в архів закинув»). Вікно його не оцінювало, тож і не
+   показує, а не видає за «Активний». */
+ok('рядок, заведений архівом FB LIVE, у вікні не з’являється',
+  !own.ids.includes('1003'), own.ids);
 /* r4 архівний у Cabinets і «проблемний» тут. Два різні судження на
    одному кабінеті — ціна розділення, названа вголос. */
 ok('а власний статус не затирається чужим',

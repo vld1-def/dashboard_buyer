@@ -2673,6 +2673,7 @@ rest = sub(rest,
     /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
        є, тож наявність поля в рядку — це і є відповідь. */
     accOwnCol = !accRows.length || ACC_OWN in accRows[0];
+    accRows = accDropLiveArch(accRows);
   } catch (e) {
     body.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Помилка: ${e.message}</p>`;
     return;
@@ -2699,6 +2700,7 @@ rest = sub(rest,
     /* Питаємо рядок, а не базу: select('*') віддає всі колонки, які
        є, тож наявність поля в рядку — це і є відповідь. */
     accOwnCol = !accRows.length || ACC_OWN in accRows[0];
+    accRows = accDropLiveArch(accRows);
   } catch (e) {
     // З кешем на екрані помилка фонового оновлення не має стирати список —
     // краще трохи застарілі дані, ніж порожнє вікно.
