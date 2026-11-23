@@ -42,4 +42,21 @@ await page.evaluate(() => { document.documentElement.style.height = '3000px'; wi
 await page.waitForTimeout(100);
 ok('прокрутка сторінки — ховає', !(await on()));
 
+/* Від 3 гео — сітка карток із підсумком, а не довгий список. */
+const g = await page.evaluate(() => {
+  const L = (g, s, p) => '\u0001geo' + JSON.stringify({ g, c: '#f00', s, p, i: 3, r: 2, d: 1 });
+  const html = cfTipGridHtml([L('kg', 100, 20), L('tj', 300, -50), L('uz', 200, 10), 'Spend: $1'], x => x);
+  const d = document.createElement('div'); d.innerHTML = html;
+  return {
+    cards: [...d.querySelectorAll('.gt-gc b')].filter(b => !b.closest('.gt-gm')).map(b => b.textContent),
+    cols: d.querySelector('.gt-grid').style.gridTemplateColumns,
+    total: d.querySelector('.gt-gtotal').textContent.replace(/\s+/g, ' ').trim(),
+    plain: cfTipGridHtml(['Spend: $1'], x => x)
+  };
+});
+ok('сітка: картки від більшого спенду', g.cards.join() === 'TJ,UZ,KG', g);
+ok('сітка: 3 гео — один ряд', /repeat\(3/.test(g.cols), g.cols);
+ok('сітка: зверху підсумок', /\$600/.test(g.total) && /−\$20/.test(g.total), g.total);
+ok('без позначених рядків сітки немає', g.plain === '', g.plain);
+
 await done(browser, srv, errs);

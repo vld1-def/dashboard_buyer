@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 21:52">
+  <meta name="build" content="build 23.11 22:24">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8500,6 +8500,22 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 #report-list-container .report-table td:first-child { font-weight: 800; }
 #report-list-container .report-table td.rt-num { font-variant-numeric: tabular-nums; font-weight: 600; }
 #report-list-container .img-tag { white-space: nowrap; vertical-align: baseline; line-height: 1.35; padding: 0 6px; margin: 0 2px; }
+
+/* ── Тултіп головного графіка: сітка гео (від 3 гео) ── */
+#cf-glass-tip.is-grid { min-width: 0; max-width: min(640px, calc(100vw - 32px)); }
+#cf-glass-tip .gt-gtotal { display: grid; grid-template-columns: repeat(4, auto); gap: 4px 16px; padding: 2px 2px 8px; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.1); }
+#cf-glass-tip .gt-gtotal div { display: flex; flex-direction: column; gap: 1px; }
+#cf-glass-tip .gt-gtotal span { font-size: 9.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: rgba(226,232,240,.55); }
+#cf-glass-tip .gt-gtotal b { font-size: 14px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#cf-glass-tip .gt-grid { display: grid; gap: 6px; }
+#cf-glass-tip .gt-gc { padding: 7px 9px; border-radius: 10px; background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.07); min-width: 0; }
+#cf-glass-tip .gt-gh { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+#cf-glass-tip .gt-gh b { font-weight: 900; letter-spacing: .04em; color: #fff; }
+#cf-glass-tip .gt-gh span { margin-left: auto; font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+#cf-glass-tip .gt-gm { display: flex; justify-content: space-between; gap: 10px; margin-top: 3px; font-size: 13.5px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; color: #fff; }
+#cf-glass-tip .gt-gs { margin-top: 2px; font-size: 10px; font-weight: 600; color: rgba(226,232,240,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+#cf-glass-tip .gt-gm b.is-good, #cf-glass-tip .gt-gh span.is-good, #cf-glass-tip .gt-gtotal b.is-good { color: #4ade80; }
+#cf-glass-tip .gt-gm b.is-bad, #cf-glass-tip .gt-gh span.is-bad, #cf-glass-tip .gt-gtotal b.is-bad { color: #f87171; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8759,7 +8775,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 21:52</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 22:24</div>
     </div>
   </aside>
 
@@ -10537,6 +10553,38 @@ function cfTipLine(raw, esc) {
   return `<div class="gt-kv">${ic(p) || '<i class="gt-ic"></i>'}<span class="gt-k">${esc(p.label)}</span><b class="gt-v${tone(p)}">${esc(p.value)}</b></div>`;
 }
 
+/* СІТКА ГЕО (див. CF_TIP_CARD у trend.js): рядки «\u0001geo{...}» —
+   дані картки, а не текст. Зверху підсумок дня по показаних гео, далі
+   картки від більшого спенду до меншого. */
+function cfTipGridHtml(lines, esc) {
+  const tag = '\u0001geo';
+  const cards = lines.map(String).filter(l => l.startsWith(tag)).map(l => {
+    try { return JSON.parse(l.slice(tag.length)); } catch (e) { return null; }
+  }).filter(Boolean);
+  if (!cards.length) return '';
+  cards.sort((a, b) => b.s - a.s);
+  const $ = n => '$' + Math.abs(Math.round(n)).toLocaleString();
+  const pr = n => (n >= 0 ? '+' : '−') + $(n);
+  const tone = n => n >= 0 ? 'is-good' : 'is-bad';
+  const sum = k => cards.reduce((a, c) => a + (+c[k] || 0), 0);
+  const S = sum('s'), P = sum('p'), D = sum('d');
+  const roi = (p, s) => s > 0 ? Math.round(p / s * 100) + '%' : '—';
+  const cols = cards.length === 4 ? 2 : Math.min(3, cards.length);
+  const total = `<div class="gt-gtotal">
+      <div><span>Spend</span><b>${$(S)}</b></div>
+      <div><span>Profit</span><b class="${tone(P)}">${pr(P)}</b></div>
+      <div><span>ROI</span><b class="${tone(P)}">${roi(P, S)}</b></div>
+      <div><span>Dep</span><b>${D}</b></div>
+    </div>`;
+  const card = c => `<div class="gt-gc">
+      <div class="gt-gh"><i class="gt-dot" style="background:${esc(c.c)}"></i><b>${esc(String(c.g).toUpperCase())}</b>
+        <span class="${tone(c.p)}">${roi(c.p, c.s)}</span></div>
+      <div class="gt-gm"><b>${$(c.s)}</b><b class="${tone(c.p)}">${pr(c.p)}</b></div>
+      <div class="gt-gs">${c.i} inst · ${c.r} reg · ${c.d} dep${c.d > 0 ? ' · CPA ' + $(c.s / c.d) : ''}</div>
+    </div>`;
+  return total + `<div class="gt-grid" style="grid-template-columns:repeat(${cols},minmax(178px,1fr))">${cards.map(card).join('')}</div>`;
+}
+
 window.cfGlassTip = function () {
   if (typeof Chart === 'undefined' || Chart.__glass) return;
   Chart.__glass = true;
@@ -10569,9 +10617,10 @@ window.cfGlassTip = function () {
     CF_TIP_RE.lastIndex = 0;
     const before = mono ? [].concat(tooltip.beforeBody || []).filter(x => x !== '' && x != null) : [];
     const showDots = tooltip.options.displayColors !== false;
+    const grid = cfTipGridHtml(allLines, esc);
     const title = (tooltip.title || []).filter(x => x !== '' && x != null);
-    let rows = '';
-    (tooltip.body || []).forEach((b, i) => {
+    let rows = grid;
+    if (!grid) (tooltip.body || []).forEach((b, i) => {
       const lines = [].concat(b.before || [], b.lines || [], b.after || []).filter(x => x !== '' && x != null);
       if (!lines.length) return;
       const col = (tooltip.labelColors || [])[i];
@@ -10590,11 +10639,11 @@ window.cfGlassTip = function () {
     /* Малий графік (картки у вікні гео) — компактна підказка: велика
        на ньому закривала половину лінії. */
     const small = chart !== window.chart1 && (!!chart.canvas.closest('.gm-canvas-box') || (chart.height || 0) < 200);
-    el.className = 'is-on' + (mono ? ' is-mono' : '') + (small ? ' is-small' : '')
+    el.className = 'is-on' + (mono && !grid ? ' is-mono' : '') + (small ? ' is-small' : '') + (grid ? ' is-grid' : '')
       + (wasOn && el._chart === chart ? '' : ' is-jump');
     el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
-      + `<div class="gt-body">${before.map(l => `<div class="gt-row gt-thead"><span>${esc(l)}</span></div>`).join('')}${rows}</div>`
+      + `<div class="gt-body">${(grid ? [] : before).map(l => `<div class="gt-row gt-thead"><span>${esc(l)}</span></div>`).join('')}${rows}</div>`
       + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '')
       // Події цього дня на головному графіку (chartev.js).
       + (typeof ceTipHtml === 'function' ? ceTipHtml(chart, tooltip) : '');
@@ -11408,7 +11457,21 @@ const CF_TIP_WIDE = 4;
 const CF_TIP_COLS = [4, 9, 9, 5, 5, 5, 8];
 let cfTipN = 0;
 
-const cfTipWide = () => cfTipN > CF_TIP_WIDE;
+const cfTipWide = () => cfTipN > CF_TIP_GRID_MAX;
+
+/* СІТКА КАРТОК — ВІД ТРЬОХ ГЕО. «якщо там більше 3 гео, можливо краще
+   ділити на сітку». Шість рядків на гео, поставлені одне під одним,
+   на трьох гео — вісімнадцять рядків і тултіп на весь екран. Картка
+   на гео (спенд і профіт великими, решта одним рядком) у дві-три
+   колонки тримає ту саму інформацію в чотири-п'ять рядків висоти.
+   Понад CF_TIP_GRID_MAX карток уже теж забагато — тоді таблиця.
+
+   label() віддає не текст, а позначений рядок із даними картки: збирає
+   сітку сам тултіп (cfGlassTip), бо тільки він бачить усі гео разом. */
+const CF_TIP_GRID_MIN = 3;
+const CF_TIP_GRID_MAX = 12;
+const cfTipGrid = () => cfTipN >= CF_TIP_GRID_MIN && cfTipN <= CF_TIP_GRID_MAX;
+const CF_TIP_CARD = '\u0001geo';
 
 /* Перший стовпець по лівому краю — назви читають згори вниз; решта по
    правому — числа порівнюють саме так. */
@@ -11655,6 +11718,12 @@ function renderTrend(data) {
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
+
+              if (cfTipGrid()) return CF_TIP_CARD + JSON.stringify({
+                g: String(c.dataset.label || '—'),
+                c: c.dataset.borderColor || c.dataset.backgroundColor || '',
+                s: v.s, p: profit, i: v.i, r: v.r, d: v.d
+              });
 
               if (cfTipWide()) return cfTipRow([
                 String(c.dataset.label || '—').toUpperCase(),

@@ -2323,6 +2323,38 @@ function cfTipLine(raw, esc) {
   return `<div class="gt-kv">${ic(p) || '<i class="gt-ic"></i>'}<span class="gt-k">${esc(p.label)}</span><b class="gt-v${tone(p)}">${esc(p.value)}</b></div>`;
 }
 
+/* СІТКА ГЕО (див. CF_TIP_CARD у trend.js): рядки «\u0001geo{...}» —
+   дані картки, а не текст. Зверху підсумок дня по показаних гео, далі
+   картки від більшого спенду до меншого. */
+function cfTipGridHtml(lines, esc) {
+  const tag = '\u0001geo';
+  const cards = lines.map(String).filter(l => l.startsWith(tag)).map(l => {
+    try { return JSON.parse(l.slice(tag.length)); } catch (e) { return null; }
+  }).filter(Boolean);
+  if (!cards.length) return '';
+  cards.sort((a, b) => b.s - a.s);
+  const $ = n => '$' + Math.abs(Math.round(n)).toLocaleString();
+  const pr = n => (n >= 0 ? '+' : '−') + $(n);
+  const tone = n => n >= 0 ? 'is-good' : 'is-bad';
+  const sum = k => cards.reduce((a, c) => a + (+c[k] || 0), 0);
+  const S = sum('s'), P = sum('p'), D = sum('d');
+  const roi = (p, s) => s > 0 ? Math.round(p / s * 100) + '%' : '—';
+  const cols = cards.length === 4 ? 2 : Math.min(3, cards.length);
+  const total = `<div class="gt-gtotal">
+      <div><span>Spend</span><b>${$(S)}</b></div>
+      <div><span>Profit</span><b class="${tone(P)}">${pr(P)}</b></div>
+      <div><span>ROI</span><b class="${tone(P)}">${roi(P, S)}</b></div>
+      <div><span>Dep</span><b>${D}</b></div>
+    </div>`;
+  const card = c => `<div class="gt-gc">
+      <div class="gt-gh"><i class="gt-dot" style="background:${esc(c.c)}"></i><b>${esc(String(c.g).toUpperCase())}</b>
+        <span class="${tone(c.p)}">${roi(c.p, c.s)}</span></div>
+      <div class="gt-gm"><b>${$(c.s)}</b><b class="${tone(c.p)}">${pr(c.p)}</b></div>
+      <div class="gt-gs">${c.i} inst · ${c.r} reg · ${c.d} dep${c.d > 0 ? ' · CPA ' + $(c.s / c.d) : ''}</div>
+    </div>`;
+  return total + `<div class="gt-grid" style="grid-template-columns:repeat(${cols},minmax(178px,1fr))">${cards.map(card).join('')}</div>`;
+}
+
 window.cfGlassTip = function () {
   if (typeof Chart === 'undefined' || Chart.__glass) return;
   Chart.__glass = true;
@@ -2355,9 +2387,10 @@ window.cfGlassTip = function () {
     CF_TIP_RE.lastIndex = 0;
     const before = mono ? [].concat(tooltip.beforeBody || []).filter(x => x !== '' && x != null) : [];
     const showDots = tooltip.options.displayColors !== false;
+    const grid = cfTipGridHtml(allLines, esc);
     const title = (tooltip.title || []).filter(x => x !== '' && x != null);
-    let rows = '';
-    (tooltip.body || []).forEach((b, i) => {
+    let rows = grid;
+    if (!grid) (tooltip.body || []).forEach((b, i) => {
       const lines = [].concat(b.before || [], b.lines || [], b.after || []).filter(x => x !== '' && x != null);
       if (!lines.length) return;
       const col = (tooltip.labelColors || [])[i];
@@ -2376,11 +2409,11 @@ window.cfGlassTip = function () {
     /* Малий графік (картки у вікні гео) — компактна підказка: велика
        на ньому закривала половину лінії. */
     const small = chart !== window.chart1 && (!!chart.canvas.closest('.gm-canvas-box') || (chart.height || 0) < 200);
-    el.className = 'is-on' + (mono ? ' is-mono' : '') + (small ? ' is-small' : '')
+    el.className = 'is-on' + (mono && !grid ? ' is-mono' : '') + (small ? ' is-small' : '') + (grid ? ' is-grid' : '')
       + (wasOn && el._chart === chart ? '' : ' is-jump');
     el._chart = chart;
     el.innerHTML = (title.length ? `<div class="gt-title">${title.map(esc).join('<br>')}</div>` : '')
-      + `<div class="gt-body">${before.map(l => `<div class="gt-row gt-thead"><span>${esc(l)}</span></div>`).join('')}${rows}</div>`
+      + `<div class="gt-body">${(grid ? [] : before).map(l => `<div class="gt-row gt-thead"><span>${esc(l)}</span></div>`).join('')}${rows}</div>`
       + (foot.length ? `<div class="gt-foot">${foot.map(esc).join('<br>')}</div>` : '')
       // Події цього дня на головному графіку (chartev.js).
       + (typeof ceTipHtml === 'function' ? ceTipHtml(chart, tooltip) : '');

@@ -116,18 +116,21 @@ ok('рахуємо вже відфільтровані точки — без н�
   trend.indexOf('filter(item)') < trend.indexOf('beforeBody(items)'));
 
 const tip = await page.evaluate(src => {
-  const mk = new Function(src + '; return { cfTipWide, cfTipRow, set: n => { cfTipN = n; } };');
+  const mk = new Function(src + '; return { cfTipWide, cfTipGrid, cfTipRow, set: n => { cfTipN = n; } };');
   const m = mk();
-  m.set(4); const few = m.cfTipWide();
-  m.set(5); const many = m.cfTipWide();
+  m.set(2); const two = m.cfTipGrid();
+  m.set(3); const three = m.cfTipGrid();
+  m.set(12); const few = m.cfTipWide(); const twelve = m.cfTipGrid();
+  m.set(13); const many = m.cfTipWide();
   m.set(0); const none = m.cfTipWide();
   m.set(9);
-  return { few, many, none,
+  return { few, many, none, two, three, twelve,
            head: m.cfTipRow(['GEO', 'SPEND', 'PROFIT', 'INS', 'REG', 'DEP', 'CPA']),
            row: m.cfTipRow(['KG', '$1,200', '+$300', '12', '8', '3', '$400']) };
 }, tipSrc);
-ok('до чотирьох гео лишається докладний вигляд', tip.few === false, tip);
-ok('від пʼяти — таблиця', tip.many === true, tip);
+ok('до двох гео — докладний вигляд', tip.two === false, tip);
+ok('від трьох до дванадцяти — сітка карток', tip.three && tip.twelve && tip.few === false, tip);
+ok('понад дванадцять — таблиця', tip.many === true, tip);
 ok('жодного гео — жодної таблиці', tip.none === false, tip);
 ok('рядок і шапка однакової ширини', tip.head.length === tip.row.length, [tip.head, tip.row]);
 ok('назва ліворуч, числа по правому краю стовпця',

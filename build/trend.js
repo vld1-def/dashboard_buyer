@@ -157,7 +157,21 @@ const CF_TIP_WIDE = 4;
 const CF_TIP_COLS = [4, 9, 9, 5, 5, 5, 8];
 let cfTipN = 0;
 
-const cfTipWide = () => cfTipN > CF_TIP_WIDE;
+const cfTipWide = () => cfTipN > CF_TIP_GRID_MAX;
+
+/* СІТКА КАРТОК — ВІД ТРЬОХ ГЕО. «якщо там більше 3 гео, можливо краще
+   ділити на сітку». Шість рядків на гео, поставлені одне під одним,
+   на трьох гео — вісімнадцять рядків і тултіп на весь екран. Картка
+   на гео (спенд і профіт великими, решта одним рядком) у дві-три
+   колонки тримає ту саму інформацію в чотири-п'ять рядків висоти.
+   Понад CF_TIP_GRID_MAX карток уже теж забагато — тоді таблиця.
+
+   label() віддає не текст, а позначений рядок із даними картки: збирає
+   сітку сам тултіп (cfGlassTip), бо тільки він бачить усі гео разом. */
+const CF_TIP_GRID_MIN = 3;
+const CF_TIP_GRID_MAX = 12;
+const cfTipGrid = () => cfTipN >= CF_TIP_GRID_MIN && cfTipN <= CF_TIP_GRID_MAX;
+const CF_TIP_CARD = '\u0001geo';
 
 /* Перший стовпець по лівому краю — назви читають згори вниз; решта по
    правому — числа порівнюють саме так. */
@@ -404,6 +418,12 @@ function renderTrend(data) {
               const cpl = v.r > 0 ? (v.s / v.r).toFixed(1) : 0;
               const cpa = v.d > 0 ? (v.s / v.d).toFixed(1) : 0;
               const cpi = v.i > 0 ? (v.s / v.i).toFixed(1) : 0;
+
+              if (cfTipGrid()) return CF_TIP_CARD + JSON.stringify({
+                g: String(c.dataset.label || '—'),
+                c: c.dataset.borderColor || c.dataset.backgroundColor || '',
+                s: v.s, p: profit, i: v.i, r: v.r, d: v.d
+              });
 
               if (cfTipWide()) return cfTipRow([
                 String(c.dataset.label || '—').toUpperCase(),
