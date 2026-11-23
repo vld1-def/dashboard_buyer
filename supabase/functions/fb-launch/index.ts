@@ -61,12 +61,19 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-22.6';
+const FN_VERSION = '2026-11-23.1';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
 
 type Json = Record<string, any>;
+
+/* Картинка для оголошення-заготовки: темний квадрат 1080×1080 (PNG,
+   ~5 КБ). Посилання-оголошенню Facebook потрібна картинка, а взяти її з
+   лендингу він часто не може (сторінка закрита від його сканера), і
+   картинку за чужою адресою (picture) теж відкидає. Тому заливаємо свою
+   в цільовий кабінет (adimages) і ставимо її image_hash. */
+const PH_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAABDgAAAQ4CAIAAABjcvvYAAATOklEQVR42u3XMQ0AAAgEsRfBgAL8S8QFYWhSBbddugYAAOCVSAAAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAo6ICAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVFQAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqEgAAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKOiAgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAAAYFRUAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAwKhIAAAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjogIAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUVAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAGBUAAAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAjAoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAIBRAQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAMCoAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAABGBQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAwKgAAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoSAAAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAowIAAGBUAAAAo6ICAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVAAAAowIAABgVFQAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAABgVAAAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAAIwKAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAACAUQEAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAADAqAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAARgUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAMCoAAAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAGBUAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACjAgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAAEYFAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqAAAABgVAADAqEgAAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAAAYFQAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKMCAABgVAAAAKOiAgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAYFQAAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAACMCgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAgFEBAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAEYFAAAwKgAAAHcWqTPB/kBrZH4AAAAASUVORK5CYII=';
 
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
@@ -329,10 +336,10 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
       }
       if (P) {
         const link = linkOf(cr, d);
-        const ph = (pic: boolean): Json => ({ name: ('Placeholder · ' + String(d.name || '')).slice(0, 200), ...tags,
+        const ph = (img: boolean): Json => ({ __ph: img ? 'img' : 'plain',
+          name: ('Placeholder · ' + String(d.name || '')).slice(0, 200), ...tags,
           object_story_spec: { page_id: P, link_data: { link, message: 'Placeholder — replace the creative',
-            name: String(d.name || 'Placeholder').slice(0, 100),
-            ...(pic ? { picture: 'https://graph.facebook.com/' + P + '/picture?type=large' } : {}) } } });
+            name: String(d.name || 'Placeholder').slice(0, 100) } } });
         cands.push(ph(true), ph(false));
       }
       return { ...d, tracking_specs: undefined, cands };
@@ -462,6 +469,7 @@ Deno.serve(async (req) => {
   const setMap = new Map<string, string>();
   let setsMade = 0, adsMade = 0, timedOut = false;
   let anyCreative: string | null = null;
+  let phHash: string | null = null;
   for (const a of adsets.slice(0, MAX_ADSETS)) {
     if (Date.now() > deadline) { timedOut = true; break; }
     try {
@@ -481,16 +489,43 @@ Deno.serve(async (req) => {
     const label = 'ad “' + String(ad.name || ad.id) + '”';
     if (Array.isArray(ad.cands)) {
       // Черга креативів: перший, з яким Facebook створив оголошення.
-      const mk = async (cr: Json) => {
+      const tried: string[] = [];
+      const mk = async (cr0: Json) => {
+        let cr: Json = cr0;
+        if (cr0.__ph) {
+          cr = JSON.parse(JSON.stringify(cr0)); delete cr.__ph;
+          if (cr0.__ph === 'img') {
+            if (phHash === null) {
+              try {
+                const up = await graph(act + '/adimages', T.token, { bytes: PH_PNG_B64, name: 'placeholder.png' }, 'POST');
+                const first = Object.values(up.images || {})[0] as Json | undefined;
+                phHash = String(first?.hash || '');
+              } catch (e) { phHash = ''; tried.push('image upload: ' + String((e as Error).message)); }
+            }
+            if (!phHash) throw new Error('no placeholder image');
+            cr.object_story_spec.link_data.image_hash = phHash;
+          }
+        }
         const creativeId = cr.creative_id ? String(cr.creative_id)
           : String((await graph(act + '/adcreatives', T.token, cr, 'POST')).id || '');
         if (!creativeId) throw new Error('no creative id returned');
-        await graph(act + '/ads', T.token, { name: ad.name, adset_id: setId, status: inner,
-          creative: { creative_id: creativeId }, conversion_domain: ad.conversion_domain }, 'POST');
+        const adP: Json = { name: ad.name, adset_id: setId, status: inner, creative: { creative_id: creativeId } };
+        try {
+          await graph(act + '/ads', T.token, { ...adP, conversion_domain: ad.conversion_domain }, 'POST');
+        } catch (e) {
+          // Домен конверсії має збігатись із посиланням креатива — заготовка
+          // веде деінде, тож пробуємо ще раз без нього.
+          if (!ad.conversion_domain) throw e;
+          tried.push('with conversion domain: ' + String((e as Error).message));
+          await graph(act + '/ads', T.token, adP, 'POST');
+        }
       };
       let done = -1, last = '';
+      const kind = (c: Json) => c.creative_id ? 'existing creative' : c.__ph ? 'placeholder (' + c.__ph + ')'
+        : c.object_story_id ? 'post' : 'creative description';
       for (let k = 0; k < ad.cands.length && done < 0; k++) {
-        try { await mk(ad.cands[k]); done = k; } catch (e) { last = String((e as Error).message); }
+        try { await mk(ad.cands[k]); done = k; }
+        catch (e) { last = String((e as Error).message); tried.push(kind(ad.cands[k]) + ': ' + last); }
       }
       if (done < 0) {
         // Останній шанс — креатив, який уже є в цьому кабінеті.
@@ -499,14 +534,17 @@ Deno.serve(async (req) => {
           anyCreative = l && l.size ? [...l.keys()][0] : '';
         }
         if (anyCreative) {
-          try { await mk({ creative_id: anyCreative }); done = 99; } catch (e) { last = String((e as Error).message); }
+          try { await mk({ creative_id: anyCreative }); done = 99; }
+          catch (e) { last = String((e as Error).message); tried.push('existing creative: ' + last); }
         }
       }
-      if (done < 0) problems.push(label + ': Facebook refused every creative, even a placeholder — ' + last);
+      // У лог функції — щоб причину відмови Facebook було видно й потім.
+      if (tried.length) console.log('fb-launch ad', JSON.stringify({ act: tgt, ad: ad.name, made: done >= 0, tried }));
+      if (done < 0) problems.push(label + ': Facebook refused every creative — ' + tried.join(' | ').slice(0, 900));
       else {
         adsMade++;
         if (done === 99) warns.push(label + ': made with a creative already in this cabinet — replace it');
-        else if (ad.cands[done].name && String(ad.cands[done].name).startsWith('Placeholder')) warns.push(label + ': created as a placeholder — replace the creative');
+        else if (ad.cands[done].__ph) warns.push(label + ': created as a placeholder — replace the creative');
       }
       continue;
     }

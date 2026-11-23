@@ -62,6 +62,7 @@ async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', cam
     posts.push({ path, p, tok });
     const why = failOn(path, p);
     if (why) return J({ error: { message: why, error_user_msg: 'user text' } }, 400);
+    if (path.endsWith('/adimages')) return J({ images: { 'placeholder.png': { hash: 'PHHASH' } } });
     return J({ id: 'new' + (++n) });
   };
   let handler;
@@ -184,7 +185,8 @@ const rads = rnd.posts.filter(x => x.path === '/act_222/ads');
 ok('Сторінки шаблону немає — оголошення однаково створені, всі три', rnd.status === 200 && rnd.body.ads.made === 3 && rads.length === 3, rnd.body);
 ok('опис креатива — на Сторінці кабінета; решта — заготовки з посиланням', rcr.every(x => JSON.parse(x.object_story_spec).page_id === '99')
   && rcr.filter(x => /^Placeholder/.test(x.name)).length === 2 && rcr.every(x => !x.object_story_id), rcr);
-ok('заготовка з картинкою Сторінки', rcr.some(x => /99\/picture/.test(JSON.parse(x.object_story_spec).link_data?.picture || '')), rcr);
+ok('заготовка — з картинкою, залитою в кабінет (image_hash)', rcr.filter(x => /^Placeholder/.test(x.name)).every(x => JSON.parse(x.object_story_spec).link_data.image_hash === 'PHHASH')
+  && rnd.posts.filter(x => x.path === '/act_222/adimages').length === 1 && /^iVBOR/.test(rnd.posts.find(x => x.path === '/act_222/adimages').p.bytes), rcr);
 ok('динамічний креатив у копії вимкнено, і про це сказано', rnd.posts.filter(x => x.path === '/act_222/adsets').every(x => !('is_dynamic_creative' in x.p))
   && (rnd.body.warnings || []).some(w => /dynamic creative is off/.test(w)), rnd.body.warnings);
 ok('про заготовки сказано', (rnd.body.warnings || []).filter(w => /placeholder/.test(w)).length >= 2, rnd.body.warnings);
@@ -198,8 +200,18 @@ const fb2 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { ...LISTS_OK, '/act_222/adcreatives': [{ id: 'cr9', name: 'old' }] },
   failOn: p => p.endsWith('/adcreatives') ? 'refused' : '' });
 const f2ads = fb2.posts.filter(x => x.path === '/act_222/ads');
+const fbAll = await run({ body: { spec: SPEC, target_account: '222' }, lists: LISTS_OK,
+  failOn: p => p.endsWith('/adcreatives') ? 'Ad creative needs an image' : '' });
+ok('відмова на всьому й нема наявних креативів — у поясненні кожна спроба', fbAll.body.ads.made === 0
+  && fbAll.body.problems.some(x => /post: .*needs an image/.test(x) && /placeholder \(img\)/.test(x)), fbAll.body.problems);
 ok('Facebook відмовив у всіх креативах — береться наявний креатив кабінета', fb2.body.ads.made === 3
   && f2ads.every(x => JSON.parse(x.p.creative).creative_id === 'cr9') && (fb2.body.warnings || []).some(w => /already in this cabinet/.test(w)), fb2.body);
+// Домен конверсії не збігся з посиланням заготовки — повтор без нього.
+const CSPEC = JSON.parse(JSON.stringify(SPEC)); CSPEC.ads.forEach(a => { a.conversion_domain = 'land.top'; });
+const cdom = await run({ body: { spec: CSPEC, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] },
+  failOn: (p, q) => p.endsWith('/ads') && q.conversion_domain ? 'conversion domain mismatch' : '' });
+const cads = cdom.posts.filter(x => x.path === '/act_222/ads' && !x.p.conversion_domain);
+ok('домен конверсії заважає — оголошення однаково створене, без нього', cdom.body.ads.made === 3 && cads.length === 3, cdom.body);
 const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok
