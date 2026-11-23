@@ -221,4 +221,47 @@ ok('перегляд: оголошення видно картками', more.ca
 ok('перегляд: поправлена назва й вимкнене оголошення — лише в цьому запуску', more.sent[0] === 'Launch-only name' && more.sent.length === 3
   && more.tplAds[0] === 'KG_1', more);
 
+/* Бібліотека креативів: завантаження саме лягає в бібліотеку, вибір з
+   неї ставить креатив на оголошення або на окрему мову. */
+const lib = await page.evaluate(async () => {
+  const inserted = [];
+  const rows = [{ id: 1, path: 'T/a.mp4', kind: 'video', name: 'win.mp4', size: 2097152, thumb_path: 'T/a_thumb.jpg', geo: 'KG', lang: 'ky' },
+                { id: 2, path: 'T/b.jpg', kind: 'image', name: 'banner.jpg', size: 100000 }];
+  const realFrom = sb.from;
+  sb.from = t => {
+    if (t !== 'launch_creatives') return realFrom(t);
+    const q = { select: () => q, eq: () => q, order: () => q, limit: async () => ({ data: rows, error: null }),
+      insert: r => { inserted.push(r[0]); return { select: () => ({ limit: async () => ({ data: [{ id: 9, ...r[0] }] }) }) }; },
+      update: () => ({ eq: async () => ({ error: null }) }) };
+    return q;
+  };
+  sb.storage = { from: () => ({ upload: async () => ({ error: null }), createSignedUrls: async ps => ({ data: ps.map(p => ({ path: p, signedUrl: 'https://s/' + p })) }) }) };
+  ltRows[0].spec.ads = [{ id: 'a1', name: 'KG_1', adset_id: 's1', creative: {} }, { id: 'l1', name: 'KG_lang', adset_id: 's1', creative: { asset_feed_spec: { optimization_type: 'LANGUAGE',
+    bodies: [{ text: 'RU', adlabels: [{ name: 'ru_RU' }] }], asset_customization_rules: [{ is_default: true, body_label: { name: 'ru_RU' } }] } } }];
+  ltEdit(1);
+  // завантаження — у бібліотеку
+  await ltUploadFile(new File([new Uint8Array(10)], 'pic.png', { type: 'image/png' }), 'image');
+  // бібліотека: сітка з прев'ю
+  await lcOpen();
+  const grid = document.querySelector('#lc-modal .lc-grid').innerText;
+  const imgs = [...document.querySelectorAll('#lc-modal .lc-prev img')].map(i => i.getAttribute('src'));
+  lcClose();
+  // вибір для оголошення
+  lcPickFor(0, '');
+  await new Promise(r => setTimeout(r, 50));
+  lcChoose(2);
+  const m0 = JSON.parse(JSON.stringify(ltEd.spec.ads[0].media || {}));
+  // вибір відео для мови: картинок у виборі немає
+  lcPickFor(1, 'ru_RU');
+  await new Promise(r => setTimeout(r, 50));
+  const onlyVideos = [...document.querySelectorAll('#lc-modal .lc-tile')].length;
+  lcChoose(1);
+  return { inserted, grid, imgs, m0, lm: ltEd.spec.ads[1].lang_media, onlyVideos };
+});
+ok('завантаження саме лягає в бібліотеку', lib.inserted.length === 1 && lib.inserted[0].kind === 'image' && /\.png$/.test(lib.inserted[0].path), lib.inserted);
+ok('бібліотека: сітка з назвами й прев\'ю (кадр відео, сама картинка)', /win\.mp4/.test(lib.grid) && /banner\.jpg/.test(lib.grid)
+  && lib.imgs.includes('https://s/T/a_thumb.jpg') && lib.imgs.includes('https://s/T/b.jpg'), lib);
+ok('вибір з бібліотеки ставить креатив на оголошення без повторного завантаження', lib.m0.path === 'T/b.jpg' && lib.m0.kind === 'image', lib.m0);
+ok('для мови — лише відео, і стає саме цій мові', lib.onlyVideos === 1 && lib.lm && lib.lm.ru_RU && lib.lm.ru_RU.path === 'T/a.mp4', lib);
+
 await done(browser, srv, errs);

@@ -132,6 +132,7 @@ function ltPaintList(err) {
   const card = ltBox().querySelector('.lt-card');
   const head = `<div class="lt-head"><div><h3>Launch templates</h3>
       <p>Saved campaigns you can launch into any cabinet — always paused.</p></div>
+      <button type="button" class="lt-btn is-ghost" onclick="lcOpen()" title="Every video and image you uploaded — preview, geo, language, where it is used">Library</button>
       <button type="button" class="lt-x" onclick="ltClose()" title="Close (Esc)">×</button></div>`;
   if (err) {
     card.innerHTML = head + `<div class="lt-empty">${/launch_templates/.test(err.message || '')
@@ -792,7 +793,7 @@ function ltLangBlock(d, i) {
       ${(() => { const lm = (d.lang_media || {})[L.n];
         return lm && lm.path
           ? `<span class="lt-lang-v" title="${ltEsc(lm.name || '')}">▶ ${ltEsc((lm.name || 'video').slice(0, 14))}<button type="button" onclick="ltLangDrop(${i}, '${ltEsc(L.n)}')" title="Remove">×</button></span>`
-          : `<label class="lt-lang-v is-up" title="Separate video for ${ltEsc(L.n)}">+ video<input type="file" accept="video/*" hidden onchange="ltLangPick(${i}, '${ltEsc(L.n)}', this)"></label>`; })()}
+          : `<span class="lt-lang-vv"><label class="lt-lang-v is-up" title="Upload a separate video for ${ltEsc(L.n)}">+ video<input type="file" accept="video/*" hidden onchange="ltLangPick(${i}, '${ltEsc(L.n)}', this)"></label><button type="button" class="lt-lang-v is-up" onclick="lcPickFor(${i}, '${ltEsc(L.n)}')" title="Pick from the library">lib</button></span>`; })()}
     </div>`).join('')}</div>`;
 }
 
@@ -803,9 +804,11 @@ function ltMediaBlock(d, i, total) {
     ? `<div class="lt-md-file"><span class="lt-md-ic">${m.kind === 'video' ? '▶' : '▣'}</span>
         <span class="lt-md-name">${ltEsc(m.name || m.path.split('/').pop())}${m.size ? ' · ' + (m.size / 1048576).toFixed(1) + ' MB' : ''}</span>
         <label class="lt-md-btn">Replace<input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>
+        <button type="button" class="lt-md-btn" onclick="lcPickFor(${i}, '')">From library</button>
         <button type="button" class="lt-md-btn" onclick="ltMediaDrop(${i})">Remove</button></div>`
     : `<label class="lt-md-up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-        <span>${ltIsLang(d) ? 'Upload a video for all languages (optional)' : 'Upload video or image — CRM puts it into every new cabinet'}</span><input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>`;
+        <span>${ltIsLang(d) ? 'Upload a video for all languages (optional)' : 'Upload video or image — CRM puts it into every new cabinet'}</span><input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>
+      <button type="button" class="lt-md-btn lt-md-lib" onclick="lcPickFor(${i}, '')">or pick from the library</button>`;
   return `<div class="lt-md">
     ${file}
     <label class="lt-md-ut"><span>URL parameters</span><input class="lt-ed-in" value="${ltEsc(d.url_tags !== undefined ? d.url_tags : ((d.creative || {}).url_tags || ''))}"
@@ -832,11 +835,8 @@ window.ltMediaPick = async function (i, input) {
   const step = toastStep();
   step.say('Uploading ' + file.name + '…');
   try {
-    const ext = (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg')).toLowerCase().slice(0, 5);
-    const path = String(currentTeam || 'team') + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-    const { error } = await sb.storage.from('launch-media').upload(path, file, { contentType: file.type, upsert: false });
-    if (error) throw new Error(/bucket/i.test(error.message) ? 'storage is not set up — run LAUNCH_MEDIA.sql' : error.message);
-    Object.assign(ltMd(i), { path, kind, name: file.name, size: file.size });
+    const m = await ltUploadFile(file, kind);
+    Object.assign(ltMd(i), { path: m.path, kind, name: m.name, size: m.size });
     step.done('Uploaded — press Save to keep it in the template', 'ok');
     ltRepaintW();
   } catch (e) {
@@ -862,7 +862,9 @@ async function ltUploadFile(file, kind) {
   const path = String(currentTeam || 'team') + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
   const { error } = await sb.storage.from('launch-media').upload(path, file, { contentType: file.type, upsert: false });
   if (error) throw new Error(/bucket/i.test(error.message) ? 'storage is not set up — run LAUNCH_MEDIA.sql' : error.message);
-  return { path, kind, name: file.name, size: file.size };
+  const meta = { path, kind, name: file.name, size: file.size };
+  await lcRemember(meta, file);
+  return meta;
 }
 window.ltLangPick = async function (i, lang, input) {
   const file = input.files && input.files[0];
@@ -884,4 +886,181 @@ window.ltLangDrop = function (i, lang) {
   const d = ltW.ads[i];
   if (d.lang_media) delete d.lang_media[lang];
   ltRepaintW();
+};
+
+
+/* ══ БІБЛІОТЕКА КРЕАТИВІВ ══
+   «Усі відео й картинки — в одному місці з прев'ю; вибирати їх, а не
+   заливати знову». Кожне завантаження (шаблон, перегляд, мова) саме
+   лягає в launch_creatives; для відео знімаємо кадр-мініатюру. Library —
+   сітка з прев'ю, гео, мовою й тим, у скількох шаблонах креатив стоїть.
+   «From library» біля кожного завантаження — вибір без повторної
+   заливки. */
+let lcRows = [], lcQ = '', lcKind = '', lcPick = null, lcUrls = {};
+
+/* Кадр відео — на 1-й секунді, 480 px завширшки, JPEG. Не вийшло
+   (кодек, CORS) — тихо без мініатюри: прев'ю буде значком. */
+function lcThumb(file) {
+  return new Promise(res => {
+    try {
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      const done = b => { URL.revokeObjectURL(url); res(b); };
+      v.onloadeddata = () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 2); } catch (e) { done(null); } };
+      v.onseeked = () => {
+        try {
+          const w = 480, h = Math.round(w * (v.videoHeight || 270) / (v.videoWidth || 480));
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          c.getContext('2d').drawImage(v, 0, 0, w, h);
+          c.toBlob(b => done(b), 'image/jpeg', .8);
+        } catch (e) { done(null); }
+      };
+      v.onerror = () => done(null);
+      setTimeout(() => done(null), 8000);
+      v.src = url;
+    } catch (e) { res(null); }
+  });
+}
+
+async function lcRemember(meta, file) {
+  try {
+    let thumb = null;
+    if (meta.kind === 'video' && file) {
+      const b = await lcThumb(file);
+      if (b) {
+        const tp = meta.path.replace(/\.[^./]+$/, '') + '_thumb.jpg';
+        const { error } = await sb.storage.from('launch-media').upload(tp, b, { contentType: 'image/jpeg', upsert: true });
+        if (!error) thumb = tp;
+      }
+    }
+    const row = { team_name: currentTeam, path: meta.path, kind: meta.kind, name: meta.name || null, size: meta.size || null, thumb_path: thumb };
+    if (window.myUid) row.created_by = window.myUid;
+    const { data } = await sb.from('launch_creatives').insert([row]).select().limit(1);
+    if (data && data[0]) lcRows.unshift(data[0]);
+  } catch (e) { /* бібліотека — зручність; завантаження без неї однаково працює */ }
+}
+
+async function lcLoad() {
+  const { data, error } = await sb.from('launch_creatives').select('*').eq('team_name', currentTeam)
+    .order('created_at', { ascending: false }).limit(500);
+  if (error) throw new Error(/launch_creatives/.test(error.message) ? 'the library is not set up — run LAUNCH_CREATIVES.sql' : error.message);
+  lcRows = data || [];
+  // Прев'ю — підписаними посиланнями, однією пачкою.
+  const paths = [...new Set(lcRows.map(r => r.kind === 'image' ? r.path : r.thumb_path).filter(Boolean))].filter(p => !lcUrls[p]);
+  if (paths.length) {
+    try {
+      const { data: sg } = await sb.storage.from('launch-media').createSignedUrls(paths, 3600);
+      (sg || []).forEach(x => { if (x && x.path && x.signedUrl) lcUrls[x.path] = x.signedUrl; });
+    } catch (e) { /* без прев'ю */ }
+  }
+}
+
+/* У скількох шаблонах стоїть файл: шукаємо його шлях у знімках. */
+const lcUsed = path => (ltRows || []).filter(r => JSON.stringify(r.spec || {}).includes(path)).length;
+
+function lcBox() {
+  let el = document.getElementById('lc-modal');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'lc-modal'; el.className = 'lt-modal lc-modal hidden';
+    el.innerHTML = '<div class="lt-back" onclick="lcClose()"></div><div class="lt-card lc-card" role="dialog" aria-label="Creative library"></div>';
+    document.body.appendChild(el);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !el.classList.contains('hidden')) { e.stopPropagation(); lcClose(); } }, true);
+  }
+  return el;
+}
+window.lcClose = function () { const el = document.getElementById('lc-modal'); if (el) el.classList.add('hidden'); lcPick = null; };
+
+window.lcOpen = async function (pick) {
+  lcPick = pick || null;
+  const el = lcBox(); el.classList.remove('hidden');
+  el.querySelector('.lc-card').innerHTML = '<div class="lt-empty">Loading the library…</div>';
+  try { await lcLoad(); } catch (e) { el.querySelector('.lc-card').innerHTML = `<div class="lt-empty">${ltEsc(e.message)}</div>`; return; }
+  lcPaint();
+};
+/* Вибір для оголошення i (lang — для окремої мови). */
+window.lcPickFor = function (i, lang) {
+  lcOpen({ i, lang: lang || '', only: lang ? 'video' : '' });
+};
+
+function lcPaint() {
+  const card = document.querySelector('#lc-modal .lc-card'); if (!card) return;
+  const q = lcQ.toLowerCase();
+  const kind = (lcPick && lcPick.only) || lcKind;
+  const rows = lcRows.filter(r => (!kind || r.kind === kind)
+    && (!q || [r.name, r.geo, r.lang].join(' ').toLowerCase().includes(q)));
+  const tile = r => {
+    const src = lcUrls[r.kind === 'image' ? r.path : r.thumb_path];
+    const used = lcUsed(r.path);
+    return `<div class="lc-tile${lcPick ? ' is-pick' : ''}" ${lcPick ? `onclick="lcChoose(${Number(r.id)})"` : ''}>
+      <div class="lc-prev">${src ? `<img src="${ltEsc(src)}" alt="" loading="lazy">` : `<span class="lc-noprev">${r.kind === 'video' ? '▶' : '▣'}</span>`}
+        <span class="lc-kind">${r.kind === 'video' ? '▶ video' : 'image'}</span></div>
+      <div class="lc-meta">
+        <div class="lc-name" title="${ltEsc(r.name || '')}">${ltEsc(r.name || r.path.split('/').pop())}</div>
+        <div class="lc-sub">${r.size ? (r.size / 1048576).toFixed(1) + ' MB · ' : ''}${used ? 'in ' + used + ' template' + (used > 1 ? 's' : '') : 'not used yet'}</div>
+        ${lcPick ? '' : `<div class="lc-tags">
+          <input class="lt-ed-in" value="${ltEsc(r.geo || '')}" placeholder="Geo" maxlength="2" onchange="lcSet(${Number(r.id)}, 'geo', this.value)">
+          <input class="lt-ed-in" value="${ltEsc(r.lang || '')}" placeholder="Language" onchange="lcSet(${Number(r.id)}, 'lang', this.value)">
+          <button type="button" class="lt-md-btn" onclick="lcDelete(${Number(r.id)})" title="Delete from the library">×</button></div>`}
+        ${lcPick || !(r.geo || r.lang) ? (r.geo || r.lang ? `<div class="lc-sub">${ltEsc([r.geo, r.lang].filter(Boolean).join(' · '))}</div>` : '') : ''}
+      </div></div>`;
+  };
+  card.innerHTML = `<div class="lt-head"><div><h3>${lcPick ? 'Pick a creative' : 'Creative library'}</h3>
+      <p>${lcPick ? 'Click a creative — it goes on the ad without uploading again.' : 'Everything you uploaded for launches. Add geo and language to find things faster.'}</p></div>
+      <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
+        <input class="lt-search lc-search" placeholder="Search name, geo, language…" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
+    <div class="lc-bar">
+      ${lcPick && lcPick.only ? '' : ['', 'video', 'image'].map(k => `<button type="button" class="lc-f${lcKind === k ? ' is-on' : ''}" onclick="lcKind='${k}';lcPaint()">${k ? k + 's' : 'All'}</button>`).join('')}
+      <label class="lt-md-btn lc-up">+ Upload<input type="file" accept="${lcPick && lcPick.only === 'video' ? 'video/*' : 'video/*,image/*'}" multiple hidden onchange="lcUpload(this)"></label>
+      <span class="lc-count">${rows.length} of ${lcRows.length}</span>
+    </div>
+    <div class="lc-grid">${rows.map(tile).join('') || `<div class="lt-empty">${lcRows.length ? 'Nothing matches.' : 'Nothing here yet — upload a video or an image.'}</div>`}</div>`;
+}
+
+window.lcSet = async function (id, k, v) {
+  const r = lcRows.find(x => x.id === id); if (!r) return;
+  const val = k === 'geo' ? String(v).toUpperCase().trim().slice(0, 2) : String(v).trim().slice(0, 20);
+  const { error } = await sb.from('launch_creatives').update({ [k]: val || null }).eq('id', id);
+  if (error) { toast('Not saved: ' + error.message, 'error'); return; }
+  r[k] = val || null;
+};
+window.lcDelete = async function (id) {
+  const r = lcRows.find(x => x.id === id); if (!r) return;
+  const used = lcUsed(r.path);
+  if (!await ask({ title: 'Delete from the library?', danger: true, ok: 'Delete',
+    body: '“' + (r.name || r.path) + '”' + (used ? '\n\nIt is used in ' + used + ' template(s) — launches from them will lose this creative.' : '') })) return;
+  const { error } = await sb.from('launch_creatives').delete().eq('id', id);
+  if (error) { toast('Not deleted: ' + error.message, 'error'); return; }
+  if (!used) { try { await sb.storage.from('launch-media').remove([r.path].concat(r.thumb_path ? [r.thumb_path] : [])); } catch (e) {} }
+  lcRows = lcRows.filter(x => x.id !== id);
+  lcPaint();
+};
+window.lcUpload = async function (input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  if (!files.length) return;
+  const step = toastStep();
+  let n = 0;
+  for (const f of files) {
+    const kind = /^video\//.test(f.type) ? 'video' : /^image\//.test(f.type) ? 'image' : '';
+    if (!kind || f.size > 200 * 1048576) continue;
+    step.say('Uploading ' + f.name + ' (' + (n + 1) + '/' + files.length + ')…');
+    try { await ltUploadFile(f, kind); n++; } catch (e) { toast('Not uploaded: ' + f.name + ' — ' + e.message, 'error'); }
+  }
+  step.done(n + ' file(s) added to the library', n ? 'ok' : 'error');
+  try { await lcLoad(); } catch (e) {}
+  lcPaint();
+};
+window.lcChoose = function (id) {
+  const r = lcRows.find(x => x.id === id); if (!r || !lcPick) return;
+  const meta = { path: r.path, kind: r.kind, name: r.name || r.path.split('/').pop(), size: r.size || 0 };
+  const { i, lang } = lcPick;
+  if (lang) {
+    const d = ltW.ads[i];
+    d.lang_media = d.lang_media || {};
+    d.lang_media[lang] = meta;
+  } else Object.assign(ltMd(i), meta);
+  lcClose();
+  ltRepaintW();
+  toast('Creative set: ' + meta.name, 'ok', 2000);
 };
