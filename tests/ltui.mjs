@@ -64,20 +64,22 @@ ok('перевірка: проблема з поясненням, що роби�
 ok('перевірка не запускає', await page.evaluate(() => __calls.every(c => c.check)));
 
 await page.evaluate(() => { ltCur.budget = '35'; ltCur.countries = 'kg, tj'; ltCur.name = 'NEW_KG'; });
+const pv = await page.evaluate(async () => { await ltPreview(); return document.querySelector('#lt-modal .lt-card').innerText; });
+ok('перед запуском — перегляд: кабінет і назва кампанії, кабінет із проблемою пропущено', /Preview · 1 campaign/i.test(pv) && /P-222/.test(pv) && /Skipped: 333/.test(pv), pv.slice(0, 400));
 await page.evaluate(() => ltLaunch());
 await page.waitForTimeout(300);
 const calls = await page.evaluate(() => __calls.filter(c => !c.check));
 ok('запуск лише в кабінет без проблем', calls.length === 1 && calls[0].target_account === '222', calls);
 ok('у функцію йде знімок, назва й перекриття', calls[0] && calls[0].spec.campaign.id === '900' && calls[0].name === 'NEW_KG'
   && calls[0].overrides.daily_budget === 35 && calls[0].overrides.countries.join() === 'KG,TJ', calls[0]);
-const after = await page.evaluate(() => ({ t: document.querySelector('.lt-cab.is-on').innerText, upd: __upd }));
-ok('результат видно на кабінеті', /launched/.test(after.t) && /Campaign created paused: 1\/1 ad sets/.test(after.t), after.t);
+const after = await page.evaluate(() => ({ t: document.querySelector('#lt-modal .lt-pv').innerText, upd: __upd }));
+ok('результат видно в перегляді', /1\/1 launched/.test(after.t) && /1\/1 ads/.test(after.t), after.t);
 ok('лічильник запусків оновлено', after.upd.some(u => u.uses === 3 && u.last_used_at), after.upd);
 
 await page.evaluate(() => { ltCur.budget = '20'; ltCur.countries = 'KG'; });
 ok('без змін — перекриттів немає', await page.evaluate(() => JSON.stringify(ltOverrides()) === '{}'));
 
-const stt = await page.evaluate(() => { ltCur.start = '2030-05-01T09:30'; const o = ltOverrides(); ltCur.start = '';
+const stt = await page.evaluate(() => { ltPaintLaunch(); ltCur.start = '2030-05-01T09:30'; const o = ltOverrides(); ltCur.start = '';
   return { o, field: !!document.getElementById('lt-f-start') }; });
 ok("поле Start є, і старт іде у перекриття точною миттю", stt.field && stt.o.start_time === new Date("2030-05-01T09:30").toISOString(), stt);
 
@@ -167,5 +169,26 @@ const lg = await page.evaluate(async () => {
 });
 ok('мови оголошення видно, основна — першою', lg.rows.length === 2 && /af_ZA/.test(lg.rows[0]) && /default/i.test(lg.rows[0]) && /ru_RU/.test(lg.rows[1]), lg.rows);
 ok('текст мови правиться й зберігається в шаблоні', lg.b && lg.b[0].text === 'RU edited' && lg.b[1].text === 'AF', lg.b);
+
+/* Дублікати кампаній з нумерацією, вибір Сторінки, копії оголошень. */
+const dup = await page.evaluate(async () => {
+  __calls.length = 0;
+  ltPaintList(); ltOpen(1);
+  ltCur.picked = new Set(['222', '555']); ltCur.name = 'MPlayA-KG-22/11 001'; ltCur.camps = 3; ltCur.adCopies = 2;
+  ltCur.pagesOf = { '222': [{ id: '88', name: 'Page A' }, { id: '99', name: 'Page B' }] }; ltCur.pageFor = { '222': '88' };
+  ltRes = { '222': { checks: [] } };
+  await ltPreview();
+  const names = ltCur.names['222'].slice();
+  const sel = document.querySelector('#lt-modal .lt-pv-page select');
+  sel.value = '99'; sel.dispatchEvent(new Event('change'));
+  const inp = document.querySelectorAll('#lt-modal .lt-pv-row input')[1];
+  inp.value = 'My custom name'; inp.dispatchEvent(new Event('input'));
+  await ltLaunch();
+  return { names, calls: __calls.filter(c => !c.check).map(c => ({ n: c.name, p: c.page_id, k: c.overrides.ad_copies })) };
+});
+ok('3 кампанії в кабінет, назви пронумеровані від 001', dup.names.join('|') === 'MPlayA-KG-22/11 001|MPlayA-KG-22/11 002|MPlayA-KG-22/11 003', dup.names);
+ok('кабінет в іншій валюті не потрапив', !dup.calls.some(c => c.p === undefined && false) && dup.calls.length === 3, dup.calls);
+ok('вибрана Сторінка й поправлена назва йдуть у запуск', dup.calls.every(c => c.p === '99') && dup.calls[1].n === 'My custom name', dup.calls);
+ok('копії оголошень передаються', dup.calls.every(c => c.k === 2), dup.calls);
 
 await done(browser, srv, errs);

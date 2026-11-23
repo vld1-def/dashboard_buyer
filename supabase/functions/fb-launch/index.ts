@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-23.5';
+const FN_VERSION = '2026-11-23.6';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -192,7 +192,7 @@ type Check = { level: 'ok' | 'warn' | 'fail' | 'unknown'; text: string };
 /* page: випадкова Сторінка цільового кабінета для оголошень, чия Сторінка
    йому недоступна; lost: Сторінки, яких він не бачить; noAds: оголошень
    не створюємо зовсім — «сам зайду й запущусь». */
-type Fix = { pixel?: string; page?: string; pageName?: string; lost?: string[]; noAds?: boolean };
+type Fix = { pixel?: string; page?: string; pageName?: string; lost?: string[]; noAds?: boolean; pages?: { id: string; name: string }[] };
 
 const pageOf = (cr: Json): string => {
   const story = String(cr?.effective_object_story_id || cr?.object_story_id || '');
@@ -208,7 +208,7 @@ async function listIds(path: string, token: string): Promise<Map<string, string>
 }
 
 async function preflight(spec: Json, T: { token: string; currency: string; status: string },
-                         tgt: string, same: boolean): Promise<{ checks: Check[]; fix: Fix }> {
+                         tgt: string, same: boolean, wantPage = ''): Promise<{ checks: Check[]; fix: Fix }> {
   const checks: Check[] = [];
   const fix: Fix = {};
   const adsets: Json[] = spec.adsets || [], ads: Json[] = spec.ads || [];
@@ -232,11 +232,16 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
       fix.noAds = true;
       checks.push({ level: 'warn', text: 'this cabinet has no page — Facebook cannot create an ad without one, so campaign and ad sets only' });
     } else {
+      // Сторінки кабінета — у відповідь перевірки, щоб людина могла вибрати.
+      fix.pages = [...can.entries()].map(([id, name]) => ({ id, name }));
       const own = pages.find(pg => can.has(pg));
       const ids = [...can.keys()];
-      fix.page = own || ids[Math.floor(Math.random() * ids.length)];
+      /* Вибрана людиною Сторінка — головніша за все: тоді й пости шаблону
+         з інших Сторінок не перевикористовуємо (lost). */
+      const picked = wantPage && can.has(wantPage) ? wantPage : '';
+      fix.page = picked || own || ids[Math.floor(Math.random() * ids.length)];
       fix.pageName = can.get(fix.page) || fix.page;
-      fix.lost = pages.filter(pg => !can.has(pg));
+      fix.lost = picked ? pages.filter(pg => pg !== picked) : pages.filter(pg => !can.has(pg));
       pages.filter(pg => can.has(pg)).forEach(pg => checks.push({ level: 'ok', text: 'page ' + can.get(pg) }));
       if (fix.lost.length) checks.push({ level: 'warn', text: 'page ' + fix.lost.join(', ') + ' is not in this cabinet — ads go to its page “'
         + fix.pageName + '”; where the post cannot be reused, the ad is a placeholder' });
@@ -322,7 +327,10 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
       const pg = pageOf(cr);
       const P = fix.page || pg;
       const lost = !!(fix.lost && fix.lost.includes(pg));
-      const tags = cr.url_tags ? { url_tags: String(cr.url_tags) } : {};
+      /* URL-параметри: свої з редактора (d.url_tags) — головніші за ті, що
+         були в креативі шаблону. */
+      const ut = d.url_tags !== undefined && d.url_tags !== null ? String(d.url_tags).trim() : String(cr.url_tags || '');
+      const tags = ut ? { url_tags: ut } : {};
       const nm = { name: String(cr.name || d.name || 'Creative').slice(0, 200) };
       const cands: Json[] = [];
       const story = String(cr.effective_object_story_id || cr.object_story_id || '');
@@ -341,7 +349,7 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
          цілком, а не одномовною копією. Найперше в черзі. */
       const af = cr.asset_feed_spec;
       if (af && String(af.optimization_type || '') === 'LANGUAGE' && P)
-        cands.unshift({ __lang: { afs: af, media: md && md.path ? md : null, page: P }, ...nm, ...tags });
+        cands.unshift({ __lang: { afs: af, media: md && md.path ? md : null, page: P, byLang: d.lang_media || {} }, ...nm, ...tags });
       if (story && !lost && story !== own) cands.push({ ...nm, object_story_id: story, ...tags });
       const oss = cr.object_story_spec;
       if (oss && (oss.link_data || oss.video_data || oss.photo_data || oss.template_data) && !cr.asset_feed_spec) {
@@ -361,6 +369,10 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
       return { ...d, tracking_specs: undefined, cands, page: P };
     });
   }
+  /* Копії кожного оголошення: «створювати одразу декілька оголошень».
+     Друга копія — «назва 2», третя — «назва 3»… */
+  const k = Math.max(1, Math.min(10, Math.round(Number(ov?.ad_copies) || 1)));
+  if (k > 1) ads = ads.flatMap((d: Json) => Array.from({ length: k }, (_x, j) => j ? { ...d, name: String(d.name || 'Ad') + ' ' + (j + 1) } : d));
   return { camp, adsets, ads, notes };
 }
 
@@ -453,8 +465,9 @@ Deno.serve(async (req) => {
   let shaped: { camp: Json; adsets: Json[]; ads: Json[]; notes?: string[] };
   let warns: string[] = [];
   if (fromSpec) {
-    const pf = await preflight(spec, T, tgt, same);
-    if (body.check) return reply({ ok: true, mode: 'check', target_account: tgt, sample, checks: pf.checks });
+    const pf = await preflight(spec, T, tgt, same, String(body.page_id || '').trim());
+    if (body.check) return reply({ ok: true, mode: 'check', target_account: tgt, sample, checks: pf.checks,
+      pages: pf.fix.pages || [], page: pf.fix.page || '' });
     const bad = pf.checks.filter(c => c.level === 'fail');
     if (bad.length) return reply({ error: 'not launched: ' + bad.map(c => c.text).join('; '), checks: pf.checks }, 409);
     shaped = shape(spec, body.overrides || {}, pf.fix, same);
@@ -568,7 +581,10 @@ Deno.serve(async (req) => {
     if (L.media && L.media.link) (afs.link_urls || []).forEach((u: Json) => { u.website_url = L.media.link; });
     const vids: Json[] = [];
     for (const v of (afs.videos || [])) {
-      const got = own || await copySourceVideo(String(v.video_id));
+      // Окреме відео під мову (редактор) → спільне своє → оригінал зі зразка.
+      const ln = String((v.adlabels || [])[0]?.name || '');
+      const lm = L.byLang && L.byLang[ln] && L.byLang[ln].path ? L.byLang[ln] : null;
+      const got = lm ? await uploadMedia(lm) : own || await copySourceVideo(String(v.video_id));
       vids.push({ video_id: got.video_id, thumbnail_url: got.thumb || undefined, adlabels: (v.adlabels || []).map(lab) });
     }
     afs.videos = vids;

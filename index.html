@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 11:46">
+  <meta name="build" content="build 23.11 12:08">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8333,11 +8333,33 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 /* Мови мовного оголошення в редакторі шаблону */
 .lt-lang { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 12px; background: rgba(56,189,248,.06); border: 1px solid rgba(56,189,248,.2); }
 .lt-lang-h { font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: #7dd3fc; }
-.lt-lang-row { display: grid; grid-template-columns: 74px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center; }
+.lt-lang-row { display: grid; grid-template-columns: 74px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) 92px; gap: 6px; align-items: center; }
 .lt-lang-n { font-size: 11.5px; font-weight: 900; font-family: ui-monospace, monospace; display: flex; flex-direction: column; line-height: 1.1; }
 .lt-lang-n em { font-style: normal; font-family: inherit; font-size: 9px; font-weight: 800; color: #7dd3fc; text-transform: uppercase; letter-spacing: .06em; }
 .lt-md-note { font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 0; }
 @media (max-width: 640px) { .lt-lang-row { grid-template-columns: 1fr 1fr; } }
+
+/* Друга лінія налаштувань і перегляд перед запуском (launchtpl.js) */
+.lt-form2 { grid-template-columns: 170px 150px; margin-top: -6px; }
+.lt-pv { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow: auto; }
+.lt-pv-cab { padding: 10px 12px; border-radius: 14px; background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; gap: 6px; }
+.lt-pv-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lt-pv-top b { font-size: 13.5px; font-weight: 900; }
+.lt-pv-page { display: flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; }
+.lt-pv-page > span { font-size: 9.5px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
+.lt-pv-page select { width: 200px; appearance: auto; }
+.lt-pv-page em { font-style: normal; font-size: 11px; color: var(--text-muted); }
+.lt-pv-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.lt-pv-n { font-size: 11px; font-weight: 900; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+.lt-pv-skip { font-size: 11.5px; font-weight: 700; color: #fbbf24; margin: 0 0 8px; }
+
+.lt-lang-v { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 30px; padding: 0 8px; border-radius: 9px;
+  font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; background: rgba(56,189,248,.14); color: #bae6fd; }
+.lt-lang-v.is-up { cursor: pointer; background: rgba(255,255,255,.05); color: var(--text-muted); border: 1px dashed rgba(255,255,255,.18); }
+.lt-lang-v.is-up:hover { color: #fff; border-color: rgba(56,189,248,.5); }
+.lt-lang-v button { color: inherit; opacity: .7; font-size: 13px; }
+.lt-md-ut { display: flex; flex-direction: column; gap: 3px; }
+.lt-md-ut > span { font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8597,7 +8619,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 11:46</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 12:08</div>
     </div>
   </aside>
 
@@ -42243,7 +42265,7 @@ window.ltOpen = function (id) {
   const r = ltRows.find(x => x.id === id); if (!r) return;
   const s = ltSummary(r.spec || {});
   ltCur = { r, s, picked: new Set(), q: '', name: r.name, budget: s.budgetVal ? String(Math.round(s.budgetVal * 100) / 100) : '',
-            countries: s.countries.join(', ') };
+            countries: s.countries.join(', '), camps: 1, adCopies: 1, pagesOf: {}, pageFor: {}, names: {} };
   ltRes = {};
   ltPaintLaunch();
 };
@@ -42302,6 +42324,12 @@ function ltPaintLaunch() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
         <span>${ltEsc(ltDtLabel(ltCur.start))}</span></button></label>
     </div>
+    <div class="lt-form lt-form2">
+      <label title="How many copies of the campaign go into each cabinet — names are numbered, you can edit them in the preview"><span>Campaigns per cabinet</span>
+        <input type="number" min="1" max="20" value="${ltCur.camps}" oninput="ltCur.camps=Math.max(1,Math.min(20,Math.round(+this.value||1)))"></label>
+      <label title="Each ad is created this many times inside its ad set — “Name”, “Name 2”, “Name 3”…"><span>Copies of each ad</span>
+        <input type="number" min="1" max="10" value="${ltCur.adCopies}" oninput="ltCur.adCopies=Math.max(1,Math.min(10,Math.round(+this.value||1)))"></label>
+    </div>
     <div class="lt-pick-h"><span>Cabinets · ${picked.length} picked</span></div>
     <div class="lt-cabs">${shown.length ? shown.map(t => `
       <div class="lt-cab${ltCur.picked.has(t.id) ? ' is-on' : ''}">
@@ -42314,7 +42342,7 @@ function ltPaintLaunch() {
     <div class="lt-foot">
       <span>${blocked.length ? blocked.length + ' cabinet(s) will be skipped' : checked.length ? 'Checked — ready to launch' : 'Check shows what each cabinet will get — or launch right away'}</span>
       <button type="button" class="lt-btn is-ghost" onclick="ltCheck()" ${!picked.length || ltBusy ? 'disabled' : ''}>Check</button>
-      <button type="button" class="lt-btn is-go" onclick="ltLaunch()" ${!picked.length || ltBusy ? 'disabled' : ''}>Launch paused</button>
+      <button type="button" class="lt-btn is-go" onclick="ltPreview()" ${!picked.length || ltBusy ? 'disabled' : ''}>Preview →</button>
     </div>`;
 }
 
@@ -42344,47 +42372,133 @@ window.ltCheck = async function () {
   ltPaintLaunch();
   await Promise.all(ids.map(async id => {
     try {
-      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, check: true });
+      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, check: true, page_id: ltCur.pageFor[id] || '' });
       ltRes[id] = r.ok ? { checks: r.j.checks || [] } : { err: r.j.error || 'HTTP ' + r.status, checks: r.j.checks || [] };
+      if (r.ok) {
+        if (Array.isArray(r.j.pages)) ltCur.pagesOf[id] = r.j.pages;
+        else if (!ltCur.pagesOf[id]) ltCur.pagesOf[id] = [];
+        if (!ltCur.pageFor[id] && r.j.page) ltCur.pageFor[id] = r.j.page;
+      }
     } catch (e) { ltRes[id] = { err: e.message }; }
   }));
   ltBusy = false;
   ltPaintLaunch();
 };
 
+/* ── ПЕРЕГЛЯД ПЕРЕД ЗАПУСКОМ ──
+   «коли нажимаю запуск, щоб спочатку прев'ю було з налаштуваннями і з
+   можливістю редагувати, вибирати page, … скільки дублікатів кампанії
+   робити (з можливістю редагування назви)». Тут видно кожен кабінет:
+   Сторінку (вибір), назви ВСІХ кампаній, що підуть у нього (правляться),
+   і що саме створиться. Запуск — лише звідси. */
+function ltNumbered(base, count) {
+  base = String(base || '').trim() || 'Campaign';
+  if (count <= 1) return [base];
+  const m = base.match(/^(.*?)(\d+)$/);
+  const out = [];
+  for (let k = 0; k < count; k++) {
+    if (m) out.push(m[1] + String(Number(m[2]) + k).padStart(m[2].length, '0'));
+    else out.push(base + ' ' + String(k + 1).padStart(3, '0'));
+  }
+  return out;
+}
+function ltLaunchable() {
+  const s = ltCur.s;
+  return [...ltCur.picked].filter(id => {
+    const t = ltTargets().find(x => x.id === id);
+    if (t && s.cur && t.cur && t.cur !== s.cur) return false;
+    return !((ltRes[id] && ltRes[id].checks) || []).some(c => c.level === 'fail');
+  });
+}
+
+window.ltPreview = async function () {
+  if (ltBusy) return;
+  // Сторінки кабінетів приходять з перевірки — без неї вибору не буде.
+  if ([...ltCur.picked].some(id => !ltCur.pagesOf[id])) await ltCheck();
+  const ids = ltLaunchable();
+  const all = ltNumbered(String(ltCur.name || '').trim() || ltCur.r.name, ids.length * ltCur.camps);
+  ids.forEach((id, k) => { ltCur.names[id] = all.slice(k * ltCur.camps, (k + 1) * ltCur.camps); });
+  ltPaintPreview();
+};
+
+function ltPaintPreview() {
+  const card = ltBox().querySelector('.lt-card');
+  const { r, s } = ltCur;
+  const ids = ltLaunchable();
+  const ov = ltOverrides();
+  const total = ids.reduce((a, id) => a + (ltCur.names[id] || []).length, 0);
+  const adsEach = s.ads * ltCur.adCopies;
+  const facts = [s.sets + ' ad set' + (s.sets === 1 ? '' : 's'), adsEach + ' ad' + (adsEach === 1 ? '' : 's'),
+    ov.daily_budget ? ov.daily_budget + ' ' + s.cur + '/day' : s.budget ? s.budget + '/day' : '',
+    (ov.countries || s.countries).join(', '),
+    ov.start_time ? 'start ' + new Date(ov.start_time).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'starts when switched on']
+    .filter(Boolean).join(' · ');
+  const skipped = [...ltCur.picked].filter(id => !ids.includes(id));
+  card.innerHTML = `<div class="lt-head"><div>
+      <button type="button" class="lt-back-btn" onclick="ltPaintLaunch()" ${ltBusy ? 'disabled' : ''}>← Settings</button>
+      <h3>Preview · ${total} campaign${total === 1 ? '' : 's'}</h3>
+      <p>Each campaign: ${ltEsc(facts)}. Campaign paused, ad sets and ads on.</p></div>
+      <div class="lt-head-r"><button type="button" class="lt-x" onclick="ltClose()" title="Close (Esc)" ${ltBusy ? 'disabled' : ''}>×</button></div></div>
+    ${skipped.length ? `<p class="lt-pv-skip">Skipped: ${skipped.map(ltEsc).join(', ')} — another currency or a problem in the check.</p>` : ''}
+    <div class="lt-pv">${ids.map(id => {
+      const t = ltTargets().find(x => x.id === id) || { id };
+      const pages = ltCur.pagesOf[id] || [];
+      const x = ltRes[id] || {};
+      return `<div class="lt-pv-cab">
+        <div class="lt-pv-top"><b>${ltEsc(t.name || t.fbName || id)}</b><span class="lt-cab-id">${ltEsc(id)}</span>
+          <label class="lt-pv-page"><span>Page</span>
+            ${pages.length ? `<select class="lt-ed-in" onchange="ltCur.pageFor['${id}']=this.value" ${ltBusy ? 'disabled' : ''}>${pages.map(p =>
+              `<option value="${ltEsc(p.id)}"${ltCur.pageFor[id] === p.id ? ' selected' : ''}>${ltEsc(p.name)}</option>`).join('')}</select>`
+              : '<em>no page list — ads try the template’s page</em>'}</label>
+          ${x.runs ? `<span class="lt-st ${x.runs.every(q => q.ok) ? 'is-ok' : 'is-warn'}">${x.runs.filter(q => q.ok).length}/${x.runs.length} launched</span>` : ''}</div>
+        ${(ltCur.names[id] || []).map((n, k) => {
+          const run = x.runs && x.runs[k];
+          return `<div class="lt-pv-row"><span class="lt-pv-n">${k + 1}</span>
+            <input class="lt-ed-in" value="${ltEsc(n)}" oninput="ltCur.names['${id}'][${k}]=this.value" ${ltBusy ? 'disabled' : ''}>
+            ${run ? (run.busy ? '<span class="lt-st is-busy">creating…</span>' : run.ok
+              ? `<span class="lt-st is-ok" title="${ltEsc((run.j.problems || []).concat(run.j.warnings || []).join('\n'))}">${run.j.ads.made}/${run.j.ads.of} ads</span>`
+              : `<span class="lt-st is-fail" title="${ltEsc(run.error)}">failed</span>`) : ''}</div>
+            ${run && !run.busy && (!run.ok || (run.j.problems || []).length) ? `<ul class="lt-checks">${(run.ok ? run.j.problems : [run.error]).map(p => `<li class="is-warn"><i>!</i>${ltEsc(p)}</li>`).join('')}</ul>` : ''}`;
+        }).join('')}
+      </div>`;
+    }).join('') || '<div class="lt-empty">Nothing to launch — pick cabinets on the previous step.</div>'}</div>
+    <div class="lt-foot">
+      <span>${ltCur.adCopies > 1 ? 'Each ad ×' + ltCur.adCopies + ' · ' : ''}Names are yours to change before launch.</span>
+      <button type="button" class="lt-btn is-ghost" onclick="ltPaintLaunch()" ${ltBusy ? 'disabled' : ''}>Back</button>
+      <button type="button" class="lt-btn is-go" onclick="ltLaunch()" ${!total || ltBusy ? 'disabled' : ''}>Launch ${total} campaign${total === 1 ? '' : 's'}</button>
+    </div>`;
+}
+
 window.ltLaunch = async function () {
   if (ltBusy) return;
-  const ids = [...ltCur.picked];
-  const name = String(ltCur.name || '').trim() || ltCur.r.name;
-  const ov = ltOverrides();
-  const extra = [ov.daily_budget ? 'budget ' + ov.daily_budget + '/day' : '', ov.countries ? 'countries ' + ov.countries.join(', ') : '',
-    ov.start_time ? 'start ' + new Date(ov.start_time).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''].filter(Boolean).join(', ');
-  if (!await ask({ title: 'Launch paused?', ok: 'Launch paused',
-    body: '“' + name + '” into ' + ids.length + ' cabinet(s)' + (extra ? ' — ' + extra : '') + '.\n\n'
-      + 'Ads are always created: from the template’s posts where the cabinet has the page, otherwise placeholders you swap. '
-      + 'Only the CAMPAIGN is created paused — ad sets and ads are on, so switching the campaign on starts everything. Cabinets in another currency are skipped.' })) return;
+  const ids = ltLaunchable();
+  const ov = { ...ltOverrides(), ad_copies: ltCur.adCopies };
   ltBusy = true;
   let good = 0;
   for (const id of ids) {
+    const names = (ltCur.names[id] || []).map(n => String(n).trim()).filter(Boolean);
     const prev = ltRes[id] || {};
-    if ((prev.checks || []).some(c => c.level === 'fail')) continue;
-    ltRes[id] = Object.assign({}, prev, { busy: true });
-    ltPaintLaunch();
-    try {
-      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, name, overrides: ov });
-      ltRes[id] = { checks: r.j.checks || prev.checks || [], done: r.ok ? r.j : { ok: false, error: r.j.error || 'HTTP ' + r.status } };
-      if (r.ok) good++;
-    } catch (e) { ltRes[id] = { checks: prev.checks || [], done: { ok: false, error: e.message } }; }
-    ltPaintLaunch();
+    const runs = names.map(() => ({ busy: true }));
+    ltRes[id] = Object.assign({}, prev, { runs });
+    for (let k = 0; k < names.length; k++) {
+      ltPaintPreview();
+      try {
+        const r = await ltFn({ spec: ltCur.r.spec, target_account: id, name: names[k], overrides: ov, page_id: ltCur.pageFor[id] || '' });
+        runs[k] = r.ok ? { ok: true, j: r.j } : { ok: false, error: r.j.error || 'HTTP ' + r.status };
+        if (r.ok) good++;
+      } catch (e) { runs[k] = { ok: false, error: e.message }; }
+      const last = runs[k];
+      ltRes[id] = Object.assign({}, prev, { runs, done: last.ok ? last.j : { ok: false, error: last.error } });
+    }
   }
   ltBusy = false;
   if (good) {
     const r = ltCur.r;
     r.uses = (r.uses || 0) + good; r.last_used_at = new Date().toISOString();
     await sb.from('launch_templates').update({ uses: r.uses, last_used_at: r.last_used_at }).eq('id', r.id);
-    toast('Launched paused in ' + good + ' cabinet(s). Press Sync now to see them in FB LIVE.', 'ok', 6000);
+    toast('Launched ' + good + ' campaign(s), paused. Press Sync now to see them in FB LIVE.', 'ok', 6000);
   }
-  ltPaintLaunch();
+  ltPaintPreview();
 };
 
 
@@ -42664,6 +42778,10 @@ function ltLangBlock(d, i) {
       <input class="lt-ed-in" value="${ltEsc(L.body ? L.body.text : '')}" placeholder="Text" ${L.body ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].body.text=this.value">
       <input class="lt-ed-in" value="${ltEsc(L.title ? L.title.text : '')}" placeholder="Headline" ${L.title ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].title.text=this.value">
       <input class="lt-ed-in" value="${ltEsc(L.link ? L.link.website_url : '')}" placeholder="Link" ${L.link ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].link.website_url=this.value.trim()">
+      ${(() => { const lm = (d.lang_media || {})[L.n];
+        return lm && lm.path
+          ? `<span class="lt-lang-v" title="${ltEsc(lm.name || '')}">▶ ${ltEsc((lm.name || 'video').slice(0, 14))}<button type="button" onclick="ltLangDrop(${i}, '${ltEsc(L.n)}')" title="Remove">×</button></span>`
+          : `<label class="lt-lang-v is-up" title="Separate video for ${ltEsc(L.n)}">+ video<input type="file" accept="video/*" hidden onchange="ltLangPick(${i}, '${ltEsc(L.n)}', this)"></label>`; })()}
     </div>`).join('')}</div>`;
 }
 
@@ -42679,6 +42797,8 @@ function ltMediaBlock(d, i, total) {
         <span>${ltIsLang(d) ? 'Upload a video for all languages (optional)' : 'Upload video or image — CRM puts it into every new cabinet'}</span><input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>`;
   return `<div class="lt-md">
     ${file}
+    <label class="lt-md-ut"><span>URL parameters</span><input class="lt-ed-in" value="${ltEsc(d.url_tags !== undefined ? d.url_tags : ((d.creative || {}).url_tags || ''))}"
+      oninput="ltEd.spec.ads[${i}].url_tags=this.value.trim()" placeholder="utm_source=fb&sub1={{ad.id}}"></label>
     ${lang ? `<p class="lt-md-note">${m.path ? 'This video goes to every language.' : 'No video here — the template’s own videos are copied from its cabinet while that cabinet is alive. Upload one to be safe.'}</p>` : ''}
     <div class="lt-ed-fields"${lang ? ' hidden' : ''}>
       <label class="is-wide"><span>Text</span><input class="lt-ed-in" value="${ltEsc(m.text || '')}" oninput="ltMd(${i}).text=this.value"></label>
@@ -42721,6 +42841,38 @@ window.ltMediaAll = function (i) {
   ltEd.spec.ads.forEach((d, k) => { if (k !== i) d.media = JSON.parse(JSON.stringify(src)); });
   ltPaintEdit();
   toast('The same creative is now on every ad — press Save', 'ok', 2500);
+};
+
+
+/* Окреме відео під мову: «окремі відео під мови». Лежить у
+   d.lang_media[мова]; при запуску іде саме цій мові. */
+async function ltUploadFile(file, kind) {
+  const ext = (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg')).toLowerCase().slice(0, 5);
+  const path = String(currentTeam || 'team') + '/' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+  const { error } = await sb.storage.from('launch-media').upload(path, file, { contentType: file.type, upsert: false });
+  if (error) throw new Error(/bucket/i.test(error.message) ? 'storage is not set up — run LAUNCH_MEDIA.sql' : error.message);
+  return { path, kind, name: file.name, size: file.size };
+}
+window.ltLangPick = async function (i, lang, input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  if (!/^video\//.test(file.type)) { toast('Pick a video for this language.', 'warn'); return; }
+  const step = toastStep();
+  step.say('Uploading the ' + lang + ' video…');
+  try {
+    const m = await ltUploadFile(file, 'video');
+    const d = ltEd.spec.ads[i];
+    d.lang_media = d.lang_media || {};
+    d.lang_media[lang] = m;
+    step.done(lang + ' video uploaded — press Save', 'ok');
+    ltPaintEdit();
+  } catch (e) { step.done('Not uploaded: ' + e.message, 'error'); }
+};
+window.ltLangDrop = function (i, lang) {
+  const d = ltEd.spec.ads[i];
+  if (d.lang_media) delete d.lang_media[lang];
+  ltPaintEdit();
 };
 </script>
 

@@ -287,6 +287,22 @@ const lang2 = await run({ body: { spec: LSPEC2, target_account: '222' }, lists: 
 const LAF2 = JSON.parse(lang2.posts.filter(x => x.path === '/act_222/adcreatives')[0].p.asset_feed_spec);
 ok('своє відео з редактора — на всі мови, своє посилання — теж', lang2.posts.filter(x => x.path === '/act_222/advideos').length === 1
   && new Set(LAF2.videos.map(v => v.video_id)).size === 1 && LAF2.link_urls.every(u => u.website_url === 'https://mine'), LAF2);
+/* Вибір Сторінки, URL-параметри, копії оголошень, окреме відео під мову. */
+const PAGES2 = { '/act_222/promote_pages': [{ id: '77', name: 'Tpl page' }, { id: '88', name: 'Other page' }], '/act_222/adspixels': [{ id: '5', name: 'Px' }] };
+const chk2 = await run({ body: { spec: SPEC, target_account: '222', check: true }, lists: PAGES2 });
+ok('перевірка повертає Сторінки кабінета для вибору', (chk2.body.pages || []).map(p => p.id).join() === '77,88' && chk2.body.page === '77', chk2.body);
+const pick = await run({ body: { spec: SPEC, target_account: '222', page_id: '88' }, lists: PAGES2 });
+const pcr2 = pick.posts.filter(x => x.path === '/act_222/adcreatives');
+ok('вибрана Сторінка — на всіх креативах, пости іншої не беруться', pcr2.length && pcr2.every(x => !x.p.object_story_id && JSON.parse(x.p.object_story_spec).page_id === '88'), pcr2.map(x => x.p));
+const USPEC = JSON.parse(JSON.stringify(SPEC)); USPEC.ads.forEach(d => { d.url_tags = 'utm_source=fb&sub1={{ad.id}}'; });
+const ut = await run({ body: { spec: USPEC, target_account: '222' }, lists: LISTS_OK });
+ok('URL-параметри з редактора — на креативах', ut.posts.filter(x => x.path === '/act_222/adcreatives').every(x => x.p.url_tags === 'utm_source=fb&sub1={{ad.id}}'), ut.posts.filter(x => /adcreatives/.test(x.path)).map(x => x.p.url_tags));
+const cp = await run({ body: { spec: SPEC, target_account: '222', overrides: { ad_copies: 2 } }, lists: LISTS_OK });
+ok('копії оголошень: кожне ×2, з номером у назві', cp.body.ads.of === 6 && cp.posts.filter(x => x.path === '/act_222/ads').map(x => x.p.name).join() === 'KG_1,KG_1 2,KG_2,KG_2 2,KG_3,KG_3 2', cp.posts.filter(x => /\/ads$/.test(x.path)).map(x => x.p.name));
+const LSPEC3 = JSON.parse(JSON.stringify(LSPEC)); LSPEC3.ads[0].lang_media = { ru_RU: { path: 'T/ru.mp4', kind: 'video' } };
+const lang3 = await run({ body: { spec: LSPEC3, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+const vids3 = lang3.posts.filter(x => x.path === '/act_222/advideos').map(x => x.p.file_url);
+ok('окреме відео під мову: ru — своє зі сховища, en — оригінал', vids3.length === 2 && vids3.some(u => /launch-media\/T\/v\.mp4|sign/.test(u)) && vids3.includes('https://cdn.fb/src1.mp4'), vids3);
 const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok
