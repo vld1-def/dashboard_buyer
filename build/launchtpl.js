@@ -163,7 +163,7 @@ function ltPaintList(err) {
       </div>
       <div class="lt-item-act">
         <button type="button" class="lt-btn is-go" onclick="ltOpen(${Number(r.id)})">Launch</button>
-        <button type="button" class="lt-btn is-ghost" onclick="ltRename(${Number(r.id)})" title="Rename">✎</button>
+        <button type="button" class="lt-btn is-ghost" onclick="ltEdit(${Number(r.id)})" title="Edit what gets copied">Edit</button>
         <button type="button" class="lt-btn is-ghost is-del" onclick="ltDelete(${Number(r.id)})" title="Delete template">×</button>
       </div></div>`;
   }).join('')}</div>`;
@@ -452,4 +452,117 @@ window.ltDtpSave = function () {
   const t = new Date(ltDtp.d); t.setHours(ltDtp.h, ltDtp.mi, 0, 0);
   if (t.getTime() < Date.now()) { toast('That time has already passed — pick a later one.', 'warn'); return; }
   ltCur.start = ltDtStr(t); ltDtpClose(); ltPaintLaunch();
+};
+
+
+/* ── РЕДАКТОР ШАБЛОНУ ──
+   «щоб коли я роблю template я міг редагувати його, типу що ми будемо
+   копіювати, можливо щось там лишнє». Видно все, що піде в новий
+   кабінет: кампанію, адсети, оголошення. Зайве — знімаєш галочку (воно
+   зникає зі знімка після Save). Назви, бюджети, країни, вік — правиш.
+   У оголошення є Post ID: вставив ID готового допису Сторінки, яку
+   бачить кабінет, — оголошення робиться з нього, і режим розробки
+   додатка тут не заважає (він блокує лише НОВІ дописи). */
+let ltEd = null;
+const ltMoney2 = cents => { const v = Number(cents) / 100; return v > 0 ? String(Math.round(v * 100) / 100) : ''; };
+const ltCreativeKind = cr => !cr ? 'no creative'
+  : cr.asset_feed_spec ? 'dynamic creative' : (cr.effective_object_story_id || cr.object_story_id) ? 'post'
+  : cr.object_story_spec ? 'creative description' : 'no creative';
+
+window.ltEdit = function (id) {
+  const r = ltRows.find(x => x.id === id); if (!r) return;
+  ltEd = { r, spec: JSON.parse(JSON.stringify(r.spec || {})), off: new Set() };
+  ltPaintEdit();
+};
+
+function ltPaintEdit() {
+  const card = ltBox().querySelector('.lt-card');
+  const { r, spec, off } = ltEd;
+  const c = spec.campaign || {}, sets = spec.adsets || [], ads = spec.ads || [];
+  const cbo = Number(c.daily_budget) > 0;
+  const cur = spec.currency || '';
+  const setRow = (a, i) => {
+    const t = a.targeting || {}, g = t.geo_locations || {};
+    const on = !off.has('s' + i);
+    return `<div class="lt-ed-row${on ? '' : ' is-off'}">
+      <label class="lt-ed-chk"><input type="checkbox" ${on ? 'checked' : ''} onchange="ltEdToggle('s${i}', this.checked)"></label>
+      <div class="lt-ed-main">
+        <input class="lt-ed-in is-name" value="${ltEsc(a.name || '')}" oninput="ltEd.spec.adsets[${i}].name=this.value" placeholder="Ad set name">
+        <div class="lt-ed-fields">
+          ${cbo ? '' : `<label><span>Budget/day ${ltEsc(cur)}</span><input class="lt-ed-in" inputmode="decimal" value="${ltMoney2(a.daily_budget)}" oninput="ltEdSet(${i},'budget',this.value)"></label>`}
+          <label><span>Countries</span><input class="lt-ed-in" value="${ltEsc((g.countries || []).join(', '))}" oninput="ltEdSet(${i},'countries',this.value)"></label>
+          <label><span>Age</span><span class="lt-ed-age"><input class="lt-ed-in" inputmode="numeric" value="${ltEsc(t.age_min || '')}" oninput="ltEdSet(${i},'age_min',this.value)" placeholder="18">–<input class="lt-ed-in" inputmode="numeric" value="${ltEsc(t.age_max || '')}" oninput="ltEdSet(${i},'age_max',this.value)" placeholder="65"></span></label>
+          <span class="lt-ed-meta">${ltEsc(String(a.optimization_goal || '').toLowerCase().replace(/_/g, ' '))}${a.promoted_object && a.promoted_object.custom_event_type ? ' · ' + ltEsc(String(a.promoted_object.custom_event_type).toLowerCase()) : ''}${a.is_dynamic_creative ? ' · dynamic creative (off in copies)' : ''}</span>
+        </div>
+      </div></div>`;
+  };
+  const adRow = (d, i) => {
+    const on = !off.has('a' + i) && !off.has('s' + sets.findIndex(s2 => String(s2.id) === String(d.adset_id)));
+    return `<div class="lt-ed-row${on ? '' : ' is-off'}">
+      <label class="lt-ed-chk"><input type="checkbox" ${!off.has('a' + i) ? 'checked' : ''} onchange="ltEdToggle('a${i}', this.checked)"></label>
+      <div class="lt-ed-main">
+        <input class="lt-ed-in is-name" value="${ltEsc(d.name || '')}" oninput="ltEd.spec.ads[${i}].name=this.value" placeholder="Ad name">
+        <div class="lt-ed-fields">
+          <label class="is-wide"><span>Post ID — a ready post the cabinet can use (optional)</span><input class="lt-ed-in" value="${ltEsc(d.post_id || '')}" oninput="ltEd.spec.ads[${i}].post_id=this.value.trim()" placeholder="PAGEID_POSTID"></label>
+          <span class="lt-ed-meta">creative: ${ltEsc(ltCreativeKind(d.creative))}${sets.length > 1 ? ' · in “' + ltEsc((sets.find(s2 => String(s2.id) === String(d.adset_id)) || {}).name || '?') + '”' : ''}</span>
+        </div>
+      </div></div>`;
+  };
+  card.innerHTML = `<div class="lt-head"><div>
+      <button type="button" class="lt-back-btn" onclick="ltPaintList()">← Templates</button>
+      <h3>Edit template</h3>
+      <p>What gets copied into a new cabinet. Untick what is not needed — it is dropped from the template on Save.</p></div>
+      <div class="lt-head-r"><button type="button" class="lt-x" onclick="ltClose()" title="Close (Esc)">×</button></div></div>
+    <div class="lt-ed-sec">Template</div>
+    <div class="lt-form lt-ed-top">
+      <label><span>Template name</span><input value="${ltEsc(r.name)}" oninput="ltEd.name=this.value"></label>
+      <label><span>Geo</span><input value="${ltEsc(r.geo || '')}" oninput="ltEd.geo=this.value" maxlength="2"></label>
+      <label><span>Campaign name</span><input value="${ltEsc(c.name || '')}" oninput="ltEd.spec.campaign.name=this.value"></label>
+      ${cbo ? `<label><span>Budget/day ${ltEsc(cur)}</span><input inputmode="decimal" value="${ltMoney2(c.daily_budget)}" oninput="ltEdCamp(this.value)"></label>` : ''}
+    </div>
+    <div class="lt-ed-sec">Ad sets · ${sets.length}</div>
+    ${sets.map(setRow).join('') || '<div class="lt-empty">No ad sets</div>'}
+    <div class="lt-ed-sec">Ads · ${ads.length}</div>
+    ${ads.map(adRow).join('') || '<div class="lt-empty">No ads</div>'}
+    <div class="lt-foot">
+      <span>${off.size ? off.size + ' item(s) will be dropped' : 'Saved into this template; campaigns already launched are not touched'}</span>
+      <button type="button" class="lt-btn is-ghost" onclick="ltPaintList()">Cancel</button>
+      <button type="button" class="lt-btn is-go" onclick="ltEdSave()">Save</button>
+    </div>`;
+}
+
+window.ltEdToggle = function (k, on) { if (on) ltEd.off.delete(k); else ltEd.off.add(k); ltPaintEdit(); };
+window.ltEdCamp = function (v) {
+  const n = Number(String(v).replace(',', '.'));
+  ltEd.spec.campaign.daily_budget = n > 0 ? String(Math.round(n * 100)) : ltEd.spec.campaign.daily_budget;
+};
+window.ltEdSet = function (i, k, v) {
+  const a = ltEd.spec.adsets[i];
+  a.targeting = a.targeting || {};
+  if (k === 'budget') { const n = Number(String(v).replace(',', '.')); if (n > 0) a.daily_budget = String(Math.round(n * 100)); }
+  if (k === 'countries') {
+    const list = String(v).split(/[\s,;]+/).map(x => x.toUpperCase()).filter(x => /^[A-Z]{2}$/.test(x));
+    if (list.length) a.targeting.geo_locations = { countries: list };
+  }
+  if (k === 'age_min' || k === 'age_max') {
+    const n = Math.round(Number(v));
+    if (n >= 13 && n <= 65) a.targeting[k] = n; else if (!String(v).trim()) delete a.targeting[k];
+  }
+};
+
+window.ltEdSave = async function () {
+  const { r, spec, off } = ltEd;
+  const keepSets = spec.adsets.filter((a, i) => !off.has('s' + i));
+  if (!keepSets.length) { toast('Keep at least one ad set.', 'warn'); return; }
+  const setIds = new Set(keepSets.map(a => String(a.id)));
+  const keepAds = spec.ads.filter((d, i) => !off.has('a' + i) && setIds.has(String(d.adset_id)));
+  const next = { ...spec, adsets: keepSets, ads: keepAds };
+  const patch = { spec: next };
+  if (ltEd.name !== undefined && String(ltEd.name).trim()) patch.name = String(ltEd.name).trim();
+  if (ltEd.geo !== undefined) patch.geo = String(ltEd.geo).toUpperCase().trim().slice(0, 2) || null;
+  const { error } = await sb.from('launch_templates').update(patch).eq('id', r.id);
+  if (error) { toast('Not saved: ' + error.message, 'error'); return; }
+  Object.assign(r, patch);
+  toast('Template saved: ' + keepSets.length + ' ad set(s), ' + keepAds.length + ' ad(s)', 'ok');
+  ltPaintList();
 };

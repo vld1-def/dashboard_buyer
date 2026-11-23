@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-23.2';
+const FN_VERSION = '2026-11-23.3';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -326,7 +326,11 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
       const nm = { name: String(cr.name || d.name || 'Creative').slice(0, 200) };
       const cands: Json[] = [];
       const story = String(cr.effective_object_story_id || cr.object_story_id || '');
-      if (story && !lost) cands.push({ ...nm, object_story_id: story, ...tags });
+      /* Post ID, вписаний людиною в редакторі шаблону (post_id), — перший
+         у черзі: готовий допис не блокує режим розробки додатка. */
+      const own = String(d.post_id || '').trim();
+      if (own) cands.push({ ...nm, object_story_id: own, ...tags });
+      if (story && !lost && story !== own) cands.push({ ...nm, object_story_id: story, ...tags });
       const oss = cr.object_story_spec;
       if (oss && (oss.link_data || oss.video_data || oss.photo_data || oss.template_data) && !cr.asset_feed_spec) {
         const o: Json = JSON.parse(JSON.stringify(oss));

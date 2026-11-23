@@ -107,4 +107,24 @@ const past = await page.evaluate(() => { ltDtpOpen(document.getElementById('lt-f
   ltDtpClose(); return prev ? !!(b && b.disabled) : true; });
 ok('минулі дні недоступні', past);
 
+/* Редактор шаблону: зняти зайве, поправити назву/бюджет/країни, Post ID. */
+const ed = await page.evaluate(async () => {
+  window.__upd = [];
+  ltPaintList();
+  const btn = [...document.querySelectorAll('#lt-modal .lt-item .lt-btn')].find(b => b.textContent.trim() === 'Edit');
+  btn.click();
+  const html = document.querySelector('#lt-modal .lt-card').innerText;
+  ltEd.spec.ads[0].post_id = '77_999';
+  ltEdSet(0, 'countries', 'tj, kz'); ltEdSet(0, 'age_min', '21'); ltEdCamp('42');
+  ltEd.name = 'KG renamed';
+  ltEd.spec.ads.push({ id: 'a2', name: 'extra', adset_id: 's1', creative: {} }); ltEdToggle('a1', false);
+  await ltEdSave();
+  return { html, upd: __upd };
+});
+const sp = (ed.upd[0] || {}).spec || {};
+ok('редактор показує адсети й оголошення', /Ad sets · 1/i.test(ed.html) && /Ads · 1/i.test(ed.html) && /Post ID/i.test(ed.html), ed.html.slice(0, 300));
+ok('збережено: назва, бюджет кампанії, країни, вік, Post ID', ed.upd[0] && ed.upd[0].name === 'KG renamed' && sp.campaign.daily_budget === '4200'
+  && sp.adsets[0].targeting.geo_locations.countries.join() === 'TJ,KZ' && sp.adsets[0].targeting.age_min === 21 && sp.ads[0].post_id === '77_999', ed.upd[0]);
+ok('зняте галочкою — прибрано зі шаблону', sp.ads && sp.ads.length === 1 && !sp.ads.some(x => x.name === 'extra'), sp.ads);
+
 await done(browser, srv, errs);

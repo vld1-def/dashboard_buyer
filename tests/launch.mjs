@@ -229,6 +229,11 @@ const dev2 = await run({ body: { spec: SPEC, target_account: '222' },
   failOn: (p, q) => p.endsWith('/adcreatives') ? DEV : (p.endsWith('/ads') && JSON.parse(q.creative || '{}').creative_id === 'crA' ? 'no permission to promote post' : '') });
 ok('наявні креативи — по черзі, поки не прийме', dev2.body.ads.made === 3
   && dev2.posts.filter(x => x.path === '/act_222/ads' && JSON.parse(x.p.creative).creative_id === 'crB').length === 3, dev2.body);
+// Post ID з редактора — перший у черзі.
+const PSPEC = JSON.parse(JSON.stringify(SPEC)); PSPEC.ads[0].post_id = '99_700';
+const pid = await run({ body: { spec: PSPEC, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+const pcr = pid.posts.filter(x => x.path === '/act_222/adcreatives');
+ok('Post ID з редактора — креатив саме з цього допису, першою спробою', pcr[0] && pcr[0].p.object_story_id === '99_700' && pid.body.ads.made === 3, pcr.map(x => x.p.object_story_id || 'spec'));
 const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok
