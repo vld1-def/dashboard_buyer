@@ -6154,6 +6154,13 @@ function rpDayStats(day) {
     + `<b>${m(sp)}</b><span class="${pr >= 0 ? 'is-up' : 'is-down'}">${pr >= 0 ? '+' : '−'}${m(pr)}</span></span>`;
 }
 
+/* Дата звіту одним рядком: «Mon, 23 Nov». Повна — у підказці. */
+function rpDateLabel(day) {
+  const d = new Date(day + 'T12:00:00');
+  if (isNaN(d)) return escapeHtml(day);
+  return `<em>${d.toLocaleDateString('en-GB', { weekday: 'short' })},</em> ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`;
+}
+
 /* МІСЯЦЬ ЗВІТІВ. Типово — місяць дашборду; календар уміє перейти на
    інший місяць, не чіпаючи фільтр дашборду. */
 let rpMonth = null;
@@ -6228,11 +6235,11 @@ function renderReports() {
   container.innerHTML = `<datalist id="rp-tag-all">${
       rpAllTags().map(t => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>`
     + filtered.sort((a,b) => new Date(b.date) - new Date(a.date)).map(r => `
-    <div class="p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
+    <div class="rp-item p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
       <div onclick="toggleReportVisibility('${r.id}')" class="flex justify-between items-center cursor-pointer hover:bg-white/5 p-1 rounded-xl transition text-muted-dynamic">
         <div class="flex items-center gap-2">
           <span id="report-arrow-${r.id}" class="text-[8px] text-blue-500 transition-transform duration-200" style="transform: rotate(-90deg)">▼</span>
-          <span class="text-[10px] font-black uppercase text-blue-500 tracking-widest">${normalizeDate(r.date)}</span>
+          <span class="rp-date" title="${normalizeDate(r.date)}">${rpDateLabel(normalizeDate(r.date))}</span>
           ${r.images && r.images.length ? `<span class="img-count-badge">🖼 ${r.images.length}</span>` : ''}
           <span class="rp-tags" onclick="event.stopPropagation()">${
             rpTagsOf(r.id).map(t => `<span class="rp-chip">${escapeHtml(t)}<button

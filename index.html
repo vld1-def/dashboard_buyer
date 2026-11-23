@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 19:54">
+  <meta name="build" content="build 23.11 19:58">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8447,6 +8447,31 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .rp-cal-foot i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #60a5fa; }
 .rp-flash { animation: rp-flash 1.2s ease; }
 @keyframes rp-flash { 0%, 40% { box-shadow: 0 0 0 2px #60a5fa; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* ══ Daily Reports: стримані стилі ══
+   «не повертати старе, а замінити на інші стилі». Без таймлайну й без
+   великих іконок: рядок із позначкою — маленька мітка-слово перед
+   текстом і тонкий роздільник, без фону; звичайний текст — абзацом. */
+#report-list-container .rp-item { border-radius: 16px !important; background: rgba(255,255,255,.025) !important; border-color: rgba(255,255,255,.07) !important; }
+#report-list-container .rp-item:hover { border-color: rgba(255,255,255,.12) !important; }
+.rp-date { font-size: 13px; font-weight: 800; color: var(--text-main); text-transform: none; letter-spacing: 0; white-space: nowrap; }
+.rp-date em { font-style: normal; font-weight: 700; color: var(--text-muted); }
+
+#report-list-container [id^="report-content-"][data-state="view"] { font-size: 13.5px; line-height: 1.6; }
+#report-list-container [id^="report-content-"][data-state="view"] .rb-normal { color: rgba(233,233,236,.9); padding: 3px 0 !important; }
+#report-list-container [id^="report-content-"][data-state="view"] .report-block {
+  display: flex; align-items: baseline; gap: 10px; margin: 0 !important; padding: 7px 0 !important;
+  background: none !important; border: 0 !important; border-radius: 0 !important; backdrop-filter: none !important;
+  border-top: 1px solid rgba(255,255,255,.06) !important; font-size: 13.5px !important; font-weight: 500 !important; color: #ececf0;
+}
+#report-list-container [id^="report-content-"][data-state="view"] .report-block::before {
+  content: var(--rb-t); flex: 0 0 52px; text-align: center; padding: 2px 0; border-radius: 6px;
+  font-size: 9px; font-weight: 900; letter-spacing: .1em; color: var(--rb-c); background: var(--rb-bg);
+}
+#report-list-container .rb-success { --rb-c: #4ade80; --rb-bg: rgba(74,222,128,.1);  --rb-t: 'DONE'; }
+#report-list-container .rb-danger  { --rb-c: #f87171; --rb-bg: rgba(248,113,113,.1); --rb-t: 'ISSUE'; }
+#report-list-container .rb-warning { --rb-c: #fbbf24; --rb-bg: rgba(251,191,36,.1);  --rb-t: 'WATCH'; }
+#report-list-container .rb-plan    { --rb-c: #a5b4fc; --rb-bg: rgba(165,180,252,.1); --rb-t: 'PLAN'; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8706,7 +8731,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 19:54</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 19:58</div>
     </div>
   </aside>
 
@@ -14836,6 +14861,13 @@ function rpDayStats(day) {
     + `<b>${m(sp)}</b><span class="${pr >= 0 ? 'is-up' : 'is-down'}">${pr >= 0 ? '+' : '−'}${m(pr)}</span></span>`;
 }
 
+/* Date звіту одним рядком: «Mon, 23 Nov». Повна — у підказці. */
+function rpDateLabel(day) {
+  const d = new Date(day + 'T12:00:00');
+  if (isNaN(d)) return escapeHtml(day);
+  return `<em>${d.toLocaleDateString('en-GB', { weekday: 'short' })},</em> ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`;
+}
+
 /* МІСЯЦЬ ЗВІТІВ. Типово — місяць дашборду; календар уміє перейти на
    інший місяць, не чіпаючи фільтр дашборду. */
 let rpMonth = null;
@@ -14910,11 +14942,11 @@ function renderReports() {
   container.innerHTML = `<datalist id="rp-tag-all">${
       rpAllTags().map(t => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>`
     + filtered.sort((a,b) => new Date(b.date) - new Date(a.date)).map(r => `
-    <div class="p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
+    <div class="rp-item p-4 bg-gray-500/5 rounded-3xl border border-gray-500/10 flex flex-col gap-2 mb-3">
       <div onclick="toggleReportVisibility('${r.id}')" class="flex justify-between items-center cursor-pointer hover:bg-white/5 p-1 rounded-xl transition text-muted-dynamic">
         <div class="flex items-center gap-2">
           <span id="report-arrow-${r.id}" class="text-[8px] text-blue-500 transition-transform duration-200" style="transform: rotate(-90deg)">▼</span>
-          <span class="text-[10px] font-black uppercase text-blue-500 tracking-widest">${normalizeDate(r.date)}</span>
+          <span class="rp-date" title="${normalizeDate(r.date)}">${rpDateLabel(normalizeDate(r.date))}</span>
           ${r.images && r.images.length ? `<span class="img-count-badge">🖼 ${r.images.length}</span>` : ''}
           <span class="rp-tags" onclick="event.stopPropagation()">${
             rpTagsOf(r.id).map(t => `<span class="rp-chip">${escapeHtml(t)}<button
