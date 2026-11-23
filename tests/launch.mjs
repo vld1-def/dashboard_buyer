@@ -205,13 +205,30 @@ const fbAll = await run({ body: { spec: SPEC, target_account: '222' }, lists: LI
 ok('відмова на всьому й нема наявних креативів — у поясненні кожна спроба', fbAll.body.ads.made === 0
   && fbAll.body.problems.some(x => /post: .*needs an image/.test(x) && /placeholder \(img\)/.test(x)), fbAll.body.problems);
 ok('Facebook відмовив у всіх креативах — береться наявний креатив кабінета', fb2.body.ads.made === 3
-  && f2ads.every(x => JSON.parse(x.p.creative).creative_id === 'cr9') && (fb2.body.warnings || []).some(w => /already in this cabinet/.test(w)), fb2.body);
+  && f2ads.every(x => JSON.parse(x.p.creative).creative_id === 'cr9') && (fb2.body.warnings || []).some(w => /existing creative cr9/.test(w)), fb2.body);
 // Домен конверсії не збігся з посиланням заготовки — повтор без нього.
 const CSPEC = JSON.parse(JSON.stringify(SPEC)); CSPEC.ads.forEach(a => { a.conversion_domain = 'land.top'; });
 const cdom = await run({ body: { spec: CSPEC, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] },
   failOn: (p, q) => p.endsWith('/ads') && q.conversion_domain ? 'conversion domain mismatch' : '' });
 const cads = cdom.posts.filter(x => x.path === '/act_222/ads' && !x.p.conversion_domain);
 ok('домен конверсії заважає — оголошення однаково створене, без нього', cdom.body.ads.made === 3 && cads.length === 3, cdom.body);
+/* Додаток у режимі розробки: новий допис Facebook не приймає ніякий.
+   Тоді — готовий допис Сторінки кабінета; не вийшло — наявні креативи
+   по черзі, а не лише перший. */
+const DEV = 'Ad post was created by an app that is in development mode';
+const dev = await run({ body: { spec: SPEC, target_account: '222' },
+  lists: { ...LISTS_OK, '/77/ads_posts': [{ id: '77_500' }, { id: '77_501' }], '/act_222/adcreatives': [{ id: 'crA' }, { id: 'crB' }] },
+  failOn: (p, q) => p.endsWith('/adcreatives') && !q.object_story_id ? DEV : (p.endsWith('/adcreatives') && q.object_story_id === '77_88' ? DEV
+    : (p.endsWith('/adcreatives') && q.object_story_id === '77_500' ? 'no access to post' : '')) });
+const devCr = dev.posts.filter(x => x.path === '/act_222/adcreatives' && x.p.object_story_id === '77_501');
+ok('режим розробки: оголошення з готового допису Сторінки', dev.body.ads.made === 3 && devCr.length >= 1
+  && (dev.body.warnings || []).some(w => /existing post 77_501/.test(w)), dev.body);
+ok('працюючий допис береться одразу для наступних оголошень', dev.posts.filter(x => x.p.object_story_id === '77_500').length === 1, dev.posts.filter(x => /adcreatives/.test(x.path)).map(x => x.p.object_story_id || 'new'));
+const dev2 = await run({ body: { spec: SPEC, target_account: '222' },
+  lists: { ...LISTS_OK, '/act_222/adcreatives': [{ id: 'crA' }, { id: 'crB' }] },
+  failOn: (p, q) => p.endsWith('/adcreatives') ? DEV : (p.endsWith('/ads') && JSON.parse(q.creative || '{}').creative_id === 'crA' ? 'no permission to promote post' : '') });
+ok('наявні креативи — по черзі, поки не прийме', dev2.body.ads.made === 3
+  && dev2.posts.filter(x => x.path === '/act_222/ads' && JSON.parse(x.p.creative).creative_id === 'crB').length === 3, dev2.body);
 const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok

@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-23.1';
+const FN_VERSION = '2026-11-23.2';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -342,7 +342,7 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
             name: String(d.name || 'Placeholder').slice(0, 100) } } });
         cands.push(ph(true), ph(false));
       }
-      return { ...d, tracking_specs: undefined, cands };
+      return { ...d, tracking_specs: undefined, cands, page: P };
     });
   }
   return { camp, adsets, ads, notes };
@@ -468,7 +468,25 @@ Deno.serve(async (req) => {
 
   const setMap = new Map<string, string>();
   let setsMade = 0, adsMade = 0, timedOut = false;
-  let anyCreative: string | null = null;
+  /* Пул готових дописів і креативів кабінета — збираємо раз на запуск. */
+  let reuse: { kind: 'post' | 'creative'; id: string }[] | null = null;
+  let reuseGood: { kind: 'post' | 'creative'; id: string } | null = null;
+  const reuseBad = new Set<string>();
+  const reusePool = async (page: string) => {
+    const out: { kind: 'post' | 'creative'; id: string }[] = [];
+    // Лише id: у дописів немає поля name, і запит із ним Facebook відкинув би.
+    const ids = async (path: string) => {
+      try { return ((await graph(path, T.token, { fields: 'id', limit: 25 })).data || []).map((x: Json) => String(x.id)); }
+      catch (_e) { return []; }
+    };
+    if (page) {
+      for (const path of ['/' + page + '/ads_posts', '/' + page + '/published_posts', '/' + page + '/posts']) {
+        for (const id of (await ids(path)).slice(0, 10)) if (!out.some(x => x.id === id)) out.push({ kind: 'post', id });
+      }
+    }
+    for (const id of (await ids(act + '/adcreatives')).slice(0, 15)) out.push({ kind: 'creative', id });
+    return out;
+  };
   let phHash: string | null = null;
   for (const a of adsets.slice(0, MAX_ADSETS)) {
     if (Date.now() > deadline) { timedOut = true; break; }
@@ -528,14 +546,30 @@ Deno.serve(async (req) => {
         catch (e) { last = String((e as Error).message); tried.push(kind(ad.cands[k]) + ': ' + last); }
       }
       if (done < 0) {
-        // Останній шанс — креатив, який уже є в цьому кабінеті.
-        if (anyCreative === null) {
-          const l = await listIds(act + '/adcreatives', T.token);
-          anyCreative = l && l.size ? [...l.keys()][0] : '';
-        }
-        if (anyCreative) {
-          try { await mk({ creative_id: anyCreative }); done = 99; }
-          catch (e) { last = String((e as Error).message); tried.push('existing creative: ' + last); }
+        /* ГОТОВИЙ ДОПИС ЗАМІСТЬ НОВОГО. Додаток токена в режимі розробки
+           не може створити новий рекламний допис — ні з картинкою, ні з
+           відео: Facebook відмовляє на самому дописі. А вже наявний допис,
+           зроблений не цим додатком (опублікований пост Сторінки,
+           рекламний допис з Ads Manager), рекламувати можна. Тож
+           перебираємо: дописи Сторінки кабінета → наявні креативи
+           кабінета, і беремо перший, який Facebook прийняв. Знайдене
+           працююче — одразу для наступних оголошень. */
+        if (reuse === null) reuse = await reusePool(String(ad.page || ''));
+        const order = reuseGood ? [reuseGood, ...reuse.filter(x => x !== reuseGood)] : reuse;
+        let n = 0;
+        for (const it of order) {
+          if (done >= 0 || n >= 8 || Date.now() > deadline) break;
+          if (reuseBad.has(it.id)) continue;
+          n++;
+          try {
+            await mk(it.kind === 'post' ? { name: 'Reused post · ' + String(ad.name || '').slice(0, 150), object_story_id: it.id }
+                                        : { creative_id: it.id });
+            done = 99; reuseGood = it;
+          } catch (e) {
+            last = String((e as Error).message);
+            tried.push((it.kind === 'post' ? 'existing post ' : 'existing creative ') + it.id + ': ' + last);
+            if (!/ad set|adset|budget|campaign/i.test(last)) reuseBad.add(it.id);
+          }
         }
       }
       // У лог функції — щоб причину відмови Facebook було видно й потім.
@@ -543,7 +577,8 @@ Deno.serve(async (req) => {
       if (done < 0) problems.push(label + ': Facebook refused every creative — ' + tried.join(' | ').slice(0, 900));
       else {
         adsMade++;
-        if (done === 99) warns.push(label + ': made with a creative already in this cabinet — replace it');
+        if (done === 99) warns.push(label + ': made with an existing ' + (reuseGood && reuseGood.kind === 'post' ? 'post ' : 'creative ')
+          + (reuseGood ? reuseGood.id : '') + ' — replace the creative');
         else if (ad.cands[done].__ph) warns.push(label + ': created as a placeholder — replace the creative');
       }
       continue;
