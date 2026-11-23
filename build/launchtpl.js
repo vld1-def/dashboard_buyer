@@ -201,7 +201,8 @@ window.ltOpen = function (id) {
   const r = ltRows.find(x => x.id === id); if (!r) return;
   const s = ltSummary(r.spec || {});
   ltCur = { r, s, picked: new Set(), q: '', name: r.name, budget: s.budgetVal ? String(Math.round(s.budgetVal * 100) / 100) : '',
-            countries: s.countries.join(', '), camps: 1, adCopies: 1, pagesOf: {}, pageFor: {}, names: {} };
+            countries: s.countries.join(', '), camps: 1, adCopies: 1, pagesOf: {}, pageFor: {}, names: {},
+            spec: JSON.parse(JSON.stringify(r.spec || {})), off: new Set() };
   ltRes = {};
   ltPaintLaunch();
 };
@@ -308,7 +309,7 @@ window.ltCheck = async function () {
   ltPaintLaunch();
   await Promise.all(ids.map(async id => {
     try {
-      const r = await ltFn({ spec: ltCur.r.spec, target_account: id, check: true, page_id: ltCur.pageFor[id] || '' });
+      const r = await ltFn({ spec: ltLaunchSpec(), target_account: id, check: true, page_id: ltCur.pageFor[id] || '' });
       ltRes[id] = r.ok ? { checks: r.j.checks || [] } : { err: r.j.error || 'HTTP ' + r.status, checks: r.j.checks || [] };
       if (r.ok) {
         if (Array.isArray(r.j.pages)) ltCur.pagesOf[id] = r.j.pages;
@@ -346,6 +347,22 @@ function ltLaunchable() {
     return !((ltRes[id] && ltRes[id].checks) || []).some(c => c.level === 'fail');
   });
 }
+
+/* Що піде в запуск: робоча копія мінус вимкнене галочками в перегляді. */
+function ltLaunchSpec() {
+  const sp = JSON.parse(JSON.stringify(ltCur.spec || ltCur.r.spec || {}));
+  sp.ads = (sp.ads || []).filter((d, i) => !ltCur.off.has('a' + i));
+  return sp;
+}
+window.ltPvToggle = function (k, on) { if (on) ltCur.off.delete(k); else ltCur.off.add(k); ltPaintPreview(); };
+/* Правки цього запуску — у шаблон, якщо людина хоче їх лишити. */
+window.ltPvSaveTpl = async function () {
+  const sp = ltLaunchSpec();
+  const { error } = await sb.from('launch_templates').update({ spec: sp }).eq('id', ltCur.r.id);
+  if (error) { toast('Not saved: ' + error.message, 'error'); return; }
+  ltCur.r.spec = sp;
+  toast('Saved into the template', 'ok', 2500);
+};
 
 window.ltPreview = async function () {
   if (ltBusy) return;
@@ -397,7 +414,15 @@ function ltPaintPreview() {
             ${run && !run.busy && (!run.ok || (run.j.problems || []).length) ? `<ul class="lt-checks">${(run.ok ? run.j.problems : [run.error]).map(p => `<li class="is-warn"><i>!</i>${ltEsc(p)}</li>`).join('')}</ul>` : ''}`;
         }).join('')}
       </div>`;
-    }).join('') || '<div class="lt-empty">Nothing to launch — pick cabinets on the previous step.</div>'}</div>
+    }).join('') || '<div class="lt-empty">Nothing to launch — pick cabinets on the previous step.</div>'}
+    <div class="lt-ed-sec lt-pv-ads-h"><span>Ads in this launch · ${(ltCur.spec.ads || []).length - [...ltCur.off].filter(k => k[0] === 'a').length}</span>
+      <span class="lt-pv-ads-note">Changes here are for this launch only</span>
+      <button type="button" class="lt-md-btn" onclick="ltPvSaveTpl()" ${ltBusy ? 'disabled' : ''} title="Keep these ad changes in the template too">Save to template</button></div>
+    ${true ? `<div class="lt-pv-addrow">${(ltCur.spec.adsets || []).map((a, si) =>
+      `<button type="button" class="lt-md-btn" onclick="ltAdAdd(${si})" ${ltBusy ? 'disabled' : ''}>+ Ad in “${ltEsc(a.name || 'ad set')}”</button>`).join('')}</div>` : ''}
+    ${(() => { ltW = ltCur.spec; ltRepaintW = () => ltPaintPreview();
+      return (ltCur.spec.ads || []).map((d, i) => ltAdCard(d, i, { off: ltCur.off, toggle: 'ltPvToggle' })).join(''); })()}
+    </div>
     <div class="lt-foot">
       <span>${ltCur.adCopies > 1 ? 'Each ad ×' + ltCur.adCopies + ' · ' : ''}Names are yours to change before launch.</span>
       <button type="button" class="lt-btn is-ghost" onclick="ltPaintLaunch()" ${ltBusy ? 'disabled' : ''}>Back</button>
@@ -409,6 +434,8 @@ window.ltLaunch = async function () {
   if (ltBusy) return;
   const ids = ltLaunchable();
   const ov = { ...ltOverrides(), ad_copies: ltCur.adCopies };
+  const spec = ltLaunchSpec();
+  if (!spec.ads.length) { toast('Every ad is switched off for this launch.', 'warn'); return; }
   ltBusy = true;
   let good = 0;
   for (const id of ids) {
@@ -419,7 +446,7 @@ window.ltLaunch = async function () {
     for (let k = 0; k < names.length; k++) {
       ltPaintPreview();
       try {
-        const r = await ltFn({ spec: ltCur.r.spec, target_account: id, name: names[k], overrides: ov, page_id: ltCur.pageFor[id] || '' });
+        const r = await ltFn({ spec, target_account: id, name: names[k], overrides: ov, page_id: ltCur.pageFor[id] || '' });
         runs[k] = r.ok ? { ok: true, j: r.j } : { ok: false, error: r.j.error || 'HTTP ' + r.status };
         if (r.ok) good++;
       } catch (e) { runs[k] = { ok: false, error: e.message }; }
@@ -558,13 +585,71 @@ window.ltDtpSave = function () {
 let ltEd = null;
 const ltMoney2 = cents => { const v = Number(cents) / 100; return v > 0 ? String(Math.round(v * 100) / 100) : ''; };
 const ltCreativeKind = cr => !cr ? 'no creative'
-  : cr.asset_feed_spec ? 'dynamic creative' : (cr.effective_object_story_id || cr.object_story_id) ? 'post'
+  : cr.asset_feed_spec ? (cr.asset_feed_spec.optimization_type === 'LANGUAGE' ? 'languages' : 'dynamic creative') : (cr.effective_object_story_id || cr.object_story_id) ? 'post'
   : cr.object_story_spec ? 'creative description' : 'no creative';
+
+/* Робоча копія, з якою працюють картки оголошень: у редакторі — знімок
+   шаблону (ltEd.spec), у перегляді перед запуском — копія лише для цього
+   запуску (ltCur.spec). Картка одна на обидва місця. */
+let ltW = null, ltRepaintW = () => {};
 
 window.ltEdit = function (id) {
   const r = ltRows.find(x => x.id === id); if (!r) return;
   ltEd = { r, spec: JSON.parse(JSON.stringify(r.spec || {})), off: new Set() };
+  ltW = ltEd.spec; ltRepaintW = () => ltPaintEdit();
   ltPaintEdit();
+};
+
+/* Картка оголошення: назва, мови, свій креатив, URL-параметри, Post ID.
+   offSet — множина вимкнених ('a'+i / 's'+i), toggle — що викликати на
+   галочці; без них галочки немає. */
+function ltAdCard(d, i, o) {
+  const sets = ltW.adsets || [];
+  const si = sets.findIndex(s2 => String(s2.id) === String(d.adset_id));
+  const offA = o.off && o.off.has('a' + i);
+  const on = !offA && !(o.off && o.off.has('s' + si));
+  return `<div class="lt-ed-row${on ? '' : ' is-off'}">
+      ${o.toggle ? `<label class="lt-ed-chk"><input type="checkbox" ${offA ? '' : 'checked'} onchange="${o.toggle}('a${i}', this.checked)"></label>` : '<span></span>'}
+      <div class="lt-ed-main">
+        <div class="lt-ed-line">
+          <input class="lt-ed-in is-name" value="${ltEsc(d.name || '')}" oninput="ltW.ads[${i}].name=this.value" placeholder="Ad name">
+          <button type="button" class="lt-md-btn" onclick="ltAdDup(${i})" title="Add a copy of this ad">Duplicate</button>
+        </div>
+        <div class="lt-ed-fields">
+          <span class="lt-ed-meta">template creative: ${ltEsc(ltCreativeKind(d.creative))}${sets.length > 1 ? ' · in “' + ltEsc((sets[si] || {}).name || '?') + '”' : ''}</span>
+        </div>
+        ${ltLangBlock(d, i)}
+        ${ltMediaBlock(d, i, (ltW.ads || []).length)}
+        <details class="lt-ed-more"><summary>Post ID instead (optional)</summary>
+          <input class="lt-ed-in" value="${ltEsc(d.post_id || '')}" oninput="ltW.ads[${i}].post_id=this.value.trim()" placeholder="PAGEID_POSTID — a ready post the cabinet can use"></details>
+      </div></div>`;
+}
+const ltNewId = () => 'new_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+window.ltAdDup = function (i) {
+  const d = JSON.parse(JSON.stringify(ltW.ads[i]));
+  d.id = ltNewId(); d.name = String(d.name || 'Ad') + ' copy';
+  ltW.ads.push(d);
+  ltRepaintW();
+};
+window.ltAdAdd = function (setIdx) {
+  const set = (ltW.adsets || [])[setIdx]; if (!set) return;
+  const like = (ltW.ads || []).find(d => String(d.adset_id) === String(set.id));
+  const d = like ? JSON.parse(JSON.stringify(like)) : { creative: {} };
+  d.id = ltNewId(); d.adset_id = set.id; d.name = 'New ad';
+  delete d.post_id;
+  ltW.ads.push(d);
+  ltRepaintW();
+};
+window.ltSetDup = function (i) {
+  const a = JSON.parse(JSON.stringify(ltW.adsets[i]));
+  const oldId = String(a.id);
+  a.id = ltNewId(); a.name = String(a.name || 'Ad set') + ' copy';
+  ltW.adsets.push(a);
+  // Оголошення адсету копіюються разом із ним.
+  (ltW.ads || []).filter(d => String(d.adset_id) === oldId).forEach(d => {
+    const c = JSON.parse(JSON.stringify(d)); c.id = ltNewId(); c.adset_id = a.id; ltW.ads.push(c);
+  });
+  ltRepaintW();
 };
 
 function ltPaintEdit() {
@@ -579,7 +664,11 @@ function ltPaintEdit() {
     return `<div class="lt-ed-row${on ? '' : ' is-off'}">
       <label class="lt-ed-chk"><input type="checkbox" ${on ? 'checked' : ''} onchange="ltEdToggle('s${i}', this.checked)"></label>
       <div class="lt-ed-main">
-        <input class="lt-ed-in is-name" value="${ltEsc(a.name || '')}" oninput="ltEd.spec.adsets[${i}].name=this.value" placeholder="Ad set name">
+        <div class="lt-ed-line">
+          <input class="lt-ed-in is-name" value="${ltEsc(a.name || '')}" oninput="ltEd.spec.adsets[${i}].name=this.value" placeholder="Ad set name">
+          <button type="button" class="lt-md-btn" onclick="ltAdAdd(${i})" title="Add an ad into this ad set">+ Ad</button>
+          <button type="button" class="lt-md-btn" onclick="ltSetDup(${i})" title="Copy this ad set with its ads">Duplicate</button>
+        </div>
         <div class="lt-ed-fields">
           ${cbo ? '' : `<label><span>Budget/day ${ltEsc(cur)}</span><input class="lt-ed-in" inputmode="decimal" value="${ltMoney2(a.daily_budget)}" oninput="ltEdSet(${i},'budget',this.value)"></label>`}
           <label><span>Countries</span><input class="lt-ed-in" value="${ltEsc((g.countries || []).join(', '))}" oninput="ltEdSet(${i},'countries',this.value)"></label>
@@ -588,21 +677,7 @@ function ltPaintEdit() {
         </div>
       </div></div>`;
   };
-  const adRow = (d, i) => {
-    const on = !off.has('a' + i) && !off.has('s' + sets.findIndex(s2 => String(s2.id) === String(d.adset_id)));
-    return `<div class="lt-ed-row${on ? '' : ' is-off'}">
-      <label class="lt-ed-chk"><input type="checkbox" ${!off.has('a' + i) ? 'checked' : ''} onchange="ltEdToggle('a${i}', this.checked)"></label>
-      <div class="lt-ed-main">
-        <input class="lt-ed-in is-name" value="${ltEsc(d.name || '')}" oninput="ltEd.spec.ads[${i}].name=this.value" placeholder="Ad name">
-        <div class="lt-ed-fields">
-          <span class="lt-ed-meta">template creative: ${ltEsc(ltCreativeKind(d.creative))}${sets.length > 1 ? ' · in “' + ltEsc((sets.find(s2 => String(s2.id) === String(d.adset_id)) || {}).name || '?') + '”' : ''}</span>
-        </div>
-        ${ltLangBlock(d, i)}
-        ${ltMediaBlock(d, i, ads.length)}
-        <details class="lt-ed-more"><summary>Post ID instead (optional)</summary>
-          <input class="lt-ed-in" value="${ltEsc(d.post_id || '')}" oninput="ltEd.spec.ads[${i}].post_id=this.value.trim()" placeholder="PAGEID_POSTID — a ready post the cabinet can use"></details>
-      </div></div>`;
-  };
+  const adRow = (d, i) => ltAdCard(d, i, { off, toggle: 'ltEdToggle' });
   card.innerHTML = `<div class="lt-head"><div>
       <button type="button" class="lt-back-btn" onclick="ltPaintList()">← Templates</button>
       <h3>Edit template</h3>
@@ -682,7 +757,7 @@ function ltAdDefaults(d) {
   };
 }
 function ltMd(i) {
-  const d = ltEd.spec.ads[i];
+  const d = ltW.ads[i];
   if (!d.media) d.media = ltAdDefaults(d);
   return d.media;
 }
@@ -734,7 +809,7 @@ function ltMediaBlock(d, i, total) {
   return `<div class="lt-md">
     ${file}
     <label class="lt-md-ut"><span>URL parameters</span><input class="lt-ed-in" value="${ltEsc(d.url_tags !== undefined ? d.url_tags : ((d.creative || {}).url_tags || ''))}"
-      oninput="ltEd.spec.ads[${i}].url_tags=this.value.trim()" placeholder="utm_source=fb&sub1={{ad.id}}"></label>
+      oninput="ltW.ads[${i}].url_tags=this.value.trim()" placeholder="utm_source=fb&sub1={{ad.id}}"></label>
     ${lang ? `<p class="lt-md-note">${m.path ? 'This video goes to every language.' : 'No video here — the template’s own videos are copied from its cabinet while that cabinet is alive. Upload one to be safe.'}</p>` : ''}
     <div class="lt-ed-fields"${lang ? ' hidden' : ''}>
       <label class="is-wide"><span>Text</span><input class="lt-ed-in" value="${ltEsc(m.text || '')}" oninput="ltMd(${i}).text=this.value"></label>
@@ -763,19 +838,19 @@ window.ltMediaPick = async function (i, input) {
     if (error) throw new Error(/bucket/i.test(error.message) ? 'storage is not set up — run LAUNCH_MEDIA.sql' : error.message);
     Object.assign(ltMd(i), { path, kind, name: file.name, size: file.size });
     step.done('Uploaded — press Save to keep it in the template', 'ok');
-    ltPaintEdit();
+    ltRepaintW();
   } catch (e) {
     step.done('Not uploaded: ' + e.message, 'error');
   }
 };
 window.ltMediaDrop = function (i) {
   const m = ltMd(i); delete m.path; delete m.kind; delete m.name; delete m.size;
-  ltPaintEdit();
+  ltRepaintW();
 };
 window.ltMediaAll = function (i) {
   const src = ltMd(i);
-  ltEd.spec.ads.forEach((d, k) => { if (k !== i) d.media = JSON.parse(JSON.stringify(src)); });
-  ltPaintEdit();
+  ltW.ads.forEach((d, k) => { if (k !== i) d.media = JSON.parse(JSON.stringify(src)); });
+  ltRepaintW();
   toast('The same creative is now on every ad — press Save', 'ok', 2500);
 };
 
@@ -798,15 +873,15 @@ window.ltLangPick = async function (i, lang, input) {
   step.say('Uploading the ' + lang + ' video…');
   try {
     const m = await ltUploadFile(file, 'video');
-    const d = ltEd.spec.ads[i];
+    const d = ltW.ads[i];
     d.lang_media = d.lang_media || {};
     d.lang_media[lang] = m;
     step.done(lang + ' video uploaded — press Save', 'ok');
-    ltPaintEdit();
+    ltRepaintW();
   } catch (e) { step.done('Not uploaded: ' + e.message, 'error'); }
 };
 window.ltLangDrop = function (i, lang) {
-  const d = ltEd.spec.ads[i];
+  const d = ltW.ads[i];
   if (d.lang_media) delete d.lang_media[lang];
-  ltPaintEdit();
+  ltRepaintW();
 };

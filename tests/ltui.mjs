@@ -191,4 +191,34 @@ ok('кабінет в іншій валюті не потрапив', !dup.calls
 ok('вибрана Сторінка й поправлена назва йдуть у запуск', dup.calls.every(c => c.p === '99') && dup.calls[1].n === 'My custom name', dup.calls);
 ok('копії оголошень передаються', dup.calls.every(c => c.k === 2), dup.calls);
 
+/* Редактор: додати оголошення в адсет, дублювати адсет разом з його
+   оголошеннями. Перегляд: правки оголошень лише для цього запуску. */
+const more = await page.evaluate(async () => {
+  window.__upd = []; __calls.length = 0;
+  ltRows[0].spec.ads = [{ id: 'a1', name: 'KG_1', adset_id: 's1', creative: { effective_object_story_id: '77_88' } }];
+  ltEdit(1);
+  ltAdAdd(0);
+  const afterAdd = ltEd.spec.ads.map(d => d.name + '@' + d.adset_id);
+  ltSetDup(0);
+  await ltEdSave();
+  const saved = __upd[0].spec;
+  // перегляд
+  window.__upd = [];
+  ltOpen(1); ltCur.picked = new Set(['222']); ltCur.pagesOf = { '222': [] }; ltRes = { '222': { checks: [] } };
+  await ltPreview();
+  const cards = document.querySelectorAll('#lt-modal .lt-pv .lt-ed-row').length;
+  const inp = document.querySelector('#lt-modal .lt-pv .lt-ed-row .lt-ed-in.is-name');
+  inp.value = 'Launch-only name'; inp.dispatchEvent(new Event('input'));
+  ltPvToggle('a1', false);
+  await ltLaunch();
+  const sent = __calls.filter(c => !c.check)[0].spec;
+  return { afterAdd, saved: { sets: saved.adsets.length, ads: saved.ads.map(d => d.name + '@' + (d.adset_id === saved.adsets[0].id ? 1 : 2)) }, cards,
+    sent: sent.ads.map(d => d.name), tplAds: ltRows[0].spec.ads.map(d => d.name) };
+});
+ok('редактор: нове оголошення в адсеті', more.afterAdd.join() === 'KG_1@s1,New ad@s1', more.afterAdd);
+ok('редактор: дубль адсету з його оголошеннями', more.saved.sets === 2 && more.saved.ads.length === 4 && more.saved.ads.filter(x => /@2$/.test(x)).length === 2, more.saved);
+ok('перегляд: оголошення видно картками', more.cards === 4, more.cards);
+ok('перегляд: поправлена назва й вимкнене оголошення — лише в цьому запуску', more.sent[0] === 'Launch-only name' && more.sent.length === 3
+  && more.tplAds[0] === 'KG_1', more);
+
 await done(browser, srv, errs);
