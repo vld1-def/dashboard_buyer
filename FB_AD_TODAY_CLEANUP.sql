@@ -26,46 +26,34 @@
 --  І рядок не оновлювався 14+ днів (01.10–20.10, 36 кабінетів).
 -- ════════════════════════════════════════════════════════════
 
+-- 2026-11-23: «почистити старі дані в архіві» і «архів чистити раз в 3 дня».
+-- Без очікування 7 днів після архівації: архівного кабінета сторінка й
+-- так не показує, а його рядки знімка лише сповільнювали завантаження.
+-- Розклад — о 03:00 UTC кожного третього дня місяця.
 create or replace function public.fb_ad_today_cleanup()
 returns integer
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
-declare
-  n integer;
+declare n integer;
 begin
   with arch as (
-    -- Кабінет зараз в архіві і з якої миті — останній перехід у 'archived'.
-    select replace(m.account_id, 'act_', '') as account_id,
-           m.team_name, m.created_by,
-           (select max(e.at) from public.account_events e
-             where e.account_id = m.account_id
-               and e.team_name = m.team_name
-               and e.to_state = 'archived') as since
-      from public.accounts_mapping m
-     where lower(m.status) = 'archive'
+    select distinct regexp_replace(m.account_id, '\D', '', 'g') as id from public.accounts_mapping m where lower(m.status) = 'archive'
+    union
+    select distinct regexp_replace(coalesce(m.fb_account_id, ''), '\D', '', 'g') from public.accounts_mapping m where lower(m.status) = 'archive'
   ), gone as (
-    delete from public.fb_ad_today t
-     using arch a
-     where a.account_id = t.account_id
-       and (a.team_name = t.team_name or a.created_by = t.created_by)
-       and a.since is not null
-       and a.since < now() - interval '7 days'
-    returning 1
+    delete from public.fb_ad_today t using arch a where a.id <> '' and t.account_id = a.id returning 1
   )
   select count(*) into n from gone;
   return n;
 end;
 $$;
-
--- Кличе лише розклад. Ні гостям, ні залогіненим викликати її через
--- /rest/v1/rpc нема потреби: вона видаляє чужі рядки теж.
 revoke all on function public.fb_ad_today_cleanup() from public, anon, authenticated;
 
 select cron.schedule(
   'fb-ad-today-cleanup',
-  '0 3 * * *',
+  '0 3 */3 * *',
   $$ select public.fb_ad_today_cleanup(); $$
 );
 
