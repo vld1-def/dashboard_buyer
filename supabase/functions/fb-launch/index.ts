@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-23.6';
+const FN_VERSION = '2026-11-23.7';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -342,14 +342,14 @@ function shape(spec: Json, ov: Json, fix: Fix, same: boolean): { camp: Json; ads
          раз у редакторі, з текстом, заголовком, посиланням і кнопкою.
          Файл заливається в цей кабінет при запуску (див. buildMedia). */
       const md = d.media;
-      if (md && md.path && P) cands.unshift({ __media: { ...md, page: P }, ...nm, ...tags });
+      if (md && (md.path || md.drive_id) && P) cands.unshift({ __media: { ...md, page: P }, ...nm, ...tags });
       /* МОВНЕ ОГОЛОШЕННЯ (Languages у Ads Manager): asset_feed_spec з
          optimization_type LANGUAGE — свій текст, заголовок, посилання й
          відео на кожну мову та правила «яка мова кому». Відтворюємо його
          цілком, а не одномовною копією. Найперше в черзі. */
       const af = cr.asset_feed_spec;
       if (af && String(af.optimization_type || '') === 'LANGUAGE' && P)
-        cands.unshift({ __lang: { afs: af, media: md && md.path ? md : null, page: P, byLang: d.lang_media || {} }, ...nm, ...tags });
+        cands.unshift({ __lang: { afs: af, media: md && (md.path || md.drive_id) ? md : null, page: P, byLang: d.lang_media || {} }, ...nm, ...tags });
       if (story && !lost && story !== own) cands.push({ ...nm, object_story_id: story, ...tags });
       const oss = cr.object_story_spec;
       if (oss && (oss.link_data || oss.video_data || oss.photo_data || oss.template_data) && !cr.asset_feed_spec) {
@@ -510,10 +510,31 @@ Deno.serve(async (req) => {
     for (let i = 0; i < b.length; i += 0x8000) out += String.fromCharCode(...b.subarray(i, i + 0x8000));
     return btoa(out);
   };
+  /* Файл із Google Drive команди (бібліотека): посилання Drive API з
+     ключем, який сторінка передає в тілі (drive_key) — ключ не
+     зберігається ніде. Відео Facebook качає сам за цим посиланням,
+     картинку беремо байтами. Папка має бути відкрита за посиланням —
+     так само, як для прев'ю в Creative Analyzer. */
+  const driveKey = String(body.drive_key || '').trim();
+  const driveUrl = (id: string) => 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?alt=media&key=' + encodeURIComponent(driveKey);
   const uploadMedia = async (md: Json): Promise<Json> => {
-    const key = String(md.path);
+    const key = md.drive_id ? 'drive:' + md.drive_id : String(md.path);
     if (mediaCache.has(key)) return mediaCache.get(key)!;
     let got: Json;
+    if (md.drive_id) {
+      if (!driveKey) throw new Error('no Google Drive key came with the launch — set Drive in Settings → Integrations');
+      if (md.kind === 'video') got = await uploadVideoUrl(driveUrl(String(md.drive_id)), String(md.name || 'video'));
+      else {
+        const r = await fetch(driveUrl(String(md.drive_id)));
+        if (!r.ok) throw new Error('Google Drive did not give the file (' + r.status + ') — the folder must be shared with anyone who has the link');
+        const up = await graph(act + '/adimages', T.token, { bytes: toB64(await r.arrayBuffer()), name: String(md.name || 'image') }, 'POST');
+        const first = Object.values(up.images || {})[0] as Json | undefined;
+        if (!first?.hash) throw new Error('Facebook returned no image hash');
+        got = { image_hash: String(first.hash) };
+      }
+      mediaCache.set(key, got);
+      return got;
+    }
     if (md.kind === 'video') {
       const sr = await fetch(base + '/storage/v1/object/sign/launch-media/' + key.split('/').map(encodeURIComponent).join('/'),
         { method: 'POST', headers: { ...stHdr, 'content-type': 'application/json' }, body: JSON.stringify({ expiresIn: 3600 }) });
@@ -583,7 +604,7 @@ Deno.serve(async (req) => {
     for (const v of (afs.videos || [])) {
       // Окреме відео під мову (редактор) → спільне своє → оригінал зі зразка.
       const ln = String((v.adlabels || [])[0]?.name || '');
-      const lm = L.byLang && L.byLang[ln] && L.byLang[ln].path ? L.byLang[ln] : null;
+      const lm = L.byLang && L.byLang[ln] && (L.byLang[ln].path || L.byLang[ln].drive_id) ? L.byLang[ln] : null;
       const got = lm ? await uploadMedia(lm) : own || await copySourceVideo(String(v.video_id));
       vids.push({ video_id: got.video_id, thumbnail_url: got.thumb || undefined, adlabels: (v.adlabels || []).map(lab) });
     }

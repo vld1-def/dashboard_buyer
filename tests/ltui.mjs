@@ -264,4 +264,34 @@ ok('бібліотека: сітка з назвами й прев\'ю (кадр
 ok('вибір з бібліотеки ставить креатив на оголошення без повторного завантаження', lib.m0.path === 'T/b.jpg' && lib.m0.kind === 'image', lib.m0);
 ok('для мови — лише відео, і стає саме цій мові', lib.onlyVideos === 1 && lib.lm && lib.lm.ru_RU && lib.lm.ru_RU.path === 'T/a.mp4', lib);
 
+/* Бібліотека з Google Drive: файли папки й підпапок, вибір без
+   завантаження, ключ Drive іде в запуск. */
+const gd = await page.evaluate(async () => {
+  window.teamDriveFolderId = 'ROOT'; try { teamDriveFolderId = 'ROOT'; } catch (e) {}
+  window._driveList = async q => decodeURIComponent(q).includes("'ROOT'")
+    ? [{ id: 'f1', name: 'KG_JS_549.mp4', mimeType: 'video/mp4', size: '3000000' }, { id: 'doc', name: 'notes.docx', mimeType: 'application/msword' }]
+    : [{ id: 'f2', name: 'banner.jpg', mimeType: 'image/jpeg', size: '200000' }];
+  window.driveSubfolders = async () => [{ id: 'SUB', name: 'KG' }];
+  window._driveKey = () => 'KEY9';
+  try { _driveList = window._driveList; driveSubfolders = window.driveSubfolders; _driveKey = window._driveKey; } catch (e) {}
+  lcDrive = null; lcSrc = 'drive';
+  ltRows[0].spec.ads = [{ id: 'a1', name: 'KG_1', adset_id: 's1', creative: {} }];
+  ltOpen(1); ltCur.picked = new Set(['222']); ltCur.pagesOf = { '222': [] }; ltRes = { '222': { checks: [] } };
+  await ltPreview();
+  lcPickFor(0, '');
+  await new Promise(r => setTimeout(r, 150));
+  const tiles = [...document.querySelectorAll('#lc-modal .lc-tile .lc-name')].map(x => x.innerText);
+  const folder = (document.querySelector('#lc-modal .lc-folder') || {}).innerText || '';
+  lcDriveChoose('f1');
+  const media = JSON.parse(JSON.stringify(ltCur.spec.ads[0].media));
+  __calls.length = 0;
+  await ltLaunch();
+  const call = __calls.find(c => !c.check) || {};
+  return { tiles, folder, media, key: call.drive_key, sentMedia: call.spec && call.spec.ads[0].media };
+});
+ok('вкладка Google Drive: відео й картинки папки та підпапок, без документів', gd.tiles.join() === 'KG_JS_549.mp4,banner.jpg', gd.tiles);
+ok('назва підпапки (гео) на прев\'ю', gd.folder === 'KG', gd.folder);
+ok('вибір з Drive ставить файл Drive на оголошення, без завантаження', gd.media.drive_id === 'f1' && gd.media.kind === 'video' && !gd.media.path, gd.media);
+ok('у запуск ідуть файл Drive і ключ Drive', gd.key === 'KEY9' && gd.sentMedia && gd.sentMedia.drive_id === 'f1', gd);
+
 await done(browser, srv, errs);

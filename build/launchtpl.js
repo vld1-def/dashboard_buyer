@@ -30,7 +30,8 @@ async function ltFn(body) {
   const res = await fetch(SUPABASE_URL + '/functions/v1/fb-launch', {
     method: 'POST',
     headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + (s?.session?.access_token || '') },
-    body: JSON.stringify(body)
+    // Ключ Drive — для креативів із бібліотеки Google Drive; ніде не зберігається.
+    body: JSON.stringify(Object.assign({}, body, typeof _driveKey === 'function' && (body.spec || {}).ads ? { drive_key: _driveKey() } : {}))
   });
   const j = await res.json().catch(() => ({}));
   if (res.status === 404 && !j.error) throw new Error('the launch function is not deployed — deploy fb-launch');
@@ -791,7 +792,7 @@ function ltLangBlock(d, i) {
       <input class="lt-ed-in" value="${ltEsc(L.title ? L.title.text : '')}" placeholder="Headline" ${L.title ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].title.text=this.value">
       <input class="lt-ed-in" value="${ltEsc(L.link ? L.link.website_url : '')}" placeholder="Link" ${L.link ? '' : 'disabled'} oninput="__ltLang[${i}][${k}].link.website_url=this.value.trim()">
       ${(() => { const lm = (d.lang_media || {})[L.n];
-        return lm && lm.path
+        return lm && (lm.path || lm.drive_id)
           ? `<span class="lt-lang-v" title="${ltEsc(lm.name || '')}">▶ ${ltEsc((lm.name || 'video').slice(0, 14))}<button type="button" onclick="ltLangDrop(${i}, '${ltEsc(L.n)}')" title="Remove">×</button></span>`
           : `<span class="lt-lang-vv"><label class="lt-lang-v is-up" title="Upload a separate video for ${ltEsc(L.n)}">+ video<input type="file" accept="video/*" hidden onchange="ltLangPick(${i}, '${ltEsc(L.n)}', this)"></label><button type="button" class="lt-lang-v is-up" onclick="lcPickFor(${i}, '${ltEsc(L.n)}')" title="Pick from the library">lib</button></span>`; })()}
     </div>`).join('')}</div>`;
@@ -800,9 +801,10 @@ function ltLangBlock(d, i) {
 function ltMediaBlock(d, i, total) {
   const m = d.media || ltAdDefaults(d);
   const lang = ltIsLang(d);
-  const file = m.path
+  const has = !!(m.path || m.drive_id);
+  const file = has
     ? `<div class="lt-md-file"><span class="lt-md-ic">${m.kind === 'video' ? '▶' : '▣'}</span>
-        <span class="lt-md-name">${ltEsc(m.name || m.path.split('/').pop())}${m.size ? ' · ' + (m.size / 1048576).toFixed(1) + ' MB' : ''}</span>
+        <span class="lt-md-name">${m.drive_id ? '<em class="lt-md-drv">Drive</em>' : ''}${ltEsc(m.name || String(m.path || '').split('/').pop())}${m.size ? ' · ' + (m.size / 1048576).toFixed(1) + ' MB' : ''}</span>
         <label class="lt-md-btn">Replace<input type="file" accept="video/*,image/*" hidden onchange="ltMediaPick(${i}, this)"></label>
         <button type="button" class="lt-md-btn" onclick="lcPickFor(${i}, '')">From library</button>
         <button type="button" class="lt-md-btn" onclick="ltMediaDrop(${i})">Remove</button></div>`
@@ -813,7 +815,7 @@ function ltMediaBlock(d, i, total) {
     ${file}
     <label class="lt-md-ut"><span>URL parameters</span><input class="lt-ed-in" value="${ltEsc(d.url_tags !== undefined ? d.url_tags : ((d.creative || {}).url_tags || ''))}"
       oninput="ltW.ads[${i}].url_tags=this.value.trim()" placeholder="utm_source=fb&sub1={{ad.id}}"></label>
-    ${lang ? `<p class="lt-md-note">${m.path ? 'This video goes to every language.' : 'No video here — the template’s own videos are copied from its cabinet while that cabinet is alive. Upload one to be safe.'}</p>` : ''}
+    ${lang ? `<p class="lt-md-note">${has ? 'This video goes to every language.' : 'No video here — the template’s own videos are copied from its cabinet while that cabinet is alive. Upload one to be safe.'}</p>` : ''}
     <div class="lt-ed-fields"${lang ? ' hidden' : ''}>
       <label class="is-wide"><span>Text</span><input class="lt-ed-in" value="${ltEsc(m.text || '')}" oninput="ltMd(${i}).text=this.value"></label>
       <label><span>Headline</span><input class="lt-ed-in" value="${ltEsc(m.title || '')}" oninput="ltMd(${i}).title=this.value"></label>
@@ -821,7 +823,7 @@ function ltMediaBlock(d, i, total) {
       <label><span>Button</span><select class="lt-ed-in" onchange="ltMd(${i}).cta=this.value">${LT_CTA.map(c =>
         `<option value="${c}"${(m.cta || 'LEARN_MORE') === c ? ' selected' : ''}>${c.replace(/_/g, ' ').toLowerCase()}</option>`).join('')}</select></label>
     </div>
-    ${m.path && total > 1 ? `<button type="button" class="lt-md-all" onclick="ltMediaAll(${i})">Use this creative for all ${total} ads</button>` : ''}
+    ${has && total > 1 ? `<button type="button" class="lt-md-all" onclick="ltMediaAll(${i})">Use this creative for all ${total} ads</button>` : ''}
   </div>`;
 }
 
@@ -844,7 +846,7 @@ window.ltMediaPick = async function (i, input) {
   }
 };
 window.ltMediaDrop = function (i) {
-  const m = ltMd(i); delete m.path; delete m.kind; delete m.name; delete m.size;
+  const m = ltMd(i); delete m.path; delete m.drive_id; delete m.kind; delete m.name; delete m.size;
   ltRepaintW();
 };
 window.ltMediaAll = function (i) {
@@ -897,6 +899,32 @@ window.ltLangDrop = function (i, lang) {
    «From library» біля кожного завантаження — вибір без повторної
    заливки. */
 let lcRows = [], lcQ = '', lcKind = '', lcPick = null, lcUrls = {};
+/* «я думав library це з гугл драйва підтягує». Головна вкладка —
+   Google Drive команди: усі відео й картинки папки та підпапок (назва
+   підпапки — зазвичай гео), прев'ю від самого Drive. Вибір ставить на
+   оголошення посилання на файл Drive — при запуску fb-launch бере його
+   звідти сама, через браузер нічого не качається. */
+let lcSrc = 'drive', lcDrive = null, lcDriveErr = '';
+const lcDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
+async function lcDriveLoad(force) {
+  if (lcDrive && !force) return;
+  lcDriveErr = '';
+  try {
+    const fields = 'fields=' + encodeURIComponent('files(id,name,mimeType,thumbnailLink,size,modifiedTime)');
+    const out = [], seen = new Set();
+    const grab = async (pid, folder) => {
+      const q = encodeURIComponent(`'${pid}' in parents and trashed=false`);
+      (await _driveList(`q=${q}&${fields}&pageSize=500&orderBy=modifiedTime desc`)).forEach(f => {
+        if (seen.has(f.id) || !/^(video|image)\//.test(f.mimeType || '')) return;
+        seen.add(f.id);
+        out.push({ ...f, folder });
+      });
+    };
+    await grab(teamDriveFolderId, '');
+    for (const sub of await driveSubfolders()) await grab(sub.id, sub.name);
+    lcDrive = out;
+  } catch (e) { lcDrive = []; lcDriveErr = e.message || 'Google Drive error'; }
+}
 
 /* Кадр відео — на 1-й секунді, 480 px завширшки, JPEG. Не вийшло
    (кодек, CORS) — тихо без мініатюри: прев'ю буде значком. */
@@ -973,18 +1001,50 @@ window.lcClose = function () { const el = document.getElementById('lc-modal'); i
 
 window.lcOpen = async function (pick) {
   lcPick = pick || null;
+  if (!lcDriveOn() && lcSrc === 'drive') lcSrc = 'up';
   const el = lcBox(); el.classList.remove('hidden');
   el.querySelector('.lc-card').innerHTML = '<div class="lt-empty">Loading the library…</div>';
-  try { await lcLoad(); } catch (e) { el.querySelector('.lc-card').innerHTML = `<div class="lt-empty">${ltEsc(e.message)}</div>`; return; }
+  try { await lcLoad(); } catch (e) { if (lcSrc === 'up') { el.querySelector('.lc-card').innerHTML = `<div class="lt-empty">${ltEsc(e.message)}</div>`; return; } }
+  if (lcSrc === 'drive') await lcDriveLoad();
   lcPaint();
+};
+window.lcSrcSet = async function (k) {
+  lcSrc = k;
+  if (k === 'drive') { const c = document.querySelector('#lc-modal .lc-grid'); if (c) c.innerHTML = '<div class="lt-empty">Reading Google Drive…</div>'; await lcDriveLoad(); }
+  lcPaint();
+};
+window.lcDriveChoose = function (id) {
+  const f = (lcDrive || []).find(x => x.id === id); if (!f || !lcPick) return;
+  const meta = { drive_id: f.id, kind: /^video\//.test(f.mimeType) ? 'video' : 'image', name: f.name, size: Number(f.size) || 0 };
+  const { i, lang } = lcPick;
+  if (lang) { const d = ltW.ads[i]; d.lang_media = d.lang_media || {}; d.lang_media[lang] = meta; }
+  else { const m = ltMd(i); delete m.path; Object.assign(m, meta); }
+  lcClose(); ltRepaintW();
+  toast('Creative set from Google Drive: ' + f.name, 'ok', 2000);
 };
 /* Вибір для оголошення i (lang — для окремої мови). */
 window.lcPickFor = function (i, lang) {
   lcOpen({ i, lang: lang || '', only: lang ? 'video' : '' });
 };
 
+function lcDriveTile(f) {
+  const kind = /^video\//.test(f.mimeType) ? 'video' : 'image';
+  const src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(f.id) + '&sz=w400';
+  const used = (ltRows || []).filter(r => JSON.stringify(r.spec || {}).includes(f.id)).length;
+  return `<div class="lc-tile${lcPick ? ' is-pick' : ''}" ${lcPick ? `onclick="lcDriveChoose('${ltEsc(f.id)}')"` : ''}>
+    <div class="lc-prev"><img src="${ltEsc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
+      <span class="lc-noprev">${kind === 'video' ? '▶' : '▣'}</span>
+      <span class="lc-kind">${kind === 'video' ? '▶ video' : 'image'}</span>
+      ${f.folder ? `<span class="lc-folder">${ltEsc(f.folder)}</span>` : ''}</div>
+    <div class="lc-meta">
+      <div class="lc-name" title="${ltEsc(f.name)}">${ltEsc(f.name)}</div>
+      <div class="lc-sub">${f.size ? (Number(f.size) / 1048576).toFixed(1) + ' MB · ' : ''}${used ? 'in ' + used + ' template' + (used > 1 ? 's' : '') : 'not used yet'}</div>
+    </div></div>`;
+}
+
 function lcPaint() {
   const card = document.querySelector('#lc-modal .lc-card'); if (!card) return;
+  if (lcSrc === 'drive') return lcPaintDrive(card);
   const q = lcQ.toLowerCase();
   const kind = (lcPick && lcPick.only) || lcKind;
   const rows = lcRows.filter(r => (!kind || r.kind === kind)
@@ -1010,6 +1070,7 @@ function lcPaint() {
       <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
         <input class="lt-search lc-search" placeholder="Search name, geo, language…" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
     <div class="lc-bar">
+      ${lcSrcTabs()}
       ${lcPick && lcPick.only ? '' : ['', 'video', 'image'].map(k => `<button type="button" class="lc-f${lcKind === k ? ' is-on' : ''}" onclick="lcKind='${k}';lcPaint()">${k ? k + 's' : 'All'}</button>`).join('')}
       <label class="lt-md-btn lc-up">+ Upload<input type="file" accept="${lcPick && lcPick.only === 'video' ? 'video/*' : 'video/*,image/*'}" multiple hidden onchange="lcUpload(this)"></label>
       <span class="lc-count">${rows.length} of ${lcRows.length}</span>
@@ -1064,3 +1125,28 @@ window.lcChoose = function (id) {
   ltRepaintW();
   toast('Creative set: ' + meta.name, 'ok', 2000);
 };
+
+function lcSrcTabs() {
+  return `<div class="lc-src">
+    <button type="button" class="${lcSrc === 'drive' ? 'is-on' : ''}" onclick="lcSrcSet('drive')" ${lcDriveOn() ? '' : 'disabled title="Connect Google Drive in Settings → Integrations"'}>Google Drive</button>
+    <button type="button" class="${lcSrc === 'up' ? 'is-on' : ''}" onclick="lcSrcSet('up')">Uploaded</button></div>`;
+}
+function lcPaintDrive(card) {
+  const q = lcQ.toLowerCase();
+  const kind = (lcPick && lcPick.only) || lcKind;
+  const all = lcDrive || [];
+  const rows = all.filter(f => (!kind || f.mimeType.startsWith(kind + '/'))
+    && (!q || (f.name + ' ' + (f.folder || '')).toLowerCase().includes(q)));
+  card.innerHTML = `<div class="lt-head"><div><h3>${lcPick ? 'Pick a creative' : 'Creative library'}</h3>
+      <p>${lcPick ? 'Click a file — CRM takes it straight from Google Drive at launch.' : 'Your team’s Google Drive folder: every video and image, by subfolder.'}</p></div>
+      <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
+        <input class="lt-search lc-search" placeholder="Search name or folder…" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
+    <div class="lc-bar">
+      ${lcSrcTabs()}
+      ${lcPick && lcPick.only ? '' : ['', 'video', 'image'].map(k => `<button type="button" class="lc-f${lcKind === k ? ' is-on' : ''}" onclick="lcKind='${k}';lcPaint()">${k ? k + 's' : 'All'}</button>`).join('')}
+      <button type="button" class="lt-md-btn" onclick="lcSrcSet('drive', lcDrive = null)" title="Read the Drive folder again">↻</button>
+      <span class="lc-count">${rows.length} of ${all.length}</span>
+    </div>
+    <div class="lc-grid">${lcDriveErr ? `<div class="lt-empty">Google Drive: ${ltEsc(lcDriveErr)}</div>`
+      : rows.map(lcDriveTile).join('') || `<div class="lt-empty">${all.length ? 'Nothing matches.' : 'No videos or images in the Drive folder.'}</div>`}</div>`;
+}

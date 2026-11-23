@@ -303,6 +303,16 @@ const LSPEC3 = JSON.parse(JSON.stringify(LSPEC)); LSPEC3.ads[0].lang_media = { r
 const lang3 = await run({ body: { spec: LSPEC3, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
 const vids3 = lang3.posts.filter(x => x.path === '/act_222/advideos').map(x => x.p.file_url);
 ok('окреме відео під мову: ru — своє зі сховища, en — оригінал', vids3.length === 2 && vids3.some(u => /launch-media\/T\/v\.mp4|sign/.test(u)) && vids3.includes('https://cdn.fb/src1.mp4'), vids3);
+/* Креатив із Google Drive: відео — Facebook качає за посиланням Drive API
+   з ключем із запиту; картинка — байтами. */
+const DSPEC2 = JSON.parse(JSON.stringify(SPEC));
+DSPEC2.ads.forEach(d => { d.media = { drive_id: 'DRV1', kind: 'video', name: 'win.mp4', link: 'https://l' }; });
+const drv = await run({ body: { spec: DSPEC2, target_account: '222', drive_key: 'KEY123' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+const dv = drv.posts.filter(x => x.path === '/act_222/advideos');
+ok('відео з Drive: одне завантаження за посиланням Drive API з ключем', dv.length === 1
+  && dv[0].p.file_url === 'https://www.googleapis.com/drive/v3/files/DRV1?alt=media&key=KEY123' && drv.body.ads.made === 3, dv.map(x => x.p));
+const drv0 = await run({ body: { spec: DSPEC2, target_account: '222' }, lists: { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+ok('без ключа Drive — зрозуміла причина, оголошення не гинуть мовчки', (drv0.body.problems || []).some(p => /Google Drive key/.test(p)) || drv0.body.ads.made === 3, drv0.body);
 const none0 = await run({ body: { spec: SPEC, target_account: '222' },
   lists: { '/act_222/promote_pages': [], '/act_222/adspixels': [{ id: '6', name: 'Own px' }] } });
 ok('без жодної Сторінки — лише кампанія й адсети, з поясненням', none0.body.ok
