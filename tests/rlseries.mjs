@@ -78,7 +78,7 @@ ok('причина в листі каже про серію', /ads stopped here 
 ok('збій перевірки серії не валить прогін', /series check failed/.test(use));
 ok('кампанія їде в журнал', /metrics: \{ \.\.\.h\.agg, campaign: h\.campaign \|\| undefined \}/.test(FN)
   && /campaign: e\.campaign,/.test(FN));
-ok('версія піднята', /const FN_VERSION = 'rules-21';/.test(FN));
+ok('версія піднята', +((FN.match(/const FN_VERSION = 'rules-(\d+)';/) || [])[1] || 0) >= 21);
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
 if (fail) process.exit(1);

@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-21';
+const FN_VERSION = 'rules-22';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -1861,6 +1861,37 @@ Deno.serve(async (req) => {
           }
         }
       }
+    }
+
+    /* ПЕРЕД ДІЄЮ — ЧИ КАБІНЕТ ЩЕ ЖИВИЙ.
+
+       «цілу ніч кабінет був забанений і автоправила отримували помилку
+       постійно». Забанений кабінет Graph не завжди відмовляє на
+       читанні: /ads далі віддає оголошення з effective_status ACTIVE і
+       старими цифрами. Тоді правило спрацьовувало, вимкнення падало з
+       «Application does not have permission for this action», і так
+       щочверть години, доки fb-sync не дійде до цього токена.
+
+       Тому кабінет, у якому правилу є що робити, спершу питаємо про
+       стан. Запит один на кабінет і лише там, де є влучання, а не по
+       всьому парку. Мертвий — позначаємо одразу (наступний прогін його
+       вже не бере), шлемо сповіщення про бан і нічого не вимикаємо.
+       Не змогли спитати (null) — діємо, як раніше. */
+    const hitCabs = [...new Set(hits.filter(h => accs.some(a => String(a.account_id) === h.account))
+      .map(h => h.account))];
+    for (const account of hitCabs) {
+      const st = await cabState(String(t.token), account);
+      if (!st || cabWatched(st.word)) continue;
+      const a = accs.find(x => String(x.account_id) === account) || {};
+      dead++;
+      seenOf(String(a.team_name || t.team_name || '')).dead++;
+      await markDead(base, hdr, tokenOwner, account, st);
+      deaths.push({ owner: tokenOwner, account, name: String(a.name || account),
+                    word: st.word, reason: st.reason });
+      const n = hits.filter(h => h.account === account).length;
+      for (let i = hits.length - 1; i >= 0; i--) if (hits[i].account === account) hits.splice(i, 1);
+      problems.push(account + ': ' + st.word + (st.reason ? ' (' + st.reason + ')' : '')
+        + ' — ' + n + ' rule hit(s) not acted on, and the cabinet is marked so the next run skips it');
     }
 
     // Вимикаємо токеном, який це бачить: чужим не вийде.

@@ -181,4 +181,19 @@ const v = Number((FN.match(/FN_VERSION = 'rules-(\d+)'/) || [])[1]);
 ok('версію функції піднято не нижче rules-14', v >= 14,
   (FN.match(/FN_VERSION = '[^']+'/) || [])[0]);
 
+/* ── ПЕРЕД ДІЄЮ — СТАН КАБІНЕТА ──
+   «цілу ніч кабінет був забанений і автоправила отримували помилку
+   постійно». Graph віддавав оголошення забаненого кабінета як ACTIVE,
+   читання проходило, правило спрацьовувало, а вимкнення падало з
+   «Application does not have permission» — щочверть години. */
+const pre = FN.indexOf('ПЕРЕД ДІЄЮ — ЧИ КАБІНЕТ ЩЕ ЖИВИЙ');
+const pauseAt = FN.indexOf('await pauseAll(String(t.token), mineNow)');
+const block = pre > 0 ? FN.slice(pre, pauseAt) : '';
+ok('стан питаємо ДО вимкнення', pre > 0 && pre < pauseAt, { pre, pauseAt });
+ok('лише по кабінетах, де є влучання', /hitCabs = \[\.\.\.new Set\(hits/.test(block));
+ok('«не знаю» (null) не зупиняє дію', /if \(!st \|\| cabWatched\(st\.word\)\) continue;/.test(block));
+ok('мертвий позначаємо одразу', /await markDead\(base, hdr, tokenOwner, account, st\)/.test(block));
+ok('і шлемо сповіщення про бан', /deaths\.push\(/.test(block));
+ok('влучання на ньому знімаємо — вимикати нічого', /hits\.splice\(i, 1\)/.test(block));
+
 await done(null, null, []);
