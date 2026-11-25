@@ -22,6 +22,7 @@ const SNAP = [
   ad('a1', '1001', 'x_KG_123', 'ACTIVE', 10),
   ad('a2', '1001', 'x_PL_555', 'ACTIVE', 60),
   ad('a3', '1001', 'x_DE_1', 'PAUSED', 99),
+  ad('a4', '1001', 'x_FR_1', 'PAUSED', 0),
   ad('b1', '1002', 'x_TJ_1', 'PAUSED', 5)
 ];
 
@@ -53,10 +54,15 @@ await setup('flag');
 await page.waitForTimeout(200);
 {
   const g = await geoOf('1001');
-  ok('прапори активних гео — більше спенду лівіше', g && g.flags.join(',') === 'pl.svg,kg.svg', g);
-  ok('зупинене гео (DE) не показуємо', g && !g.flags.includes('de.svg'), g);
+  /* «мітки гео не видаляти коли на ньому немає активного трафу, дивись
+     за спендом». DE зупинене, але сьогодні витратило $99 — мітка є. */
+  ok('прапори гео — більше спенду лівіше', g && g.flags.join(',') === 'de.svg,pl.svg,kg.svg', g);
+  ok('зупинене гео зі спендом сьогодні (DE) лишається', g && g.flags.includes('de.svg'), g);
+  ok('зупинене й без спенду (FR) — мітки немає', g && !g.flags.includes('fr.svg'), g);
+  ok('у підказці DE — без активних оголошень', g && /DE · no active ads · \$99/.test(g.tip), g && g.tip);
   ok('у підказці — оголошення й спенд по гео', g && /PL · 1 active ad · \$60/.test(g.tip), g && g.tip);
-  ok('кабінет без активних оголошень — без міток', (await geoOf('1002')) === null);
+  const b = await geoOf('1002');
+  ok('кабінет без активних, але зі спендом сьогодні — мітка є', b && b.flags.join(',') === 'tj.svg', b);
   const head = await page.evaluate(() => [...document.querySelectorAll('#cab-list thead th')].map(x => x.textContent.replace(/[↑↓]/g, '').trim()));
   ok('гео — окремий стовпчик одразу перед Status', head.indexOf('Geo') >= 0 && head.indexOf('Geo') + 1 === head.indexOf('Status'), head);
   const td = await page.evaluate(() => { const g = document.querySelector('#cab-list .cab-tr .cab-geo'); return g && g.closest('td').className; });
@@ -65,7 +71,7 @@ await page.waitForTimeout(200);
 await setup('code');
 {
   const g = await geoOf('1001');
-  ok('режим кодів — двобуквені коди', g && g.codes.join(',') === 'PL,KG', g);
+  ok('режим кодів — двобуквені коди', g && g.codes.join(',') === 'DE,PL,KG', g);
 }
 await setup('off');
 ok('сховано — міток немає', (await geoOf('1001')) === null);
