@@ -914,6 +914,8 @@ let lcTag = '';
 /* «теги заховай так щоб відкривались як через фільтр»: список тегів —
    за іконкою-воронкою, а не рядком над сіткою. */
 let lcTagOpen = false;
+/* «а фільтр по гео ще» — у тому ж віконці, що й теги. */
+let lcGeo = '';
 const lcDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
 async function lcDriveLoad(force) {
   if (lcDrive && !force) return;
@@ -1197,6 +1199,26 @@ function lcTagList() {
   return Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
 }
 
+/* ГЕО ФАЙЛУ. Підпапка Drive — зазвичай і є гео («KG»); нема — гео
+   креативу з аналізатора; нема й там — дві літери на початку назви
+   («KG_JS_674.mp4»). */
+function lcGeoOf(f) {
+  const fo = String(f.folder || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(fo)) return fo;
+  const o = lcCaOf(f.name);
+  if (o) {
+    const d = (window.creativesRawData || []).find(x => String(x.cid || '').trim().toLowerCase() === o.cid.toLowerCase() && x.geo);
+    if (d && /^[a-z]{2}$/i.test(String(d.geo).trim())) return String(d.geo).trim().toUpperCase();
+  }
+  const m = String(f.name || '').match(/^([A-Za-z]{2})(?=[_\-\s.])/);
+  return m ? m[1].toUpperCase() : '';
+}
+function lcGeoList() {
+  const n = {};
+  (lcDrive || []).forEach(f => { const g = lcGeoOf(f); if (g) n[g] = (n[g] || 0) + 1; });
+  return Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
+}
+
 function lcViewer(media, name) {
   lcViewClose();
   const o = lcCaOf(name);
@@ -1253,7 +1275,7 @@ window.lcGoCreative = function (cid) {
 };
 /* З аналізатора: бібліотека для перегляду, з цифрами на картках. */
 window.lcOpenCA = async function () {
-  lcCaMap = null; lcTag = ''; lcTagOpen = false;
+  lcCaMap = null; lcTag = ''; lcGeo = ''; lcTagOpen = false;
   /* З аналізатора — лише Drive: «uploaded також приховай». */
   if (lcDriveOn()) lcSrc = 'drive';
   await lcOpen();
@@ -1272,8 +1294,13 @@ function lcPaintDrive(card) {
   const all = lcDrive || [];
   const rows = all.filter(f => (!kind || f.mimeType.startsWith(kind + '/'))
     && (!lcCa || !lcTag || lcTagsOf(f.name).includes(lcTag))
+    && (!lcCa || !lcGeo || lcGeoOf(f) === lcGeo)
     && (!q || (f.name + ' ' + (f.folder || '') + ' ' + (lcCa ? lcTagsOf(f.name).join(' ') : '')).toLowerCase().includes(q)));
   const tags = lcCa ? lcTagList() : [];
+  const geos = lcCa ? lcGeoList() : [];
+  const fOn = !!(lcTag || lcGeo);
+  const chip = (cur, v, set) => `<button type="button" class="lc-f lc-tf${cur === v ? ' is-on' : ''}"
+      onclick="${set}=decodeURIComponent('${encodeURIComponent(v)}');lcTagOpen=false;lcPaint()">${v ? ltEsc(v) : 'All'}</button>`;
   card.innerHTML = `<div class="lt-head"><div><h3>${lcPick ? 'Pick a creative' : 'Creative library'}</h3>
       ${lcPick ? '<p>Click a file — CRM takes it straight from Google Drive at launch. The eye opens a preview.</p>' : ''}</div>
       <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
@@ -1281,12 +1308,13 @@ function lcPaintDrive(card) {
     <div class="lc-bar">
       ${lcCa ? '' : lcSrcTabs()}
       ${lcPick && lcPick.only ? '' : ['', 'video', 'image'].map(k => `<button type="button" class="lc-f${lcKind === k ? ' is-on' : ''}" onclick="lcKind='${k}';lcPaint()">${k ? k + 's' : 'All'}</button>`).join('')}
-      ${tags.length ? `<span class="lc-tagwrap"><button type="button" class="lc-filt${lcTag ? ' is-on' : ''}${lcTagOpen ? ' is-open' : ''}"
-          onclick="lcTagOpen=!lcTagOpen;lcPaint()" title="${lcTag ? 'Tag: ' + ltEsc(lcTag) : 'Filter by tag'}" aria-label="Filter by tag"><svg viewBox="0 0 16 16"
+      ${tags.length || geos.length ? `<span class="lc-tagwrap"><button type="button" class="lc-filt${fOn ? ' is-on' : ''}${lcTagOpen ? ' is-open' : ''}"
+          onclick="lcTagOpen=!lcTagOpen;lcPaint()" title="${fOn ? ltEsc([lcGeo, lcTag].filter(Boolean).join(' · ')) : 'Filter by geo or tag'}" aria-label="Filter"><svg viewBox="0 0 16 16"
           aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path
           d="M2.2 3h11.6L9.4 8.4v4.2l-2.8 1.4V8.4z"/></svg><i class="lc-filt-dot"></i></button>
-        ${lcTagOpen ? `<div class="lc-tagpop"><p class="lc-tagbar-h">Tags</p><div class="lc-tagpop-in">${['', ...tags].map(t => `<button type="button"
-            class="lc-f lc-tf${lcTag === t ? ' is-on' : ''}" onclick="lcTag=decodeURIComponent('${encodeURIComponent(t)}');lcTagOpen=false;lcPaint()">${t ? ltEsc(t) : 'All'}</button>`).join('')}</div></div>` : ''}</span>` : ''}
+        ${lcTagOpen ? `<div class="lc-tagpop">${geos.length ? `<p class="lc-tagbar-h">Geo</p><div class="lc-tagpop-in lc-geopop">${['', ...geos].map(g => chip(lcGeo, g, 'lcGeo')).join('')}</div>` : ''}${
+            tags.length ? `<p class="lc-tagbar-h${geos.length ? ' is-2' : ''}">Tags</p><div class="lc-tagpop-in">${['', ...tags].map(t => chip(lcTag, t, 'lcTag')).join('')}</div>` : ''}${
+            fOn ? `<button type="button" class="lc-fclear" onclick="lcTag='';lcGeo='';lcTagOpen=false;lcPaint()">Clear filter</button>` : ''}</div>` : ''}</span>` : ''}
       <button type="button" class="lt-md-btn" onclick="lcSrcSet('drive', lcDrive = null)" title="Read the Drive folder again">↻</button>
       <span class="lc-count">${rows.length} of ${all.length}</span>
     </div>
