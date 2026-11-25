@@ -911,6 +911,9 @@ let lcSrc = 'drive', lcDrive = null, lcDriveErr = '';
 let lcCa = false;
 /* Тег із аналізатора, по якому зараз фільтр бібліотеки ('' — усі). */
 let lcTag = '';
+/* «теги заховай так щоб відкривались як через фільтр»: список тегів —
+   за іконкою-воронкою, а не рядком над сіткою. */
+let lcTagOpen = false;
 const lcDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
 async function lcDriveLoad(force) {
   if (lcDrive && !force) return;
@@ -1250,7 +1253,7 @@ window.lcGoCreative = function (cid) {
 };
 /* З аналізатора: бібліотека для перегляду, з цифрами на картках. */
 window.lcOpenCA = async function () {
-  lcCaMap = null; lcTag = '';
+  lcCaMap = null; lcTag = ''; lcTagOpen = false;
   /* З аналізатора — лише Drive: «uploaded також приховай». */
   if (lcDriveOn()) lcSrc = 'drive';
   await lcOpen();
@@ -1278,11 +1281,15 @@ function lcPaintDrive(card) {
     <div class="lc-bar">
       ${lcCa ? '' : lcSrcTabs()}
       ${lcPick && lcPick.only ? '' : ['', 'video', 'image'].map(k => `<button type="button" class="lc-f${lcKind === k ? ' is-on' : ''}" onclick="lcKind='${k}';lcPaint()">${k ? k + 's' : 'All'}</button>`).join('')}
+      ${tags.length ? `<span class="lc-tagwrap"><button type="button" class="lc-filt${lcTag ? ' is-on' : ''}${lcTagOpen ? ' is-open' : ''}"
+          onclick="lcTagOpen=!lcTagOpen;lcPaint()" title="${lcTag ? 'Tag: ' + ltEsc(lcTag) : 'Filter by tag'}" aria-label="Filter by tag"><svg viewBox="0 0 16 16"
+          aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path
+          d="M2.2 3h11.6L9.4 8.4v4.2l-2.8 1.4V8.4z"/></svg><i class="lc-filt-dot"></i></button>
+        ${lcTagOpen ? `<div class="lc-tagpop"><p class="lc-tagbar-h">Tags</p><div class="lc-tagpop-in">${['', ...tags].map(t => `<button type="button"
+            class="lc-f lc-tf${lcTag === t ? ' is-on' : ''}" onclick="lcTag=decodeURIComponent('${encodeURIComponent(t)}');lcTagOpen=false;lcPaint()">${t ? ltEsc(t) : 'All'}</button>`).join('')}</div></div>` : ''}</span>` : ''}
       <button type="button" class="lt-md-btn" onclick="lcSrcSet('drive', lcDrive = null)" title="Read the Drive folder again">↻</button>
       <span class="lc-count">${rows.length} of ${all.length}</span>
     </div>
-    ${tags.length ? `<div class="lc-tagbar"><span class="lc-tagbar-h">Tags</span>${['', ...tags].map(t => `<button type="button"
-        class="lc-f lc-tf${lcTag === t ? ' is-on' : ''}" onclick="lcTag=decodeURIComponent('${encodeURIComponent(t)}');lcPaint()">${t ? ltEsc(t) : 'All'}</button>`).join('')}</div>` : ''}
     <div class="lc-grid">${lcDriveErr ? `<div class="lt-empty">Google Drive: ${ltEsc(lcDriveErr)}</div>`
       : rows.map(lcDriveTile).join('') || `<div class="lt-empty">${all.length ? 'Nothing matches.' : 'No videos or images in the Drive folder.'}</div>`}</div>`;
 }

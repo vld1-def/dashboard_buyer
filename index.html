@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.11 12:38">
+  <meta name="build" content="build 25.11 12:40">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8560,6 +8560,16 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .lc-tagbar-h { font-size: 9.5px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); margin-right: 2px; }
 .lc-tf { height: 24px; padding: 0 10px; font-size: 11px; text-transform: none; }
 .lc-view-foot .lc-tag { height: 20px; }
+.lc-tagwrap { position: relative; display: inline-flex; }
+.lc-filt { position: relative; width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; color: var(--text-muted); background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09); }
+.lc-filt svg { width: 14px; height: 14px; }
+.lc-filt:hover, .lc-filt.is-open { color: #fff; }
+.lc-filt.is-on { color: #fff; border-color: var(--accent); background: var(--accent-soft); }
+.lc-filt-dot { display: none; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.lc-filt.is-on .lc-filt-dot { display: block; }
+.lc-tagpop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 200px; max-width: 320px; padding: 8px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 18px 40px rgba(0,0,0,.45); }
+.lc-tagpop .lc-tagbar-h { margin: 0 0 6px 2px; }
+.lc-tagpop-in { display: flex; flex-wrap: wrap; gap: 5px; max-height: 220px; overflow: auto; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8819,7 +8829,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.11 12:38</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.11 12:40</div>
     </div>
   </aside>
 
@@ -43452,6 +43462,9 @@ let lcSrc = 'drive', lcDrive = null, lcDriveErr = '';
 let lcCa = false;
 /* Тег із аналізатора, по якому зараз фільтр бібліотеки ('' — усі). */
 let lcTag = '';
+/* «теги заховай так щоб відкривались як через фільтр»: список тегів —
+   за іконкою-воронкою, а не рядком над сіткою. */
+let lcTagOpen = false;
 const lcDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
 async function lcDriveLoad(force) {
   if (lcDrive && !force) return;
@@ -43791,7 +43804,7 @@ window.lcGoCreative = function (cid) {
 };
 /* З аналізатора: бібліотека для перегляду, з цифрами на картках. */
 window.lcOpenCA = async function () {
-  lcCaMap = null; lcTag = '';
+  lcCaMap = null; lcTag = ''; lcTagOpen = false;
   /* З аналізатора — лише Drive: «uploaded також приховай». */
   if (lcDriveOn()) lcSrc = 'drive';
   await lcOpen();
@@ -43819,11 +43832,15 @@ function lcPaintDrive(card) {
     <div class="lc-bar">
       ${lcCa ? '' : lcSrcTabs()}
       ${lcPick && lcPick.only ? '' : ['', 'video', 'image'].map(k => `<button type="button" class="lc-f${lcKind === k ? ' is-on' : ''}" onclick="lcKind='${k}';lcPaint()">${k ? k + 's' : 'All'}</button>`).join('')}
+      ${tags.length ? `<span class="lc-tagwrap"><button type="button" class="lc-filt${lcTag ? ' is-on' : ''}${lcTagOpen ? ' is-open' : ''}"
+          onclick="lcTagOpen=!lcTagOpen;lcPaint()" title="${lcTag ? 'Tag: ' + ltEsc(lcTag) : 'Filter by tag'}" aria-label="Filter by tag"><svg viewBox="0 0 16 16"
+          aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path
+          d="M2.2 3h11.6L9.4 8.4v4.2l-2.8 1.4V8.4z"/></svg><i class="lc-filt-dot"></i></button>
+        ${lcTagOpen ? `<div class="lc-tagpop"><p class="lc-tagbar-h">Tags</p><div class="lc-tagpop-in">${['', ...tags].map(t => `<button type="button"
+            class="lc-f lc-tf${lcTag === t ? ' is-on' : ''}" onclick="lcTag=decodeURIComponent('${encodeURIComponent(t)}');lcTagOpen=false;lcPaint()">${t ? ltEsc(t) : 'All'}</button>`).join('')}</div></div>` : ''}</span>` : ''}
       <button type="button" class="lt-md-btn" onclick="lcSrcSet('drive', lcDrive = null)" title="Read the Drive folder again">↻</button>
       <span class="lc-count">${rows.length} of ${all.length}</span>
     </div>
-    ${tags.length ? `<div class="lc-tagbar"><span class="lc-tagbar-h">Tags</span>${['', ...tags].map(t => `<button type="button"
-        class="lc-f lc-tf${lcTag === t ? ' is-on' : ''}" onclick="lcTag=decodeURIComponent('${encodeURIComponent(t)}');lcPaint()">${t ? ltEsc(t) : 'All'}</button>`).join('')}</div>` : ''}
     <div class="lc-grid">${lcDriveErr ? `<div class="lt-empty">Google Drive: ${ltEsc(lcDriveErr)}</div>`
       : rows.map(lcDriveTile).join('') || `<div class="lt-empty">${all.length ? 'Nothing matches.' : 'No videos or images in the Drive folder.'}</div>`}</div>`;
 }
