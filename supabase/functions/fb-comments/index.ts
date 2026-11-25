@@ -111,7 +111,7 @@ type Json = Record<string, any>;
    тижня тричі виглядав як вада в коді. Номер у кожній відповіді
    коштує нічого, а дозволяє сторінці відрізнити «функція про це ще
    не знає» від «Facebook так відповів». */
-const FN_VERSION = '2026-11-09.2';
+const FN_VERSION = '2026-11-25.1';
 
 function reply(body: Json, status = 200): Response {
   return new Response(JSON.stringify({ fn: FN_VERSION, ...body }),
@@ -311,7 +311,9 @@ async function tgPost(token: string, chat: string, text: string): Promise<boolea
    місць: або назвати своїм те, що сховали раніше, або показати як
    відкрите те, що вже приховане. */
 type Found = { owner: string; cab: string; ad: string; from: string;
-               text: string; hidden: boolean; byUs: boolean; uk?: string };
+               text: string; hidden: boolean; byUs: boolean; uk?: string;
+               /* «підписуй з якої фанки прийшло» — Сторінка коментаря. */
+               page: string; pageId: string; at: number };
 
 /* ═══════════ ПЕРЕКЛАД УКРАЇНСЬКОЮ ═══════════
 
@@ -396,6 +398,7 @@ function tgText(list: Found[]): string {
     + (hid ? ', ' + hid + ' hidden automatically' : '') + '\n\n';
   const one = (f: Found) => (f.hidden ? '\u{1F648} ' : '\u{1F4AC} ')
     + f.cab + (f.ad ? ' \u00b7 ' + f.ad : '') + '\n'
+    + (f.page || f.pageId ? '\u{1F4C4} ' + (f.page || 'Page ' + f.pageId) + '\n' : '')
     + (f.from ? f.from + ': ' : '')
     + (f.text.length > 300 ? f.text.slice(0, 300) + '\u2026' : f.text || '(no text)')
     // \u041f\u0435\u0440\u0435\u043a\u043b\u0430\u0434 \u2014 \u043e\u043a\u0440\u0435\u043c\u0438\u043c \u0440\u044f\u0434\u043a\u043e\u043c \u043f\u0456\u0434 \u043e\u0440\u0438\u0433\u0456\u043d\u0430\u043b\u043e\u043c, \u043b\u0438\u0448\u0435 \u044f\u043a\u0449\u043e \u0432\u0456\u043d \u0454.
@@ -619,7 +622,8 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
           found.push({ owner: String(acc.created_by), cab: cabTag(acc, tok),
                        ad: post.names[0] || '', from: String(c.from?.name || ''),
                        text: String(c.message || ''),
-                       hidden: didHide || !!c.is_hidden, byUs: didHide });
+                       hidden: didHide || !!c.is_hidden, byUs: didHide,
+                       page: String(mine.get(pageId)?.name || pg.name || ''), pageId, at });
         }
       } catch (e) {
         problems.push(cabTag(acc, tok) + ': ' + (e as Error).message);
@@ -640,9 +644,49 @@ async function scanAll(base: string, hdr: Json, onlyOwner: string): Promise<Resp
   }
 
   const telegram = await tgSend(base, hdr, found);
-  return reply({ scanned, posts: postsSeen, comments: commentsSeen,
+  const activity = await pageActivity(base, hdr, found);
+  return reply({ scanned, posts: postsSeen, comments: commentsSeen, activity,
                  found: found.length, hidden, telegram,
                  problems: problems.slice(0, 5) });
+}
+
+/* ═══ ДЕ НА СТОРІНКАХ НОВЕ (fb_page_activity) ═══
+   «коли відкриваю pages там сразу відкривались фанки де є коменти».
+   По кожній Сторінці — час останнього нового коментаря й скільки їх
+   прийшло, відколи Сторінку востаннє відкривали в панелі. */
+async function pageActivity(base: string, hdr: Json, found: Found[]): Promise<string> {
+  const agg = new Map<string, { owner: string; page_id: string; page_name: string; last: number; n: number }>();
+  found.forEach(f => {
+    if (!f.owner || !f.pageId) return;
+    const k = f.owner + '|' + f.pageId;
+    const o = agg.get(k) || { owner: f.owner, page_id: f.pageId, page_name: f.page, last: 0, n: 0 };
+    o.n++; if (f.at > o.last) o.last = f.at;
+    if (!o.page_name && f.page) o.page_name = f.page;
+    agg.set(k, o);
+  });
+  if (!agg.size) return 'nothing new';
+  try {
+    const owners = [...new Set([...agg.values()].map(o => o.owner))];
+    const old = await pgGet(base, hdr, 'fb_page_activity?select=created_by,page_id,last_comment_at,new_count,seen_at'
+      + '&created_by=in.(' + owners.map(encodeURIComponent).join(',') + ')');
+    const was = new Map(old.map(r => [String(r.created_by) + '|' + String(r.page_id), r]));
+    const rows = [...agg.entries()].map(([k, o]) => {
+      const p = was.get(k);
+      // Відкривали після останнього коментаря — лічильник з нуля.
+      const fresh = !p || (p.seen_at && (!p.last_comment_at
+        || Date.parse(String(p.seen_at)) >= Date.parse(String(p.last_comment_at))));
+      const lastPrev = p && p.last_comment_at ? Date.parse(String(p.last_comment_at)) : 0;
+      return { created_by: o.owner, page_id: o.page_id, page_name: o.page_name || null,
+               last_comment_at: new Date(Math.max(o.last || Date.now(), lastPrev)).toISOString(),
+               new_count: (fresh ? 0 : Number(p.new_count) || 0) + o.n };
+    });
+    const res = await fetch(base + '/rest/v1/fb_page_activity?on_conflict=created_by,page_id', {
+      method: 'POST',
+      headers: { ...hdr, Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify(rows)
+    });
+    return res.ok ? rows.length + ' page(s)' : 'not saved (' + res.status + ')';
+  } catch (e) { return 'not saved: ' + (e as Error).message; }
 }
 
 Deno.serve(async (req) => {
@@ -871,15 +915,34 @@ async function byPage(base: string, hdr: Json, me: string,
   /* Сам токен назовні не йде НІКОЛИ — ні тут, ні деінде. Браузеру
      потрібна назва, щоб було видно, через який токен Сторінка видна;
      сам рядок токена в дашборді не потрібен ні для чого. */
-  if (action === 'pages') return reply({
-    pages: pages
-      .sort((a, b) => (b.can_moderate ? 1 : 0) - (a.can_moderate ? 1 : 0)
-                   || a.name.localeCompare(b.name))
-      .map(p => ({ page_id: p.page_id, name: p.name, tasks: p.tasks,
-                   can_moderate: p.can_moderate, pic: p.pic || '',
-                   token: p.token_label })),
-    problems: problems.slice(0, 5)
-  });
+  if (action === 'pages') {
+    /* Де нове: розклад пише fb_page_activity, панель розкриває такі
+       Сторінки сама й ставить їх угору. Таблиці може ще не бути —
+       тоді просто без цього. */
+    const act = new Map<string, Json>();
+    try {
+      (await pgGet(base, hdr, 'fb_page_activity?select=page_id,last_comment_at,new_count,seen_at&created_by=eq.'
+        + encodeURIComponent(me))).forEach(r => act.set(String(r.page_id), r));
+    } catch (_e) { /* без активності */ }
+    const unseen = (id: string) => {
+      const a = act.get(id);
+      if (!a || !a.last_comment_at || !(Number(a.new_count) > 0)) return 0;
+      return a.seen_at && Date.parse(String(a.seen_at)) >= Date.parse(String(a.last_comment_at))
+        ? 0 : Number(a.new_count) || 0;
+    };
+    return reply({
+      pages: pages
+        .sort((a, b) => unseen(b.page_id) - unseen(a.page_id)
+                     || (b.can_moderate ? 1 : 0) - (a.can_moderate ? 1 : 0)
+                     || a.name.localeCompare(b.name))
+        .map(p => ({ page_id: p.page_id, name: p.name, tasks: p.tasks,
+                     can_moderate: p.can_moderate, pic: p.pic || '',
+                     token: p.token_label,
+                     new_comments: unseen(p.page_id),
+                     last_comment_at: act.get(p.page_id)?.last_comment_at || null })),
+      problems: problems.slice(0, 5)
+    });
+  }
 
   const pageId = String(body?.page_id || '').replace(/\D/g, '');
   const row = pages.find(p => p.page_id === pageId);
@@ -895,7 +958,17 @@ async function byPage(base: string, hdr: Json, me: string,
     return reply({ error: (e as Error).message }, 400);
   }
 
-  if (action === 'page_list') return await pageComments(pg, row, base, hdr, me);
+  if (action === 'page_list') {
+    // Відкрили — нове прочитане: лічильник Сторінки з нуля.
+    try {
+      await fetch(base + '/rest/v1/fb_page_activity?on_conflict=created_by,page_id', {
+        method: 'POST', headers: { ...hdr, Prefer: 'resolution=merge-duplicates,return=minimal' },
+        body: JSON.stringify([{ created_by: me, page_id: row.page_id, page_name: row.name,
+                                seen_at: new Date().toISOString(), new_count: 0 }])
+      });
+    } catch (_e) { /* не позначили — покажемо як нове ще раз */ }
+    return await pageComments(pg, row, base, hdr, me);
+  }
   if (!row.can_moderate) return reply({
     error: 'the token "' + row.token_label + '" can only READ comments on "' + row.name
          + '": it needs pages_manage_engagement, and the Page needs the Moderate content task.' }, 400);

@@ -33,13 +33,16 @@
 let pgRows = null;       // null — ще не питали
 let pgErr = '', pgProb = [];
 let pgFn = '';            // версія функції, що відповіла
-let pgSel = '';          // яка Сторінка розкрита
-let pgList = null;       // коментарі розкритої, null — їдуть
-let pgListErr = '', pgNote = '', pgMore = false, pgCan = true;
-let pgPicked = [];       // вибрані коментарі
-let pgGone = [];         // що видалили цього разу — щоб лишився слід
-let pgBusy = '';
-let pgMsg = { html: '', tone: '' };
+/* КІЛЬКА СТОРІНОК РОЗКРИТО ОДНОЧАСНО. «щоб коли відкриваю pages там
+   сразу відкривались фанки де є коменти». Тому стан коментарів — свій у
+   кожної розкритої Сторінки (pgSt), а pgSel — та, з якою працювали
+   останньою: її беруть дії, коли Сторінку не назвали. */
+let pgSel = '';
+const pgSt = new Map();   // page_id → { list, err, note, more, can, picked, gone, busy, msg }
+const pgNew = st => ({ list: null, err: '', note: '', more: false, can: true,
+                       picked: [], gone: [], busy: '', msg: { html: '', tone: '' } });
+const pgS = id => pgSt.get(String(id || pgSel));
+let pgAutoDone = false;   // розкрили «де нове» для цього завантаження
 
 /* ПЕРЕКЛАД НА ЗАПИТ. «щоб було зрозуміло, про що писали». Одна кнопка —
    один запит до моделі на всі коментарі Сторінки (функція fb-comments,
@@ -48,9 +51,10 @@ let pgMsg = { html: '', tone: '' };
    коментаря — він переживає перемальовування й вибір. */
 let pgUk = {}, pgTrBusy = false;
 
-window.pgTranslate = async function () {
-  if (!pgList || !pgList.length || pgTrBusy) return;
-  const todo = pgList.filter(c => c.message && !(c.id in pgUk));
+window.pgTranslate = async function (pid) {
+  const st = pgS(pid);
+  if (!st || !st.list || !st.list.length || pgTrBusy) return;
+  const todo = st.list.filter(c => c.message && !(c.id in pgUk));
   if (!todo.length) return;
   pgTrBusy = true; pgPaint();
   try {
@@ -58,11 +62,11 @@ window.pgTranslate = async function () {
     const uk = Array.isArray(j.uk) ? j.uk : [];
     todo.forEach((c, k) => { pgUk[c.id] = String(uk[k] || ''); });
     const got = uk.filter(Boolean).length;
-    pgMsg = { html: got ? 'Translated ' + got + ' comment(s). Ukrainian ones are left as they are.'
+    st.msg = { html: got ? 'Translated ' + got + ' comment(s). Ukrainian ones are left as they are.'
                         : 'Nothing to translate — they are already in Ukrainian, or the AI did not answer.',
               tone: '' };
   } catch (e) {
-    pgMsg = { html: 'Could not translate: ' + pgEsc(e.message || String(e)), tone: 'var(--bad)' };
+    st.msg = { html: 'Could not translate: ' + pgEsc(e.message || String(e)), tone: 'var(--bad)' };
   }
   pgTrBusy = false; pgPaint();
 };
@@ -124,8 +128,8 @@ function pgWhy(e) {
 window.pgLoad = async function (force) {
   if (pgRows && !force) { pgPaint(); return; }
   pgErr = ''; pgProb = [];
-  if (force) { pgSel = ''; pgList = null; pgGone = []; }
-  pgRows = null;
+  if (force) { pgSel = ''; pgSt.clear(); }
+  pgRows = null; pgAutoDone = false;
   pgPaint();
   try {
     const j = await pgCall({ action: 'pages' });
@@ -140,44 +144,68 @@ window.pgLoad = async function (force) {
     pgErr = pgWhy(e);
   }
   pgPaint();
+  pgAutoOpen();
 };
 
+/* Сторінки з новими коментарями — розкриваємо самі, по одній за раз
+   (кожна — похід у Facebook). Більше п'яти — п'ять перших, решта з
+   позначкою «N new» чекає кліку. */
+async function pgAutoOpen() {
+  if (pgAutoDone || !Array.isArray(pgRows)) return;
+  pgAutoDone = true;
+  const hot = pgRows.filter(r => Number(r.new_comments) > 0).slice(0, 5);
+  for (const r of hot) if (!pgSt.has(String(r.page_id))) await pgOpenPage(String(r.page_id));
+}
+
+/* Клік по Сторінці: розкрита — згорнути, згорнута — розкрити. */
 window.pgPick = async function (idEnc) {
   const id = decodeURIComponent(idEnc);
-  if (pgSel === id) { pgSel = ''; pgPaint(); return; }
+  if (pgSt.has(id)) { pgSt.delete(id); if (pgSel === id) pgSel = [...pgSt.keys()].pop() || ''; pgPaint(); return; }
+  await pgOpenPage(id);
+};
+
+async function pgOpenPage(id) {
   pgSel = id;
-  pgList = null; pgListErr = ''; pgNote = ''; pgMore = false;
-  pgPicked = []; pgGone = []; pgMsg = { html: '', tone: '' };
+  const st = pgNew();
+  pgSt.set(id, st);
+  // Відкрили — позначка «N new» більше не потрібна.
+  const row = (pgRows || []).find(r => String(r.page_id) === id);
+  if (row) row.new_comments = 0;
   pgPaint();
   try {
     const j = await pgCall({ action: 'page_list', page_id: id });
-    pgList = Array.isArray(j.comments) ? j.comments : [];
-    pgNote = j.note || '';
-    pgMore = !!j.more;
-    pgCan = j.can_moderate !== false;
+    st.list = Array.isArray(j.comments) ? j.comments : [];
+    st.note = j.note || '';
+    st.more = !!j.more;
+    st.can = j.can_moderate !== false;
     pgProb = Array.isArray(j.problems) ? j.problems : [];
   } catch (e) {
-    pgList = [];
-    pgListErr = pgWhy(e);
+    st.list = [];
+    st.err = pgWhy(e);
   }
-  if (pgSel === id) pgPaint();
-};
+  if (pgSt.get(id) === st) pgPaint();
+}
 
-window.pgToggle = function (idEnc) {
+window.pgToggle = function (idEnc, pid) {
+  const st = pgS(pid); if (!st) return;
   const id = decodeURIComponent(idEnc);
-  const i = pgPicked.indexOf(id);
-  if (i < 0) pgPicked.push(id); else pgPicked.splice(i, 1);
+  const i = st.picked.indexOf(id);
+  if (i < 0) st.picked.push(id); else st.picked.splice(i, 1);
+  if (pid) pgSel = String(pid);
   pgPaint();
 };
 
-window.pgPickAll = function (on) {
-  pgPicked = on ? (pgList || []).filter(c => !pgGone.includes(c.id)).map(c => c.id) : [];
+window.pgPickAll = function (on, pid) {
+  const st = pgS(pid); if (!st) return;
+  st.picked = on ? (st.list || []).filter(c => !st.gone.includes(c.id)).map(c => c.id) : [];
   pgPaint();
 };
 
-window.pgAct = async function (what) {
-  if (pgBusy || !pgSel) return;
-  const ids = (pgList || []).filter(c => pgPicked.includes(c.id)).map(c => c.id);
+window.pgAct = async function (what, pid) {
+  const page = String(pid || pgSel);
+  const st = pgSt.get(page);
+  if (!st || st.busy) return;
+  const ids = (st.list || []).filter(c => st.picked.includes(c.id)).map(c => c.id);
   if (!ids.length) return;
 
   if (what === 'delete' && !await ask({ title: 'Delete for good?', danger: true, ok: 'Delete',
@@ -185,26 +213,26 @@ window.pgAct = async function (what) {
         + 'There is no way back. If you only want them out of sight, use Hide — the author '
         + 'still sees their own comment and does not come back to repost it.' })) return;
 
-  pgBusy = 'Working…';
+  st.busy = 'Working…';
   pgPaint();
   let done = 0; const bad = [];
   try {
-    const j = await pgCall({ action: 'page_act', page_id: pgSel, what, comment_ids: ids });
+    const j = await pgCall({ action: 'page_act', page_id: page, what, comment_ids: ids });
     done = Number(j.done) || 0;
     (j.problems || []).forEach(p => bad.push(p));
   } catch (e) {
     bad.push(e.message);
   }
-  pgBusy = '';
+  st.busy = '';
 
   /* Видалене тримаємо на екрані з позначкою: Facebook про нього не
      пам'ятає нічого, і якби ми просто перечитали список, не лишилось
      би жодного слiду, що саме прибрали. Приховане ж перечитується
      чесно — там стан бере сам Facebook. */
   if (what === 'delete' && done) {
-    ids.forEach(id => { if (!pgGone.includes(id)) pgGone.push(id); });
-    pgPicked = [];
-    pgMsg = { html: done + ' comment(s) deleted'
+    ids.forEach(id => { if (!st.gone.includes(id)) st.gone.push(id); });
+    st.picked = [];
+    st.msg = { html: done + ' comment(s) deleted'
       + (bad.length ? '<br>' + bad.slice(0, 3).map(pgEsc).join('<br>') : ''),
       tone: bad.length ? 'var(--warn)' : 'var(--ok)' };
     pgPaint();
@@ -212,13 +240,13 @@ window.pgAct = async function (what) {
   }
 
   const word = what === 'hide' ? 'hidden' : 'shown again';
-  pgMsg = { html: done + ' comment(s) ' + word
+  const msg = { html: done + ' comment(s) ' + word
     + (bad.length ? '<br>' + bad.slice(0, 3).map(pgEsc).join('<br>') : ''),
     tone: bad.length ? 'var(--warn)' : 'var(--ok)' };
   // Перечитуємо: стан «сховано» знає Facebook, а не ми.
-  const keep = pgSel;
-  pgSel = '';
-  await pgPick(encodeURIComponent(keep));
+  await pgOpenPage(page);
+  const now = pgSt.get(page);
+  if (now) { now.msg = msg; pgPaint(); }
 };
 
 /* Короткий підпис часу: у стрічці важливо «давно чи щойно», а не
@@ -234,8 +262,9 @@ function pgAgo(iso) {
 
 function pgRowHtml(r) {
   const enc = encodeURIComponent(String(r.page_id)).replace(/'/g, '%27');
-  const open = pgSel === String(r.page_id);
-  return `<div class="pg-item ${open ? 'is-open' : ''}">
+  const open = pgSt.has(String(r.page_id));
+  const fresh = open ? 0 : Number(r.new_comments) || 0;
+  return `<div class="pg-item ${open ? 'is-open' : ''}" data-page="${pgEsc(r.page_id)}">
     <button type="button" class="pg-pick" onclick="pgPick('${enc}')"
       title="${r.can_moderate
         ? 'Read and moderate what people write under this Page'
@@ -254,14 +283,19 @@ function pgRowHtml(r) {
                    String(r.name || '?').trim().charAt(0).toUpperCase())}</span>`}
       <span class="pg-name">${pgEsc(r.name || '#' + r.page_id)}</span>
       <span class="pg-tags">
+        ${fresh ? `<span class="pg-new" title="New comments since you last opened this Page">${fresh} new</span>` : ''}
         ${r.can_moderate ? '' : '<span class="fcm-tag">read only</span>'}
         ${r.token ? `<span class="pg-tok" title="Seen through the token ${pgEsc(r.token)}">${pgEsc(r.token)}</span>` : ''}
       </span>
       <span class="pg-arrow">${open ? '&minus;' : '+'}</span></button>
-    ${open ? pgComments() : ''}</div>`;
+    ${open ? pgComments(String(r.page_id)) : ''}</div>`;
 }
 
-function pgComments() {
+function pgComments(pid) {
+  const st = pgSt.get(pid);
+  const pgList = st.list, pgListErr = st.err, pgNote = st.note, pgMore = st.more, pgCan = st.can,
+        pgPicked = st.picked, pgGone = st.gone, pgBusy = st.busy, pgMsg = st.msg;
+  const pe = encodeURIComponent(pid).replace(/'/g, '%27');
   if (pgList === null) return `<p class="fbr-hint">Asking Facebook… this walks the latest posts
     of the Page, so it takes a moment.</p>`;
 
@@ -271,7 +305,7 @@ function pgComments() {
     const enc = encodeURIComponent(c.id).replace(/'/g, '%27');
     return `<label class="fcm-row ${on ? 'is-on' : ''} ${gone || c.is_hidden ? 'is-hidden' : ''}">
       <input type="checkbox" ${on ? 'checked' : ''} ${gone ? 'disabled' : ''}
-        onchange="pgToggle('${enc}')">
+        onchange="pgToggle('${enc}', decodeURIComponent('${pe}'))">
       <span class="fcm-body">
         <span class="fcm-top">
           <b>${pgEsc(c.from || 'someone')}</b>
@@ -299,11 +333,11 @@ function pgComments() {
   const acts = !pgCan
     ? ''
     : `<div class="fcm-acts">
-      <button type="button" onclick="pgAct('hide')" ${n && !pgBusy ? '' : 'disabled'}
+      <button type="button" onclick="pgAct('hide', decodeURIComponent('${pe}'))" ${n && !pgBusy ? '' : 'disabled'}
         title="Only the author keeps seeing it. Reversible.">Hide${n ? ' ' + n : ''}</button>
-      <button type="button" onclick="pgAct('unhide')" ${n && !pgBusy ? '' : 'disabled'}
+      <button type="button" onclick="pgAct('unhide', decodeURIComponent('${pe}'))" ${n && !pgBusy ? '' : 'disabled'}
         title="Put them back in public view">Show</button>
-      <button type="button" onclick="pgAct('delete')" class="is-bad"
+      <button type="button" onclick="pgAct('delete', decodeURIComponent('${pe}'))" class="is-bad"
         ${n && !pgBusy ? '' : 'disabled'} title="Gone for good">Delete</button>
     </div>`;
 
@@ -314,8 +348,8 @@ function pgComments() {
       ? `<p class="fbr-hint">${pgEsc(pgNote) || 'Nothing has been written under the latest posts of this Page.'}</p>`
       : `<label class="fcm-all"><input type="checkbox" ${
             n && n === pgList.filter(c => !pgGone.includes(c.id)).length ? 'checked' : ''}
-            onchange="pgPickAll(this.checked)"> ${pgList.length} comment(s)</label>
-         <button type="button" class="fcm-tr" onclick="pgTranslate()" ${pgTrBusy ? 'disabled' : ''}
+            onchange="pgPickAll(this.checked, decodeURIComponent('${pe}'))"> ${pgList.length} comment(s)</label>
+         <button type="button" class="fcm-tr" onclick="pgTranslate(decodeURIComponent('${pe}'))" ${pgTrBusy ? 'disabled' : ''}
            title="Translate every comment here into Ukrainian (one AI request)">${
            pgTrBusy ? 'Translating…' : '\u{1F1FA}\u{1F1E6} Translate'}</button>
          <div class="fcm-list">${rows}</div>

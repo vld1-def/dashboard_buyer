@@ -162,13 +162,13 @@ ok('текст коментаря на екрані', /а коли виплат�
 await page.evaluate(() => pgPick('222'));
 await page.waitForTimeout(120);
 ok('у read-only Сторінці кнопок дії немає', await page.evaluate(() => {
-  const box = document.querySelector('#pg-list .pg-item.is-open .pg-cm');
+  const box = document.querySelector('#pg-list .pg-item.is-open[data-page="222"] .pg-cm');
   return box.querySelectorAll('.fcm-acts button').length === 0
       && /Moderate content task/.test(box.textContent);
 }));
 
 /* ─────────── сховати ─────────── */
-await page.evaluate(() => pgPick('111'));
+await page.evaluate(() => { pgSt.delete('111'); return pgPick('111'); });
 await page.waitForTimeout(120);
 const hid = await page.evaluate(async () => {
   pgToggle('c1');
@@ -281,7 +281,7 @@ ok('чуже ім\'я з кутовою дужкою не стає розміт�
   window.__comments = [{ id: 'x1', story: 'p1', page: 'Alpha', ad: 'p', live: true,
     message: '<img src=x onerror="window.__xss=1">', from: '<b>bad</b>',
     created_time: '2026-10-20T06:00:00Z', is_hidden: false, likes: 0 }];
-  pgSel = '';
+  pgSt.delete('111');
   await pgPick('111');
   const box = document.querySelector('#pg-list .pg-item.is-open .pg-cm');
   // <b> тут наш власний — у нього загорнуте ім'я автора. Важливо, що

@@ -67,12 +67,18 @@ const t = tgText([{ owner: 'u', cab: '🌐 4175 › 🏦 1', ad: 'KG_JS_633', fr
   { owner: 'u', cab: 'c', ad: 'a', from: 'Оля', text: 'Дякую', hidden: false, byUs: false }]);
 ok('переклад під оригіналом', /Айбек: Бул ондой канча төлөйт\?\n🇺🇦 Скільки це коштує\?/.test(t), t);
 ok('український коментар — без зайвого рядка', !/Дякую\n🇺🇦/.test(t), t);
+/* «підписуй з якої фанки прийшло». */
+const tp = tgText([{ owner: 'u', cab: 'c', ad: 'a', from: 'X', text: 'hi', hidden: false, byUs: false,
+  page: 'Mega Bet KG', pageId: '111' }, { owner: 'u', cab: 'c', ad: 'a', from: 'Y', text: 'yo', hidden: false,
+  byUs: false, page: '', pageId: '222' }]);
+ok('у повідомленні — назва Сторінки', /📄 Mega Bet KG/.test(tp), tp);
+ok('назви немає — хоч номер Сторінки', /📄 Page 222/.test(tp), tp);
 ok('перекладаємо перед відправкою', /const uk = await translateUk\(shown\.map\(f => f\.text\)\);/.test(CM));
 
 /* ── Pages ── */
 ok('дія translate лише для залогіненого', /if \(action === 'translate'\) \{[\s\S]{0,200}whoAmI\(base, anon, a\)/.test(CM));
 const PG = fs.readFileSync('build/pages.js', 'utf8');
-ok('кнопка Translate у вікні Pages', /onclick="pgTranslate\(\)"/.test(PG));
+ok('кнопка Translate у вікні Pages', /onclick="pgTranslate\(/.test(PG));
 ok('переклад під коментарем', /pgUk\[c\.id\] \? `<span class="fcm-uk">/.test(PG));
 ok('уже перекладене не просимо вдруге', /!\(c\.id in pgUk\)/.test(PG));
 
