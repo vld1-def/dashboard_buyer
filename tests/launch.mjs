@@ -423,5 +423,22 @@ ok('кнопка стоїть лише на рядку кампанії', /CD_CO
 ok('поки що кнопку вимкнено', /const CD_COPY_ON = false;/.test(CD));
 ok('і це доїхало в зібраний index.html', /cdCopy = async function/.test(OUT) && /\.cd-copy \{/.test(OUT));
 
+/* «чому не підтягуються фанки на деяких кабах?» promote_pages відмовив —
+   беремо Сторінки токена й кажемо, що відповів Facebook. */
+{
+  const fb = await run({ body: { spec: SPEC, target_account: '222', check: true },
+    lists: { '/me/accounts': [{ id: '55', name: 'Token Page', tasks: ['ADVERTISE'] }, { id: '56', name: 'Read only', tasks: ['ANALYZE'] }],
+             '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+  const j = fb.body;
+  const pages = (j.pages || []).map(x => x.name).join();
+  const txt = JSON.stringify(j.checks || []);
+  ok('promote_pages відмовив — Сторінки токена', pages === 'Token Page', j);
+  ok('і сказано чому', /no page list for this cabinet \(unknown \/act_222\/promote_pages\)/.test(txt), txt);
+  const none = await run({ body: { spec: SPEC, target_account: '222', check: true },
+    lists: { '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
+  const j2 = none.body;
+  ok('нема й Сторінок токена — помилку Facebook віддаємо назовні', /unknown \/act_222\/promote_pages/.test(j2.pages_err || ''), j2);
+}
+
 console.log('\n' + pass + ' ok, ' + fail + ' fail');
 if (fail) process.exit(1);

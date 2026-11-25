@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-23.7';
+const FN_VERSION = '2026-11-25.1';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -192,7 +192,7 @@ type Check = { level: 'ok' | 'warn' | 'fail' | 'unknown'; text: string };
 /* page: випадкова Сторінка цільового кабінета для оголошень, чия Сторінка
    йому недоступна; lost: Сторінки, яких він не бачить; noAds: оголошень
    не створюємо зовсім — «сам зайду й запущусь». */
-type Fix = { pixel?: string; page?: string; pageName?: string; lost?: string[]; noAds?: boolean; pages?: { id: string; name: string }[] };
+type Fix = { pixel?: string; page?: string; pageName?: string; lost?: string[]; noAds?: boolean; pages?: { id: string; name: string }[]; pagesErr?: string };
 
 const pageOf = (cr: Json): string => {
   const story = String(cr?.effective_object_story_id || cr?.object_story_id || '');
@@ -200,10 +200,32 @@ const pageOf = (cr: Json): string => {
   return String(cr?.object_story_spec?.page_id || '');
 };
 
+/* Остання відмова listIds — щоб сказати людині, ЩО відповів Facebook,
+   а не лише «не вдалось». */
+let listErr = '';
 async function listIds(path: string, token: string): Promise<Map<string, string> | null> {
   try {
     const j = await graph(path, token, { fields: 'id,name', limit: 200 });
     return new Map((j.data || []).map((x: Json) => [String(x.id), String(x.name || x.id)]));
+  } catch (e) { listErr = String((e as Error).message || e).slice(0, 220); return null; }
+}
+
+/* ЗАПАСНИЙ СПИСОК СТОРІНОК. «чому не підтягуються фанки на деяких
+   кабах?» /act_X/promote_pages відмовляє, коли токену бракує прав саме
+   на рекламу від імені Сторінки (pages_manage_ads) або кабінет в іншому
+   БМ. Тоді беремо Сторінки самого токена (/me/accounts), де в нього є
+   право рекламувати: їх видно в списку з позначкою «token», і запуск
+   іде від них. */
+const PAGE_AD_TASKS = ['ADVERTISE', 'MANAGE', 'CREATE_CONTENT'];
+async function tokenPages(token: string): Promise<Map<string, string> | null> {
+  try {
+    const j = await graph('/me/accounts', token, { fields: 'id,name,tasks', limit: 200 });
+    const m = new Map<string, string>();
+    (j.data || []).forEach((x: Json) => {
+      const t: string[] = Array.isArray(x.tasks) ? x.tasks : [];
+      if (!t.length || t.some(k => PAGE_AD_TASKS.includes(k))) m.set(String(x.id), String(x.name || x.id));
+    });
+    return m;
   } catch (_e) { return null; }
 }
 
@@ -225,9 +247,21 @@ async function preflight(spec: Json, T: { token: string; currency: string; statu
      випадкову Сторінку цього кабінета. */
   const pages = [...new Set(ads.map(a => pageOf(a.creative || {})).filter(Boolean))];
   if (!same && ads.length) {
-    const can = await listIds('/act_' + tgt + '/promote_pages', T.token);
+    listErr = '';
+    let can = await listIds('/act_' + tgt + '/promote_pages', T.token);
+    const why = listErr;
+    if (!can || !can.size) {
+      const tp = await tokenPages(T.token);
+      if (tp && tp.size) {
+        checks.push({ level: 'warn', text: 'Facebook gave no page list for this cabinet'
+          + (why ? ' (' + why + ')' : '') + ' — using the pages of the token instead' });
+        can = tp;
+      }
+    }
     if (!can) {
-      checks.push({ level: 'unknown', text: 'could not read which pages this cabinet can use — ads will try the template’s page' });
+      fix.pagesErr = why || 'Facebook did not answer';
+      checks.push({ level: 'unknown', text: 'could not read which pages this cabinet can use'
+        + (why ? ': ' + why : '') + ' — ads will try the template’s page' });
     } else if (!can.size) {
       fix.noAds = true;
       checks.push({ level: 'warn', text: 'this cabinet has no page — Facebook cannot create an ad without one, so campaign and ad sets only' });
@@ -467,7 +501,7 @@ Deno.serve(async (req) => {
   if (fromSpec) {
     const pf = await preflight(spec, T, tgt, same, String(body.page_id || '').trim());
     if (body.check) return reply({ ok: true, mode: 'check', target_account: tgt, sample, checks: pf.checks,
-      pages: pf.fix.pages || [], page: pf.fix.page || '' });
+      pages: pf.fix.pages || [], page: pf.fix.page || '', pages_err: pf.fix.pagesErr || '' });
     const bad = pf.checks.filter(c => c.level === 'fail');
     if (bad.length) return reply({ error: 'not launched: ' + bad.map(c => c.text).join('; '), checks: pf.checks }, 409);
     shaped = shape(spec, body.overrides || {}, pf.fix, same);

@@ -317,6 +317,8 @@ window.ltCheck = async function () {
         if (Array.isArray(r.j.pages)) ltCur.pagesOf[id] = r.j.pages;
         else if (!ltCur.pagesOf[id]) ltCur.pagesOf[id] = [];
         if (!ltCur.pageFor[id] && r.j.page) ltCur.pageFor[id] = r.j.page;
+        ltCur.pagesErr = ltCur.pagesErr || {};
+        ltCur.pagesErr[id] = r.j.pages_err || '';
       }
     } catch (e) { ltRes[id] = { err: e.message }; }
   }));
@@ -404,7 +406,8 @@ function ltPaintPreview() {
           <label class="lt-pv-page"><span>Page</span>
             ${pages.length ? `<select class="lt-ed-in" onchange="ltCur.pageFor['${id}']=this.value" ${ltBusy ? 'disabled' : ''}>${pages.map(p =>
               `<option value="${ltEsc(p.id)}"${ltCur.pageFor[id] === p.id ? ' selected' : ''}>${ltEsc(p.name)}</option>`).join('')}</select>`
-              : '<em>no page list — ads try the template’s page</em>'}</label>
+              : `<em${ltCur.pagesErr && ltCur.pagesErr[id] ? ` title="${ltEsc(ltCur.pagesErr[id])}"` : ''}>no page list${
+                  ltCur.pagesErr && ltCur.pagesErr[id] ? ' — Facebook: ' + ltEsc(ltCur.pagesErr[id].slice(0, 90)) : ' — ads try the template’s page'}</em>`}</label>
           ${x.runs ? `<span class="lt-st ${x.runs.every(q => q.ok) ? 'is-ok' : 'is-warn'}">${x.runs.filter(q => q.ok).length}/${x.runs.length} launched</span>` : ''}</div>
         ${(ltCur.names[id] || []).map((n, k) => {
           const run = x.runs && x.runs[k];
