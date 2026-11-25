@@ -54,4 +54,20 @@ ok('зʼявляється Clear', r.clear, r);
 ok('кнопка позначена, коли фільтр діє', r.btnOn === true, r);
 ok('кнопка — лише іконка', r.btnIcon === true, r);
 
+/* Мітка гео лишається, поки сьогодні є спенд, навіть без активних оголошень. */
+const g = await page.evaluate(() => {
+  window.tdRow = r => ({ geo: r.g });
+  cabSnapRows = [
+    { account_id: '9', effective_status: 'PAUSED', spend: 14, g: 'KG' },
+    { account_id: '9', effective_status: 'ACTIVE', spend: 0, g: 'TJ' },
+    { account_id: '9', effective_status: 'PAUSED', spend: 0, g: 'UZ' }];
+  cabGeoBuild();
+  const c = { id: '9', fb: { currency: 'USD' } };
+  return { list: cabGeoList(c).join(), tip: cabGeoHtml(c) };
+});
+ok('гео зі спендом сьогодні лишається без активних оголошень', g.list.split(',').includes('KG'), g);
+ok('активне гео без спенду теж є', g.list.split(',').includes('TJ'), g);
+ok('зупинене й без спенду — мітки немає', !g.list.split(',').includes('UZ'), g);
+ok('у підказці сказано, що активних немає', /KG · no active ads/.test(g.tip), g.tip);
+
 await done(browser, srv, errs);

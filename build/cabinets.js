@@ -558,7 +558,7 @@ function cabColsMenu(keep) {
   const gb = (k, t) => `<button type="button" class="cab-geo-sw ${gm === k ? 'is-on' : ''}"
       onclick="cabGeoMode('${k}')">${t}</button>`;
   box.innerHTML = `<p class="cab-pop-h">Geo before status</p>
-    <div class="cab-geo-sws" title="Countries of the ads running in the cabinet right now">${
+    <div class="cab-geo-sws" title="Countries of the ads that are active or have spent today">${
       gb('flag', 'Flags')}${gb('code', 'Codes')}${gb('off', 'Hide')}</div>`
     + `<p class="cab-pop-h">Columns · drag to reorder</p>`
     + on.map(row).join('')
@@ -1188,15 +1188,21 @@ let cabGeo = {}, cabGeoWait = false;
 function cabGeoBuild() {
   const m = {};
   if (typeof tdRow !== 'function') { cabGeo = m; return; }
+  /* «мітки гео не видаляти коли на ньому немає активного трафу, дивись
+     за спендом: якщо сьогодні є спенд, то мітка гео також має бути».
+     Гео — це оголошення АКТИВНІ або ті, що сьогодні вже витратили. */
   (cabSnapRows || []).forEach(r => {
-    if (String(r.effective_status || '').toUpperCase() !== 'ACTIVE') return;
+    const live = String(r.effective_status || '').toUpperCase() === 'ACTIVE';
+    const spent = Number(r.spend) || 0;
+    if (!live && !(spent > 0)) return;
     let g = '';
     try { g = tdRow(r).geo; } catch (e) { g = ''; }
     if (!/^[A-Z]{2}$/.test(g)) return;
     const id = String(r.account_id || '').replace(/\D/g, '');
     const o = (m[id] = m[id] || {});
     const x = (o[g] = o[g] || { ads: 0, spend: 0 });
-    x.ads++; x.spend += Number(r.spend) || 0;
+    if (live) x.ads++;
+    x.spend += spent;
   });
   cabGeo = m;
   if (typeof tdMaps !== 'undefined' && !tdMaps && typeof tdMapsLoad === 'function' && !cabGeoWait) {
@@ -1218,8 +1224,9 @@ function cabGeoHtml(c) {
   const list = cabGeoList(c);
   if (!list.length) return '';
   const cur = c.fb && c.fb.currency;
-  const tip = 'Running now:\n' + list.map(g => g + ' · ' + o[g].ads + ' active ad'
-    + (o[g].ads === 1 ? '' : 's') + ' · ' + cabMoneyCur(o[g].spend, cur) + ' today').join('\n');
+  const tip = 'Geo today:\n' + list.map(g => g + ' · ' + (o[g].ads
+    ? o[g].ads + ' active ad' + (o[g].ads === 1 ? '' : 's') : 'no active ads')
+    + ' · ' + cabMoneyCur(o[g].spend, cur) + ' today').join('\n');
   const one = g => mode === 'code' || typeof tdFlag !== 'function'
     ? `<span class="cab-geo-c">${g}</span>`
     : tdFlag(g).replace('onerror="this.remove()"',
@@ -1282,10 +1289,10 @@ function cabFiltMenu(keep) {
     <div class="cab-pop-row"><button type="button" class="cab-pop-i ${cabFilt.spend ? 'is-on' : ''}"
       onclick="cabFiltSpend()" title="Cabinets that have spent something today (in their own time zone)">
       <span class="cab-pop-tick">${cabFilt.spend ? '✓' : ''}</span>Spend today</button></div>
-    <p class="cab-pop-h">Geo running now</p>
+    <p class="cab-pop-h">Geo today</p>
     ${geos.length ? `<div class="cab-filt-geos">${geos.map(x => `<button type="button"
         class="cab-filt-g ${cabFilt.geo.includes(x.g) ? 'is-on' : ''}" onclick="cabFiltGeo('${x.g}')"
-        title="${x.n} cabinet(s) running ${x.g} now">${flag(x.g)}<b>${x.g}</b><span>${x.n}</span></button>`).join('')}</div>`
+        title="${x.n} cabinet(s) with ${x.g} active or spent today">${flag(x.g)}<b>${x.g}</b><span>${x.n}</span></button>`).join('')}</div>`
       : '<p class="cab-filt-none">No geo labels yet — they come from the active ads in the snapshot.</p>'}
     ${cabFiltOn() ? '<button type="button" class="cab-filt-clear" onclick="cabFiltClear()">Clear filter</button>' : ''}`;
   cabPopAt(document.getElementById('cab-filt-btn'), box);
@@ -2576,7 +2583,7 @@ function cabSection(items) {
            місцях. */ ''}
       ${/* ГЕО — ОКРЕМИЙ СТОВПЧИК ПЕРЕД СТАТУСОМ. Ховається перемикачем
            у меню колонок (Flags / Codes / Hide). */
-        cabGeoOn() ? th('geo', 'Geo', 'cab-geo-td', 'Countries of the ads running in the cabinet right now') : ''}
+        cabGeoOn() ? th('geo', 'Geo', 'cab-geo-td', 'Countries of the ads that are active or have spent today') : ''}
       ${th('state', 'Status', 'cab-fz-end')}
       ${/* Підпис сталий — «Spend», — а період написаний у підказці.
            Дата в самій шапці міняла ширину стовпця на кожен фільтр, і
