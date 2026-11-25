@@ -44,7 +44,7 @@ ok('той самий файл двічі не додається', r.once === 1
 ok('картинка — у режим зображень', r.img === 'I.png', r);
 ok('немає файлу — сказано', /No file named X/.test(r.miss), r.miss);
 ok('немає папки Drive — сказано, де її вказати', /Settings → Integrations → Google Drive/.test(r.nofolder), r.nofolder);
-ok('кнопка в рядку списку креативів', /onclick="crToUniq\(event, '\$\{cidEsc\}'\)"/.test(LEG));
+ok('кнопка в рядку списку креативів', /onclick="crUniqRow\(event, '\$\{cidEsc\}'\)"/.test(LEG));
 ok('і в шапці картки креатива', /onclick="crToUniq\(event, currentCreativeID\)"/.test(LEG));
 
 /* Без папки Drive блок сірий і неактивний, із посиланням на налаштування. */
