@@ -905,6 +905,10 @@ let lcRows = [], lcQ = '', lcKind = '', lcPick = null, lcUrls = {};
    оголошення посилання на файл Drive — при запуску fb-launch бере його
    звідти сама, через браузер нічого не качається. */
 let lcSrc = 'drive', lcDrive = null, lcDriveErr = '';
+/* «додати до Creative Analyzer, але щоб клікаючи на креатив відкривати
+   прев'ю (і дивитись відео)». lcCa — бібліотеку відкрили з аналізатора:
+   на картках цифри креативу, у прев'ю — перехід до нього. */
+let lcCa = false;
 const lcDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
 async function lcDriveLoad(force) {
   if (lcDrive && !force) return;
@@ -993,14 +997,15 @@ function lcBox() {
     el = document.createElement('div'); el.id = 'lc-modal'; el.className = 'lt-modal lc-modal hidden';
     el.innerHTML = '<div class="lt-back" onclick="lcClose()"></div><div class="lt-card lc-card" role="dialog" aria-label="Creative library"></div>';
     document.body.appendChild(el);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !el.classList.contains('hidden')) { e.stopPropagation(); lcClose(); } }, true);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !el.classList.contains('hidden') && !document.getElementById('lc-view')) { e.stopPropagation(); lcClose(); } }, true);
   }
   return el;
 }
-window.lcClose = function () { const el = document.getElementById('lc-modal'); if (el) el.classList.add('hidden'); lcPick = null; };
+window.lcClose = function () { const el = document.getElementById('lc-modal'); if (el) el.classList.add('hidden'); lcPick = null; lcCa = false; };
 
 window.lcOpen = async function (pick) {
   lcPick = pick || null;
+  lcCa = false;
   if (!lcDriveOn() && lcSrc === 'drive') lcSrc = 'up';
   const el = lcBox(); el.classList.remove('hidden');
   el.querySelector('.lc-card').innerHTML = '<div class="lt-empty">Loading the library…</div>';
@@ -1031,14 +1036,17 @@ function lcDriveTile(f) {
   const kind = /^video\//.test(f.mimeType) ? 'video' : 'image';
   const src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(f.id) + '&sz=w400';
   const used = (ltRows || []).filter(r => JSON.stringify(r.spec || {}).includes(f.id)).length;
-  return `<div class="lc-tile${lcPick ? ' is-pick' : ''}" ${lcPick ? `onclick="lcDriveChoose('${ltEsc(f.id)}')"` : ''}>
+  const fid = ltEsc(f.id).replace(/'/g, '');
+  return `<div class="lc-tile is-pick" onclick="${lcPick ? `lcDriveChoose('${fid}')` : `lcViewDrive('${fid}')`}">
     <div class="lc-prev"><img src="${ltEsc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">
       <span class="lc-noprev">${kind === 'video' ? '▶' : '▣'}</span>
       <span class="lc-kind">${kind === 'video' ? '▶ video' : 'image'}</span>
-      ${f.folder ? `<span class="lc-folder">${ltEsc(f.folder)}</span>` : ''}</div>
+      ${f.folder ? `<span class="lc-folder">${ltEsc(f.folder)}</span>` : ''}
+      ${lcPlayIco(kind)}
+      ${lcPick ? `<button type="button" class="lc-eye" title="Preview" onclick="event.stopPropagation();lcViewDrive('${fid}')">${LC_EYE}</button>` : ''}</div>
     <div class="lc-meta">
       <div class="lc-name" title="${ltEsc(f.name)}">${ltEsc(f.name)}</div>
-      <div class="lc-sub">${f.size ? (Number(f.size) / 1048576).toFixed(1) + ' MB · ' : ''}${used ? 'in ' + used + ' template' + (used > 1 ? 's' : '') : 'not used yet'}</div>
+      ${lcCa ? lcCaLine(f.name) : `<div class="lc-sub">${f.size ? (Number(f.size) / 1048576).toFixed(1) + ' MB · ' : ''}${used ? 'in ' + used + ' template' + (used > 1 ? 's' : '') : 'not used yet'}</div>`}
     </div></div>`;
 }
 
@@ -1052,13 +1060,16 @@ function lcPaint() {
   const tile = r => {
     const src = lcUrls[r.kind === 'image' ? r.path : r.thumb_path];
     const used = lcUsed(r.path);
-    return `<div class="lc-tile${lcPick ? ' is-pick' : ''}" ${lcPick ? `onclick="lcChoose(${Number(r.id)})"` : ''}>
+    return `<div class="lc-tile is-pick" onclick="${lcPick ? `lcChoose(${Number(r.id)})` : `lcViewUp(${Number(r.id)})`}">
       <div class="lc-prev">${src ? `<img src="${ltEsc(src)}" alt="" loading="lazy">` : `<span class="lc-noprev">${r.kind === 'video' ? '▶' : '▣'}</span>`}
-        <span class="lc-kind">${r.kind === 'video' ? '▶ video' : 'image'}</span></div>
+        <span class="lc-kind">${r.kind === 'video' ? '▶ video' : 'image'}</span>
+        ${lcPlayIco(r.kind)}
+        ${lcPick ? `<button type="button" class="lc-eye" title="Preview" onclick="event.stopPropagation();lcViewUp(${Number(r.id)})">${LC_EYE}</button>` : ''}</div>
       <div class="lc-meta">
         <div class="lc-name" title="${ltEsc(r.name || '')}">${ltEsc(r.name || r.path.split('/').pop())}</div>
+        ${lcCa ? lcCaLine(r.name || r.path.split('/').pop()) : ''}
         <div class="lc-sub">${r.size ? (r.size / 1048576).toFixed(1) + ' MB · ' : ''}${used ? 'in ' + used + ' template' + (used > 1 ? 's' : '') : 'not used yet'}</div>
-        ${lcPick ? '' : `<div class="lc-tags">
+        ${lcPick ? '' : `<div class="lc-tags" onclick="event.stopPropagation()">
           <input class="lt-ed-in" value="${ltEsc(r.geo || '')}" placeholder="Geo" maxlength="2" onchange="lcSet(${Number(r.id)}, 'geo', this.value)">
           <input class="lt-ed-in" value="${ltEsc(r.lang || '')}" placeholder="Language" onchange="lcSet(${Number(r.id)}, 'lang', this.value)">
           <button type="button" class="lt-md-btn" onclick="lcDelete(${Number(r.id)})" title="Delete from the library">×</button></div>`}
@@ -1066,7 +1077,7 @@ function lcPaint() {
       </div></div>`;
   };
   card.innerHTML = `<div class="lt-head"><div><h3>${lcPick ? 'Pick a creative' : 'Creative library'}</h3>
-      <p>${lcPick ? 'Click a creative — it goes on the ad without uploading again.' : 'Everything you uploaded for launches. Add geo and language to find things faster.'}</p></div>
+      <p>${lcPick ? 'Click a creative — it goes on the ad without uploading again. The eye opens a preview.' : 'Everything you uploaded for launches. Click one to watch it.'}</p></div>
       <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
         <input class="lt-search lc-search" placeholder="Search name, geo, language…" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
     <div class="lc-bar">
@@ -1126,6 +1137,104 @@ window.lcChoose = function (id) {
   toast('Creative set: ' + meta.name, 'ok', 2000);
 };
 
+/* ══ ПРЕВ'Ю: ВІДЕО ГРАЄ, КАРТИНКА НА ВЕСЬ ЕКРАН ══
+   Те саме вікно, що й у картці креатива в аналізаторі (dv-modal), але
+   з рядком під кадром: назва, цифри креативу й «Open in Creative
+   Analyzer». Drive грає своїм плеєром (/preview), завантажене —
+   звичайним <video> за підписаним посиланням. */
+const LC_EYE = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.9"/></svg>';
+const lcPlayIco = kind => kind === 'video' ? '<span class="lc-play" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5.5 3.6v8.8L12.4 8z" fill="currentColor"/></svg></span>' : '';
+
+/* Цифри креативу з аналізатора — за весь час. Файл «KG_JS_674_1 -v2.mp4»
+   належить креативу kg_js_674_1: те саме правило, що й у «Not
+   launched» (crFileCid). */
+let lcCaMap = null;
+function lcCaStats() {
+  if (lcCaMap) return lcCaMap;
+  const m = {};
+  (window.creativesRawData || []).forEach(d => {
+    const cid = String(d.cid || '').trim().toLowerCase();
+    if (!cid) return;
+    const o = m[cid] || (m[cid] = { cid: String(d.cid).trim(), s: 0, i: 0, r: 0, d: 0 });
+    o.s += Number(d.spend) || 0; o.i += Number(d.installs) || 0;
+    o.r += Number(d.regs) || 0; o.d += Number(d.deps) || 0;
+  });
+  return (lcCaMap = m);
+}
+function lcCaOf(name) {
+  const m = lcCaStats();
+  const cid = typeof crFileCid === 'function' ? crFileCid(name, new Set(Object.keys(m)))
+    : String(name).replace(/\.[^.]+$/, '').trim().toLowerCase();
+  return cid && m[cid] ? m[cid] : null;
+}
+function lcCaLine(name) {
+  const o = lcCaOf(name);
+  if (!o) return '<div class="lc-sub lc-ca is-cold">never launched</div>';
+  return `<div class="lc-sub lc-ca"><b>$${Math.round(o.s).toLocaleString()}</b> · ${o.i} inst · ${o.r} reg · <b class="${o.d ? 'is-dep' : ''}">${o.d} dep</b>${
+    o.d ? ' · CPA $' + Math.round(o.s / o.d) : ''}</div>`;
+}
+
+function lcViewer(media, name) {
+  lcViewClose();
+  const o = lcCaOf(name);
+  const wrap = document.createElement('div');
+  wrap.id = 'lc-view'; wrap.className = 'dv-modal lc-view';
+  wrap.onclick = e => { if (e.target === wrap) lcViewClose(); };
+  wrap.innerHTML = `<div class="dv-box">
+      <button type="button" class="dv-x" title="Close (Esc)" onclick="lcViewClose()">&times;</button>
+      <div class="dv-frame lc-view-frame">${media}</div>
+      <div class="lc-view-foot">
+        <span class="lc-view-name" title="${ltEsc(name)}">${ltEsc(name)}</span>
+        ${o ? `<span class="lc-view-st">$${Math.round(o.s).toLocaleString()} spend · ${o.i} inst · ${o.r} reg · ${o.d} dep${o.d ? ' · CPA $' + Math.round(o.s / o.d) : ''}</span>
+          ${typeof selectCreative === 'function' ? `<button type="button" class="lc-view-go" onclick="lcGoCreative('${ltEsc(o.cid).replace(/'/g, '')}')">Open in Creative Analyzer →</button>` : ''}`
+          : '<span class="lc-view-st">never launched</span>'}
+      </div></div>`;
+  document.body.appendChild(wrap);
+  document.addEventListener('keydown', lcViewEsc, true);
+}
+function lcViewEsc(e) { if (e.key === 'Escape') { e.stopPropagation(); lcViewClose(); } }
+window.lcViewClose = function () {
+  document.removeEventListener('keydown', lcViewEsc, true);
+  const v = document.getElementById('lc-view');
+  if (v) { v.querySelectorAll('video').forEach(x => { try { x.pause(); } catch (e) {} }); v.remove(); }
+};
+window.lcViewDrive = function (id) {
+  const f = (lcDrive || []).find(x => x.id === id);
+  const name = f ? f.name : id;
+  const media = f && /^image\//.test(f.mimeType)
+    ? `<img src="https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w2000" alt="" referrerpolicy="no-referrer">`
+    : `<iframe src="https://drive.google.com/file/d/${encodeURIComponent(id)}/preview" allow="autoplay" allowfullscreen></iframe>`;
+  lcViewer(media, name);
+};
+window.lcViewUp = async function (id) {
+  const r = lcRows.find(x => x.id === id); if (!r) return;
+  const name = r.name || r.path.split('/').pop();
+  let url = r.kind === 'image' ? lcUrls[r.path] : '';
+  if (!url) {
+    try {
+      const { data } = await sb.storage.from('launch-media').createSignedUrl(r.path, 3600);
+      url = data && data.signedUrl;
+    } catch (e) { url = ''; }
+  }
+  if (!url) { toast('Could not open the file', 'error'); return; }
+  lcViewer(r.kind === 'video'
+    ? `<video src="${ltEsc(url)}" controls autoplay playsinline></video>`
+    : `<img src="${ltEsc(url)}" alt="">`, name);
+};
+window.lcGoCreative = function (cid) {
+  lcViewClose(); lcClose();
+  try { if (typeof navGo === 'function') navGo('creatives'); } catch (e) {}
+  selectCreative(cid);
+  document.getElementById('creative-analyzer-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+/* З аналізатора: бібліотека для перегляду, з цифрами на картках. */
+window.lcOpenCA = async function () {
+  lcCaMap = null;
+  await lcOpen();
+  lcCa = true;
+  lcPaint();
+};
+
 function lcSrcTabs() {
   return `<div class="lc-src">
     <button type="button" class="${lcSrc === 'drive' ? 'is-on' : ''}" onclick="lcSrcSet('drive')" ${lcDriveOn() ? '' : 'disabled title="Connect Google Drive in Settings → Integrations"'}>Google Drive</button>
@@ -1138,7 +1247,7 @@ function lcPaintDrive(card) {
   const rows = all.filter(f => (!kind || f.mimeType.startsWith(kind + '/'))
     && (!q || (f.name + ' ' + (f.folder || '')).toLowerCase().includes(q)));
   card.innerHTML = `<div class="lt-head"><div><h3>${lcPick ? 'Pick a creative' : 'Creative library'}</h3>
-      <p>${lcPick ? 'Click a file — CRM takes it straight from Google Drive at launch.' : 'Your team’s Google Drive folder: every video and image, by subfolder.'}</p></div>
+      <p>${lcPick ? 'Click a file — CRM takes it straight from Google Drive at launch. The eye opens a preview.' : 'Your team’s Google Drive folder, by subfolder. Click a creative to watch it' + (lcCa ? ' — numbers are from Creative Analyzer, all time.' : '.')}</p></div>
       <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
         <input class="lt-search lc-search" placeholder="Search name or folder…" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
     <div class="lc-bar">
