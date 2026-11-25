@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 23.11 22:24">
+  <meta name="build" content="build 25.11 12:23">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8516,6 +8516,22 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 #cf-glass-tip .gt-gs { margin-top: 2px; font-size: 10px; font-weight: 600; color: rgba(226,232,240,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 #cf-glass-tip .gt-gm b.is-good, #cf-glass-tip .gt-gh span.is-good, #cf-glass-tip .gt-gtotal b.is-good { color: #4ade80; }
 #cf-glass-tip .gt-gm b.is-bad, #cf-glass-tip .gt-gh span.is-bad, #cf-glass-tip .gt-gtotal b.is-bad { color: #f87171; }
+
+/* ── FB LIVE: фільтр (гео, спенд сьогодні) ── */
+#cab-filt-btn { position: relative; }
+#cab-filt-btn.is-filt { color: var(--accent); border-color: var(--accent); }
+.cab-filt-dot { display: none; position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface); }
+#cab-filt-btn.is-filt .cab-filt-dot { display: block; }
+.cab-filt-geos { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 8px 8px; max-width: 260px; }
+.cab-filt-g { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); font-size: 11px; font-weight: 700; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.cab-filt-g:hover { color: var(--text-main); }
+.cab-filt-g b { font-weight: 800; letter-spacing: .03em; }
+.cab-filt-g span { font-size: 10px; opacity: .6; font-variant-numeric: tabular-nums; }
+.cab-filt-g img { width: 15px; height: 11px; border-radius: 2px; object-fit: cover; }
+.cab-filt-g.is-on { color: var(--text-main); border-color: var(--accent); background: var(--accent-soft); }
+.cab-filt-none { padding: 2px 10px 8px; font-size: 10.5px; color: var(--text-muted); max-width: 240px; }
+.cab-filt-clear { display: block; width: calc(100% - 16px); margin: 2px 8px 6px; padding: 6px; border-radius: 8px; border: 1px dashed var(--border); background: transparent; color: var(--text-muted); font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.cab-filt-clear:hover { color: var(--text-main); border-color: var(--accent); }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8775,7 +8791,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 23.11 22:24</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.11 12:23</div>
     </div>
   </aside>
 
@@ -9688,16 +9704,26 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
           <option value="card">Group: card</option>
           <option value="" selected>Group</option>
         </select>
+        <!-- «біля group додати вкладку filter (але тільки з іконкою)»:
+             мітки гео й «мали спенд сьогодні». Крапка на іконці — фільтр
+             увімкнений, тобто список показує не все. -->
+        <button type="button" id="cab-filt-btn" onclick="cabFiltMenu()" class="cab-rules cab-ico"
+          title="Filter: geo labels, spend today" aria-label="Filter"><svg viewBox="0 0 16 16"
+            aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"
+            stroke-linejoin="round"><path d="M2.2 3h11.6L9.4 8.4v4.2l-2.8 1.4V8.4z"/></svg><i
+            class="cab-filt-dot" aria-hidden="true"></i></button>
         <button type="button" id="cab-cols-btn" onclick="cabColsMenu()" class="cab-rules cab-ico"
           title="Which columns to show" aria-label="Columns"><svg viewBox="0 0 16 16" aria-hidden="true"
             fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.8" y="2.4" width="12.4"
             height="11.2" rx="1.6"/><path d="M6.4 2.4v11.2M9.6 2.4v11.2"/></svg></button>
-        <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules"
-          title="Rules that switch off ads on their own">Rules</button>
-        <button type="button" id="cab-pages-btn" onclick="pgPanel()" class="cab-rules"
-          title="Pages your tokens reach, and the comments under them">Pages</button>
-        <button type="button" id="cab-tpl-btn" onclick="ltPanel()" class="cab-rules"
-          title="Launch templates: saved campaigns you launch into any cabinet, paused">Templates</button>
+        <!-- «решту дай також іконки pages rules та інші»: усі інструменти
+             іконками, назва — у підказці при наведенні. -->
+        <button type="button" id="cab-rules-btn" onclick="rlPanel()" class="cab-rules cab-ico"
+          title="Rules — switch off ads on their own" aria-label="Rules"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.8 3.4 9h4.2L7 14.2 12.6 7H8.4z"/></svg></button>
+        <button type="button" id="cab-pages-btn" onclick="pgPanel()" class="cab-rules cab-ico"
+          title="Pages — the pages your tokens reach, and the comments under them" aria-label="Pages"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 14.2V2.2"/><path d="M3.2 2.6h8.6l-1.8 3 1.8 3H3.2"/></svg></button>
+        <button type="button" id="cab-tpl-btn" onclick="ltPanel()" class="cab-rules cab-ico"
+          title="Templates — saved campaigns you launch into any cabinet" aria-label="Templates"><svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.6" y="4.6" width="9" height="9" rx="1.6"/><path d="M11.4 4.6V3.4a1.2 1.2 0 0 0-1.2-1.2H3.4a1.2 1.2 0 0 0-1.2 1.2v6.8a1.2 1.2 0 0 0 1.2 1.2h1.2"/></svg></button>
       </div>
       <button type="button" id="cab-sync" onclick="cabSync()" class="cab-sync"
         title="Sync now — ask Facebook right now instead of waiting for the hourly run"
@@ -31802,6 +31828,78 @@ function cabGeoHtml(c) {
   return `<span class="cab-geo has-tip" title="${cabEsc(tip)}">${list.slice(0, 3).map(one).join('')}${
     list.length > 3 ? `<span class="cab-geo-more">+${list.length - 3}</span>` : ''}</span>`;
 }
+/* ═══ ФІЛЬТР: МІТКИ ГЕО Й «СПЕНД СЬОГОДНІ» ═══
+
+   «ми додавали мітки гео на кабінети, тепер можемо окремо ще
+   фільтрувати їх … або ще spend today, тобто фільтрувати тільки
+   кабінети які мали сьогодні спенд».
+
+   Діє поверх плиток і пошуку, а не замість них: плитка каже, у якому
+   стані кабінети, фільтр — котрі з них. Кілька гео — це «будь-яке з
+   вибраних»: питання «де зараз крутиться KG або TJ», а не «де обидва
+   разом». Вибір — зручність одного браузера, тож лежить у ньому. */
+let cabFilt = { geo: [], spend: false };
+try {
+  const s = JSON.parse(localStorage.getItem('cabFilt') || 'null');
+  if (s && typeof s === 'object') cabFilt = { geo: Array.isArray(s.geo) ? s.geo : [], spend: !!s.spend };
+} catch (e) { /* без збереженого — порожній фільтр */ }
+function cabFiltSave() { try { localStorage.setItem('cabFilt', JSON.stringify(cabFilt)); } catch (e) {} }
+const cabFiltOn = () => cabFilt.spend || cabFilt.geo.length > 0;
+function cabFiltOk(c) {
+  if (cabFilt.spend && !(Number(cabSpendToday(c.fb)) > 0)) return false;
+  if (cabFilt.geo.length) {
+    const has = cabGeoList(c);
+    if (!cabFilt.geo.some(g => has.includes(g))) return false;
+  }
+  return true;
+}
+/* Гео для вибору — ті, що зараз крутяться хоч у якомусь неархівному
+   кабінеті, від найчастішого. Вибране, якого вже ніде немає, теж
+   лишаємо в списку: інакше його не було б як зняти. */
+function cabFiltGeos() {
+  const n = {};
+  (cabAll || []).forEach(c => { if (c.state !== 'archived') cabGeoList(c).forEach(g => { n[g] = (n[g] || 0) + 1; }); });
+  cabFilt.geo.forEach(g => { if (!(g in n)) n[g] = 0; });
+  return Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b)).map(g => ({ g, n: n[g] }));
+}
+function cabFiltPaintBtn() {
+  const b = document.getElementById('cab-filt-btn');
+  if (!b) return;
+  const on = cabFiltOn();
+  b.classList.toggle('is-filt', on);
+  b.title = on
+    ? 'Filter on: ' + [cabFilt.spend ? 'spend today' : '', cabFilt.geo.join(', ')].filter(Boolean).join(' · ')
+    : 'Filter: geo labels, spend today';
+}
+function cabFiltMenu(keep) {
+  const box = document.getElementById('cab-pop');
+  if (!box) return;
+  if (!keep && box.dataset.kind === 'filt' && !box.classList.contains('hidden')) return cabPopHide();
+  box.dataset.kind = 'filt';
+  const geos = cabFiltGeos();
+  const flag = g => typeof tdFlag === 'function'
+    ? tdFlag(g).replace('onerror="this.remove()"', 'onerror="this.style.display=\'none\'"') : '';
+  box.innerHTML = `<p class="cab-pop-h">Show only</p>
+    <div class="cab-pop-row"><button type="button" class="cab-pop-i ${cabFilt.spend ? 'is-on' : ''}"
+      onclick="cabFiltSpend()" title="Cabinets that have spent something today (in their own time zone)">
+      <span class="cab-pop-tick">${cabFilt.spend ? '✓' : ''}</span>Spend today</button></div>
+    <p class="cab-pop-h">Geo running now</p>
+    ${geos.length ? `<div class="cab-filt-geos">${geos.map(x => `<button type="button"
+        class="cab-filt-g ${cabFilt.geo.includes(x.g) ? 'is-on' : ''}" onclick="cabFiltGeo('${x.g}')"
+        title="${x.n} cabinet(s) running ${x.g} now">${flag(x.g)}<b>${x.g}</b><span>${x.n}</span></button>`).join('')}</div>`
+      : '<p class="cab-filt-none">No geo labels yet — they come from the active ads in the snapshot.</p>'}
+    ${cabFiltOn() ? '<button type="button" class="cab-filt-clear" onclick="cabFiltClear()">Clear filter</button>' : ''}`;
+  cabPopAt(document.getElementById('cab-filt-btn'), box);
+}
+function cabFiltApply() { cabFiltSave(); cabRender(); cabFiltMenu(true); }
+window.cabFiltSpend = function () { cabFilt.spend = !cabFilt.spend; cabFiltApply(); };
+window.cabFiltGeo = function (g) {
+  cabFilt.geo = cabFilt.geo.includes(g) ? cabFilt.geo.filter(x => x !== g) : [...cabFilt.geo, g];
+  cabFiltApply();
+};
+window.cabFiltClear = function () { cabFilt = { geo: [], spend: false }; cabFiltApply(); };
+window.cabFiltMenu = cabFiltMenu;
+
 async function cabGeoMode(m) {
   const was = cabView.geo;
   cabView.geo = m;
@@ -32905,7 +33003,8 @@ function cabRender() {
             c.tok.agent, c.tok.browser, c.tok.bm, c.tok.label,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q));
-  let shown = all.filter(c => inFilter(c) && inText(c));
+  let shown = all.filter(c => inFilter(c) && inText(c) && cabFiltOk(c));
+  cabFiltPaintBtn();
   /* Те, що намальовано, — і те, що візьме «вибрати все». Один список
      на обидва, інакше галочка в шапці колись почне брати не те, що
      стоїть під нею. */

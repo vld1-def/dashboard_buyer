@@ -1227,6 +1227,78 @@ function cabGeoHtml(c) {
   return `<span class="cab-geo has-tip" title="${cabEsc(tip)}">${list.slice(0, 3).map(one).join('')}${
     list.length > 3 ? `<span class="cab-geo-more">+${list.length - 3}</span>` : ''}</span>`;
 }
+/* ═══ ФІЛЬТР: МІТКИ ГЕО Й «СПЕНД СЬОГОДНІ» ═══
+
+   «ми додавали мітки гео на кабінети, тепер можемо окремо ще
+   фільтрувати їх … або ще spend today, тобто фільтрувати тільки
+   кабінети які мали сьогодні спенд».
+
+   Діє поверх плиток і пошуку, а не замість них: плитка каже, у якому
+   стані кабінети, фільтр — котрі з них. Кілька гео — це «будь-яке з
+   вибраних»: питання «де зараз крутиться KG або TJ», а не «де обидва
+   разом». Вибір — зручність одного браузера, тож лежить у ньому. */
+let cabFilt = { geo: [], spend: false };
+try {
+  const s = JSON.parse(localStorage.getItem('cabFilt') || 'null');
+  if (s && typeof s === 'object') cabFilt = { geo: Array.isArray(s.geo) ? s.geo : [], spend: !!s.spend };
+} catch (e) { /* без збереженого — порожній фільтр */ }
+function cabFiltSave() { try { localStorage.setItem('cabFilt', JSON.stringify(cabFilt)); } catch (e) {} }
+const cabFiltOn = () => cabFilt.spend || cabFilt.geo.length > 0;
+function cabFiltOk(c) {
+  if (cabFilt.spend && !(Number(cabSpendToday(c.fb)) > 0)) return false;
+  if (cabFilt.geo.length) {
+    const has = cabGeoList(c);
+    if (!cabFilt.geo.some(g => has.includes(g))) return false;
+  }
+  return true;
+}
+/* Гео для вибору — ті, що зараз крутяться хоч у якомусь неархівному
+   кабінеті, від найчастішого. Вибране, якого вже ніде немає, теж
+   лишаємо в списку: інакше його не було б як зняти. */
+function cabFiltGeos() {
+  const n = {};
+  (cabAll || []).forEach(c => { if (c.state !== 'archived') cabGeoList(c).forEach(g => { n[g] = (n[g] || 0) + 1; }); });
+  cabFilt.geo.forEach(g => { if (!(g in n)) n[g] = 0; });
+  return Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b)).map(g => ({ g, n: n[g] }));
+}
+function cabFiltPaintBtn() {
+  const b = document.getElementById('cab-filt-btn');
+  if (!b) return;
+  const on = cabFiltOn();
+  b.classList.toggle('is-filt', on);
+  b.title = on
+    ? 'Filter on: ' + [cabFilt.spend ? 'spend today' : '', cabFilt.geo.join(', ')].filter(Boolean).join(' · ')
+    : 'Filter: geo labels, spend today';
+}
+function cabFiltMenu(keep) {
+  const box = document.getElementById('cab-pop');
+  if (!box) return;
+  if (!keep && box.dataset.kind === 'filt' && !box.classList.contains('hidden')) return cabPopHide();
+  box.dataset.kind = 'filt';
+  const geos = cabFiltGeos();
+  const flag = g => typeof tdFlag === 'function'
+    ? tdFlag(g).replace('onerror="this.remove()"', 'onerror="this.style.display=\'none\'"') : '';
+  box.innerHTML = `<p class="cab-pop-h">Show only</p>
+    <div class="cab-pop-row"><button type="button" class="cab-pop-i ${cabFilt.spend ? 'is-on' : ''}"
+      onclick="cabFiltSpend()" title="Cabinets that have spent something today (in their own time zone)">
+      <span class="cab-pop-tick">${cabFilt.spend ? '✓' : ''}</span>Spend today</button></div>
+    <p class="cab-pop-h">Geo running now</p>
+    ${geos.length ? `<div class="cab-filt-geos">${geos.map(x => `<button type="button"
+        class="cab-filt-g ${cabFilt.geo.includes(x.g) ? 'is-on' : ''}" onclick="cabFiltGeo('${x.g}')"
+        title="${x.n} cabinet(s) running ${x.g} now">${flag(x.g)}<b>${x.g}</b><span>${x.n}</span></button>`).join('')}</div>`
+      : '<p class="cab-filt-none">No geo labels yet — they come from the active ads in the snapshot.</p>'}
+    ${cabFiltOn() ? '<button type="button" class="cab-filt-clear" onclick="cabFiltClear()">Clear filter</button>' : ''}`;
+  cabPopAt(document.getElementById('cab-filt-btn'), box);
+}
+function cabFiltApply() { cabFiltSave(); cabRender(); cabFiltMenu(true); }
+window.cabFiltSpend = function () { cabFilt.spend = !cabFilt.spend; cabFiltApply(); };
+window.cabFiltGeo = function (g) {
+  cabFilt.geo = cabFilt.geo.includes(g) ? cabFilt.geo.filter(x => x !== g) : [...cabFilt.geo, g];
+  cabFiltApply();
+};
+window.cabFiltClear = function () { cabFilt = { geo: [], spend: false }; cabFiltApply(); };
+window.cabFiltMenu = cabFiltMenu;
+
 async function cabGeoMode(m) {
   const was = cabView.geo;
   cabView.geo = m;
@@ -2330,7 +2402,8 @@ function cabRender() {
             c.tok.agent, c.tok.browser, c.tok.bm, c.tok.label,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q));
-  let shown = all.filter(c => inFilter(c) && inText(c));
+  let shown = all.filter(c => inFilter(c) && inText(c) && cabFiltOk(c));
+  cabFiltPaintBtn();
   /* Те, що намальовано, — і те, що візьме «вибрати все». Один список
      на обидва, інакше галочка в шапці колись почне брати не те, що
      стоїть під нею. */
