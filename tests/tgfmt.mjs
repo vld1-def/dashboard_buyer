@@ -34,6 +34,7 @@ const src = [
   grab(/const PER_ONE[\s\S]*?\n};/, 'PER_ONE'),
   grab(/const APP_BLIND = \[[^\]]*\];/, 'APP_BLIND'),
   grab(/function condOk[\s\S]*?\n}/, 'condOk'),
+  grab(/const CONV_INST_M[\s\S]*?\nfunction liveConds[\s\S]*?\n}/, 'ланцюжок інстал → лід'),
   grab(/function whyHit[\s\S]*?\n}/, 'whyHit'),
   grab(/const CONV_INSTALL = [^\n]*/, 'CONV_INSTALL'),
   grab(/function convPick[\s\S]*?\n}/, 'convPick'),

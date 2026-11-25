@@ -141,6 +141,7 @@ const tgSrc = [
   "type Hit = any; type Agg = any; type Rule = any;",
   grab(/function money[\s\S]*?\n}/, "money"),
   grab(/const CONV_INSTALL = [^\n]*/, "CONV_INSTALL"),
+  grab(/const CONV_INST_M[\s\S]*?\nfunction liveConds[\s\S]*?\n}/, "ланцюжок інстал → лід"),
   grab(/function convPick[\s\S]*?\n}/, "convPick"),
   grab(/function tgCounts[\s\S]*?\n}/, "tgCounts")
 ].join("\n");

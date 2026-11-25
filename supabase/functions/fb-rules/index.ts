@@ -67,7 +67,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
-const FN_VERSION = 'rules-22';
+const FN_VERSION = 'rules-23';
 const GRAPH = 'https://graph.facebook.com/v21.0';
 const DEADLINE_MS = 110_000;
 const ADS_LIMIT = 500;      // стеля списку оголошень на кабінет
@@ -345,7 +345,8 @@ function fmtMetric(m: string, v: number | null): string {
    нічого не пояснює — вона лише подовжує рядок і змушує шукати, котра
    з двох вирішила. В AND вирішили всі, тож там показуємо всі. */
 function whyHit(r: Rule, a: Agg): string {
-  const conds = r.match === 'any' ? r.when.filter(c => condOk(c, a) === true) : r.when;
+  const live = liveConds(r, a);
+  const conds = r.match === 'any' ? live.filter(c => condOk(c, a) === true) : live;
   return conds.map(c => {
     const f = METRICS[c.m];
     return (METRIC_LABEL[c.m] || c.m) + ' ' + fmtMetric(c.m, f ? f(a) : null)
@@ -358,6 +359,9 @@ function whyHit(r: Rule, a: Agg): string {
    ганялось правило: правило на CPI про інстали, решта — про ліди. */
 const CONV_INSTALL = ['cpi', 'installs'];
 function convPick(r: Rule, a: Agg): 'leads' | 'installs' {
+  // Ланцюжок інстал → лід: показуємо ту подію, по якій і судили.
+  const mode = convMode(r, a);
+  if (mode) return mode;
   if (a.installs > 0 && a.leads === 0) return 'installs';
   if (a.leads > 0 && a.installs === 0) return 'leads';
   const inst = r.when.filter(c => CONV_INSTALL.includes(c.m));
@@ -590,9 +594,49 @@ function condOk(c: Cond, a: Agg): boolean | null {
    нормальний» нічого не вимикає). any — досить однієї.
    Невизначена умова (метрики немає) в «all» ламає все правило: вимикати
    на підставі незнання не будемо. В «any» вона просто не голосує. */
+/* ═══ ІНСТАЛ → ЛІД → СТОП ═══
+
+   «якщо в автоправилі є інстал і лід, то логічно що якщо немає даних
+   по інсталу то дивитись по ліду, якщо і по ліду даних немає тоді
+   стопати».
+
+   Доти обидві умови судили разом, і заважали одна одній: в апки лідів
+   немає за побудовою, у веба — інсталів, тож у правилі «AND» одна з
+   двох завжди була «не знаю» й ламала збіг, а в «OR» нескінченна ціна
+   відсутньої події вимикала оголошення, яке давало іншу подію.
+
+   Тепер, коли в правилі є умови з обох груп, вони — ланцюжок, а не
+   пара:
+     • є інстали — судимо по інсталових умовах, лідові мовчать;
+     • інсталів нема, є ліди — судимо по лідових, інсталові мовчать;
+     • нема ні того, ні того — судимо по інсталових: ціна події при
+       нулі подій — це «спенд уже більший за поріг» (див. condOk), тобто
+       стоп, щойно витратили більше, ніж коштує одна подія.
+   Решта умов (спенд, CTR, CPC…) судять як і раніше. Правило з умовами
+   лише однієї групи — без змін. */
+const CONV_INST_M = ['installs', 'cpi'];
+const CONV_LEAD_M = ['leads', 'cpl'];
+type ConvMode = '' | 'installs' | 'leads';
+function convMode(r: Rule, a: Agg): ConvMode {
+  const hasI = r.when.some(c => CONV_INST_M.includes(c.m));
+  const hasL = r.when.some(c => CONV_LEAD_M.includes(c.m));
+  if (!hasI || !hasL) return '';
+  if (a.installs > 0) return 'installs';
+  if (a.leads > 0) return 'leads';
+  return 'installs';
+}
+/* Умови, що голосують на цій сутності. */
+function liveConds(r: Rule, a: Agg): Cond[] {
+  const mode = convMode(r, a);
+  if (!mode) return r.when;
+  const off = mode === 'installs' ? CONV_LEAD_M : CONV_INST_M;
+  return r.when.filter(c => !off.includes(c.m));
+}
+
 function ruleHits(r: Rule, a: Agg): boolean {
   if (a.spend < r.minSpend) return false;
-  const res = r.when.map(c => condOk(c, a));
+  const res = liveConds(r, a).map(c => condOk(c, a));
+  if (!res.length) return false;
   if (r.match === 'all') return res.every(x => x === true);
   return res.some(x => x === true);
 }

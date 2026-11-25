@@ -13,6 +13,7 @@
    потрібні шматки, — рівно як rlinst.mjs. Власний ok/done, щоб він
    ішов будь-де, а не лише там, де стоїть Playwright. */
 import fs from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 
 let pass = 0, fail = 0;
 const ok = (what, cond, extra) => {
@@ -42,6 +43,7 @@ const src = [
   grab(/const PER_ONE[\s\S]*?\n};/, 'PER_ONE'),
   grab(/const APP_BLIND = \[[^\]]*\];/, 'APP_BLIND'),
   grab(/function condOk[\s\S]*?\n}/, 'condOk'),
+  stripTypeScriptTypes('type Cond = any; type Rule = any; type Agg = any;\n' + grab(/const CONV_INST_M[\s\S]*?\nfunction liveConds[\s\S]*?\n}/, 'ланцюжок інстал → лід')),
   grab(/function ruleHits[\s\S]*?\n}/, 'ruleHits'),
   grab(/function ruleOrder[\s\S]*?\n}/, 'ruleOrder')
 ].join('\n');
