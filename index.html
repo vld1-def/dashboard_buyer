@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 25.11 12:43">
+  <meta name="build" content="build 25.11 20:00">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8832,7 +8832,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.11 12:43</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 25.11 20:00</div>
     </div>
   </aside>
 
@@ -9430,6 +9430,11 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
               <div class="seg-box cr-queue-box">
                 <button id="cr-queue-only" onclick="crToggleQueueOnly()" title="Creatives queued to test next — click to show only them"
                   class="cr-q-top">&#9201; Queue <span id="cr-queue-n"></span></button>
+                <!-- Уся черга — у список унікалізатора, вікно не відкривається. -->
+                <button id="cr-queue-uq" onclick="crQueueToUniq()" class="hidden"
+                  title="Add the whole queue to the Uniqueizer list — downloads from Drive one by one, the window stays closed"><svg
+                  class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                  stroke-linejoin="round" aria-hidden="true"><path d="M2.5 13.5l7-7M9.5 3v2M12 5.5h2M12.3 3.2l-1.4 1.4M6.5 2.5v1.5M13.5 9v1.5"/></svg></button>
                 <button id="cr-queue-clear" onclick="crQueueClear()" title="Empty the queue"
                   class="hidden">&#10005;</button>
               </div>
@@ -12325,7 +12330,7 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
           : ''}</span>
         ${crModBadge(c.cid)}
         <span class="text-[10px] font-bold opacity-60 flex-shrink-0">$${Math.round(c.s)}</span>
-        <button onclick="crToUniq(event, '${cidEsc}')" title="Uniqueize — open the Uniqueizer with this creative from Drive"
+        <button onclick="crUniqRow(event, '${cidEsc}')" title="${crQueueOnly ? 'Add to the Uniqueizer list (downloads from Drive, the window stays closed)' : 'Uniqueize — open the Uniqueizer with this creative from Drive'}"
                 class="cr-uq-btn flex-shrink-0 opacity-40 hover:opacity-100 transition p-0.5 rounded hover:bg-white/10">
           <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5l7-7M9.5 3v2M12 5.5h2M12.3 3.2l-1.4 1.4M6.5 2.5v1.5M13.5 9v1.5"/></svg>
         </button>
@@ -12754,6 +12759,7 @@ function crQueuePaint() {
     if (n) n.textContent = crQueue.length ? String(crQueue.length) : '';
   }
   document.getElementById('cr-queue-clear')?.classList.toggle('hidden', !crQueue.length);
+  document.getElementById('cr-queue-uq')?.classList.toggle('hidden', !crQueue.length);
 }
 
 async function crQueueClear() {
@@ -37084,6 +37090,65 @@ if (typeof openUniqModal === 'function' && !openUniqModal.__drive) {
   window.openUniqModal = function () { const r = open0.apply(this, arguments); uqDrivePaint(); return r; };
   window.openUniqModal.__drive = true;
 }
+
+/* ═══ У СПИСОК УНІКАЛІЗАТОРА — БЕЗ ВІДКРИТТЯ ВІКНА ═══
+   «коли клікаю на унікалізатор кнопку в списку щоб воно автоматом в
+   список летіло, а не відкривало унікалізатор, або зробити кнопку
+   масового додавання, але поки що зроби це тільки для черги».
+
+   Файли качаються по одному (uqDriveAdd і так не бере другий, поки
+   йде перший), прогрес — у тості. Клікати можна далі: нові креативи
+   стають у хвіст. Вікно унікалізатора потім відкривається вже з
+   готовим списком. */
+let uqBg = [], uqBgRun = false, uqBgDone = 0, uqBgBad = [];
+window.uqBgAdd = async function (cids) {
+  if (!uqDriveOn()) {
+    toast('Connect Google Drive in Settings → Integrations — the Uniqueizer takes creatives from there', 'warn', 4000);
+    return;
+  }
+  const have = new Set(uqFiles.map(f => String(f.name || '').replace(/\.[^.]+$/, '').trim().toLowerCase()));
+  let skipped = 0;
+  cids.forEach(c => {
+    const k = String(c || '').trim();
+    if (!k) return;
+    if (have.has(k.toLowerCase()) || uqBg.includes(k)) { skipped++; return; }
+    uqBg.push(k);
+  });
+  if (!uqBg.length) { if (skipped) toast('Already in the Uniqueizer list', 'ok', 2000); return; }
+  if (uqBgRun) { toast('Added to the Uniqueizer line-up (' + uqBg.length + ' waiting)', 'ok', 1800); return; }
+  uqBgRun = true; uqBgDone = 0; uqBgBad = [];
+  const step = toastStep();
+  try {
+    while (uqBg.length) {
+      const c = uqBg.shift();
+      const n = uqBgDone + uqBgBad.length + 1, of = n + uqBg.length;
+      step.say('Uniqueizer: downloading ' + c + (of > 1 ? ' (' + n + ' of ' + of + ')' : '') + '…');
+      while (uqDriveBusy) await new Promise(r => setTimeout(r, 400));
+      await uqDriveAdd(c);
+      const st = document.getElementById('uq-drive-st');
+      if (st && st.classList.contains('is-bad')) uqBgBad.push(c + ' — ' + st.textContent.replace(/^Could not add [^:]+: /, ''));
+      else uqBgDone++;
+    }
+  } finally { uqBgRun = false; }
+  const total = uqFiles.length;
+  step.done(uqBgBad.length
+    ? 'Uniqueizer: added ' + uqBgDone + ', not added ' + uqBgBad.length + ': ' + uqBgBad.join('; ')
+    : 'Added ' + uqBgDone + ' to the Uniqueizer — ' + total + ' video(s) in its list. Open it from the menu to run.',
+    uqBgBad.length ? 'warn' : 'ok');
+};
+/* Кнопка в рядку: у режимі черги — тихо в список, інакше — як було. */
+window.crUniqRow = function (ev, cid) {
+  if (typeof crQueueOnly !== 'undefined' && crQueueOnly) {
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    return uqBgAdd([cid]);
+  }
+  crToUniq(ev, cid);
+};
+/* Уся черга — одним кліком. */
+window.crQueueToUniq = function () {
+  if (typeof crQueue === 'undefined' || !crQueue.length) return;
+  return uqBgAdd(crQueue.slice());
+};
 
 /* Кнопка в Creative Analyzer: відкрити унікалізатор і одразу додати
    туди цей креатив з Drive. Без Drive — відкриваємо вікно з сірим

@@ -1559,6 +1559,11 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
               <div class="seg-box cr-queue-box">
                 <button id="cr-queue-only" onclick="crToggleQueueOnly()" title="Creatives queued to test next — click to show only them"
                   class="cr-q-top">&#9201; Queue <span id="cr-queue-n"></span></button>
+                <!-- Уся черга — у список унікалізатора, вікно не відкривається. -->
+                <button id="cr-queue-uq" onclick="crQueueToUniq()" class="hidden"
+                  title="Add the whole queue to the Uniqueizer list — downloads from Drive one by one, the window stays closed"><svg
+                  class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                  stroke-linejoin="round" aria-hidden="true"><path d="M2.5 13.5l7-7M9.5 3v2M12 5.5h2M12.3 3.2l-1.4 1.4M6.5 2.5v1.5M13.5 9v1.5"/></svg></button>
                 <button id="cr-queue-clear" onclick="crQueueClear()" title="Empty the queue"
                   class="hidden">&#10005;</button>
               </div>
@@ -3724,7 +3729,7 @@ function crSidebarRow(c, qEsc, gEsc, fEsc) {
           : ''}</span>
         ${crModBadge(c.cid)}
         <span class="text-[10px] font-bold opacity-60 flex-shrink-0">$${Math.round(c.s)}</span>
-        <button onclick="crToUniq(event, '${cidEsc}')" title="Uniqueize — open the Uniqueizer with this creative from Drive"
+        <button onclick="crUniqRow(event, '${cidEsc}')" title="${crQueueOnly ? 'Add to the Uniqueizer list (downloads from Drive, the window stays closed)' : 'Uniqueize — open the Uniqueizer with this creative from Drive'}"
                 class="cr-uq-btn flex-shrink-0 opacity-40 hover:opacity-100 transition p-0.5 rounded hover:bg-white/10">
           <svg class="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5l7-7M9.5 3v2M12 5.5h2M12.3 3.2l-1.4 1.4M6.5 2.5v1.5M13.5 9v1.5"/></svg>
         </button>
@@ -4153,6 +4158,7 @@ function crQueuePaint() {
     if (n) n.textContent = crQueue.length ? String(crQueue.length) : '';
   }
   document.getElementById('cr-queue-clear')?.classList.toggle('hidden', !crQueue.length);
+  document.getElementById('cr-queue-uq')?.classList.toggle('hidden', !crQueue.length);
 }
 
 async function crQueueClear() {

@@ -674,6 +674,65 @@ if (typeof openUniqModal === 'function' && !openUniqModal.__drive) {
   window.openUniqModal.__drive = true;
 }
 
+/* ═══ У СПИСОК УНІКАЛІЗАТОРА — БЕЗ ВІДКРИТТЯ ВІКНА ═══
+   «коли клікаю на унікалізатор кнопку в списку щоб воно автоматом в
+   список летіло, а не відкривало унікалізатор, або зробити кнопку
+   масового додавання, але поки що зроби це тільки для черги».
+
+   Файли качаються по одному (uqDriveAdd і так не бере другий, поки
+   йде перший), прогрес — у тості. Клікати можна далі: нові креативи
+   стають у хвіст. Вікно унікалізатора потім відкривається вже з
+   готовим списком. */
+let uqBg = [], uqBgRun = false, uqBgDone = 0, uqBgBad = [];
+window.uqBgAdd = async function (cids) {
+  if (!uqDriveOn()) {
+    toast('Connect Google Drive in Settings → Integrations — the Uniqueizer takes creatives from there', 'warn', 4000);
+    return;
+  }
+  const have = new Set(uqFiles.map(f => String(f.name || '').replace(/\.[^.]+$/, '').trim().toLowerCase()));
+  let skipped = 0;
+  cids.forEach(c => {
+    const k = String(c || '').trim();
+    if (!k) return;
+    if (have.has(k.toLowerCase()) || uqBg.includes(k)) { skipped++; return; }
+    uqBg.push(k);
+  });
+  if (!uqBg.length) { if (skipped) toast('Already in the Uniqueizer list', 'ok', 2000); return; }
+  if (uqBgRun) { toast('Added to the Uniqueizer line-up (' + uqBg.length + ' waiting)', 'ok', 1800); return; }
+  uqBgRun = true; uqBgDone = 0; uqBgBad = [];
+  const step = toastStep();
+  try {
+    while (uqBg.length) {
+      const c = uqBg.shift();
+      const n = uqBgDone + uqBgBad.length + 1, of = n + uqBg.length;
+      step.say('Uniqueizer: downloading ' + c + (of > 1 ? ' (' + n + ' of ' + of + ')' : '') + '…');
+      while (uqDriveBusy) await new Promise(r => setTimeout(r, 400));
+      await uqDriveAdd(c);
+      const st = document.getElementById('uq-drive-st');
+      if (st && st.classList.contains('is-bad')) uqBgBad.push(c + ' — ' + st.textContent.replace(/^Could not add [^:]+: /, ''));
+      else uqBgDone++;
+    }
+  } finally { uqBgRun = false; }
+  const total = uqFiles.length;
+  step.done(uqBgBad.length
+    ? 'Uniqueizer: added ' + uqBgDone + ', not added ' + uqBgBad.length + ': ' + uqBgBad.join('; ')
+    : 'Added ' + uqBgDone + ' to the Uniqueizer — ' + total + ' video(s) in its list. Open it from the menu to run.',
+    uqBgBad.length ? 'warn' : 'ok');
+};
+/* Кнопка в рядку: у режимі черги — тихо в список, інакше — як було. */
+window.crUniqRow = function (ev, cid) {
+  if (typeof crQueueOnly !== 'undefined' && crQueueOnly) {
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    return uqBgAdd([cid]);
+  }
+  crToUniq(ev, cid);
+};
+/* Уся черга — одним кліком. */
+window.crQueueToUniq = function () {
+  if (typeof crQueue === 'undefined' || !crQueue.length) return;
+  return uqBgAdd(crQueue.slice());
+};
+
 /* Кнопка в Creative Analyzer: відкрити унікалізатор і одразу додати
    туди цей креатив з Drive. Без Drive — відкриваємо вікно з сірим
    блоком і підказкою, а не тихо нічого. */
