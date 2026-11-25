@@ -909,6 +909,8 @@ let lcSrc = 'drive', lcDrive = null, lcDriveErr = '';
    прев'ю (і дивитись відео)». lcCa — бібліотеку відкрили з аналізатора:
    на картках цифри креативу, у прев'ю — перехід до нього. */
 let lcCa = false;
+/* Тег із аналізатора, по якому зараз фільтр бібліотеки ('' — усі). */
+let lcTag = '';
 const lcDriveOn = () => typeof teamDriveFolderId !== 'undefined' && !!teamDriveFolderId;
 async function lcDriveLoad(force) {
   if (lcDrive && !force) return;
@@ -1046,7 +1048,7 @@ function lcDriveTile(f) {
       ${lcPick ? `<button type="button" class="lc-eye" title="Preview" onclick="event.stopPropagation();lcViewDrive('${fid}')">${LC_EYE}</button>` : ''}</div>
     <div class="lc-meta">
       <div class="lc-name" title="${ltEsc(f.name)}">${ltEsc(f.name)}</div>
-      ${lcCa ? lcCaLine(f.name) : `<div class="lc-sub">${f.size ? (Number(f.size) / 1048576).toFixed(1) + ' MB · ' : ''}${used ? 'in ' + used + ' template' + (used > 1 ? 's' : '') : 'not used yet'}</div>`}
+      ${lcCa ? lcCaLine(f.name) + lcTagChips(f.name) : `<div class="lc-sub">${f.size ? (Number(f.size) / 1048576).toFixed(1) + ' MB · ' : ''}${used ? 'in ' + used + ' template' + (used > 1 ? 's' : '') : 'not used yet'}</div>`}
     </div></div>`;
 }
 
@@ -1077,7 +1079,7 @@ function lcPaint() {
       </div></div>`;
   };
   card.innerHTML = `<div class="lt-head"><div><h3>${lcPick ? 'Pick a creative' : 'Creative library'}</h3>
-      <p>${lcPick ? 'Click a creative — it goes on the ad without uploading again. The eye opens a preview.' : 'Everything you uploaded for launches. Click one to watch it.'}</p></div>
+      ${lcPick ? '<p>Click a creative — it goes on the ad without uploading again. The eye opens a preview.</p>' : ''}</div>
       <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
         <input class="lt-search lc-search" placeholder="Search name, geo, language…" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
     <div class="lc-bar">
@@ -1174,6 +1176,24 @@ function lcCaLine(name) {
     o.d ? ' · CPA $' + Math.round(o.s / o.d) : ''}</div>`;
 }
 
+/* ТЕГИ КРЕАТИВУ — ті самі, що в Creative Analyzer (crTags). */
+function lcTagsOf(name) {
+  const o = lcCaOf(name);
+  return o && typeof crTagsOf === 'function' ? crTagsOf(o.cid) : [];
+}
+function lcTagChips(name) {
+  const t = lcTagsOf(name);
+  if (!t.length) return '';
+  return `<div class="lc-tagrow">${t.slice(0, 3).map(x => `<span class="lc-tag">${ltEsc(x)}</span>`).join('')}${
+    t.length > 3 ? `<span class="lc-tag is-more">+${t.length - 3}</span>` : ''}</div>`;
+}
+/* Теги, що стоять хоч на одному файлі папки, — від найчастішого. */
+function lcTagList() {
+  const n = {};
+  (lcDrive || []).forEach(f => lcTagsOf(f.name).forEach(t => { n[t] = (n[t] || 0) + 1; }));
+  return Object.keys(n).sort((a, b) => n[b] - n[a] || a.localeCompare(b));
+}
+
 function lcViewer(media, name) {
   lcViewClose();
   const o = lcCaOf(name);
@@ -1185,6 +1205,7 @@ function lcViewer(media, name) {
       <div class="dv-frame lc-view-frame">${media}</div>
       <div class="lc-view-foot">
         <span class="lc-view-name" title="${ltEsc(name)}">${ltEsc(name)}</span>
+        ${lcCa ? lcTagsOf(name).map(x => `<span class="lc-tag">${ltEsc(x)}</span>`).join('') : ''}
         ${o ? `<span class="lc-view-st">$${Math.round(o.s).toLocaleString()} spend · ${o.i} inst · ${o.r} reg · ${o.d} dep${o.d ? ' · CPA $' + Math.round(o.s / o.d) : ''}</span>
           ${typeof selectCreative === 'function' ? `<button type="button" class="lc-view-go" onclick="lcGoCreative('${ltEsc(o.cid).replace(/'/g, '')}')">Open in Creative Analyzer →</button>` : ''}`
           : '<span class="lc-view-st">never launched</span>'}
@@ -1229,7 +1250,9 @@ window.lcGoCreative = function (cid) {
 };
 /* З аналізатора: бібліотека для перегляду, з цифрами на картках. */
 window.lcOpenCA = async function () {
-  lcCaMap = null;
+  lcCaMap = null; lcTag = '';
+  /* З аналізатора — лише Drive: «uploaded також приховай». */
+  if (lcDriveOn()) lcSrc = 'drive';
   await lcOpen();
   lcCa = true;
   lcPaint();
@@ -1245,17 +1268,21 @@ function lcPaintDrive(card) {
   const kind = (lcPick && lcPick.only) || lcKind;
   const all = lcDrive || [];
   const rows = all.filter(f => (!kind || f.mimeType.startsWith(kind + '/'))
-    && (!q || (f.name + ' ' + (f.folder || '')).toLowerCase().includes(q)));
+    && (!lcCa || !lcTag || lcTagsOf(f.name).includes(lcTag))
+    && (!q || (f.name + ' ' + (f.folder || '') + ' ' + (lcCa ? lcTagsOf(f.name).join(' ') : '')).toLowerCase().includes(q)));
+  const tags = lcCa ? lcTagList() : [];
   card.innerHTML = `<div class="lt-head"><div><h3>${lcPick ? 'Pick a creative' : 'Creative library'}</h3>
-      <p>${lcPick ? 'Click a file — CRM takes it straight from Google Drive at launch. The eye opens a preview.' : 'Your team’s Google Drive folder, by subfolder. Click a creative to watch it' + (lcCa ? ' — numbers are from Creative Analyzer, all time.' : '.')}</p></div>
+      ${lcPick ? '<p>Click a file — CRM takes it straight from Google Drive at launch. The eye opens a preview.</p>' : ''}</div>
       <div class="lt-head-r"><button type="button" class="lt-x" onclick="lcClose()" title="Close (Esc)">×</button>
-        <input class="lt-search lc-search" placeholder="Search name or folder…" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
+        <input class="lt-search lc-search" placeholder="${lcCa ? 'Search name, folder, tag…' : 'Search name or folder…'}" value="${ltEsc(lcQ)}" oninput="lcQ=this.value;lcPaint();const s=document.querySelector('.lc-search');s.focus();s.setSelectionRange(s.value.length,s.value.length)"></div></div>
     <div class="lc-bar">
-      ${lcSrcTabs()}
+      ${lcCa ? '' : lcSrcTabs()}
       ${lcPick && lcPick.only ? '' : ['', 'video', 'image'].map(k => `<button type="button" class="lc-f${lcKind === k ? ' is-on' : ''}" onclick="lcKind='${k}';lcPaint()">${k ? k + 's' : 'All'}</button>`).join('')}
       <button type="button" class="lt-md-btn" onclick="lcSrcSet('drive', lcDrive = null)" title="Read the Drive folder again">↻</button>
       <span class="lc-count">${rows.length} of ${all.length}</span>
     </div>
+    ${tags.length ? `<div class="lc-tagbar"><span class="lc-tagbar-h">Tags</span>${['', ...tags].map(t => `<button type="button"
+        class="lc-f lc-tf${lcTag === t ? ' is-on' : ''}" onclick="lcTag=decodeURIComponent('${encodeURIComponent(t)}');lcPaint()">${t ? ltEsc(t) : 'All'}</button>`).join('')}</div>` : ''}
     <div class="lc-grid">${lcDriveErr ? `<div class="lt-empty">Google Drive: ${ltEsc(lcDriveErr)}</div>`
       : rows.map(lcDriveTile).join('') || `<div class="lt-empty">${all.length ? 'Nothing matches.' : 'No videos or images in the Drive folder.'}</div>`}</div>`;
 }
