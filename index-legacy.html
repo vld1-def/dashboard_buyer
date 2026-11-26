@@ -3803,11 +3803,17 @@ async function rpStampLines(id, text) {
   if (rpTagsLoadedFor !== currentTeam) { try { await loadReportTimes(); } catch (e) { return; } }
   const now = new Date().toISOString();
   const was = rpTimes[id] || {}, next = {};
-  String(text || '').split('\n').forEach(l => {
-    const t = l.trim();
-    if (!/^[+\-!>]/.test(t)) return;
-    const k = rpLineKey(t);
-    next[k] = was[k] || now;
+  /* «а якщо я відредагував рядок?» — час лишається тим, коли рядок
+     НАПИСАЛИ. Змінений текст на тому самому місці (тий самий номер серед
+     рядків з міткою, а старого тексту вже немає) бере час старого.
+     Новий час — лише в рядків, яких раніше не було. */
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(t => /^[+\-!>]/.test(t)).map(rpLineKey);
+  const keep = new Set(lines);
+  const old = Object.entries(was);
+  lines.forEach((k, i) => {
+    if (was[k]) { next[k] = was[k]; return; }
+    const o = old[i];
+    next[k] = o && !keep.has(o[0]) ? o[1] : now;
   });
   rpTimes[id] = next;
   if (!Object.keys(next).length) delete rpTimes[id];

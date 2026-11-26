@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.11 14:47">
+  <meta name="build" content="build 26.11 14:48">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8845,7 +8845,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 14:47</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 14:48</div>
     </div>
   </aside>
 
@@ -12417,11 +12417,17 @@ async function rpStampLines(id, text) {
   if (rpTagsLoadedFor !== currentTeam) { try { await loadReportTimes(); } catch (e) { return; } }
   const now = new Date().toISOString();
   const was = rpTimes[id] || {}, next = {};
-  String(text || '').split('\n').forEach(l => {
-    const t = l.trim();
-    if (!/^[+\-!>]/.test(t)) return;
-    const k = rpLineKey(t);
-    next[k] = was[k] || now;
+  /* «а якщо я відредагував рядок?» — time лишається тим, коли рядок
+     НАПИСАЛИ. Змінений текст на тому самому місці (тий самий номер серед
+     рядків з міткою, а старого тексту вже немає) бере time старого.
+     Новий time — лише в рядків, яких раніше не було. */
+  const lines = String(text || '').split('\n').map(l => l.trim()).filter(t => /^[+\-!>]/.test(t)).map(rpLineKey);
+  const keep = new Set(lines);
+  const old = Object.entries(was);
+  lines.forEach((k, i) => {
+    if (was[k]) { next[k] = was[k]; return; }
+    const o = old[i];
+    next[k] = o && !keep.has(o[0]) ? o[1] : now;
   });
   rpTimes[id] = next;
   if (!Object.keys(next).length) delete rpTimes[id];

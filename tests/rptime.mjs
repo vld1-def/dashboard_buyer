@@ -25,4 +25,17 @@ const r = await page.evaluate(async () => {
 });
 ok('старий рядок — свій час, нові — час збереження', r.times[0] === '00:20' && r.times.length === 4 && r.times.slice(1).every(t => /^\d\d:\d\d$/.test(t)), r);
 ok('звичайний рядок без мітки часу не має', r.saved === 4, r);
+/* Відредагований рядок зберігає свій час. */
+const e = await page.evaluate(async () => {
+  rpTimes = { r2: {} };
+  const t0 = '! Перший рядок\n> План';
+  await rpStampLines('r2', t0);
+  const keys = Object.keys(rpTimes.r2);
+  rpTimes.r2[keys[0]] = '2026-11-26T00:20:00'; rpTimes.r2[keys[1]] = '2026-11-26T01:05:00';
+  await rpStampLines('r2', '! Перший рядок, виправлений\n> План\n+ Зовсім новий');
+  return Object.values(rpTimes.r2);
+});
+ok('виправлений рядок лишив свій час', e[0] === '2026-11-26T00:20:00' && e[1] === '2026-11-26T01:05:00', e);
+ok('новий рядок — свій, новий час', e.length === 3 && e[2] !== e[0] && e[2] !== e[1], e);
+
 await done(browser, srv, errs);
