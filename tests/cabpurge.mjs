@@ -35,4 +35,12 @@ ok('очищені архівні в FB LIVE не потрапляють', r.pur
 ok('архів — перші 60', r.first === 60, r);
 ok('кнопка каже, скільки ще', /Show 60 more · 70 left/.test(r.label || ''), r.label);
 ok('клік — ще 60', r.second === 120, r);
+/* Каркас замість «Loading…». */
+const sk = await page.evaluate(() => {
+  const h = document.createElement('div'); document.body.appendChild(h);
+  const t = document.getElementById('cab-tiles'); if (t) t.innerHTML = '';
+  cabSkeleton(h);
+  return { rows: h.querySelectorAll('.sk-row').length, tiles: document.querySelectorAll('#cab-tiles .sk-tile').length, txt: /Loading…/.test(h.textContent) };
+});
+ok('під час завантаження — каркас рядків і плиток, а не текст', sk.rows === 8 && sk.tiles === 6 && !sk.txt, sk);
 await done(browser, srv, errs);

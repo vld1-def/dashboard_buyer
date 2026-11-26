@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.11 17:52">
+  <meta name="build" content="build 26.11 17:59">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8648,6 +8648,29 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 #uq-params > div > label { flex-wrap: wrap; row-gap: 0; }
 #uq-params > div > label > span:last-child { flex-basis: 100%; padding-left: 24px; margin-top: -2px; }
 #uq-params input[type="number"] { width: 62px !important; padding-left: 6px !important; padding-right: 6px !important; text-align: center !important; }
+
+/* ── FB LIVE: каркас завантаження ── */
+@keyframes sk-shine { 0% { background-position: -240px 0; } 100% { background-position: calc(240px + 100%) 0; } }
+.sk { display: block; height: 10px; border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255,255,255,.05) 0, rgba(255,255,255,.11) 120px, rgba(255,255,255,.05) 240px) no-repeat;
+  background-color: rgba(255,255,255,.05); background-size: 240px 100%; animation: sk-shine 1.3s ease-in-out infinite; }
+.sk-list { display: flex; flex-direction: column; gap: 6px; }
+.sk-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); }
+.sk-row .sk-chk { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; }
+.sk-row .sk-col { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.sk-row .sk-sub { height: 8px; opacity: .7; }
+.sk-row .sk-pill { width: 64px; height: 18px; border-radius: 999px; flex: 0 0 auto; }
+.sk-row .sk-c { width: 54px; flex: 0 0 auto; }
+@media (max-width: 700px) { .sk-row .is-hide-s { display: none; } }
+.sk-tiles .sk-tile { pointer-events: none; }
+.sk-tile .sk-dot { width: 8px; height: 8px; border-radius: 50%; }
+.sk-tile .sk-w { width: 52px; height: 9px; }
+.sk-tile .sk-n { width: 18px; height: 12px; margin-left: auto; }
+.sk-tree { display: flex; flex-direction: column; gap: 8px; padding: 10px 6px; }
+.sk-line { display: flex; gap: 12px; align-items: center; }
+.sk-line .sk:first-child { flex: 0 1 auto; }
+.sk-line .sk-n { width: 48px; }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; } }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8907,7 +8930,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 17:52</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 17:59</div>
     </div>
   </aside>
 
@@ -31770,6 +31793,20 @@ const cabBuyOf = c => {
   return cabBuy.get(d(c.id)) || (c.fb ? cabBuy.get(d(c.fb.account_id)) : null) || null;
 };
 
+/* КАРКАС ЗАМІСТЬ «Loading…». «щоб кабінети було типу макет блоків, що
+   ще підгружається, а не просто текст loading». Поки йдуть дані, на
+   місці плиток і рядків — сірі блоки з переливом тієї ж форми, що й
+   справжні. Кнопки шапки — у статичній розмітці, тож видні одразу. */
+function cabSkeleton(host) {
+  const tiles = document.getElementById('cab-tiles');
+  if (tiles && !tiles.children.length) tiles.innerHTML = `<div class="flt-row flt-row-cab sk-tiles">${
+    Array.from({ length: 6 }, () => '<span class="flt sk-tile"><i class="sk sk-dot"></i><i class="sk sk-w"></i><i class="sk sk-n"></i></span>').join('')}</div>`;
+  const row = (w1, w2) => `<div class="sk-row"><i class="sk sk-chk"></i><span class="sk-col"><i class="sk" style="width:${w1}%"></i><i class="sk sk-sub" style="width:${w2}%"></i></span>
+    <i class="sk sk-pill"></i><i class="sk sk-c"></i><i class="sk sk-c"></i><i class="sk sk-c"></i><i class="sk sk-c is-hide-s"></i><i class="sk sk-c is-hide-s"></i></div>`;
+  const ws = [[62, 38], [48, 30], [70, 44], [55, 26], [66, 40], [42, 34], [58, 28], [50, 36]];
+  host.innerHTML = `<div class="sk-list" aria-busy="true" aria-label="Loading cabinets">${ws.map(([a, b]) => row(a, b)).join('')}</div>`;
+}
+
 async function cabInit() {
   /* Закріплення й набір колонок — перше, що має бути відоме: інакше
      перший малюнок таблиці показав би типовий вигляд, а за мить
@@ -31784,12 +31821,14 @@ async function cabInit() {
      число в кнопці перерахується саме, щойно курс приїде. */
   fxLoad();
   if (cabLoaded) { cabRender(); seen(); return; }
-  host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
+  cabSkeleton(host);
   try {
     cabRows = await sbFetchAll('accounts_mapping',
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
   } catch (e) {
     host.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
+    // Каркас плиток не має лишатись «завантажуватись» після помилки.
+    const t = document.getElementById('cab-tiles'); if (t && t.querySelector('.sk-tiles')) t.innerHTML = '';
     return;
   }
   /* ОЧИЩЕНИЙ АРХІВ — НЕ ДЛЯ FB LIVE. «не тільки історію а і самі кабінети
@@ -33658,7 +33697,7 @@ function cabRowHtml(c, COLS) {
 function cabTreeRows(COLS) {
   const v = (typeof cdView === 'function') ? cdView() : null;
   if (!v) return `<tr class="cab-treerow"><td colspan="${COLS}">
-    <p class="cd-empty">Loading…</p></td></tr>`;
+    <div class="sk-tree">${[70, 55, 62].map(w => `<div class="sk-line"><i class="sk" style="width:${w}%"></i><i class="sk sk-n"></i><i class="sk sk-n"></i></div>`).join('')}</div></td></tr>`;
 
   /* Вкладки звідси пішли в ряд статусів угорі. Лишається смуга
      мультивибору — вона зʼявляється, лише коли щось вибрано, і тоді

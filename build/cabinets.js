@@ -893,6 +893,20 @@ const cabBuyOf = c => {
   return cabBuy.get(d(c.id)) || (c.fb ? cabBuy.get(d(c.fb.account_id)) : null) || null;
 };
 
+/* КАРКАС ЗАМІСТЬ «Loading…». «щоб кабінети було типу макет блоків, що
+   ще підгружається, а не просто текст loading». Поки йдуть дані, на
+   місці плиток і рядків — сірі блоки з переливом тієї ж форми, що й
+   справжні. Кнопки шапки — у статичній розмітці, тож видні одразу. */
+function cabSkeleton(host) {
+  const tiles = document.getElementById('cab-tiles');
+  if (tiles && !tiles.children.length) tiles.innerHTML = `<div class="flt-row flt-row-cab sk-tiles">${
+    Array.from({ length: 6 }, () => '<span class="flt sk-tile"><i class="sk sk-dot"></i><i class="sk sk-w"></i><i class="sk sk-n"></i></span>').join('')}</div>`;
+  const row = (w1, w2) => `<div class="sk-row"><i class="sk sk-chk"></i><span class="sk-col"><i class="sk" style="width:${w1}%"></i><i class="sk sk-sub" style="width:${w2}%"></i></span>
+    <i class="sk sk-pill"></i><i class="sk sk-c"></i><i class="sk sk-c"></i><i class="sk sk-c"></i><i class="sk sk-c is-hide-s"></i><i class="sk sk-c is-hide-s"></i></div>`;
+  const ws = [[62, 38], [48, 30], [70, 44], [55, 26], [66, 40], [42, 34], [58, 28], [50, 36]];
+  host.innerHTML = `<div class="sk-list" aria-busy="true" aria-label="Loading cabinets">${ws.map(([a, b]) => row(a, b)).join('')}</div>`;
+}
+
 async function cabInit() {
   /* Закріплення й набір колонок — перше, що має бути відоме: інакше
      перший малюнок таблиці показав би типовий вигляд, а за мить
@@ -907,12 +921,14 @@ async function cabInit() {
      число в кнопці перерахується саме, щойно курс приїде. */
   fxLoad();
   if (cabLoaded) { cabRender(); seen(); return; }
-  host.innerHTML = '<p class="text-center opacity-30 py-16 text-xs font-black uppercase tracking-widest">Loading…</p>';
+  cabSkeleton(host);
   try {
     cabRows = await sbFetchAll('accounts_mapping',
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
   } catch (e) {
     host.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
+    // Каркас плиток не має лишатись «завантажуватись» після помилки.
+    const t = document.getElementById('cab-tiles'); if (t && t.querySelector('.sk-tiles')) t.innerHTML = '';
     return;
   }
   /* ОЧИЩЕНИЙ АРХІВ — НЕ ДЛЯ FB LIVE. «не тільки історію а і самі кабінети
@@ -2781,7 +2797,7 @@ function cabRowHtml(c, COLS) {
 function cabTreeRows(COLS) {
   const v = (typeof cdView === 'function') ? cdView() : null;
   if (!v) return `<tr class="cab-treerow"><td colspan="${COLS}">
-    <p class="cd-empty">Loading…</p></td></tr>`;
+    <div class="sk-tree">${[70, 55, 62].map(w => `<div class="sk-line"><i class="sk" style="width:${w}%"></i><i class="sk sk-n"></i><i class="sk sk-n"></i></div>`).join('')}</div></td></tr>`;
 
   /* Вкладки звідси пішли в ряд статусів угорі. Лишається смуга
      мультивибору — вона зʼявляється, лише коли щось вибрано, і тоді
