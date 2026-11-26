@@ -1406,9 +1406,11 @@ function cabDayNote(fb) {
       + 'Press Sync now; if it stays empty, the cabinet is not coming through.';
 }
 
+/* Форматер на кожен пояс — один: створювати Intl на кожен рядок дорого. */
+const cabTzFmt = {};
 const cabTzDay = tz => {
-  try { return new Intl.DateTimeFormat('en-CA',
-    tz ? { timeZone: tz } : {}).format(new Date()); }
+  try { const f = cabTzFmt[tz || ''] || (cabTzFmt[tz || ''] = new Intl.DateTimeFormat('en-CA',
+    tz ? { timeZone: tz } : {})); return f.format(new Date()); }
   catch (_e) { return cabDay(0); }
 };
 
@@ -2552,21 +2554,26 @@ function cabRender() {
 function cabFreeze() {
   const tbl = document.querySelector('#cab-list .cab-tbl');
   if (!tbl) return;
+  /* Спершу ВСІ виміри, потім УСІ записи. Раніше писали left і тут же
+     читали offsetWidth наступної клітинки — браузер перераховував
+     таблицю на кожну клітинку, і на 20+ кабінетах клік по фільтру
+     відчутно гальмував. */
+  const plan = [];
   tbl.querySelectorAll('tr').forEach(tr => {
     const end = tr.querySelector('.cab-fz-end');
     if (!end) return;
-    let x = 0;
+    const cells = []; let x = 0;
     for (const cell of tr.children) {
-      cell.classList.add('is-fz');
-      cell.style.left = x + 'px';
+      cells.push([cell, x]);
       x += cell.offsetWidth;
       if (cell === end) break;
     }
-    /* Остання заморожена — та, що відкидає тінь на прокручуване. Без
-       неї не видно, що праворуч іще щось є, і межа читається як край
-       таблиці. */
-    end.classList.add('is-fz-last');
+    plan.push([end, cells]);
   });
+  for (const [end, cells] of plan) {
+    for (const [cell, x] of cells) { cell.classList.add('is-fz'); cell.style.left = x + 'px'; }
+    end.classList.add('is-fz-last');
+  }
 }
 
 /* Таблиця. Набір колонок один — секцій більше немає, бо ділити стало
@@ -3181,8 +3188,7 @@ function cabCardOld(fb) {
                  ? 'Facebook did not send the balance for this cabinet'
                  : 'Spent but not yet taken from the card. Facebook charges it '
                    + 'when it reaches the billing threshold, or on the monthly date.')}
-        ${(() => { const b = cabBuyOf(c); return b
-          ? cell('Bought for', '$' + b.per.toFixed(2), b.title + ' · $' + b.price + ' ÷ ' + b.units) : ''; })()}
+        ${''/* «Bought for це з блоку видали» — ціна лишилась у стовпці Cab cost */}
         ${cell('Campaigns', pair(c.fb.campaigns_active, c.fb.campaigns),
                cabByStatus(c.fb.campaigns_by_status))}
         ${cell('Ad sets', pair(c.fb.adsets_active, c.fb.adsets),
@@ -3254,7 +3260,7 @@ function cabCardOld(fb) {
         title="Adds it to your list and puts it straight into the archive">Archive it</button>
       ${link}
     </div>`;
-    return;
+    cabPanelFit(); return;
   }
 
   /* Що можна взяти з назви токена й від Facebook. Своє завжди
@@ -3315,8 +3321,10 @@ function cabCardOld(fb) {
   box.innerHTML = `<div class="card p-4 rounded-2xl cab-panel">
     ${head}
     <div class="cab-ptabs" role="tablist">${tb('fb', 'Facebook')}${tb('mine', 'My notes')}${tb('log', 'History')}</div>
+    <div class="cab-pbody">
     ${tab === 'mine' ? mine : tab === 'log' ? log : (c.fb ? fbBlock : '') + chart}
     ${typeof fcmBlock === 'function' && typeof fcmFor !== 'undefined' && fcmFor === c.id ? fcmBlock(c) : ''}
+    </div>
     <div class="cab-pacts">
       ${c.fb ? `<button type="button" class="is-main" onclick="fcmToggle('${enc}')"
         title="Read and moderate the comments under this cabinet's ads">${typeof fcmFor !== 'undefined' && fcmFor === c.id ? 'Hide comments' : 'Comments'}</button>` : ''}
@@ -3325,7 +3333,22 @@ function cabCardOld(fb) {
     </div>
     <!-- «export report, rules, pause це в блоці видали» -->
   </div>`;
+  cabPanelFit();
 }
+
+/* «хочу щоб цей блок був на всю висоту екрану вниз, і не мінявся розмір
+   при переході в нотатки чи історію». Висота — від верху панелі до низу
+   вікна, однакова на всіх вкладках; довге — прокручується всередині,
+   кнопки внизу стоять на місці. */
+function cabPanelFit() {
+  const box = document.getElementById('cab-detail');
+  if (!box || box.classList.contains('hidden') || getComputedStyle(box).position !== 'absolute') {
+    if (box) box.style.height = ''; return;
+  }
+  const top = box.getBoundingClientRect().top;
+  box.style.height = Math.max(420, window.innerHeight - Math.max(top, 0) - 16) + 'px';
+}
+window.addEventListener('resize', () => cabPanelFit());
 
 /* Вкладка панелі — одна на всі кабінети: перемкнувся на «My notes» —
    наступний кабінет теж відкривається там. */

@@ -53,9 +53,9 @@ const card = await page.evaluate(async () => {
   cabPick('1001');
   await new Promise(r => setTimeout(r, 300));
   const t = (document.getElementById('cab-detail') || {}).innerText || '';
-  return /Bought for\s*\$2\.50/i.test(t) ? true : t.slice(0, 300);
+  return !/Bought for/i.test(t) ? true : t.slice(0, 300);
 });
-ok('у картці кабінета — рядок Bought for', card === true, card);
+ok('у картці кабінета Bought for більше немає (прибрали на прохання)', card === true, card);
 
 const bad = await page.evaluate(async () => {
   const q = { select: () => q, eq: () => q, not: () => q, order: () => q,
