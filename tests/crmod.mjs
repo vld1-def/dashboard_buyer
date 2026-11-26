@@ -66,7 +66,7 @@ ok('цілим шматком: _600 не ловить _6001', !M.crModHit(M.crMo
 
 /* ── сторінка: вкладка ── */
 ok('вкладка Moderation серед решти', /data-k="mod" onclick="crTab\('mod'\)">Moderation/.test(LEG)
-  && /const CR_TABS = \['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod'\];/.test(LEG));
+  && /const CR_TABS = \['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod', 'mentions'\];/.test(LEG));
 ok('лічильник passed / rejected і відсоток', /passed<\/span>/.test(LEG) && /rejected<\/span>/.test(LEG) && /% pass rate/.test(LEG));
 ok('фільтр All / Rejected / Active', /seg\('', 'All'\)\}\$\{seg\('DISAPPROVED', 'Rejected'\)\}\$\{seg\('ACTIVE', 'Active'\)\}/.test(LEG));
 ok('у рядку — дата, статус, кабінет, оголошення, причина', /<th>Date<\/th><th>Status<\/th><th>Cabinet<\/th><th>Ad<\/th><th>Reason<\/th>/.test(LEG));

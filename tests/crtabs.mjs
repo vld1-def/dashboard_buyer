@@ -13,7 +13,7 @@ const SRC = fs.readFileSync('index-legacy.html', 'utf8').replace(/\r\n/g, '\n');
 const OUT = fs.readFileSync('index.html', 'utf8');
 
 /* ═══ ВКЛАДКИ ═══ */
-const a = SRC.indexOf("const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod'];");
+const a = SRC.indexOf("const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod', 'mentions'];");
 const b = SRC.indexOf('// Стара назва — щоб нічого, що її ще кличе, не впало.');
 const code = SRC.slice(a, b);
 
@@ -23,7 +23,7 @@ function tabs(saved) {
     classList: { toggle(c, v) { if (c === 'hidden') this.o.hidden = v; else this.o.on = v; }, o: null } });
   const panels = {}, btns = [];
   const body = mk('body'); body.classList.o = body;
-  ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod'].forEach(k => {
+  ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod', 'mentions'].forEach(k => {
     const p = mk(k); p.classList.o = p; panels['cr-panel-' + k] = p;
     const bt = mk(k); bt.classList.o = bt; bt.dataset = { k }; btns.push(bt);
   });
