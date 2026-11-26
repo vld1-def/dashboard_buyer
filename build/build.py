@@ -2809,6 +2809,26 @@ if doc.count('BUILD__STAMP__') != 1:
 doc = doc.replace('BUILD__STAMP__', _stamp)
 doc = doc.replace('<head>', '<head>\n  <meta name="build" content="' + _stamp + '">', 1)
 
+# ── Tailwind: компілюємо tw.css з готового index.html ──
+# Посилання — в кінець <head>, туди ж, куди cdn.tailwindcss.com дописував
+# свій <style>: утиліти й далі перекривають design.css там, де перекривали.
+import subprocess as _sp, hashlib as _hl
+if doc.count('</head>') < 1:
+    sys.exit('немає </head> для tw.css')
+doc = doc.replace('</head>', '  <link rel="stylesheet" href="tw.css?v=TW__HASH__">\n</head>', 1)
+open(OUT, 'w', encoding='utf-8').write(doc)
+_twd = os.path.join(HERE if 'HERE' in globals() else os.path.dirname(os.path.abspath(__file__)), 'tw')
+_twbin = os.path.join(_twd, 'node_modules', '.bin', 'tailwindcss')
+_twcss = os.path.join(ROOT, 'tw.css')
+if not os.path.exists(_twbin):
+    try: _sp.run(['npm', 'install', '--silent'], cwd=_twd, check=True)
+    except Exception as e: print('УВАГА: tailwind не встановився (' + str(e) + ') — лишаю старий tw.css')
+if os.path.exists(_twbin):
+    _sp.run([_twbin, '-c', os.path.join(_twd, 'tailwind.config.js'), '-i', os.path.join(_twd, 'in.css'),
+             '-o', _twcss, '--minify'], check=True, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+if not os.path.exists(_twcss):
+    sys.exit('tw.css не зібрався, а CDN уже прибраний — сторінка була б без стилів')
+doc = doc.replace('TW__HASH__', _hl.md5(open(_twcss, 'rb').read()).hexdigest()[:10])
 open(OUT, 'w', encoding='utf-8').write(doc)
 # Поруч кладемо той самий штамп окремим файлом: сторінка читає його повз
 # кеш і так дізнається, що сама застаріла.

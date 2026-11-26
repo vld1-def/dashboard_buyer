@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.11 21:31">
+  <meta name="build" content="build 26.11 21:46">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,30 +10,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    /* Перемальовуємо палітру Tailwind під новий дизайн.
-       Важливо: половина розмітки збирається в JS рядками з класами
-       text-slate-400 / bg-slate-900 / border-slate-700 — перевизначивши
-       саму шкалу, ми міняємо вигляд усього згенерованого коду теж. */
-    const _neutral = {
-      50:'#F7F7F8', 100:'#ECECEF', 200:'#D7D7DD', 300:'#B2B2BC',
-      400:'#8A8A95', 500:'#6C6C76', 600:'#53535C', 700:'#38383F',
-      800:'#222226', 900:'#131316', 950:'#0A0A0C'
-    };
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter','ui-sans-serif','system-ui','-apple-system','Segoe UI','sans-serif'],
-            mono: ['JetBrains Mono','ui-monospace','SFMono-Regular','monospace']
-          },
-          colors: { slate: _neutral, gray: _neutral, zinc: _neutral, neutral: _neutral }
-        }
-      }
-    };
-  </script>
+  <!-- TAILWIND БІЛЬШЕ НЕ З CDN. cdn.tailwindcss.com компілював CSS прямо
+       в браузері: на старті сканував увесь документ (2.9 МБ), а потім
+       перекомпільовував стилі на КОЖНУ зміну розмітки — тобто на кожен
+       рендер карток, таблиць і графіків, поки йшло «Loading data». Тепер
+       CSS збирається один раз у build.py (build/tw) у файл tw.css, який
+       браузер кешує. Посилання стоїть у кінці <head> (див. build.py) —
+       там, куди CDN дописував свої стилі, тож порядок каскаду той самий. -->
   <!-- ГРАФІКИ ТУТ БІЛЬШЕ НЕ ЗАВАНТАЖУЮТЬСЯ. Chart.js із плагіном — це
        ~250 КБ, які стояли в <head> синхронно: парсер спинявся на них
        ДО того, як браузер доходив до розмітки, і перший запит по дані
@@ -8781,7 +8764,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
   #cabinets-section #cab-detail {
     position: absolute; top: 0; right: 0; z-index: 40;
     width: 384px !important; flex: none !important;
-    overflow: hidden;
+    overflow: hidden; max-height: none !important;
     border-radius: 18px;
     box-shadow: 0 24px 60px -12px rgba(0, 0, 0, .7), 0 0 0 1px rgba(255, 255, 255, .06);
   }
@@ -8899,6 +8882,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
   #cabinets-section .cab-head .cab-rules svg, #creative-analyzer-section .seg-btn svg { transition: none; transform: none !important; }
 }
   </style>
+  <link rel="stylesheet" href="tw.css?v=a69cecd154">
 </head>
 <body class="font-sans antialiased text-dynamic">
   <script>
@@ -9157,7 +9141,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 21:31</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 21:46</div>
     </div>
   </aside>
 
@@ -11410,16 +11394,9 @@ function switchTeam(teamName) {
 // 1465, тобто 465 не доїжджали: депозити виглядали заниженими, а правки в
 // базі не з'являлись, якщо рядок був за межею першої тисячі. Читаємо сторінками.
 async function sbFetchAll(table, build) {
-  const PAGE = 1000;
-  let all = [], from = 0;
-  for (;;) {
-    const { data, error } = await build(sb.from(table).select('*'))
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    all = all.concat(data || []);
-    if (!data || data.length < PAGE) return all;
-    from += PAGE;
-  }
+  const r = await sbAllRows(() => build(sb.from(table).select('*')));
+  if (r.error) throw r.error;
+  return r.data;
 }
 
 /* УСІ РЯДКИ ЗАПИТУ, А НЕ ПЕРША ТИСЯЧА.
@@ -11432,15 +11409,25 @@ async function sbFetchAll(table, build) {
    відправиш) і МУСИТЬ мати однозначний порядок — інакше сторінки
    перекриються або загублять рядки на межі. Відповідь тієї ж форми,
    що й у звичайного запиту: { data, error }. */
+/* СТОРІНКИ ПАРАЛЕЛЬНО. Доти кожна наступна тисяча чекала попередню:
+   1800 рядків — два повні походи до бази один за одним, 12 000
+   креативів — дванадцять. Тепер перша сторінка йде сама (більшість
+   запитів у неї й влазить), а далі — пачками по три одночасно. Зайва
+   порожня сторінка в пачці коштує один легкий запит, а не очікування. */
 async function sbAllRows(make) {
-  const PAGE = 1000;
-  let all = [], from = 0;
-  for (;;) {
-    const { data, error } = await make().range(from, from + PAGE - 1);
-    if (error) return { data: null, error };
-    all = all.concat(data || []);
-    if (!data || data.length < PAGE) return { data: all, error: null };
-    from += PAGE;
+  const PAGE = 1000, BATCH = 3;
+  const first = await make().range(0, PAGE - 1);
+  if (first.error) return { data: null, error: first.error };
+  let all = first.data || [];
+  if (all.length < PAGE) return { data: all, error: null };
+  for (let from = PAGE; ; from += PAGE * BATCH) {
+    const res = await Promise.all(Array.from({ length: BATCH }, (_, i) =>
+      make().range(from + i * PAGE, from + (i + 1) * PAGE - 1)));
+    for (const { data, error } of res) {
+      if (error) return { data: null, error };
+      all = all.concat(data || []);
+      if (!data || data.length < PAGE) return { data: all, error: null };
+    }
   }
 }
 
@@ -34471,8 +34458,16 @@ function cabPanelFit() {
   if (!box || box.classList.contains('hidden') || getComputedStyle(box).position !== 'absolute') {
     if (box) box.style.height = ''; return;
   }
+  /* Сторінка живе під body { zoom: .9 }: rect і innerHeight — у
+     пікселях екрана, а style.height — у CSS-пікселях до зуму. Без
+     ділення панель не діставала до низу на ті самі 10%. */
+  const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
   const top = box.getBoundingClientRect().top;
-  box.style.height = Math.max(420, window.innerHeight - Math.max(top, 0) - 16) + 'px';
+  /* До низу екрана — або до низу картки FB LIVE, якщо вона кінчається
+     раніше: картка обрізає все, що вилазить за її край. */
+  const sec = document.getElementById('cabinets-section');
+  const floor = Math.min(window.innerHeight - 16, sec ? sec.getBoundingClientRect().bottom - 14 : Infinity);
+  box.style.height = Math.max(320, (floor - Math.max(top, 0)) / z) + 'px';
 }
 window.addEventListener('resize', () => cabPanelFit());
 

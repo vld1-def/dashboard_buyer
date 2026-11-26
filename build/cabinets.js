@@ -3342,8 +3342,16 @@ function cabPanelFit() {
   if (!box || box.classList.contains('hidden') || getComputedStyle(box).position !== 'absolute') {
     if (box) box.style.height = ''; return;
   }
+  /* Сторінка живе під body { zoom: .9 }: rect і innerHeight — у
+     пікселях екрана, а style.height — у CSS-пікселях до зуму. Без
+     ділення панель не діставала до низу на ті самі 10%. */
+  const z = parseFloat(getComputedStyle(document.body).zoom) || 1;
   const top = box.getBoundingClientRect().top;
-  box.style.height = Math.max(420, window.innerHeight - Math.max(top, 0) - 16) + 'px';
+  /* До низу екрана — або до низу картки FB LIVE, якщо вона кінчається
+     раніше: картка обрізає все, що вилазить за її край. */
+  const sec = document.getElementById('cabinets-section');
+  const floor = Math.min(window.innerHeight - 16, sec ? sec.getBoundingClientRect().bottom - 14 : Infinity);
+  box.style.height = Math.max(320, (floor - Math.max(top, 0)) / z) + 'px';
 }
 window.addEventListener('resize', () => cabPanelFit());
 

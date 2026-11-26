@@ -2742,16 +2742,9 @@ function switchTeam(teamName) {
 // 1465, тобто 465 не доїжджали: депозити виглядали заниженими, а правки в
 // базі не з'являлись, якщо рядок був за межею першої тисячі. Читаємо сторінками.
 async function sbFetchAll(table, build) {
-  const PAGE = 1000;
-  let all = [], from = 0;
-  for (;;) {
-    const { data, error } = await build(sb.from(table).select('*'))
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    all = all.concat(data || []);
-    if (!data || data.length < PAGE) return all;
-    from += PAGE;
-  }
+  const r = await sbAllRows(() => build(sb.from(table).select('*')));
+  if (r.error) throw r.error;
+  return r.data;
 }
 
 /* УСІ РЯДКИ ЗАПИТУ, А НЕ ПЕРША ТИСЯЧА.
@@ -2764,15 +2757,25 @@ async function sbFetchAll(table, build) {
    відправиш) і МУСИТЬ мати однозначний порядок — інакше сторінки
    перекриються або загублять рядки на межі. Відповідь тієї ж форми,
    що й у звичайного запиту: { data, error }. */
+/* СТОРІНКИ ПАРАЛЕЛЬНО. Доти кожна наступна тисяча чекала попередню:
+   1800 рядків — два повні походи до бази один за одним, 12 000
+   креативів — дванадцять. Тепер перша сторінка йде сама (більшість
+   запитів у неї й влазить), а далі — пачками по три одночасно. Зайва
+   порожня сторінка в пачці коштує один легкий запит, а не очікування. */
 async function sbAllRows(make) {
-  const PAGE = 1000;
-  let all = [], from = 0;
-  for (;;) {
-    const { data, error } = await make().range(from, from + PAGE - 1);
-    if (error) return { data: null, error };
-    all = all.concat(data || []);
-    if (!data || data.length < PAGE) return { data: all, error: null };
-    from += PAGE;
+  const PAGE = 1000, BATCH = 3;
+  const first = await make().range(0, PAGE - 1);
+  if (first.error) return { data: null, error: first.error };
+  let all = first.data || [];
+  if (all.length < PAGE) return { data: all, error: null };
+  for (let from = PAGE; ; from += PAGE * BATCH) {
+    const res = await Promise.all(Array.from({ length: BATCH }, (_, i) =>
+      make().range(from + i * PAGE, from + (i + 1) * PAGE - 1)));
+    for (const { data, error } of res) {
+      if (error) return { data: null, error };
+      all = all.concat(data || []);
+      if (!data || data.length < PAGE) return { data: all, error: null };
+    }
   }
 }
 

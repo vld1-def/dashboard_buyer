@@ -48,8 +48,9 @@ const r = await page.evaluate(async () => {
   out.chart = /14 days/i.test(p.innerText);
   out.acts = [...p.querySelectorAll('.cab-pacts button')].map(b => b.textContent.trim()).join();
   const hh = () => Math.round(document.getElementById('cab-detail').getBoundingClientRect().height);
+  out.dbg = (() => { const b = document.getElementById('cab-detail'); return [b.style.height, getComputedStyle(b).height, getComputedStyle(b).maxHeight, b.style.cssText.slice(0,200), getComputedStyle(b).position, Math.round(b.getBoundingClientRect().top), innerHeight, getComputedStyle(document.body).zoom]; })();
   out.h = [hh()]; out.bought = /bought for/i.test(document.getElementById('cab-detail').innerText);
-  out.toBottom = Math.round(innerHeight - document.getElementById('cab-detail').getBoundingClientRect().bottom);
+  out.toBottom = Math.round(Math.min(innerHeight, document.getElementById('cabinets-section').getBoundingClientRect().bottom) - document.getElementById('cab-detail').getBoundingClientRect().bottom);
   cabPanelTabSet('mine');
   out.h.push(hh());
   cabPanelTabSet('log'); out.h.push(hh()); cabPanelTabSet('mine');
@@ -59,7 +60,7 @@ const r = await page.evaluate(async () => {
   return out;
 });
 ok('Campaign ↔ Ads only — стовпці на тих самих місцях', r.a === r.b, [r.a, r.b]);
-ok('панель до низу екрана і однакова на всіх вкладках', r.h.every(x => x === r.h[0]) && r.h[0] >= 420, [r.h, r.toBottom]);
+ok('панель до низу екрана і однакова на всіх вкладках', r.h.every(x => x === r.h[0]) && r.toBottom >= 0 && r.toBottom <= 24, [r.h, r.toBottom, r.dbg]);
 ok('Bought for у панелі немає', !r.bought, r.bought);
 ok('пінів більше немає', !r.pinCol, r);
 ok('назва в дереві займає 4 стовпці (без піна)', r.colspan === '4', r.colspan);

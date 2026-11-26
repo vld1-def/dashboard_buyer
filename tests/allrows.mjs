@@ -22,12 +22,12 @@ const rows = Array.from({ length: 2482 }, (_, i) => ({ id: i }));
 let calls = 0;
 const make = () => ({ range: async (a, b) => { calls++; return { data: rows.slice(a, Math.min(b + 1, a + 1000)), error: null }; } });
 const res = await sbAllRows(make);
-ok('зібрано всі рядки трьома сторінками', res.error === null && res.data.length === 2482 && calls === 3, { n: res.data && res.data.length, calls });
+ok('зібрано всі рядки (перша сторінка + пачка з трьох паралельно)', res.error === null && res.data.length === 2482 && calls === 4, { n: res.data && res.data.length, calls });
 ok('порядок збережено, дублів нема', res.data.every((r, i) => r.id === i));
 
 calls = 0;
 const exact = await sbAllRows(() => ({ range: async (a) => { calls++; return { data: a === 0 ? rows.slice(0, 1000) : [], error: null }; } }));
-ok('рівно тисяча: ще один запит, і він порожній', exact.data.length === 1000 && calls === 2);
+ok('рівно тисяча: дочитує наступну пачку, вона порожня', exact.data.length === 1000 && calls === 4);
 const bad = await sbAllRows(() => ({ range: async () => ({ data: null, error: { message: 'boom' } }) }));
 ok('помилка повертається тією ж формою', bad.data === null && bad.error.message === 'boom');
 

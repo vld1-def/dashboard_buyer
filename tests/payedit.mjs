@@ -39,6 +39,10 @@ await page.evaluate(() => {
      ставимо руками: 672px — це рівно те, що лишається від модалки на
      896px після навігації збоку й відступів. */
   const l = document.getElementById('geo-payouts-list');
+  /* Тепер Tailwind у стенді є (tw.css, а не CDN), і .hidden справді
+     ховає — а список живе в закритій модалці налаштувань. Відкриваємо
+     її так, як відкрила б людина: знімаємо hidden з предків. */
+  for (let e = l; e; e = e.parentElement) e.classList && e.classList.remove('hidden');
   l.parentElement.style.width = '672px';
 });
 

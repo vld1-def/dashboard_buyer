@@ -30,6 +30,7 @@ const vid = await page.evaluate(() => {
   a.className = 'uq-dl shrink-0 bg-violet-600/80 hover:bg-violet-500 text-white '
               + 'text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition';
   a.textContent = 'Download';
+  a.style.transition = 'none'; // колір читаємо одразу, а не посеред анімації Tailwind-класу transition
   document.body.appendChild(a);
   const was = getComputedStyle(a).backgroundColor;
   uqGotMark(a);
