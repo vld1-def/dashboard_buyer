@@ -31,7 +31,10 @@ ok('дефіс, підкреслення й пробіл не розрізняю
 ok('чого немає — того не знаходить', !tdHit(row, 'zzz') && !tdHit(row, 'kg zzz'));
 ok('порожні поля рядка не ламають пошук', tdHit({ geo: 'KG', acc: '1', cab: null, br: undefined, fn: '', cr: 'x', camp: '' }, 'kg') === true);
 
-ok('знайдене розкривається саме', /open = !!tdQ \|\| tdOpenSet\.has\(id\)/.test(TD));
+ok('у дереві знайдене розкривається саме', /open = \(!!tdQ && tdMode === 'tree'\) \|\| tdOpenSet\.has\(id\)/.test(TD));
+/* «вкладка креативи і воронки, щоб був список а не групування по
+   дефолту». Поза деревом пошук нічого не розкриває. */
+ok('Creatives і Funnels під час пошуку — список', !/open = !!tdQ \|\|/.test(TD));
 ok('таблиця малює лише знайдене, а підсумок каже скільки', /const shown = tdQ \? rows\.filter\(x => tdHit\(x, tdQ\)\) : rows;/.test(TD)
   && /tdTree\(shown, TD_VIEWS\[tdMode\]\)/.test(TD) && /'Found \\u00b7 ' \+ shown\.length \+ ' of ' \+ rows\.length/.test(TD));
 ok('нічого не знайдено — сказано словами', /Nothing matches/.test(TD));

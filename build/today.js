@@ -254,7 +254,11 @@ function tdTree(rows, levels) {
     const g = new Map();
     list.forEach(x => { const k = key(x); if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
     [...g.entries()].sort((a, b) => tdSum(b[1]).s - tdSum(a[1]).s).forEach(([k, l]) => {
-      const id = path + '/' + k, leaf = depth === levels.length - 1, open = !!tdQ || tdOpenSet.has(id);
+      /* Пошук розкриває все лише в дереві «Geo › … › Creative»: там знайдене
+         сховане на четвертому рівні. На вкладках Creatives і Funnels —
+         список: «щоб був список, а не групування по дефолту». */
+      const id = path + '/' + k, leaf = depth === levels.length - 1,
+            open = (!!tdQ && tdMode === 'tree') || tdOpenSet.has(id);
       html += `<tr class="td-l${Math.min(depth, 1)}${leaf ? '' : ' td-x'}${open ? ' is-open' : ''}" data-id="${tdEsc(id)}">`
         /* Смужка — частка рядка в спенді всієї таблиці: де йдуть гроші,
            видно без читання цифр. */

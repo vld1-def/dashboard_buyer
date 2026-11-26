@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.11 10:43">
+  <meta name="build" content="build 26.11 12:51">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8837,7 +8837,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 10:43</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 12:51</div>
     </div>
   </aside>
 
@@ -41906,7 +41906,11 @@ function tdTree(rows, levels) {
     const g = new Map();
     list.forEach(x => { const k = key(x); if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
     [...g.entries()].sort((a, b) => tdSum(b[1]).s - tdSum(a[1]).s).forEach(([k, l]) => {
-      const id = path + '/' + k, leaf = depth === levels.length - 1, open = !!tdQ || tdOpenSet.has(id);
+      /* Пошук розкриває все лише в дереві «Geo › … › Creative»: там знайдене
+         сховане на четвертому рівні. На вкладках Creatives і Funnels —
+         список: «щоб був список, а не групування по дефолту». */
+      const id = path + '/' + k, leaf = depth === levels.length - 1,
+            open = (!!tdQ && tdMode === 'tree') || tdOpenSet.has(id);
       html += `<tr class="td-l${Math.min(depth, 1)}${leaf ? '' : ' td-x'}${open ? ' is-open' : ''}" data-id="${tdEsc(id)}">`
         /* Смужка — частка рядка в спенді всієї таблиці: де йдуть гроші,
            видно без читання цифр. */
