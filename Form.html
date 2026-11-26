@@ -3328,6 +3328,11 @@ function parseKeitaro(content) {
      оферу. Тому суми по оферах від цього не міняються — просто
      зʼявляється рівень глибше. */
   const byDailyLand = {};
+  /* Відомі гео — ті, під які є виплати/офери. Ними перевіряємо гео в
+     назві лендінга (geoInText): випадкові дволітерні шматки назви туди
+     не потрапляють. */
+  const knownGeos = new Set((typeof globalOffersCache !== 'undefined' && globalOffersCache || [])
+    .map(x => String(x.geo || '').trim().toUpperCase()).filter(g => /^[A-Z]{2}$/.test(g)));
   /* Невпізнані офери — не просто список назв, а з цифрами: скільком
      інсталам і депозитам вони належать. Без цифр «не розпізнано» легко
      прочитати як дрібницю, а насправді саме через це рядок не ділиться
@@ -3436,6 +3441,12 @@ function parseKeitaro(content) {
        потім загальний APP-ний. Перевірка сама себе страхує: беремо
        лише те, що справді схоже на код країни, і жодного «гео» з
        двох перших літер креатива звідси не вийде. */
+    const geoInText = v => {
+      if (!knownGeos.size) return '';
+      const found = new Set(String(v == null ? '' : v).split(/[^A-Za-z]+/)
+        .filter(t => t.length === 2).map(t => t.toUpperCase()).filter(t => knownGeos.has(t)));
+      return found.size === 1 ? [...found][0] : '';
+    };
     const geoTok = v => {
       const t = String(v == null ? '' : v).split(/[_\-\s]/)[0].trim().toUpperCase();
       return /^[A-Z]{2}$/.test(t) ? t : '';
@@ -3450,8 +3461,16 @@ function parseKeitaro(content) {
        гео на боці FB), а Country лишається для рядків, де токена
        немає зовсім — у PWA-постачальників його і не буває, і там
        Country якраз правильна. */
+    /* ГЕО В САМІЙ НАЗВІ ЛЕНДІНГА — ГОЛОВНІШЕ ЗА ПРЕФІКС КРЕАТИВУ.
+       «Pin-Up TJ | Wheel Plus Girl TJ | 38$ | tj» прилетів із креативу
+       KZ_… (той самий креатив крутили на TJ), і лендінг ставав
+       казахським: «other geo» замість офера й позначка KZ, хоча назва
+       прямо каже TJ. Беремо гео з назви, лише коли воно ОДНЕ й відоме
+       (є серед гео виплат/оферів) — «Up» з «Pin-Up» гео не стане. */
+    const landTxt = (() => { const k = (pIdx && pIdx.offer >= 0) ? pIdx.offer : iOff;
+      return k >= 0 ? String(r[k] || '') : ''; })();
     const landGeo = rowMode === 'app'
-      ? (geoTok(cr) || (iGeoTok >= 0 ? geoTok(r[iGeoTok]) : '') || (geo !== '??' ? geo : ''))
+      ? (geoInText(landTxt) || geoTok(cr) || (iGeoTok >= 0 ? geoTok(r[iGeoTok]) : '') || (geo !== '??' ? geo : ''))
       : geo;
     const funnel = apFunnelData(funRaw) || apFunnelData(ktid) || funRaw || '—';
 

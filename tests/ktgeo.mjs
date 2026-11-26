@@ -216,4 +216,31 @@ ok('у підсумку ті самі інстали, реєстрації і д
   new RegExp(`${one.kt.installs}\\b`).test(one.foot)
   && new RegExp(`${one.kt.deps}\\b`).test(one.foot), [one.foot, one.kt]);
 
+/* ─────────── 3. ГЕО З НАЗВИ ЛЕНДІНГА ГОЛОВНІШЕ ЗА ПРЕФІКС КРЕАТИВУ ───────────
+   «чому в імпорті інколи от так визначає?» — креатив KZ_… крутили на
+   TJ, лендінг прямо каже «TJ … | tj», а рядок отримував KZ і «other geo». */
+{
+  const KZ = [H,
+    'China;Sator Android;https://tj.test/;Pin-Up TJ | Wheel Plus Girl TJ | 38$ | tj;111;cy638t;8wxg;SMW11003;KZ_AB_77;cr1;2026-10-23;12;40;20;5'
+  ].join('\n');
+  const r = await page.evaluate(async ([ktCsv, fb, mk]) => {
+    mappingDB = { timezones: { '111': 3 }, agencies: {}, funnels: {}, funnelApp: {}, providers: {} };
+    knownOffers = ['Pin-up[38]', 'PIN-UP[40$]'];
+    globalOffersCache = [{ offer: 'Pin-up[38]', geo: 'TJ' }, { offer: 'PIN-UP[40$]', geo: 'KG' }];
+    datasetToImport = []; creativesToImport = [];
+    trafficMode = 'app'; appParse = { mask: mk }; appProfiles = {};
+    keitaroMap = { ...KM_DEFAULT };
+    parseKeitaro(ktCsv);
+    const lines = parseCsvLines(fb);
+    const map = mapColumns(lines[0].map(h => h.toLowerCase()));
+    map.cur = lines[0].length;
+    await processCampaignData(map, [lines[0].concat('cur')].concat(lines.slice(1).map(r => r.concat('USD'))));
+    return { cells: Object.values(keitaroAgg.byDailyLand['2026-10-23|111'] || {}).map(c => c.geo),
+             rows: datasetToImport.map(x => ({ offer: x.offer || '', other: x._geoOther || '', note: x._offerOther || '' })) };
+  }, [KZ, [fbHead, fbRow('111', 'TJ', '50.00')].join('\r\n'), MASK]);
+  ok('гео лендінга — з його назви (TJ), а не з префікса креативу KZ', r.cells.join() === 'TJ', r.cells);
+  ok('без позначки чужого гео', r.rows.every(x => !x.other), r.rows);
+  ok('і офер TJ підставився', r.rows.every(x => x.offer === 'Pin-up[38]' && !x.note), r.rows);
+}
+
 await done(browser, srv, errs);
