@@ -1751,6 +1751,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     <!-- МОДЕРАЦІЯ: журнал reject / active з fb-sync (fb_ad_moderation).
          На вкладці — скільки реджектів, видно й згорнутою. -->
     <button type="button" data-k="mod" onclick="crTab('mod')">Moderation <span id="cr-mod-note" class="cr-tab-n"></span></button>
+    <!-- ЗГАДКИ В ЗВІТАХ: усі рядки щоденних звітів, де названо цей креатив. -->
+    <button type="button" data-k="mentions" onclick="crTab('mentions')">Mentions <span id="cr-men-note" class="cr-tab-n"></span></button>
   </div>
   <div class="cr-tabbody mb-6 hidden" id="cr-tabbody">
     <div id="cr-panel-placements" class="hidden"></div>
@@ -1759,6 +1761,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; position:abs
     <div id="cr-panel-accounts" class="hidden"></div>
     <div id="cr-panel-cabs" class="hidden"><div id="cr-account-list" class="cr-cab-tiles"></div></div>
     <div id="cr-panel-mod" class="hidden"></div>
+    <div id="cr-panel-mentions" class="hidden"></div>
   </div>
 </div>
 </div>
@@ -4338,6 +4341,75 @@ function crModCab(id) {
 window.crModSet = function (f) { crModFilter = f; crRenderModerationPanel(); };
 window.crModReload = async function () { await crModLoad(true); crRenderModerationPanel(); searchCreative(); };
 
+/* ═══ ЗГАДКИ В ЗВІТАХ ═══
+   «в creative analyzer можеш додати згадування, зробити вкладку біля
+   модерації». Усі рядки щоденних звітів, де названо цей креатив, —
+   з датою, міткою (DONE/ISSUE/WATCH/PLAN) і часом рядка; клік відкриває
+   той звіт. Креатив шукаємо цілим словом і без різниці в регістрі:
+   «kg_js_674» у звіті — це той самий KG_JS_674, а KG_JS_6740 — ні. */
+let crMenLoaded = false;
+async function crMenLoad() {
+  if (crMenLoaded) return;
+  try {
+    if (!(Array.isArray(reportData) && reportData.length)) {
+      const { data } = await sb.from('daily_reports').select('*').eq('team_name', currentTeam);
+      if (Array.isArray(data)) reportData = data;
+    }
+    if (rpTagsLoadedFor !== currentTeam) {
+      await Promise.all([loadReportTags(), loadReportTimes()]);
+      rpTagsLoadedFor = currentTeam;
+    }
+    crMenLoaded = true;
+  } catch (e) { /* без звітів — порожньо */ }
+}
+const CR_MEN_KIND = { '+': ['DONE', 'is-done'], '-': ['ISSUE', 'is-issue'], '!': ['WATCH', 'is-watch'], '>': ['PLAN', 'is-plan'] };
+function crMentionsOf(cid) {
+  const c = String(cid || '').trim();
+  if (c.length < 3) return [];
+  const re = new RegExp('(^|[^\\w.-])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w.-])', 'i');
+  const out = [];
+  (reportData || []).forEach(r => {
+    String(r.comment || '').split('\n').forEach(raw => {
+      const l = raw.trim();
+      if (!l || !re.test(l)) return;
+      const k = CR_MEN_KIND[l[0]];
+      out.push({ id: r.id, day: normalizeDate(r.date), kind: k ? k[0] : '', cls: k ? k[1] : '',
+                 // Рядок таблиці звіту — клітинки через « · », без рамок «|».
+                 text: k ? l.slice(1).trim() : (/^\|/.test(l) ? l.replace(/^\||\|$/g, '').split('|').map(x => x.trim()).filter(Boolean).join(' · ') : l),
+                 time: typeof rpLineTime === 'function' ? rpLineTime(r.id, l) : '' });
+    });
+  });
+  return out.sort((a, b) => (b.day + b.time).localeCompare(a.day + a.time));
+}
+async function crMenNote() {
+  const el = document.getElementById('cr-men-note');
+  if (!el || !currentCreativeID) return;
+  await crMenLoad();
+  const n = crMentionsOf(currentCreativeID).length;
+  el.textContent = n ? String(n) : '';
+}
+window.crMenOpen = function (day) {
+  const m = document.getElementById('report-modal');
+  if (m && m.classList.contains('hidden')) toggleReportModal();
+  setTimeout(() => { try { rpCalGo(day); } catch (e) {} }, 400);
+};
+async function crRenderMentionsPanel() {
+  const el = document.getElementById('cr-panel-mentions');
+  if (!el) return;
+  if (!crMenLoaded) { el.innerHTML = '<p class="cr-mod-empty">Reading the daily reports…</p>'; await crMenLoad(); if (crTabNow !== 'mentions') return; }
+  const list = crMentionsOf(currentCreativeID);
+  const esc = v => (typeof escapeHtml === 'function' ? escapeHtml(v) : String(v));
+  const hl = t => esc(t).replace(new RegExp('(' + String(currentCreativeID).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig'), '<mark>$1</mark>');
+  el.innerHTML = !list.length
+    ? '<p class="cr-mod-empty">This creative is not mentioned in any daily report yet. Write its name in a report line — it shows up here.</p>'
+    : `<div class="cr-men-list custom-scrollbar">${list.map(x => `
+        <button type="button" class="cr-men" onclick="crMenOpen('${x.day}')" title="Open the report of ${x.day}">
+          <span class="cr-men-when"><b>${esc(typeof rpDateLabel === 'function' ? rpDateLabel(x.day) : x.day)}</b>${x.time ? `<i>${x.time}</i>` : ''}</span>
+          ${x.kind ? `<span class="cr-men-k ${x.cls}">${x.kind}</span>` : '<span class="cr-men-k">NOTE</span>'}
+          <span class="cr-men-t">${hl(x.text)}</span>
+        </button>`).join('')}</div>`;
+}
+
 async function crRenderModerationPanel() {
   const el = document.getElementById('cr-panel-mod');
   if (!el) return;
@@ -4432,7 +4504,7 @@ async function crRuleBadge(cid) {
     esc(names.length > 1 ? names.length + ' own rules' : names[0])}</button>`;
 }
 
-const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod'];
+const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod', 'mentions'];
 /* ЗА ЗАМОВЧУВАННЯМ ВІДКРИТИЙ DAILY TREND. «по дефолту щоб графік був
    відкритий, коли відкриваю креатив». Вибір і далі не памʼятається між
    заходами: сторінка щоразу починає з графіка. */
@@ -4632,7 +4704,9 @@ function crRenderPanels() {
   if (crOpenPanels.has('funnels'))    crRenderFunnelsPanel();
   if (crOpenPanels.has('accounts'))   crRenderAccountsPanel();
   if (crOpenPanels.has('mod'))        crRenderModerationPanel();
+  if (crOpenPanels.has('mentions'))   crRenderMentionsPanel();
   crModNote();
+  crMenNote();
 }
 
 /* Скільки реджектів у вибраного креатива — на самій вкладці. Журнал

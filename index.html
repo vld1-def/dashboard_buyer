@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.11 14:48">
+  <meta name="build" content="build 26.11 15:06">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8586,6 +8586,20 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
   font-variant-numeric: tabular-nums; user-select: none; pointer-events: none;
 }
 #report-list-container [id^="report-content-"][data-state="view"] .report-block:has(.rb-time) { min-height: 50px; }
+
+/* Creative Analyzer → Mentions */
+.cr-men-list { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow: auto; padding: 2px; }
+.cr-men { display: grid; grid-template-columns: 96px 58px 1fr; gap: 10px; align-items: start; text-align: left; padding: 9px 12px; border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.06); transition: border-color .15s, background .15s; }
+.cr-men:hover { border-color: var(--accent); background: rgba(139,92,246,.06); }
+.cr-men-when { display: flex; flex-direction: column; gap: 1px; font-size: 11.5px; color: var(--text-main); }
+.cr-men-when i { font-style: normal; font-size: 10px; color: var(--text-muted); opacity: .7; font-variant-numeric: tabular-nums; }
+.cr-men-k { justify-self: start; font-size: 9px; font-weight: 900; letter-spacing: .1em; padding: 2px 7px; border-radius: 6px; color: var(--text-muted); background: rgba(255,255,255,.06); }
+.cr-men-k.is-done { color: #4ade80; background: rgba(74,222,128,.1); }
+.cr-men-k.is-issue { color: #f87171; background: rgba(248,113,113,.1); }
+.cr-men-k.is-watch { color: #fbbf24; background: rgba(251,191,36,.1); }
+.cr-men-k.is-plan { color: #a5b4fc; background: rgba(165,180,252,.1); }
+.cr-men-t { font-size: 12.5px; line-height: 1.45; color: var(--text-main); white-space: normal; word-break: break-word; }
+.cr-men-t mark { background: rgba(139,92,246,.25); color: #fff; border-radius: 4px; padding: 0 3px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8845,7 +8859,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 14:48</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 15:06</div>
     </div>
   </aside>
 
@@ -9635,6 +9649,8 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
     <!-- МОДЕРАЦІЯ: журнал reject / active з fb-sync (fb_ad_moderation).
          На вкладці — скільки реджектів, видно й згорнутою. -->
     <button type="button" data-k="mod" onclick="crTab('mod')">Moderation <span id="cr-mod-note" class="cr-tab-n"></span></button>
+    <!-- ЗГАДКИ В ЗВІТАХ: усі рядки щоденних звітів, де названо цей креатив. -->
+    <button type="button" data-k="mentions" onclick="crTab('mentions')">Mentions <span id="cr-men-note" class="cr-tab-n"></span></button>
   </div>
   <div class="cr-tabbody mb-6 hidden" id="cr-tabbody">
     <div id="cr-panel-placements" class="hidden"></div>
@@ -9643,6 +9659,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
     <div id="cr-panel-accounts" class="hidden"></div>
     <div id="cr-panel-cabs" class="hidden"><div id="cr-account-list" class="cr-cab-tiles"></div></div>
     <div id="cr-panel-mod" class="hidden"></div>
+    <div id="cr-panel-mentions" class="hidden"></div>
   </div>
 </div>
 </div>
@@ -12952,6 +12969,75 @@ function crModCab(id) {
 window.crModSet = function (f) { crModFilter = f; crRenderModerationPanel(); };
 window.crModReload = async function () { await crModLoad(true); crRenderModerationPanel(); searchCreative(); };
 
+/* ═══ ЗГАДКИ В ЗВІТАХ ═══
+   «в creative analyzer можеш додати згадування, зробити вкладку біля
+   модерації». All рядки щоденних звітів, де названо цей креатив, —
+   з датою, міткою (DONE/ISSUE/WATCH/PLAN) і часом рядка; клік відкриває
+   той звіт. Creative шукаємо цілим словом і без різниці в регістрі:
+   «kg_js_674» у звіті — це той самий KG_JS_674, а KG_JS_6740 — ні. */
+let crMenLoaded = false;
+async function crMenLoad() {
+  if (crMenLoaded) return;
+  try {
+    if (!(Array.isArray(reportData) && reportData.length)) {
+      const { data } = await sb.from('daily_reports').select('*').eq('team_name', currentTeam);
+      if (Array.isArray(data)) reportData = data;
+    }
+    if (rpTagsLoadedFor !== currentTeam) {
+      await Promise.all([loadReportTags(), loadReportTimes()]);
+      rpTagsLoadedFor = currentTeam;
+    }
+    crMenLoaded = true;
+  } catch (e) { /* без звітів — порожньо */ }
+}
+const CR_MEN_KIND = { '+': ['DONE', 'is-done'], '-': ['ISSUE', 'is-issue'], '!': ['WATCH', 'is-watch'], '>': ['PLAN', 'is-plan'] };
+function crMentionsOf(cid) {
+  const c = String(cid || '').trim();
+  if (c.length < 3) return [];
+  const re = new RegExp('(^|[^\\w.-])' + c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w.-])', 'i');
+  const out = [];
+  (reportData || []).forEach(r => {
+    String(r.comment || '').split('\n').forEach(raw => {
+      const l = raw.trim();
+      if (!l || !re.test(l)) return;
+      const k = CR_MEN_KIND[l[0]];
+      out.push({ id: r.id, day: normalizeDate(r.date), kind: k ? k[0] : '', cls: k ? k[1] : '',
+                 // Рядок таблиці звіту — клітинки через « · », без рамок «|».
+                 text: k ? l.slice(1).trim() : (/^\|/.test(l) ? l.replace(/^\||\|$/g, '').split('|').map(x => x.trim()).filter(Boolean).join(' · ') : l),
+                 time: typeof rpLineTime === 'function' ? rpLineTime(r.id, l) : '' });
+    });
+  });
+  return out.sort((a, b) => (b.day + b.time).localeCompare(a.day + a.time));
+}
+async function crMenNote() {
+  const el = document.getElementById('cr-men-note');
+  if (!el || !currentCreativeID) return;
+  await crMenLoad();
+  const n = crMentionsOf(currentCreativeID).length;
+  el.textContent = n ? String(n) : '';
+}
+window.crMenOpen = function (day) {
+  const m = document.getElementById('report-modal');
+  if (m && m.classList.contains('hidden')) toggleReportModal();
+  setTimeout(() => { try { rpCalGo(day); } catch (e) {} }, 400);
+};
+async function crRenderMentionsPanel() {
+  const el = document.getElementById('cr-panel-mentions');
+  if (!el) return;
+  if (!crMenLoaded) { el.innerHTML = '<p class="cr-mod-empty">Reading the daily reports…</p>'; await crMenLoad(); if (crTabNow !== 'mentions') return; }
+  const list = crMentionsOf(currentCreativeID);
+  const esc = v => (typeof escapeHtml === 'function' ? escapeHtml(v) : String(v));
+  const hl = t => esc(t).replace(new RegExp('(' + String(currentCreativeID).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig'), '<mark>$1</mark>');
+  el.innerHTML = !list.length
+    ? '<p class="cr-mod-empty">This creative is not mentioned in any daily report yet. Write its name in a report line — it shows up here.</p>'
+    : `<div class="cr-men-list custom-scrollbar">${list.map(x => `
+        <button type="button" class="cr-men" onclick="crMenOpen('${x.day}')" title="Open the report of ${x.day}">
+          <span class="cr-men-when"><b>${esc(typeof rpDateLabel === 'function' ? rpDateLabel(x.day) : x.day)}</b>${x.time ? `<i>${x.time}</i>` : ''}</span>
+          ${x.kind ? `<span class="cr-men-k ${x.cls}">${x.kind}</span>` : '<span class="cr-men-k">NOTE</span>'}
+          <span class="cr-men-t">${hl(x.text)}</span>
+        </button>`).join('')}</div>`;
+}
+
 async function crRenderModerationPanel() {
   const el = document.getElementById('cr-panel-mod');
   if (!el) return;
@@ -13046,7 +13132,7 @@ async function crRuleBadge(cid) {
     esc(names.length > 1 ? names.length + ' own rules' : names[0])}</button>`;
 }
 
-const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod'];
+const CR_TABS = ['placements', 'trend', 'funnels', 'accounts', 'cabs', 'mod', 'mentions'];
 /* ЗА ЗАМОВЧУВАННЯМ ВІДКРИТИЙ DAILY TREND. «по дефолту щоб графік був
    відкритий, коли відкриваю креатив». Вибір і далі не памʼятається між
    заходами: сторінка щоразу починає з графіка. */
@@ -13246,7 +13332,9 @@ function crRenderPanels() {
   if (crOpenPanels.has('funnels'))    crRenderFunnelsPanel();
   if (crOpenPanels.has('accounts'))   crRenderAccountsPanel();
   if (crOpenPanels.has('mod'))        crRenderModerationPanel();
+  if (crOpenPanels.has('mentions'))   crRenderMentionsPanel();
   crModNote();
+  crMenNote();
 }
 
 /* Скільки реджектів у вибраного креатива — на самій вкладці. Журнал
