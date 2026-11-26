@@ -192,4 +192,16 @@ if (spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status !== 0) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+/* «скажи чи взагалі ці метадані працюють» — перевірено справжнім ffmpeg:
+   make/model MP4 відкидав, encoder перебивав. Тепер — ключі телефонів,
+   bitexact і вирізаний рядок x264. */
+{
+  const m = await page.evaluate(() => ['fake', 'strip', 'keep'].map(k => uqBuildArgs({}, { w: 320, h: 240, dur: 2 }, 23, k, 'veryfast', null).join(' ')));
+  ok('телефонні теги — ключами com.apple.quicktime.* або com.android.*', /com\.(apple\.quicktime|android)\.model=/.test(m[0]), m[0]);
+  ok('і з use_metadata_tags, інакше MP4 їх викине', /-movflags \+use_metadata_tags/.test(m[0]), m[0]);
+  ok('слід ffmpeg (Lavf) глушиться bitexact', /-fflags \+bitexact/.test(m[0]), m[0]);
+  ok('рядок x264 вирізається в обох режимах', /filter_units=remove_types=6/.test(m[0]) && /filter_units=remove_types=6/.test(m[1]), m);
+  ok('«Keep original» нічого не чіпає', !/map_metadata|filter_units|bitexact/.test(m[2]), m[2]);
+}
+
 await done(browser, srv, errs);

@@ -475,12 +475,24 @@ rest = sub(rest,
         </div>""",
   """        <div>
           <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5"
-                 title="Empty metadata is itself a signature. Randomise writes plausible tags from real devices.">Metadata</label>
-          <select id="uq-meta" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
-            <option value="fake" selected>Randomise</option>
-            <option value="strip">Strip</option>
-            <option value="keep">Keep as is</option>
+                 title="The hidden tags inside the file: device, software, date. Pick what happens to them in the copies.">Metadata</label>
+          <select id="uq-meta" onchange="uqMetaHint()" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+            <option value="fake" selected>Phone tags</option>
+            <option value="strip">Remove all</option>
+            <option value="keep">Keep original</option>
           </select>
+          <!-- «переназви нормально щоб було зрозуміло що кожне робить»:
+               під списком — одним рядком, що саме зробить вибране. -->
+          <p id="uq-meta-hint" class="uq-meta-hint">Wipes the file's own tags and writes ones from a real iPhone, Samsung or Pixel, dated within the last two months. Recommended.</p>
+          <script>
+            window.uqMetaHint = function () {
+              var v = (document.getElementById('uq-meta') || {}).value;
+              var t = { fake: "Wipes the file's own tags and writes ones from a real iPhone, Samsung or Pixel, dated within the last two months. Recommended.",
+                        strip: 'Wipes every tag and leaves them empty. Note: a file with no tags at all is itself a sign it was processed.',
+                        keep: 'Leaves the tags exactly as they came in the source file — the copies share them.' }[v] || '';
+              var el = document.getElementById('uq-meta-hint'); if (el) el.textContent = t;
+            };
+          </script>
         </div>""",
   'унікалізатор: селект метаданих')
 
@@ -494,32 +506,44 @@ rest = sub(rest,
   """// Правдоподібні теги: кожен варіант виглядає як знятий іншим пристроєм
 // в інший час. Дати беремо за останні два місяці — свіжий файл із
 // creation_time дворічної давності виглядав би дивніше за порожній.
+/* «скажи чи взагалі ці метадані працюють». Перевірено справжнім
+   ffmpeg: ключі make/model MP4 мовчки відкидав, а encoder перебивав
+   своїм «Lavf…». Тому теги пишемо так, як їх пишуть самі телефони —
+   ключами com.apple.quicktime.* / com.android.* (movflags
+   use_metadata_tags), а слід ffmpeg глушимо bitexact. */
 const UQ_DEVICES = [
-  { make: 'Apple',   model: 'iPhone 15 Pro',  enc: 'H.264' },
-  { make: 'Apple',   model: 'iPhone 14',      enc: 'H.264' },
-  { make: 'Apple',   model: 'iPhone 13 mini', enc: 'H.264' },
-  { make: 'samsung', model: 'SM-S918B',       enc: 'Lavf60.3.100', android: '14' },
-  { make: 'samsung', model: 'SM-A546E',       enc: 'Lavf59.27.100', android: '13' },
-  { make: 'Xiaomi',  model: '23127PN0CG',     enc: 'Lavf60.16.100', android: '14' },
-  { make: 'Google',  model: 'Pixel 8',        enc: 'Lavf60.3.100',  android: '14' }
+  { make: 'Apple',   model: 'iPhone 15 Pro',  ios: '17.5.1' },
+  { make: 'Apple',   model: 'iPhone 14',      ios: '17.6.1' },
+  { make: 'Apple',   model: 'iPhone 13 mini', ios: '16.7.8' },
+  { make: 'samsung', model: 'SM-S918B',       android: '14' },
+  { make: 'samsung', model: 'SM-A546E',       android: '13' },
+  { make: 'Xiaomi',  model: '23127PN0CG',     android: '14' },
+  { make: 'Google',  model: 'Pixel 8',        android: '14' }
 ];
 
 function uqFakeMeta() {
   const d = UQ_DEVICES[Math.floor(Math.random() * UQ_DEVICES.length)];
   const ago = Math.random() * 60 * 24 * 3600 * 1000;      // до 60 днів назад
   const when = new Date(Date.now() - ago).toISOString().replace(/\.\d+Z$/, 'Z');
-  const tags = [
-    '-metadata', `creation_time=${when}`,
-    '-metadata', `make=${d.make}`,
-    '-metadata', `model=${d.model}`,
-    '-metadata', `encoder=${d.enc}`,
+  const tags = ['-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact',
+    '-movflags', '+use_metadata_tags', '-metadata', `creation_time=${when}`];
+  if (d.ios) tags.push(
+    '-metadata', `com.apple.quicktime.make=${d.make}`,
+    '-metadata', `com.apple.quicktime.model=${d.model}`,
+    '-metadata', `com.apple.quicktime.software=${d.ios}`,
+    '-metadata', `com.apple.quicktime.creationdate=${when.replace('Z', '+0000')}`,
+    '-metadata:s:v:0', 'handler_name=Core Media Video',
+    '-metadata:s:a:0', 'handler_name=Core Media Audio');
+  else tags.push(
+    '-metadata', `com.android.version=${d.android}`,
+    '-metadata', `com.android.manufacturer=${d.make}`,
+    '-metadata', `com.android.model=${d.model}`,
     '-metadata:s:v:0', 'handler_name=VideoHandle',
-    '-metadata:s:a:0', 'handler_name=SoundHandle'
-  ];
-  if (d.android) tags.push('-metadata', `com.android.version=${d.android}`);
+    '-metadata:s:a:0', 'handler_name=SoundHandle');
   return tags;
 }
 
+let uqNoBsf = false;
 function uqBuildArgs(p, meta, quality, metaMode, preset) {""",
   'унікалізатор: uqFakeMeta')
 
@@ -533,10 +557,14 @@ rest = sub(rest,
       '-metadata:s:v:0', 'handler_name=', '-metadata:s:a:0', 'handler_name=');
   } else if (metaMode === 'fake') {
     // Спершу прибираємо чуже, потім вписуємо своє — інакше теги джерела
-    // лишились би впереміш із новими. bitexact тут не ставимо: він якраз
-    // і глушить рядок encoder, який ми хочемо підмінити.
+    // лишились би впереміш із новими.
     args.push('-map_metadata', '-1', '-map_chapters', '-1', ...uqFakeMeta());
-  }""",
+  }
+  /* x264 вшиває в саме відео рядок «x264 - core 164 … options» — слід
+     обробки, якого теги не торкаються. Вирізаємо ці SEI-блоки (кадри
+     цілі). Якщо в ffmpeg.wasm цього фільтра немає — uqNoBsf, і далі
+     без нього. */
+  if (metaMode !== 'keep' && !uqNoBsf) args.push('-bsf:v', 'filter_units=remove_types=6');""",
   'унікалізатор: три режими метаданих')
 
 # ── Унікалізатор: зерно і правдоподібні метадані ───────────────────────
@@ -2710,6 +2738,19 @@ rest = sub(rest,
   renderAccountsModal();
 }""",
   'Accounts: кеш і фоновe оновлення')
+
+rest = sub(rest,
+  """            let code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+""",
+  """            let code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            /* Фільтра filter_units у цій збірці ffmpeg немає — без нього. */
+            if (code !== 0 && !uqNoBsf && /filter_units|bitstream filter/i.test(((ffw.__log || []).join(' ')))) {
+              uqNoBsf = true;
+              if (ffw.__log) ffw.__log.length = 0;
+              code = await ffw.exec(uqBuildArgs(p, meta, quality, metaMode, preset, coverArg));
+            }
+""",
+  'унікалізатор: без filter_units, якщо його немає')
 
 # віджети — останнім скриптом перед закриттям body
 i = rest.rindex('</body>')
