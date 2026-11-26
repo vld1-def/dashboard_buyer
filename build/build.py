@@ -25,7 +25,7 @@ def sub(hay, old, new, what):
 def read(f):
     return open(f, encoding='utf-8').read().rstrip('\n')
 
-head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, creatabjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs, pshtml, psjs, tdjs, cejs, ltjs = (read(f) for f in
+head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs, toastjs, creatabjs, freshjs, geomodaljs, cabhtml, cabjs, tgjs, evjs, dmhtml, dmjs, fbjs, repjs, comjs, pagejs, uqhtml, uqjs, rlhtml, rljs, pghtml, pgjs, cdjs, flhtml, fljs, aqhtml, aqjs, tmhtml, tmjs, pshtml, psjs, tdjs, cejs, ltjs, uqxjs = (read(f) for f in
     ('head.html', 'design.css', 'shell.html', 'widgets.js', 'trend.js', 'settings.html',
      'close.html', 'close.js', 'payslip.html', 'payslip.js', 'toast.js', 'creatab.js',
      'fresh.js', 'geomodal.js', 'cabinets.html', 'cabinets.js', 'tg.js', 'events.js',
@@ -36,7 +36,7 @@ head, css, shell, widgets, trend, settings, closehtml, closejs, sliphtml, slipjs
      'aiask.html', 'aiask.js',
      'team.html', 'team.js',
      'posts.html', 'posts.js',
-     'today.js', 'chartev.js', 'launchtpl.js'))
+     'today.js', 'chartev.js', 'launchtpl.js', 'uqedit.js'))
 
 # Версію Edge Function беремо просто з її коду: дублювати це число в
 # двох місцях означало б, що одного дня вони розійдуться, і перевірка
@@ -2613,6 +2613,21 @@ rest = rest[:i] + '<script>\n' + cejs.strip() + '\n</script>\n\n' + rest[i:]
 # ── шаблони запусків: знімок кампанії, перевірка доступів, запуск на паузі ──
 i = rest.rindex('</body>')
 rest = rest[:i] + '<script>\n' + ltjs.strip() + '\n</script>\n\n' + rest[i:]
+
+# ── унікалізатор: накладання, кінцівки, бібліотека (другий прохід ffmpeg) ──
+rest = sub(rest,
+  """            if (code !== 0 || !data || data.length < 1024)
+              throw uqWhy(ffw, code, data, mainFix);
+""",
+  """            if (code !== 0 || !data || data.length < 1024)
+              throw uqWhy(ffw, code, data, mainFix);
+            /* Накладання й кінцівка — другим проходом по готовій копії. */
+            if (typeof uqPostNeeded === 'function' && uqPostNeeded())
+              data = await uqPostPass(ffw, data, v, uqOutFrame(p, meta), { quality, preset });
+""",
+  'унікалізатор: другий прохід (накладання, кінцівка)')
+i = rest.rindex('</body>')
+rest = rest[:i] + '<script>\n' + uqxjs.strip() + '\n</script>\n\n' + rest[i:]
 
 # ── Files у доці ──────────────────────────────────────────────────────
 # Іконка для кнопки, яку ми додали в шапку вище: док збирає її разом із
