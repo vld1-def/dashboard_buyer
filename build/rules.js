@@ -623,7 +623,7 @@ function rlForm(r, i) {
            вимикається. Підпис під ним каже, що буде, якщо його НЕ
            чіпати: без цього «report only» лишалось жаргоном. -->
       <label class="rl-ax"><input type="checkbox" id="rl-f-live" ${r.dry === false ? 'checked' : ''}>
-        <span>Allowed to switch things off<small>Leave it off and the rule only reports: it writes a line into Last actions and touches nothing.</small></span></label>
+        <span>Allowed to switch things off</span></label>
     </div>
 
     <div class="rl-form-acts">
@@ -703,9 +703,9 @@ window.rlGeoNote = function () {
     el.textContent = '';
     return;
   }
+  // «ці текста видали» — коли все гаразд, під полем нічого не пишемо.
   el.className = 'rl-note';
-  el.textContent = 'Тільки ' + good.join(', ').toUpperCase()
-    + ' — і код мусить стояти окремо в назві оголошення, адсета або кампанії.';
+  el.textContent = '';
 };
 
 window.rlDropHas = function () {
