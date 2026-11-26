@@ -27,9 +27,14 @@
 -- ════════════════════════════════════════════════════════════
 
 -- 2026-11-23: «почистити старі дані в архіві» і «архів чистити раз в 3 дня».
--- Без очікування 7 днів після архівації: архівного кабінета сторінка й
--- так не показує, а його рядки знімка лише сповільнювали завантаження.
--- Розклад — о 03:00 UTC кожного третього дня місяця.
+-- 2026-11-26: «пройшло багато днів а воно щось не чистить». Архів чистився
+-- справно — на ньому лишалось 184 рядки. Знімок роздували ІНШІ рядки:
+-- 3 128 рядків, яких Facebook не оновлював 3–7 тижнів (38 забанених і 11
+-- «active» кабінетів без оголошень, не в архіві). Знімок — лише «сьогодні»,
+-- історія спенду лежить у fb_spend_daily, тож рядок, не оновлений 3+ дні, —
+-- просто застарілі цифри. Тепер видаляємо: архівні кабінети І все, що не
+-- оновлювалось 3+ дні. Розклад — щодня о 03:00 UTC.
+-- Того ж дня вручну: видалено 3 312 рядків, лишилось 658 (19 кабінетів).
 create or replace function public.fb_ad_today_cleanup()
 returns integer
 language plpgsql
@@ -43,7 +48,10 @@ begin
     union
     select distinct regexp_replace(coalesce(m.fb_account_id, ''), '\D', '', 'g') from public.accounts_mapping m where lower(m.status) = 'archive'
   ), gone as (
-    delete from public.fb_ad_today t using arch a where a.id <> '' and t.account_id = a.id returning 1
+    delete from public.fb_ad_today t
+     where t.seen_at < now() - interval '3 days'
+        or exists (select 1 from arch a where a.id <> '' and a.id = t.account_id)
+    returning 1
   )
   select count(*) into n from gone;
   return n;
@@ -53,7 +61,7 @@ revoke all on function public.fb_ad_today_cleanup() from public, anon, authentic
 
 select cron.schedule(
   'fb-ad-today-cleanup',
-  '0 3 */3 * *',
+  '0 3 * * *',
   $$ select public.fb_ad_today_cleanup(); $$
 );
 
