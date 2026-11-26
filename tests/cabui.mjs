@@ -22,7 +22,10 @@ const CM = fs.readFileSync('supabase/functions/fb-comments/index.ts', 'utf8');
 const OUT = fs.readFileSync('index.html', 'utf8');
 
 /* ── ліміт ── */
-ok('✎ і ⏰ в одному блоці під сумою', /<div class="cab-lim-acts"><button[^]*?cabLimitEdit[^]*?<button[^]*?cabLimitPlan[^]*?<\/div>/.test(CJ));
+/* «ladder видали а кнопки в другий стовпчик постав, і круглу діаграму»: Edit і
+   Schedule — стовпчиком праворуч від кільця й чисел. */
+ok('Edit і Schedule — стовпчиком поруч із кільцем ліміту',
+  /class="cab-lim-ring"/.test(CJ) && /class="cab-lim-cell"[^]*?\$\{ring\}[^]*?<span class="cab-lim-acts">[^]*?cabLimitEdit[^]*?cabLimitPlan/.test(CJ));
 ok('блок не переноситься', /\.cab-lim-acts \{ display: flex; flex-wrap: nowrap;/.test(CSS));
 
 /* ── групування ── */

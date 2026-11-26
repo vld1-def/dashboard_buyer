@@ -3109,21 +3109,37 @@ function cabCardOld(fb) {
             /* \u041e\u0431\u0438\u0434\u0432\u0456 \u043a\u043d\u043e\u043f\u043a\u0438 \u2014 \u041e\u0414\u041d\u0418\u041c \u0440\u044f\u0434\u043a\u043e\u043c \u043f\u0456\u0434 \u0441\u0443\u043c\u043e\u044e: \u043f\u043e\u0440\u0443\u0447 \u0456\u0437 \u0447\u0438\u0441\u043b\u043e\u043c
                \u0432\u043e\u043d\u0438 \u043f\u0435\u0440\u0435\u043d\u043e\u0441\u0438\u043b\u0438\u0441\u044c \u043f\u043e \u043e\u0434\u043d\u0456\u0439, \u0456 \u270e \u0441\u0442\u043e\u044f\u0432 \u0432 \u043e\u0434\u043d\u043e\u043c\u0443 \u0440\u044f\u0434\u043a\u0443, \u0430
                \u23f0 \u0432 \u0456\u043d\u0448\u043e\u043c\u0443. */
-            return cell('Limit', l.text
-              + (can ? `<div class="cab-lim-acts"><button type="button" class="cab-lim-ed" onclick="cabLimitEdit('${enc}')"
-                   title="Change the spending limit in Facebook now">\u270e Edit</button><button type="button"
-                   class="cab-lim-ed" onclick="cabLimitPlan('${enc}')"
-                   title="Change the limit at a set time">\u23f0 Schedule</button><button type="button"
-                   class="cab-lim-ed" onclick="cabLadderAdd('${enc}')"
-                   title="Give the limit in steps: the next one only if a lead or install was cheap enough">\u{1F4F6} Ladder</button></div>` : '')
-              + (lad ? `<span class="cab-plan">\u{1F4F6} Ladder ${Number(lad.steps_done)}/${Number(lad.steps_total)} \u00b7 ${
-                  esc(cabMoneyCur(Number(lad.step_major), c.fb.currency))} each \u00b7 \u2264 ${
+            /* «кнопки не подобаються, зроби нормально, ladder видали, а
+               кнопки в другий стовпчик постав, і круглу діаграму по ліміту».
+               Ліворуч кільце (скільки стелі вже витрачено) і числа, праворуч
+               стовпчиком Edit / Schedule. Активну драбинку, якщо вона є,
+               видно й далі — і її можна зупинити. */
+            const cap = Number(c.fb && c.fb.spend_cap) || 0;
+            const spentL = Number(c.fb && c.fb.amount_spent) || 0;
+            const used = cap ? Math.min(1, spentL / cap) : 0;
+            const ringC = !cap ? 'var(--border)' : l.tight ? '#f59e0b' : '#8b5cf6';
+            const ico = d => `<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+            const ring = `<span class="cab-lim-ring" aria-label="${cap ? Math.round(used * 100) + '% of the limit spent' : 'No limit'}">
+                <svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--surface-3)" stroke-width="4.5"/>${
+                  cap ? `<circle cx="18" cy="18" r="15" fill="none" stroke="${ringC}" stroke-width="4.5" stroke-linecap="round"
+                    stroke-dasharray="${(used * 94.25).toFixed(1)} 94.25" transform="rotate(-90 18 18)"/>` : ''}</svg>
+                <b>${cap ? Math.round(used * 100) + '%' : '—'}</b></span>`;
+            return `<div class="cab-lim-cell" title="${esc(l.tip)}">
+                ${ring}
+                <span class="cab-lim-txt"><small>Limit · left</small><b>${l.text}</b>${
+                  cap ? `<small>spent ${esc(cabMoneyCur(spentL, c.fb.currency))}</small>` : '<small>no limit set</small>'}</span>
+                ${can ? `<span class="cab-lim-acts">
+                  <button type="button" class="cab-lim-btn" onclick="cabLimitEdit('${enc}')" title="Change the spending limit in Facebook now">${ico('<path d="M11.2 2.6l2.2 2.2-7.6 7.6-2.9.7.7-2.9z"/>')}Edit</button>
+                  <button type="button" class="cab-lim-btn" onclick="cabLimitPlan('${enc}')" title="Change the limit at a set time">${ico('<circle cx="8" cy="8.6" r="5.4"/><path d="M8 5.8v3l2 1.4"/>')}Schedule</button>
+                </span>` : ''}
+              </div>`
+              + (lad ? `<span class="cab-plan">Ladder ${Number(lad.steps_done)}/${Number(lad.steps_total)} · ${
+                  esc(cabMoneyCur(Number(lad.step_major), c.fb.currency))} each · ≤ ${
                   esc(cabMoneyCents(Number(lad.max_cost), c.fb.currency))}<button type="button"
-                  class="cab-plan-x" onclick="cabLadderDrop(${Number(lad.id)})" title="Stop this ladder">\u2715</button></span>` : '')
-              + plans.map(p => `<span class="cab-plan">\u23f0 ${esc(cabPlanWhen(p.run_at))} \u2192 ${
+                  class="cab-plan-x" onclick="cabLadderDrop(${Number(lad.id)})" title="Stop this ladder">✕</button></span>` : '')
+              + plans.map(p => `<span class="cab-plan">⏰ ${esc(cabPlanWhen(p.run_at))} → ${
                   esc(cabMoneyCur(Number(p.set_major), c.fb.currency))}<button type="button"
-                  class="cab-plan-x" onclick="cabPlanDrop(${Number(p.id)})" title="Cancel this scheduled change">\u2715</button></span>`).join(''),
-              l.tip);
+                  class="cab-plan-x" onclick="cabPlanDrop(${Number(p.id)})" title="Cancel this scheduled change">✕</button></span>`).join('');
           })()}
         ${/* За чиїм годинником цей кабінет вважає «сьогодні». Без цього
               рядка розбіжність зі спендом в Ads Manager виглядає як

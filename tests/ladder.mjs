@@ -145,7 +145,9 @@ ok('сторінка не може покласти драбинку «посе�
 ok('розклад стукає й тоді, коли є жива драбинка', /or exists \(select 1 from public\.fb_limit_ladder where status = 'active'\)/.test(SQL));
 
 /* ── сторінка ── */
-ok('кнопка Ladder поруч з Edit і Schedule', /onclick="cabLadderAdd\('\$\{enc\}'\)"/.test(CB));
+/* Кнопку Ladder прибрано з блоку ліміту на прохання; запущену драбинку
+   видно й далі, і її можна зупинити (перевірка нижче). */
+ok('кнопки Ladder у блоці ліміту більше немає', !/onclick="cabLadderAdd\('\$\{enc\}'\)"/.test(CB));
 ok('стан драбинки видно під лімітом, із хрестиком', /Ladder \$\{Number\(lad\.steps_done\)\}\/\$\{Number\(lad\.steps_total\)\}/.test(CB)
   && /onclick="cabLadderDrop\(/.test(CB));
 ok('перед стартом показано суму всього й умову', /up to ' \+ m\(step \* steps\) \+ ' in total/.test(CB)
