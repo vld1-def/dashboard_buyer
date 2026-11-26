@@ -2238,7 +2238,7 @@ function cabSumPaint(shown, all) {
 
   box.title = 'Spent today across all cabinets, whatever the filter and period. '
     + (tip || '');
-  box.innerHTML = `${approx ? '<span class="cab-sum-approx">\u2248</span>' : ''}
+  box.innerHTML = `<span class="cab-sum-l">Spend</span>${approx ? '<span class="cab-sum-approx">\u2248</span>' : ''}
     <span class="cab-sum-n">${cabEsc(txt)}</span>
     <span class="cab-sum-k">Today</span>`;
   /* ПІДСУМКИ ДНЯ ПОРУЧ ІЗ СУМОЮ. «сподобались показники тотал в хедері».
@@ -2248,13 +2248,10 @@ function cabSumPaint(shown, all) {
   if (!k) { k = document.createElement('span'); k.id = 'cab-kpis'; k.className = 'cab-kpis'; box.after(k); }
   const t = { leads: 0, installs: 0, regs: 0, buys: 0 };
   all.forEach(c => { const o = cabSnap && cabSnap[String(c.id)]; if (o) { t.leads += o.leads || 0; t.installs += o.installs || 0; t.regs += o.regs || 0; t.buys += o.buys || 0; } });
-  let usdAll = 0;
-  parts.forEach(([cur, v]) => { const x = typeof fxToUsd === 'function' ? fxToUsd(v, cur) : (cur === 'USD' ? v : null); if (x != null) usdAll += x; });
-  const conv = t.leads || t.installs;
   const kv = (label, v, tipK) => `<span class="cab-kpi" title="${tipK}"><small>${label}</small><b>${v}</b></span>`;
   k.innerHTML = kv('Leads', t.leads, 'Leads today, all cabinets')
     + (t.installs ? kv('Installs', t.installs, 'App installs today') : '')
-    + kv('CPL', conv && usdAll ? cabMoneyCur(usdAll / conv, 'USD') : '—', 'Spend today in dollars per lead' + (t.installs ? ' or install' : ''))
+    /* «CPL видали звідси» */
     + kv('Regs', t.regs, 'Registrations today')
     + kv('Deps', t.buys, 'Deposits (purchases) today');
 }

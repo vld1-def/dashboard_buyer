@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.11 19:07">
+  <meta name="build" content="build 26.11 19:32">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8750,7 +8750,26 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 /* «коли переключаюсь на оголошення — щоб все було на тих же місцях».
    Назва в дереві займає сталу ширину в обох режимах (Campaign / Ads
    only): довші назви оголошень більше не розсувають таблицю. */
-.cab-tbl td.cab-nd .cab-nd-in { display: block; width: 300px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cab-tbl td.cab-nd { width: 360px; min-width: 360px; max-width: 360px; box-sizing: border-box; }
+.cab-tbl td.cab-nd .cab-nd-in { display: flex; width: 100%; overflow: hidden; }
+/* Відкрите око в таблиці — лише домен; кампанія з адсетом є в рядку вище. */
+.cab-tbl td.cab-nd .cd-side.has-eye.is-on .cd-where { display: none; }
+/* «в оголошеннях зроби відступ від картинки і назви, і домен по правій
+   стороні форматуй». Картинка відступає від назви; домен — праворуч,
+   дрібним моно-підписом у рамці, щоб не зливався з назвою. */
+.cab-tbl td.cab-nd .cd-thumb { margin-right: 8px; }
+.cab-tbl td.cab-nd .cd-side { padding-left: 10px; flex: 0 0 auto; }
+.cab-tbl td.cab-nd .cd-side .cd-dom { max-width: 130px; box-sizing: border-box; }
+/* Стискається лише назва: стрілка, картинка й око — сталі, тож картинки
+   в усіх рядках стоять в одну лінію, а око не з'їжджає за край. */
+.cab-tbl td.cab-nd .cab-nd-in > .cd-twist, .cab-tbl td.cab-nd .cab-nd-in > .cd-mk,
+.cab-tbl td.cab-nd .cab-nd-in > .cd-thumb { flex-shrink: 0; }
+.cab-tbl td.cab-nd .cab-nd-in > .cd-lbl { flex: 1 1 0; min-width: 0; }
+.cab-tbl td.cab-nd .cd-dom.is-on {
+  font: 600 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: #9fa0ad;
+  padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.04); border: 1px solid #26262f;
+}
+.cab-tbl td.cab-nd .cd-where { font-size: 10.5px; color: var(--text-muted); }
 .cab-tbl td.cab-nd-st, .cab-tbl th.cab-fz-end { min-width: 100px; box-sizing: border-box; }
 .cab-tbl td[data-l="Daily budget"] { min-width: 126px; box-sizing: border-box; }
 
@@ -8774,6 +8793,61 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
   #cabinets-section #cab-detail .cab-pacts { flex: none; }
   #cabinets-section #cab-detail > .card:not(.cab-panel) { height: 100%; box-sizing: border-box; overflow-y: auto; }
 }
+
+/* ═══ КНОПКИ — ПАЛІТРОЮ З МАКЕТУ ═══
+   «кольори кнопок такі як stat day та інші з дизайну візьмемо і сразу в
+   creative analyzer також». Тло #15151c, рамка #26262f, текст #c9c9d4,
+   радіус 9px — одна палітра для шапки FB LIVE і верхніх кнопок
+   Creative Analyzer. Акцентні (Sync, увімкнені) лишаються акцентними. */
+:root { --btn-bg: #15151c; --btn-bd: #26262f; --btn-fg: #c9c9d4; --btn-bd-h: #3a3a46; }
+#cabinets-section .cab-head .cab-rules:not(.is-on):not(#cab-sync),
+#cabinets-section .cab-head #cab-group,
+#cabinets-section .cab-head #cab-search,
+#creative-analyzer-section #creative-search,
+#creative-analyzer-section #cr-date-btn,
+#creative-analyzer-section .seg-btn:not(.is-on) {
+  background: var(--btn-bg) !important; border: 1px solid var(--btn-bd) !important;
+  color: var(--btn-fg) !important; border-radius: 9px;
+}
+#cabinets-section .cab-head .cab-rules:not(.is-on):not(#cab-sync):hover,
+#creative-analyzer-section #cr-date-btn:hover,
+#creative-analyzer-section .seg-btn:not(.is-on):hover { border-color: var(--btn-bd-h) !important; color: #ececf1 !important; }
+#cabinets-section .cab-head #cab-search::placeholder, #creative-analyzer-section #creative-search::placeholder { color: #7d7d8a; }
+/* Блоки-групи (інструменти FB LIVE, фільтри й черга в аналізаторі):
+   рамка й тло — ззовні, кнопки всередині прозорі, розділювачі тієї ж рамки. */
+#cabinets-section .cab-head .cab-tools,
+#creative-analyzer-section .seg-box { background: var(--btn-bg) !important; border: 1px solid var(--btn-bd) !important; border-radius: 10px; }
+#cabinets-section .cab-head .cab-tools .cab-rules:not(.is-on) { background: transparent !important; border: 0 !important; border-radius: 0; }
+#cabinets-section .cab-head .cab-tools .cab-rules + .cab-rules { border-left: 1px solid var(--btn-bd) !important; }
+#creative-analyzer-section .seg-box > * + * { border-left-color: var(--btn-bd) !important; }
+#creative-analyzer-section .seg-box > select:not(:has(option:checked:not([value=""]))),
+#creative-analyzer-section .seg-box > button:not(.is-on) { color: var(--btn-fg) !important; }
+/* Перемикачі Campaign | Ads only і All | Live | Spend — та сама підкладка. */
+#cabinets-section .cd-seg2 { background: var(--btn-bg); border-color: var(--btn-bd); box-shadow: none; }
+
+/* «спенд і today кнопку розділи, щоб спенд був разом з іншими даними».
+   На широкому екрані сума — перший із показників (підпис над числом,
+   без рамки); Today — окрема кнопка. На вузькому все як було: одна
+   плашка з сумою, бо показники там сховані. */
+.cab-sum-l { display: none; }
+@media (min-width: 1101px) {
+  #cabinets-section #cab-sum {
+    display: inline-grid; grid-template-columns: auto auto; column-gap: 2px; row-gap: 1px; align-items: baseline;
+    padding: 0 4px 0 6px; background: transparent; border: 0; border-radius: 6px; line-height: 1.1; text-align: left;
+  }
+  #cabinets-section #cab-sum:hover { background: rgba(255,255,255,.03); }
+  #cabinets-section #cab-sum .cab-sum-l { display: block; grid-column: 1 / -1; font-size: 9px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: var(--text-muted); }
+  #cabinets-section #cab-sum .cab-sum-n { font: 700 14px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
+  #cabinets-section #cab-sum .cab-sum-approx { font-size: 13px; }
+  #cabinets-section #cab-sum .cab-sum-k { display: none; }
+  #cabinets-section .cab-kpis { padding-left: 10px; }
+  /* «в статусах чомусь цифри трішки нижче ніж сам текст»: назва й число
+     різних шрифтів і різної висоти рядка, тож коробка числа була вищою
+     й текст у ній сідав нижче. Однакова висота рядка — і по центру
+     стають і назва, і число. */
+  .flt-row-cab .flt-name, .flt-row-cab .flt-n { line-height: 12px; height: 12px; }
+}
+@media (max-width: 1100px) { #cab-day-btn { display: none; } }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -9033,7 +9107,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 19:07</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 19:32</div>
     </div>
   </aside>
 
@@ -9922,6 +9996,11 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       <!-- Скільки відкручено сьогодні. Кнопка, а не підпис: натиснув —
            і замість зведеного в долари числа видно, з яких валют воно
            складене. -->
+      <!-- «спенд і today кнопку розділи, щоб спенд був разом з іншими
+           даними»: Today — окрема кнопка періоду (відкриває day із
+           календарем), а сума стала першим із показників поруч. -->
+      <button type="button" id="cab-day-btn" class="cab-rules cab-day" onclick="tdToggle()"
+        title="FB LIVE shows today. Click for the day’s numbers with a calendar for earlier days">Today</button>
       <button type="button" id="cab-sum" class="cab-sum" onclick="cabSumToggle()"></button>
       <!-- Числа за day, згруповані по гео, кабінетах, funnelх і
            креативах; у вікні ж і календар на минулі дні. Вікно, а не
@@ -33241,7 +33320,7 @@ function cabSumPaint(shown, all) {
 
   box.title = 'Spent today across all cabinets, whatever the filter and period. '
     + (tip || '');
-  box.innerHTML = `${approx ? '<span class="cab-sum-approx">\u2248</span>' : ''}
+  box.innerHTML = `<span class="cab-sum-l">Spend</span>${approx ? '<span class="cab-sum-approx">\u2248</span>' : ''}
     <span class="cab-sum-n">${cabEsc(txt)}</span>
     <span class="cab-sum-k">Today</span>`;
   /* ПІДСУМКИ ДНЯ ПОРУЧ ІЗ СУМОЮ. «сподобались показники тотал в хедері».
@@ -33251,13 +33330,10 @@ function cabSumPaint(shown, all) {
   if (!k) { k = document.createElement('span'); k.id = 'cab-kpis'; k.className = 'cab-kpis'; box.after(k); }
   const t = { leads: 0, installs: 0, regs: 0, buys: 0 };
   all.forEach(c => { const o = cabSnap && cabSnap[String(c.id)]; if (o) { t.leads += o.leads || 0; t.installs += o.installs || 0; t.regs += o.regs || 0; t.buys += o.buys || 0; } });
-  let usdAll = 0;
-  parts.forEach(([cur, v]) => { const x = typeof fxToUsd === 'function' ? fxToUsd(v, cur) : (cur === 'USD' ? v : null); if (x != null) usdAll += x; });
-  const conv = t.leads || t.installs;
   const kv = (label, v, tipK) => `<span class="cab-kpi" title="${tipK}"><small>${label}</small><b>${v}</b></span>`;
   k.innerHTML = kv('Leads', t.leads, 'Leads today, all cabinets')
     + (t.installs ? kv('Installs', t.installs, 'App installs today') : '')
-    + kv('CPL', conv && usdAll ? cabMoneyCur(usdAll / conv, 'USD') : '—', 'Spend today in dollars per lead' + (t.installs ? ' or install' : ''))
+    /* «CPL видали звідси» */
     + kv('Regs', t.regs, 'Registrations today')
     + kv('Deps', t.buys, 'Deposits (purchases) today');
 }
