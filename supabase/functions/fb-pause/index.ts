@@ -126,7 +126,7 @@ type BudgetPlan =
   | { id: string; name: string; kind: string; field: string;
       curMinor: number; newMinor: number; same: boolean };
 
-export function budgetPlan(snap: Json[], id: string, want: number): BudgetPlan {
+export function budgetPlan(snap: Json[], id: string, want: number, big = false): BudgetPlan {
   const pick = (d: unknown, l: unknown) => {
     const dn = d === null || d === undefined || d === '' ? null : Number(d);
     const ln = l === null || l === undefined || l === '' ? null : Number(l);
@@ -157,7 +157,10 @@ export function budgetPlan(snap: Json[], id: string, want: number): BudgetPlan {
   if (newMinor < 100) return { error:
     'the smallest budget this will set is 1.00 — Facebook has its own minimum per currency '
     + 'and will refuse anything below it anyway' };
-  if (newMinor > curMinor * 10 || newMinor * 10 < curMinor) return { error:
+  /* Удесятеро й більше — лише з явним підтвердженням (big): людина вже
+     бачила «20 → 520» і попередження про зайвий нуль. «ліміт акаунту
+     може бути менший, руками через фб воно міняється». */
+  if (!big && (newMinor > curMinor * 10 || newMinor * 10 < curMinor)) return { error:
     'that is more than a tenfold change in one step (now ' + (curMinor / 100).toFixed(2)
     + ', asked ' + (newMinor / 100).toFixed(2) + '). If you mean it, do it in two steps.' };
 
@@ -230,10 +233,12 @@ async function handle(req: Request): Promise<Response> {
      немає, і коли зʼявляться, перерахунок доведеться брати з валюти
      кабінета, а не вважати сотню константою. */
   let wantBudget: number | null = null;
+  let bigOk = false;
   try {
     const body = await req.json();
     accountId = String(body?.account_id || '').replace(/\D/g, '');
     turnOn = body?.on === true;
+    bigOk = body?.big === true;
     if (body?.budget !== undefined && body?.budget !== null) {
       const b = Number(body.budget);
       wantBudget = Number.isFinite(b) ? b : NaN;
@@ -331,7 +336,7 @@ async function handle(req: Request): Promise<Response> {
         : msg }, 400);
     }
 
-    const plan = budgetPlan(snap, id, wantBudget);
+    const plan = budgetPlan(snap, id, wantBudget, bigOk);
     if ('error' in plan) return reply({ error: plan.error }, 400);
     const { name, kind, field, curMinor, newMinor } = plan;
     if (plan.same) return reply({ budget: true, changed: false, id, name, kind,

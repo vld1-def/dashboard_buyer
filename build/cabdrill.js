@@ -2003,10 +2003,15 @@ window.cdBudgetEdit = async function (id, nameEnc) {
   if (Math.abs(v - cur.v) < 0.005) return;        // те саме число
 
   const up = v > cur.v;
+  /* Більше ніж удесятеро за раз — функція пропускає лише з цим
+     підтвердженням. Кажемо про це вголос: зайвий нуль коштує грошей. */
+  const big = cur.v > 0 && (v > cur.v * 10 || v * 10 < cur.v);
+  const times = cur.v > 0 ? (v > cur.v ? v / cur.v : cur.v / v) : 0;
   const go = typeof ask === 'function'
-    ? await ask({ title: 'Change the budget?', danger: up, ok: 'Change',
+    ? await ask({ title: big ? 'A ' + Math.round(times) + '× change — sure?' : 'Change the budget?', danger: up || big, ok: 'Change',
         body: `${name}\n\n${cur.kind} budget ${per}:\n`
             + `${cur.v.toFixed(2)}  →  ${v.toFixed(2)}\n\n`
+            + (big ? '⚠ That is ' + (up ? 'more' : 'less') + ' than ten times the current budget — check there is no extra or missing zero.\n\n' : '')
             + (up ? 'It starts spending more as soon as Facebook accepts this.'
                   : 'Delivery may slow down right away.') })
     : confirm(`Change ${cur.kind} budget of "${name}" from ${cur.v.toFixed(2)} to ${v.toFixed(2)}?`);
@@ -2021,7 +2026,7 @@ window.cdBudgetEdit = async function (id, nameEnc) {
       method: 'POST',
       headers: { 'content-type': 'application/json',
                  Authorization: 'Bearer ' + (s?.session?.access_token || '') },
-      body: JSON.stringify({ account_id: cdAcc, ids: [id], budget: v })
+      body: JSON.stringify({ account_id: cdAcc, ids: [id], budget: v, big })
     });
     const j = await res.json().catch(() => ({}));
     if (step) step.done('');
