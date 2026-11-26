@@ -34,7 +34,7 @@ const ADS = [
   { id: 'a3', name: 'KG_3', adset_id: 's2', creative: { id: 'c3' } }
 ];
 
-async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', camp = CAMP, sets = SETS, ads = ADS, method = 'POST', lists = null }) {
+async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', camp = CAMP, sets = SETS, ads = ADS, method = 'POST', lists = null, objs = null }) {
   const posts = [];
   let n = 0;
   const accs = accounts || { '111': { token_id: 1, team_name: 'T', currency: 'USD' }, '222': { token_id: 2, team_name: 'T', currency: 'USD' } };
@@ -58,6 +58,7 @@ async function run({ body, auth = 'Bearer jwt', accounts, failOn = () => '', cam
       if (path === '/900/adsets') return J({ data: sets });
       if (path === '/900/ads') return J({ data: ads });
       if (lists && lists[path]) return J({ data: lists[path] });
+      if (objs && objs[path]) return J(objs[path]);
       if (/^\/vid\d+$/.test(path)) return J({ status: { video_status: 'ready' }, picture: 'https://p/pic.jpg' });
       if (/^\/src\d+$/.test(path)) return J({ source: 'https://cdn.fb' + path + '.mp4' });
       if (/^\/vid\d+\/thumbnails$/.test(path)) return J({ data: [{ uri: 'https://p/thumb.jpg', is_preferred: true }] });
@@ -438,6 +439,35 @@ ok('і це доїхало в зібраний index.html', /cdCopy = async func
     lists: { '/act_222/adspixels': [{ id: '6', name: 'Px' }] } });
   const j2 = none.body;
   ok('нема й Сторінок токена — помилку Facebook віддаємо назовні', /unknown \/act_222\/promote_pages/.test(j2.pages_err || ''), j2);
+}
+
+/* «мови щось не працюють … в фейсбук компанію яку зробила срм тут не
+   включені навіть мови». */
+{
+  const L99 = { '/act_222/promote_pages': [{ id: '99' }], '/act_222/adspixels': [{ id: '6', name: 'Px' }] };
+  // Instagram Сторінки знайшовся — іде в креатив.
+  const g = await run({ body: { spec: LSPEC, target_account: '222' }, lists: L99,
+    objs: { '/99': { instagram_business_account: { id: 'IG1' } } } });
+  const gc = g.posts.find(x => x.path === '/act_222/adcreatives');
+  ok('мовам — Instagram Сторінки', gc && JSON.parse(gc.p.object_story_spec).instagram_user_id === 'IG1', gc && gc.p);
+  // Instagram немає ніде — вимикаємо Instagram-плейсменти адсета й мови йдуть.
+  let first = true;
+  const n = await run({ body: { spec: LSPEC, target_account: '222' }, lists: L99,
+    failOn: (path, p) => path === '/act_222/adcreatives' && p.asset_feed_spec && first ? (first = false, 'Instagram Account Is Missing: Select an Instagram account') : '' });
+  const upd = n.posts.find(x => /^\/new\d+$/.test(x.path) && x.p.targeting);
+  const tg = upd && JSON.parse(upd.p.targeting);
+  ok('немає Instagram — плейсменти адсета без Instagram', tg && !tg.publisher_platforms.includes('instagram') && tg.publisher_platforms.includes('facebook'), n.posts.map(x => x.path));
+  ok('і мовний креатив пройшов з другої спроби', n.body.ads.made === 1 && n.posts.filter(x => x.path === '/act_222/adcreatives').length === 2, n.body);
+  ok('про це сказано в підсумку', (n.body.warnings || []).some(w => /Instagram placements switched off/.test(w)), n.body.warnings);
+  // Мовний креатив відмовили зовсім — оголошення зроблене без мов, і це видно.
+  const w = await run({ body: { spec: LSPEC, target_account: '222' }, lists: L99,
+    failOn: (path, p) => path === '/act_222/adcreatives' && p.asset_feed_spec ? 'Some other refusal' : '' });
+  ok('без мов — попередження з причиною', (w.body.warnings || []).some(x => /made WITHOUT languages — .*Some other refusal/.test(x)), w.body.warnings);
+  // {acc} і {pixel} у URL-параметрах.
+  const TSPEC = JSON.parse(JSON.stringify(SPEC)); TSPEC.ads.forEach(d => { d.url_tags = 'sub1={acc}&px={pixel}'; });
+  const t = await run({ body: { spec: TSPEC, target_account: '222' }, lists: LISTS_OK });
+  const tags = t.posts.filter(x => x.path === '/act_222/adcreatives').map(x => x.p.url_tags);
+  ok('{acc} → ID кабінета, {pixel} → піксель адсета', tags.length && tags.every(x => /^sub1=222&px=\d+$/.test(x)), tags);
 }
 
 console.log('\n' + pass + ' ok, ' + fail + ' fail');

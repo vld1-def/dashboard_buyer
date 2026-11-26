@@ -61,7 +61,7 @@ const CORS = {
 };
 
 const GRAPH = 'https://graph.facebook.com/v21.0';
-const FN_VERSION = '2026-11-25.1';
+const FN_VERSION = '2026-11-26.1';
 const DEADLINE_MS = 120_000;
 const MAX_ADSETS = 20;
 const MAX_ADS = 60;
@@ -645,8 +645,41 @@ Deno.serve(async (req) => {
     afs.videos = vids;
     ['shops_bundle', 'reasons_to_shop', 'additional_data'].forEach(k => delete afs[k]);
     const out: Json = { name: c0.name, object_story_spec: { page_id: L.page }, asset_feed_spec: afs };
+    /* «Instagram Account Is Missing»: мовному оголошенню Facebook
+       обов'язково потрібен Instagram — справжній або «від імені Сторінки». */
+    const ig = await igFor(String(L.page));
+    if (ig) out.object_story_spec.instagram_user_id = ig;
     if (c0.url_tags) out.url_tags = c0.url_tags;
     return out;
+  };
+
+  /* INSTAGRAM ДЛЯ СТОРІНКИ. По черзі: бізнес-акаунт Instagram Сторінки →
+     Instagram-акаунти кабінета → «Instagram від імені Сторінки»
+     (page-backed: те, що Ads Manager ставить, коли вибираєш «Use
+     Facebook Page»), а якщо його нема — створюємо. Раз на Сторінку. */
+  const igCache = new Map<string, string>();
+  const igWhy: string[] = [];
+  const igFor = async (page: string): Promise<string> => {
+    if (!page) return '';
+    if (igCache.has(page)) return igCache.get(page)!;
+    let id = '';
+    try { id = String((await graph('/' + page, T.token, { fields: 'instagram_business_account' })).instagram_business_account?.id || ''); }
+    catch (_e) { /* далі */ }
+    if (!id) {
+      try { id = String(((await graph(act + '/instagram_accounts', T.token, { fields: 'id', limit: 5 })).data || [])[0]?.id || ''); }
+      catch (_e) { /* далі */ }
+    }
+    if (!id) {
+      try {
+        const pt = String((await graph('/' + page, T.token, { fields: 'access_token' })).access_token || '');
+        if (pt) {
+          id = String(((await graph('/' + page + '/page_backed_instagram_accounts', pt, { fields: 'id' })).data || [])[0]?.id || '');
+          if (!id) id = String((await graph('/' + page + '/page_backed_instagram_accounts', pt, {}, 'POST')).id || '');
+        }
+      } catch (e) { igWhy.push(String((e as Error).message).slice(0, 160)); }
+    }
+    igCache.set(page, id);
+    return id;
   };
   const mediaCreative = async (c0: Json): Promise<Json> => {
     const md: Json = c0.__media;
@@ -683,6 +716,14 @@ Deno.serve(async (req) => {
     return out;
   };
   let phHash: string | null = null;
+  /* «буду прописувати {acc} і ти будеш автоматично підставляти айді каба
+     в parametr і {pixel}». */
+  const pixelOfSet = new Map(adsets.map(a => [String(a.id), String(a.promoted_object?.pixel_id || '')]));
+  const anyPixel = [...pixelOfSet.values()].find(Boolean) || '';
+  const fillTags = (s: string, setKey: string) => s
+    .replace(/\{acc\}/gi, tgt)
+    .replace(/\{pixel\}/gi, pixelOfSet.get(setKey) || anyPixel);
+  const igOff = new Set<string>();
   for (const a of adsets.slice(0, MAX_ADSETS)) {
     if (Date.now() > deadline) { timedOut = true; break; }
     try {
@@ -721,8 +762,46 @@ Deno.serve(async (req) => {
             cr.object_story_spec.link_data.image_hash = phHash;
           }
         }
-        const creativeId = cr.creative_id ? String(cr.creative_id)
-          : String((await graph(act + '/adcreatives', T.token, cr, 'POST')).id || '');
+        /* {acc} і {pixel} у URL-параметрах — ID цього кабінета й піксель
+           адсета (вже підмінений на піксель кабінета, якщо треба). */
+        if (cr.url_tags) cr = { ...cr, url_tags: fillTags(String(cr.url_tags), String(ad.adset_id || '')) };
+        const makeCr = async (): Promise<string> => {
+          if (cr.creative_id) return String(cr.creative_id);
+          for (let w = 0; ; w++) {
+            try { return String((await graph(act + '/adcreatives', T.token, cr, 'POST')).id || ''); }
+            catch (e) {
+              const m = String((e as Error).message);
+              // Відео ще обробляється — чекаємо й пробуємо ще.
+              if (/not ready|being processed|still processing/i.test(m) && w < 6 && Date.now() < deadline - 12_000) {
+                await new Promise(r => setTimeout(r, 6000)); continue;
+              }
+              // Старіша назва поля Instagram.
+              const oss = cr.object_story_spec;
+              if (oss && oss.instagram_user_id && /instagram_user_id/i.test(m) && w < 6) {
+                oss.instagram_actor_id = oss.instagram_user_id; delete oss.instagram_user_id; continue;
+              }
+              /* Instagram так і не знайшовся — вимикаємо Instagram-плейсменти
+                 адсета, щоб мови все-таки пішли (на Facebook). */
+              if (cr.asset_feed_spec && /instagram/i.test(m) && !igOff.has(setId) && w < 6) {
+                const a = adsets.find(x => String(x.id) === String(ad.adset_id));
+                const tg: Json = JSON.parse(JSON.stringify((a && a.targeting) || {}));
+                const pp: string[] = Array.isArray(tg.publisher_platforms) && tg.publisher_platforms.length
+                  ? tg.publisher_platforms : ['facebook', 'instagram', 'messenger', 'audience_network'];
+                tg.publisher_platforms = pp.filter(x => x !== 'instagram');
+                delete tg.instagram_positions;
+                if (!tg.publisher_platforms.length) throw e;
+                await graph('/' + setId, T.token, { targeting: tg }, 'POST');
+                igOff.add(setId);
+                warns.push('ad set “' + String((a && a.name) || ad.adset_id) + '”: no Instagram account for the page'
+                  + (igWhy.length ? ' (' + igWhy[igWhy.length - 1] + ')' : '') + ' — Instagram placements switched off so the languages could go');
+                delete oss.instagram_user_id; delete oss.instagram_actor_id;
+                continue;
+              }
+              throw e;
+            }
+          }
+        };
+        const creativeId = await makeCr();
         if (!creativeId) throw new Error('no creative id returned');
         const adP: Json = { name: ad.name, adset_id: setId, status: inner, creative: { creative_id: creativeId } };
         try {
@@ -777,6 +856,12 @@ Deno.serve(async (req) => {
         if (done === 99) warns.push(label + ': made with an existing ' + (reuseGood && reuseGood.kind === 'post' ? 'post ' : 'creative ')
           + (reuseGood ? reuseGood.id : '') + ' — replace the creative');
         else if (ad.cands[done].__ph) warns.push(label + ': created as a placeholder — replace the creative');
+        /* Мови не пройшли, а оголошення є — кажемо вголос: інакше в Ads
+           Manager «мови не включені», і незрозуміло чому. */
+        if (ad.cands.some((c: Json) => c.__lang) && !(ad.cands[done] && ad.cands[done].__lang)) {
+          const why = tried.find(t => t.startsWith('languages creative:')) || '';
+          warns.push(label + ': made WITHOUT languages — ' + (why.replace(/^languages creative:\s*/, '').slice(0, 220) || 'the languages creative was refused'));
+        }
       }
       continue;
     }

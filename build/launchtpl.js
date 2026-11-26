@@ -303,6 +303,10 @@ function ltOverrides() {
   return o;
 }
 
+/* Попередження запуску, які треба бачити, а не шукати в підказці:
+   мови не пішли, Instagram вимкнено, заготовка замість креатива. */
+const ltLoud = ws => (ws || []).filter(w => /WITHOUT languages|Instagram placements|placeholder|existing (post|creative)/.test(String(w)));
+
 window.ltCheck = async function () {
   if (ltBusy) return;
   ltBusy = true;
@@ -414,9 +418,9 @@ function ltPaintPreview() {
           return `<div class="lt-pv-row"><span class="lt-pv-n">${k + 1}</span>
             <input class="lt-ed-in" value="${ltEsc(n)}" oninput="ltCur.names['${id}'][${k}]=this.value" ${ltBusy ? 'disabled' : ''}>
             ${run ? (run.busy ? '<span class="lt-st is-busy">creating…</span>' : run.ok
-              ? `<span class="lt-st is-ok" title="${ltEsc((run.j.problems || []).concat(run.j.warnings || []).join('\n'))}">${run.j.ads.made}/${run.j.ads.of} ads</span>`
+              ? `<span class="lt-st ${ltLoud(run.j.warnings).length ? 'is-warn' : 'is-ok'}" title="${ltEsc((run.j.problems || []).concat(run.j.warnings || []).join('\n'))}">${run.j.ads.made}/${run.j.ads.of} ads</span>`
               : `<span class="lt-st is-fail" title="${ltEsc(run.error)}">failed</span>`) : ''}</div>
-            ${run && !run.busy && (!run.ok || (run.j.problems || []).length) ? `<ul class="lt-checks">${(run.ok ? run.j.problems : [run.error]).map(p => `<li class="is-warn"><i>!</i>${ltEsc(p)}</li>`).join('')}</ul>` : ''}`;
+            ${run && !run.busy && (!run.ok || (run.j.problems || []).length || ltLoud(run.j.warnings).length) ? `<ul class="lt-checks">${(run.ok ? (run.j.problems || []).concat(ltLoud(run.j.warnings)) : [run.error]).map(p => `<li class="is-warn"><i>!</i>${ltEsc(p)}</li>`).join('')}</ul>` : ''}`;
         }).join('')}
       </div>`;
     }).join('') || '<div class="lt-empty">Nothing to launch — pick cabinets on the previous step.</div>'}
@@ -816,8 +820,8 @@ function ltMediaBlock(d, i, total) {
       <button type="button" class="lt-md-btn lt-md-lib" onclick="lcPickFor(${i}, '')">or pick from the library</button>`;
   return `<div class="lt-md">
     ${file}
-    <label class="lt-md-ut"><span>URL parameters</span><input class="lt-ed-in" value="${ltEsc(d.url_tags !== undefined ? d.url_tags : ((d.creative || {}).url_tags || ''))}"
-      oninput="ltW.ads[${i}].url_tags=this.value.trim()" placeholder="utm_source=fb&sub1={{ad.id}}"></label>
+    <label class="lt-md-ut" title="{acc} — the cabinet ID, {pixel} — the pixel of the ad set (the cabinet’s own if it was swapped). Filled in at launch."><span>URL parameters <i class="lt-ut-h">{acc} {pixel}</i></span><input class="lt-ed-in" value="${ltEsc(d.url_tags !== undefined ? d.url_tags : ((d.creative || {}).url_tags || ''))}"
+      oninput="ltW.ads[${i}].url_tags=this.value.trim()" placeholder="utm_source=fb&sub1={acc}&sub2={pixel}&sub3={{ad.id}}"></label>
     ${lang ? `<p class="lt-md-note">${has ? 'This video goes to every language.' : 'No video here — the template’s own videos are copied from its cabinet while that cabinet is alive. Upload one to be safe.'}</p>` : ''}
     <div class="lt-ed-fields"${lang ? ' hidden' : ''}>
       <label class="is-wide"><span>Text</span><input class="lt-ed-in" value="${ltEsc(m.text || '')}" oninput="ltMd(${i}).text=this.value"></label>
