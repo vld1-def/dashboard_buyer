@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 26.11 12:51">
+  <meta name="build" content="build 26.11 14:47">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8578,6 +8578,14 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .pg-new { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 900; color: #fff; background: var(--accent); white-space: nowrap; }
 .lt-ut-h { font-style: normal; font-weight: 700; opacity: .55; margin-left: 4px; text-transform: none; letter-spacing: 0; }
 #uniq-modal .uq-meta-hint { margin-top: 5px; font-size: 10px; line-height: 1.35; font-weight: 600; color: rgba(148,163,184,.85); }
+/* Час рядка звіту — блідо під міткою. */
+#report-list-container .report-block .rb-time { display: none; }
+#report-list-container [id^="report-content-"][data-state="view"] .report-block .rb-time {
+  display: block; position: absolute; left: 10px; top: 30px; width: 52px; text-align: center;
+  font-size: 10px; font-weight: 600; letter-spacing: .02em; color: var(--text-muted); opacity: .55;
+  font-variant-numeric: tabular-nums; user-select: none; pointer-events: none;
+}
+#report-list-container [id^="report-content-"][data-state="view"] .report-block:has(.rb-time) { min-height: 50px; }
   </style>
 </head>
 <body class="font-sans antialiased text-dynamic">
@@ -8837,7 +8845,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 12:51</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 26.11 14:47</div>
     </div>
   </aside>
 
@@ -12065,7 +12073,8 @@ const m = {};
        збережений список порожнім плюс собою — тобто стирала всі старі. */
     const [{ data }] = await Promise.all([
       sb.from('daily_reports').select('*').eq('team_name', currentTeam),
-      rpTagsLoadedFor === currentTeam ? null : loadReportTags().then(() => { rpTagsLoadedFor = currentTeam; })
+      rpTagsLoadedFor === currentTeam ? null
+        : Promise.all([loadReportTags(), loadReportTimes()]).then(() => { rpTagsLoadedFor = currentTeam; })
     ]);
     reportData = data || [];
     renderReports();
@@ -12088,12 +12097,13 @@ const m = {};
       }
     }
 
-    await sb.from('daily_reports').insert([{
+    const { data: made } = await sb.from('daily_reports').insert([{
       team_name: currentTeam,
       comment: i.value,
       date: new Date(),
       images: imageUrls.length ? imageUrls : null
-    }]);
+    }]).select('id');
+    if (made && made[0]) await rpStampLines(made[0].id, i.value);
 
     i.value = '';
     pendingReportImages = [];
@@ -12388,6 +12398,42 @@ async function saveReportTags() {
   catch (e) { console.warn('Не вдалось зберегти мітки звіту:', e.message); }
 }
 const rpTagsOf = id => rpTags[id] || [];
+
+/* ЧАС РЯДКІВ ЗВІТУ. «було б гуд якби під мітками був непримітний time,
+   коли я це писав». Текст звіту — просто текст, часу в ньому немає.
+   Тому при збереженні кожен рядок з міткою (+ − ! >), якого ще не
+   бачили, отримує «зараз»; вже відомі рядки свій time не міняють.
+   Сховище — те саме, що в міток: team_settings, ключ report_line_times
+   ({ report_id: { рядок: ISO } }). Старі рядки, написані до цього, часу
+   не мають — і під міткою в них порожньо, а не вигадана hour. */
+let rpTimes = {};
+const rpLineKey = l => String(l || '').trim().replace(/\s+/g, ' ').slice(0, 200);
+async function loadReportTimes() {
+  try { rpTimes = JSON.parse(await getTeamSetting('report_line_times') || '{}') || {}; }
+  catch (e) { rpTimes = {}; }
+}
+async function rpStampLines(id, text) {
+  if (!id) return;
+  if (rpTagsLoadedFor !== currentTeam) { try { await loadReportTimes(); } catch (e) { return; } }
+  const now = new Date().toISOString();
+  const was = rpTimes[id] || {}, next = {};
+  String(text || '').split('\n').forEach(l => {
+    const t = l.trim();
+    if (!/^[+\-!>]/.test(t)) return;
+    const k = rpLineKey(t);
+    next[k] = was[k] || now;
+  });
+  rpTimes[id] = next;
+  if (!Object.keys(next).length) delete rpTimes[id];
+  try { await setTeamSetting('report_line_times', JSON.stringify(rpTimes)); }
+  catch (e) { console.warn('Не вдалось зберегти time рядків звіту:', e.message); }
+}
+function rpLineTime(id, line) {
+  const iso = ((rpTimes[id] || {})[rpLineKey(line)]) || '';
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? '' : String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
 const rpAllTags = () => [...new Set(Object.values(rpTags).flat())].sort((a, b) => a.localeCompare(b, 'uk'));
 
 function rpAddTag(id, tag) {
@@ -15150,7 +15196,7 @@ function renderReports() {
       </div>
       <div id="report-content-${r.id}" class="hidden bg-transparent outline-none text-sm text-dynamic w-full min-h-[20px] px-2 pb-2 rounded-xl transition normal-case-text"
            contenteditable="true" data-state="view" onfocus="startEditingReport('${r.id}', this)" onblur="finishEditingReport('${r.id}', this)">
-        ${parseReportBlocks(r.comment, r.images)}
+        ${parseReportBlocks(r.comment, r.images, r.id)}
       </div>
     </div>`).join('');
 }
@@ -15180,10 +15226,11 @@ async function finishEditingReport(id, el) {
     r.comment = newText;
     const { error } = await sb.from('daily_reports').update({ comment: newText }).eq('id', id);
     if (error) console.error("Update error:", error);
+    else await rpStampLines(id, newText);
   }
 
   const r2 = reportData.find(i => i.id === id);
-  el.innerHTML = parseReportBlocks(newText, r2 ? r2.images : null);
+  el.innerHTML = parseReportBlocks(newText, r2 ? r2.images : null, id);
   el.setAttribute('data-state', 'view');
   isEditingReport = false;
 }
@@ -15284,8 +15331,10 @@ function rpKnownCids() {
   return new Set(src.map(c => String(c.cid || '').trim()).filter(x => x.length >= 4));
 }
 
-function parseReportBlocks(text, images) {
+function parseReportBlocks(text, images, rid) {
   if (!text) return "";
+  // Час рядка — блідо під міткою (rpLineTime).
+  const tm = l => { const t = rid ? rpLineTime(rid, l) : ''; return t ? `<span class="rb-time" contenteditable="false">${t}</span>` : ''; };
   const cids = rpKnownCids();
 
   function injectImgTags(str, imgs) {
@@ -15327,10 +15376,10 @@ function parseReportBlocks(text, images) {
 
   function renderLine(l, imgs) {
     if (!l) return `<div class="h-2"></div>`;
-    if (l.startsWith('+')) return `<div class="report-block rb-success font-medium">${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
-    if (l.startsWith('-')) return `<div class="report-block rb-danger font-medium">${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
-    if (l.startsWith('!')) return `<div class="report-block rb-warning font-medium">${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
-    if (l.startsWith('>')) return `<div class="report-block rb-plan font-medium">${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
+    if (l.startsWith('+')) return `<div class="report-block rb-success font-medium">${tm(l)}${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
+    if (l.startsWith('-')) return `<div class="report-block rb-danger font-medium">${tm(l)}${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
+    if (l.startsWith('!')) return `<div class="report-block rb-warning font-medium">${tm(l)}${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
+    if (l.startsWith('>')) return `<div class="report-block rb-plan font-medium">${tm(l)}${injectImgTags(l.substring(1).trim(), imgs)}</div>`;
     return `<div class="rb-normal font-normal">${injectImgTags(l, imgs)}</div>`;
   }
 
