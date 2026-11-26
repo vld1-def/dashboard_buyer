@@ -476,23 +476,11 @@ rest = sub(rest,
   """        <div>
           <label class="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5"
                  title="The hidden tags inside the file: device, software, date. Pick what happens to them in the copies.">Metadata</label>
-          <select id="uq-meta" onchange="uqMetaHint()" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
+          <select id="uq-meta" class="w-full bg-black/30 border border-white/10 rounded-lg px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-violet-500">
             <option value="fake" selected>Phone tags</option>
             <option value="strip">Remove all</option>
             <option value="keep">Keep original</option>
           </select>
-          <!-- «переназви нормально щоб було зрозуміло що кожне робить»:
-               під списком — одним рядком, що саме зробить вибране. -->
-          <p id="uq-meta-hint" class="uq-meta-hint">Wipes the file's own tags and writes ones from a real iPhone, Samsung or Pixel, dated within the last two months. Recommended.</p>
-          <script>
-            window.uqMetaHint = function () {
-              var v = (document.getElementById('uq-meta') || {}).value;
-              var t = { fake: "Wipes the file's own tags and writes ones from a real iPhone, Samsung or Pixel, dated within the last two months. Recommended.",
-                        strip: 'Wipes every tag and leaves them empty. Note: a file with no tags at all is itself a sign it was processed.',
-                        keep: 'Leaves the tags exactly as they came in the source file — the copies share them.' }[v] || '';
-              var el = document.getElementById('uq-meta-hint'); if (el) el.textContent = t;
-            };
-          </script>
         </div>""",
   'унікалізатор: селект метаданих')
 
