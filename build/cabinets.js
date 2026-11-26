@@ -262,7 +262,9 @@ async function cabViewSave() {
   return false;
 }
 
-const cabPinned = id => cabView.pins.includes(String(id));
+/* «Pinned кнопки видали, я ніколи цим не користувався». Закріплення
+   більше немає: ні кнопки, ні групи зверху. Збережені pins не чіпаємо. */
+const cabPinned = () => false;
 
 /* Шпилька, а не прапорець. Прапорець ⚑ — символ шрифту: у кожній
    системі він свій, у половині надто тонкий, щоб його помітити, і
@@ -2237,6 +2239,22 @@ function cabSumPaint(shown, all) {
   box.innerHTML = `${approx ? '<span class="cab-sum-approx">\u2248</span>' : ''}
     <span class="cab-sum-n">${cabEsc(txt)}</span>
     <span class="cab-sum-k">Today</span>`;
+  /* ПІДСУМКИ ДНЯ ПОРУЧ ІЗ СУМОЮ. «сподобались показники тотал в хедері».
+     Ліди, інстали, реги й депи — зі знімка сьогодні (fb_ad_today) по всіх
+     кабінетах, як і сума; CPL — спенд у доларах на ліди. */
+  let k = document.getElementById('cab-kpis');
+  if (!k) { k = document.createElement('span'); k.id = 'cab-kpis'; k.className = 'cab-kpis'; box.after(k); }
+  const t = { leads: 0, installs: 0, regs: 0, buys: 0 };
+  all.forEach(c => { const o = cabSnap && cabSnap[String(c.id)]; if (o) { t.leads += o.leads || 0; t.installs += o.installs || 0; t.regs += o.regs || 0; t.buys += o.buys || 0; } });
+  let usdAll = 0;
+  parts.forEach(([cur, v]) => { const x = typeof fxToUsd === 'function' ? fxToUsd(v, cur) : (cur === 'USD' ? v : null); if (x != null) usdAll += x; });
+  const conv = t.leads || t.installs;
+  const kv = (label, v, tipK) => `<span class="cab-kpi" title="${tipK}"><small>${label}</small><b>${v}</b></span>`;
+  k.innerHTML = kv('Leads', t.leads, 'Leads today, all cabinets')
+    + (t.installs ? kv('Installs', t.installs, 'App installs today') : '')
+    + kv('CPL', conv && usdAll ? cabMoneyCur(usdAll / conv, 'USD') : '—', 'Spend today in dollars per lead' + (t.installs ? ' or install' : ''))
+    + kv('Regs', t.regs, 'Registrations today')
+    + kv('Deps', t.buys, 'Deposits (purchases) today');
 }
 
 /* ЗГОРНУТА ШАПКА НА ТЕЛЕФОНІ.
@@ -2597,7 +2615,7 @@ function cabSection(items) {
   // Скільки клітинок у рядку: галочка, стрілка, шпилька, крапка,
   // кабінет, світчер, статус, витрати за період, дії — і стільки ж,
   // скільки увімкнено колонок.
-  const COLS = 9 + cols.length + (cabGeoOn() ? 1 : 0);
+  const COLS = 8 + cols.length + (cabGeoOn() ? 1 : 0);
 
   /* Галочка в шапці бере рівно те, що намальовано: під фільтром
      «Banned» це всі забанені, а не весь парк. Інакше вона тихо
@@ -2608,7 +2626,6 @@ function cabSection(items) {
         ${mkOn ? 'checked' : ''} onclick="cabMarkAll(event)"
         title="Select all ${items.length} cabinet(s) shown here"></th>
       <th class="cab-x"></th>
-      <th class="cab-x" title="Pinned cabinets stay on top of the list"></th>
       <th class="cab-x"></th>
       ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
       <th class="cab-x" title="Switch campaigns, ad sets and ads on and off"></th>
@@ -2748,9 +2765,6 @@ function cabRowHtml(c, COLS) {
     <td class="cab-x"><button type="button" class="cab-exp ${open ? 'is-on' : ''}"
       onclick="cabToggleTree(event, '${idEnc}')"
       title="Campaigns, ad sets and ads of this cabinet with today’s numbers">›</button></td>
-    <td class="cab-x"><button type="button" class="cab-pin ${cabPinned(c.id) ? 'is-on' : ''}"
-      onclick="cabPinToggle(event, '${idEnc}')"
-      title="${cabPinned(c.id) ? 'Pinned to the top. Click to unpin.' : 'Pin to the top of the list'}">${CAB_PIN_SVG}</button></td>
     <td class="cab-x"><span class="cab-dot" style="background:${S.dot}"
       title="${cabEsc(label)}"></span></td>
     <td>
@@ -2886,12 +2900,12 @@ function cabNodeRow(n, depth, band, cols, enter = -1) {
   const anim = enter >= 0 && !cabReduceMotion() ? ` cd-in" style="--cd-i:${enter}` : '';
   return `<tr class="cab-node cd-r cd-d${depth}${band ? ' is-band' : ''}${
       f.marked ? ' is-mk' : ''}${anim}">
-    <!-- Чотири перші стовпці (галочка, стрілка, шпилька, кружок) у дереві порожні —
+    <!-- Перші стовпці (галочка, стрілка, кружок і назва кабінета) у дереві — одна клітинка назви:
          і це були ~70 пікселів пустого поля ліворуч від кожної назви,
          щодня. Забираємо їх під саму назву: colspan лишає сітку
          таблиці цілою, тож світчер, статус і числа стоять там, де й
          стояли, а назва починається від краю. -->
-    <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="5"${hit}>
+    <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="4"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
     <td class="cab-nd-sw">${f.sw || ''}</td>
     ${cabGeoOn() ? '<td class="cab-geo-td"></td>' : ''}
@@ -3062,34 +3076,31 @@ function cabCardOld(fb) {
   const pair = (live, all) => (live == null && all == null) ? '—'
     : (live == null ? '?' : live) + '/' + (all == null ? '?' : all);
 
-  const head = `<div class="flex items-start justify-between gap-2 mb-3">
+  /* ШАПКА ПАНЕЛІ — як у макеті: назва (браузер · агент), номер кабінета,
+     статус плашкою разом зі станом у Facebook. Пояснення стану — у
+     підказці плашки. */
+  const who = [c.row.profile || c.tok.browser, c.row.provider_name || c.tok.agent].filter(Boolean).join(' \u00b7 ');
+  const head = `<div class="cab-ph">
       <div class="min-w-0">
-        <p class="text-[13px] font-black text-dynamic truncate">${esc(c.id)}</p>
-        <p class="text-[10px] font-black uppercase tracking-widest ${S.tone}">${S.label}</p>
-        <p class="text-[9px] font-bold" style="color:var(--text-muted)">${esc(why.text)}</p>
+        <p class="cab-ph-name">${esc(who || c.id)}</p>
+        <p class="cab-ph-id" onclick="cabCopyId(event, this)" data-v="${esc(c.id)}" title="Click to copy">act_${esc(c.id)}</p>
+        <span class="cab-ph-pill" style="--c:${S.dot}" title="${esc(why.text)}">${esc(S.label)}${
+          c.fb && c.fb.status ? ' \u00b7 Facebook: ' + esc(c.fb.status) : ''}</span>
       </div>
       <div class="flex items-center gap-1 shrink-0">
         ${c.fb ? `<button class="cab-grp-sync" onclick="cabSyncOne('${enc}')"
           title="Ask Facebook about this one cabinet. Seconds instead of the whole park \u2014 and the cabinets you did not ask about are left alone, not marked as lost.">\u21bb sync</button>` : ''}
         ${c.fb && c.fb.missing_since ? `<button class="cab-grp-sync is-drop" onclick="cabDrop('${enc}')"
           title="No token sees this cabinet any more, so nothing will bring the row back. Removing it is only for cabinets like this one \u2014 a live cabinet would reappear on the next sync, and the button would look broken.">\u2715 remove</button>` : ''}
-        <button onclick="cabClosePanel()" class="text-slate-500 hover:text-red-400 text-lg leading-none">&times;</button>
+        <button onclick="cabClosePanel()" class="cab-ph-x" aria-label="Close">&times;</button>
       </div>
     </div>`;
 
   // ── що каже Facebook ──
   const fbBlock = `<div class="cab-fb">
-      <p class="cab-fb-head">Facebook<span>${cabFbAt() ? cabAgo(cabFbAt()) : 'never synced'}</span></p>
       <div class="grid grid-cols-2 gap-2">
-        ${(() => {
-          const v = cabSpendIn(c.fb);
-          const [a, b] = cabRangeDates();
-          return cell(esc(cabRangeLabel()),
-            v == null ? '?' : v > 0 ? cabMoneyCur(v, c.fb.currency) : '—',
-            v == null ? 'No spend history yet — run the fb_spend_daily block from FB_SYNC.sql'
-                      : (a === b ? a : a + ' — ' + b) + ', as Facebook counts the day for this cabinet');
-        })()}
-        ${cell('State', esc(c.fb.status || '—'))}
+        ${/* «today state в блоці видали»: спенд дня й стан Facebook уже видно —
+              у рядку таблиці й на плашці в шапці панелі. */ ''}
         ${/* Ліміт. Переїхав сюди зі стовпчика таблиці: у рядку на нього
               дивляться рідко, а ширину він їв у кожного. Тут він стоїть
               поруч із балансом і карткою — тобто поруч із тим, що його
@@ -3268,21 +3279,22 @@ function cabCardOld(fb) {
      дописує порожні поля сам, одразу після завантаження. */
 
 
-  box.innerHTML = `<div class="card p-4 rounded-2xl">
-    ${head}
-
-    <div class="grid grid-cols-2 gap-2 mb-3">
-      ${[['Spend, all time', c.x.all > 0 ? cabMoney(c.x.all) : '—'],
-         ['Days live', c.age || '—'],
-         ['First spend', c.x.first || '—'],
-         ['Last spend', c.x.last || '—']].map(([k, v]) => cell(k, v)).join('')}
-    </div>
-
-    <div class="mb-3 ${S.tone}">${cabSpark(c.x.byDay, c.x.last, 290, 38)}</div>
-
-    ${fbBlock}
-
-    <label class="block text-[9px] font-black uppercase tracking-widest mb-1 mt-3" style="color:var(--text-muted)">Status</label>
+  /* ВКЛАДКИ ПАНЕЛІ — «от таке давай перенесемо в оригінал». Facebook:
+     ліміт, факти, графік за 14 днів. My notes: статус і твої поля.
+     History: журнал кабінета. Знизу — Comments і Archive; рідші дії
+     (звіт, правила, зупинка всього) — під ними дрібніше. */
+  const tab = cabPanelTab;
+  const tb = (k, l) => `<button type="button" role="tab" aria-selected="${tab === k}"
+      class="${tab === k ? 'is-on' : ''}" onclick="cabPanelTabSet('${k}')">${l}</button>`;
+  const arch = String(c.row.status || '').toLowerCase() === 'archive';
+  const chart = `<div class="cab-ch">
+      <div class="cab-ch-h"><small>14 days</small><span>${c.x.all > 0 ? 'all time ' + esc(cabMoney(c.x.all)) : 'no spend yet'}${
+        c.age ? ' · ' + esc(c.age) + ' live' : ''}</span></div>
+      <div class="${S.tone}">${cabSpark(c.x.byDay, c.x.last, 300, 44)}</div>
+      ${c.x.first ? `<div class="cab-ch-f"><span>first ${esc(c.x.first)}</span><span>last ${esc(c.x.last || '—')}</span></div>` : ''}
+    </div>`;
+  const mine = `
+    <label class="cab-pl">Status</label>
     <div class="flex gap-1 mb-3">
       ${[['active', 'OK'], ['problem', 'Issue'], ['ban', 'Ban'], ['archive', 'Archive']].map(([k, l]) => `
         <button onclick="cabSetStatus('${c.row.id}','${k}')"
@@ -3292,32 +3304,33 @@ function cabCardOld(fb) {
     </div>
     ${c.fb && CAB_FB_STATE[String(c.fb.status || '')] ? `<p class="cab-fb-warn mb-3">
         Facebook says this one is ${esc(c.fb.status)} — the buttons above cannot undo that.</p>` : ''}
-
     ${CAB_EXTRA.map(field).join('')}
-
-    <label class="block text-[9px] font-black uppercase tracking-widest mb-1" style="color:var(--text-muted)">Note</label>
+    <label class="cab-pl">Note</label>
     <textarea rows="3" onchange="cabSaveField('${c.row.id}','status_note',this.value)"
       class="w-full bg-black/25 border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-bold text-dynamic outline-none focus:border-violet-500"
-      placeholder="What was launched here, which card, anything worth remembering">${String(c.row.status_note || '')}</textarea>
+      placeholder="What was launched here, which card, anything worth remembering">${String(c.row.status_note || '')}</textarea>`;
+  const log = (typeof evForAccount === 'function' ? evForAccount(c.id, 40) : '')
+    || '<p class="cab-pl-empty">Nothing has happened to this cabinet yet — bans, state changes and your edits show up here.</p>';
 
-    ${typeof evForAccount === 'function' ? evForAccount(c.id) : ''}
-
-    ${typeof fbrBlock === 'function' ? fbrBlock(c) : ''}
-
-    ${typeof fcmBlock === 'function' ? fcmBlock(c) : ''}
-
-    <button onclick="rlPanel(true)"
-      class="w-full mt-3 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
-             text-muted-dynamic hover:text-white"
-      style="background:var(--surface-2);border:1px solid var(--border)"
-      title="Rules that switch off ads on their own">Rules</button>
-
-    <button onclick="cabStopAll('${enc}')"
-      class="w-full mt-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition
-             text-red-400 hover:text-white hover:bg-red-600"
-      style="border:1px solid rgba(239,68,68,.35)">Stop all campaigns</button>
+  box.innerHTML = `<div class="card p-4 rounded-2xl cab-panel">
+    ${head}
+    <div class="cab-ptabs" role="tablist">${tb('fb', 'Facebook')}${tb('mine', 'My notes')}${tb('log', 'History')}</div>
+    ${tab === 'mine' ? mine : tab === 'log' ? log : (c.fb ? fbBlock : '') + chart}
+    ${typeof fcmBlock === 'function' && typeof fcmFor !== 'undefined' && fcmFor === c.id ? fcmBlock(c) : ''}
+    <div class="cab-pacts">
+      ${c.fb ? `<button type="button" class="is-main" onclick="fcmToggle('${enc}')"
+        title="Read and moderate the comments under this cabinet's ads">${typeof fcmFor !== 'undefined' && fcmFor === c.id ? 'Hide comments' : 'Comments'}</button>` : ''}
+      <button type="button" onclick="cabSetStatus('${c.row.id}','${arch ? 'active' : 'archive'}')"
+        title="${arch ? 'Back into the list' : 'Move it out of the list — spend history and notes stay'}">${arch ? 'Out of archive' : 'Archive'}</button>
+    </div>
+    <!-- «export report, rules, pause це в блоці видали» -->
   </div>`;
 }
+
+/* Вкладка панелі — одна на всі кабінети: перемкнувся на «My notes» —
+   наступний кабінет теж відкривається там. */
+let cabPanelTab = 'fb';
+window.cabPanelTabSet = function (k) { cabPanelTab = k; cabRender(); };
 
 /* Завести кабінет, який приїхав із токена, у свій список. Номер і
    прив'язку ставимо самі — переписувати його руками означає рано чи
@@ -4042,8 +4055,23 @@ window.cabMarkAt = function (ev, idEnc) {
   if (ev) ev.stopPropagation();
   const id = decodeURIComponent(idEnc || '');
   if (!id) return;
-  if (cabMark.has(id)) cabMark.delete(id); else cabMark.add(id);
+  const on = !cabMark.has(id);
+  if (on) cabMark.add(id); else cabMark.delete(id);
+  /* «Коли виділяю кабінет і відкриті кампанії чи оголошення — хай
+     виділяються всі, щоб не по одному». Рядки дерева цього кабінета —
+     ті, що стоять у таблиці одразу під ним, до наступного кабінета. */
+  if (ev && ev.target && typeof cdMarked !== 'undefined') {
+    let tr = ev.target.closest('tr.cab-tr');
+    const ids = [];
+    for (tr = tr && tr.nextElementSibling; tr && !tr.classList.contains('cab-tr'); tr = tr.nextElementSibling) {
+      const b = tr.querySelector('input.cd-mk[onchange*="cdMark("]');
+      const m = b && String(b.getAttribute('onchange') || '').match(/cdMark\('([^']+)'/);
+      if (m) ids.push(m[1]);
+    }
+    ids.forEach(x => { if (on) cdMarked.add(x); else cdMarked.delete(x); });
+  }
   cabRender();
+  if (typeof cdMarkFloat === 'function') cdMarkFloat();
 };
 
 /* Галочка в шапці: тисне рівно те, що намальовано. Другий клік по

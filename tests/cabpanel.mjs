@@ -1,0 +1,67 @@
+import { serve, open, checks } from './_harness.mjs';
+const { ok, done } = checks();
+const srv = await serve(8771);
+const { browser, page, errs } = await open(8771, { viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1 });
+const r = await page.evaluate(async () => {
+  try { bootDone(); } catch (e) {} ['boot', 'login-overlay', 'team-first-run'].forEach(i => document.getElementById(i)?.remove());
+  cabViewSave = async () => true; cabViewLoad = async () => {}; cabDaysLoad = async () => {}; cabSnapLoad = async () => {}; cabBuyLoad = async () => {}; window.fpLoad = async () => {};
+  sbFetchAll = async () => [{ id: 'r1', account_id: '1403209798694635', status: 'active', provider_name: 'AgentX', profile: '4175' }];
+  cabFbLoad = async () => { cabFb = [{ account_id: '1403209798694635', name: 'KG', status: 'active', currency: 'USD', spend_today: 106, spend_cap: 500, amount_spent: 412, ads: 5, ads_active: 3, token_id: 't1' }]; };
+  cabTokens = { t1: 'AgentX_4175_BM' }; cabLoaded = false;
+  const ad = (i, c, s, name, spend) => ({ account_id: '1403209798694635', campaign_id: 'c' + c, campaign_name: 'MPlay_KG_10708-y3wz_07/11 00' + c, adset_id: 's' + s, adset_name: 'Broad 18-45 set ' + s,
+    ad_id: 'a' + i, name, effective_status: 'ACTIVE', status: 'ACTIVE', spend, impressions: 1000, clicks: 30, link_clicks: 25, actions: [{ action_type: 'lead', value: '5' }], seen_at: new Date().toISOString(),
+    campaign_daily_budget: 15000, adset_daily_budget: null });
+  const rows = [ad(1, 1, 1, 'KG_JS_674_long_creative_name_v2', 40), ad(2, 1, 1, 'KG_VD_996', 20), ad(3, 2, 2, 'KG_AB_684_another_name', 30), ad(4, 2, 3, 'KG_99971', 10)];
+  const q = { select() { return q; }, eq() { return q; }, limit: async () => ({ data: rows, error: null }) };
+  const real = sb.from.bind(sb);
+  sb.from = t => t === 'fb_ad_today' ? q : real(t);
+  try { navGo('cabinets'); } catch (e) {}
+  await cabInit();
+  const tr = document.querySelector('#cab-list tr.cab-tr');
+  await cabToggleTree({ stopPropagation() {} }, encodeURIComponent('1403209798694635'));
+  await new Promise(r => setTimeout(r, 300));
+  const widths = () => [...document.querySelectorAll('#cab-list thead th')].map(th => Math.round(th.getBoundingClientRect().width));
+  const lefts = () => { const t = document.querySelector('#cab-list tr.cab-tr'); return [...t.children].map(td => Math.round(td.getBoundingClientRect().left)); };
+  cdSetFlat(false); await new Promise(r => setTimeout(r, 200));
+  const a = { w: widths(), l: lefts() };
+  cdSetFlat(true); await new Promise(r => setTimeout(r, 200));
+  const b = { w: widths(), l: lefts() };
+  const out = { a: a.l.join(), b: b.l.join() };
+  cdSetFlat(false); await new Promise(r => setTimeout(r, 150));
+  out.pinCol = !!document.querySelector('#cab-list .cab-pin');
+  out.colspan = document.querySelector('#cab-list td.cab-nd')?.getAttribute('colspan');
+  // Галочка кабінета з відкритим деревом — вибирає й усі його рядки.
+  const box = document.querySelector('#cab-list tr.cab-tr input.cd-mk');
+  box.click();
+  await new Promise(r => setTimeout(r, 100));
+  out.marked = cdMarked.size; out.treeRows = document.querySelectorAll('#cab-list tr.cd-r').length;
+  out.float = (document.querySelector('#cd-mkfloat.is-on') || {}).innerText || '';
+  document.querySelector('#cab-list tr.cab-tr input.cd-mk').click();
+  await new Promise(r => setTimeout(r, 100));
+  out.unmarked = cdMarked.size;
+  // Панель.
+  cabPick('1403209798694635');
+  const p = document.getElementById('cab-detail');
+  out.tabs = [...p.querySelectorAll('.cab-ptabs button')].map(b => b.textContent.trim()).join();
+  out.first = p.querySelector('.cab-fb .grid')?.firstElementChild?.className || '';
+  out.todayState = /State|Today/.test(p.querySelector('.cab-fb')?.innerText || '');
+  out.chart = /14 days/i.test(p.innerText);
+  out.acts = [...p.querySelectorAll('.cab-pacts button')].map(b => b.textContent.trim()).join();
+  cabPanelTabSet('mine');
+  out.mine = /status/i.test(document.getElementById('cab-detail').innerText) && !!document.querySelector('#cab-detail textarea');
+  cabPanelTabSet('fb');
+  out.kpis = (document.getElementById('cab-kpis') || {}).innerText || '';
+  return out;
+});
+ok('Campaign ↔ Ads only — стовпці на тих самих місцях', r.a === r.b, [r.a, r.b]);
+ok('пінів більше немає', !r.pinCol, r);
+ok('назва в дереві займає 4 стовпці (без піна)', r.colspan === '4', r.colspan);
+ok('галочка кабінета вибирає всі відкриті рядки дерева', r.marked === r.treeRows && r.treeRows > 0, r);
+ok('знята — знімає їх теж', r.unmarked === 0, r);
+ok('панель: вкладки Facebook / My notes / History', r.tabs === 'Facebook,My notes,History', r.tabs);
+ok('ліміт перший, Today і State прибрано', /cab-lim-cell/.test(r.first) && !r.todayState, r);
+ok('графік 14 днів у вкладці Facebook', r.chart, r);
+ok('знизу Comments і Archive', /Comments/.test(r.acts) && /Archive/.test(r.acts), r.acts);
+ok('My notes — статус і нотатка', r.mine, r);
+ok('підсумки дня в шапці', /leads/i.test(r.kpis) && /deps/i.test(r.kpis), r.kpis);
+await done(browser, srv, errs);
