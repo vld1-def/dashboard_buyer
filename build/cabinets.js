@@ -127,6 +127,9 @@ const cabMarked = id => cabMark.has(String(id));
    ще не виконано) — тоді cabFb лишається порожнім, обидві секції
    злипаються в одну, і сторінка працює рівно як раніше. */
 let cabFb = [], cabFbErr = '', cabFbOld = '', cabAll = [];
+let cabPurged = new Set();   // очищені архівні — у FB LIVE не показуємо
+const CAB_ARCH_PAGE = 60;
+let cabArchMax = CAB_ARCH_PAGE;
 /* Кабінети НАШИХ токенів, підписані іншою командою. Див. cabFbLoad. */
 let cabFbMine = [];
 /* Скільки рядків віддала база ДО відсіву по команді. Різниця між цим
@@ -912,6 +915,17 @@ async function cabInit() {
     host.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
     return;
   }
+  /* ОЧИЩЕНИЙ АРХІВ — НЕ ДЛЯ FB LIVE. «не тільки історію а і самі кабінети
+     видаляти … клікнув на архівед і сайт завис». Кабінет, що лежить в
+     архіві 3+ дні, щоночі очищається (fb_archive_purge: журнал, спенд по
+     днях, знімок, модерація, журнал правил) і позначається purged_at.
+     Рядок у accounts_mapping лишається: це мітка «архів», без якої Sync
+     повернув би кабінет забаненим, і рядок вікна Accounts — там він є,
+     як і був. А тут його немає зовсім: ні в архіві, ні серед решти. */
+  cabPurged = new Set();
+  cabRows.forEach(r => { if (r.purged_at) [r.account_id, r.fb_account_id]
+    .forEach(x => { const d = String(x || '').replace(/\D/g, ''); if (d) cabPurged.add(d); }); });
+  cabRows = cabRows.filter(r => !r.purged_at);
   const sample = cabRows[0] || {};
   CAB_EXTRA.forEach(c => cabCols[c.key] = c.key in sample);
   // Колонка зв'язку з Facebook теж може ще не існувати — тоді ручної
@@ -1064,7 +1078,8 @@ async function cabFbLoad() {
        Політики в Postgres складаються через OR. Межу тут тримає
        сторінка. */
     cabFbRaw = (res.data || []).length;
-    cabFb = (res.data || []).filter(r => !r.team_name || r.team_name === currentTeam);
+    cabFb = (res.data || []).filter(r => (!r.team_name || r.team_name === currentTeam)
+      && !cabPurged.has(String(r.account_id || '').replace(/\D/g, '')));
     /* Чиї саме написи ми прибрали. Потрібні для одного рядка нижче:
        «твій токен нічого не привіз» і «тут є 26 кабінетів, але чужих»
        — різні новини, а виглядали однаково. */
@@ -2019,7 +2034,7 @@ function cabWhy(c) {
 }
 
 function cabSetGroup(v) { cabGroup = v; cabRender(); }
-function cabSetFilter(k) { cabFilter = (cabFilter === k) ? '' : k; cabSel = null; cabRender(); }
+function cabSetFilter(k) { cabFilter = (cabFilter === k) ? '' : k; cabSel = null; cabArchMax = CAB_ARCH_PAGE; cabRender(); }
 
 /* ПРАВЕ МІСЦЕ ОДНЕ. Панель правил, відкриваючись, закриває картку
    кабінета — а от навпаки цього не робилось, і в зворотному порядку
@@ -2461,7 +2476,13 @@ function cabRender() {
   }
 
   cabSumPaint(shown, all);
-  list.innerHTML = cabSection(shown);
+  /* АРХІВ — ПОРЦІЯМИ. «клікнув на архівед і в мене сайт завис». Архівних
+     буває сотні, і малювати їх усіх разом нема для чого: їх відкривають
+     знайти один-два. Показуємо перші CAB_ARCH_PAGE, решта — кнопкою. */
+  const archCut = cabFilter === 'archived' && shown.length > cabArchMax;
+  list.innerHTML = cabSection(archCut ? shown.slice(0, cabArchMax) : shown)
+    + (archCut ? `<div class="cab-more"><button type="button" onclick="cabArchMax+=${CAB_ARCH_PAGE};cabRender()">Show ${
+        Math.min(CAB_ARCH_PAGE, shown.length - cabArchMax)} more · ${shown.length - cabArchMax} left</button></div>` : '');
   /* Третій стан галочки в шапці — «вибрано частину» — в HTML не
      виражається: indeterminate ставиться лише з коду. Без нього
      половина вибраних виглядала б як «не вибрано нічого». */
