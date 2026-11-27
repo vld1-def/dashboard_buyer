@@ -2828,6 +2828,9 @@ if os.path.exists(_twbin):
              '-o', _twcss, '--minify'], check=True, stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
 if not os.path.exists(_twcss):
     sys.exit('tw.css не зібрався, а CDN уже прибраний — сторінка була б без стилів')
+# Методичка в Settings → General: хеш PDF, щоб оновлена не бралась із кешу.
+_man = os.path.join(ROOT, 'docs', 'manual', 'Metodychka_CRM.pdf')
+doc = doc.replace('MANUAL__HASH__', _hl.md5(open(_man, 'rb').read()).hexdigest()[:10] if os.path.exists(_man) else '0')
 doc = doc.replace('TW__HASH__', _hl.md5(open(_twcss, 'rb').read()).hexdigest()[:10])
 open(OUT, 'w', encoding='utf-8').write(doc)
 # Поруч кладемо той самий штамп окремим файлом: сторінка читає його повз

@@ -50,7 +50,7 @@ ok('періоду в шапці немає — ні кнопками, ні сп
   && !/cab-range-m|#cab-range/.test(CSS));
 ok('збережений колись період не читається', /localStorage\.removeItem\('cab_range'\)/.test(CB)
   && !/localStorage\.getItem\('cab_range'\)/.test(CB));
-ok('назва сторінки — FB LIVE', />FB LIVE<\/h2>/.test(HT)
+ok('назва сторінки — FB LIVE (значок + Live, для читалок — FB Live)', /aria-label="FB Live"/.test(HT) && />Live<\/span><\/h2>/.test(HT)
   && /<span class="sb-lbl">FB LIVE<\/span>/.test(fs.readFileSync('build/shell.html', 'utf8')));
 ok('обгортки шапки на телефоні прозорі', /\.cab-hl, \.cab-hr, \.cab-tools \{ display: contents; \}/.test(CSS));
 ok('пошук по центру — сіткою з рівними боками',
