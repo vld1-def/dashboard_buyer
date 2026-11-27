@@ -102,7 +102,8 @@ ok("рядок без seen_at — теж ні", !T.tdIsToday({ at: 0, tz: "" }))
 ok("день рахується в поясі кабінета", fresh.tz === "Asia/Bishkek");
 const TDJ = fs.readFileSync("build/today.js", "utf8");
 ok("таблиця бере лише сьогоднішнє", TDJ.includes("const rows = active.filter(tdIsToday);"));
-ok("і Expand all — те саме", TDJ.includes("(x.s > 0 || x.im > 0) && tdIsToday(x)"));
+ok("і Expand all — те саме", TDJ.includes("tdHasAny(x) && tdIsToday(x)"));
+ok("рядок без спенду, але з депом — не відкидається (клік учора, деп сьогодні)", T.tdHasAny ? T.tdHasAny({ s: 0, im: 0, l: 0, i: 0, r: 0, d: 1 }) && !T.tdHasAny({ s: 0, im: 0, l: 0, i: 0, r: 0, d: 0 }) : /const tdHasAny = x => x\.s > 0 \|\| x\.im > 0 \|\| x\.l > 0 \|\| x\.i > 0 \|\| x\.r > 0 \|\| x\.d > 0;/.test(TDJ));
 ok("і про сховане кажемо", /not synced today — hidden/.test(TDJ));
 
 /* 4b. АРХІВНІ РЯДКИ ЗНІМКА НЕ ТЯГНЕМО. «сайт лагає»: половина знімка

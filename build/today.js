@@ -170,6 +170,7 @@ const tdDay = (ms, tz) => {
   try { return new Date(ms).toLocaleDateString('en-CA', tz ? { timeZone: tz } : undefined); }
   catch (e) { return new Date(ms).toLocaleDateString('en-CA'); }
 };
+const tdHasAny = x => x.s > 0 || x.im > 0 || x.l > 0 || x.i > 0 || x.r > 0 || x.d > 0;
 const tdIsToday = x => !!x.at && tdDay(x.at, x.tz) === tdDay(Date.now(), x.tz);
 
 const tdSum = rows => rows.reduce((a, x) => ({ s: a.s + x.s, im: a.im + x.im, lc: a.lc + x.lc,
@@ -434,7 +435,12 @@ function tdRender() {
   const all = (typeof cabSnapRows !== 'undefined' ? cabSnapRows : []).map(tdRow);
   /* Лише те, що сьогодні справді крутилось: нуль спенду й нуль показів
      — це рядок знімка про вимкнене, і в таблиці він лише шум. */
-  const active = all.filter(x => x.s > 0 || x.im > 0);
+  /* «чому тут 6 депів а в stat day 3». Рядок без спенду й показів — не
+     обов'язково шум: Facebook кладе сьогоднішню конверсію на оголошення,
+     яке сьогодні вже не крутилось (клік учора — деп сьогодні). Доти такі
+     рядки відкидались разом із депами, і Stat. Day показував 3 з 6, а
+     шапка FB LIVE — 6. Відкидаємо лише рядок, у якому немає нічого. */
+  const active = all.filter(tdHasAny);
   const rows = active.filter(tdIsToday);
   /* Скільки старого сховали — щоб «а де кабінет X» мало відповідь. */
   const old = active.filter(x => !tdIsToday(x));
@@ -566,7 +572,7 @@ function tdEnsure() {
     tdOpenSet.clear();
     if (b.dataset.e === '1') {
       const lv = TD_VIEWS[tdMode];
-      const rows = (cabSnapRows || []).map(tdRow).filter(x => (x.s > 0 || x.im > 0) && tdIsToday(x));
+      const rows = (cabSnapRows || []).map(tdRow).filter(x => tdHasAny(x) && tdIsToday(x));
       const add = (list, d, path) => { if (d >= lv.length - 1) return;
         const g = new Map(); list.forEach(x => { const k = lv[d][0](x); if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
         g.forEach((l, k) => { const id = path + '/' + k; tdOpenSet.add(id); add(l, d + 1, id); }); };
