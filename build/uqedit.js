@@ -13,7 +13,7 @@
    КІНЦІВКИ. Відео або картинка, що приклеюється в кінець. Кілька
    кінцівок — чергуються по копіях: v1 — перша, v2 — друга…
 
-   ХУКИ. Початок і далі робить «Cover frame» вище — бібліотека лише
+   ХУКИ. Поля хука (колишній «Cover frame») стоять у рядку Hook — бібліотека лише
    підставляє туди збережений файл, щоб не вантажити його щоразу.
 
    ЯК ЦЕ ПРАЦЮЄ. Основний прохід (унікалізація, склейка з хуком) не
@@ -46,9 +46,32 @@ function uqExtraMount() {
   uqExtraPaint();
 }
 
+/* «cover frame видали і інпути перемісти в рядок з хуком, бо навіщо нам
+   окремі рядки». Cover frame і Hook — одне й те саме: Library в рядку
+   Hook клала файл саме в Cover frame. Тепер окремого рядка Cover frame
+   немає, а його поля (файл, Hold, шматок, звук, хвіст, Remove) живуть у
+   рядку Hook. Переносимо ЖИВІ вузли, не копії: ids і обробники ті самі,
+   тож уся логіка хука (uqCoverPick, uqRun) не змінилась. Блок
+   перемальовується щоразу — тому вузол спершу знімаємо, потім вертаємо. */
+let uqCoverBox = null;
+function uqCoverGrab() {
+  if (uqCoverBox) return uqCoverBox;
+  const inp = document.getElementById('uq-cover');
+  if (!inp) return null;
+  const box = inp.parentElement;
+  const title = box.firstElementChild;
+  if (title && !title.querySelector('input,select,button')) title.remove();
+  box.removeAttribute('style');
+  box.className = 'uqx-cover';
+  uqCoverBox = box;
+  return box;
+}
+
 function uqExtraPaint() {
   const box = document.getElementById('uq-extra');
   if (!box) return;
+  const cov = uqCoverGrab();
+  if (cov && cov.parentNode) cov.parentNode.removeChild(cov);
   const chip = (it, kind) => `<span class="uqx-chip">
       ${it.kind === 'video' ? '<i class="uqx-v">▶</i>' : `<img src="${uqEsc(it.url)}" alt="">`}
       <b title="${uqEsc(it.name)}">${uqEsc(it.name)}</b>
@@ -71,14 +94,16 @@ function uqExtraPaint() {
         <button type="button" class="uqx-btn" onclick="uqLibOpen('ending')">Library</button>
       </div>
     </div>
-    <div class="uqx-row">
-      <div class="uqx-h"><b>Hook</b><span>the Cover frame above — keep good ones in the library</span></div>
-      <div class="uqx-list"><em>${typeof uqCover !== 'undefined' && uqCover ? uqEsc(uqCover.name || 'cover set') : 'not set'}</em></div>
+    <div class="uqx-row uqx-hook">
+      <div class="uqx-h"><b>Hook</b><span>what people see first: an image over the first frames, or a video glued in front</span></div>
+      <div class="uqx-list" id="uqx-hook-slot"></div>
       <div class="uqx-acts">
         <button type="button" class="uqx-btn" onclick="uqLibOpen('hook')">Library</button>
         ${typeof uqCover !== 'undefined' && uqCover ? '<button type="button" class="uqx-btn" onclick="uqHookSave()">Save to library</button>' : ''}
       </div>
     </div>`;
+  const slot = document.getElementById('uqx-hook-slot');
+  if (slot && cov) slot.appendChild(cov);
 }
 
 /* ── файли ── */
