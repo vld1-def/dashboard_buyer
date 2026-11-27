@@ -81,6 +81,26 @@ await page.keyboard.press('Escape');
 await page.evaluate(() => document.querySelectorAll('[id$="-modal"]').forEach(m => m.classList.add('hidden')));
 await shot('18-dock', () => navGo(''), ['#app-dock button', '#app-dock [title="Select Month"]', '#app-dock [title="Performance Summary"]', '#app-dock [title="Gallery"]', '#app-dock [title="Daily Reports"]', '#app-dock [title="Mission Center"]', '#app-dock [title="Quick Links"]', '#app-dock [title="Bonus Calculator"]', '#app-dock [title="Files"]', '#app-dock [title="Texts"]', '#app-dock [title="Apps"]', '#app-dock [title="Uniqueizer"]', '#app-dock [title="Accounts"]', '#app-dock [title="Local time by geo"]', '#app-dock [title="DB Logs"]', '#app-dock [title="Geo Compare"]', '#app-dock [title="Data Check (Keitaro)"]', '#app-dock [title="Settings"]', '#app-dock [title="Log out"]', '#app-dock [title="Add data"]', '#app-dock']);
 
+
+/* ── Довідники й інструкції «як додати» ── */
+const FORM = "[...document.querySelectorAll('iframe')].find(f => /Form\\.html/.test(f.src)).contentWindow";
+await shot('20-src-cabinets', `(async () => { navGo(''); hubOpen('providers', document.body); await new Promise(r => setTimeout(r, 900)); ${FORM}.stSwitch('cabinets'); })()`,
+  ['#prov-acc', '#prov-tz', '#prov-browser', '#prov-agency', 'button@@Link'], { sel: 'union:#st-panel-cabinets', pad: 30 });
+await shot('21-src-funnels', `${FORM}.stSwitch('funnels')`, ['#fun-name', '#fun-geo', '#fun-ktid', '#fun-app', 'label@@APP', 'button@@Save'], { sel: '#st-panel-funnels', pad: 30 });
+await shot('22-src-pwa', `${FORM}.stSwitch('pwa')`, ['#pwa-mask', '#pwa-prov', 'input[placeholder="paste a real campaign name here"]', 'button@@Save'], { sel: '#st-panel-pwa', pad: 30 });
+await shot('23-src-app', `${FORM}.stSwitch('app')`, ['button@@+ App', '#ap-mask', 'button@@Save'], { sel: '#st-panel-app', pad: 30 });
+await page.evaluate(() => hubClose());
+await shot('24-apps', () => { navGo(''); openAppsModal(); }, ['#ap-tab-app', '#ap-tab-pwa', '#ap-addfun', '#ap-add', '#ap-checkall', '#ap-banpause']);
+await shot('25-apps-new', () => apAddNew());
+await shot('26-pwa-new', () => { apSetMode('pwa'); apAddNew(); });
+await page.evaluate(() => { try { closeAppsModal(); } catch (e) {} });
+await shot('27-domains', () => { navGo('domains'); }, ['#dm-check-btn', '#dm-ap-l', 'button[onclick="dmTogglePaste()"]', '#dm-search']);
+await shot('28-domains-paste', () => dmTogglePaste(), ['#dm-paste-area, textarea[placeholder^="Melbet"]', '#dm-paste-save']);
+await shot('29-payouts', () => { navGo(''); openSettingsModal(); switchSettingsTab('payouts'); }, ['#payout-geo', '#payout-offer', '#payout-model', '#payout-value', '#spanel-payouts button@@Add'], { sel: '.set-shell', pad: 10 });
+await page.keyboard.press('Escape');
+await shot('30-files', () => { document.querySelectorAll('[id$="-modal"]').forEach(m => m.classList.add('hidden')); openFilesModal(); }, ['#fl-q', 'button@@+ Upload'], { sel: '#files-modal > div', pad: 40 });
+await page.evaluate(() => { try { closeFilesModal(); } catch (e) {} });
+
 /* ── FB LIVE з демо-кабінетами ── */
 await page.evaluate(async () => {
   cabViewSave = async () => true; cabViewLoad = async () => {}; cabDaysLoad = async () => {}; cabBuyLoad = async () => {}; window.fpLoad = async () => {};
@@ -92,7 +112,8 @@ await page.evaluate(async () => {
     ['5512004477810022', '4322', 'AgentX', 'KG Olympus', 'active', 0, 150, 30, 'Asia/Bishkek', 0, 0, 0],
     ['7781230045698701', '4142', 'Farm', 'KG Zazino', 'disabled', 0, 300, 210, 'Asia/Bishkek', 0, 0, 0]];
   sbFetchAll = async () => list.map((r, i) => ({ id: 'r' + i, account_id: r[0], status: 'active', provider_name: r[2], profile: r[1] }));
-  cabFbLoad = async () => { cabFb = list.map(r => ({ account_id: r[0], name: r[3], status: r[4], disable_reason: r[4] === 'disabled' ? 'ADS_INTEGRITY_POLICY' : null, currency: 'USD', spend_today: r[5], spend_day: today, spend_today_at: new Date().toISOString(), spend_cap: r[6], amount_spent: r[7], ads: 6, ads_active: r[5] ? 3 : 0, campaigns: 2, campaigns_active: r[5] ? 2 : 0, token_id: 't1', timezone_name: r[8] })); };
+  window.__extra = { account_id: '9901234567001122', name: 'KG New', status: 'active', currency: 'USD', spend_today: 0, spend_cap: 100, amount_spent: 0, ads: 0, ads_active: 0, campaigns: 0, campaigns_active: 0, token_id: 't1', timezone_name: 'Asia/Bishkek' };
+  cabFbLoad = async () => { cabFb = [window.__extra].concat(list.map(r => ({ account_id: r[0], name: r[3], status: r[4], disable_reason: r[4] === 'disabled' ? 'ADS_INTEGRITY_POLICY' : null, currency: 'USD', spend_today: r[5], spend_day: today, spend_today_at: new Date().toISOString(), spend_cap: r[6], amount_spent: r[7], ads: 6, ads_active: r[5] ? 3 : 0, campaigns: 2, campaigns_active: r[5] ? 2 : 0, token_id: 't1', timezone_name: r[8] }))); };
   cabSnapLoad = async () => { cabSnap = {}; list.forEach(r => cabSnap[r[0]] = { spend: r[5], leads: r[9], installs: r[9] * 3, regs: r[10], buys: r[11] }); };
   cabTokens = { t1: 'AgentX_4175_BM' }; cabLoaded = false;
   const ad = (i, c, s, name, spend, dom) => ({ account_id: '1403209798694635', campaign_id: 'c' + c, campaign_name: 'MPlay_KG_10708-y3wz_07/11 00' + c, adset_id: 's' + s, adset_name: 'Broad 18-45 set ' + s,
@@ -109,6 +130,8 @@ await shot('04c-ads', async () => { cdSetFlat(true); await new Promise(r => setT
 await shot('04d-panel', () => { cdSetFlat(false); cabPick('1403209798694635'); }, ['.cab-ph-id', '.cab-ptabs', '.cab-lim-cell', '.cab-lim-acts', '.cab-ch', '.cab-pacts'], { sel: '#cab-detail', pad: 70 });
 await shot('04e-notes', () => cabPanelTabSet('mine'), ['.cab-ptabs button:nth-child(2)', '#cab-detail textarea'], { sel: '#cab-detail', pad: 70 });
 await page.evaluate(() => { cabPanelTabSet('fb'); cabPick(null); });
+await shot('31-new-cab', () => { cabSetFilter(''); cabPick('9901234567001122'); }, ['#cab-detail button@@Add to my list', '#cab-detail button@@Archive it'], { sel: '#cab-detail', pad: 60 });
+await page.evaluate(() => { cabPick(null); cabSetFilter('running'); });
 await shot('04f-rules', () => rlPanel(true));
 await page.evaluate(() => { document.getElementById('rules-panel')?.classList.add('hidden'); });
 await shot('04h-statday', () => tdToggle());

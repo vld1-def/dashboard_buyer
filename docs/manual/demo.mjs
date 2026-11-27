@@ -30,7 +30,14 @@ function demoData() {
   const payouts = geos.map(([geo, offer, value], i) => ({ id: String(i + 1), team_name: 'DEMO', geo, offer, value, active: true, model: 'cpa' }))
     .concat(geos.map(([geo, , value], i) => ({ id: String(i + 11), team_name: 'DEMO', geo, offer: 'DEFAULT', value, active: true, model: 'cpa' })));
   const access = { buyer: { '': true, cabinets: true, creatives: true, geo: true, heatmap: true, reports: true, domains: true, expenses: true, team: false, hub: true, sheets: true } };
-  return { _role: 'buyer', team_settings: [{ team_name: 'DEMO', key: 'role_access', value: JSON.stringify(access) }], daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
+  const now = new Date().toISOString();
+  const accounts_mapping = [['1403209798694635', 'AgentX', 6, '4175'], ['2799955410462460', 'AgentX', 5, '4050'], ['1118804884290395', 'Farm', 5, '4057'], ['3301120098812345', 'Farm', 5, '4310']]
+    .map(([a, p, tz, pr], i) => ({ id: 'm' + i, team_name: 'DEMO', account_id: a, provider_name: p, timezone: tz, profile: pr }));
+  const funnels_mapping = [['10708-y3wz', 'Mbank KG', 'KG', false], ['10864-9lm5', 'Pinco KZ', 'KZ', false], ['pfb10964', 'Melbet UZ [AppCloud]', 'UZ', true]]
+    .map(([k, n, g, app], i) => ({ id: 'f' + i, team_name: 'DEMO', ktid: k, funnel_name: n, geo: g, is_app: app }));
+  const domains = [['mbank-kg.online', 'Mbank', 'KG', 'ok', 200], ['play-kg.site', 'Mbank', 'KG', 'ok', 200], ['pinco-kz1.top', 'Pinco', 'KZ', 'guarded', 403], ['melbet-uz.app', 'Melbet', 'UZ', 'down', null], ['pinup-tj.fun', 'Pin-Up', 'TJ', 'danger', 200]]
+    .map(([d, p, g, st, c], i) => ({ id: 'd' + i, team_name: 'DEMO', domain: d, pwa: p, geo: g, status: st, status_code: c, source: 'server', checked_at: now, created_at: now }));
+  return { _role: 'buyer', accounts_mapping, funnels_mapping, domains, team_settings: [{ team_name: 'DEMO', key: 'role_access', value: JSON.stringify(access) }], daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
 }
 
 export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {
