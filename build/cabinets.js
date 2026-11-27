@@ -2730,7 +2730,8 @@ function cabSection(items) {
   // Скільки клітинок у рядку: галочка, стрілка, шпилька, крапка,
   // кабінет, світчер, статус, витрати за період, дії — і стільки ж,
   // скільки увімкнено колонок.
-  const COLS = 8 + cols.length + (cabGeoOn() ? 1 : 0);
+  // GEO забирає місце стовпця тумблерів (тумблери стоять у ньому), тож усього стовпців стільки ж.
+  const COLS = 8 + cols.length;
 
   /* Галочка в шапці бере рівно те, що намальовано: під фільтром
      «Banned» це всі забанені, а не весь парк. Інакше вона тихо
@@ -2742,8 +2743,11 @@ function cabSection(items) {
         title="Select all ${items.length} cabinet(s) shown here"></th>
       <th class="cab-x"></th>
       <th class="cab-x"></th>
-      ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
-      <th class="cab-x cab-sw-h" title="Switch campaigns, ad sets and ads on and off"></th>
+      ${th('id', 'Cabinet', 'cab-name-h', 'Browser profile and agent, with the Facebook account number under them')}
+      ${/* «перемістити тумблери під мітки»: коли є стовпець GEO, тумблери
+           кампаній стоять у ньому (у рядках дерева він порожній), і окремий
+           стовпець не потрібен — його місце забирає назва. Без GEO стовпець
+           тумблерів лишається, як був. */ cabGeoOn() ? '' : '<th class="cab-x cab-sw-h" title="Switch campaigns, ad sets and ads on and off"></th>'}
       ${/* МЕЖА ЗАМОРОЖЕНОЇ ЧАСТИНИ. Усе до цієї клітинки включно
            лишається на місці, коли таблицю гортають убік. Позначка
            стоїть у розмітці, а не числом у стилях: додасться колонка
@@ -2889,8 +2893,7 @@ function cabRowHtml(c, COLS) {
       ${cabHits[c.id] ? `<div class="cab-hit" title="${cabEsc(cabHits[c.id].n)}">\u21b3 ${cabHits[c.id].k}: ${cabHl(cabHits[c.id].n, cabQ())}${
         cabHits[c.id].more > 0 ? ` <span class="cab-hit-more">+${cabHits[c.id].more}</span>` : ''}</div>` : ''}
     </td>
-    <td class="cab-x cab-sw-h"></td>
-    ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : ''}
+    ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : '<td class="cab-x cab-sw-h"></td>'}
     <td class="cab-fz-end"><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${today}</td>
     ${cabColsShown().map(cell).join('')}
@@ -3024,8 +3027,7 @@ function cabNodeRow(n, depth, band, cols, enter = -1) {
          стояли, а назва починається від краю. -->
     <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="4"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
-    <td class="cab-nd-sw">${f.sw || ''}</td>
-    ${cabGeoOn() ? '<td class="cab-geo-td"></td>' : ''}
+    ${cabGeoOn() ? `<td class="cab-geo-td cab-nd-sw">${f.sw || ''}</td>` : `<td class="cab-nd-sw">${f.sw || ''}</td>`}
     <td class="cab-nd-st cab-fz-end">${f.status}</td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${f.spend}</td>
     ${cols.map(col => { const tip = cabNodeTip(f, col.key);

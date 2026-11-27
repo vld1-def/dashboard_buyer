@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 27.11 14:57">
+  <meta name="build" content="build 27.11 15:10">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8741,6 +8741,9 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .cab-tbl td.cab-nd .cab-nd-in { display: flex; width: 0; min-width: 100%; overflow: hidden; }
 /* Стовпець тумблерів — однієї ширини, відкрите дерево чи ні. */
 .cab-tbl .cab-sw-h, .cab-tbl td.cab-nd-sw { width: 54px; min-width: 54px; max-width: 54px; box-sizing: border-box; }
+/* GEO з тумблерами кампаній усередині — не вужчий за тумблер. */
+.cab-tbl th.cab-geo-td, .cab-tbl td.cab-geo-td { min-width: 54px; box-sizing: border-box; }
+.cab-tbl td.cab-geo-td.cab-nd-sw { width: auto; max-width: none; text-align: center; }
 /* Числові стовпці одразу мають місце під цифри кампаній ($0.44, 2.38%),
    інакше при відкритому дереві (ширини зафіксовані) вони б обрізались. */
 #cab-list .cab-tbl th.ta-r, #cab-list .cab-tbl td.cab-num { min-width: 66px; box-sizing: border-box; }
@@ -8927,6 +8930,15 @@ mark.cab-hl { display: inline !important; width: auto !important; height: auto !
 /* Відкрите дерево: ширини стовпців — ті самі, що при закритому (cabColLock). */
 .cab-tbl.is-locked { table-layout: fixed; }
 .cab-tbl.is-locked td { overflow: hidden; text-overflow: ellipsis; }
+
+/* «сразу місце під назву більше буде». Вільна ширина таблиці йде
+   стовпцю Cabinet, а не розмазується по числових: так назви кампаній у
+   дереві (вони займають цей стовпець разом із трьома вузькими перед ним)
+   отримують усе місце, що лишилось. */
+#cab-list .cab-tbl th.cab-name-h { width: 99%; }
+/* Заголовки й числа не переносяться; бюджет — з місцем під «$150.00 /day». */
+#cab-list .cab-tbl thead th, #cab-list .cab-tbl td.cab-num { white-space: nowrap; }
+#cab-list .cab-tbl td[data-l="Daily budget"] { min-width: 126px; }
   </style>
   <link rel="stylesheet" href="tw.css?v=a69cecd154">
 </head>
@@ -9187,7 +9199,7 @@ mark.cab-hl { display: inline !important; width: auto !important; height: auto !
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.11 14:57</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.11 15:10</div>
     </div>
   </aside>
 
@@ -33934,7 +33946,8 @@ function cabSection(items) {
   // Скільки клітинок у рядку: галочка, стрілка, шпилька, крапка,
   // кабінет, світчер, статус, витрати за період, дії — і стільки ж,
   // скільки увімкнено колонок.
-  const COLS = 8 + cols.length + (cabGeoOn() ? 1 : 0);
+  // GEO забирає місце стовпця тумблерів (тумблери стоять у ньому), тож усього стовпців стільки ж.
+  const COLS = 8 + cols.length;
 
   /* Галочка в шапці бере рівно те, що намальовано: під фільтром
      «Banned» це всі забанені, а не весь парк. Інакше вона тихо
@@ -33946,8 +33959,11 @@ function cabSection(items) {
         title="Select all ${items.length} cabinet(s) shown here"></th>
       <th class="cab-x"></th>
       <th class="cab-x"></th>
-      ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
-      <th class="cab-x cab-sw-h" title="Switch campaigns, ad sets and ads on and off"></th>
+      ${th('id', 'Cabinet', 'cab-name-h', 'Browser profile and agent, with the Facebook account number under them')}
+      ${/* «перемістити тумблери під мітки»: коли є стовпець GEO, тумблери
+           кампаній стоять у ньому (у рядках дерева він порожній), і окремий
+           стовпець не потрібен — його місце забирає назва. Без GEO стовпець
+           тумблерів лишається, як був. */ cabGeoOn() ? '' : '<th class="cab-x cab-sw-h" title="Switch campaigns, ad sets and ads on and off"></th>'}
       ${/* МЕЖА ЗАМОРОЖЕНОЇ ЧАСТИНИ. Усе до цієї клітинки включно
            лишається на місці, коли таблицю гортають убік. Позначка
            стоїть у розмітці, а не числом у стилях: додасться колонка
@@ -34093,8 +34109,7 @@ function cabRowHtml(c, COLS) {
       ${cabHits[c.id] ? `<div class="cab-hit" title="${cabEsc(cabHits[c.id].n)}">\u21b3 ${cabHits[c.id].k}: ${cabHl(cabHits[c.id].n, cabQ())}${
         cabHits[c.id].more > 0 ? ` <span class="cab-hit-more">+${cabHits[c.id].more}</span>` : ''}</div>` : ''}
     </td>
-    <td class="cab-x cab-sw-h"></td>
-    ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : ''}
+    ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : '<td class="cab-x cab-sw-h"></td>'}
     <td class="cab-fz-end"><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${today}</td>
     ${cabColsShown().map(cell).join('')}
@@ -34228,8 +34243,7 @@ function cabNodeRow(n, depth, band, cols, enter = -1) {
          стояли, а назва починається від краю. -->
     <td class="cab-nd${f.kids ? ' cd-can' : ''}" colspan="4"${hit}>
       <span class="cab-nd-in">${f.name}</span></td>
-    <td class="cab-nd-sw">${f.sw || ''}</td>
-    ${cabGeoOn() ? '<td class="cab-geo-td"></td>' : ''}
+    ${cabGeoOn() ? `<td class="cab-geo-td cab-nd-sw">${f.sw || ''}</td>` : `<td class="cab-nd-sw">${f.sw || ''}</td>`}
     <td class="cab-nd-st cab-fz-end">${f.status}</td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${f.spend}</td>
     ${cols.map(col => { const tip = cabNodeTip(f, col.key);
