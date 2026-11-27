@@ -86,14 +86,10 @@ function uqExtraPaint() {
         <button type="button" class="uqx-btn" onclick="uqLibOpen('overlay')">Library</button>
       </div>
     </div>
-    <div class="uqx-row">
-      <div class="uqx-h"><b>Ending</b><span>${uqEnds.length > 1 ? uqEnds.length + ' endings take turns: v1 gets the 1st, v2 the 2nd…' : 'glued after the video'}</span></div>
-      <div class="uqx-list">${uqEnds.map(e => chip(e, 'end')).join('') || '<em>none</em>'}</div>
-      <div class="uqx-acts">
-        <label class="uqx-btn">+ File<input type="file" accept="video/*,image/*" hidden onchange="uqEndAdd(this)"></label>
-        <button type="button" class="uqx-btn" onclick="uqLibOpen('ending')">Library</button>
-      </div>
-    </div>
+    ${/* «тоді ending видали тоже не потрібна штука». Рядка кінцівок
+         немає; uqEnds лишається порожнім, тож другий прохід ffmpeg іде
+         лише заради накладань. Хвіст хука («+ хвіст у кінець») — це
+         інше, він у рядку Hook. */ ''}
     <div class="uqx-row uqx-hook">
       <div class="uqx-h"><b>Hook</b><span>what people see first: an image over the first frames, or a video glued in front</span></div>
       <div class="uqx-list" id="uqx-hook-slot"></div>

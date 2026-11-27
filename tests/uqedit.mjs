@@ -16,7 +16,7 @@ const r = await page.evaluate(() => {
   const noOut = (() => { const e = uqEnds; uqEnds = []; const a = uqPostArgs(1, null, {}).args.join(' '); uqEnds = e; return a; })();
   uqExtraPaint();
   const box = document.getElementById('uq-extra');
-  return { need: uqPostNeeded(), v1, v2, v3, noOut, block: !!box, chips: box ? box.querySelectorAll('.uqx-chip').length : 0,
+  return { need: uqPostNeeded(), v1, v2, v3, noOut, block: !!box, chips: box ? box.querySelectorAll('.uqx-chip').length : 0, endRow: box ? /\bEnding\b/.test(box.innerText) : true,
            rot: box ? /take turns/.test(box.textContent) : false };
 });
 ok('другий прохід потрібен, коли є накладання чи кінцівка', r.need === true, r);
@@ -27,5 +27,5 @@ ok('кінцівки чергуються: v1 — перша, v2 — друга,
 ok('кінцівка під кадр копії', /scale=360:640:force_original_aspect_ratio=increase,crop=360:640/.test(r.v1), r.v1);
 ok('метадані переносяться з першого проходу', /-map_metadata 0/.test(r.v1) && /use_metadata_tags/.test(r.v1), r.v1);
 ok('кадр невідомий — scale2ref з перевіреними виразами', /scale2ref=w='iw\*0.3000':h='ow\/main_a'/.test(r.noOut), r.noOut);
-ok('блок у вікні унікалізатора', r.block && r.chips === 3 && r.rot, r);
+ok('блок у вікні унікалізатора: накладання є, рядка Ending немає (прибрали на прохання)', r.block && r.chips === 1 && !r.endRow && r.rot, r);
 await done(browser, srv, errs);
