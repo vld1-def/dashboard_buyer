@@ -29,7 +29,8 @@ function demoData() {
   }
   const payouts = geos.map(([geo, offer, value], i) => ({ id: String(i + 1), team_name: 'DEMO', geo, offer, value, active: true, model: 'cpa' }))
     .concat(geos.map(([geo, , value], i) => ({ id: String(i + 11), team_name: 'DEMO', geo, offer: 'DEFAULT', value, active: true, model: 'cpa' })));
-  return { daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
+  const access = { buyer: { '': true, cabinets: true, creatives: true, geo: true, heatmap: true, reports: true, domains: true, expenses: true, team: false, hub: true, sheets: true } };
+  return { _role: 'buyer', team_settings: [{ team_name: 'DEMO', key: 'role_access', value: JSON.stringify(access) }], daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
 }
 
 export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {
@@ -51,14 +52,25 @@ export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {
   const twJs = 'window.tailwind={config:{}};document.addEventListener("DOMContentLoaded",function(){var s=document.createElement("style");s.textContent='
     + JSON.stringify(fs.existsSync(FORM_CSS) ? fs.readFileSync(FORM_CSS, 'utf8') : '') + ';document.head.append(s)});';
   await page.route(/cdn\.tailwindcss\.com/, r => r.fulfill({ body: twJs, contentType: 'text/javascript' }));
+  await page.route(/flagcdn\.com\/w\d+\/([a-z-]+)\.png/, r => {
+    const cc = r.request().url().match(/\/([a-z-]+)\.png/)[1];
+    const f = NM + '/flag-icons/flags/4x3/' + cc + '.svg';
+    return fs.existsSync(f) ? r.fulfill({ path: f, contentType: 'image/svg+xml' }) : r.fulfill({ status: 404, body: '' });
+  });
   await page.route(/fonts\.(googleapis|gstatic)\.com|supabase-js/, r => r.fulfill({ body: '', contentType: 'text/plain' }));
   await page.addInitScript(DATA => {
     try { localStorage.setItem('selected_team', 'DEMO'); } catch (e) {}
+    try { localStorage.setItem('chart_style', 'area'); } catch (e) {}
     const chain = (table) => {
-      let from = 0, to = 1e9, single = false;
-      const res = () => { const all = DATA[table] || []; const d = all.slice(from, to + 1); return { data: single ? (d[0] || null) : d, error: null, count: all.length }; };
+      let from = 0, to = 1e9, single = false; const eqs = [];
+      const res = () => {
+        let all = DATA[table] || [];
+        if (typeof all === 'string') return { data: all, error: null };
+        all = all.filter(r => eqs.every(([c, v]) => !(c in r) || String(r[c]) === String(v)));
+        const d = all.slice(from, to + 1); return { data: single ? (d[0] || null) : d, error: null, count: all.length }; };
       const o = new Proxy(function () {}, {
         get: (t, k) => k === 'then' ? (f, g) => Promise.resolve(res()).then(f, g)
+          : k === 'eq' ? (c, v) => { eqs.push([c, v]); return o; }
           : k === 'range' ? (a, b) => { from = a; to = b; return o; }
           : (k === 'single' || k === 'maybeSingle') ? () => { single = true; return o; }
           : () => o,
@@ -67,7 +79,7 @@ export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {
     };
     const session = { access_token: 'x', user: { id: 'u1', email: 'buyer@demo.team' } };
     window.supabase = { createClient: () => ({
-      from: t => chain(t), rpc: () => chain('_rpc'),
+      from: t => chain(t), rpc: n => chain(n === 'my_role' ? '_role' : '_rpc'),
       auth: { getSession: async () => ({ data: { session } }), getUser: async () => ({ data: { user: session.user } }),
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
         signInWithPassword: async () => ({ data: {}, error: null }), signOut: async () => ({ error: null }) },
@@ -78,5 +90,7 @@ export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {
   }, demoData());
   await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
+  /* Методичка — для баєра: Assistant у баєрів у меню немає. */
+  await page.addStyleTag({ content: '.sb-item[onclick="aqOpen()"]{display:none!important}' });
   return { browser, page, close: async () => { await browser.close(); srv.close(); } };
 }
