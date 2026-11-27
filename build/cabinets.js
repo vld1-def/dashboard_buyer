@@ -2623,10 +2623,14 @@ function cabColLock() {
   if (!tbl) return;
   const ths = [...tbl.querySelectorAll('thead th')];
   const sig = ths.length + '|' + window.innerWidth;
-  if (!tbl.querySelector('tr.cd-r')) {
+  /* На телефоні таблиця — картки (рядок = flex): табличні ширини там не
+     мають сенсу й лише виштовхують картку за екран. */
+  const row = tbl.querySelector('tbody tr');
+  const cards = row && getComputedStyle(row).display !== 'table-row';
+  if (cards || !tbl.querySelector('tr.cd-r')) {
     tbl.classList.remove('is-locked'); tbl.style.width = '';
     ths.forEach(t => { t.style.width = ''; });
-    if (tbl.offsetWidth) cabColW = { sig, w: ths.map(t => t.offsetWidth) };
+    if (tbl.offsetWidth && !cards) cabColW = { sig, w: ths.map(t => t.offsetWidth) };
     return;
   }
   /* Закритого стану не встигли виміряти (сторінка була схована, коли
@@ -2886,7 +2890,7 @@ function cabRowHtml(c, COLS) {
       title="Campaigns, ad sets and ads of this cabinet with today’s numbers">›</button></td>
     <td class="cab-x"><span class="cab-dot" style="background:${S.dot}"
       title="${cabEsc(label)}"></span></td>
-    <td>
+    <td class="cab-name-td">
       <div class="cab-who"${whoTip ? ` title="${cabEsc(whoTip)}"` : ''}>${cabEsc(who)}</div>
       <div><span class="cab-id" onclick="cabCopyId(event, this)" data-v="${cabEsc(c.id)}"
         title="Click to copy">${cabEsc(c.id)}</span></div>

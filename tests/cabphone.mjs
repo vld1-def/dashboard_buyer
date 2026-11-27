@@ -52,6 +52,8 @@ ok('збережений колись період не читається', /lo
   && !/localStorage\.getItem\('cab_range'\)/.test(CB));
 ok('назва сторінки — FB LIVE (значок + Live, для читалок — FB Live)', /aria-label="FB Live"/.test(HT) && />Live<\/span><\/h2>/.test(HT)
   && /<span class="sb-lbl">FB LIVE<\/span>/.test(fs.readFileSync('build/shell.html', 'utf8')));
+ok('назва кабінета на телефоні — за класом, а не за номером комірки', /\.cab-tr > td\.cab-name-td \{ order: 1;/.test(CSS) && !/\.cab-tr > td:nth-child\((4|5|6)\)/.test(CSS) && /<td class="cab-name-td">/.test(fs.readFileSync('build/cabinets.js', 'utf8')));
+ok('фіксація ширин не працює в режимі карток', /getComputedStyle\(row\)\.display !== 'table-row'/.test(fs.readFileSync('build/cabinets.js', 'utf8')));
 ok('обгортки шапки на телефоні прозорі', /\.cab-hl, \.cab-hr, \.cab-tools \{ display: contents; \}/.test(CSS));
 ok('пошук по центру — сіткою з рівними боками',
   /grid-template-columns: minmax\(max-content, 1fr\) minmax\(150px, 340px\) minmax\(max-content, 1fr\);/.test(CSS));
