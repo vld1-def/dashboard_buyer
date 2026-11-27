@@ -799,6 +799,42 @@ function cabFbAt() {
   return last;
 }
 
+/* «час синхронізації на кнопці неправильно показує… пише 24хв, а пройшло
+   40хв, поки не оновлю сторінку». Напис рахувався один раз — при малюванні
+   таблиці — і далі стояв. Тепер це секундомір: до години — хвилини й
+   секунди, що біжать щосекунди (24:07), далі — години й хвилини (1h 05m). */
+function cabAgoLive(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!(ms >= 0)) return '';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 3600) return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ' ago';
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
+  return h < 24 ? h + 'h ' + String(m).padStart(2, '0') + 'm ago' : Math.floor(h / 24) + 'd ago';
+}
+/* «при наведенні на кнопку не показує час синхронізації». Підказка з
+   часом висіла лише на маленькому написі всередині кнопки, а сама кнопка
+   мала свою, постійну, — і вона перекривала. Тепер час — у підказці
+   кнопки, і оновлюється разом із секундоміром. */
+function cabSyncTip() {
+  const btn = document.getElementById('cab-sync');
+  if (!btn) return;
+  const at = typeof cabFbAt === 'function' ? cabFbAt() : null;
+  const when = at ? new Date(at).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  btn.title = (at ? 'Last sync: ' + when + ' \u00b7 ' + cabAgoLive(at) : 'Never synced yet')
+    + '\n\nClick to ask Facebook now for all cabinets; \u21bb in a row refreshes just that one.';
+}
+let cabAgoTimer = null;
+function cabAgoTick() {
+  if (cabAgoTimer) return;
+  cabAgoTimer = setInterval(() => {
+    const el = document.getElementById('cab-sync-ago');
+    if (!el || document.hidden || el.offsetParent === null) return;
+    const at = typeof cabFbAt === 'function' ? cabFbAt() : null;
+    if (at) el.textContent = cabAgoLive(at);
+    cabSyncTip();
+  }, 1000);
+}
+
 function cabAgo(iso) {
   const ms = Date.now() - Date.parse(iso);
   if (!(ms >= 0)) return '';
@@ -2571,7 +2607,8 @@ function cabRender() {
   const ago = document.getElementById('cab-sync-ago');
   if (ago) {
     const at = cabFbAt();
-    ago.textContent = at ? cabAgo(at) : (cabFb.length ? '' : 'never');
+    ago.textContent = at ? cabAgoLive(at) : (cabFb.length ? '' : 'never');
+    cabAgoTick();
     /* «5 годин тому» — не застаріле, а рівно те, що просили: кабінети
        оновлюються ЛИШЕ руками. Без цієї обмовки те саме число читається
        як збій синхронізації, і людина йде шукати ваду, якої немає. */
@@ -2579,6 +2616,7 @@ function cabRender() {
       + '\n\nCabinets refresh only when you ask: press this button for all of them, '
       + 'or \u21bb in a row for one. Nothing walks them on a schedule.';
     ago.classList.add('is-manual');
+    cabSyncTip();
   }
 
   /* Кнопка Filters на телефоні каже, який статус зараз вибрано: самі
