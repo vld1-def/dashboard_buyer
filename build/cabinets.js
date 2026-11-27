@@ -1180,6 +1180,45 @@ function cabSnapArchIds() {
   return [...ids];
 }
 
+/* ПОШУК ПО НАЗВАХ КАМПАНІЙ. «прописував в пошуку якусь частину назви
+   компанії, і підтягувало кабінети де є таке в компаніях». Назви вже
+   лежать у знімку (cabSnapRows), тож це не новий запит, а індекс:
+   кабінет → унікальні назви кампаній, адсетів і оголошень. */
+let cabNames = {};
+function cabNamesBuild() {
+  const m = {};
+  (cabSnapRows || []).forEach(r => {
+    const a = String(r.account_id || ''); if (!a) return;
+    const set = m[a] || (m[a] = { list: [], seen: new Set() });
+    [['campaign', r.campaign_name], ['ad set', r.adset_name], ['ad', r.name]].forEach(([k, n]) => {
+      n = String(n || '').trim();
+      if (n && !set.seen.has(k + '|' + n)) { set.seen.add(k + '|' + n); set.list.push({ k, n, lc: n.toLowerCase() }); }
+    });
+  });
+  cabNames = m;
+}
+/* Перша назва всередині кабінета, що містить q. Кампанія важливіша за
+   адсет, адсет — за оголошення: так у підказці стоїть найзагальніше. */
+function cabNameHit(id, q) {
+  const e = cabNames[String(id)]; if (!e || !q) return null;
+  for (const k of ['campaign', 'ad set', 'ad']) {
+    const hits = e.list.filter(x => x.k === k && x.lc.includes(q));
+    if (hits.length) return { k, n: hits[0].n, more: hits.length - 1 };
+  }
+  return null;
+}
+/* Підсвітка знайденого шматка в назві: і в підказці під кабінетом, і в дереві. */
+window.cabHl = function (text, q) {
+  const t = String(text == null ? '' : text);
+  const esc = v => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  if (!q) return esc(t);
+  const i = t.toLowerCase().indexOf(q);
+  if (i < 0) return esc(t);
+  return esc(t.slice(0, i)) + '<mark class="cab-hl">' + esc(t.slice(i, i + q.length)) + '</mark>' + esc(t.slice(i + q.length));
+};
+window.cabQ = () => (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
+let cabHits = {};
+
 async function cabSnapLoad() {
   cabSnap = {};
   cabSnapErr = '';
@@ -1196,6 +1235,7 @@ async function cabSnapLoad() {
       ? q.not('account_id', 'in', '(' + arch.join(',') + ')') : q);
     cabSnapRows = rows.filter(r => !r.team_name || r.team_name === currentTeam);
     cabSnap = cdSumRows(cabSnapRows);
+    cabNamesBuild();
     cabGeoBuild();
   } catch (e) {
     cabSnapRows = [];
@@ -2457,7 +2497,16 @@ function cabRender() {
             c.tok.agent, c.tok.browser, c.tok.bm, c.tok.label,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q));
-  let shown = all.filter(c => inFilter(c) && inText(c) && cabFiltOk(c));
+  /* Кабінет, що не збігся власними полями, але має кампанію/адсет/
+     оголошення з таким шматком назви, — теж у списку, з підказкою, де. */
+  cabHits = {};
+  const inAny = c => {
+    if (inText(c)) return true;
+    const h = q.length >= 2 ? cabNameHit(c.id, q) : null;
+    if (h) cabHits[c.id] = h;
+    return !!h;
+  };
+  let shown = all.filter(c => inFilter(c) && cabFiltOk(c) && inAny(c));
   cabFiltPaintBtn();
   /* Те, що намальовано, — і те, що візьме «вибрати все». Один список
      на обидва, інакше галочка в шапці колись почне брати не те, що
@@ -2775,6 +2824,8 @@ function cabRowHtml(c, COLS) {
       <div class="cab-who"${whoTip ? ` title="${cabEsc(whoTip)}"` : ''}>${cabEsc(who)}</div>
       <div><span class="cab-id" onclick="cabCopyId(event, this)" data-v="${cabEsc(c.id)}"
         title="Click to copy">${cabEsc(c.id)}</span></div>
+      ${cabHits[c.id] ? `<div class="cab-hit" title="${cabEsc(cabHits[c.id].n)}">\u21b3 ${cabHits[c.id].k}: ${cabHl(cabHits[c.id].n, cabQ())}${
+        cabHits[c.id].more > 0 ? ` <span class="cab-hit-more">+${cabHits[c.id].more}</span>` : ''}</div>` : ''}
     </td>
     <td class="cab-x"></td>
     ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : ''}

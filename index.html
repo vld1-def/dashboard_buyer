@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="dark" id="main-html">
 <head>
-  <meta name="build" content="build 27.11 13:20">
+  <meta name="build" content="build 27.11 14:17">
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8907,6 +8907,11 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 /* Друга кнопка поруч з акцентною (Settings → Buyer guide: Open). */
 .set-btn-ghost { background: var(--btn-bg, #15151c); border: 1px solid var(--btn-bd, #26262f); color: var(--btn-fg, #c9c9d4); }
 .set-btn-ghost:hover { border-color: rgba(139,92,246,.55); color: #fff; }
+
+/* Пошук по назвах кампаній: під кабінетом — де саме знайшлось. */
+.cab-hit { margin-top: 2px; max-width: 260px; font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cab-hit-more { font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; color: #a78bfa; }
+mark.cab-hl { display: inline !important; width: auto !important; height: auto !important; margin: 0 !important; background: rgba(139,92,246,.32); color: #fff; border-radius: 3px; padding: 0 1px; }
   </style>
   <link rel="stylesheet" href="tw.css?v=a69cecd154">
 </head>
@@ -9167,7 +9172,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
       </button>
       <!-- Штамп збірки. Єдиний спосіб за секунду відповісти на питання
            «а чи та в мене версія» — дата підставляється при складанні. -->
-      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.11 13:20</div>
+      <div class="sb-build" title="Build date — if this is old, the page came from cache">build 27.11 14:17</div>
     </div>
   </aside>
 
@@ -10079,7 +10084,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
     <button type="button" id="cab-flt-btn" onclick="cabFltToggle()" class="cab-rules cab-m-only"
       aria-expanded="false" title="Grouping, tools and status filters"><span
         id="cab-flt-lbl">Filters</span> <span class="cab-flt-car" aria-hidden="true">▾</span></button>
-    <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note…"
+    <input id="cab-search" oninput="cabRender()" placeholder="Account, agent, card, note, campaign…"
       class="bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold text-dynamic outline-none w-48 focus:border-violet-500">
     <div class="cab-hr">
       <!-- Три інструменти одним блоком, а не трьома окремими кнопками:
@@ -32343,6 +32348,45 @@ function cabSnapArchIds() {
   return [...ids];
 }
 
+/* ПОШУК ПО НАЗВАХ КАМПАНІЙ. «прописував в пошуку якусь частину назви
+   компанії, і підтягувало кабінети де є таке в компаніях». Назви вже
+   лежать у знімку (cabSnapRows), тож це не новий запит, а індекс:
+   кабінет → унікальні назви кампаній, адсетів і оголошень. */
+let cabNames = {};
+function cabNamesBuild() {
+  const m = {};
+  (cabSnapRows || []).forEach(r => {
+    const a = String(r.account_id || ''); if (!a) return;
+    const set = m[a] || (m[a] = { list: [], seen: new Set() });
+    [['campaign', r.campaign_name], ['ad set', r.adset_name], ['ad', r.name]].forEach(([k, n]) => {
+      n = String(n || '').trim();
+      if (n && !set.seen.has(k + '|' + n)) { set.seen.add(k + '|' + n); set.list.push({ k, n, lc: n.toLowerCase() }); }
+    });
+  });
+  cabNames = m;
+}
+/* Перша назва всередині кабінета, що містить q. Campaign важливіша за
+   адсет, адсет — за оголошення: так у підказці стоїть найзагальніше. */
+function cabNameHit(id, q) {
+  const e = cabNames[String(id)]; if (!e || !q) return null;
+  for (const k of ['campaign', 'ad set', 'ad']) {
+    const hits = e.list.filter(x => x.k === k && x.lc.includes(q));
+    if (hits.length) return { k, n: hits[0].n, more: hits.length - 1 };
+  }
+  return null;
+}
+/* Підсвітка знайденого шматка в назві: і в підказці під кабінетом, і в дереві. */
+window.cabHl = function (text, q) {
+  const t = String(text == null ? '' : text);
+  const esc = v => v.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  if (!q) return esc(t);
+  const i = t.toLowerCase().indexOf(q);
+  if (i < 0) return esc(t);
+  return esc(t.slice(0, i)) + '<mark class="cab-hl">' + esc(t.slice(i, i + q.length)) + '</mark>' + esc(t.slice(i + q.length));
+};
+window.cabQ = () => (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
+let cabHits = {};
+
 async function cabSnapLoad() {
   cabSnap = {};
   cabSnapErr = '';
@@ -32359,6 +32403,7 @@ async function cabSnapLoad() {
       ? q.not('account_id', 'in', '(' + arch.join(',') + ')') : q);
     cabSnapRows = rows.filter(r => !r.team_name || r.team_name === currentTeam);
     cabSnap = cdSumRows(cabSnapRows);
+    cabNamesBuild();
     cabGeoBuild();
   } catch (e) {
     cabSnapRows = [];
@@ -33620,7 +33665,16 @@ function cabRender() {
             c.tok.agent, c.tok.browser, c.tok.bm, c.tok.label,
             ...CAB_EXTRA.map(e => c.row[e.key])]
            .some(v => String(v || '').toLowerCase().includes(q));
-  let shown = all.filter(c => inFilter(c) && inText(c) && cabFiltOk(c));
+  /* Account, що не збігся власними полями, але має кампанію/адсет/
+     оголошення з таким шматком назви, — теж у списку, з підказкою, де. */
+  cabHits = {};
+  const inAny = c => {
+    if (inText(c)) return true;
+    const h = q.length >= 2 ? cabNameHit(c.id, q) : null;
+    if (h) cabHits[c.id] = h;
+    return !!h;
+  };
+  let shown = all.filter(c => inFilter(c) && cabFiltOk(c) && inAny(c));
   cabFiltPaintBtn();
   /* Те, що намальовано, — і те, що візьме «вибрати все». Один список
      на обидва, інакше галочка в шапці колись почне брати не те, що
@@ -33938,6 +33992,8 @@ function cabRowHtml(c, COLS) {
       <div class="cab-who"${whoTip ? ` title="${cabEsc(whoTip)}"` : ''}>${cabEsc(who)}</div>
       <div><span class="cab-id" onclick="cabCopyId(event, this)" data-v="${cabEsc(c.id)}"
         title="Click to copy">${cabEsc(c.id)}</span></div>
+      ${cabHits[c.id] ? `<div class="cab-hit" title="${cabEsc(cabHits[c.id].n)}">\u21b3 ${cabHits[c.id].k}: ${cabHl(cabHits[c.id].n, cabQ())}${
+        cabHits[c.id].more > 0 ? ` <span class="cab-hit-more">+${cabHits[c.id].more}</span>` : ''}</div>` : ''}
     </td>
     <td class="cab-x"></td>
     ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : ''}
@@ -40313,7 +40369,7 @@ function cdNameCell(n, depth) {
   const twist = `<span class="cd-twist${kids ? (open ? ' is-on' : '') : ' cd-leaf'}"></span>`;
   const named = String(n.name || '').trim();
   const label = named
-    ? `<span class="cd-lbl">${cdEsc(named)}</span>`
+    ? `<span class="cd-lbl">${typeof cabHl === 'function' ? cabHl(named, cabQ()) : cdEsc(named)}</span>`
     : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
   const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
       onclick="event.stopPropagation()"

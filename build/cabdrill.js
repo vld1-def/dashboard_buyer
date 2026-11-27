@@ -1271,7 +1271,7 @@ function cdNameCell(n, depth) {
   const twist = `<span class="cd-twist${kids ? (open ? ' is-on' : '') : ' cd-leaf'}"></span>`;
   const named = String(n.name || '').trim();
   const label = named
-    ? `<span class="cd-lbl">${cdEsc(named)}</span>`
+    ? `<span class="cd-lbl">${typeof cabHl === 'function' ? cabHl(named, cabQ()) : cdEsc(named)}</span>`
     : `<span class="cd-lbl cd-noname" title="The sync has not brought the name yet — deploy fb-sync, then press Sync now">#${cdEsc(n.id)}</span>`;
   const mark = `<input type="checkbox" class="cd-mk" ${cdMarked.has(String(n.id)) ? 'checked' : ''}
       onclick="event.stopPropagation()"
