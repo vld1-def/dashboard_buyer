@@ -1249,6 +1249,19 @@ window.cabHl = function (text, q) {
 window.cabQ = () => (document.getElementById('cab-search')?.value || '').toLowerCase().trim();
 let cabHits = {};
 
+/* Рядок знімка бачили сьогодні — у поясі кабінета (той самий день, яким
+   рахує Facebook і Stat. Day). Пояс — з fb_accounts; немає — браузерний. */
+function cabSnapIsToday(r) {
+  const at = Date.parse(r.seen_at || '');
+  if (!at) return false;
+  const id = String(r.account_id || '').replace(/^act_/, '');
+  const fb = (cabFb || []).find(x => String(x.account_id) === id);
+  const tz = fb && fb.timezone_name;
+  const day = ms => { try { return new Date(ms).toLocaleDateString('en-CA', tz ? { timeZone: tz } : undefined); }
+                      catch (e) { return new Date(ms).toLocaleDateString('en-CA'); } };
+  return day(at) === day(Date.now());
+}
+
 async function cabSnapLoad() {
   cabSnap = {};
   cabSnapErr = '';
@@ -1264,7 +1277,13 @@ async function cabSnapLoad() {
     const rows = await sbFetchAll('fb_ad_today', q => arch.length
       ? q.not('account_id', 'in', '(' + arch.join(',') + ')') : q);
     cabSnapRows = rows.filter(r => !r.team_name || r.team_name === currentTeam);
-    cabSnap = cdSumRows(cabSnapRows);
+    /* «чому тут 6 депів а в stat day 3». Знімок не чиститься цілком: рядки
+       кабінета, який сьогодні не синкали, лежать із цифрами того дня, коли
+       синкали востаннє. Stat. Day рахує лише рядки, бачені СЬОГОДНІ в поясі
+       кабінета; шапка й стовпці (ліди, реги, депи) складали все підряд —
+       разом зі вчорашнім. Тепер зведення — з того самого «сьогодні».
+       Сам cabSnapRows лишається повним: Stat. Day і гео фільтрують його самі. */
+    cabSnap = cdSumRows(cabSnapRows.filter(cabSnapIsToday));
     cabNamesBuild();
     cabGeoBuild();
   } catch (e) {
