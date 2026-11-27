@@ -2528,20 +2528,26 @@ window.onload = async () => {
     // тягнеться, коли відкривають випадайку «TEAM».
     paintTeamLabels();
 
+    /* ПОРЯДОК ЗАВАНТАЖЕННЯ. «головне щоб прогрузився дашборд і fb live
+       самими першими», решта — у фоні. Доти одночасно з дашбордом летіли
+       ~20 запитів (12 000 рядків креативів, звіти, журнали подій), і в
+       черзі бази дрібні запити дашборда чекали по кілька секунд.
+       Тепер: дашборд → FB LIVE → решта по одному. Позначки подій на
+       графіку (chartev) чекають ту саму браму (bgGate). */
+    window.bgGate = window.bgGate || new Promise(r => { window.bgGateOpen = r; });
     await loadData();
 
-    // 5. Завантажуємо додаткові модулі
-    window.bootStep?.('Tasks and reports', 88);
+    // 5. Те, що видно на головній одразу: задачі (Open tasks) і витрати
+    // (від них рахується Net Profit) — легкі, по одному запиту.
+    window.bootStep?.('Tasks', 88);
     refreshTasks();
-    refreshReports();
-    loadQuickLinks();
     loadExpenses();
-    loadDriveFolderSetting();
 
     // Дашборд уже намальований: loadData показує його й малює картки з
     // графіками до цього рядка. Знімаємо скло саме тут, а не раніше —
     // інакше людина побачила б, як вміст доїжджає на місце.
     window.bootDone?.();
+    bootBackground();
     
   } catch (err) {
     console.error("Помилка ініціалізації:", err);
@@ -2735,7 +2741,22 @@ function switchTeam(teamName) {
   updateSyncStatus('done');
 
   // 10. Завантажуємо креативи у фоновому режимі
-  loadCreatives(); 
+  /* На першому старті креативи вантажить фон (bootBackground) — після
+     дашборда й FB LIVE. Повторні виклики loadData (Sync, зміна команди)
+     тягнуть їх одразу, як і раніше. */
+  if (window.bootBgStarted) loadCreatives();
+}
+
+/* ФОН ПІСЛЯ СТАРТУ: спершу FB LIVE (щоб відкривався миттєво), потім
+   решта ПО ОДНОМУ — паралельно вони знову стали б у чергу бази. */
+async function bootBackground() {
+  window.bootBgStarted = true;
+  try { if (typeof cabPreload === 'function') await cabPreload(); } catch (e) { console.warn('FB LIVE preload:', e); }
+  if (window.bgGateOpen) window.bgGateOpen();
+  const later = [loadCreatives, refreshReports, loadQuickLinks, loadDriveFolderSetting];
+  for (const f of later) {
+    try { if (typeof f === 'function') await f(); } catch (e) { console.warn('background load:', e); }
+  }
 }
 // Supabase віддає щонайбільше 1000 рядків на запит — мовчки, без помилки,
 // і .limit(3000) цього не обходить (обмеження серверне). У IMPROVE креативів

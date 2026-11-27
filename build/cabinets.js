@@ -440,8 +440,15 @@ const cabColOn = k => !!cabColsOn()[k];
    мала зʼявитись. */
 const CAB_COLS_TREE = ['budget', 'inst', 'cpi'];
 function cabColAuto(k) {
-  if (!cabTreeId || !CAB_COLS_TREE.includes(k)) return false;
+  /* «коли відкриваємо компанії збільшується к-сть стовпчиків». Колонки
+     дерева більше НЕ залежать від того, чи воно відкрите: бюджет стоїть
+     завжди, інстали — коли вони є в знімку хоч у якомусь кабінеті. Тож
+     відкрив кампанії — таблиця та сама, нічого не додалось. */
+  if (!CAB_COLS_TREE.includes(k)) return false;
   if (cabView.cols && cabView.cols[k] === 0) return false;
+  if (k === 'budget') return true;
+  return Object.values(cabSnap || {}).some(o => o && o.installs > 0)
+    || (typeof cdHasInstalls === 'function' && cdHasInstalls());
   /* Бюджет — головне, на що дивляться в дереві: він стоїть сам, щойно
      дерево відкрите. Інстали ще й питають знімок: на PWA-кабінеті дві
      порожні колонки в кожному рядку — це шум. */
@@ -909,29 +916,21 @@ function cabSkeleton(host) {
   host.innerHTML = `<div class="sk-list" aria-busy="true" aria-label="Loading cabinets">${ws.map(([a, b]) => row(a, b)).join('')}</div>`;
 }
 
-async function cabInit() {
-  /* Закріплення й набір колонок — перше, що має бути відоме: інакше
-     перший малюнок таблиці показав би типовий вигляд, а за мить
-     перестрибнув на твій. */
-  await cabViewLoad();
-  const host = document.getElementById('cab-list');
-  if (!host) return;
-  // Зайшов сюди — значить побачив: банер і лічильник гасимо на КОЖНОМУ
-  // заході, не лише на першому. «Прочитано» має означати прочитано.
-  const seen = () => { if (typeof evDismiss === 'function') evDismiss(); };
-  /* Курс тягнемо, не чекаючи на нього: таблиця має зʼявитись одразу, а
-     число в кнопці перерахується саме, щойно курс приїде. */
-  fxLoad();
-  if (cabLoaded) { cabRender(); seen(); return; }
-  cabSkeleton(host);
+/* ЗАВАНТАЖЕННЯ FB LIVE — окремо від малювання. «головне щоб прогрузився
+   дашборд і fb live самими першими»: після старту дашборда це запускає
+   cabPreload у фоні, і коли людина відкриває FB LIVE, дані вже на місці.
+   Один проміс на двох (cabLoadP): фон і перехід на сторінку не тягнуть
+   те саме двічі. Повертає false, якщо список кабінетів не прочитався. */
+let cabLoadP = null;
+async function cabLoadAll(host) {
   try {
     cabRows = await sbFetchAll('accounts_mapping',
       q => q.eq('team_name', currentTeam).order('account_id', { ascending: true }));
   } catch (e) {
-    host.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
+    if (host) host.innerHTML = `<p class="text-center text-rose-400 py-16 text-xs font-bold">Error: ${e.message}</p>`;
     // Каркас плиток не має лишатись «завантажуватись» після помилки.
     const t = document.getElementById('cab-tiles'); if (t && t.querySelector('.sk-tiles')) t.innerHTML = '';
-    return;
+    return false;
   }
   /* ОЧИЩЕНИЙ АРХІВ — НЕ ДЛЯ FB LIVE. «не тільки історію а і самі кабінети
      видаляти … клікнув на архівед і сайт завис». Кабінет, що лежить в
@@ -955,6 +954,37 @@ async function cabInit() {
   if (typeof fpLoad === 'function') await fpLoad();
   await cabBuyLoad();
   cabLoaded = true;
+  return true;
+}
+window.cabPreload = async function () {
+  if (cabLoaded) return;
+  await cabViewLoad();
+  if (!cabLoadP) cabLoadP = cabLoadAll(document.getElementById('cab-list')).finally(() => { cabLoadP = null; });
+  await cabLoadP;
+  /* Сторінка могла бути вже відкрита, поки вантажилось. */
+  if (cabLoaded && document.body.dataset.route === 'cabinets') cabRender();
+};
+
+async function cabInit() {
+  /* Закріплення й набір колонок — перше, що має бути відоме: інакше
+     перший малюнок таблиці показав би типовий вигляд, а за мить
+     перестрибнув на твій. */
+  await cabViewLoad();
+  const host = document.getElementById('cab-list');
+  if (!host) return;
+  // Зайшов сюди — значить побачив: банер і лічильник гасимо на КОЖНОМУ
+  // заході, не лише на першому. «Прочитано» має означати прочитано.
+  const seen = () => { if (typeof evDismiss === 'function') evDismiss(); };
+  /* Курс тягнемо, не чекаючи на нього: таблиця має зʼявитись одразу, а
+     число в кнопці перерахується саме, щойно курс приїде. */
+  fxLoad();
+  if (cabLoaded) { cabRender(); seen(); return; }
+  /* Дані могли вже почати вантажитись у фоні (cabPreload після старту
+     дашборда) — тоді просто чекаємо їх, а не тягнемо вдруге. */
+  if (!cabLoadP) { cabSkeleton(host); cabLoadP = cabLoadAll(host).finally(() => { cabLoadP = null; }); }
+  else cabSkeleton(host);
+  const okLoad = await cabLoadP;
+  if (!okLoad) return;
   cabRender();
   /* Підписи дописуємо ПІСЛЯ малювання, не до: сторінка не мусить чекати
      на запис, якого людина не просила. Якщо запис пройде — перемалюємо. */
@@ -2576,7 +2606,39 @@ function cabRender() {
 
   cabDetail(shown.find(c => c.id === cabSel) || null);
   cabTreeRepaint(shown);
+  cabColLock();
   cabFreeze();
+}
+
+/* «щоб коли відкривались компанії було все як є». Поки дерево закрите,
+   запам'ятовуємо ширину кожного стовпця; відкрили — ставимо таблиці
+   саме ці ширини (table-layout: fixed), і рядки кампаній вже не
+   розсувають жодного стовпця, навіть на пару пікселів. Підпис (кількість
+   стовпців + ширина вікна) змінився — ширини знову беруться з закритого
+   стану при наступному малюванні. offsetWidth, а не rect: сторінка під
+   zoom, а ширину ставимо в CSS-пікселях. */
+let cabColW = null;
+function cabColLock() {
+  const tbl = document.querySelector('#cab-list .cab-tbl');
+  if (!tbl) return;
+  const ths = [...tbl.querySelectorAll('thead th')];
+  const sig = ths.length + '|' + window.innerWidth;
+  if (!tbl.querySelector('tr.cd-r')) {
+    tbl.classList.remove('is-locked'); tbl.style.width = '';
+    ths.forEach(t => { t.style.width = ''; });
+    if (tbl.offsetWidth) cabColW = { sig, w: ths.map(t => t.offsetWidth) };
+    return;
+  }
+  /* Закритого стану не встигли виміряти (сторінка була схована, коли
+     малювалась) — беремо ширини з першого відкритого малювання й далі
+     тримаємо їх: перемикання Campaign / Ads only однаково не зсуне. */
+  if (!cabColW || cabColW.sig !== sig) {
+    if (!tbl.offsetWidth) return;
+    cabColW = { sig, w: ths.map(t => t.offsetWidth) };
+  }
+  ths.forEach((t, i) => { t.style.width = cabColW.w[i] + 'px'; });
+  tbl.style.width = cabColW.w.reduce((a, b) => a + b, 0) + 'px';
+  tbl.classList.add('is-locked');
 }
 
 /* ═══ КАБІНЕТ І СТАТУС ЛИШАЮТЬСЯ НА МІСЦІ ═══
@@ -2681,7 +2743,7 @@ function cabSection(items) {
       <th class="cab-x"></th>
       <th class="cab-x"></th>
       ${th('id', 'Cabinet', '', 'Browser profile and agent, with the Facebook account number under them')}
-      <th class="cab-x" title="Switch campaigns, ad sets and ads on and off"></th>
+      <th class="cab-x cab-sw-h" title="Switch campaigns, ad sets and ads on and off"></th>
       ${/* МЕЖА ЗАМОРОЖЕНОЇ ЧАСТИНИ. Усе до цієї клітинки включно
            лишається на місці, коли таблицю гортають убік. Позначка
            стоїть у розмітці, а не числом у стилях: додасться колонка
@@ -2827,7 +2889,7 @@ function cabRowHtml(c, COLS) {
       ${cabHits[c.id] ? `<div class="cab-hit" title="${cabEsc(cabHits[c.id].n)}">\u21b3 ${cabHits[c.id].k}: ${cabHl(cabHits[c.id].n, cabQ())}${
         cabHits[c.id].more > 0 ? ` <span class="cab-hit-more">+${cabHits[c.id].more}</span>` : ''}</div>` : ''}
     </td>
-    <td class="cab-x"></td>
+    <td class="cab-x cab-sw-h"></td>
     ${cabGeoOn() ? `<td class="cab-geo-td">${cabGeoHtml(c)}</td>` : ''}
     <td class="cab-fz-end"><span class="cab-st ${S.tone} ${why ? 'has-tip' : ''}" title="${cabEsc(stTip)}">${label}</span></td>
     <td class="ta-r cab-num cab-today" data-l="Spend">${today}</td>
@@ -3051,6 +3113,10 @@ async function cabToggleTree(ev, idEnc) {
     cabRender();
     return;
   }
+  /* Ширини стовпців — з таблиці, якою вона є саме зараз (до відкриття):
+     cabColLock тримає їх, поки дерево відкрите. Якщо інше дерево вже
+     відкрите, беремо збережені раніше. */
+  if (!cabTreeId) cabColLock();
   cabTreeId = id;
   /* Спершу малюємо рядок — інакше cabdrill не знайде, куди писати, і
      мовчки нічого не зробить. */

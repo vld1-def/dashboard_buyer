@@ -68,7 +68,9 @@ export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {
   await page.addInitScript(DATA => {
     try { localStorage.setItem('selected_team', 'DEMO'); } catch (e) {}
     try { localStorage.setItem('chart_style', 'area'); } catch (e) {}
+    window.__reqLog = [];
     const chain = (table) => {
+      window.__reqLog.push([table, Math.round(performance.now())]);
       let from = 0, to = 1e9, single = false; const eqs = [];
       const res = () => {
         let all = DATA[table] || [];

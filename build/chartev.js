@@ -333,6 +333,9 @@ function ceRefresh() {
 window.ceAttach = async function (chart, data) {
   ceByDay = ceBuild(ceRaw, data);
   ceStrip(chart.options.plugins.ceRail.days);
+  /* Журнали подій — не перша необхідність: чекаємо, поки дашборд і FB
+     LIVE завантажаться (bgGate у window.onload), і лише тоді тягнемо. */
+  if (window.bgGate) { try { await window.bgGate; } catch (e) {} }
   try { await ceLoad(); } catch (e) { return; }
   if (window.chart1 !== chart) return;
   ceByDay = ceBuild(ceRaw, data);

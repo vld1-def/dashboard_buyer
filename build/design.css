@@ -7625,16 +7625,27 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 /* «коли переключаюсь на оголошення — щоб все було на тих же місцях».
    Назва в дереві займає сталу ширину в обох режимах (Campaign / Ads
    only): довші назви оголошень більше не розсувають таблицю. */
-.cab-tbl td.cab-nd { width: 360px; min-width: 360px; max-width: 360px; box-sizing: border-box; }
-.cab-tbl td.cab-nd .cab-nd-in { display: flex; width: 100%; overflow: hidden; }
+/* «ширину першого стовпця зробимо мінімальною, … при наведенні буде
+   повна назва». Вміст клітинки назви в дереві НЕ впливає на ширину
+   стовпців (width:0 + min-width:100%): її задає рядок кабінета, а довга
+   назва кампанії обрізається трьома крапками, повна — у підказці. */
+.cab-tbl td.cab-nd { max-width: none; }
+.cab-tbl td.cab-nd .cab-nd-in { display: flex; width: 0; min-width: 100%; overflow: hidden; }
+/* Стовпець тумблерів — однієї ширини, відкрите дерево чи ні. */
+.cab-tbl .cab-sw-h, .cab-tbl td.cab-nd-sw { width: 54px; min-width: 54px; max-width: 54px; box-sizing: border-box; }
+/* Числові стовпці одразу мають місце під цифри кампаній ($0.44, 2.38%),
+   інакше при відкритому дереві (ширини зафіксовані) вони б обрізались. */
+#cab-list .cab-tbl th.ta-r, #cab-list .cab-tbl td.cab-num { min-width: 66px; box-sizing: border-box; }
+/* Підказка пошуку теж не розсуває стовпець. */
+.cab-tbl .cab-hit { width: 0; min-width: 100%; max-width: none; }
 /* Відкрите око в таблиці — лише домен; кампанія з адсетом є в рядку вище. */
 .cab-tbl td.cab-nd .cd-side.has-eye.is-on .cd-where { display: none; }
 /* «в оголошеннях зроби відступ від картинки і назви, і домен по правій
    стороні форматуй». Картинка відступає від назви; домен — праворуч,
    дрібним моно-підписом у рамці, щоб не зливався з назвою. */
-.cab-tbl td.cab-nd .cd-thumb { margin-right: 8px; }
+.cab-tbl td.cab-nd .cd-thumb { margin-right: 8px; max-width: none; min-width: 24px; }
 .cab-tbl td.cab-nd .cd-side { padding-left: 10px; flex: 0 0 auto; }
-.cab-tbl td.cab-nd .cd-side .cd-dom { max-width: 130px; box-sizing: border-box; }
+.cab-tbl td.cab-nd .cd-side .cd-dom { max-width: 96px; box-sizing: border-box; }
 /* Стискається лише назва: стрілка, картинка й око — сталі, тож картинки
    в усіх рядках стоять в одну лінію, а око не з'їжджає за край. */
 .cab-tbl td.cab-nd .cab-nd-in > .cd-twist, .cab-tbl td.cab-nd .cab-nd-in > .cd-mk,
@@ -7804,3 +7815,7 @@ body:has(.hidden #cabinets-section) #mk-dock, body:has(.route-off #cabinets-sect
 .cab-hit { margin-top: 2px; max-width: 260px; font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cab-hit-more { font: 700 10px ui-monospace, SFMono-Regular, Menlo, monospace; color: #a78bfa; }
 mark.cab-hl { display: inline !important; width: auto !important; height: auto !important; margin: 0 !important; background: rgba(139,92,246,.32); color: #fff; border-radius: 3px; padding: 0 1px; }
+
+/* Відкрите дерево: ширини стовпців — ті самі, що при закритому (cabColLock). */
+.cab-tbl.is-locked { table-layout: fixed; }
+.cab-tbl.is-locked td { overflow: hidden; text-overflow: ellipsis; }
