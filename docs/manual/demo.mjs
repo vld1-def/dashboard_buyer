@@ -36,8 +36,17 @@ function demoData() {
   const funnels_mapping = [['10708-y3wz', 'Mbank KG', 'KG', false], ['10864-9lm5', 'Pinco KZ', 'KZ', false], ['pfb10964', 'Melbet UZ [AppCloud]', 'UZ', true]]
     .map(([k, n, g, app], i) => ({ id: 'f' + i, team_name: 'DEMO', ktid: k, funnel_name: n, geo: g, is_app: app }));
   const domains = [['mbank-kg.online', 'Mbank', 'KG', 'ok', 200], ['play-kg.site', 'Mbank', 'KG', 'ok', 200], ['pinco-kz1.top', 'Pinco', 'KZ', 'guarded', 403], ['melbet-uz.app', 'Melbet', 'UZ', 'down', null], ['pinup-tj.fun', 'Pin-Up', 'TJ', 'danger', 200]]
-    .map(([d, p, g, st, c], i) => ({ id: 'd' + i, team_name: 'DEMO', domain: d, pwa: p, geo: g, status: st, status_code: c, source: 'server', checked_at: now, created_at: now }));
-  return { _role: 'buyer', accounts_mapping, funnels_mapping, domains, team_settings: [{ team_name: 'DEMO', key: 'role_access', value: JSON.stringify(access) }], daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
+    .map(([d, p, g, st, c], i) => ({ id: 'd' + i, team_name: 'DEMO', domain: d, pwa: p, geo: g, status: st, status_code: c, source: 'server', checked_at: now, created_at: now }))
+    .concat([['kg-mbank.app', 'Mbank', 'KG', 'danger', 200], ['olymp-kg.top', 'Olympus', 'KG', 'ok', 200], ['pinco-kz2.top', 'Pinco', 'KZ', 'notfound', 404], ['pinup-tj2.fun', 'Pin-Up', 'TJ', 'ok', 200], ['mbank-kg3.online', 'Mbank', 'KG', 'ok', 200]]
+      .map(([d, p, g, st, c], i) => ({ id: 'dx' + i, team_name: 'DEMO', domain: d, pwa: p, geo: g, status: st, status_code: c, source: 'server', checked_at: now, created_at: now })));
+  const pwa = [
+    ['KG', 'Riddick', 'Mbank', 'Mbank_KG_10708-ex8g_{date}', ['https://mbank-kg.online/?k=10708', 'https://play-kg.site/r/10708', 'https://kg-mbank.app/s1'], 'sub1={cid}&sub2=10708-ex8g&sub5={acc}', 'основна, крутиться з 05.11'],
+    ['KG', 'Riddick', 'Olympus', 'Olympus_KG_10933-k2pq_{date}', ['https://olymp-kg.top/?k=10933'], 'sub1={cid}&sub2=10933-k2pq', ''],
+    ['KZ', 'AppHeroes', 'Pinco', 'Pinco_KZ_10864-9lm5_{date}', ['https://pinco-kz1.top/p/10864', 'https://pinco-kz2.top/p/10864'], 'sub1={cid}&sub2=10864-9lm5&sub5={acc}', 'дизайн оновили 20.11'],
+    ['UZ', 'Skakapp', 'Melbet', 'Melbet_UZ_10512-a8sd_{date}', ['https://melbet-uz.app/m/10512'], 'sub1={cid}&sub2=10512-a8sd', ''],
+    ['TJ', 'Riddick', 'Pin-Up', 'PinUp_TJ_20411-y3wz_{date}', ['https://pinup-tj.fun/u/20411', 'https://pinup-tj2.fun/u/20411'], 'sub1={cid}&sub2=20411-y3wz', 'другий домен — запасний']
+  ].map(([geo, provider, offer, name, links, subs, note], i) => ({ id: 'pw' + i, geo, provider, offer, name, links, subs, note }));
+  return { _role: 'buyer', accounts_mapping, funnels_mapping, domains, team_settings: [{ team_name: 'DEMO', key: 'role_access', value: JSON.stringify(access) }, { team_name: 'DEMO', key: 'pwa_links', value: JSON.stringify(pwa) }], daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
 }
 
 export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {
