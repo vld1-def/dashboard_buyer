@@ -46,7 +46,10 @@ function demoData() {
     ['UZ', 'Skakapp', 'Melbet', 'Melbet_UZ_10512-a8sd_{date}', ['https://melbet-uz.app/m/10512'], 'sub1={cid}&sub2=10512-a8sd', ''],
     ['TJ', 'Riddick', 'Pin-Up', 'PinUp_TJ_20411-y3wz_{date}', ['https://pinup-tj.fun/u/20411', 'https://pinup-tj2.fun/u/20411'], 'sub1={cid}&sub2=20411-y3wz', 'другий домен — запасний']
   ].map(([geo, provider, offer, name, links, subs, note], i) => ({ id: 'pw' + i, geo, provider, offer, name, links, subs, note }));
-  return { _role: 'buyer', accounts_mapping, funnels_mapping, domains, team_settings: [{ team_name: 'DEMO', key: 'role_access', value: JSON.stringify(access) }, { team_name: 'DEMO', key: 'pwa_links', value: JSON.stringify(pwa) }], daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
+  const apps = [['UZ', 'AppCloud', 'Melbet'], ['UZ', 'AppCloud', 'Mostbet'], ['KG', 'Skakapp', 'Mbank'], ['KG', 'Skakapp', 'Olympus'], ['TJ', 'AppCloud', 'Pin-Up']]
+    .map(([geo, provider, title], i) => ({ id: 'ap' + i, geo, provider, title, naming: 'cy638t_8wxg7hf7_bGcTwMmV_{app}_{acc}_' + geo, deeplink: 'appcloud://open?app={app}&c={creative}',
+      subs: [{ n: 2, mode: 'app', value: '' }, { n: 5, mode: 'acc', value: '1403209798694635' }, { n: 20, mode: 'cid', value: '' }, { n: 7, mode: 'fixed', value: '8wxg7hf7' }] }));
+  return { _role: 'buyer', accounts_mapping, funnels_mapping, domains, team_settings: [{ team_name: 'DEMO', key: 'role_access', value: JSON.stringify(access) }, { team_name: 'DEMO', key: 'pwa_links', value: JSON.stringify(pwa) }, { team_name: 'DEMO', key: 'app_links', value: JSON.stringify(apps) }], daily_stats: daily, creatives_stats: cr, payouts, settings: [{ team_name: 'DEMO', month: '2026-11', monthly_spend_target: 40000 }] };
 }
 
 export async function demo({ width = 1440, height = 900, scale = 2 } = {}) {

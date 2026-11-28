@@ -179,7 +179,7 @@ const pickOne = await page.evaluate(() => {
   const row = [...document.querySelectorAll('#ap-tree .ap-row')]
     .find(r => (r.getAttribute('title') || '').includes('Mbank_KG_2'));
   row.click();
-  return { one: pwOne, cards: document.querySelectorAll('#ap-list > div').length,
+  return { one: pwOne, cards: document.querySelectorAll('#ap-list .apg-row').length,
            list: document.getElementById('ap-list').textContent.replace(/\s+/g, ' '),
            boxes: [...document.querySelectorAll('#ap-tree .ap-kids')].map(k => k.className) };
 });
@@ -191,7 +191,7 @@ ok('і дерево НЕ переграє анімацію — рівні вже
 const unpick = await page.evaluate(() => {
   [...document.querySelectorAll('#ap-tree .ap-row')]
     .find(r => (r.getAttribute('title') || '').includes('Mbank_KG_2')).click();
-  return { one: pwOne, cards: document.querySelectorAll('#ap-list > div').length };
+  return { one: pwOne, cards: document.querySelectorAll('#ap-list .apg-row').length };
 });
 ok('повторний клік по кампанії знімає вибір', unpick.one === '' && unpick.cards === 2, unpick);
 

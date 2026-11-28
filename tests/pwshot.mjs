@@ -102,7 +102,8 @@ ok('ключ групування знімає суфікс часу',
   keys.group === '10708-ex8g' && keys.groupOld === '10708-ex8g', keys);
 
 /* ─────────── превю на картці ─────────── */
-const cards = await page.evaluate(() => [...document.querySelectorAll('#ap-list > div')].map(c => {
+/* Картка тепер у панелі (#ap-pane) — по одній, вибраній: обходимо всі. */
+const cards = await page.evaluate(() => pwItems.map(it => { apSel('pwa', it.id); const c = document.getElementById('ap-pane');
   const shot = c.querySelector('.pw-shot');
   const add = c.querySelector('.pw-shot-add');
   const main = c.querySelector('.pw-card-main');
@@ -138,6 +139,7 @@ ok('назва без KTID не отримує ні превю, ні кнопк�
 await setup(['10708-ex8g', '10708-ex8g__1700000000001', '10708-ex8g__1700000000002'], false);
 
 const slide = await page.evaluate(() => {
+  apSel('pwa', pwItems.find(x => /10708-ex8g_09/.test(x.name)).id);
   const box = document.querySelector('.pw-shot');
   return {
     kadrs: pwShotsOf('10708-ex8g').length,
@@ -157,7 +159,7 @@ ok('крапок стільком ж, скільки кадрів, і горит
 ok('стрілки є — туди й назад', slide.navs === 2, slide);
 
 const flip = await page.evaluate(() => {
-  const before = document.querySelector('#ap-list').innerHTML.length;
+  const before = document.querySelector('#ap-pane').innerHTML.length;
   document.querySelector('.pw-shot-nav.is-next').click();
   const box = document.querySelector('.pw-shot');
   return { i: box.getAttribute('data-i'),
@@ -165,7 +167,7 @@ const flip = await page.evaluate(() => {
            src: box.querySelector('img').getAttribute('src'),
            on: [...box.querySelectorAll('.pw-shot-dots i')].findIndex(i => i.classList.contains('is-on')),
            idx: pwShotIdx['10708-ex8g'],
-           sameLen: document.querySelector('#ap-list').innerHTML.length === before };
+           sameLen: document.querySelector('#ap-pane').innerHTML.length === before };
 });
 ok('стрілка перемикає кадр', flip.n === '2/3' && flip.i === '1' && flip.on === 1, flip);
 ok('і запам\'ятовує його на наступний рендер', flip.idx === 1, flip);
@@ -264,9 +266,9 @@ ok('схоже слово (Parametrix) превю НЕ втрачає',
   near && (near.src || near.add) && near.shotW > 0, near);
 
 /* ─────────── силки звузились ─────────── */
-ok('превю стоїть вузькою колонкою (~120px)', c1.shotW >= 100 && c1.shotW <= 130 /* rect під body zoom .9 */, c1);
-ok('силки звузились на її ширину, а не лізуть під неї',
-  c1.mainW > 0 && c1.mainW <= c1.cardW - c1.shotW, c1);
+/* Дизайн тепер не бічною колонкою, а галереєю внизу картки в панелі —
+   на всю її ширину («замість нотатків щоб була галерея»). */
+ok('галерея дизайнів — на всю ширину картки в панелі', c1.shotW > c1.cardW * 0.8 && c1.mainW === 0, c1);
 ok('картка без превю віддає всю ширину силкам', c4.mainW === 0, c4);
 
 /* ─────────── на весь екран ─────────── */

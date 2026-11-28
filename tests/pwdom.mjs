@@ -109,8 +109,10 @@ ok('без гео кампанії підходять усі гео цієї PWA
   pool.noGeo.length === 4, pool.noGeo);
 
 /* ─────────── картка: пропозиція і підстановка ─────────── */
-await page.evaluate(() => { apRenderTree(); apRenderMode(); });
-const card = await page.evaluate(() => document.getElementById('ap-list').textContent);
+/* Картка вибраної кампанії тепер у панелі праворуч (#ap-pane), а не
+   стрічкою карток у списку. */
+await page.evaluate(() => { apRenderTree(); apSel('pwa', 'p1'); });
+const card = await page.evaluate(() => document.getElementById('ap-pane').textContent);
 ok('на картці видно, скільки доменів зі списку ще не в силках',
   /зі списку доменів/.test(card) && /підставити 2/.test(card), card.slice(0, 300));
 
@@ -119,8 +121,8 @@ const pulled = await page.evaluate(async () => {
   return { links: pwItems[0].links, saved: window.__saved.length,
            /* Саме ПО ЦІЙ кампанії: сусідня (Pinco) свої домени ще не
               підставила, і її кнопка на екрані лишається. */
-           mine: document.getElementById('ap-list').innerHTML.includes("pwDomPull('p1'"),
-           other: document.getElementById('ap-list').innerHTML.includes("pwDomPull('p2'") };
+           mine: (apSel('pwa', 'p1'), document.getElementById('ap-pane').innerHTML.includes("pwDomPull('p1'")),
+           other: (apSel('pwa', 'p2'), document.getElementById('ap-pane').innerHTML.includes("pwDomPull('p2'")) };
 });
 ok('підстановка дописала силки зі схемою',
   JSON.stringify(pulled.links) === JSON.stringify([

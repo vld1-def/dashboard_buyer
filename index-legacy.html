@@ -5997,22 +5997,37 @@ async function saveTeamLeadPassword() {
 
    Повертає мапу {key: value}; ключа, якого немає в базі, у мапі теж
    немає — так само, як getTeamSetting віддає null. */
+/* СВІЙ РЯДОК — ПЕРШИЙ. Ключ у team_settings — (created_by, key): на один
+   key по рядку на людину (баєр, асистент, адмін). Читали «перший-ліпший»
+   рядок команди — і вікно PWA брало шаблон назви асистента (без шаблону
+   AppHeroes) замість твого: «no ktid» під AppHeroes, хоча шаблон
+   збережений. Form.html (tsRead) уже робить так само. Свого рядка немає
+   (налаштування ставив адмін: ролі, бот) — беремо рядок команди, як було. */
+async function tsMyUid() {
+  if (window.myUid) return String(window.myUid);
+  try { const { data } = await sb.auth.getSession(); return String((data && data.session && data.session.user && data.session.user.id) || ''); }
+  catch (e) { return ''; }
+}
+const tsMineFirst = (rows, me) => (rows || []).slice()
+  .sort((a, b) => Number(String(b.created_by || '') === me) - Number(String(a.created_by || '') === me));
+
 async function getTeamSettings(keys) {
   const out = {};
   try {
-    const { data, error } = await sb.from('team_settings')
-      .select('key, value').eq('team_name', currentTeam).in('key', keys);
+    const [{ data, error }, me] = await Promise.all([sb.from('team_settings')
+      .select('key, value, created_by').eq('team_name', currentTeam).in('key', keys), tsMyUid()]);
     if (error) { console.warn('team_settings read:', error.message); return out; }
-    (data || []).forEach(r => { out[r.key] = r.value; });
+    tsMineFirst(data, me).forEach(r => { if (!(r.key in out)) out[r.key] = r.value; });
   } catch (e) { console.warn('team_settings read:', e.message); }
   return out;
 }
 
 async function getTeamSetting(key) {
   try {
-    const { data } = await sb.from('team_settings')
-      .select('value').eq('team_name', currentTeam).eq('key', key).limit(1);
-    return data && data.length > 0 ? data[0].value : null;
+    const [{ data }, me] = await Promise.all([sb.from('team_settings')
+      .select('value, created_by').eq('team_name', currentTeam).eq('key', key), tsMyUid()]);
+    const rows = tsMineFirst(data, me);
+    return rows.length > 0 ? rows[0].value : null;
   } catch(e) { return null; }
 }
 /* ⚠️ ТУТ МОВЧАЛО ВСЕ, ЩО ЗБЕРІГАЄТЬСЯ ЧЕРЕЗ ЦЮ ФУНКЦІЮ.
@@ -10201,11 +10216,15 @@ function gcDiff(geo, results) {
 
     <div class="flex-1 min-h-0 flex">
       <!-- Дерево: гео → постачальник -->
-      <div class="w-56 shrink-0 border-r border-white/5 overflow-y-auto custom-scrollbar p-3 space-y-1" id="ap-tree"></div>
-      <div class="flex-1 min-w-0 overflow-y-auto custom-scrollbar p-4">
-        <div id="ap-editor" class="hidden mb-4"></div>
-        <div id="ap-list" class="space-y-2"></div>
+      <!-- Дерево гео/постачальників більше не окремою колонкою: групи
+           гео → постачальник стоять у самому списку й згортаються. Вузол
+           лишається (його малюють старі функції), але схований. -->
+      <div class="hidden" id="ap-tree"></div>
+      <div class="ap-main flex-1 min-w-0 overflow-y-auto custom-scrollbar">
+        <div id="ap-editor" class="hidden m-4"></div>
+        <div id="ap-list" class="apg-list"></div>
       </div>
+      <aside id="ap-pane" class="ap-pane custom-scrollbar"></aside>
     </div>
   </div>
 </div>
@@ -10666,7 +10685,140 @@ function apModePaint() {
   apSubPaint();
 }
 
+/* ═══════════ СПИСОК ГРУПАМИ + ПАНЕЛЬ ДЕТАЛЕЙ (Прілки і PWA) ═══════════
+
+   «список перенасичений інфою… дизайн важкий» → варіант 1 з розкривними
+   групами. Ліворуч — компактні рядки, згруповані гео → постачальник;
+   групи згортаються (стан пам'ятається в браузері). Праворуч — повна
+   картка ВИБРАНОГО запису: та сама розмітка, що була (копіювання,
+   змінити, домени, сабки), лише в панелі, а не двадцятьма картками
+   підряд. На двадцять кампаній під одним гео — три рядки
+   постачальників, поки не відкриєш потрібного. */
+const AP_SHOW = 5;                         // рядків у групі постачальника до «показати всі»
+const apSelId = { app: '', pwa: '' };
+let apOpen = null, apShowAll = new Set();
+function apOpenGet() {
+  if (apOpen) return apOpen;
+  try { apOpen = new Set(JSON.parse(localStorage.getItem('ap_open') || '[]')); } catch (e) { apOpen = new Set(); }
+  return apOpen;
+}
+function apOpenSave() { try { localStorage.setItem('ap_open', JSON.stringify([...apOpenGet()])); } catch (e) {} }
+window.apGrpToggle = function (key) {
+  const o = apOpenGet(); o.has(key) ? o.delete(key) : o.add(key); apOpenSave(); apRenderMode();
+};
+window.apShowMore = function (key) { apShowAll.add(key); apRenderMode(); };
+window.apSel = function (mode, id) { apSelId[mode] = id; apRenderMode(); };
+
+/* Стан силки → клас крапки (ті самі стани, що й pwDomMark). */
+function apDotCls(u) {
+  const st = (pwDomInfo(u) || {}).state;
+  return PW_BAD[st] ? 'is-bad' : st === 'ok' ? 'is-ok' : st === 'guarded' ? 'is-guard' : st === 'warn' || st === 'notfound' ? 'is-warn' : 'is-na';
+}
+const apDots = links => (links || []).filter(Boolean).slice(0, 8).map(u => `<i class="apg-dot ${apDotCls(u)}" title="${apEsc(pwHost(u) || u)}"></i>`).join('');
+
+function apRowHtml(it, mode) {
+  const on = apSelId[mode] === it.id;
+  if (mode === 'pwa') {
+    const name = pwName(it);
+    const kt = pwKtid(it.name);
+    const sh = kt ? pwShotsOf(kt) : [];
+    return `<div class="apg-row${on ? ' is-sel' : ''}" onclick="apSel('pwa','${it.id}')">
+      <span class="apg-of">${apEsc(it.offer || '—')}</span>
+      <span class="apg-nm" title="${apEsc(name)}">${apEsc(name)}</span>
+      <span class="apg-dots">${apDots(it.links)}</span>
+      <span class="apg-th">${sh.length ? `<img src="${apEsc(sh[0].url)}" alt="" loading="lazy">` : ''}</span>
+      <button type="button" class="apg-cp" title="Скопіювати назву" data-v="${apEsc(name)}" onclick="event.stopPropagation();pwCopy(event,this)">⧉</button>
+    </div>`;
+  }
+  const kt = (apPickRead() || {})[it.id] || '';
+  const f = kt ? apFunnels.find(x => String(x.ktid) === String(kt)) : null;
+  const ban = f && apIsBan(f);
+  const r = apResolve(it, kt);
+  return `<div class="apg-row is-app${on ? ' is-sel' : ''}" onclick="apSel('app','${it.id}')">
+    <span class="apg-of">${apEsc(it.title || (f && f.funnel_name) || '—')}</span>
+    <span class="apg-app">${kt ? `<i class="apg-dot ${ban ? 'is-bad' : 'is-ok'}"></i><code>${apEsc(kt)}</code>${ban ? '<b class="apg-ban">BAN</b>' : ''}` : '<em>апку не вибрано</em>'}</span>
+    <span class="apg-nm" title="${apEsc(r.naming || it.naming || '')}">${apEsc(r.naming || it.naming || '')}</span>
+    <button type="button" class="apg-cp" title="Скопіювати неймінг" data-v="${apEsc(r.naming || '')}" onclick="event.stopPropagation();apCopy(event,this)">⧉</button>
+  </div>`;
+}
+const apBadOf = (it, mode) => {
+  if (mode === 'pwa') return pwBadLinks(it).length > 0;
+  const kt = (apPickRead() || {})[it.id] || '';
+  const f = kt ? apFunnels.find(x => String(x.ktid) === String(kt)) : null;
+  return !!(f && apIsBan(f));
+};
+
+function apGroupPaint(el, rows, card, mode) {
+  const q = (document.getElementById('ap-search')?.value || '').trim();
+  const open = apOpenGet();
+  const byGeo = new Map();
+  rows.forEach(it => {
+    const g = (it.geo || '—').toUpperCase(), p = String(it.provider || '').trim() || '—';
+    if (!byGeo.has(g)) byGeo.set(g, new Map());
+    const m = byGeo.get(g); if (!m.has(p)) m.set(p, []); m.get(p).push(it);
+  });
+  if (!rows.some(it => it.id === apSelId[mode])) apSelId[mode] = rows[0] ? rows[0].id : '';
+  const selGeo = (rows.find(it => it.id === apSelId[mode]) || {}).geo;
+  const word = mode === 'pwa' ? ['кампанія', 'кампанії', 'кампаній'] : ['шаблон', 'шаблони', 'шаблонів'];
+  const plural = n => word[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
+  const badWord = mode === 'pwa' ? 'під увагою' : 'апок у бані';
+  const head = mode === 'pwa'
+    ? '<div class="apg-th-row"><span>Офер</span><span>Назва кампанії</span><span>Домени</span><span>Дизайн</span><span></span></div>'
+    : '<div class="apg-th-row is-app"><span>Шаблон</span><span>Апка</span><span>Неймінг</span><span></span></div>';
+  const geos = [...byGeo.keys()].sort();
+  let html = head;
+  geos.forEach(g => {
+    const provs = byGeo.get(g), items = [...provs.values()].flat();
+    const gk = mode + '|' + g;
+    /* Пошук розгортає все: шукають, щоб побачити, а не щоб клікати групи.
+       Одне гео — теж розгорнуте. Гео вибраного запису — відкрите. */
+    const gOpen = q || geos.length === 1 || open.has(gk) || (g === String(selGeo || '').toUpperCase() && !open.has('!' + gk));
+    const nBad = items.filter(it => apBadOf(it, mode)).length;
+    html += `<div class="apg-geo${gOpen ? ' is-open' : ''}" onclick="apGrpToggle('${gOpen && !open.has(gk) ? '!' : ''}${gk}')">
+      <span class="apg-car">${gOpen ? '▾' : '▸'}</span>${geoFlag(g, 'w-4 h-3 inline-block')}<b>${apEsc(g)}</b>
+      <span class="apg-meta">· ${items.length} ${plural(items.length)}${provs.size > 1 ? ' · ' + provs.size + ' постачальники' : ''}</span>
+      <span class="apg-sp"></span>
+      ${mode === 'pwa' && !gOpen ? `<span class="apg-dots">${apDots(items.flatMap(it => it.links || []))}</span>` : ''}
+      ${nBad ? `<span class="apg-bad">${nBad} ${badWord}</span>` : ''}
+    </div>`;
+    if (!gOpen) return;
+    [...provs.keys()].sort().forEach(p => {
+      const list = provs.get(p), pk = gk + '|' + p;
+      const pOpen = q || provs.size === 1 || !open.has('-' + pk);
+      const pb = list.filter(it => apBadOf(it, mode)).length;
+      html += `<div class="apg-prov" onclick="apGrpToggle('-${pk}')"><span class="apg-car">${pOpen ? '▾' : '▸'}</span>${apEsc(p)}<span class="apg-pill">${list.length}</span><span class="apg-sp"></span>${pb ? `<span class="apg-bad">${pb}</span>` : ''}</div>`;
+      if (!pOpen) return;
+      const all = q || apShowAll.has(pk) || list.length <= AP_SHOW + 1;
+      const shown = all ? list : list.slice(0, AP_SHOW);
+      if (!all && !shown.some(it => it.id === apSelId[mode])) { const s = list.find(it => it.id === apSelId[mode]); if (s) shown.push(s); }
+      html += shown.map(it => apRowHtml(it, mode)).join('');
+      if (!all) html += `<div class="apg-more" onclick="apShowMore('${pk}')">+ ще ${list.length - shown.length} · показати всі</div>`;
+    });
+  });
+  el.innerHTML = html;
+  const pane = document.getElementById('ap-pane');
+  if (pane) {
+    const it = rows.find(x => x.id === apSelId[mode]);
+    pane.innerHTML = it ? card(it) : '';
+  }
+}
+
+/* ГАЛЕРЕЯ ДИЗАЙНІВ — замість нотатки, внизу картки в панелі: великий кадр
+   (той самий pwShotCol: стрілки, весь екран, «+ ще»), під ним мініатюри. */
+window.pwShotGo = function (ktid, j) { pwShotIdx[ktid] = j; apRenderMode(); };
+function pwGallery(it) {
+  const main = pwShotCol(it);
+  if (!main) return '';
+  const kt = pwKtid(it.name), arr = kt ? pwShotsOf(kt) : [];
+  const cur = Math.min(Math.max(0, pwShotIdx[kt] | 0), Math.max(0, arr.length - 1));
+  return `<div class="pw-gal"><div class="pw-gal-h">Галерея дизайнів · ${arr.length}</div>${main}
+    ${arr.length > 1 ? `<div class="pw-gal-th">${arr.map((x, j) => `<img src="${apEsc(x.url)}" alt="" loading="lazy" class="${j === cur ? 'is-on' : ''}" onclick="pwShotGo('${apEsc(kt)}', ${j})">`).join('')}</div>` : ''}</div>`;
+}
+
 function apRenderMode() {
+  /* Панель — спільна на обидва режими: чистимо, щоб у порожніх Прілках
+     не лишалась картка з PWA. */
+  const pane = document.getElementById('ap-pane'); if (pane) pane.innerHTML = '';
   if (apMode === 'pwa') { pwRenderTree(); pwRender(); }
   else { apRenderTree(); apRender(); }
 }
@@ -11199,7 +11351,7 @@ function apRender() {
      (сабки, нотатка) нижче й дрібніше, а сабки ще й згорнуті: до них
      заглядають, коли налаштовують, а не коли заливають. */
   const picks = apPickRead();
-  el.innerHTML = rows.map(it => {
+  const card = it => {
     const ktid = picks[it.id] || '';
     const ff = apFunnelsFor(it);
     const r = apResolve(it, ktid);
@@ -11265,7 +11417,7 @@ function apRender() {
         Не підставлено: <code class="font-mono">${r.left.map(apEsc).join(' ')}</code>${
         r.left.includes('{app}') ? ' — вибери апку вище' : ' — це плейсхолдери трекера'}</p>` : ''}
 
-      ${subs.length ? `<details class="mt-2 pt-2 border-t border-white/5">
+      ${subs.length ? `<details open class="mt-2 pt-2 border-t border-white/5">
         <summary class="text-[9px] font-black uppercase tracking-widest text-slate-500 cursor-pointer hover:text-slate-300 transition">Сабки · ${subs.length}</summary>
         <div class="grid grid-cols-[auto_auto_minmax(0,1fr)_auto] gap-x-2 gap-y-1 items-center mt-2">
         ${subs.map(x => {
@@ -11286,9 +11438,9 @@ function apRender() {
         }).join('')}
         </div></details>` : ''}
 
-      ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
     </div>`;
-  }).join('');
+  };
+  apGroupPaint(el, rows, card, 'app');
 }
 
 /* ЯКІ АПКИ ПОКАЗУВАТИ В ЦЬОМУ ШАБЛОНІ.
@@ -12979,13 +13131,13 @@ function pwRender() {
     + ' stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5" aria-hidden="true">'
     + '<path d="M7 17 17 7M9 7h8v8"/></svg>';
 
-  el.innerHTML = rows.map(it => {
+  const card = it => {
     const links = (it.links || []).filter(Boolean);
     const shown = pwName(it);              // назва з уже підставленою датою
     const nBad = pwBadLinks(it).length;
     /* Силки звузились на ширину превю: вони й так обрізаються по
        середині, а дизайн видно відразу — саме про це й просили. */
-    const shot = pwShotCol(it);
+    const shot = '';   /* галерея — внизу картки (pwGallery), не бічною колонкою */
     return `
     <div class="bg-black/20 border border-white/5 rounded-2xl p-3${shot ? ' pw-card-shot' : ''}">
       ${shot ? '<div class="pw-card-main">' : ''}
@@ -13066,10 +13218,11 @@ function pwRender() {
       ${pwDomErr ? `<p class="text-[10px] font-bold text-amber-400/90 mt-1.5">
         Стан доменів не прочитався (${apEsc(pwDomErr)}) — якщо списку доменів ще немає, виконай DOMAINS.sql.</p>` : ''}
 
-      ${it.note ? `<p class="text-[11px] text-slate-500 font-bold mt-2">${apEsc(it.note)}</p>` : ''}
+      ${/* «нотатків не треба, замість нотатків щоб була галерея» */ pwGallery(it)}
       ${shot ? '</div>' + shot : ''}
     </div>`;
-  }).join('');
+  };
+  apGroupPaint(el, rows, card, 'pwa');
 }
 
 /* ─────────── редактор кампанії ─────────── */
